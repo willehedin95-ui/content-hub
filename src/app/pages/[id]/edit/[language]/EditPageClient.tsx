@@ -111,34 +111,63 @@ export default function EditPageClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Build CSS from padding values
+  // Build CSS from padding values — targets body and all direct children
   function buildPaddingCss(h: string, v: string): string {
     const hVal = h !== "" ? parseInt(h) : null;
     const vVal = v !== "" ? parseInt(v) : null;
     if (hVal === null && vVal === null) return "";
-    const parts: string[] = [];
+    const rules: string[] = [];
     if (hVal !== null) {
-      parts.push(`padding-left: ${hVal}px !important;`);
-      parts.push(`padding-right: ${hVal}px !important;`);
+      rules.push(`body, body > * { padding-left: ${hVal}px !important; padding-right: ${hVal}px !important; }`);
     }
     if (vVal !== null) {
-      parts.push(`padding-top: ${vVal}px !important;`);
-      parts.push(`padding-bottom: ${vVal}px !important;`);
+      rules.push(`body { padding-top: ${vVal}px !important; padding-bottom: ${vVal}px !important; }`);
     }
-    return `body { ${parts.join(" ")} }`;
+    return rules.join("\n");
   }
 
-  // Read existing padding from iframe on load
+  // Read current padding from iframe on load
   function handleIframeLoad() {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
+
+    // If we already saved custom padding, restore those values
     const existing = doc.querySelector("style[data-cc-custom]");
     if (existing) {
       const h = existing.getAttribute("data-pad-h");
       const v = existing.getAttribute("data-pad-v");
       if (h) setPaddingH(h);
       if (v) setPaddingV(v);
+      return;
     }
+
+    // Otherwise, read the computed padding from the page
+    const body = doc.body;
+    if (!body) return;
+    const style = doc.defaultView?.getComputedStyle(body);
+    if (!style) return;
+
+    // Use the larger of left/right as horizontal, top/bottom as vertical
+    const pl = parseInt(style.paddingLeft) || 0;
+    const pr = parseInt(style.paddingRight) || 0;
+    const pt = parseInt(style.paddingTop) || 0;
+    const pb = parseInt(style.paddingBottom) || 0;
+    let h = Math.max(pl, pr);
+    let v = Math.max(pt, pb);
+
+    // Also check first direct child — padding is often on a wrapper, not body
+    const firstChild = body.children[0] as HTMLElement | undefined;
+    if (firstChild) {
+      const childStyle = doc.defaultView?.getComputedStyle(firstChild);
+      if (childStyle) {
+        const cpl = parseInt(childStyle.paddingLeft) || 0;
+        const cpr = parseInt(childStyle.paddingRight) || 0;
+        h = Math.max(h, cpl, cpr);
+      }
+    }
+
+    if (h > 0) setPaddingH(String(h));
+    if (v > 0) setPaddingV(String(v));
   }
 
   // Inject/update padding CSS in the iframe live
