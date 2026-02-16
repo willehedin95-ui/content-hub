@@ -16,6 +16,7 @@ import {
   MoveHorizontal,
   MoveVertical,
   MousePointerClick,
+  Link2,
 } from "lucide-react";
 
 import { Translation, LANGUAGES } from "@/types";
@@ -56,6 +57,8 @@ export default function EditPageClient({
   const [padMV, setPadMV] = useState(""); // mobile vertical
   const [excludeMode, setExcludeMode] = useState(false);
   const [excludeCount, setExcludeCount] = useState(0);
+  const [linkUrl, setLinkUrl] = useState("");
+  const prevLinkUrl = useRef("");
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -248,6 +251,24 @@ export default function EditPageClient({
 
     // Count any existing excluded elements
     setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
+
+    // Detect the most common link URL on the page
+    const links = doc.querySelectorAll("a[href]");
+    const urlCounts = new Map<string, number>();
+    links.forEach((a) => {
+      const href = (a as HTMLAnchorElement).href;
+      if (!href || href.startsWith("javascript:") || href === "#" || href.startsWith("mailto:")) return;
+      urlCounts.set(href, (urlCounts.get(href) || 0) + 1);
+    });
+    let topUrl = "";
+    let topCount = 0;
+    urlCounts.forEach((count, url) => {
+      if (count > topCount) { topUrl = url; topCount = count; }
+    });
+    if (topUrl) {
+      setLinkUrl(topUrl);
+      prevLinkUrl.current = topUrl;
+    }
   }
 
   // Inject/update padding CSS in the iframe live
@@ -282,6 +303,21 @@ export default function EditPageClient({
       else { mv = value; setPadMV(value); }
     }
     syncPaddingToIframe(dh, dv, mh, mv);
+    setIsDirty(true);
+  }
+
+  function handleLinkUrlChange(newUrl: string) {
+    setLinkUrl(newUrl);
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc || !prevLinkUrl.current) return;
+    const old = prevLinkUrl.current;
+    doc.querySelectorAll("a[href]").forEach((a) => {
+      const anchor = a as HTMLAnchorElement;
+      if (anchor.href === old) {
+        anchor.href = newUrl;
+      }
+    });
+    prevLinkUrl.current = newUrl;
     setIsDirty(true);
   }
 
@@ -631,6 +667,29 @@ export default function EditPageClient({
                 {viewMode === "desktop" ? "Desktop" : "Mobile"} view
               </span>
             </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-[#1e2130]" />
+
+          {/* Destination URL */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Destination URL
+            </p>
+            <div className="flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <input
+                type="url"
+                value={linkUrl}
+                onChange={(e) => handleLinkUrlChange(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+              />
+            </div>
+            <p className="text-[10px] text-slate-600">
+              Applied to all links on the page.
+            </p>
           </div>
 
           {/* Divider */}
