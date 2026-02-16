@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { extractContent, applyTranslations } from "@/lib/html-parser";
 import { translateBatch, translateMetas } from "@/lib/openai";
+import { calcOpenAICost } from "@/lib/pricing";
 import { Language } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -55,16 +56,19 @@ export async function POST(req: NextRequest) {
       ...texts,
       ...alts.map(({ id, alt }) => ({ id, text: alt })),
     ];
-    const translatedTexts = await translateBatch(
+    const batchResult = await translateBatch(
       allTexts,
       language as Language,
       apiKey
     );
-    const translatedMetas = await translateMetas(
+    const metasResult = await translateMetas(
       metas,
       language as Language,
       apiKey
     );
+
+    const translatedTexts = batchResult.result;
+    const translatedMetas = metasResult.result;
 
     // Reconstruct HTML using modifiedHtml (which has the {{id}} placeholders)
     const translatedHtml = applyTranslations(
@@ -95,6 +99,28 @@ export async function POST(req: NextRequest) {
     if (saveError) {
       throw new Error(saveError.message);
     }
+
+    // Log usage
+    const totalInputTokens =
+      batchResult.inputTokens + metasResult.inputTokens;
+    const totalOutputTokens =
+      batchResult.outputTokens + metasResult.outputTokens;
+    const costUsd = calcOpenAICost(totalInputTokens, totalOutputTokens);
+
+    await db.from("usage_logs").insert({
+      type: "translation",
+      page_id,
+      translation_id: translation.id,
+      model: "gpt-4o",
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
+      cost_usd: costUsd,
+      metadata: {
+        language,
+        text_count: allTexts.length,
+        chunk_count: Math.ceil(allTexts.length / 80),
+      },
+    });
 
     return NextResponse.json(translation);
   } catch (err) {

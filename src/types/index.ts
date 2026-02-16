@@ -45,6 +45,19 @@ export const PAGE_TYPES: { value: PageType; label: string }[] = [
   { value: "listicle", label: "Listicle" },
 ];
 
+export interface UsageLog {
+  id: string;
+  created_at: string;
+  type: "translation" | "image_generation";
+  page_id: string | null;
+  translation_id: string | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  metadata: Record<string, unknown>;
+}
+
 export const LANGUAGES: {
   value: Language;
   label: string;

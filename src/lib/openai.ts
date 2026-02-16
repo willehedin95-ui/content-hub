@@ -122,13 +122,19 @@ export async function translateBatch(
   texts: Array<{ id: string; text: string }>,
   language: Language,
   apiKey: string
-): Promise<Record<string, string>> {
+): Promise<{
+  result: Record<string, string>;
+  inputTokens: number;
+  outputTokens: number;
+}> {
   const client = new OpenAI({ apiKey });
   const systemPrompt = SYSTEM_PROMPTS[language];
 
   // Split into chunks to avoid token limits
   const CHUNK_SIZE = 80;
   const result: Record<string, string> = {};
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
 
   for (let i = 0; i < texts.length; i += CHUNK_SIZE) {
     const chunk = texts.slice(i, i + CHUNK_SIZE);
@@ -150,9 +156,14 @@ export async function translateBatch(
       response.choices[0].message.content || "{}"
     ) as Record<string, string>;
     Object.assign(result, translated);
+
+    if (response.usage) {
+      totalInputTokens += response.usage.prompt_tokens;
+      totalOutputTokens += response.usage.completion_tokens;
+    }
   }
 
-  return result;
+  return { result, inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
 }
 
 export async function translateMetas(
@@ -164,7 +175,11 @@ export async function translateMetas(
   },
   language: Language,
   apiKey: string
-): Promise<typeof metas> {
+): Promise<{
+  result: typeof metas;
+  inputTokens: number;
+  outputTokens: number;
+}> {
   const client = new OpenAI({ apiKey });
   const langName = LANGUAGE_NAMES_EN[language];
   const langNameNative = LANGUAGE_NAMES[language];
@@ -174,7 +189,8 @@ export async function translateMetas(
     Object.entries(metas).filter(([, v]) => v !== undefined)
   );
 
-  if (Object.keys(input).length === 0) return {};
+  if (Object.keys(input).length === 0)
+    return { result: {}, inputTokens: 0, outputTokens: 0 };
 
   const response = await client.chat.completions.create({
     model: "gpt-4o",
@@ -191,5 +207,9 @@ Return ONLY valid JSON with the same keys and translated values.`,
     temperature: 0.3,
   });
 
-  return JSON.parse(response.choices[0].message.content || "{}");
+  return {
+    result: JSON.parse(response.choices[0].message.content || "{}"),
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  };
 }

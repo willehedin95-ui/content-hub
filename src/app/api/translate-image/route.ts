@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
 
 export const maxDuration = 180;
 
@@ -60,6 +61,28 @@ export async function POST(req: NextRequest) {
     const { data: urlData } = db.storage
       .from("translated-images")
       .getPublicUrl(filePath);
+
+    // 5. Log usage
+    // Look up the translation to get the page_id
+    const { data: trans } = await db
+      .from("translations")
+      .select("page_id")
+      .eq("id", translationId)
+      .single();
+
+    await db.from("usage_logs").insert({
+      type: "image_generation",
+      page_id: trans?.page_id ?? null,
+      translation_id: translationId,
+      model: "nano-banana-pro",
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: KIE_IMAGE_COST,
+      metadata: {
+        image_url: imageUrl,
+        aspect_ratio: aspectRatio || "1:1",
+      },
+    });
 
     return NextResponse.json({ newImageUrl: urlData.publicUrl });
   } catch (error) {
