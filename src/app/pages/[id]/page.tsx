@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
-import TranslationCard from "@/components/pages/TranslationCard";
+import TranslationRow from "@/components/pages/TranslationRow";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -66,13 +66,13 @@ export default async function PageDetailPage({
         <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-4">
           Translations
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
           {LANGUAGES.map((lang) => {
             const translation = p.translations?.find(
               (t) => t.language === lang.value
             );
             return (
-              <TranslationCard
+              <TranslationRow
                 key={lang.value}
                 pageId={p.id}
                 language={lang}

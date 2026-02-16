@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Monitor,
   Smartphone,
+  Globe,
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, LANGUAGES } from "@/types";
@@ -37,6 +38,7 @@ export default function EditPageClient({
   const [seoDesc, setSeoDesc] = useState(translation.seo_description ?? "");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [retranslating, setRetranslating] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -190,6 +192,36 @@ export default function EditPageClient({
     }
   }
 
+  async function handleRetranslate() {
+    if (isDirty && !confirm("This will discard your unsaved changes and re-translate from the original. Continue?")) return;
+    setRetranslating(true);
+    setSaveError("");
+
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: pageId, language: language.value }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setSaveError(data.error || "Re-translation failed");
+        return;
+      }
+
+      setIsDirty(false);
+      setIframeKey((k) => k + 1);
+      router.refresh();
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Re-translation failed"
+      );
+    } finally {
+      setRetranslating(false);
+    }
+  }
+
   return (
     <div className="flex flex-col h-screen bg-[#0a0c14]">
       {/* Top bar */}
@@ -220,8 +252,20 @@ export default function EditPageClient({
             </span>
           )}
           <button
+            onClick={handleRetranslate}
+            disabled={saving || publishing || retranslating}
+            className="flex items-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-400 text-sm font-medium px-3 py-2 rounded-lg border border-[#1e2130] transition-colors"
+          >
+            {retranslating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Globe className="w-4 h-4" />
+            )}
+            {retranslating ? "Translating…" : "Re-translate"}
+          </button>
+          <button
             onClick={handleSave}
-            disabled={saving || publishing}
+            disabled={saving || publishing || retranslating}
             className="flex items-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-200 text-sm font-medium px-4 py-2 rounded-lg border border-[#1e2130] transition-colors"
           >
             {saving ? (
@@ -233,7 +277,7 @@ export default function EditPageClient({
           </button>
           <button
             onClick={handlePublish}
-            disabled={saving || publishing}
+            disabled={saving || publishing || retranslating}
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             {publishing ? (
