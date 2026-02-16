@@ -39,12 +39,26 @@ export default function EditPageClient({
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [clickedImage, setClickedImage] = useState<{
+    src: string;
+    index: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
-  // Listen for dirty signal from the iframe editor
+  // Listen for messages from the iframe editor
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data?.type === "cc-dirty") {
         setIsDirty(true);
+      }
+      if (e.data?.type === "cc-image-click") {
+        setClickedImage({
+          src: e.data.src,
+          index: e.data.index,
+          width: e.data.width,
+          height: e.data.height,
+        });
       }
     }
     window.addEventListener("message", handleMessage);
@@ -311,6 +325,8 @@ export default function EditPageClient({
             iframeRef={iframeRef}
             translationId={translation.id}
             language={language}
+            clickedImage={clickedImage}
+            onClickedImageClear={() => setClickedImage(null)}
             onImageReplaced={() => setIsDirty(true)}
           />
         </div>
