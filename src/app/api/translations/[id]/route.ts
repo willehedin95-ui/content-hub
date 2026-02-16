@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { extractContent, applyTranslations } from "@/lib/html-parser";
+import * as cheerio from "cheerio";
 
 export async function GET(
   _req: NextRequest,
@@ -24,8 +25,10 @@ export async function GET(
 
 /**
  * PUT /api/translations/[id]
- * Body: { translated_texts: Record<string, string>, seo_title?, seo_description? }
- * Reconstructs translated_html from the updated texts and saves everything.
+ * Accepts either:
+ *   - { translated_html } — inline editing (saves HTML directly)
+ *   - { translated_texts } — legacy segment editing (rebuilds HTML from placeholders)
+ * Optional: seo_title, seo_description
  */
 export async function PUT(
   req: NextRequest,
@@ -33,22 +36,23 @@ export async function PUT(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { translated_texts, seo_title, seo_description } = body as {
-    translated_texts: Record<string, string>;
-    seo_title?: string;
-    seo_description?: string;
-  };
+  const { translated_html, translated_texts, seo_title, seo_description } =
+    body as {
+      translated_html?: string;
+      translated_texts?: Record<string, string>;
+      seo_title?: string;
+      seo_description?: string;
+    };
 
-  if (!translated_texts) {
+  if (!translated_html && !translated_texts) {
     return NextResponse.json(
-      { error: "translated_texts is required" },
+      { error: "translated_html or translated_texts is required" },
       { status: 400 }
     );
   }
 
   const db = createServerSupabase();
 
-  // Fetch translation + page HTML
   const { data: translation, error: fetchError } = await db
     .from("translations")
     .select(`*, pages (original_html)`)
@@ -59,33 +63,58 @@ export async function PUT(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Re-extract with placeholders and apply updated translations
-  const { modifiedHtml } = extractContent(
-    (translation.pages as { original_html: string }).original_html
-  );
+  let finalHtml: string;
 
-  const metaTranslations = {
-    title: seo_title,
-    description: seo_description,
-    ogTitle: seo_title,
-    ogDescription: seo_description,
-  };
+  if (translated_html) {
+    // Inline editing path — HTML comes directly from the client
+    const $ = cheerio.load(translated_html);
 
-  const translatedHtml = applyTranslations(
-    modifiedHtml,
-    translated_texts,
-    metaTranslations
-  );
+    // Server-side sanitization: strip editor artifacts
+    $("[data-cc-editor]").remove();
+    $("[data-cc-injected]").remove();
+    $("[data-cc-editable]").removeAttr("data-cc-editable");
+    $("[contenteditable]").removeAttr("contenteditable");
+
+    // Apply SEO meta tags
+    if (seo_title) {
+      $("title").text(seo_title);
+      $('meta[property="og:title"]').attr("content", seo_title);
+    }
+    if (seo_description) {
+      $('meta[name="description"]').attr("content", seo_description);
+      $('meta[property="og:description"]').attr("content", seo_description);
+    }
+
+    finalHtml = $.html();
+  } else {
+    // Legacy segment editing path — rebuild HTML from placeholders
+    const { modifiedHtml } = extractContent(
+      (translation.pages as { original_html: string }).original_html
+    );
+
+    const metaTranslations = {
+      title: seo_title,
+      description: seo_description,
+      ogTitle: seo_title,
+      ogDescription: seo_description,
+    };
+
+    finalHtml = applyTranslations(
+      modifiedHtml,
+      translated_texts!,
+      metaTranslations
+    );
+  }
 
   const { data: updated, error: saveError } = await db
     .from("translations")
     .update({
-      translated_html: translatedHtml,
-      translated_texts,
+      translated_html: finalHtml,
+      translated_texts: translated_texts ?? translation.translated_texts,
       seo_title: seo_title ?? translation.seo_title,
       seo_description: seo_description ?? translation.seo_description,
-      // Revert to translated (unpublish) if they had published, so they know to re-publish
-      status: translation.status === "published" ? "translated" : translation.status,
+      status:
+        translation.status === "published" ? "translated" : translation.status,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
