@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -10,6 +10,7 @@ import {
   FileText,
   Image as ImageIcon,
   LinkIcon,
+  Upload,
 } from "lucide-react";
 import { PRODUCTS, PAGE_TYPES, Product, PageType } from "@/types";
 import type { TextBlock, ImageBlock } from "@/app/api/fetch-url/route";
@@ -45,6 +46,71 @@ export default function ImportPage() {
   const [slug, setSlug] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function parseHtmlContent(html: string) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const title = doc.querySelector("title")?.textContent?.trim() || "Untitled";
+
+    const blocks: TextBlock[] = [];
+    doc.querySelectorAll("h1, h2, h3, h4, p, li").forEach((el) => {
+      const tag = el.tagName.toLowerCase();
+      const text = (el.textContent || "").trim();
+      if (text.length > 10) {
+        blocks.push({ tag, text: text.slice(0, 200) });
+      }
+    });
+
+    const imgs: ImageBlock[] = [];
+    doc.querySelectorAll("img").forEach((el) => {
+      const src = el.getAttribute("src") || el.getAttribute("data-src") || "";
+      const alt = el.getAttribute("alt") || "";
+      if (src && !src.startsWith("data:")) imgs.push({ src, alt });
+    });
+
+    const linkCount = doc.querySelectorAll("a[href]").length;
+
+    return { title, textBlocks: blocks.slice(0, 100), images: imgs.slice(0, 30), linkCount };
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    setFetching(true);
+    setFetchError("");
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const html = reader.result as string;
+      const { title, textBlocks: blocks, images: imgs, linkCount } = parseHtmlContent(html);
+
+      setFetchedHtml(html);
+      setFetchedTitle(title);
+      setTextBlocks(blocks);
+      setImages(imgs);
+      setStats({ textBlocks: blocks.length, images: imgs.length, links: linkCount });
+      setName(title);
+      setUrl(`upload://${file.name}`);
+      setSlug(
+        title
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .slice(0, 80)
+      );
+      setStep("meta");
+      setFetching(false);
+    };
+    reader.onerror = () => {
+      setFetchError("Failed to read file");
+      setFetching(false);
+    };
+    reader.readAsText(file);
+  }
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -125,50 +191,74 @@ export default function ImportPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Import New Page</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Paste the URL of Ron&apos;s Lovable page to import it
+          Fetch a page by URL or upload an HTML file
         </p>
       </div>
 
       {/* Step indicator */}
       <div className="flex items-center gap-3 mb-8">
-        <StepBadge n={1} label="Fetch URL" active={step === "url"} done={step === "meta"} />
+        <StepBadge n={1} label="Import" active={step === "url"} done={step === "meta"} />
         <div className="flex-1 h-px bg-[#1e2130]" />
         <StepBadge n={2} label="Page Details" active={step === "meta"} done={false} />
       </div>
 
       {step === "url" && (
-        <div className="bg-[#141620] border border-[#1e2130] rounded-xl p-6">
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Page URL
-          </label>
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleFetch()}
-                placeholder="https://lovable.app/projects/..."
-                className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 placeholder-slate-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
-              />
+        <div className="space-y-4">
+          <div className="bg-[#141620] border border-[#1e2130] rounded-xl p-6">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Page URL
+            </label>
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleFetch()}
+                  placeholder="https://..."
+                  className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 placeholder-slate-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <button
+                onClick={handleFetch}
+                disabled={fetching || !url.trim()}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-3 rounded-lg transition-colors whitespace-nowrap"
+              >
+                {fetching && <Loader2 className="w-4 h-4 animate-spin" />}
+                {fetching ? "Fetching…" : "Fetch Page"}
+              </button>
             </div>
-            <button
-              onClick={handleFetch}
-              disabled={fetching || !url.trim()}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-3 rounded-lg transition-colors whitespace-nowrap"
-            >
-              {fetching && <Loader2 className="w-4 h-4 animate-spin" />}
-              {fetching ? "Fetching…" : "Fetch Page"}
-            </button>
+
+            {fetchError && (
+              <div className="mt-3 flex items-start gap-2 text-red-400 text-sm">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                {fetchError}
+              </div>
+            )}
           </div>
 
-          {fetchError && (
-            <div className="mt-3 flex items-start gap-2 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              {fetchError}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#1e2130]" />
+            <span className="text-xs text-slate-600 uppercase tracking-wider">or</span>
+            <div className="flex-1 h-px bg-[#1e2130]" />
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".html,.htm"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={fetching}
+            className="w-full flex items-center justify-center gap-2 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 border border-[#1e2130] border-dashed text-slate-400 hover:text-slate-200 text-sm font-medium px-5 py-4 rounded-xl transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            Upload HTML File
+          </button>
         </div>
       )}
 
@@ -179,7 +269,9 @@ export default function ImportPage() {
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="text-emerald-300 text-sm font-medium truncate">{fetchedTitle}</p>
-              <p className="text-emerald-400/60 text-xs mt-0.5 truncate">{url}</p>
+              <p className="text-emerald-400/60 text-xs mt-0.5 truncate">
+                {url.startsWith("upload://") ? `Uploaded: ${url.replace("upload://", "")}` : url}
+              </p>
               {stats && (
                 <div className="flex gap-4 mt-2">
                   <StatChip icon={<FileText className="w-3 h-3" />} label={`${stats.textBlocks} text blocks`} />
