@@ -24,10 +24,13 @@ export async function GET(
   var SKIP = ['SCRIPT','STYLE','NOSCRIPT','SVG','PATH','IFRAME','VIDEO','AUDIO','CANVAS','INPUT','SELECT','TEXTAREA','OPTION'];
   var activeEl = null;
 
-  // Prevent link navigation
+  // Prevent link navigation (but allow image clicks through)
   document.addEventListener('click', function(e) {
     var link = e.target.closest('a');
-    if (link) { e.preventDefault(); e.stopPropagation(); }
+    if (link) {
+      e.preventDefault();
+      if (!e.target.closest('img')) { e.stopPropagation(); }
+    }
   }, true);
 
   // Prevent form submissions
