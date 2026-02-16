@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import TranslationRow from "@/components/pages/TranslationRow";
+import EditablePageName from "@/components/pages/EditablePageName";
 import { Page, Translation, ABTest, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export default async function PageDetailPage({
       {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">{p.name}</h1>
+          <EditablePageName pageId={p.id} initialName={p.name} />
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs bg-[#1e2130] text-slate-400 px-2.5 py-1 rounded-full">
               {PRODUCTS.find((pr) => pr.value === p.product)?.label}
