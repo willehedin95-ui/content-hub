@@ -49,8 +49,10 @@ export default function EditPageClient({
   const [isDirty, setIsDirty] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
-  const [paddingH, setPaddingH] = useState("");
-  const [paddingV, setPaddingV] = useState("");
+  const [padDH, setPadDH] = useState(""); // desktop horizontal
+  const [padDV, setPadDV] = useState(""); // desktop vertical
+  const [padMH, setPadMH] = useState(""); // mobile horizontal
+  const [padMV, setPadMV] = useState(""); // mobile vertical
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -111,89 +113,101 @@ export default function EditPageClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Build CSS from padding values — targets elements up to 5 levels deep
-  function buildPaddingCss(h: string, v: string): string {
-    const hVal = h !== "" ? parseInt(h) : null;
-    const vVal = v !== "" ? parseInt(v) : null;
-    if (hVal === null && vVal === null) return "";
+  // Build CSS with media queries — only targets elements marked with data-cc-padded
+  function buildPaddingCss(dh: string, dv: string, mh: string, mv: string): string {
     const rules: string[] = [];
-    if (hVal !== null) {
-      // Target body and nested wrappers up to 5 levels deep
-      const selectors = [
-        "body",
-        "body > *",
-        "body > * > *",
-        "body > * > * > *",
-        "body > * > * > * > *",
-        "body > * > * > * > * > *",
-      ].join(", ");
-      rules.push(`${selectors} { padding-left: ${hVal}px !important; padding-right: ${hVal}px !important; }`);
+
+    // Desktop rules (viewport > 375px)
+    const dhVal = dh !== "" ? parseInt(dh) : null;
+    const dvVal = dv !== "" ? parseInt(dv) : null;
+    if (dhVal !== null || dvVal !== null) {
+      const inner: string[] = [];
+      if (dhVal !== null) inner.push(`[data-cc-padded] { padding-left: ${dhVal}px !important; padding-right: ${dhVal}px !important; }`);
+      if (dvVal !== null) inner.push(`body { padding-top: ${dvVal}px !important; padding-bottom: ${dvVal}px !important; }`);
+      rules.push(`@media (min-width: 376px) {\n  ${inner.join("\n  ")}\n}`);
     }
-    if (vVal !== null) {
-      rules.push(`body { padding-top: ${vVal}px !important; padding-bottom: ${vVal}px !important; }`);
+
+    // Mobile rules (viewport <= 375px)
+    const mhVal = mh !== "" ? parseInt(mh) : null;
+    const mvVal = mv !== "" ? parseInt(mv) : null;
+    if (mhVal !== null || mvVal !== null) {
+      const inner: string[] = [];
+      if (mhVal !== null) inner.push(`[data-cc-padded] { padding-left: ${mhVal}px !important; padding-right: ${mhVal}px !important; }`);
+      if (mvVal !== null) inner.push(`body { padding-top: ${mvVal}px !important; padding-bottom: ${mvVal}px !important; }`);
+      rules.push(`@media (max-width: 375px) {\n  ${inner.join("\n  ")}\n}`);
     }
+
     return rules.join("\n");
   }
 
-  // Read current padding from iframe on load — walks the DOM tree to find actual padding
+  // Mark elements with significant padding and detect values on iframe load
   function handleIframeLoad() {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
-
-    // If we already saved custom padding, restore those values
-    const existing = doc.querySelector("style[data-cc-custom]");
-    if (existing) {
-      const h = existing.getAttribute("data-pad-h");
-      const v = existing.getAttribute("data-pad-v");
-      if (h) setPaddingH(h);
-      if (v) setPaddingV(v);
-      return;
-    }
-
-    // Walk the DOM tree to find the maximum horizontal padding on any element
     const body = doc.body;
     if (!body) return;
     const win = doc.defaultView;
     if (!win) return;
 
-    let maxH = 0;
-    let maxV = 0;
-
-    // Scan all elements in the body (up to 500 to avoid perf issues)
+    // Always mark elements with significant horizontal padding (>= 16px)
+    // so CSS targeting [data-cc-padded] works
+    const SKIP_TAGS = ["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "BR", "HR", "IMG"];
     const allElements = body.querySelectorAll("*");
     const limit = Math.min(allElements.length, 500);
+    let maxH = 0;
+
     for (let i = 0; i < limit; i++) {
       const el = allElements[i] as HTMLElement;
-      // Skip non-block elements, scripts, styles etc.
-      const tag = el.tagName;
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "BR", "HR", "IMG"].includes(tag)) continue;
+      if (SKIP_TAGS.includes(el.tagName)) continue;
+      // Skip elements already marked (from a previous save)
+      if (el.hasAttribute("data-cc-padded")) {
+        const cs = win.getComputedStyle(el);
+        const pl = parseInt(cs.paddingLeft) || 0;
+        const pr = parseInt(cs.paddingRight) || 0;
+        maxH = Math.max(maxH, pl, pr);
+        continue;
+      }
 
       const cs = win.getComputedStyle(el);
-      // Only check block/flex/grid elements (these are the containers with padding)
       const display = cs.display;
       if (!display.includes("block") && !display.includes("flex") && !display.includes("grid")) continue;
 
       const pl = parseInt(cs.paddingLeft) || 0;
       const pr = parseInt(cs.paddingRight) || 0;
-      maxH = Math.max(maxH, pl, pr);
+      const pad = Math.max(pl, pr);
+      if (pad >= 16) {
+        el.setAttribute("data-cc-padded", "");
+        maxH = Math.max(maxH, pad);
+      }
     }
 
-    // Check body vertical padding
-    const bodyStyle = win.getComputedStyle(body);
-    const pt = parseInt(bodyStyle.paddingTop) || 0;
-    const pb = parseInt(bodyStyle.paddingBottom) || 0;
-    maxV = Math.max(pt, pb);
+    // If we already saved custom padding, restore those values
+    const existing = doc.querySelector("style[data-cc-custom]");
+    if (existing) {
+      const dh = existing.getAttribute("data-pad-dh");
+      const dv = existing.getAttribute("data-pad-dv");
+      const mh = existing.getAttribute("data-pad-mh");
+      const mv = existing.getAttribute("data-pad-mv");
+      if (dh) setPadDH(dh);
+      if (dv) setPadDV(dv);
+      if (mh) setPadMH(mh);
+      if (mv) setPadMV(mv);
+      return;
+    }
 
-    if (maxH > 0) setPaddingH(String(maxH));
-    if (maxV > 0) setPaddingV(String(maxV));
+    // Pre-fill both desktop and mobile with detected values
+    if (maxH > 0) {
+      setPadDH(String(maxH));
+      setPadMH(String(maxH));
+    }
   }
 
   // Inject/update padding CSS in the iframe live
-  function syncPaddingToIframe(h: string, v: string) {
+  function syncPaddingToIframe(dh: string, dv: string, mh: string, mv: string) {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
     let styleEl = doc.querySelector("style[data-cc-custom]");
-    const css = buildPaddingCss(h, v);
+    const css = buildPaddingCss(dh, dv, mh, mv);
     if (!css) {
       styleEl?.remove();
       return;
@@ -203,17 +217,23 @@ export default function EditPageClient({
       styleEl.setAttribute("data-cc-custom", "true");
       doc.head.appendChild(styleEl);
     }
-    styleEl.setAttribute("data-pad-h", h);
-    styleEl.setAttribute("data-pad-v", v);
+    styleEl.setAttribute("data-pad-dh", dh);
+    styleEl.setAttribute("data-pad-dv", dv);
+    styleEl.setAttribute("data-pad-mh", mh);
+    styleEl.setAttribute("data-pad-mv", mv);
     styleEl.textContent = css;
   }
 
   function handlePaddingChange(axis: "h" | "v", value: string) {
-    const newH = axis === "h" ? value : paddingH;
-    const newV = axis === "v" ? value : paddingV;
-    if (axis === "h") setPaddingH(value);
-    else setPaddingV(value);
-    syncPaddingToIframe(newH, newV);
+    let dh = padDH, dv = padDV, mh = padMH, mv = padMV;
+    if (viewMode === "desktop") {
+      if (axis === "h") { dh = value; setPadDH(value); }
+      else { dv = value; setPadDV(value); }
+    } else {
+      if (axis === "h") { mh = value; setPadMH(value); }
+      else { mv = value; setPadMV(value); }
+    }
+    syncPaddingToIframe(dh, dv, mh, mv);
     setIsDirty(true);
   }
 
@@ -511,16 +531,25 @@ export default function EditPageClient({
         <div className="w-72 border-l border-[#1e2130] shrink-0 flex flex-col overflow-y-auto">
           {/* Padding */}
           <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Padding
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Padding
+              </p>
+              <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                {viewMode === "desktop" ? (
+                  <><Monitor className="w-3 h-3" /> Desktop</>
+                ) : (
+                  <><Smartphone className="w-3 h-3" /> Mobile</>
+                )}
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 flex-1">
                 <MoveHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <input
                   type="number"
                   min="0"
-                  value={paddingH}
+                  value={viewMode === "desktop" ? padDH : padMH}
                   onChange={(e) => handlePaddingChange("h", e.target.value)}
                   placeholder="—"
                   className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -531,7 +560,7 @@ export default function EditPageClient({
                 <input
                   type="number"
                   min="0"
-                  value={paddingV}
+                  value={viewMode === "desktop" ? padDV : padMV}
                   onChange={(e) => handlePaddingChange("v", e.target.value)}
                   placeholder="—"
                   className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -539,7 +568,7 @@ export default function EditPageClient({
               </div>
             </div>
             <p className="text-[10px] text-slate-600">
-              Override body padding in pixels.
+              Switch view mode to set {viewMode === "desktop" ? "mobile" : "desktop"} padding.
             </p>
           </div>
 
