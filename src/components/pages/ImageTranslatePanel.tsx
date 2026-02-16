@@ -7,6 +7,7 @@ import {
   Loader2,
   Check,
   X,
+  ZoomIn,
 } from "lucide-react";
 
 interface ClickedImage {
@@ -49,6 +50,17 @@ export default function ImageTranslatePanel({
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // Close lightbox on Escape key
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxSrc(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxSrc]);
 
   // When a new image is clicked, set up the prompt and reset state
   useEffect(() => {
@@ -197,13 +209,20 @@ export default function ImageTranslatePanel({
       </div>
 
       {/* Original image */}
-      <div className="rounded-lg overflow-hidden border border-[#1e2130]">
+      <button
+        type="button"
+        onClick={() => setLightboxSrc(clickedImage.src)}
+        className="group relative rounded-lg overflow-hidden border border-[#1e2130] w-full cursor-zoom-in"
+      >
         <img
           src={clickedImage.src}
           alt="Selected image"
           className="w-full h-auto"
         />
-      </div>
+        <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+          <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        </span>
+      </button>
 
       {/* Result preview */}
       {status === "preview" && resultUrl && (
@@ -211,9 +230,16 @@ export default function ImageTranslatePanel({
           <p className="text-[10px] text-slate-500 uppercase tracking-wider">
             Generated Result
           </p>
-          <div className="rounded-lg overflow-hidden border border-indigo-500/50">
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(resultUrl)}
+            className="group relative rounded-lg overflow-hidden border border-indigo-500/50 w-full cursor-zoom-in"
+          >
             <img src={resultUrl} alt="Translated" className="w-full h-auto" />
-          </div>
+            <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </span>
+          </button>
           <div className="flex gap-2">
             <button
               onClick={handleAccept}
@@ -269,6 +295,28 @@ export default function ImageTranslatePanel({
             )}
           </button>
         </>
+      )}
+
+      {/* Lightbox modal */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-zoom-out"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+            aria-label="Close enlarged image"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Enlarged view"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

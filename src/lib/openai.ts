@@ -130,28 +130,35 @@ export async function translateBatch(
   const client = new OpenAI({ apiKey });
   const systemPrompt = SYSTEM_PROMPTS[language];
 
-  // Split into chunks to avoid token limits
+  // Split into chunks to avoid token limits, then translate all in parallel
   const CHUNK_SIZE = 80;
   const result: Record<string, string> = {};
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
+  const chunks: Array<{ id: string; text: string }[]> = [];
   for (let i = 0; i < texts.length; i += CHUNK_SIZE) {
-    const chunk = texts.slice(i, i + CHUNK_SIZE);
-    const inputJson = JSON.stringify(
-      Object.fromEntries(chunk.map(({ id, text }) => [id, text]))
-    );
+    chunks.push(texts.slice(i, i + CHUNK_SIZE));
+  }
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: inputJson },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-    });
+  const responses = await Promise.all(
+    chunks.map((chunk) => {
+      const inputJson = JSON.stringify(
+        Object.fromEntries(chunk.map(({ id, text }) => [id, text]))
+      );
+      return client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: inputJson },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+    })
+  );
 
+  for (const response of responses) {
     const translated = JSON.parse(
       response.choices[0].message.content || "{}"
     ) as Record<string, string>;

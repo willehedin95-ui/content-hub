@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
+import { isAllowedUrl } from "@/lib/validation";
 
 export const maxDuration = 60;
 
@@ -38,9 +39,9 @@ async function makeSelfContained(html: string, pageUrl: string): Promise<string>
     linkEls.push($(el));
   });
 
-  for (const el of linkEls) {
+  await Promise.all(linkEls.map(async (el) => {
     const href = el.attr("href");
-    if (!href) continue;
+    if (!href) return;
     try {
       const cssUrl = resolve(href);
       const res = await fetch(cssUrl);
@@ -48,7 +49,6 @@ async function makeSelfContained(html: string, pageUrl: string): Promise<string>
         const css = await res.text();
         el.replaceWith(`<style>${css}</style>`);
       } else {
-        // If we can't fetch it, keep the tag but make the URL absolute
         el.attr("href", cssUrl);
         el.removeAttr("crossorigin");
       }
@@ -56,7 +56,7 @@ async function makeSelfContained(html: string, pageUrl: string): Promise<string>
       el.attr("href", resolve(href));
       el.removeAttr("crossorigin");
     }
-  }
+  }));
 
   // 2. Remove external JS module bundles (Vite/React runtime — not needed since
   //    Puppeteer already produced fully-rendered HTML). Inline scripts are kept.
@@ -103,6 +103,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
 
+  const check = isAllowedUrl(url);
+  if (!check.valid) {
+    return NextResponse.json({ error: check.reason }, { status: 400 });
+  }
+
   let html = "";
 
   try {
@@ -117,55 +122,56 @@ export async function POST(req: NextRequest) {
       headless: true,
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    );
+    try {
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      );
 
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
 
-    // Slowly scroll through the entire page to trigger intersection observers
-    // and lazy-loaded sections, then scroll back to top
-    await page.evaluate(async () => {
-      await new Promise<void>((resolve) => {
-        let totalHeight = 0;
-        const distance = 200;
-        const timer = setInterval(() => {
-          window.scrollBy(0, distance);
-          totalHeight += distance;
-          if (totalHeight >= document.body.scrollHeight) {
-            clearInterval(timer);
-            window.scrollTo(0, 0);
-            resolve();
+      // Slowly scroll through the entire page to trigger intersection observers
+      // and lazy-loaded sections, then scroll back to top
+      await page.evaluate(async () => {
+        await new Promise<void>((resolve) => {
+          let totalHeight = 0;
+          const distance = 200;
+          const timer = setInterval(() => {
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+            if (totalHeight >= document.body.scrollHeight) {
+              clearInterval(timer);
+              window.scrollTo(0, 0);
+              resolve();
+            }
+          }, 80);
+        });
+      });
+
+      // Wait for any newly triggered network requests to finish
+      await new Promise((r) => setTimeout(r, 2000));
+
+      // Force all Framer Motion / CSS-animation hidden elements into their
+      // final visible state before capturing. Without the JS runtime, elements
+      // with inline `opacity:0` or off-screen transforms would stay invisible.
+      await page.evaluate(() => {
+        document.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+          if (el.style.opacity === "0") el.style.opacity = "1";
+          if (el.style.visibility === "hidden") el.style.visibility = "visible";
+          const t = el.style.transform;
+          if (t && t !== "none" && (t.includes("translateY") || t.includes("translateX"))) {
+            el.style.transform = "none";
           }
-        }, 80);
+        });
+        const sheet = document.createElement("style");
+        sheet.textContent = "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+        document.head.appendChild(sheet);
       });
-    });
 
-    // Wait for any newly triggered network requests to finish
-    await new Promise((r) => setTimeout(r, 2000));
-
-    // Force all Framer Motion / CSS-animation hidden elements into their
-    // final visible state before capturing. Without the JS runtime, elements
-    // with inline `opacity:0` or off-screen transforms would stay invisible.
-    await page.evaluate(() => {
-      document.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
-        if (el.style.opacity === "0") el.style.opacity = "1";
-        if (el.style.visibility === "hidden") el.style.visibility = "visible";
-        // Clear translateY/translateX that are used to slide elements in from off-screen
-        const t = el.style.transform;
-        if (t && t !== "none" && (t.includes("translateY") || t.includes("translateX"))) {
-          el.style.transform = "none";
-        }
-      });
-      // Also clear CSS animation initial states
-      const sheet = document.createElement("style");
-      sheet.textContent = "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
-      document.head.appendChild(sheet);
-    });
-
-    html = await page.content();
-    await browser.close();
+      html = await page.content();
+    } finally {
+      await browser.close();
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

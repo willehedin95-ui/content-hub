@@ -21,7 +21,7 @@ export default function StatusDot({
 }) {
   const cfg = statusConfig[status] ?? statusConfig.none;
   return (
-    <span title={cfg.label} className="inline-flex items-center">
+    <span title={cfg.label} aria-label={cfg.label} role="status" className="inline-flex items-center">
       <span className={cn("w-2.5 h-2.5 rounded-full", cfg.color)} />
     </span>
   );

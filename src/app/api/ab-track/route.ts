@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
 
 // 1x1 transparent GIF
 const PIXEL = Buffer.from(
@@ -24,11 +25,20 @@ export async function GET(req: NextRequest) {
   const event = url.searchParams.get("e");
 
   // Fire-and-forget: insert event, don't block the pixel response
-  if (testId && variant && event && ["view", "click"].includes(event)) {
+  if (
+    testId &&
+    isValidUUID(testId) &&
+    variant &&
+    ["a", "b"].includes(variant) &&
+    event &&
+    ["view", "click"].includes(event)
+  ) {
     const db = createServerSupabase();
     db.from("ab_events")
       .insert({ test_id: testId, variant, event })
-      .then(() => {});
+      .then(({ error }) => {
+        if (error) console.error("Failed to log AB event:", error.message);
+      });
   }
 
   return new NextResponse(PIXEL, {
@@ -46,11 +56,20 @@ export async function POST(req: NextRequest) {
   const variant = url.searchParams.get("v");
   const event = url.searchParams.get("e");
 
-  if (testId && variant && event && ["view", "click"].includes(event)) {
+  if (
+    testId &&
+    isValidUUID(testId) &&
+    variant &&
+    ["a", "b"].includes(variant) &&
+    event &&
+    ["view", "click"].includes(event)
+  ) {
     const db = createServerSupabase();
     db.from("ab_events")
       .insert({ test_id: testId, variant, event })
-      .then(() => {});
+      .then(({ error }) => {
+        if (error) console.error("Failed to log AB event:", error.message);
+      });
   }
 
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });

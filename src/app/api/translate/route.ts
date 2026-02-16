@@ -38,6 +38,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
   }
 
+  // Guard against concurrent translation requests (e.g. double-click)
+  const { data: existing } = await db
+    .from("translations")
+    .select("status")
+    .eq("page_id", page_id)
+    .eq("language", language)
+    .eq("variant", "control")
+    .single();
+
+  if (existing?.status === "translating") {
+    return NextResponse.json(
+      { error: "Translation already in progress" },
+      { status: 409 }
+    );
+  }
+
   // Mark as translating
   await db.from("translations").upsert(
     {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -13,8 +13,10 @@ import {
   Monitor,
   Smartphone,
   Globe,
+  MoveHorizontal,
+  MoveVertical,
 } from "lucide-react";
-import Link from "next/link";
+
 import { Translation, LANGUAGES } from "@/types";
 import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 
@@ -43,9 +45,12 @@ export default function EditPageClient({
   const [retranslating, setRetranslating] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
+  const [paddingH, setPaddingH] = useState("");
+  const [paddingV, setPaddingV] = useState("");
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -82,6 +87,88 @@ export default function EditPageClient({
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty]);
+
+  // Clean up saved-indicator timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
+
+  // Ctrl/Cmd+S keyboard shortcut for save
+  const saveRef = useRef<(() => void) | null>(null);
+  saveRef.current = () => {
+    if (!saving && !publishing && !retranslating) handleSave();
+  };
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        saveRef.current?.();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Build CSS from padding values
+  function buildPaddingCss(h: string, v: string): string {
+    const hVal = h !== "" ? parseInt(h) : null;
+    const vVal = v !== "" ? parseInt(v) : null;
+    if (hVal === null && vVal === null) return "";
+    const parts: string[] = [];
+    if (hVal !== null) {
+      parts.push(`padding-left: ${hVal}px !important;`);
+      parts.push(`padding-right: ${hVal}px !important;`);
+    }
+    if (vVal !== null) {
+      parts.push(`padding-top: ${vVal}px !important;`);
+      parts.push(`padding-bottom: ${vVal}px !important;`);
+    }
+    return `body { ${parts.join(" ")} }`;
+  }
+
+  // Read existing padding from iframe on load
+  function handleIframeLoad() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const existing = doc.querySelector("style[data-cc-custom]");
+    if (existing) {
+      const h = existing.getAttribute("data-pad-h");
+      const v = existing.getAttribute("data-pad-v");
+      if (h) setPaddingH(h);
+      if (v) setPaddingV(v);
+    }
+  }
+
+  // Inject/update padding CSS in the iframe live
+  function syncPaddingToIframe(h: string, v: string) {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    let styleEl = doc.querySelector("style[data-cc-custom]");
+    const css = buildPaddingCss(h, v);
+    if (!css) {
+      styleEl?.remove();
+      return;
+    }
+    if (!styleEl) {
+      styleEl = doc.createElement("style");
+      styleEl.setAttribute("data-cc-custom", "true");
+      doc.head.appendChild(styleEl);
+    }
+    styleEl.setAttribute("data-pad-h", h);
+    styleEl.setAttribute("data-pad-v", v);
+    styleEl.textContent = css;
+  }
+
+  function handlePaddingChange(axis: "h" | "v", value: string) {
+    const newH = axis === "h" ? value : paddingH;
+    const newV = axis === "v" ? value : paddingV;
+    if (axis === "h") setPaddingH(value);
+    else setPaddingV(value);
+    syncPaddingToIframe(newH, newV);
+    setIsDirty(true);
+  }
 
   function extractHtmlFromIframe(): string {
     const iframe = iframeRef.current;
@@ -138,7 +225,8 @@ export default function EditPageClient({
 
       setSaved(true);
       setIsDirty(false);
-      setTimeout(() => setSaved(false), 3000);
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setSaveError(
         err instanceof Error ? err.message : "Failed to save"
@@ -196,6 +284,8 @@ export default function EditPageClient({
 
   async function handleRetranslate() {
     if (isDirty && !confirm("This will discard your unsaved changes and re-translate from the original. Continue?")) return;
+    if (!isDirty && translation.status === "published" &&
+        !confirm("This page is already published. Re-translating will overwrite the current translation. Continue?")) return;
     setRetranslating(true);
     setSaveError("");
 
@@ -229,13 +319,16 @@ export default function EditPageClient({
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2130] shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Link
-            href={`/pages/${pageId}`}
+          <button
+            onClick={() => {
+              if (isDirty && !confirm("You have unsaved changes. Leave without saving?")) return;
+              router.push(`/pages/${pageId}`);
+            }}
             className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-sm transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
-          </Link>
+          </button>
           <span className="text-slate-600 shrink-0">/</span>
           <span className="text-slate-400 text-sm truncate">{pageName}</span>
           <span className="text-slate-600 shrink-0">/</span>
@@ -355,6 +448,7 @@ export default function EditPageClient({
               ref={iframeRef}
               key={iframeKey}
               src={`/api/preview/${translation.id}`}
+              onLoad={handleIframeLoad}
               className={`bg-white h-full ${
                 viewMode === "mobile"
                   ? "w-[375px] border-x border-[#1e2130] shadow-2xl"
@@ -368,6 +462,43 @@ export default function EditPageClient({
 
         {/* Sidebar */}
         <div className="w-72 border-l border-[#1e2130] shrink-0 flex flex-col overflow-y-auto">
+          {/* Padding */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Padding
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 flex-1">
+                <MoveHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <input
+                  type="number"
+                  min="0"
+                  value={paddingH}
+                  onChange={(e) => handlePaddingChange("h", e.target.value)}
+                  placeholder="—"
+                  className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 flex-1">
+                <MoveVertical className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <input
+                  type="number"
+                  min="0"
+                  value={paddingV}
+                  onChange={(e) => handlePaddingChange("v", e.target.value)}
+                  placeholder="—"
+                  className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-600">
+              Override body padding in pixels.
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-[#1e2130]" />
+
           {/* SEO fields */}
           <div className="px-4 py-3 space-y-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">

@@ -6,6 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const origin = new URL(_req.url).origin;
   const db = createServerSupabase();
 
   const { data: translation, error } = await db
@@ -21,6 +22,7 @@ export async function GET(
   // Inject contentEditable editing script so users can click and edit text inline
   const editorScript = `<script data-cc-injected="true">
 (function() {
+  var ORIGIN = ${JSON.stringify(origin)};
   var SKIP = ['SCRIPT','STYLE','NOSCRIPT','SVG','PATH','IFRAME','VIDEO','AUDIO','CANVAS','INPUT','SELECT','TEXTAREA','OPTION'];
   var activeEl = null;
 
@@ -77,7 +79,7 @@ export async function GET(
         index: allImgs.indexOf(img),
         width: img.naturalWidth || img.offsetWidth || 200,
         height: img.naturalHeight || img.offsetHeight || 200
-      }, '*');
+      }, ORIGIN);
       return;
     }
 
@@ -102,7 +104,7 @@ export async function GET(
   document.addEventListener('input', function() {
     if (!dirty) {
       dirty = true;
-      window.parent.postMessage({ type: 'cc-dirty' }, '*');
+      window.parent.postMessage({ type: 'cc-dirty' }, ORIGIN);
     }
   });
 

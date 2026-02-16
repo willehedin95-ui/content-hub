@@ -5,22 +5,39 @@ interface NetlifyDeployResult {
   deploy_id: string;
 }
 
+export interface DeployFile {
+  path: string;
+  sha1: string;
+  body: Uint8Array;
+}
+
 /**
- * Deploy a single HTML file to a Netlify site.
- * Uses the Files API to update just one file without a full deploy.
+ * Deploy an HTML file (and optional additional files like images) to a Netlify site.
+ * Uses the Files API to update files without a full deploy.
  */
 export async function publishPage(
   html: string,
   slug: string,
   language: Language,
   token: string,
-  siteId: string
+  siteId: string,
+  additionalFiles?: DeployFile[]
 ): Promise<NetlifyDeployResult> {
   // Norwegian pages go in /no/ subdirectory on the Swedish site
   const filePath =
     language === "no" ? `/no/${slug}/index.html` : `/${slug}/index.html`;
 
-  // Create a new deploy with just this file
+  // Build file manifest: HTML + any additional files (images)
+  const files: Record<string, string> = {
+    [filePath]: await sha1(html),
+  };
+  if (additionalFiles) {
+    for (const f of additionalFiles) {
+      files[f.path] = f.sha1;
+    }
+  }
+
+  // Create a new deploy with all files
   const deployRes = await fetch(
     `https://api.netlify.com/api/v1/sites/${siteId}/deploys`,
     {
@@ -29,12 +46,7 @@ export async function publishPage(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        files: {
-          [filePath]: await sha1(html),
-        },
-        async: false,
-      }),
+      body: JSON.stringify({ files, async: false }),
     }
   );
 
@@ -44,23 +56,60 @@ export async function publishPage(
   }
 
   const deploy = (await deployRes.json()) as { id: string; required: string[] };
+  const requiredSet = new Set(deploy.required);
+  const htmlHash = await sha1(html);
 
-  // Upload the HTML file
-  const uploadRes = await fetch(
-    `https://api.netlify.com/api/v1/deploys/${deploy.id}/files${filePath}`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/octet-stream",
-      },
-      body: html,
+  // Upload the HTML file (if required by Netlify)
+  if (requiredSet.has(htmlHash)) {
+    const uploadRes = await fetch(
+      `https://api.netlify.com/api/v1/deploys/${deploy.id}/files${filePath}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/octet-stream",
+        },
+        body: html,
+      }
+    );
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`Netlify file upload failed: ${err}`);
     }
-  );
+  }
 
-  if (!uploadRes.ok) {
-    const err = await uploadRes.text();
-    throw new Error(`Netlify file upload failed: ${err}`);
+  // Upload additional files (images) — non-fatal on individual failures
+  if (additionalFiles) {
+    for (const f of additionalFiles) {
+      if (!requiredSet.has(f.sha1)) continue; // Netlify already has this file
+      try {
+        const uploadRes = await fetch(
+          `https://api.netlify.com/api/v1/deploys/${deploy.id}/files${f.path}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/octet-stream",
+            },
+            body: f.body.buffer.slice(
+              f.body.byteOffset,
+              f.body.byteOffset + f.body.byteLength
+            ) as ArrayBuffer,
+          }
+        );
+        if (!uploadRes.ok) {
+          console.error(
+            `[netlify] Failed to upload ${f.path}: ${await uploadRes.text()}`
+          );
+        }
+      } catch (err) {
+        console.error(
+          `[netlify] Error uploading ${f.path}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
   }
 
   // Get site info for the URL
@@ -193,9 +242,9 @@ function injectTrackingScript(
 ): string {
   const script = `<script data-cc-injected="true">
 (function(){
-  var u='${appUrl}/api/ab-track';
-  var t='${testId}';
-  var v='${variant}';
+  var u=${JSON.stringify(appUrl + "/api/ab-track")};
+  var t=${JSON.stringify(testId)};
+  var v=${JSON.stringify(variant)};
   new Image().src=u+'?t='+t+'&v='+v+'&e=view&_='+Date.now();
   document.addEventListener('click',function(e){
     var a=e.target.closest('a[href]');
@@ -214,10 +263,10 @@ function buildRouterHtml(slug: string, split: number): string {
 <html><head><meta charset="utf-8"><title>Loading...</title></head>
 <body><script>
 (function(){
-  var k='ab_${safeSlug}';
-  var m=document.cookie.match(new RegExp(k+'=(\\\\w+)'));
+  var k=${JSON.stringify("ab_" + safeSlug)};
+  var m=document.cookie.split('; ').find(function(c){return c.startsWith(k+'=')});
   var v;
-  if(m){v=m[1]}
+  if(m){v=m.split('=')[1]}
   else{v=Math.random()*100<${split}?'a':'b';
     document.cookie=k+'='+v+';max-age=2592000;path=/;SameSite=Lax'}
   var p=window.location.pathname;

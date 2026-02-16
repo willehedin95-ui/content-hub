@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Save, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 
 interface Settings {
@@ -23,16 +23,21 @@ export default function SettingsPage() {
   });
   const [showKeys, setShowKeys] = useState(false);
   const [saved, setSaved] = useState(false);
+  const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("content-hub-settings");
     if (stored) setSettings(JSON.parse(stored));
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
   }, []);
 
   function handleSave() {
     localStorage.setItem("content-hub-settings", JSON.stringify(settings));
     setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    savedTimeoutRef.current = setTimeout(() => setSaved(false), 2500);
   }
 
   return (
@@ -155,10 +160,12 @@ function Field({
   secret?: boolean;
   showSecrets?: boolean;
 }) {
+  const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
     <div>
-      <label className="block text-xs text-slate-400 mb-1.5">{label}</label>
+      <label htmlFor={id} className="block text-xs text-slate-400 mb-1.5">{label}</label>
       <input
+        id={id}
         type={secret && !showSecrets ? "password" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}

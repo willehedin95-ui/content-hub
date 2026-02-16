@@ -37,18 +37,12 @@ export default async function ABTestPage({
 
   const abTest = test as ABTest;
 
-  // Fetch both translations
-  const { data: controlTranslation } = await db
-    .from("translations")
-    .select("*")
-    .eq("id", abTest.control_id)
-    .single();
-
-  const { data: variantTranslation } = await db
-    .from("translations")
-    .select("*")
-    .eq("id", abTest.variant_id)
-    .single();
+  // Fetch both translations in parallel
+  const [{ data: controlTranslation }, { data: variantTranslation }] =
+    await Promise.all([
+      db.from("translations").select("*").eq("id", abTest.control_id).single(),
+      db.from("translations").select("*").eq("id", abTest.variant_id).single(),
+    ]);
 
   if (!controlTranslation || !variantTranslation) notFound();
 

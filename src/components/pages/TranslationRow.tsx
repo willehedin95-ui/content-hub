@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -47,6 +47,13 @@ export default function TranslationRow({
   const [loading, setLoading] = useState<"translate" | "publish" | "ab" | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   const status: TranslationStatus | "none" = translation?.status ?? "none";
   const canPublish =
@@ -81,24 +88,31 @@ export default function TranslationRow({
 
   async function handlePublish() {
     if (!translation?.id) return;
+    if (translation.status === "published" &&
+        !confirm("This page is already live. Re-publish with current content?")) return;
     setLoading("publish");
     setError("");
 
-    const res = await fetch("/api/publish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translation_id: translation.id }),
-    });
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translation.id }),
+      });
 
-    const data = await res.json();
-    setLoading(null);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error || "Publish failed");
-      return;
+      if (!res.ok) {
+        setError(data.error || "Publish failed");
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Publish failed — check your connection and try again");
+    } finally {
+      setLoading(null);
     }
-
-    router.refresh();
   }
 
   async function handleCreateABTest() {
@@ -106,26 +120,30 @@ export default function TranslationRow({
     setLoading("ab");
     setError("");
 
-    const res = await fetch("/api/ab-tests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translation_id: translation.id }),
-    });
+    try {
+      const res = await fetch("/api/ab-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translation.id }),
+      });
 
-    const data = await res.json();
-    setLoading(null);
+      const data = await res.json();
 
-    if (!res.ok) {
-      if (res.status === 409 && data.id) {
-        // Test already exists, navigate to it
-        router.push(`/pages/${pageId}/ab-test/${language.value}`);
+      if (!res.ok) {
+        if (res.status === 409 && data.id) {
+          router.push(`/pages/${pageId}/ab-test/${language.value}`);
+          return;
+        }
+        setError(data.error || "Failed to create A/B test");
         return;
       }
-      setError(data.error || "Failed to create A/B test");
-      return;
-    }
 
-    router.push(`/pages/${pageId}/ab-test/${language.value}`);
+      router.push(`/pages/${pageId}/ab-test/${language.value}`);
+    } catch {
+      setError("Failed to create A/B test — check your connection");
+    } finally {
+      setLoading(null);
+    }
   }
 
   function handleCopyUrl() {
@@ -133,7 +151,8 @@ export default function TranslationRow({
     if (!url) return;
     navigator.clipboard.writeText(url);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }
 
   // Not started — show translate button
@@ -222,6 +241,7 @@ export default function TranslationRow({
                 onClick={handleCopyUrl}
                 className="shrink-0 text-slate-500 hover:text-slate-300 transition-colors"
                 title="Copy URL"
+                aria-label={copied ? "URL copied" : "Copy URL"}
               >
                 {copied ? (
                   <Check className="w-3.5 h-3.5 text-emerald-400" />

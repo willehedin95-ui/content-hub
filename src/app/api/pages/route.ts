@@ -34,6 +34,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Check for duplicate slug
+  const { data: existingPage } = await db
+    .from("pages")
+    .select("id")
+    .eq("slug", slug)
+    .single();
+
+  if (existingPage) {
+    return NextResponse.json(
+      { error: `A page with slug "${slug}" already exists` },
+      { status: 409 }
+    );
+  }
+
   const { data: page, error } = await db
     .from("pages")
     .insert({ name, product, page_type, source_url, original_html, slug })

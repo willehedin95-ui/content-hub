@@ -55,9 +55,13 @@ export default function ABTestManager({
   const isDraft = abTest.status === "draft";
 
   const fetchStats = useCallback(async () => {
-    const res = await fetch(`/api/ab-tests/${abTest.id}/stats`);
-    if (res.ok) {
-      setStats(await res.json());
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}/stats`);
+      if (res.ok) {
+        setStats(await res.json());
+      }
+    } catch {
+      // Stats fetch is non-critical, silently retry on next poll
     }
   }, [abTest.id]);
 
@@ -74,38 +78,48 @@ export default function ABTestManager({
     setSaving(true);
     setError("");
 
-    const res = await fetch(`/api/ab-tests/${abTest.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ split }),
-    });
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ split }),
+      });
 
-    setSaving(false);
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed to save");
-      return;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to save");
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Failed to save — check your connection");
+    } finally {
+      setSaving(false);
     }
-
-    router.refresh();
   }
 
   async function handlePublish() {
     setPublishing(true);
     setError("");
 
-    const res = await fetch(`/api/ab-tests/${abTest.id}/publish`, {
-      method: "POST",
-    });
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}/publish`, {
+        method: "POST",
+      });
 
-    setPublishing(false);
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Publish failed");
-      return;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Publish failed");
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Publish failed — check your connection");
+    } finally {
+      setPublishing(false);
     }
-
-    router.refresh();
   }
 
   async function handleDeclareWinner(winner: "control" | "b") {
@@ -117,21 +131,26 @@ export default function ABTestManager({
     setDeclaringWinner(true);
     setError("");
 
-    const res = await fetch(`/api/ab-tests/${abTest.id}/winner`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ winner }),
-    });
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}/winner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ winner }),
+      });
 
-    setDeclaringWinner(false);
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed to declare winner");
-      return;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to declare winner");
+        return;
+      }
+
+      router.push(`/pages/${pageId}`);
+      router.refresh();
+    } catch {
+      setError("Failed to declare winner — check your connection");
+    } finally {
+      setDeclaringWinner(false);
     }
-
-    router.push(`/pages/${pageId}`);
-    router.refresh();
   }
 
   async function handleDelete() {
@@ -142,19 +161,24 @@ export default function ABTestManager({
     setDeleting(true);
     setError("");
 
-    const res = await fetch(`/api/ab-tests/${abTest.id}`, {
-      method: "DELETE",
-    });
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}`, {
+        method: "DELETE",
+      });
 
-    setDeleting(false);
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Failed to delete");
-      return;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to delete");
+        return;
+      }
+
+      router.push(`/pages/${pageId}`);
+      router.refresh();
+    } catch {
+      setError("Failed to delete — check your connection");
+    } finally {
+      setDeleting(false);
     }
-
-    router.push(`/pages/${pageId}`);
-    router.refresh();
   }
 
   function StatCard({
@@ -235,7 +259,7 @@ export default function ABTestManager({
             {abTest.winner && (
               <span className="text-xs text-emerald-400 flex items-center gap-1">
                 <Trophy className="w-3.5 h-3.5" />
-                Winner: {abTest.winner === "control" ? "Control (A)" : "Variant B"}
+                Winner: {abTest.winner === "control" ? "Control (A)" : abTest.winner === "b" ? "Variant B" : "N/A"}
               </span>
             )}
           </div>
@@ -305,6 +329,8 @@ export default function ABTestManager({
               value={split}
               onChange={(e) => setSplit(Number(e.target.value))}
               className="flex-1 accent-amber-500"
+              aria-label="Traffic split percentage for Control variant"
+              aria-valuetext={`Control ${split}%, Variant ${100 - split}%`}
             />
             <span className="text-xs text-slate-400 w-24">
               Variant B: {100 - split}%
@@ -445,7 +471,7 @@ export default function ABTestManager({
         {isCompleted && (
           <div className="flex items-center gap-2 text-emerald-400 text-sm">
             <CheckCircle2 className="w-4 h-4" />
-            Test completed — {abTest.winner === "control" ? "Control (A)" : "Variant B"} won
+            Test completed — {abTest.winner === "control" ? "Control (A)" : abTest.winner === "b" ? "Variant B" : "N/A"} won
           </div>
         )}
       </div>

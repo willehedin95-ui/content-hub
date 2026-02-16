@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { publishPage } from "@/lib/netlify";
+import { optimizeImages } from "@/lib/image-optimizer";
+import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
+
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   const { translation_id } = await req.json();
@@ -63,14 +67,37 @@ export async function POST(req: NextRequest) {
     .eq("id", translation_id);
 
   try {
-    // CSS is already inlined and all URLs are absolute (done at import time),
-    // so the HTML can be published directly without any modifications.
+    let html = translation.translated_html as string;
+    const language = translation.language as Language;
+    const slug = translation.pages.slug;
+    const slugPrefix = language === "no" ? `no/${slug}` : slug;
+
+    // Optimize images: download, convert to WebP, prepare for deploy
+    const imageResult = await optimizeImages(html, slugPrefix);
+
+    if (imageResult.stats.errors.length > 0) {
+      console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
+    }
+
+    // Replace image URLs in HTML with optimized deploy paths
+    if (imageResult.urlMap.size > 0) {
+      html = replaceImageUrls(html, imageResult.urlMap);
+    }
+
+    // Build additional files for deploy
+    const additionalFiles = imageResult.images.map((img) => ({
+      path: img.deployPath,
+      sha1: img.sha1,
+      body: img.buffer,
+    }));
+
     const result = await publishPage(
-      translation.translated_html as string,
-      translation.pages.slug,
-      translation.language as Language,
+      html,
+      slug,
+      language,
       netlifyToken,
-      siteId
+      siteId,
+      additionalFiles
     );
 
     const { data: updated, error: updateError } = await db

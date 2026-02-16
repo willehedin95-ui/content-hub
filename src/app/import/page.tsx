@@ -51,34 +51,39 @@ export default function ImportPage() {
     setFetching(true);
     setFetchError("");
 
-    const res = await fetch("/api/fetch-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: url.trim() }),
-    });
+    try {
+      const res = await fetch("/api/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
 
-    const data = await res.json();
-    setFetching(false);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setFetchError(data.error || "Failed to fetch URL");
-      return;
+      if (!res.ok) {
+        setFetchError(data.error || "Failed to fetch URL");
+        return;
+      }
+
+      setFetchedHtml(data.html);
+      setFetchedTitle(data.title);
+      setTextBlocks(data.textBlocks || []);
+      setImages(data.images || []);
+      setStats(data.stats || null);
+      setName(data.title);
+      setSlug(
+        data.title
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .slice(0, 80)
+      );
+      setStep("meta");
+    } catch {
+      setFetchError("Failed to fetch URL — check your connection and try again");
+    } finally {
+      setFetching(false);
     }
-
-    setFetchedHtml(data.html);
-    setFetchedTitle(data.title);
-    setTextBlocks(data.textBlocks || []);
-    setImages(data.images || []);
-    setStats(data.stats || null);
-    setName(data.title);
-    setSlug(
-      data.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .slice(0, 80)
-    );
-    setStep("meta");
   }
 
   async function handleSave() {
@@ -86,28 +91,33 @@ export default function ImportPage() {
     setSaving(true);
     setSaveError("");
 
-    const res = await fetch("/api/pages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        product,
-        page_type: pageType,
-        source_url: url,
-        original_html: fetchedHtml,
-        slug,
-      }),
-    });
+    try {
+      const res = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          product,
+          page_type: pageType,
+          source_url: url,
+          original_html: fetchedHtml,
+          slug,
+        }),
+      });
 
-    const data = await res.json();
-    setSaving(false);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setSaveError(data.error || "Failed to save page");
-      return;
+      if (!res.ok) {
+        setSaveError(data.error || "Failed to save page");
+        return;
+      }
+
+      router.push(`/pages/${data.id}`);
+    } catch {
+      setSaveError("Failed to save — check your connection and try again");
+    } finally {
+      setSaving(false);
     }
-
-    router.push(`/pages/${data.id}`);
   }
 
   return (
@@ -245,10 +255,11 @@ export default function ImportPage() {
             <h3 className="text-sm font-semibold text-slate-300">Page Details</h3>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              <label htmlFor="page-name" className="block text-sm font-medium text-slate-300 mb-1.5">
                 Page Name
               </label>
               <input
+                id="page-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -258,8 +269,9 @@ export default function ImportPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Product</label>
+                <label htmlFor="product" className="block text-sm font-medium text-slate-300 mb-1.5">Product</label>
                 <select
+                  id="product"
                   value={product}
                   onChange={(e) => setProduct(e.target.value as Product)}
                   className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
@@ -270,8 +282,9 @@ export default function ImportPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Page Type</label>
+                <label htmlFor="page-type" className="block text-sm font-medium text-slate-300 mb-1.5">Page Type</label>
                 <select
+                  id="page-type"
                   value={pageType}
                   onChange={(e) => setPageType(e.target.value as PageType)}
                   className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
@@ -284,10 +297,11 @@ export default function ImportPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              <label htmlFor="slug" className="block text-sm font-medium text-slate-300 mb-1.5">
                 Slug <span className="text-slate-500 font-normal">(URL path)</span>
               </label>
               <input
+                id="slug"
                 type="text"
                 value={slug}
                 onChange={(e) =>

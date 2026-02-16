@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Coins,
   Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { UsageLog } from "@/types";
 
@@ -37,16 +38,23 @@ export default function UsagePage() {
     return 10.5;
   });
 
+  const [fetchError, setFetchError] = useState("");
+
   const fetchUsage = useCallback(async () => {
     setLoading(true);
-    const params = days > 0 ? `?days=${days}` : "";
-    const res = await fetch(`/api/usage${params}`);
-    if (res.ok) {
+    setFetchError("");
+    try {
+      const params = days > 0 ? `?days=${days}` : "";
+      const res = await fetch(`/api/usage${params}`);
+      if (!res.ok) throw new Error("Failed to load usage data");
       const data = await res.json();
       setLogs(data.logs);
       setSummary(data.summary);
+    } catch {
+      setFetchError("Failed to load usage data. Try refreshing the page.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [days]);
 
   useEffect(() => {
@@ -161,6 +169,14 @@ export default function UsagePage() {
               {summary.image_count}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {fetchError && (
+        <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-6">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {fetchError}
         </div>
       )}
 
