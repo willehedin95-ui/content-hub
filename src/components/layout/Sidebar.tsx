@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, Settings, Zap, BarChart3 } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Settings, Zap, BarChart3, Image } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/import", label: "Import Page", icon: PlusCircle },
+  { href: "/images", label: "Images", icon: Image },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

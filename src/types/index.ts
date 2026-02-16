@@ -96,3 +96,42 @@ export const LANGUAGES: {
     domain: "blog.halsobladet.com/no",
   },
 ];
+
+// --- Image Translation Types ---
+
+export type ImageJobStatus = "draft" | "processing" | "completed" | "failed";
+export type ImageTranslationStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface ImageJob {
+  id: string;
+  name: string;
+  status: ImageJobStatus;
+  target_languages: string[];
+  created_at: string;
+  updated_at: string;
+  source_images?: SourceImage[];
+  total_images?: number;
+  total_translations?: number;
+  completed_translations?: number;
+  failed_translations?: number;
+}
+
+export interface SourceImage {
+  id: string;
+  job_id: string;
+  original_url: string;
+  filename: string | null;
+  created_at: string;
+  image_translations?: ImageTranslation[];
+}
+
+export interface ImageTranslation {
+  id: string;
+  source_image_id: string;
+  language: string;
+  status: ImageTranslationStatus;
+  translated_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
