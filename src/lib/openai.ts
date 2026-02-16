@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { Language } from "@/types";
+import { formatRules } from "./translation-rules";
 
 const LANGUAGE_NAMES: Record<Language, string> = {
   sv: "svenska",
@@ -54,6 +55,9 @@ KVALITETSKONTROLL (gör tyst för dig själv):
 - Kan någon 55+ läsa utan att stanna upp?
 - Är det kristallklart? Om nej: förenkla och förtydliga.
 
+YTTERLIGARE REGLER:
+${formatRules()}
+
 OUTPUT:
 Returnera ENDAST giltigt JSON med exakt samma nycklar som indata och översatta svenska värden.
 Inga förklaringar, inga kommentarer, inga extra nycklar.
@@ -84,6 +88,9 @@ LOCALISATION:
 - Currency/dates/measurements: use Danish standard (da-DK).
 - Address reader as "du" with warm, reassuring tone.
 
+ADDITIONAL RULES:
+${formatRules()}
+
 OUTPUT:
 Return ONLY valid JSON with the same keys as input and translated Danish values.
 No explanations, no comments, no extra keys.`,
@@ -112,6 +119,9 @@ FORMAT & TECHNIQUE:
 LOCALISATION:
 - Currency/dates/measurements: use Norwegian standard (nb-NO).
 - Address reader as "du" with warm, reassuring tone.
+
+ADDITIONAL RULES:
+${formatRules()}
 
 OUTPUT:
 Return ONLY valid JSON with the same keys as input and translated Norwegian values.
@@ -206,6 +216,10 @@ export async function translateMetas(
         role: "system",
         content: `Translate these SEO meta values from English to ${langName} (${langNameNative}).
 Write naturally for a native ${langName} speaker. Keep brand names unchanged: ${DO_NOT_TRANSLATE}.
+
+ADDITIONAL RULES:
+${formatRules()}
+
 Return ONLY valid JSON with the same keys and translated values.`,
       },
       { role: "user", content: JSON.stringify(input) },
