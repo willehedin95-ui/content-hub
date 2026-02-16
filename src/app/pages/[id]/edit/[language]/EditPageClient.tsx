@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, LANGUAGES } from "@/types";
+import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 
 interface Props {
   pageId: string;
@@ -80,6 +81,11 @@ export default function EditPageClient({
     });
     clone.querySelectorAll("[contenteditable]").forEach((el) => {
       el.removeAttribute("contenteditable");
+    });
+    // Strip image translation highlights
+    clone.querySelectorAll("[data-cc-img-highlight]").forEach((el) => {
+      (el as HTMLElement).style.outline = "";
+      el.removeAttribute("data-cc-img-highlight");
     });
 
     return "<!DOCTYPE html>\n" + clone.outerHTML;
@@ -259,8 +265,9 @@ export default function EditPageClient({
           />
         </div>
 
-        {/* SEO sidebar */}
-        <div className="w-72 border-l border-[#1e2130] shrink-0 flex flex-col">
+        {/* Sidebar */}
+        <div className="w-72 border-l border-[#1e2130] shrink-0 flex flex-col overflow-y-auto">
+          {/* SEO fields */}
           <div className="px-4 py-3 space-y-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               SEO
@@ -295,6 +302,17 @@ export default function EditPageClient({
               />
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="border-t border-[#1e2130]" />
+
+          {/* Image translation */}
+          <ImageTranslatePanel
+            iframeRef={iframeRef}
+            translationId={translation.id}
+            language={language}
+            onImageReplaced={() => setIsDirty(true)}
+          />
         </div>
       </div>
     </div>
