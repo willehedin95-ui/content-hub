@@ -35,10 +35,14 @@ export function extractContent(html: string): ExtractedContent {
     // Process direct text nodes
     element.contents().each((_, node) => {
       if (node.type === "text") {
-        const text = (node as TextNode).data.trim();
+        const raw = (node as TextNode).data;
+        const text = raw.trim();
         if (text.length > 1) {
           const id = `t${counter++}`;
-          (node as TextNode).data = `{{${id}}}`;
+          // Preserve leading/trailing whitespace around placeholder
+          const leading = raw.match(/^\s*/)?.[0] || "";
+          const trailing = raw.match(/\s*$/)?.[0] || "";
+          (node as TextNode).data = `${leading}{{${id}}}${trailing}`;
           texts.push({ id, text });
         }
       }
