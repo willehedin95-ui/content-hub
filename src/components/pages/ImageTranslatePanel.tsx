@@ -61,29 +61,40 @@ export default function ImageTranslatePanel({
       const imgs = Array.from(doc.querySelectorAll("img"));
       const filtered: PageImage[] = [];
       imgs.forEach((img, i) => {
-        const w = img.naturalWidth || img.width;
-        const h = img.naturalHeight || img.height;
-        if (w < 50 || h < 50) return;
+        // Use multiple fallbacks for dimensions — images may not be loaded yet
+        const w = img.naturalWidth || img.offsetWidth || img.width || parseInt(img.getAttribute("width") || "0");
+        const h = img.naturalHeight || img.offsetHeight || img.height || parseInt(img.getAttribute("height") || "0");
         if (img.src.startsWith("data:")) return;
         if (img.src.endsWith(".svg")) return;
+        if (!img.src) return;
+        // Only skip truly tiny images (icons); include images with unknown dimensions
+        if (w > 0 && h > 0 && (w < 30 || h < 30)) return;
         filtered.push({
           src: img.src,
           alt: img.alt || "",
-          width: w,
-          height: h,
-          aspectRatio: computeAspectRatio(w, h),
+          width: w || 200,
+          height: h || 200,
+          aspectRatio: w && h ? computeAspectRatio(w, h) : "1:1",
           index: i,
         });
       });
       setImages(filtered);
     }
 
-    iframe.addEventListener("load", extractImages);
-    // Try immediately in case already loaded
-    if (iframe.contentDocument?.readyState === "complete") {
+    // Wait for iframe to load, then delay to let images finish loading
+    function onIframeLoad() {
+      // Extract immediately for what's available
       extractImages();
+      // Re-extract after a delay to catch lazy-loaded images
+      setTimeout(extractImages, 2000);
+      setTimeout(extractImages, 5000);
     }
-    return () => iframe.removeEventListener("load", extractImages);
+
+    iframe.addEventListener("load", onIframeLoad);
+    if (iframe.contentDocument?.readyState === "complete") {
+      onIframeLoad();
+    }
+    return () => iframe.removeEventListener("load", onIframeLoad);
   }, [iframeRef]);
 
   // Elapsed timer during generation
