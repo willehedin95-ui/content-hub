@@ -111,14 +111,23 @@ export default function EditPageClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Build CSS from padding values — targets body and all direct children
+  // Build CSS from padding values — targets elements up to 5 levels deep
   function buildPaddingCss(h: string, v: string): string {
     const hVal = h !== "" ? parseInt(h) : null;
     const vVal = v !== "" ? parseInt(v) : null;
     if (hVal === null && vVal === null) return "";
     const rules: string[] = [];
     if (hVal !== null) {
-      rules.push(`body, body > * { padding-left: ${hVal}px !important; padding-right: ${hVal}px !important; }`);
+      // Target body and nested wrappers up to 5 levels deep
+      const selectors = [
+        "body",
+        "body > *",
+        "body > * > *",
+        "body > * > * > *",
+        "body > * > * > * > *",
+        "body > * > * > * > * > *",
+      ].join(", ");
+      rules.push(`${selectors} { padding-left: ${hVal}px !important; padding-right: ${hVal}px !important; }`);
     }
     if (vVal !== null) {
       rules.push(`body { padding-top: ${vVal}px !important; padding-bottom: ${vVal}px !important; }`);
@@ -126,7 +135,7 @@ export default function EditPageClient({
     return rules.join("\n");
   }
 
-  // Read current padding from iframe on load
+  // Read current padding from iframe on load — walks the DOM tree to find actual padding
   function handleIframeLoad() {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
@@ -141,33 +150,42 @@ export default function EditPageClient({
       return;
     }
 
-    // Otherwise, read the computed padding from the page
+    // Walk the DOM tree to find the maximum horizontal padding on any element
     const body = doc.body;
     if (!body) return;
-    const style = doc.defaultView?.getComputedStyle(body);
-    if (!style) return;
+    const win = doc.defaultView;
+    if (!win) return;
 
-    // Use the larger of left/right as horizontal, top/bottom as vertical
-    const pl = parseInt(style.paddingLeft) || 0;
-    const pr = parseInt(style.paddingRight) || 0;
-    const pt = parseInt(style.paddingTop) || 0;
-    const pb = parseInt(style.paddingBottom) || 0;
-    let h = Math.max(pl, pr);
-    let v = Math.max(pt, pb);
+    let maxH = 0;
+    let maxV = 0;
 
-    // Also check first direct child — padding is often on a wrapper, not body
-    const firstChild = body.children[0] as HTMLElement | undefined;
-    if (firstChild) {
-      const childStyle = doc.defaultView?.getComputedStyle(firstChild);
-      if (childStyle) {
-        const cpl = parseInt(childStyle.paddingLeft) || 0;
-        const cpr = parseInt(childStyle.paddingRight) || 0;
-        h = Math.max(h, cpl, cpr);
-      }
+    // Scan all elements in the body (up to 500 to avoid perf issues)
+    const allElements = body.querySelectorAll("*");
+    const limit = Math.min(allElements.length, 500);
+    for (let i = 0; i < limit; i++) {
+      const el = allElements[i] as HTMLElement;
+      // Skip non-block elements, scripts, styles etc.
+      const tag = el.tagName;
+      if (["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "BR", "HR", "IMG"].includes(tag)) continue;
+
+      const cs = win.getComputedStyle(el);
+      // Only check block/flex/grid elements (these are the containers with padding)
+      const display = cs.display;
+      if (!display.includes("block") && !display.includes("flex") && !display.includes("grid")) continue;
+
+      const pl = parseInt(cs.paddingLeft) || 0;
+      const pr = parseInt(cs.paddingRight) || 0;
+      maxH = Math.max(maxH, pl, pr);
     }
 
-    if (h > 0) setPaddingH(String(h));
-    if (v > 0) setPaddingV(String(v));
+    // Check body vertical padding
+    const bodyStyle = win.getComputedStyle(body);
+    const pt = parseInt(bodyStyle.paddingTop) || 0;
+    const pb = parseInt(bodyStyle.paddingBottom) || 0;
+    maxV = Math.max(pt, pb);
+
+    if (maxH > 0) setPaddingH(String(maxH));
+    if (maxV > 0) setPaddingV(String(maxV));
   }
 
   // Inject/update padding CSS in the iframe live
