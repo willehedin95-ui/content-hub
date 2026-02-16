@@ -10,9 +10,10 @@ import {
   Copy,
   Check,
   AlertCircle,
+  FlaskConical,
 } from "lucide-react";
 import Link from "next/link";
-import { Translation, LANGUAGES, TranslationStatus } from "@/types";
+import { Translation, ABTest, LANGUAGES, TranslationStatus } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 
 const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
@@ -25,43 +26,57 @@ const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   error: "Error",
 };
 
+const AB_STATUS_LABELS: Record<string, string> = {
+  draft: "A/B Draft",
+  active: "A/B Active",
+  completed: "A/B Completed",
+};
+
 export default function TranslationRow({
   pageId,
   language,
   translation,
+  abTest,
 }: {
   pageId: string;
   language: (typeof LANGUAGES)[number];
   translation?: Translation;
+  abTest?: ABTest;
 }) {
   const router = useRouter();
-  const [loading, setLoading] = useState<"translate" | "publish" | null>(null);
+  const [loading, setLoading] = useState<"translate" | "publish" | "ab" | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
   const status: TranslationStatus | "none" = translation?.status ?? "none";
   const canPublish =
     status === "translated" || status === "published" || status === "error";
+  const hasActiveTest = abTest && abTest.status !== "completed";
 
   async function handleTranslate() {
     setLoading("translate");
     setError("");
 
-    const res = await fetch("/api/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page_id: pageId, language: language.value }),
-    });
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: pageId, language: language.value }),
+      });
 
-    const data = await res.json();
-    setLoading(null);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error || "Translation failed");
-      return;
+      if (!res.ok) {
+        setError(data.error || "Translation failed");
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      setError("Translation failed — check your connection and try again");
+    } finally {
+      setLoading(null);
     }
-
-    router.refresh();
   }
 
   async function handlePublish() {
@@ -86,9 +101,37 @@ export default function TranslationRow({
     router.refresh();
   }
 
+  async function handleCreateABTest() {
+    if (!translation?.id) return;
+    setLoading("ab");
+    setError("");
+
+    const res = await fetch("/api/ab-tests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translation_id: translation.id }),
+    });
+
+    const data = await res.json();
+    setLoading(null);
+
+    if (!res.ok) {
+      if (res.status === 409 && data.id) {
+        // Test already exists, navigate to it
+        router.push(`/pages/${pageId}/ab-test/${language.value}`);
+        return;
+      }
+      setError(data.error || "Failed to create A/B test");
+      return;
+    }
+
+    router.push(`/pages/${pageId}/ab-test/${language.value}`);
+  }
+
   function handleCopyUrl() {
-    if (!translation?.published_url) return;
-    navigator.clipboard.writeText(translation.published_url);
+    const url = abTest?.router_url || translation?.published_url;
+    if (!url) return;
+    navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -124,9 +167,19 @@ export default function TranslationRow({
             </button>
           </div>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="flex items-start gap-2 text-red-400 text-xs mt-2 bg-red-500/10 rounded-lg px-3 py-2">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            {error}
+          </div>
+        )}
       </div>
     );
   }
+
+  const displayUrl = abTest?.router_url || translation.published_url;
 
   // Has translation — show full row
   return (
@@ -143,16 +196,27 @@ export default function TranslationRow({
 
         {/* Status */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <StatusDot status={status} />
-          <span className="text-xs text-slate-400">{STATUS_LABELS[status]}</span>
+          {hasActiveTest ? (
+            <>
+              <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs text-amber-400">
+                {AB_STATUS_LABELS[abTest.status] ?? abTest.status}
+              </span>
+            </>
+          ) : (
+            <>
+              <StatusDot status={status} />
+              <span className="text-xs text-slate-400">{STATUS_LABELS[status]}</span>
+            </>
+          )}
         </div>
 
         {/* Published URL + copy */}
         <div className="flex-1 min-w-0">
-          {translation.published_url ? (
+          {displayUrl ? (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-slate-500 truncate">
-                {translation.published_url.replace(/^https?:\/\//, "")}
+                {displayUrl.replace(/^https?:\/\//, "")}
               </span>
               <button
                 onClick={handleCopyUrl}
@@ -173,25 +237,50 @@ export default function TranslationRow({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href={`/pages/${pageId}/edit/${language.value}`}
-            className="flex items-center gap-1.5 bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-600/30 transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Edit
-          </Link>
-          <button
-            onClick={handlePublish}
-            disabled={!canPublish || loading !== null}
-            className="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-colors"
-          >
-            {loading === "publish" ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Upload className="w-3.5 h-3.5" />
-            )}
-            {loading === "publish" ? "Publishing…" : "Publish"}
-          </button>
+          {hasActiveTest ? (
+            <Link
+              href={`/pages/${pageId}/ab-test/${language.value}`}
+              className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              Manage Test
+            </Link>
+          ) : (
+            <>
+              <Link
+                href={`/pages/${pageId}/edit/${language.value}`}
+                className="flex items-center gap-1.5 bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-600/30 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Edit
+              </Link>
+              <button
+                onClick={handleCreateABTest}
+                disabled={loading !== null || !canPublish}
+                className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+                title="Create A/B test"
+              >
+                {loading === "ab" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FlaskConical className="w-3.5 h-3.5" />
+                )}
+                A/B
+              </button>
+              <button
+                onClick={handlePublish}
+                disabled={!canPublish || loading !== null}
+                className="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-colors"
+              >
+                {loading === "publish" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                {loading === "publish" ? "Publishing…" : "Publish"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -5,6 +5,8 @@ import { translateBatch, translateMetas } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { Language } from "@/types";
 
+export const maxDuration = 180;
+
 export async function POST(req: NextRequest) {
   const { page_id, language } = await req.json();
 
@@ -41,10 +43,11 @@ export async function POST(req: NextRequest) {
     {
       page_id,
       language,
+      variant: "control",
       status: "translating",
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "page_id,language" }
+    { onConflict: "page_id,language,variant" }
   );
 
   try {
@@ -84,6 +87,7 @@ export async function POST(req: NextRequest) {
         {
           page_id,
           language,
+          variant: "control",
           translated_html: translatedHtml,
           translated_texts: translatedTexts,
           seo_title: translatedMetas.title || null,
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
           status: "translated",
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "page_id,language" }
+        { onConflict: "page_id,language,variant" }
       )
       .select()
       .single();
@@ -130,10 +134,11 @@ export async function POST(req: NextRequest) {
       {
         page_id,
         language,
+        variant: "control",
         status: "error",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "page_id,language" }
+      { onConflict: "page_id,language,variant" }
     );
 
     return NextResponse.json({ error: message }, { status: 500 });

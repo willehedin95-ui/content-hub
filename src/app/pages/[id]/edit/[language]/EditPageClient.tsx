@@ -23,6 +23,7 @@ interface Props {
   pageName: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
+  variantLabel?: string;
 }
 
 export default function EditPageClient({
@@ -30,6 +31,7 @@ export default function EditPageClient({
   pageName,
   translation,
   language,
+  variantLabel,
 }: Props) {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -240,6 +242,14 @@ export default function EditPageClient({
           <span className="flex items-center gap-1.5 text-slate-200 text-sm font-medium shrink-0">
             {language.flag} {language.label}
           </span>
+          {variantLabel && (
+            <>
+              <span className="text-slate-600 shrink-0">/</span>
+              <span className="text-xs font-semibold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded shrink-0">
+                {variantLabel}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">

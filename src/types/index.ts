@@ -25,12 +25,29 @@ export interface Translation {
   id: string;
   page_id: string;
   language: Language;
+  variant: string;
   translated_html: string | null;
   translated_texts: Record<string, string> | null;
   seo_title: string | null;
   seo_description: string | null;
   status: TranslationStatus;
   published_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ABTestStatus = "draft" | "active" | "completed";
+
+export interface ABTest {
+  id: string;
+  page_id: string;
+  language: Language;
+  status: ABTestStatus;
+  control_id: string;
+  variant_id: string;
+  split: number;
+  router_url: string | null;
+  winner: "control" | "b" | null;
   created_at: string;
   updated_at: string;
 }

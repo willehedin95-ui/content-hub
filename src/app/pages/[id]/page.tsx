@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import TranslationRow from "@/components/pages/TranslationRow";
-import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
+import { Page, Translation, ABTest, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,16 @@ export default async function PageDetailPage({
   if (error || !page) notFound();
 
   const p = page as Page & { translations: Translation[] };
+
+  // Fetch A/B tests for this page
+  const { data: abTests } = await db
+    .from("ab_tests")
+    .select("*")
+    .eq("page_id", id);
+
+  const abTestMap = new Map(
+    (abTests ?? []).map((t: ABTest) => [t.language, t])
+  );
 
   return (
     <div className="p-8 max-w-4xl">
@@ -69,7 +79,7 @@ export default async function PageDetailPage({
         <div className="space-y-2">
           {LANGUAGES.map((lang) => {
             const translation = p.translations?.find(
-              (t) => t.language === lang.value
+              (t) => t.language === lang.value && t.variant !== "b"
             );
             return (
               <TranslationRow
@@ -77,6 +87,7 @@ export default async function PageDetailPage({
                 pageId={p.id}
                 language={lang}
                 translation={translation}
+                abTest={abTestMap.get(lang.value)}
               />
             );
           })}
