@@ -15,6 +15,7 @@ import {
   Globe,
   MoveHorizontal,
   MoveVertical,
+  MousePointerClick,
 } from "lucide-react";
 
 import { Translation, LANGUAGES } from "@/types";
@@ -53,6 +54,8 @@ export default function EditPageClient({
   const [padDV, setPadDV] = useState(""); // desktop vertical
   const [padMH, setPadMH] = useState(""); // mobile horizontal
   const [padMV, setPadMV] = useState(""); // mobile vertical
+  const [excludeMode, setExcludeMode] = useState(false);
+  const [excludeCount, setExcludeCount] = useState(0);
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -113,6 +116,48 @@ export default function EditPageClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Exclude mode: intercept clicks in iframe to toggle data-cc-pad-skip
+  useEffect(() => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+
+    if (!excludeMode) return;
+
+    // Inject temporary visual style for exclude mode
+    const style = doc.createElement("style");
+    style.setAttribute("data-cc-exclude-mode", "true");
+    style.textContent = [
+      "[data-cc-padded]:hover { outline: 2px dashed rgba(245,158,11,0.6) !important; outline-offset: 2px; cursor: pointer !important; }",
+      "[data-cc-pad-skip] { outline: 2px dashed rgba(239,68,68,0.7) !important; outline-offset: 2px; }",
+      "[data-cc-pad-skip]:hover { outline: 2px solid rgba(239,68,68,0.9) !important; }",
+    ].join("\n");
+    doc.head.appendChild(style);
+
+    function handleClick(e: Event) {
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target as HTMLElement;
+      // Find the nearest padded element
+      const padded = target.closest("[data-cc-padded]") as HTMLElement | null;
+      if (!padded) return;
+
+      if (padded.hasAttribute("data-cc-pad-skip")) {
+        padded.removeAttribute("data-cc-pad-skip");
+      } else {
+        padded.setAttribute("data-cc-pad-skip", "");
+      }
+      setExcludeCount(doc!.querySelectorAll("[data-cc-pad-skip]").length);
+      setIsDirty(true);
+    }
+
+    doc.addEventListener("click", handleClick, true);
+
+    return () => {
+      doc!.removeEventListener("click", handleClick, true);
+      style.remove();
+    };
+  }, [excludeMode]);
+
   // Build CSS with media queries — only targets elements marked with data-cc-padded
   function buildPaddingCss(dh: string, dv: string, mh: string, mv: string): string {
     const rules: string[] = [];
@@ -122,7 +167,7 @@ export default function EditPageClient({
     const dvVal = dv !== "" ? parseInt(dv) : null;
     if (dhVal !== null || dvVal !== null) {
       const inner: string[] = [];
-      if (dhVal !== null) inner.push(`[data-cc-padded] { padding-left: ${dhVal}px !important; padding-right: ${dhVal}px !important; }`);
+      if (dhVal !== null) inner.push(`[data-cc-padded]:not([data-cc-pad-skip]) { padding-left: ${dhVal}px !important; padding-right: ${dhVal}px !important; }`);
       if (dvVal !== null) inner.push(`body { padding-top: ${dvVal}px !important; padding-bottom: ${dvVal}px !important; }`);
       rules.push(`@media (min-width: 376px) {\n  ${inner.join("\n  ")}\n}`);
     }
@@ -132,7 +177,7 @@ export default function EditPageClient({
     const mvVal = mv !== "" ? parseInt(mv) : null;
     if (mhVal !== null || mvVal !== null) {
       const inner: string[] = [];
-      if (mhVal !== null) inner.push(`[data-cc-padded] { padding-left: ${mhVal}px !important; padding-right: ${mhVal}px !important; }`);
+      if (mhVal !== null) inner.push(`[data-cc-padded]:not([data-cc-pad-skip]) { padding-left: ${mhVal}px !important; padding-right: ${mhVal}px !important; }`);
       if (mvVal !== null) inner.push(`body { padding-top: ${mvVal}px !important; padding-bottom: ${mvVal}px !important; }`);
       rules.push(`@media (max-width: 375px) {\n  ${inner.join("\n  ")}\n}`);
     }
@@ -200,6 +245,9 @@ export default function EditPageClient({
       setPadDH(String(maxH));
       setPadMH(String(maxH));
     }
+
+    // Count any existing excluded elements
+    setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
   }
 
   // Inject/update padding CSS in the iframe live
@@ -472,8 +520,8 @@ export default function EditPageClient({
         {/* Preview / editing pane */}
         <div className="flex flex-col flex-1 min-w-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e2130] shrink-0">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Click any text to edit
+            <span className={`text-xs font-medium uppercase tracking-wider ${excludeMode ? "text-amber-400" : "text-slate-400"}`}>
+              {excludeMode ? "Click elements to exclude from padding" : "Click any text to edit"}
             </span>
             <div className="flex items-center gap-2">
               <div className="flex items-center bg-[#141620] rounded-lg border border-[#1e2130] p-0.5">
@@ -567,9 +615,22 @@ export default function EditPageClient({
                 />
               </div>
             </div>
-            <p className="text-[10px] text-slate-600">
-              Switch view mode to set {viewMode === "desktop" ? "mobile" : "desktop"} padding.
-            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setExcludeMode(!excludeMode)}
+                className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
+                  excludeMode
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                    : "bg-[#141620] border-[#1e2130] text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <MousePointerClick className="w-3 h-3" />
+                Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
+              </button>
+              <span className="text-[10px] text-slate-600">
+                {viewMode === "desktop" ? "Desktop" : "Mobile"} view
+              </span>
+            </div>
           </div>
 
           {/* Divider */}
