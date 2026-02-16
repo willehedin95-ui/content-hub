@@ -10,6 +10,8 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, LANGUAGES } from "@/types";
@@ -39,6 +41,7 @@ export default function EditPageClient({
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -258,25 +261,55 @@ export default function EditPageClient({
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
               Click any text to edit
             </span>
-            <button
-              onClick={() => {
-                if (isDirty && !confirm("You have unsaved changes. Reload preview?")) return;
-                setIframeKey((k) => k + 1);
-                setIsDirty(false);
-              }}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              <RefreshCw className="w-3 h-3" /> Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-[#141620] rounded-lg border border-[#1e2130] p-0.5">
+                <button
+                  onClick={() => setViewMode("desktop")}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                    viewMode === "desktop"
+                      ? "bg-[#1e2130] text-slate-200"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <Monitor className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => setViewMode("mobile")}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                    viewMode === "mobile"
+                      ? "bg-[#1e2130] text-slate-200"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <Smartphone className="w-3 h-3" />
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  if (isDirty && !confirm("You have unsaved changes. Reload preview?")) return;
+                  setIframeKey((k) => k + 1);
+                  setIsDirty(false);
+                }}
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" /> Refresh
+              </button>
+            </div>
           </div>
-          <iframe
-            ref={iframeRef}
-            key={iframeKey}
-            src={`/api/preview/${translation.id}`}
-            className="flex-1 w-full bg-white"
-            sandbox="allow-scripts allow-same-origin"
-            title="Translation editor"
-          />
+          <div className={`flex-1 overflow-auto ${viewMode === "mobile" ? "flex justify-center bg-[#141620]" : ""}`}>
+            <iframe
+              ref={iframeRef}
+              key={iframeKey}
+              src={`/api/preview/${translation.id}`}
+              className={`bg-white h-full ${
+                viewMode === "mobile"
+                  ? "w-[375px] border-x border-[#1e2130] shadow-2xl"
+                  : "w-full"
+              }`}
+              sandbox="allow-scripts allow-same-origin"
+              title="Translation editor"
+            />
+          </div>
         </div>
 
         {/* Sidebar */}
