@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   try {
     let html = translation.translated_html as string;
     const language = translation.language as Language;
-    const slug = translation.pages.slug;
+    const slug = translation.slug || translation.pages.slug;
     const slugPrefix = language === "no" ? `no/${slug}` : slug;
 
     // Optimize images: download, convert to WebP, prepare for deploy

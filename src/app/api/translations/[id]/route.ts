@@ -36,12 +36,13 @@ export async function PUT(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { translated_html, translated_texts, seo_title, seo_description } =
+  const { translated_html, translated_texts, seo_title, seo_description, slug } =
     body as {
       translated_html?: string;
       translated_texts?: Record<string, string>;
       seo_title?: string;
       seo_description?: string;
+      slug?: string;
     };
 
   if (!translated_html && !translated_texts) {
@@ -113,6 +114,7 @@ export async function PUT(
       translated_texts: translated_texts ?? translation.translated_texts,
       seo_title: seo_title ?? translation.seo_title,
       seo_description: seo_description ?? translation.seo_description,
+      slug: slug ?? translation.slug,
       status:
         translation.status === "published" ? "translated" : translation.status,
       updated_at: new Date().toISOString(),

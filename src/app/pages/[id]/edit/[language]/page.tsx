@@ -34,10 +34,10 @@ export default async function EditTranslationPage({
 
   if (tError || !translation) notFound();
 
-  // Fetch page name
+  // Fetch page name and slug
   const { data: page, error: pError } = await db
     .from("pages")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", id)
     .single();
 
@@ -47,6 +47,7 @@ export default async function EditTranslationPage({
     <EditPageClient
       pageId={id}
       pageName={page.name}
+      pageSlug={page.slug}
       translation={translation}
       language={lang}
       variantLabel={variant === "b" ? "Variant B" : undefined}

@@ -30,6 +30,7 @@ export interface Translation {
   translated_texts: Record<string, string> | null;
   seo_title: string | null;
   seo_description: string | null;
+  slug: string | null;
   status: TranslationStatus;
   published_url: string | null;
   created_at: string;

@@ -25,6 +25,7 @@ import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 interface Props {
   pageId: string;
   pageName: string;
+  pageSlug: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
   variantLabel?: string;
@@ -33,6 +34,7 @@ interface Props {
 export default function EditPageClient({
   pageId,
   pageName,
+  pageSlug,
   translation,
   language,
   variantLabel,
@@ -59,6 +61,7 @@ export default function EditPageClient({
   const [excludeCount, setExcludeCount] = useState(0);
   const [linkUrl, setLinkUrl] = useState("");
   const prevLinkUrl = useRef("");
+  const [slug, setSlug] = useState(translation.slug ?? pageSlug);
   const [clickedImage, setClickedImage] = useState<{
     src: string;
     index: number;
@@ -365,6 +368,7 @@ export default function EditPageClient({
           translated_html: html,
           seo_title: seoTitle || undefined,
           seo_description: seoDesc || undefined,
+          slug: slug || undefined,
         }),
       });
 
@@ -401,6 +405,7 @@ export default function EditPageClient({
           translated_html: html,
           seo_title: seoTitle || undefined,
           seo_description: seoDesc || undefined,
+          slug: slug || undefined,
         }),
       });
 
@@ -689,6 +694,29 @@ export default function EditPageClient({
             </div>
             <p className="text-[10px] text-slate-600">
               Applied to all links on the page.
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-[#1e2130]" />
+
+          {/* Slug */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Slug
+            </p>
+            <input
+              type="text"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                setIsDirty(true);
+              }}
+              placeholder="page-slug"
+              className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <p className="text-[10px] text-slate-600 truncate">
+              {language.domain}/{language.value === "no" ? `no/${slug}` : slug}
             </p>
           </div>
 
