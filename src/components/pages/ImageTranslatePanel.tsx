@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, RefObject } from "react";
+import { useState, useEffect, useRef, RefObject } from "react";
 import {
   Image as ImageIcon,
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   Check,
   X,
   ZoomIn,
+  Upload,
 } from "lucide-react";
 
 interface ClickedImage {
@@ -51,6 +52,8 @@ export default function ImageTranslatePanel({
   const [error, setError] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Close lightbox on Escape key
   useEffect(() => {
@@ -178,6 +181,56 @@ export default function ImageTranslatePanel({
     setResultUrl(null);
   }
 
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !clickedImage) return;
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+
+    setUploading(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("translationId", translationId);
+
+      const res = await fetch("/api/upload-image", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Upload failed");
+      }
+
+      const { imageUrl } = await res.json();
+
+      // Replace image in iframe DOM (same logic as handleAccept)
+      const doc = iframeRef.current?.contentDocument;
+      if (doc) {
+        const imgs = doc.querySelectorAll("img");
+        const img = imgs[clickedImage.index];
+        if (img) {
+          img.src = imageUrl;
+          img.removeAttribute("srcset");
+          img.style.outline = "";
+          img.removeAttribute("data-cc-img-highlight");
+        }
+      }
+
+      onImageReplaced();
+      onClickedImageClear();
+      setStatus("idle");
+      setResultUrl(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   // No image selected — default state
   if (!clickedImage) {
     return (
@@ -186,7 +239,7 @@ export default function ImageTranslatePanel({
           Images
         </p>
         <p className="text-xs text-slate-600">
-          Click an image in the preview to translate it.
+          Click an image in the preview to translate or replace it.
         </p>
       </div>
     );
@@ -279,7 +332,7 @@ export default function ImageTranslatePanel({
 
           <button
             onClick={handleTranslate}
-            disabled={status === "loading" || !prompt.trim()}
+            disabled={status === "loading" || uploading || !prompt.trim()}
             className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
           >
             {status === "loading" ? (
@@ -291,6 +344,31 @@ export default function ImageTranslatePanel({
               <>
                 <ImageIcon className="w-3.5 h-3.5" />
                 Translate Image
+              </>
+            )}
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelected}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={status === "loading" || uploading}
+            className="w-full flex items-center justify-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-300 text-xs font-medium py-2.5 rounded-lg border border-[#1e2130] transition-colors"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Upload className="w-3.5 h-3.5" />
+                Upload Image
               </>
             )}
           </button>
