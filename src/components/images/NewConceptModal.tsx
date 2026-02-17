@@ -50,6 +50,38 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // Resize image client-side to stay under server body limit
+  function resizeImage(file: File, maxDim = 2048): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxDim && height <= maxDim && file.size < 3_000_000) {
+          // Already small enough
+          resolve(file);
+          return;
+        }
+        if (width > height) {
+          if (width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        } else {
+          if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Failed to resize"))),
+          "image/jpeg",
+          0.9
+        );
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   async function handleSubmit() {
     if (files.length === 0 || selectedLanguages.size === 0 || !name.trim()) return;
 
@@ -79,10 +111,11 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
 
       const job = await createRes.json();
 
-      // 2. Upload images one at a time
+      // 2. Upload images one at a time (resized to stay under body limit)
       for (const file of files) {
+        const resized = await resizeImage(file);
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", resized, file.name);
 
         const uploadRes = await fetch(`/api/image-jobs/${job.id}/upload`, {
           method: "POST",
