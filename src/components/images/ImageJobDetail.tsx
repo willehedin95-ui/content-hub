@@ -13,7 +13,17 @@ import {
   X,
 } from "lucide-react";
 import JSZip from "jszip";
-import { ImageJob, ImageTranslation, SourceImage, Version, LANGUAGES } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, Version, QualityAnalysis, LANGUAGES } from "@/types";
+
+const MAX_VERSIONS = 5;
+const DEFAULT_QUALITY_THRESHOLD = 80;
+
+function getSettings() {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem("content-hub-settings") || "{}");
+  } catch { return {}; }
+}
 
 interface Props {
   initialJob: ImageJob;
@@ -92,15 +102,69 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
   async function processOne(translation: ImageTranslation) {
-    try {
-      await fetch(`/api/image-jobs/${job.id}/translate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translationId: translation.id }),
-      });
-    } catch (err) {
-      console.error("Translation failed:", err);
+    const settings = getSettings();
+    const qualityEnabled = settings.static_ads_quality_enabled !== false && !settings.static_ads_economy_mode;
+    const threshold = settings.static_ads_quality_threshold ?? DEFAULT_QUALITY_THRESHOLD;
+
+    let corrected_text: string | undefined;
+    let visual_instructions: string | undefined;
+    let attempts = 0;
+
+    while (attempts < MAX_VERSIONS) {
+      attempts++;
+
+      try {
+        // Translate
+        const translateRes = await fetch(`/api/image-jobs/${job.id}/translate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            translationId: translation.id,
+            ...(corrected_text && { corrected_text }),
+            ...(visual_instructions && { visual_instructions }),
+          }),
+        });
+
+        if (!translateRes.ok) break;
+        const { versionId } = await translateRes.json();
+        await refreshJob();
+
+        // Quality analysis (skip if disabled or no versionId)
+        if (!qualityEnabled || !versionId) break;
+
+        const analyzeRes = await fetch(`/api/image-jobs/${job.id}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ versionId }),
+        });
+
+        if (!analyzeRes.ok) break;
+        const analysis: QualityAnalysis = await analyzeRes.json();
+        await refreshJob();
+
+        // Check quality — if good enough, stop
+        if (analysis.quality_score >= threshold) break;
+
+        // Build corrective prompt for retry
+        const corrections: string[] = [];
+        if (analysis.spelling_errors?.length) corrections.push(`Fix spelling: ${analysis.spelling_errors.join(", ")}`);
+        if (analysis.grammar_issues?.length) corrections.push(`Fix grammar: ${analysis.grammar_issues.join(", ")}`);
+        if (analysis.missing_text?.length) corrections.push(`Include missing text: ${analysis.missing_text.join(", ")}`);
+
+        corrected_text = analysis.extracted_text
+          ? `The translated text should read: ${analysis.extracted_text}\n${corrections.join("\n")}`
+          : corrections.join("\n");
+        visual_instructions = [
+          analysis.overall_assessment,
+          corrections.length > 0 ? `Please correct: ${corrections.join("; ")}` : "",
+        ].filter(Boolean).join("\n");
+
+      } catch (err) {
+        console.error("Translation/analysis failed:", err);
+        break;
+      }
     }
+
     await refreshJob();
   }
 
@@ -522,9 +586,7 @@ function ImagePreviewModal({
 
         {/* Quality analysis for active version */}
         {activeVersion?.quality_score != null && (
-          <div className="px-5 pt-2 shrink-0">
-            <QualityBadge score={activeVersion.quality_score} />
-          </div>
+          <QualityDetails version={activeVersion} />
         )}
 
         {/* Image */}
@@ -562,16 +624,59 @@ function ImagePreviewModal({
   );
 }
 
-function QualityBadge({ score }: { score: number }) {
-  const classes = score >= 80
+function QualityDetails({ version }: { version: Version }) {
+  const [expanded, setExpanded] = useState(false);
+  const score = version.quality_score ?? 0;
+  const analysis = version.quality_analysis;
+
+  const badgeClasses = score >= 80
     ? "bg-emerald-50 text-emerald-700"
     : score >= 60
     ? "bg-yellow-50 text-yellow-700"
     : "bg-red-50 text-red-700";
+
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${classes}`}>
-      Quality: {Math.round(score)}/100
-    </span>
+    <div className="px-5 pt-2 shrink-0">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${badgeClasses} hover:opacity-80 transition-opacity`}
+      >
+        Quality: {Math.round(score)}/100
+        <span className="text-[9px] ml-0.5">{expanded ? "▲" : "▼"}</span>
+      </button>
+
+      {expanded && analysis && (
+        <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-2">
+          {analysis.overall_assessment && (
+            <p className="text-gray-700">{analysis.overall_assessment}</p>
+          )}
+          {analysis.spelling_errors?.length > 0 && (
+            <div>
+              <span className="text-red-600 font-medium">Spelling errors: </span>
+              <span className="text-gray-600">{analysis.spelling_errors.join(", ")}</span>
+            </div>
+          )}
+          {analysis.grammar_issues?.length > 0 && (
+            <div>
+              <span className="text-yellow-600 font-medium">Grammar issues: </span>
+              <span className="text-gray-600">{analysis.grammar_issues.join(", ")}</span>
+            </div>
+          )}
+          {analysis.missing_text?.length > 0 && (
+            <div>
+              <span className="text-orange-600 font-medium">Missing text: </span>
+              <span className="text-gray-600">{analysis.missing_text.join(", ")}</span>
+            </div>
+          )}
+          {analysis.extracted_text && (
+            <div>
+              <span className="text-gray-500 font-medium">Extracted text: </span>
+              <span className="text-gray-600">{analysis.extracted_text}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
