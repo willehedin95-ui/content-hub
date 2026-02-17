@@ -10,9 +10,10 @@ import {
   RotateCcw,
   Download,
   RefreshCw,
+  X,
 } from "lucide-react";
 import JSZip from "jszip";
-import { ImageJob, ImageTranslation, LANGUAGES } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, LANGUAGES } from "@/types";
 
 interface Props {
   initialJob: ImageJob;
@@ -23,6 +24,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   const [processing, setProcessing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [previewImage, setPreviewImage] = useState<SourceImage | null>(null);
+  const [previewLang, setPreviewLang] = useState<string | null>(null);
   const processingRef = useRef(false);
 
   const allTranslations = job.source_images?.flatMap(
@@ -283,7 +286,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
         {filteredImages.map((si) => (
           <div
             key={si.id}
-            className="bg-[#141620] border border-[#1e2130] rounded-xl overflow-hidden"
+            className="bg-[#141620] border border-[#1e2130] rounded-xl overflow-hidden cursor-pointer hover:border-indigo-500/30 transition-colors"
+            onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
           >
             {/* Thumbnail */}
             <div className="aspect-square bg-[#0a0c14] flex items-center justify-center overflow-hidden">
@@ -307,7 +311,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     </div>
                     {t.status === "failed" && (
                       <button
-                        onClick={() => handleRetrySingle(t.id)}
+                        onClick={(e) => { e.stopPropagation(); handleRetrySingle(t.id); }}
                         className="text-slate-600 hover:text-indigo-400 transition-colors"
                         title="Retry"
                       >
@@ -321,6 +325,17 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Preview modal */}
+      {previewImage && (
+        <ImagePreviewModal
+          sourceImage={previewImage}
+          activeLang={previewLang}
+          onChangeLang={setPreviewLang}
+          onClose={() => setPreviewImage(null)}
+          onRetry={(id) => { handleRetrySingle(id); }}
+        />
+      )}
     </div>
   );
 }
@@ -358,6 +373,129 @@ function TabButton({
         {completed !== undefined ? `${completed}/${count}` : count}
       </span>
     </button>
+  );
+}
+
+function ImagePreviewModal({
+  sourceImage,
+  activeLang,
+  onChangeLang,
+  onClose,
+  onRetry,
+}: {
+  sourceImage: SourceImage;
+  activeLang: string | null;
+  onChangeLang: (lang: string | null) => void;
+  onClose: () => void;
+  onRetry: (translationId: string) => void;
+}) {
+  const translations = sourceImage.image_translations ?? [];
+  const completedTranslations = translations.filter(
+    (t) => t.status === "completed" && t.translated_url
+  );
+
+  // Show translated image if a language is selected, otherwise show original
+  const activeTranslation = activeLang
+    ? translations.find((t) => t.language === activeLang)
+    : null;
+  const displayUrl = activeTranslation?.translated_url ?? sourceImage.original_url;
+  const isOriginal = !activeLang;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#141620] border border-[#1e2130] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e2130] shrink-0">
+          <div>
+            <p className="text-sm font-medium text-slate-200">
+              {sourceImage.filename ?? "Image"}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isOriginal ? "Original" : LANGUAGES.find((l) => l.value === activeLang)?.label + " translation"}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Language tabs */}
+        <div className="flex items-center gap-1 px-5 pt-3 shrink-0">
+          <button
+            onClick={() => onChangeLang(null)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              isOriginal
+                ? "bg-indigo-600/20 text-indigo-300"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+            }`}
+          >
+            Original
+          </button>
+          {translations.map((t) => {
+            const langInfo = LANGUAGES.find((l) => l.value === t.language);
+            const isActive = activeLang === t.language;
+            const isReady = t.status === "completed";
+            return (
+              <button
+                key={t.id}
+                onClick={() => isReady && onChangeLang(t.language)}
+                disabled={!isReady}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  isActive
+                    ? "bg-indigo-600/20 text-indigo-300"
+                    : isReady
+                    ? "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                    : "text-slate-700 cursor-not-allowed"
+                }`}
+              >
+                <span>{langInfo?.flag}</span>
+                {t.status === "completed" ? langInfo?.label : t.status === "failed" ? "Failed" : "Pending"}
+                {t.status === "failed" && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRetry(t.id); }}
+                    className="ml-1 text-red-400 hover:text-indigo-400"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Image */}
+        <div className="flex-1 overflow-auto p-5 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={displayUrl}
+            alt={isOriginal ? "Original" : `${activeLang} translation`}
+            className="max-w-full max-h-[65vh] object-contain rounded-lg"
+          />
+        </div>
+
+        {/* Footer with download */}
+        {!isOriginal && activeTranslation?.translated_url && (
+          <div className="px-5 py-3 border-t border-[#1e2130] flex justify-end shrink-0">
+            <a
+              href={activeTranslation.translated_url}
+              download={`${activeLang}_${sourceImage.filename ?? "image"}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-400 border border-[#1e2130] hover:border-indigo-500/30 rounded-lg px-3 py-2 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
