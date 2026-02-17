@@ -174,3 +174,36 @@ export interface QualityAnalysis {
   overall_assessment: string;
   extracted_text: string;
 }
+
+export interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  thumbnailLink?: string;
+}
+
+// --- Ad Copy Types ---
+
+export interface AdCopyJob {
+  id: string;
+  name: string;
+  source_text: string;
+  target_languages: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+  ad_copy_translations?: AdCopyTranslation[];
+}
+
+export interface AdCopyTranslation {
+  id: string;
+  job_id: string;
+  language: string;
+  translated_text: string | null;
+  quality_score: number | null;
+  quality_analysis: Record<string, unknown> | null;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}

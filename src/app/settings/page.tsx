@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Save, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Save, Eye, EyeOff, CheckCircle2, RefreshCw, Loader2 } from "lucide-react";
+import { Language, LANGUAGES } from "@/types";
 
 interface Settings {
   openai_api_key: string;
@@ -9,6 +10,12 @@ interface Settings {
   netlify_site_id_sv: string;
   netlify_site_id_dk: string;
   netlify_site_id_no: string;
+  static_ads_quality_enabled: boolean;
+  static_ads_quality_threshold: number;
+  static_ads_economy_mode: boolean;
+  static_ads_default_languages: Language[];
+  static_ads_notification_email: string;
+  static_ads_email_enabled: boolean;
 }
 
 // Settings are stored in localStorage for simplicity (API keys stay client-side)
@@ -20,10 +27,37 @@ export default function SettingsPage() {
     netlify_site_id_sv: "",
     netlify_site_id_dk: "",
     netlify_site_id_no: "",
+    static_ads_quality_enabled: true,
+    static_ads_quality_threshold: 80,
+    static_ads_economy_mode: false,
+    static_ads_default_languages: ["sv", "da", "no", "de"],
+    static_ads_notification_email: "",
+    static_ads_email_enabled: false,
   });
   const [showKeys, setShowKeys] = useState(false);
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [kieBalance, setKieBalance] = useState<number | null>(null);
+  const [kieLoading, setKieLoading] = useState(false);
+  const [kieError, setKieError] = useState<string | null>(null);
+
+  const fetchKieCredits = useCallback(async () => {
+    setKieLoading(true);
+    setKieError(null);
+    try {
+      const res = await fetch("/api/kie-credits");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to fetch");
+      }
+      const data = await res.json();
+      setKieBalance(data.balance);
+    } catch (err) {
+      setKieError(err instanceof Error ? err.message : "Failed to fetch credits");
+    } finally {
+      setKieLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem("content-hub-settings");
@@ -99,6 +133,128 @@ export default function SettingsPage() {
           />
         </Section>
 
+        {/* Static Ads */}
+        <Section title="Static Ads">
+          <Toggle
+            label="Quality analysis"
+            description="Run automatic quality checks on generated images"
+            checked={settings.static_ads_quality_enabled}
+            onChange={(v) => setSettings((s) => ({ ...s, static_ads_quality_enabled: v }))}
+          />
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">
+              Auto-regenerate threshold
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={settings.static_ads_quality_threshold}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    static_ads_quality_threshold: Number(e.target.value),
+                  }))
+                }
+                className="flex-1 accent-indigo-600"
+              />
+              <span className="text-sm font-medium text-gray-700 w-8 text-right">
+                {settings.static_ads_quality_threshold}
+              </span>
+            </div>
+          </div>
+
+          <Toggle
+            label="Economy mode"
+            description="Use faster, lower-cost generation settings"
+            checked={settings.static_ads_economy_mode}
+            onChange={(v) => setSettings((s) => ({ ...s, static_ads_economy_mode: v }))}
+          />
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-2">
+              Default target languages
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {LANGUAGES.map((lang) => {
+                const selected = settings.static_ads_default_languages.includes(lang.value);
+                return (
+                  <button
+                    key={lang.value}
+                    type="button"
+                    onClick={() =>
+                      setSettings((s) => ({
+                        ...s,
+                        static_ads_default_languages: selected
+                          ? s.static_ads_default_languages.filter((l) => l !== lang.value)
+                          : [...s.static_ads_default_languages, lang.value],
+                      }))
+                    }
+                    className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                      selected
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-600"
+                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                    }`}
+                  >
+                    <span className="text-base">{lang.flag}</span>
+                    {lang.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Field
+            label="Notification email"
+            value={settings.static_ads_notification_email}
+            onChange={(v) => setSettings((s) => ({ ...s, static_ads_notification_email: v }))}
+            placeholder="email@example.com"
+          />
+
+          <Toggle
+            label="Email notifications"
+            description="Send email when batch jobs complete"
+            checked={settings.static_ads_email_enabled}
+            onChange={(v) => setSettings((s) => ({ ...s, static_ads_email_enabled: v }))}
+          />
+        </Section>
+
+        {/* Kie AI */}
+        <Section title="Kie AI">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Credit Balance</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Credits used for image translation (nano-banana-pro)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {kieBalance !== null && (
+                <span className="text-lg font-semibold text-gray-800">
+                  {kieBalance.toLocaleString()}
+                </span>
+              )}
+              {kieError && (
+                <span className="text-xs text-red-500">{kieError}</span>
+              )}
+              <button
+                onClick={fetchKieCredits}
+                disabled={kieLoading}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {kieLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                {kieBalance === null && !kieLoading ? "Check" : "Refresh"}
+              </button>
+            </div>
+          </div>
+        </Section>
+
         {/* Actions */}
         <div className="flex items-center gap-3">
           <button
@@ -172,6 +328,44 @@ function Field({
         placeholder={placeholder}
         className="w-full bg-white border border-gray-300 text-gray-800 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 font-mono"
       />
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-gray-700">{label}</p>
+        {description && (
+          <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          checked ? "bg-indigo-600" : "bg-gray-200"
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+            checked ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
     </div>
   );
 }

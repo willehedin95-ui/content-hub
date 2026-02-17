@@ -114,6 +114,22 @@ export async function pollTaskResult(taskId: string): Promise<string[]> {
   throw new Error("Kie.ai task timed out after 3 minutes");
 }
 
+export async function getCredits(): Promise<{ balance: number }> {
+  const res = await fetch("https://api.kie.ai/api/v1/user/balance", {
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Kie.ai balance check failed (${res.status}): ${text}`);
+  }
+
+  const data = await res.json();
+  return { balance: data.data?.balance ?? 0 };
+}
+
 export async function generateImage(
   prompt: string,
   imageUrls: string[],

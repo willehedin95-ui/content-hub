@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Layers, Settings, Zap, BarChart3, Image } from "lucide-react";
+import { Layers, Settings, Zap, BarChart3, Image, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/", label: "Landing pages", icon: Layers },
   { href: "/images", label: "Static ads", icon: Image },
+  { href: "/ad-copy", label: "Ad copy", icon: MessageSquare },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

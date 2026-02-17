@@ -11,6 +11,7 @@ import {
   Download,
   RefreshCw,
   X,
+  Upload,
 } from "lucide-react";
 import JSZip from "jszip";
 import { ImageJob, ImageTranslation, SourceImage, Version, QualityAnalysis, LANGUAGES } from "@/types";
@@ -34,8 +35,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   const [processing, setProcessing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [driveExporting, setDriveExporting] = useState(false);
+  const [driveExportDone, setDriveExportDone] = useState(false);
   const [previewImage, setPreviewImage] = useState<SourceImage | null>(null);
   const [previewLang, setPreviewLang] = useState<string | null>(null);
+  const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
 
   const allTranslations = job.source_images?.flatMap(
@@ -58,20 +62,96 @@ export default function ImageJobDetail({ initialJob }: Props) {
     return null;
   }, [job.id]);
 
-  // Start processing pending translations on mount
+  // Start processing pending translations on mount (and auto-resume stalled ones)
   useEffect(() => {
-    const pending = getAllPending(initialJob);
-    if (pending.length > 0 && !processingRef.current) {
-      startQueue(pending);
+    async function resumeOnMount() {
+      const stalled = getStalledTranslations(initialJob);
+      if (stalled.length > 0) {
+        await fetch(`/api/image-jobs/${initialJob.id}/retry?include_stalled=true`, { method: "POST" });
+        const updated = await refreshJob();
+        if (updated) {
+          const pending = getAllPending(updated);
+          if (pending.length > 0 && !processingRef.current) {
+            startQueue(pending);
+          }
+        }
+        return;
+      }
+      const pending = getAllPending(initialJob);
+      if (pending.length > 0 && !processingRef.current) {
+        startQueue(pending);
+      }
     }
+    resumeOnMount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Watchdog timer: detect and recover stalled translations while processing
+  useEffect(() => {
+    if (!processing) return;
+    const interval = setInterval(async () => {
+      const updated = await refreshJob();
+      if (!updated) return;
+      const stalled = getStalledTranslations(updated);
+      if (stalled.length > 0) {
+        await fetch(`/api/image-jobs/${updated.id}/retry?include_stalled=true`, { method: "POST" });
+        const refreshed = await refreshJob();
+        if (refreshed) {
+          const pending = getAllPending(refreshed);
+          if (pending.length > 0 && !processingRef.current) {
+            startQueue(pending);
+          }
+        }
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processing]);
+
+  // Stall detection banner
+  useEffect(() => {
+    if (
+      job.status === "processing" &&
+      !processingRef.current &&
+      getStalledTranslations(job).length > 0
+    ) {
+      setShowRestartBanner(true);
+    } else {
+      setShowRestartBanner(false);
+    }
+  }, [job]);
+
+  async function handleRestart() {
+    await fetch(`/api/image-jobs/${job.id}/retry?include_stalled=true`, { method: "POST" });
+    const updated = await refreshJob();
+    if (updated) {
+      const pending = getAllPending(updated);
+      if (pending.length > 0) {
+        startQueue(pending);
+      }
+    }
+    setShowRestartBanner(false);
+  }
 
   function getAllPending(j: ImageJob): ImageTranslation[] {
     return (
       j.source_images?.flatMap(
         (si) =>
           si.image_translations?.filter((t) => t.status === "pending") ?? []
+      ) ?? []
+    );
+  }
+
+  function getStalledTranslations(j: ImageJob): ImageTranslation[] {
+    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    return (
+      j.source_images?.flatMap(
+        (si) =>
+          si.image_translations?.filter(
+            (t) =>
+              t.status === "processing" &&
+              new Date(t.updated_at).getTime() < twoMinutesAgo
+          ) ?? []
       ) ?? []
     );
   }
@@ -98,7 +178,41 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
     processingRef.current = false;
     setProcessing(false);
-    await refreshJob();
+    const finalJob = await refreshJob();
+
+    // Auto-export to Drive if enabled
+    if (finalJob) {
+      const settings = getSettings();
+      if (settings.static_ads_quality_enabled !== false && finalJob.source_folder_id) {
+        try {
+          await fetch("/api/drive/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId: finalJob.id }),
+          });
+          setDriveExportDone(true);
+          setTimeout(() => setDriveExportDone(false), 3000);
+        } catch (err) {
+          console.error("Auto-export to Drive failed:", err);
+        }
+      }
+
+      // Send email notification if enabled
+      if (settings.static_ads_email_enabled && settings.static_ads_notification_email) {
+        try {
+          await fetch("/api/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jobId: finalJob.id,
+              email: settings.static_ads_notification_email,
+            }),
+          });
+        } catch (err) {
+          console.error("Email notification failed:", err);
+        }
+      }
+    }
   }
 
   async function processOne(translation: ImageTranslation) {
@@ -223,6 +337,28 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }
   }
 
+  async function handleExportToDrive() {
+    setDriveExporting(true);
+    try {
+      const res = await fetch("/api/drive/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Drive export failed:", data.error);
+        return;
+      }
+
+      setDriveExportDone(true);
+      setTimeout(() => setDriveExportDone(false), 3000);
+    } finally {
+      setDriveExporting(false);
+    }
+  }
+
   // Filter images based on active tab
   const filteredImages = (job.source_images ?? []).map((si) => ({
     ...si,
@@ -252,6 +388,23 @@ export default function ImageJobDetail({ initialJob }: Props) {
         Static ads
       </Link>
 
+      {/* Stall detection banner */}
+      {showRestartBanner && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <span className="text-sm text-amber-700">Processing appears stalled.</span>
+          </div>
+          <button
+            onClick={handleRestart}
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restart Now
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -270,18 +423,36 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <RefreshCw className="w-4 h-4" />
           </button>
           {completedCount > 0 && (
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-            >
-              {exporting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
+            <>
+              {job.source_folder_id && (
+                <button
+                  onClick={handleExportToDrive}
+                  disabled={driveExporting}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
+                >
+                  {driveExporting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : driveExportDone ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  {driveExporting ? "Exporting..." : driveExportDone ? "Exported!" : "Export to Drive"}
+                </button>
               )}
-              Export
-            </button>
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
+              >
+                {exporting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                Export
+              </button>
+            </>
           )}
         </div>
       </div>

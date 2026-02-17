@@ -6,6 +6,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  const includeStalled = _req.nextUrl.searchParams.get("include_stalled") === "true";
   const db = createServerSupabase();
 
   // Find all failed translations for this job
@@ -19,11 +20,28 @@ export async function POST(
     return NextResponse.json({ error: findError.message }, { status: 500 });
   }
 
-  if (!failed?.length) {
-    return NextResponse.json({ message: "No failed translations to retry", ids: [] });
+  let ids = (failed ?? []).map((t) => t.id);
+
+  // Also include stalled "processing" translations when requested
+  if (includeStalled) {
+    const { data: stalled, error: stalledError } = await db
+      .from("image_translations")
+      .select("id, source_images!inner(job_id)")
+      .eq("source_images.job_id", jobId)
+      .eq("status", "processing");
+
+    if (stalledError) {
+      return NextResponse.json({ error: stalledError.message }, { status: 500 });
+    }
+
+    if (stalled?.length) {
+      ids = [...ids, ...stalled.map((t) => t.id)];
+    }
   }
 
-  const ids = failed.map((t) => t.id);
+  if (!ids.length) {
+    return NextResponse.json({ message: "No translations to retry", ids: [] });
+  }
 
   // Reset to pending
   const { error: updateError } = await db
