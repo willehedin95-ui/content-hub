@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listDriveFiles, extractFolderId } from "@/lib/google-drive";
+import { listDriveFiles, extractFolderId, getFolderName } from "@/lib/google-drive";
 
 export async function POST(req: NextRequest) {
   const { folderUrl } = (await req.json()) as { folderUrl: string };
@@ -14,8 +14,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const files = await listDriveFiles(folderId);
-    return NextResponse.json({ folderId, files });
+    const [files, folderName] = await Promise.all([
+      listDriveFiles(folderId),
+      getFolderName(folderId),
+    ]);
+    return NextResponse.json({ folderId, folderName, files });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to list files" },

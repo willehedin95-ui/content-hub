@@ -99,6 +99,13 @@ export async function uploadToDrive(
   return res.data.id!;
 }
 
+export async function getFolderName(folderId: string): Promise<string> {
+  const auth = getAuth();
+  const drive = google.drive({ version: "v3", auth });
+  const res = await drive.files.get({ fileId: folderId, fields: "name" });
+  return res.data.name ?? "Untitled";
+}
+
 export function extractFolderId(url: string): string | null {
   // https://drive.google.com/drive/folders/FOLDER_ID
   const match = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
