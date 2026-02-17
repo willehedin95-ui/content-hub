@@ -234,9 +234,14 @@ export default function TranslationRow({
         <div className="flex-1 min-w-0">
           {displayUrl ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-400 truncate">
+              <a
+                href={displayUrl.startsWith("http") ? displayUrl : `https://${displayUrl}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-400 hover:text-indigo-600 truncate transition-colors"
+              >
                 {displayUrl.replace(/^https?:\/\//, "")}
-              </span>
+              </a>
               <button
                 onClick={handleCopyUrl}
                 className="shrink-0 text-gray-400 hover:text-gray-700 transition-colors"
