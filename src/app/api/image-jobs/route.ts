@@ -18,10 +18,20 @@ function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
 export async function GET() {
   const db = createServerSupabase();
 
-  const { data: jobs, error } = await db
+  let { data: jobs, error } = await db
     .from("image_jobs")
     .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .order("created_at", { ascending: false });
+
+  // Fall back to query without versions if table doesn't exist yet
+  if (error && error.message?.includes("versions")) {
+    const fallback = await db
+      .from("image_jobs")
+      .select(`*, source_images(*, image_translations(*))`)
+      .order("created_at", { ascending: false });
+    jobs = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -34,9 +44,10 @@ export async function GET() {
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, target_languages } = body as {
+  const { name, target_languages, source_folder_id } = body as {
     name?: string;
     target_languages?: string[];
+    source_folder_id?: string;
   };
 
   if (!name?.trim()) {
@@ -48,13 +59,16 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
+  const insertData: Record<string, unknown> = {
+    name: name.trim(),
+    status: "draft",
+    target_languages,
+  };
+  if (source_folder_id) insertData.source_folder_id = source_folder_id;
+
   const { data: job, error: jobError } = await db
     .from("image_jobs")
-    .insert({
-      name: name.trim(),
-      status: "draft",
-      target_languages,
-    })
+    .insert(insertData)
     .select()
     .single();
 

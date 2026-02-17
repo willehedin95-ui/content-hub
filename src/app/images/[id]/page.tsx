@@ -12,11 +12,22 @@ export default async function ImageJobPage({
   const { id } = await params;
   const db = createServerSupabase();
 
-  const { data: job, error } = await db
+  // Try with versions join first, fall back to without if versions table doesn't exist
+  let { data: job, error } = await db
     .from("image_jobs")
     .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .eq("id", id)
     .single();
+
+  if (error && error.message?.includes("versions")) {
+    const fallback = await db
+      .from("image_jobs")
+      .select(`*, source_images(*, image_translations(*))`)
+      .eq("id", id)
+      .single();
+    job = fallback.data;
+    error = fallback.error;
+  }
 
   if (error || !job) notFound();
 

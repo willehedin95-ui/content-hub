@@ -8,11 +8,22 @@ export async function GET(
   const { id } = await params;
   const db = createServerSupabase();
 
-  const { data: job, error } = await db
+  let { data: job, error } = await db
     .from("image_jobs")
     .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .eq("id", id)
     .single();
+
+  // Fall back to query without versions if table doesn't exist yet
+  if (error && error.message?.includes("versions")) {
+    const fallback = await db
+      .from("image_jobs")
+      .select(`*, source_images(*, image_translations(*))`)
+      .eq("id", id)
+      .single();
+    job = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 404 });
