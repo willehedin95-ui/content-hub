@@ -57,22 +57,51 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
     setError("");
 
     try {
-      const formData = new FormData();
-      formData.append("name", name.trim());
-      formData.append("target_languages", JSON.stringify(Array.from(selectedLanguages)));
-      files.forEach((file) => formData.append("images", file));
-
-      const res = await fetch("/api/image-jobs", {
+      // 1. Create the job (JSON, no files)
+      const createRes = await fetch("/api/image-jobs", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          target_languages: Array.from(selectedLanguages),
+        }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create concept");
+      if (!createRes.ok) {
+        const text = await createRes.text();
+        try {
+          const data = JSON.parse(text);
+          throw new Error(data.error || "Failed to create concept");
+        } catch {
+          throw new Error(text || "Failed to create concept");
+        }
       }
 
-      const job = await res.json();
+      const job = await createRes.json();
+
+      // 2. Upload images one at a time
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const uploadRes = await fetch(`/api/image-jobs/${job.id}/upload`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          const data = await uploadRes.json().catch(() => ({}));
+          throw new Error(data.error || `Failed to upload ${file.name}`);
+        }
+      }
+
+      // 3. Set job to processing
+      await fetch(`/api/image-jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "processing" }),
+      });
+
       onCreated(job.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
