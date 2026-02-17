@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
@@ -22,7 +21,7 @@ function getTranslationUrl(translations: Translation[], lang: string) {
   return translations?.find((t) => t.language === lang)?.published_url;
 }
 
-export default function PagesTable({ pages }: { pages: Page[] }) {
+export default function PagesTable({ pages, onImport }: { pages: Page[]; onImport?: () => void }) {
   const router = useRouter();
   const [filter, setFilter] = useState({ product: "", type: "", search: "" });
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -154,12 +153,12 @@ export default function PagesTable({ pages }: { pages: Page[] }) {
                   {pages.length === 0 ? (
                     <>
                       No pages yet.{" "}
-                      <Link
-                        href="/import"
+                      <button
+                        onClick={onImport}
                         className="text-indigo-400 hover:underline"
                       >
                         Import your first page &rarr;
-                      </Link>
+                      </button>
                     </>
                   ) : (
                     <>
