@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import JSZip from "jszip";
-import { ImageJob, ImageTranslation, SourceImage, LANGUAGES } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, Version, LANGUAGES } from "@/types";
 
 interface Props {
   initialJob: ImageJob;
@@ -117,8 +117,6 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
   async function handleRetrySingle(translationId: string) {
-    // Reset this single translation to pending via the retry-like pattern
-    // We'll just call the translate endpoint directly after a short reset
     await fetch(`/api/image-jobs/${job.id}/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -187,7 +185,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Images
+        Static ads
       </Link>
 
       {/* Header */}
@@ -303,11 +301,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <div className="p-2.5 space-y-1">
               {(si.image_translations ?? []).map((t) => {
                 const langInfo = LANGUAGES.find((l) => l.value === t.language);
+                const versionCount = t.versions?.length ?? 0;
                 return (
                   <div key={t.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs">{langInfo?.flag}</span>
                       <TranslationStatusBadge status={t.status} />
+                      {versionCount > 1 && (
+                        <span className="text-[10px] text-gray-400">v{versionCount}</span>
+                      )}
                     </div>
                     {t.status === "failed" && (
                       <button
@@ -390,15 +392,27 @@ function ImagePreviewModal({
   onRetry: (translationId: string) => void;
 }) {
   const translations = sourceImage.image_translations ?? [];
-  const completedTranslations = translations.filter(
-    (t) => t.status === "completed" && t.translated_url
-  );
-
-  // Show translated image if a language is selected, otherwise show original
   const activeTranslation = activeLang
     ? translations.find((t) => t.language === activeLang)
     : null;
-  const displayUrl = activeTranslation?.translated_url ?? sourceImage.original_url;
+
+  // Get sorted versions for the active translation
+  const versions = (activeTranslation?.versions ?? [])
+    .filter((v) => v.translated_url)
+    .sort((a, b) => b.version_number - a.version_number);
+
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+
+  // Reset active version when language changes
+  useEffect(() => {
+    setActiveVersionId(activeTranslation?.active_version_id ?? null);
+  }, [activeLang, activeTranslation?.active_version_id]);
+
+  const activeVersion = activeVersionId
+    ? versions.find((v) => v.id === activeVersionId)
+    : versions[0]; // default to latest
+
+  const displayUrl = activeVersion?.translated_url ?? activeTranslation?.translated_url ?? sourceImage.original_url;
   const isOriginal = !activeLang;
 
   return (
@@ -417,7 +431,11 @@ function ImagePreviewModal({
               {sourceImage.filename ?? "Image"}
             </p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {isOriginal ? "Original" : LANGUAGES.find((l) => l.value === activeLang)?.label + " translation"}
+              {isOriginal
+                ? "Original"
+                : `${LANGUAGES.find((l) => l.value === activeLang)?.label} translation${
+                    activeVersion ? ` (v${activeVersion.version_number})` : ""
+                  }`}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
@@ -469,6 +487,46 @@ function ImagePreviewModal({
           })}
         </div>
 
+        {/* Version selector (only when viewing a translation with multiple versions) */}
+        {!isOriginal && versions.length > 1 && (
+          <div className="flex items-center gap-1.5 px-5 pt-2 shrink-0">
+            <span className="text-[10px] text-gray-400 uppercase tracking-wider mr-1">Versions</span>
+            {versions
+              .sort((a, b) => a.version_number - b.version_number)
+              .map((v) => {
+                const isCurrent = v.id === (activeVersionId ?? versions[0]?.id);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setActiveVersionId(v.id)}
+                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      isCurrent
+                        ? "bg-indigo-50 text-indigo-600"
+                        : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    v{v.version_number}
+                    {v.quality_score != null && (
+                      <span className={`ml-1 ${
+                        v.quality_score >= 80 ? "text-emerald-600" :
+                        v.quality_score >= 60 ? "text-yellow-600" : "text-red-600"
+                      }`}>
+                        {Math.round(v.quality_score)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+        )}
+
+        {/* Quality analysis for active version */}
+        {activeVersion?.quality_score != null && (
+          <div className="px-5 pt-2 shrink-0">
+            <QualityBadge score={activeVersion.quality_score} />
+          </div>
+        )}
+
         {/* Image */}
         <div className="flex-1 overflow-auto p-5 flex items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -480,10 +538,15 @@ function ImagePreviewModal({
         </div>
 
         {/* Footer with download */}
-        {!isOriginal && activeTranslation?.translated_url && (
-          <div className="px-5 py-3 border-t border-gray-200 flex justify-end shrink-0">
+        {!isOriginal && (activeVersion?.translated_url || activeTranslation?.translated_url) && (
+          <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between shrink-0">
+            {activeVersion?.generation_time_seconds != null && (
+              <span className="text-[10px] text-gray-400">
+                Generated in {Math.round(activeVersion.generation_time_seconds)}s
+              </span>
+            )}
             <a
-              href={activeTranslation.translated_url}
+              href={activeVersion?.translated_url ?? activeTranslation?.translated_url ?? ""}
               download={`${activeLang}_${sourceImage.filename ?? "image"}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -496,6 +559,19 @@ function ImagePreviewModal({
         )}
       </div>
     </div>
+  );
+}
+
+function QualityBadge({ score }: { score: number }) {
+  const classes = score >= 80
+    ? "bg-emerald-50 text-emerald-700"
+    : score >= 60
+    ? "bg-yellow-50 text-yellow-700"
+    : "bg-red-50 text-red-700";
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${classes}`}>
+      Quality: {Math.round(score)}/100
+    </span>
   );
 }
 

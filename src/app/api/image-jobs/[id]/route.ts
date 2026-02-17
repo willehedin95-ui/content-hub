@@ -10,7 +10,7 @@ export async function GET(
 
   const { data: job, error } = await db
     .from("image_jobs")
-    .select(`*, source_images(*, image_translations(*))`)
+    .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .eq("id", id)
     .single();
 

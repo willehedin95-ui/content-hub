@@ -78,7 +78,7 @@ export default async function PageDetailPage({
           Translations
         </h2>
         <div className="space-y-2">
-          {LANGUAGES.map((lang) => {
+          {LANGUAGES.filter((lang) => lang.domain).map((lang) => {
             const translation = p.translations?.find(
               (t) => t.language === lang.value && t.variant !== "b"
             );

@@ -20,7 +20,7 @@ export async function GET() {
 
   const { data: jobs, error } = await db
     .from("image_jobs")
-    .select(`*, source_images(*, image_translations(*))`)
+    .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .order("created_at", { ascending: false });
 
   if (error) {

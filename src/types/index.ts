@@ -1,6 +1,6 @@
 export type Product = "happysleep" | "hydro13";
 export type PageType = "advertorial" | "listicle";
-export type Language = "sv" | "da" | "no";
+export type Language = "sv" | "da" | "no" | "de";
 export type TranslationStatus =
   | "draft"
   | "translating"
@@ -95,6 +95,12 @@ export const LANGUAGES: {
     flag: "🇳🇴",
     domain: "blog.halsobladet.com/no",
   },
+  {
+    value: "de",
+    label: "German",
+    flag: "🇩🇪",
+    domain: "",
+  },
 ];
 
 // --- Image Translation Types ---
@@ -107,6 +113,10 @@ export interface ImageJob {
   name: string;
   status: ImageJobStatus;
   target_languages: string[];
+  source_folder_id: string | null;
+  auto_export: boolean;
+  exported_at: string | null;
+  notified_at: string | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
@@ -121,6 +131,8 @@ export interface SourceImage {
   job_id: string;
   original_url: string;
   filename: string | null;
+  processing_order: number | null;
+  thumbnail_url: string | null;
   created_at: string;
   image_translations?: ImageTranslation[];
 }
@@ -132,6 +144,33 @@ export interface ImageTranslation {
   status: ImageTranslationStatus;
   translated_url: string | null;
   error_message: string | null;
+  active_version_id: string | null;
   created_at: string;
   updated_at: string;
+  versions?: Version[];
+}
+
+export interface Version {
+  id: string;
+  image_translation_id: string;
+  version_number: number;
+  translated_url: string | null;
+  quality_score: number | null;
+  quality_analysis: QualityAnalysis | null;
+  extracted_text: string | null;
+  generation_time_seconds: number | null;
+  error_message: string | null;
+  corrected_text: string | null;
+  visual_instructions: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface QualityAnalysis {
+  quality_score: number;
+  spelling_errors: string[];
+  grammar_issues: string[];
+  missing_text: string[];
+  overall_assessment: string;
+  extracted_text: string;
 }

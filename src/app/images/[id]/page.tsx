@@ -14,7 +14,7 @@ export default async function ImageJobPage({
 
   const { data: job, error } = await db
     .from("image_jobs")
-    .select(`*, source_images(*, image_translations(*))`)
+    .select(`*, source_images(*, image_translations(*, versions(*)))`)
     .eq("id", id)
     .single();
 
