@@ -126,10 +126,10 @@ export default function SettingsPage() {
             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
           />
           <Field
-            label="🇳🇴 Norwegian Site ID (blog.halsobladet.com/no)"
+            label="🇳🇴 Norwegian Site ID (helseguiden.com)"
             value={settings.netlify_site_id_no}
             onChange={(v) => setSettings((s) => ({ ...s, netlify_site_id_no: v }))}
-            placeholder="Same as Swedish site ID for now"
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
           />
         </Section>
 

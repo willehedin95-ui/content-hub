@@ -60,9 +60,7 @@ export async function publishPage(
   siteId: string,
   additionalFiles?: DeployFile[]
 ): Promise<NetlifyDeployResult> {
-  // Norwegian pages go in /no/ subdirectory on the Swedish site
-  const filePath =
-    language === "no" ? `/no/${slug}/index.html` : `/${slug}/index.html`;
+  const filePath = `/${slug}/index.html`;
 
   // Get existing files from current production deploy to preserve them
   const existingFiles = await getCurrentFiles(siteId, token);
@@ -166,7 +164,7 @@ export async function publishPage(
     ? `https://${site.custom_domain}`
     : site.url;
 
-  const pagePath = language === "no" ? `/no/${slug}` : `/${slug}`;
+  const pagePath = `/${slug}`;
 
   return {
     url: `${baseUrl}${pagePath}`,
@@ -196,7 +194,7 @@ export async function publishABTest(
   testId: string,
   appUrl: string
 ): Promise<ABTestDeployResult> {
-  const prefix = language === "no" ? `/no/${slug}` : `/${slug}`;
+  const prefix = `/${slug}`;
   const routerPath = `${prefix}/index.html`;
   const controlPath = `${prefix}/a/index.html`;
   const variantPath = `${prefix}/b/index.html`;

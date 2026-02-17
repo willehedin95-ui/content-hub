@@ -93,7 +93,7 @@ export const LANGUAGES: {
     value: "no",
     label: "Norwegian",
     flag: "🇳🇴",
-    domain: "blog.halsobladet.com/no",
+    domain: "helseguiden.com",
   },
   {
     value: "de",
