@@ -12,8 +12,45 @@ export interface DeployFile {
 }
 
 /**
+ * Fetch the file manifest (path → sha1) from the current production deploy.
+ * This allows us to merge existing files into new deploys so previously
+ * published pages aren't deleted.
+ */
+async function getCurrentFiles(
+  siteId: string,
+  token: string
+): Promise<Record<string, string>> {
+  // Get the site to find the current production deploy
+  const siteRes = await fetch(
+    `https://api.netlify.com/api/v1/sites/${siteId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!siteRes.ok) return {};
+
+  const site = (await siteRes.json()) as {
+    published_deploy?: { id: string };
+  };
+  const deployId = site.published_deploy?.id;
+  if (!deployId) return {};
+
+  // Get the file listing from the current deploy
+  const filesRes = await fetch(
+    `https://api.netlify.com/api/v1/deploys/${deployId}/files`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!filesRes.ok) return {};
+
+  const fileList = (await filesRes.json()) as { path: string; sha: string }[];
+  const files: Record<string, string> = {};
+  for (const f of fileList) {
+    files[f.path] = f.sha;
+  }
+  return files;
+}
+
+/**
  * Deploy an HTML file (and optional additional files like images) to a Netlify site.
- * Uses the Files API to update files without a full deploy.
+ * Merges with existing files so previously published pages are preserved.
  */
 export async function publishPage(
   html: string,
@@ -27,8 +64,12 @@ export async function publishPage(
   const filePath =
     language === "no" ? `/no/${slug}/index.html` : `/${slug}/index.html`;
 
-  // Build file manifest: HTML + any additional files (images)
+  // Get existing files from current production deploy to preserve them
+  const existingFiles = await getCurrentFiles(siteId, token);
+
+  // Build file manifest: existing files + new HTML + any additional files (images)
   const files: Record<string, string> = {
+    ...existingFiles,
     [filePath]: await sha1(html),
   };
   if (additionalFiles) {
@@ -37,7 +78,7 @@ export async function publishPage(
     }
   }
 
-  // Create a new deploy with all files
+  // Create a new deploy with all files (existing + new)
   const deployRes = await fetch(
     `https://api.netlify.com/api/v1/sites/${siteId}/deploys`,
     {
@@ -166,7 +207,10 @@ export async function publishABTest(
   const trackedControlHtml = injectTrackingScript(controlHtml, appUrl, testId, "a");
   const trackedVariantHtml = injectTrackingScript(variantHtml, appUrl, testId, "b");
 
-  // Create deploy with all 3 files
+  // Get existing files from current production deploy to preserve them
+  const existingFiles = await getCurrentFiles(siteId, token);
+
+  // Create deploy with existing files + 3 new A/B test files
   const deployRes = await fetch(
     `https://api.netlify.com/api/v1/sites/${siteId}/deploys`,
     {
@@ -177,6 +221,7 @@ export async function publishABTest(
       },
       body: JSON.stringify({
         files: {
+          ...existingFiles,
           [routerPath]: await sha1(routerHtml),
           [controlPath]: await sha1(trackedControlHtml),
           [variantPath]: await sha1(trackedVariantHtml),
