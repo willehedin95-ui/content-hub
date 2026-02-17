@@ -7,7 +7,7 @@ Always commit and push changes to the `main` branch after finishing a task. The 
 ## Tech stack
 
 - **Framework**: Next.js 15 (App Router), React 19, TypeScript
-- **Styling**: Tailwind CSS, dark theme (`bg-[#0a0c14]` base, `#141620` cards, `#1e2130` borders, indigo primary)
+- **Styling**: Tailwind CSS, light theme (`bg-gray-50` base, `bg-white` cards, `border-gray-200` borders, indigo-600 primary)
 - **Database**: Supabase (PostgreSQL) — server-side uses `createServerSupabase()` with service role key
 - **Storage**: Supabase Storage `translated-images` bucket for all uploaded/generated images
 - **APIs**: OpenAI GPT-4o (text translation), Kie AI nano-banana-pro (image translation), Netlify (publishing)
@@ -38,8 +38,8 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 
 ## Features
 
-- **Dashboard**: List/filter pages, translation status per language
-- **Import**: Fetch URL (Puppeteer) or upload HTML file
+- **Landing pages** (dashboard): List/filter pages, translation status per language
+- **Import**: Modal on dashboard — fetch URL (Puppeteer) or upload HTML file
 - **Editor**: Iframe-based WYSIWYG with inline text editing, image translation, SEO controls, per-language slugs
 - **Publishing**: Deploy to Netlify with image optimization (WebP), A/B testing with split routing
-- **Images**: Batch image translation — upload images, translate via Kie AI to sv/da/no, export as zip
+- **Static ads**: Batch image translation — upload images, translate via Kie AI to sv/da/no, export as zip

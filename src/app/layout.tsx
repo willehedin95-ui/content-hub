@@ -13,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="flex min-h-screen bg-[#0a0c14]">
+    <html lang="en">
+      <body className="flex min-h-screen bg-gray-50">
         <Sidebar />
         <main className="flex-1 overflow-auto">{children}</main>
       </body>

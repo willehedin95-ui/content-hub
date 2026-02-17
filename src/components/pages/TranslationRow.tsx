@@ -158,24 +158,24 @@ export default function TranslationRow({
   // Not started — show translate button
   if (!translation) {
     return (
-      <div className="bg-[#141620] border border-[#1e2130] rounded-lg px-4 py-3">
+      <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-lg">{language.flag}</span>
             <div>
-              <p className="text-slate-200 font-medium text-sm">{language.label}</p>
-              <p className="text-slate-600 text-[10px]">{language.domain}</p>
+              <p className="text-gray-800 font-medium text-sm">{language.label}</p>
+              <p className="text-gray-400 text-[10px]">{language.domain}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <StatusDot status="none" />
-              <span className="text-xs text-slate-500">Not started</span>
+              <span className="text-xs text-gray-400">Not started</span>
             </div>
             <button
               onClick={handleTranslate}
               disabled={loading !== null}
-              className="flex items-center gap-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 disabled:opacity-40 text-indigo-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-500/20 transition-colors"
+              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-600 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors"
             >
               {loading === "translate" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -189,7 +189,7 @@ export default function TranslationRow({
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 text-red-400 text-xs mt-2 bg-red-500/10 rounded-lg px-3 py-2">
+          <div className="flex items-start gap-2 text-red-600 text-xs mt-2 bg-red-50 rounded-lg px-3 py-2">
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             {error}
           </div>
@@ -202,14 +202,14 @@ export default function TranslationRow({
 
   // Has translation — show full row
   return (
-    <div className="bg-[#141620] border border-[#1e2130] rounded-lg px-4 py-3">
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
       <div className="flex items-center justify-between gap-4">
         {/* Language info */}
         <div className="flex items-center gap-3 shrink-0">
           <span className="text-lg">{language.flag}</span>
           <div>
-            <p className="text-slate-200 font-medium text-sm">{language.label}</p>
-            <p className="text-slate-600 text-[10px]">{language.domain}</p>
+            <p className="text-gray-800 font-medium text-sm">{language.label}</p>
+            <p className="text-gray-400 text-[10px]">{language.domain}</p>
           </div>
         </div>
 
@@ -217,15 +217,15 @@ export default function TranslationRow({
         <div className="flex items-center gap-1.5 shrink-0">
           {hasActiveTest ? (
             <>
-              <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs text-amber-400">
+              <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-xs text-amber-600">
                 {AB_STATUS_LABELS[abTest.status] ?? abTest.status}
               </span>
             </>
           ) : (
             <>
               <StatusDot status={status} />
-              <span className="text-xs text-slate-400">{STATUS_LABELS[status]}</span>
+              <span className="text-xs text-gray-500">{STATUS_LABELS[status]}</span>
             </>
           )}
         </div>
@@ -234,24 +234,24 @@ export default function TranslationRow({
         <div className="flex-1 min-w-0">
           {displayUrl ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-500 truncate">
+              <span className="text-xs text-gray-400 truncate">
                 {displayUrl.replace(/^https?:\/\//, "")}
               </span>
               <button
                 onClick={handleCopyUrl}
-                className="shrink-0 text-slate-500 hover:text-slate-300 transition-colors"
+                className="shrink-0 text-gray-400 hover:text-gray-700 transition-colors"
                 title="Copy URL"
                 aria-label={copied ? "URL copied" : "Copy URL"}
               >
                 {copied ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
                 ) : (
                   <Copy className="w-3.5 h-3.5" />
                 )}
               </button>
             </div>
           ) : (
-            <span className="text-xs text-slate-600">Not published</span>
+            <span className="text-xs text-gray-400">Not published</span>
           )}
         </div>
 
@@ -260,7 +260,7 @@ export default function TranslationRow({
           {hasActiveTest ? (
             <Link
               href={`/pages/${pageId}/ab-test/${language.value}`}
-              className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
             >
               <FlaskConical className="w-3.5 h-3.5" />
               Manage Test
@@ -269,7 +269,7 @@ export default function TranslationRow({
             <>
               <Link
                 href={`/pages/${pageId}/edit/${language.value}`}
-                className="flex items-center gap-1.5 bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-600/30 transition-colors"
+                className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 Edit
@@ -277,7 +277,7 @@ export default function TranslationRow({
               <button
                 onClick={handleCreateABTest}
                 disabled={loading !== null || !canPublish}
-                className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
                 title="Create A/B test"
               >
                 {loading === "ab" ? (
@@ -290,7 +290,7 @@ export default function TranslationRow({
               <button
                 onClick={handlePublish}
                 disabled={!canPublish || loading !== null}
-                className="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-colors"
+                className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
               >
                 {loading === "publish" ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -306,7 +306,7 @@ export default function TranslationRow({
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 text-red-400 text-xs mt-2 bg-red-500/10 rounded-lg px-3 py-2">
+        <div className="flex items-start gap-2 text-red-600 text-xs mt-2 bg-red-50 rounded-lg px-3 py-2">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           {error}
         </div>

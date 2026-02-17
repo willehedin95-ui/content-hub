@@ -10,13 +10,13 @@ const config: Config = {
     extend: {
       colors: {
         sidebar: {
-          bg: "#0f1117",
-          border: "#1e2130",
-          hover: "#1a1d2e",
+          bg: "#ffffff",
+          border: "#e5e7eb",
+          hover: "#f3f4f6",
         },
         card: {
-          bg: "#141620",
-          border: "#1e2130",
+          bg: "#ffffff",
+          border: "#e5e7eb",
         },
       },
     },

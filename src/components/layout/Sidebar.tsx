@@ -16,18 +16,18 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 min-h-screen bg-[#0f1117] border-r border-[#1e2130] flex flex-col shrink-0">
+    <aside className="w-56 min-h-screen bg-white border-r border-gray-200 flex flex-col shrink-0">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-[#1e2130]">
+      <div className="px-5 py-5 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
             <Zap className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white leading-tight">
+            <p className="text-sm font-semibold text-gray-900 leading-tight">
               Content Hub
             </p>
-            <p className="text-[10px] text-slate-500">Hälsobladet</p>
+            <p className="text-[10px] text-gray-400">Hälsobladet</p>
           </div>
         </div>
       </div>
@@ -44,8 +44,8 @@ export default function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                 active
-                  ? "bg-indigo-600/20 text-indigo-300 font-medium"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                  ? "bg-indigo-50 text-indigo-600 font-medium"
+                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
               )}
             >
               <Icon className="w-4 h-4 shrink-0" />
@@ -56,8 +56,8 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-[#1e2130]">
-        <p className="text-[10px] text-slate-600">Content Hub v1.0</p>
+      <div className="px-5 py-4 border-t border-gray-200">
+        <p className="text-[10px] text-gray-400">Content Hub v1.0</p>
       </div>
     </aside>
   );

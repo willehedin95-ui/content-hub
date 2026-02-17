@@ -73,13 +73,13 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
             setFilter((f) => ({ ...f, search: e.target.value }))
           }
           placeholder="Search pages..."
-          className="bg-[#141620] border border-[#1e2130] text-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 w-56"
+          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 w-56"
         />
 
         <select
           value={filter.product}
           onChange={(e) => setFilter((f) => ({ ...f, product: e.target.value }))}
-          className="bg-[#141620] border border-[#1e2130] text-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
         >
           <option value="">All Products</option>
           {PRODUCTS.map((p) => (
@@ -92,7 +92,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
         <select
           value={filter.type}
           onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
-          className="bg-[#141620] border border-[#1e2130] text-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
         >
           <option value="">All Types</option>
           {PAGE_TYPES.map((t) => (
@@ -102,42 +102,42 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
           ))}
         </select>
 
-        <span className="text-slate-500 text-sm ml-auto">
+        <span className="text-gray-400 text-sm ml-auto">
           {filtered.length} page{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* Delete error */}
       {deleteError && (
-        <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4">
+        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {deleteError}
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-xl border border-[#1e2130] overflow-hidden">
+      <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-[#141620] border-b border-[#1e2130]">
-              <th className="text-left px-4 py-3 text-slate-400 font-medium">
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left px-4 py-3 text-gray-500 font-medium">
                 Name
               </th>
-              <th className="text-left px-4 py-3 text-slate-400 font-medium">
+              <th className="text-left px-4 py-3 text-gray-500 font-medium">
                 Product
               </th>
-              <th className="text-left px-4 py-3 text-slate-400 font-medium">
+              <th className="text-left px-4 py-3 text-gray-500 font-medium">
                 Type
               </th>
               {LANGUAGES.map((l) => (
                 <th
                   key={l.value}
-                  className="text-center px-4 py-3 text-slate-400 font-medium"
+                  className="text-center px-4 py-3 text-gray-500 font-medium"
                 >
                   {l.flag}
                 </th>
               ))}
-              <th className="text-left px-4 py-3 text-slate-400 font-medium">
+              <th className="text-left px-4 py-3 text-gray-500 font-medium">
                 Created
               </th>
               <th className="px-4 py-3" />
@@ -148,14 +148,14 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
               <tr>
                 <td
                   colSpan={7 + LANGUAGES.length}
-                  className="px-4 py-12 text-center text-slate-500"
+                  className="px-4 py-12 text-center text-gray-400"
                 >
                   {pages.length === 0 ? (
                     <>
                       No pages yet.{" "}
                       <button
                         onClick={onImport}
-                        className="text-indigo-400 hover:underline"
+                        className="text-indigo-600 hover:underline"
                       >
                         Import your first page &rarr;
                       </button>
@@ -167,7 +167,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                         onClick={() =>
                           setFilter({ product: "", type: "", search: "" })
                         }
-                        className="text-indigo-400 hover:underline"
+                        className="text-indigo-600 hover:underline"
                       >
                         Clear filters
                       </button>
@@ -179,19 +179,19 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
             {filtered.map((page) => (
               <tr
                 key={page.id}
-                className="border-b border-[#1e2130] hover:bg-white/[0.02] transition-colors cursor-pointer"
+                className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
                 onClick={() => router.push(`/pages/${page.id}`)}
               >
                 <td className="px-4 py-3">
-                  <span className="text-slate-200 font-medium">{page.name}</span>
+                  <span className="text-gray-900 font-medium">{page.name}</span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-slate-400 capitalize">
+                  <span className="text-gray-500 capitalize">
                     {PRODUCT_MAP[page.product]}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-slate-400 capitalize">
+                  <span className="text-gray-500 capitalize">
                     {TYPE_MAP[page.page_type]}
                   </span>
                 </td>
@@ -211,7 +211,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="text-slate-500 hover:text-indigo-400"
+                            className="text-gray-400 hover:text-indigo-600"
                           >
                             <ExternalLink className="w-3 h-3" />
                           </a>
@@ -220,7 +220,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                     </td>
                   );
                 })}
-                <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
                   {new Date(page.created_at).toLocaleDateString("en-GB", {
                     day: "numeric",
                     month: "short",
@@ -234,11 +234,11 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                         handleDelete(page.id, page.name);
                       }}
                       disabled={deleting === page.id}
-                      className="p-1.5 text-slate-600 hover:text-red-400 transition-colors rounded"
+                      className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
                   </div>
                 </td>
               </tr>

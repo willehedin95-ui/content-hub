@@ -34,13 +34,13 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
     : CheckCircle2;
 
   const statusColor = isProcessing
-    ? "text-indigo-400"
+    ? "text-indigo-600"
     : hasFailed
-    ? "text-yellow-400"
-    : "text-emerald-400";
+    ? "text-yellow-600"
+    : "text-emerald-600";
 
   return (
-    <div className="bg-[#141620] border border-[#1e2130] rounded-xl p-4 hover:bg-white/[0.02] transition-colors">
+    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:bg-gray-50 transition-colors">
       <div className="flex items-center gap-4">
         {/* Status icon */}
         <StatusIcon
@@ -49,7 +49,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
 
         {/* Info */}
         <Link href={`/images/${job.id}`} className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-slate-200 truncate">{job.name}</p>
+          <p className="text-sm font-medium text-gray-800 truncate">{job.name}</p>
           <div className="flex items-center gap-2 mt-0.5">
             {/* Language flags */}
             <span className="text-sm">
@@ -58,11 +58,11 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
                 .filter(Boolean)
                 .join(" ")}
             </span>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-gray-400">
               {job.total_images ?? 0} images &middot; {completed}/{total} ready
             </span>
             {hasFailed && (
-              <span className="text-xs text-yellow-400">&middot; {failed} need attention</span>
+              <span className="text-xs text-yellow-600">&middot; {failed} need attention</span>
             )}
           </div>
         </Link>
@@ -72,7 +72,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
           {hasFailed && (
             <button
               onClick={(e) => { e.stopPropagation(); onRetry(job.id); }}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-400 border border-[#1e2130] hover:border-indigo-500/30 rounded-lg px-3 py-2 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Retry
@@ -81,7 +81,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
           {completed > 0 && (
             <button
               onClick={(e) => { e.stopPropagation(); onExport(job.id); }}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-400 border border-[#1e2130] hover:border-indigo-500/30 rounded-lg px-3 py-2 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               Export
@@ -89,18 +89,18 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(job.id); }}
-            className="text-slate-600 hover:text-red-400 p-2 transition-colors"
+            className="text-gray-400 hover:text-red-600 p-2 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
           </button>
-          <Link href={`/images/${job.id}`} className="text-slate-600 hover:text-slate-300 p-2 transition-colors">
+          <Link href={`/images/${job.id}`} className="text-gray-400 hover:text-gray-700 p-2 transition-colors">
             <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
 
       {/* Progress bar */}
-      <div className="mt-3 h-1.5 bg-[#1e2130] rounded-full overflow-hidden">
+      <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div
           className="h-full bg-emerald-500 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}

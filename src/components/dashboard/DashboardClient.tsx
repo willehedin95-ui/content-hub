@@ -13,14 +13,14 @@ export default function DashboardClient({ pages }: { pages: Page[] }) {
     <>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Landing pages</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-gray-900">Landing pages</h1>
+          <p className="text-gray-500 text-sm mt-1">
             Manage and translate your advertorials & listicles
           </p>
         </div>
         <button
           onClick={() => setImportOpen(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <PlusCircle className="w-4 h-4" />
           Import New Page

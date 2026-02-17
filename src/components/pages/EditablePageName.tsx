@@ -55,7 +55,7 @@ export default function EditablePageName({ pageId, initialName }: Props) {
             setEditing(false);
           }
         }}
-        className="text-2xl font-bold text-white bg-transparent border-b border-indigo-500 outline-none w-full"
+        className="text-2xl font-bold text-gray-900 bg-transparent border-b border-indigo-500 outline-none w-full"
       />
     );
   }
@@ -65,8 +65,8 @@ export default function EditablePageName({ pageId, initialName }: Props) {
       onClick={() => setEditing(true)}
       className="group flex items-center gap-2 text-left"
     >
-      <h1 className="text-2xl font-bold text-white">{savedName}</h1>
-      <Pencil className="w-3.5 h-3.5 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <h1 className="text-2xl font-bold text-gray-900">{savedName}</h1>
+      <Pencil className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
     </button>
   );
 }

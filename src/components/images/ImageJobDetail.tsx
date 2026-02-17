@@ -184,7 +184,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       {/* Back */}
       <Link
         href="/images"
-        className="inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-sm mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Images
@@ -193,8 +193,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">{job.name}</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
+          <p className="text-sm text-gray-400 mt-1">
             {job.total_images ?? job.source_images?.length ?? 0} images &times;{" "}
             {job.target_languages.length} languages
           </p>
@@ -202,7 +202,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         <div className="flex items-center gap-2">
           <button
             onClick={refreshJob}
-            className="text-slate-500 hover:text-slate-300 p-2 transition-colors"
+            className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
             title="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
@@ -211,7 +211,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-400 border border-[#1e2130] hover:border-indigo-500/30 rounded-lg px-3 py-2 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
             >
               {exporting ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -227,30 +227,30 @@ export default function ImageJobDetail({ initialJob }: Props) {
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-6">
         {pendingCount > 0 || processing ? (
-          <div className="flex items-center gap-1.5 text-indigo-400 text-sm">
+          <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
             Processing... ({completedCount}/{totalCount})
           </div>
         ) : failedCount > 0 ? (
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-emerald-400 text-sm">
+            <span className="flex items-center gap-1.5 text-emerald-600 text-sm">
               <CheckCircle2 className="w-4 h-4" />
               {completedCount} ready
             </span>
-            <span className="flex items-center gap-1.5 text-yellow-400 text-sm">
+            <span className="flex items-center gap-1.5 text-yellow-600 text-sm">
               <AlertTriangle className="w-4 h-4" />
               {failedCount} failed
             </span>
             <button
               onClick={handleRetryAll}
-              className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Retry all
             </button>
           </div>
         ) : (
-          <span className="flex items-center gap-1.5 text-emerald-400 text-sm">
+          <span className="flex items-center gap-1.5 text-emerald-600 text-sm">
             <CheckCircle2 className="w-4 h-4" />
             {completedCount} ready
           </span>
@@ -258,7 +258,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       </div>
 
       {/* Language tabs */}
-      <div className="flex items-center gap-1 border-b border-[#1e2130] mb-6">
+      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
         <TabButton
           active={activeTab === "all"}
           onClick={() => setActiveTab("all")}
@@ -286,11 +286,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
         {filteredImages.map((si) => (
           <div
             key={si.id}
-            className="bg-[#141620] border border-[#1e2130] rounded-xl overflow-hidden cursor-pointer hover:border-indigo-500/30 transition-colors"
+            className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
             onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
           >
             {/* Thumbnail */}
-            <div className="aspect-square bg-[#0a0c14] flex items-center justify-center overflow-hidden">
+            <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={si.original_url}
@@ -312,7 +312,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     {t.status === "failed" && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleRetrySingle(t.id); }}
-                        className="text-slate-600 hover:text-indigo-400 transition-colors"
+                        className="text-gray-400 hover:text-indigo-700 transition-colors"
                         title="Retry"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -358,16 +358,16 @@ function TabButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
         active
-          ? "text-indigo-300 border-indigo-500"
-          : "text-slate-500 hover:text-slate-300 border-transparent"
+          ? "text-indigo-600 border-indigo-500"
+          : "text-gray-400 hover:text-gray-700 border-transparent"
       }`}
     >
       {label}
       <span
         className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
           completed !== undefined && completed === count
-            ? "bg-emerald-500/20 text-emerald-400"
-            : "bg-[#1e2130] text-slate-400"
+            ? "bg-emerald-50 text-emerald-600"
+            : "bg-gray-200 text-gray-500"
         }`}
       >
         {completed !== undefined ? `${completed}/${count}` : count}
@@ -403,24 +403,24 @@ function ImagePreviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="bg-[#141620] border border-[#1e2130] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white border border-gray-200 rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e2130] shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
           <div>
-            <p className="text-sm font-medium text-slate-200">
+            <p className="text-sm font-medium text-gray-800">
               {sourceImage.filename ?? "Image"}
             </p>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-gray-400 mt-0.5">
               {isOriginal ? "Original" : LANGUAGES.find((l) => l.value === activeLang)?.label + " translation"}
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -431,8 +431,8 @@ function ImagePreviewModal({
             onClick={() => onChangeLang(null)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               isOriginal
-                ? "bg-indigo-600/20 text-indigo-300"
-                : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                ? "bg-indigo-50 text-indigo-600"
+                : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
             }`}
           >
             Original
@@ -448,10 +448,10 @@ function ImagePreviewModal({
                 disabled={!isReady}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   isActive
-                    ? "bg-indigo-600/20 text-indigo-300"
+                    ? "bg-indigo-50 text-indigo-600"
                     : isReady
-                    ? "text-slate-500 hover:text-slate-300 hover:bg-white/5"
-                    : "text-slate-700 cursor-not-allowed"
+                    ? "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                    : "text-gray-300 cursor-not-allowed"
                 }`}
               >
                 <span>{langInfo?.flag}</span>
@@ -459,7 +459,7 @@ function ImagePreviewModal({
                 {t.status === "failed" && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRetry(t.id); }}
-                    className="ml-1 text-red-400 hover:text-indigo-400"
+                    className="ml-1 text-red-600 hover:text-indigo-700"
                   >
                     <RotateCcw className="w-3 h-3" />
                   </button>
@@ -481,13 +481,13 @@ function ImagePreviewModal({
 
         {/* Footer with download */}
         {!isOriginal && activeTranslation?.translated_url && (
-          <div className="px-5 py-3 border-t border-[#1e2130] flex justify-end shrink-0">
+          <div className="px-5 py-3 border-t border-gray-200 flex justify-end shrink-0">
             <a
               href={activeTranslation.translated_url}
               download={`${activeLang}_${sourceImage.filename ?? "image"}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-400 border border-[#1e2130] hover:border-indigo-500/30 rounded-lg px-3 py-2 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               Download
@@ -503,28 +503,28 @@ function TranslationStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "completed":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-emerald-400">
+        <span className="flex items-center gap-1 text-[11px] text-emerald-600">
           <CheckCircle2 className="w-3 h-3" />
           Ready
         </span>
       );
     case "processing":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-indigo-400">
+        <span className="flex items-center gap-1 text-[11px] text-indigo-600">
           <Loader2 className="w-3 h-3 animate-spin" />
           Generating...
         </span>
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-red-400">
+        <span className="flex items-center gap-1 text-[11px] text-red-600">
           <AlertTriangle className="w-3 h-3" />
           Failed
         </span>
       );
     default:
       return (
-        <span className="flex items-center gap-1 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1 text-[11px] text-gray-400">
           <Loader2 className="w-3 h-3" />
           Pending
         </span>

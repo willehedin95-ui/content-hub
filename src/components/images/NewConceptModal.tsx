@@ -143,12 +143,12 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-[#141620] border border-[#1e2130] rounded-2xl w-full max-w-lg">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
-          <h2 className="text-lg font-semibold text-white">New Concept</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+          <h2 className="text-lg font-semibold text-gray-900">New Concept</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -156,18 +156,18 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
         <div className="px-6 pb-6 space-y-5">
           {/* Concept Name */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Concept Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Concept Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
             />
           </div>
 
           {/* Upload Area */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Images</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Images</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -178,11 +178,11 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#1e2130] hover:border-indigo-500/40 rounded-xl py-6 text-slate-400 hover:text-slate-200 transition-colors"
+              className="w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-200 hover:border-indigo-300 rounded-xl py-6 text-gray-500 hover:text-gray-900 transition-colors"
             >
               <Upload className="w-6 h-6" />
               <span className="text-sm">Click to upload images</span>
-              <span className="text-xs text-slate-600">PNG, JPG, WebP</span>
+              <span className="text-xs text-gray-400">PNG, JPG, WebP</span>
             </button>
 
             {/* File list */}
@@ -191,12 +191,12 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
                 {files.map((file, i) => (
                   <div
                     key={`${file.name}-${i}`}
-                    className="flex items-center justify-between bg-[#0a0c14] rounded-lg px-3 py-2 text-sm"
+                    className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm"
                   >
-                    <span className="text-slate-300 truncate mr-2">{file.name}</span>
+                    <span className="text-gray-700 truncate mr-2">{file.name}</span>
                     <button
                       onClick={() => removeFile(i)}
-                      className="text-slate-600 hover:text-red-400 shrink-0 transition-colors"
+                      className="text-gray-400 hover:text-red-600 shrink-0 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -208,7 +208,7 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
 
           {/* Target Languages */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Target Languages</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
             <div className="grid grid-cols-2 gap-2">
               {LANGUAGES.map((lang) => {
                 const selected = selectedLanguages.has(lang.value);
@@ -218,8 +218,8 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
                     onClick={() => toggleLanguage(lang.value)}
                     className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
                       selected
-                        ? "bg-indigo-600/15 border-indigo-500/40 text-indigo-300"
-                        : "bg-[#0a0c14] border-[#1e2130] text-slate-500 hover:text-slate-300"
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-600"
+                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
                     }`}
                   >
                     <span className="text-base">{lang.flag}</span>
@@ -232,25 +232,25 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
 
           {/* Error */}
           {error && (
-            <p className="text-red-400 text-sm">{error}</p>
+            <p className="text-red-600 text-sm">{error}</p>
           )}
 
           {/* Summary + Submit */}
           {files.length > 0 && selectedLanguages.size > 0 && (
-            <div className="bg-[#0a0c14] border border-[#1e2130] rounded-xl px-4 py-3 flex items-center justify-between">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-200">{name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-sm font-medium text-gray-800">{name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
                   {totalTranslations} translations will be created
                 </p>
-                <p className="text-xs text-slate-600 mt-0.5">
+                <p className="text-xs text-gray-400 mt-0.5">
                   Credits: {estimatedCost} USD &middot; ~{estimatedMinutes} min
                 </p>
               </div>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-2.5 rounded-lg transition-colors"
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-2.5 rounded-lg transition-colors"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {submitting ? "Creating..." : "Translate"}

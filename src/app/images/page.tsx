@@ -92,28 +92,28 @@ export default function ImagesPage() {
     <div className="p-8 max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold text-white">Images</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Images</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           New
         </button>
       </div>
-      <p className="flex items-center gap-1.5 text-xs text-slate-500 mb-6">
+      <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
         <Clock className="w-3.5 h-3.5" />
         Current average: ~75s per image
       </p>
 
       {/* Job list */}
       {loading ? (
-        <div className="text-sm text-slate-500">Loading...</div>
+        <div className="text-sm text-gray-400">Loading...</div>
       ) : jobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <ImageIcon className="w-10 h-10 text-slate-700 mb-3" />
-          <p className="text-slate-400 text-sm">No image concepts yet</p>
-          <p className="text-slate-600 text-xs mt-1">
+          <ImageIcon className="w-10 h-10 text-gray-300 mb-3" />
+          <p className="text-gray-500 text-sm">No image concepts yet</p>
+          <p className="text-gray-400 text-xs mt-1">
             Click &quot;+ New&quot; to create your first batch
           </p>
         </div>

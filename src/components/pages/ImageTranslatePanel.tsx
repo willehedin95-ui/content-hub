@@ -55,7 +55,6 @@ export default function ImageTranslatePanel({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Close lightbox on Escape key
   useEffect(() => {
     if (!lightboxSrc) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -65,7 +64,6 @@ export default function ImageTranslatePanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lightboxSrc]);
 
-  // When a new image is clicked, set up the prompt and reset state
   useEffect(() => {
     if (clickedImage) {
       setPrompt(
@@ -77,7 +75,6 @@ export default function ImageTranslatePanel({
     }
   }, [clickedImage, language.label]);
 
-  // Elapsed timer during generation
   useEffect(() => {
     if (status !== "loading") {
       setElapsed(0);
@@ -90,19 +87,16 @@ export default function ImageTranslatePanel({
     return () => clearInterval(interval);
   }, [status]);
 
-  // Highlight selected image in iframe
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
 
-    // Clear previous highlight
     const prev = doc.querySelector("[data-cc-img-highlight]");
     if (prev) {
       (prev as HTMLElement).style.outline = "";
       prev.removeAttribute("data-cc-img-highlight");
     }
 
-    // Add new highlight
     if (clickedImage) {
       const imgs = doc.querySelectorAll("img");
       const img = imgs[clickedImage.index];
@@ -157,7 +151,6 @@ export default function ImageTranslatePanel({
   function handleAccept() {
     if (!clickedImage || !resultUrl) return;
 
-    // Replace image src in the iframe DOM
     const doc = iframeRef.current?.contentDocument;
     if (doc) {
       const imgs = doc.querySelectorAll("img");
@@ -184,7 +177,6 @@ export default function ImageTranslatePanel({
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !clickedImage) return;
-    // Reset input so same file can be re-selected
     e.target.value = "";
 
     setUploading(true);
@@ -207,7 +199,6 @@ export default function ImageTranslatePanel({
 
       const { imageUrl } = await res.json();
 
-      // Replace image in iframe DOM (same logic as handleAccept)
       const doc = iframeRef.current?.contentDocument;
       if (doc) {
         const imgs = doc.querySelectorAll("img");
@@ -231,62 +222,52 @@ export default function ImageTranslatePanel({
     }
   }
 
-  // No image selected — default state
   if (!clickedImage) {
     return (
       <div className="px-4 py-3">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
           Images
         </p>
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-gray-400">
           Click an image in the preview to translate or replace it.
         </p>
       </div>
     );
   }
 
-  // Image selected — translate UI
   return (
     <div className="px-4 py-3 space-y-3">
       <div className="flex items-center gap-2">
         <button
           onClick={handleBack}
           disabled={status === "loading"}
-          className="text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50"
+          className="text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
         </button>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
           Translate Image
         </p>
       </div>
 
-      {/* Original image */}
       <button
         type="button"
         onClick={() => setLightboxSrc(clickedImage.src)}
-        className="group relative rounded-lg overflow-hidden border border-[#1e2130] w-full cursor-zoom-in"
+        className="group relative rounded-lg overflow-hidden border border-gray-200 w-full cursor-zoom-in"
       >
-        <img
-          src={clickedImage.src}
-          alt="Selected image"
-          className="w-full h-auto"
-        />
+        <img src={clickedImage.src} alt="Selected image" className="w-full h-auto" />
         <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
         </span>
       </button>
 
-      {/* Result preview */}
       {status === "preview" && resultUrl && (
         <div className="space-y-2">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider">
-            Generated Result
-          </p>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider">Generated Result</p>
           <button
             type="button"
             onClick={() => setLightboxSrc(resultUrl)}
-            className="group relative rounded-lg overflow-hidden border border-indigo-500/50 w-full cursor-zoom-in"
+            className="group relative rounded-lg overflow-hidden border border-indigo-300 w-full cursor-zoom-in"
           >
             <img src={resultUrl} alt="Translated" className="w-full h-auto" />
             <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
@@ -296,13 +277,13 @@ export default function ImageTranslatePanel({
           <div className="flex gap-2">
             <button
               onClick={handleAccept}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 rounded-lg transition-colors"
             >
               <Check className="w-3.5 h-3.5" /> Accept
             </button>
             <button
               onClick={handleReject}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] text-slate-300 text-xs font-medium py-2 rounded-lg border border-[#1e2130] transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 text-xs font-medium py-2 rounded-lg border border-gray-200 transition-colors"
             >
               <X className="w-3.5 h-3.5" /> Reject
             </button>
@@ -310,30 +291,25 @@ export default function ImageTranslatePanel({
         </div>
       )}
 
-      {/* Prompt */}
       {status !== "preview" && (
         <>
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-500 uppercase tracking-wider">
-              Prompt
-            </label>
+            <label className="text-[10px] text-gray-400 uppercase tracking-wider">Prompt</label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={5}
               disabled={status === "loading"}
-              className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
+              className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-50"
             />
           </div>
 
-          {error && (
-            <p className="text-xs text-red-400">{error}</p>
-          )}
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
           <button
             onClick={handleTranslate}
             disabled={status === "loading" || uploading || !prompt.trim()}
-            className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
           >
             {status === "loading" ? (
               <>
@@ -348,37 +324,24 @@ export default function ImageTranslatePanel({
             )}
           </button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileSelected}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelected} className="hidden" />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={status === "loading" || uploading}
-            className="w-full flex items-center justify-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-300 text-xs font-medium py-2.5 rounded-lg border border-[#1e2130] transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 text-xs font-medium py-2.5 rounded-lg border border-gray-200 transition-colors"
           >
             {uploading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Uploading...
-              </>
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</>
             ) : (
-              <>
-                <Upload className="w-3.5 h-3.5" />
-                Upload Image
-              </>
+              <><Upload className="w-3.5 h-3.5" /> Upload Image</>
             )}
           </button>
         </>
       )}
 
-      {/* Lightbox modal */}
       {lightboxSrc && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-zoom-out"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 cursor-zoom-out"
           onClick={() => setLightboxSrc(null)}
         >
           <button

@@ -93,22 +93,22 @@ export default function UsagePage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-white">Usage & Costs</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Usage & Costs</h1>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">USD → SEK</label>
+            <label className="text-xs text-gray-400">USD → SEK</label>
             <input
               type="number"
               step="0.01"
               value={sekRate}
               onChange={(e) => handleSekRateChange(e.target.value)}
-              className="w-20 bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+              className="w-20 bg-white border border-gray-300 text-gray-800 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
             />
           </div>
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            className="bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+            className="bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
           >
             {PERIOD_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -122,50 +122,50 @@ export default function UsagePage() {
       {/* Summary cards */}
       {summary && (
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-[#0f1117] border border-[#1e2130] rounded-xl p-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Total Cost (USD)
               </span>
             </div>
-            <p className="text-lg font-semibold text-white">
+            <p className="text-lg font-semibold text-gray-900">
               {formatUsd(summary.total_cost_usd)}
             </p>
           </div>
-          <div className="bg-[#0f1117] border border-[#1e2130] rounded-xl p-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <Coins className="w-4 h-4 text-amber-400" />
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <Coins className="w-4 h-4 text-amber-600" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Total Cost (SEK)
               </span>
             </div>
-            <p className="text-lg font-semibold text-white">
+            <p className="text-lg font-semibold text-gray-900">
               {formatSek(summary.total_cost_usd)}
             </p>
           </div>
-          <div className="bg-[#0f1117] border border-[#1e2130] rounded-xl p-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <Languages className="w-4 h-4 text-indigo-400" />
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <Languages className="w-4 h-4 text-indigo-600" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Translations
               </span>
             </div>
-            <p className="text-lg font-semibold text-white">
+            <p className="text-lg font-semibold text-gray-900">
               {summary.translation_count}
             </p>
-            <p className="text-[10px] text-slate-600 mt-0.5">
+            <p className="text-[10px] text-gray-400 mt-0.5">
               {formatTokens(summary.total_input_tokens + summary.total_output_tokens)} tokens
             </p>
           </div>
-          <div className="bg-[#0f1117] border border-[#1e2130] rounded-xl p-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <ImageIcon className="w-4 h-4 text-pink-400" />
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <ImageIcon className="w-4 h-4 text-pink-600" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Image Generations
               </span>
             </div>
-            <p className="text-lg font-semibold text-white">
+            <p className="text-lg font-semibold text-gray-900">
               {summary.image_count}
             </p>
           </div>
@@ -174,7 +174,7 @@ export default function UsagePage() {
 
       {/* Error */}
       {fetchError && (
-        <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-6">
+        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {fetchError}
         </div>
@@ -183,39 +183,39 @@ export default function UsagePage() {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
         </div>
       ) : logs.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-sm text-slate-500">No usage data yet.</p>
-          <p className="text-xs text-slate-600 mt-1">
+          <p className="text-sm text-gray-400">No usage data yet.</p>
+          <p className="text-xs text-gray-400 mt-1">
             Translate a page or generate an image to see costs here.
           </p>
         </div>
       ) : (
-        <div className="bg-[#0f1117] border border-[#1e2130] rounded-xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#1e2130] text-left">
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+              <tr className="border-b border-gray-200 text-left">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
                   Date
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
                   Type
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
                   Model
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
                   Page
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
                   Tokens
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
                   Cost (USD)
                 </th>
-                <th className="px-4 py-3 text-[10px] text-slate-500 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
                   Cost (SEK)
                 </th>
               </tr>
@@ -224,17 +224,17 @@ export default function UsagePage() {
               {logs.map((log) => (
                 <tr
                   key={log.id}
-                  className="border-b border-[#1e2130] last:border-0 hover:bg-white/[0.02]"
+                  className="border-b border-gray-200 last:border-0 hover:bg-gray-50"
                 >
-                  <td className="px-4 py-2.5 text-xs text-slate-400">
+                  <td className="px-4 py-2.5 text-xs text-gray-500">
                     {formatDate(log.created_at)}
                   </td>
                   <td className="px-4 py-2.5">
                     <span
                       className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
                         log.type === "translation"
-                          ? "bg-indigo-500/10 text-indigo-400"
-                          : "bg-pink-500/10 text-pink-400"
+                          ? "bg-indigo-50 text-indigo-600"
+                          : "bg-pink-50 text-pink-600"
                       }`}
                     >
                       {log.type === "translation" ? (
@@ -245,23 +245,23 @@ export default function UsagePage() {
                       {log.type === "translation" ? "Translation" : "Image"}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-500">
+                  <td className="px-4 py-2.5 text-xs text-gray-400">
                     {log.model}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-400 truncate max-w-[160px]">
+                  <td className="px-4 py-2.5 text-xs text-gray-500 truncate max-w-[160px]">
                     {log.pages
                       ? log.pages.name
                       : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-500 text-right tabular-nums">
+                  <td className="px-4 py-2.5 text-xs text-gray-400 text-right tabular-nums">
                     {log.input_tokens + log.output_tokens > 0
                       ? formatTokens(log.input_tokens + log.output_tokens)
                       : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-300 text-right tabular-nums">
+                  <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums">
                     {formatUsd(Number(log.cost_usd))}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-slate-300 text-right tabular-nums">
+                  <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums">
                     {formatSek(Number(log.cost_usd))}
                   </td>
                 </tr>

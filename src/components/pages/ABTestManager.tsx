@@ -199,23 +199,23 @@ export default function ABTestManager({
     const controlWins = highlight && controlVal > variantVal;
     const variantWins = highlight && variantVal > controlVal;
     return (
-      <div className="bg-[#141620] border border-[#1e2130] rounded-xl p-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
-          <Icon className="w-4 h-4 text-slate-500" />
-          <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+          <Icon className="w-4 h-4 text-gray-400" />
+          <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             {label}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] text-slate-500 mb-1">Control (A)</p>
-            <p className={`text-lg font-bold ${controlWins ? "text-emerald-400" : "text-slate-200"}`}>
+            <p className="text-[10px] text-gray-400 mb-1">Control (A)</p>
+            <p className={`text-lg font-bold ${controlWins ? "text-emerald-600" : "text-gray-800"}`}>
               {controlVal.toLocaleString()}{suffix}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-500 mb-1">Variant B</p>
-            <p className={`text-lg font-bold ${variantWins ? "text-emerald-400" : "text-slate-200"}`}>
+            <p className="text-[10px] text-gray-400 mb-1">Variant B</p>
+            <p className={`text-lg font-bold ${variantWins ? "text-emerald-600" : "text-gray-800"}`}>
               {variantVal.toLocaleString()}{suffix}
             </p>
           </div>
@@ -229,7 +229,7 @@ export default function ABTestManager({
       {/* Back */}
       <Link
         href={`/pages/${pageId}`}
-        className="inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-sm mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         {pageName}
@@ -239,25 +239,25 @@ export default function ABTestManager({
       <div className="flex items-start justify-between mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <FlaskConical className="w-6 h-6 text-amber-400" />
-            <h1 className="text-2xl font-bold text-white">A/B Test</h1>
+            <FlaskConical className="w-6 h-6 text-amber-600" />
+            <h1 className="text-2xl font-bold text-gray-900">A/B Test</h1>
             <span className="text-lg">{language.flag}</span>
-            <span className="text-slate-400 text-lg">{language.label}</span>
+            <span className="text-gray-500 text-lg">{language.label}</span>
           </div>
           <div className="flex items-center gap-3 mt-2">
             <span
               className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                 isActive
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/20"
+                  ? "bg-amber-50 text-amber-700 border border-amber-200"
                   : isCompleted
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/20"
-                  : "bg-slate-700/50 text-slate-400 border border-slate-600/30"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-gray-100 text-gray-500 border border-gray-300"
               }`}
             >
               {isActive ? "Active" : isCompleted ? "Completed" : "Draft"}
             </span>
             {abTest.winner && (
-              <span className="text-xs text-emerald-400 flex items-center gap-1">
+              <span className="text-xs text-emerald-600 flex items-center gap-1">
                 <Trophy className="w-3.5 h-3.5" />
                 Winner: {abTest.winner === "control" ? "Control (A)" : abTest.winner === "b" ? "Variant B" : "N/A"}
               </span>
@@ -268,7 +268,7 @@ export default function ABTestManager({
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-3 py-2 transition-colors"
+          className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-3 py-2 transition-colors"
         >
           {deleting ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -281,7 +281,7 @@ export default function ABTestManager({
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-6">
+        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
@@ -315,10 +315,10 @@ export default function ABTestManager({
 
       {/* Split slider */}
       {!isCompleted && (
-        <div className="bg-[#141620] border border-[#1e2130] rounded-xl p-6 mb-6">
-          <p className="text-sm font-medium text-slate-300 mb-4">Traffic Split</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 shadow-sm">
+          <p className="text-sm font-medium text-gray-700 mb-4">Traffic Split</p>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-400 w-24 text-right">
+            <span className="text-xs text-gray-500 w-24 text-right">
               Control (A): {split}%
             </span>
             <input
@@ -332,7 +332,7 @@ export default function ABTestManager({
               aria-label="Traffic split percentage for Control variant"
               aria-valuetext={`Control ${split}%, Variant ${100 - split}%`}
             />
-            <span className="text-xs text-slate-400 w-24">
+            <span className="text-xs text-gray-500 w-24">
               Variant B: {100 - split}%
             </span>
           </div>
@@ -341,7 +341,7 @@ export default function ABTestManager({
               <button
                 onClick={handleSaveSplit}
                 disabled={saving}
-                className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
               >
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 Save Split
@@ -354,18 +354,18 @@ export default function ABTestManager({
       {/* Side-by-side previews */}
       <div className="grid grid-cols-2 gap-6 mb-6">
         {/* Control (A) */}
-        <div className="bg-[#141620] border border-[#1e2130] rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2130]">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-300 bg-slate-700/50 px-2 py-0.5 rounded">A</span>
-              <span className="text-sm font-medium text-slate-300">Control</span>
+              <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">A</span>
+              <span className="text-sm font-medium text-gray-700">Control</span>
               {abTest.winner === "control" && (
-                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
               )}
             </div>
             <Link
               href={`/pages/${pageId}/edit/${language.value}`}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors"
             >
               <Pencil className="w-3 h-3" />
               Edit
@@ -381,18 +381,18 @@ export default function ABTestManager({
         </div>
 
         {/* Variant B */}
-        <div className="bg-[#141620] border border-[#1e2130] rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2130]">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded">B</span>
-              <span className="text-sm font-medium text-slate-300">Variant</span>
+              <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">B</span>
+              <span className="text-sm font-medium text-gray-700">Variant</span>
               {abTest.winner === "b" && (
-                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
               )}
             </div>
             <Link
               href={`/pages/${pageId}/edit/${language.value}?variant=b`}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors"
             >
               <Pencil className="w-3 h-3" />
               Edit
@@ -414,7 +414,7 @@ export default function ABTestManager({
           <button
             onClick={handlePublish}
             disabled={publishing}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
           >
             {publishing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -430,7 +430,7 @@ export default function ABTestManager({
             <button
               onClick={handlePublish}
               disabled={publishing}
-              className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-sm font-medium px-4 py-2.5 rounded-lg border border-amber-500/20 transition-colors"
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium px-4 py-2.5 rounded-lg border border-amber-200 transition-colors"
             >
               {publishing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -443,7 +443,7 @@ export default function ABTestManager({
             <button
               onClick={() => handleDeclareWinner("control")}
               disabled={declaringWinner}
-              className="flex items-center gap-1.5 bg-slate-700/40 hover:bg-slate-700/70 text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg border border-slate-600/30 transition-colors"
+              className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium px-4 py-2.5 rounded-lg border border-gray-300 transition-colors"
             >
               {declaringWinner ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -456,7 +456,7 @@ export default function ABTestManager({
             <button
               onClick={() => handleDeclareWinner("b")}
               disabled={declaringWinner}
-              className="flex items-center gap-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-sm font-medium px-4 py-2.5 rounded-lg border border-amber-500/20 transition-colors"
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium px-4 py-2.5 rounded-lg border border-amber-200 transition-colors"
             >
               {declaringWinner ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -469,7 +469,7 @@ export default function ABTestManager({
         )}
 
         {isCompleted && (
-          <div className="flex items-center gap-2 text-emerald-400 text-sm">
+          <div className="flex items-center gap-2 text-emerald-600 text-sm">
             <CheckCircle2 className="w-4 h-4" />
             Test completed — {abTest.winner === "control" ? "Control (A)" : abTest.winner === "b" ? "Variant B" : "N/A"} won
           </div>
@@ -478,30 +478,30 @@ export default function ABTestManager({
 
       {/* Published URLs */}
       {(isActive || isCompleted) && abTest.router_url && (
-        <div className="mt-6 bg-[#141620] border border-[#1e2130] rounded-xl p-5">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
             Published URLs
           </p>
           <div className="space-y-2 text-xs">
             <div className="flex items-center gap-3">
-              <span className="text-slate-500 w-20">Router:</span>
+              <span className="text-gray-400 w-20">Router:</span>
               <a
                 href={abTest.router_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                className="text-indigo-600 hover:text-indigo-700 transition-colors"
               >
                 {abTest.router_url}
               </a>
             </div>
             {control.published_url && (
               <div className="flex items-center gap-3">
-                <span className="text-slate-500 w-20">Control (A):</span>
+                <span className="text-gray-400 w-20">Control (A):</span>
                 <a
                   href={control.published_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                  className="text-indigo-600 hover:text-indigo-700 transition-colors"
                 >
                   {control.published_url}
                 </a>
@@ -509,12 +509,12 @@ export default function ABTestManager({
             )}
             {variant.published_url && (
               <div className="flex items-center gap-3">
-                <span className="text-slate-500 w-20">Variant B:</span>
+                <span className="text-gray-400 w-20">Variant B:</span>
                 <a
                   href={variant.published_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                  className="text-indigo-600 hover:text-indigo-700 transition-colors"
                 >
                   {variant.published_url}
                 </a>

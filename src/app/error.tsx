@@ -17,16 +17,16 @@ export default function GlobalError({
   return (
     <div className="flex items-center justify-center min-h-[50vh] p-8">
       <div className="text-center max-w-md">
-        <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-white mb-2">
+        <AlertCircle className="w-10 h-10 text-red-600 mx-auto mb-4" />
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">
           Something went wrong
         </h2>
-        <p className="text-slate-400 text-sm mb-6">
+        <p className="text-gray-500 text-sm mb-6">
           {error.message || "An unexpected error occurred. Please try again."}
         </p>
         <button
           onClick={reset}
-          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
           Try Again

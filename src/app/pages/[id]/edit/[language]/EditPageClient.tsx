@@ -53,10 +53,10 @@ export default function EditPageClient({
   const [isDirty, setIsDirty] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
-  const [padDH, setPadDH] = useState(""); // desktop horizontal
-  const [padDV, setPadDV] = useState(""); // desktop vertical
-  const [padMH, setPadMH] = useState(""); // mobile horizontal
-  const [padMV, setPadMV] = useState(""); // mobile vertical
+  const [padDH, setPadDH] = useState("");
+  const [padDV, setPadDV] = useState("");
+  const [padMH, setPadMH] = useState("");
+  const [padMV, setPadMV] = useState("");
   const [excludeMode, setExcludeMode] = useState(false);
   const [excludeCount, setExcludeCount] = useState(0);
   const [linkUrl, setLinkUrl] = useState("");
@@ -69,7 +69,6 @@ export default function EditPageClient({
     height: number;
   } | null>(null);
 
-  // Listen for messages from the iframe editor
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data?.type === "cc-dirty") {
@@ -88,7 +87,6 @@ export default function EditPageClient({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  // Warn before navigating away with unsaved changes
   useEffect(() => {
     function handleBeforeUnload(e: BeforeUnloadEvent) {
       if (isDirty) {
@@ -99,14 +97,12 @@ export default function EditPageClient({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty]);
 
-  // Clean up saved-indicator timeout on unmount
   useEffect(() => {
     return () => {
       if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
     };
   }, []);
 
-  // Ctrl/Cmd+S keyboard shortcut for save
   const saveRef = useRef<(() => void) | null>(null);
   saveRef.current = () => {
     if (!saving && !publishing && !retranslating) handleSave();
@@ -122,14 +118,12 @@ export default function EditPageClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Exclude mode: intercept clicks in iframe to toggle data-cc-pad-skip
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
 
     if (!excludeMode) return;
 
-    // Inject temporary visual style for exclude mode
     const style = doc.createElement("style");
     style.setAttribute("data-cc-exclude-mode", "true");
     style.textContent = [
@@ -143,7 +137,6 @@ export default function EditPageClient({
       e.preventDefault();
       e.stopPropagation();
       const target = e.target as HTMLElement;
-      // Find the nearest padded element
       const padded = target.closest("[data-cc-padded]") as HTMLElement | null;
       if (!padded) return;
 
@@ -164,11 +157,9 @@ export default function EditPageClient({
     };
   }, [excludeMode]);
 
-  // Build CSS with media queries — only targets elements marked with data-cc-padded
   function buildPaddingCss(dh: string, dv: string, mh: string, mv: string): string {
     const rules: string[] = [];
 
-    // Desktop rules (viewport > 375px)
     const dhVal = dh !== "" ? parseInt(dh) : null;
     const dvVal = dv !== "" ? parseInt(dv) : null;
     if (dhVal !== null || dvVal !== null) {
@@ -178,7 +169,6 @@ export default function EditPageClient({
       rules.push(`@media (min-width: 376px) {\n  ${inner.join("\n  ")}\n}`);
     }
 
-    // Mobile rules (viewport <= 375px)
     const mhVal = mh !== "" ? parseInt(mh) : null;
     const mvVal = mv !== "" ? parseInt(mv) : null;
     if (mhVal !== null || mvVal !== null) {
@@ -191,7 +181,6 @@ export default function EditPageClient({
     return rules.join("\n");
   }
 
-  // Mark elements with significant padding and detect values on iframe load
   function handleIframeLoad() {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
@@ -200,8 +189,6 @@ export default function EditPageClient({
     const win = doc.defaultView;
     if (!win) return;
 
-    // Always mark elements with significant horizontal padding (>= 16px)
-    // so CSS targeting [data-cc-padded] works
     const SKIP_TAGS = ["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "BR", "HR", "IMG"];
     const allElements = body.querySelectorAll("*");
     const limit = Math.min(allElements.length, 500);
@@ -210,7 +197,6 @@ export default function EditPageClient({
     for (let i = 0; i < limit; i++) {
       const el = allElements[i] as HTMLElement;
       if (SKIP_TAGS.includes(el.tagName)) continue;
-      // Skip elements already marked (from a previous save)
       if (el.hasAttribute("data-cc-padded")) {
         const cs = win.getComputedStyle(el);
         const pl = parseInt(cs.paddingLeft) || 0;
@@ -232,7 +218,6 @@ export default function EditPageClient({
       }
     }
 
-    // If we already saved custom padding, restore those values
     const existing = doc.querySelector("style[data-cc-custom]");
     if (existing) {
       const dh = existing.getAttribute("data-pad-dh");
@@ -246,16 +231,13 @@ export default function EditPageClient({
       return;
     }
 
-    // Pre-fill both desktop and mobile with detected values
     if (maxH > 0) {
       setPadDH(String(maxH));
       setPadMH(String(maxH));
     }
 
-    // Count any existing excluded elements
     setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
 
-    // Detect the most common link URL on the page
     const links = doc.querySelectorAll("a[href]");
     const urlCounts = new Map<string, number>();
     links.forEach((a) => {
@@ -274,7 +256,6 @@ export default function EditPageClient({
     }
   }
 
-  // Inject/update padding CSS in the iframe live
   function syncPaddingToIframe(dh: string, dv: string, mh: string, mv: string) {
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
@@ -332,11 +313,8 @@ export default function EditPageClient({
     const doc = iframe.contentDocument;
     const clone = doc.documentElement.cloneNode(true) as HTMLElement;
 
-    // Strip editor artifacts
     clone.querySelectorAll("[data-cc-editor]").forEach((el) => el.remove());
-    clone
-      .querySelectorAll("[data-cc-injected]")
-      .forEach((el) => el.remove());
+    clone.querySelectorAll("[data-cc-injected]").forEach((el) => el.remove());
     clone.querySelectorAll("[data-cc-editable]").forEach((el) => {
       el.removeAttribute("data-cc-editable");
       el.removeAttribute("contenteditable");
@@ -344,7 +322,6 @@ export default function EditPageClient({
     clone.querySelectorAll("[contenteditable]").forEach((el) => {
       el.removeAttribute("contenteditable");
     });
-    // Strip image translation highlights
     clone.querySelectorAll("[data-cc-img-highlight]").forEach((el) => {
       (el as HTMLElement).style.outline = "";
       el.removeAttribute("data-cc-img-highlight");
@@ -471,30 +448,30 @@ export default function EditPageClient({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0c14]">
+    <div className="flex flex-col h-screen bg-gray-50">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2130] shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 bg-white">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => {
               if (isDirty && !confirm("You have unsaved changes. Leave without saving?")) return;
               router.push(`/pages/${pageId}`);
             }}
-            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-sm transition-colors shrink-0"
+            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
           </button>
-          <span className="text-slate-600 shrink-0">/</span>
-          <span className="text-slate-400 text-sm truncate">{pageName}</span>
-          <span className="text-slate-600 shrink-0">/</span>
-          <span className="flex items-center gap-1.5 text-slate-200 text-sm font-medium shrink-0">
+          <span className="text-gray-300 shrink-0">/</span>
+          <span className="text-gray-500 text-sm truncate">{pageName}</span>
+          <span className="text-gray-300 shrink-0">/</span>
+          <span className="flex items-center gap-1.5 text-gray-900 text-sm font-medium shrink-0">
             {language.flag} {language.label}
           </span>
           {variantLabel && (
             <>
-              <span className="text-slate-600 shrink-0">/</span>
-              <span className="text-xs font-semibold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded shrink-0">
+              <span className="text-gray-300 shrink-0">/</span>
+              <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded shrink-0">
                 {variantLabel}
               </span>
             </>
@@ -503,17 +480,17 @@ export default function EditPageClient({
 
         <div className="flex items-center gap-2 shrink-0">
           {isDirty && (
-            <span className="text-xs text-amber-400">Unsaved changes</span>
+            <span className="text-xs text-amber-600">Unsaved changes</span>
           )}
           {saved && (
-            <span className="flex items-center gap-1.5 text-emerald-400 text-xs">
+            <span className="flex items-center gap-1.5 text-emerald-600 text-xs">
               <CheckCircle2 className="w-3.5 h-3.5" /> Saved
             </span>
           )}
           <button
             onClick={handleRetranslate}
             disabled={saving || publishing || retranslating}
-            className="flex items-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-400 text-sm font-medium px-3 py-2 rounded-lg border border-[#1e2130] transition-colors"
+            className="flex items-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-500 text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 transition-colors"
           >
             {retranslating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -525,7 +502,7 @@ export default function EditPageClient({
           <button
             onClick={handleSave}
             disabled={saving || publishing || retranslating}
-            className="flex items-center gap-1.5 bg-[#141620] hover:bg-[#1e2130] disabled:opacity-50 text-slate-200 text-sm font-medium px-4 py-2 rounded-lg border border-[#1e2130] transition-colors"
+            className="flex items-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-900 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 transition-colors"
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -537,7 +514,7 @@ export default function EditPageClient({
           <button
             onClick={handlePublish}
             disabled={saving || publishing || retranslating}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             {publishing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -550,7 +527,7 @@ export default function EditPageClient({
       </div>
 
       {saveError && (
-        <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border-b border-red-500/20 px-6 py-2 shrink-0">
+        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border-b border-red-200 px-6 py-2 shrink-0">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {saveError}
         </div>
@@ -560,18 +537,18 @@ export default function EditPageClient({
       <div className="flex flex-1 min-h-0">
         {/* Preview / editing pane */}
         <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e2130] shrink-0">
-            <span className={`text-xs font-medium uppercase tracking-wider ${excludeMode ? "text-amber-400" : "text-slate-400"}`}>
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 shrink-0 bg-white">
+            <span className={`text-xs font-medium uppercase tracking-wider ${excludeMode ? "text-amber-600" : "text-gray-500"}`}>
               {excludeMode ? "Click elements to exclude from padding" : "Click any text to edit"}
             </span>
             <div className="flex items-center gap-2">
-              <div className="flex items-center bg-[#141620] rounded-lg border border-[#1e2130] p-0.5">
+              <div className="flex items-center bg-gray-100 rounded-lg border border-gray-200 p-0.5">
                 <button
                   onClick={() => setViewMode("desktop")}
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
                     viewMode === "desktop"
-                      ? "bg-[#1e2130] text-slate-200"
-                      : "text-slate-500 hover:text-slate-300"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-400 hover:text-gray-700"
                   }`}
                 >
                   <Monitor className="w-3 h-3" />
@@ -580,8 +557,8 @@ export default function EditPageClient({
                   onClick={() => setViewMode("mobile")}
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
                     viewMode === "mobile"
-                      ? "bg-[#1e2130] text-slate-200"
-                      : "text-slate-500 hover:text-slate-300"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-400 hover:text-gray-700"
                   }`}
                 >
                   <Smartphone className="w-3 h-3" />
@@ -593,13 +570,13 @@ export default function EditPageClient({
                   setIframeKey((k) => k + 1);
                   setIsDirty(false);
                 }}
-                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
               >
                 <RefreshCw className="w-3 h-3" /> Refresh
               </button>
             </div>
           </div>
-          <div className={`flex-1 overflow-auto ${viewMode === "mobile" ? "flex justify-center bg-[#141620]" : ""}`}>
+          <div className={`flex-1 overflow-auto ${viewMode === "mobile" ? "flex justify-center bg-gray-100" : ""}`}>
             <iframe
               ref={iframeRef}
               key={iframeKey}
@@ -607,7 +584,7 @@ export default function EditPageClient({
               onLoad={handleIframeLoad}
               className={`bg-white h-full ${
                 viewMode === "mobile"
-                  ? "w-[375px] border-x border-[#1e2130] shadow-2xl"
+                  ? "w-[375px] border-x border-gray-200 shadow-2xl"
                   : "w-full"
               }`}
               sandbox="allow-scripts allow-same-origin"
@@ -617,14 +594,14 @@ export default function EditPageClient({
         </div>
 
         {/* Sidebar */}
-        <div className="w-72 border-l border-[#1e2130] shrink-0 flex flex-col overflow-y-auto">
+        <div className="w-72 border-l border-gray-200 shrink-0 flex flex-col overflow-y-auto bg-white">
           {/* Padding */}
           <div className="px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Padding
               </p>
-              <span className="flex items-center gap-1 text-[10px] text-slate-500">
+              <span className="flex items-center gap-1 text-[10px] text-gray-400">
                 {viewMode === "desktop" ? (
                   <><Monitor className="w-3 h-3" /> Desktop</>
                 ) : (
@@ -634,25 +611,25 @@ export default function EditPageClient({
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 flex-1">
-                <MoveHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                 <input
                   type="number"
                   min="0"
                   value={viewMode === "desktop" ? padDH : padMH}
                   onChange={(e) => handlePaddingChange("h", e.target.value)}
                   placeholder="—"
-                  className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
               <div className="flex items-center gap-1.5 flex-1">
-                <MoveVertical className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                 <input
                   type="number"
                   min="0"
                   value={viewMode === "desktop" ? padDV : padMV}
                   onChange={(e) => handlePaddingChange("v", e.target.value)}
                   placeholder="—"
-                  className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
             </div>
@@ -661,48 +638,46 @@ export default function EditPageClient({
                 onClick={() => setExcludeMode(!excludeMode)}
                 className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
                   excludeMode
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
-                    : "bg-[#141620] border-[#1e2130] text-slate-500 hover:text-slate-300"
+                    ? "bg-amber-50 border-amber-300 text-amber-700"
+                    : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
                 }`}
               >
                 <MousePointerClick className="w-3 h-3" />
                 Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
               </button>
-              <span className="text-[10px] text-slate-600">
+              <span className="text-[10px] text-gray-400">
                 {viewMode === "desktop" ? "Desktop" : "Mobile"} view
               </span>
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-[#1e2130]" />
+          <div className="border-t border-gray-200" />
 
           {/* Destination URL */}
           <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Destination URL
             </p>
             <div className="flex items-center gap-1.5">
-              <Link2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <input
                 type="url"
                 value={linkUrl}
                 onChange={(e) => handleLinkUrlChange(e.target.value)}
                 placeholder="https://..."
-                className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
               />
             </div>
-            <p className="text-[10px] text-slate-600">
+            <p className="text-[10px] text-gray-400">
               Applied to all links on the page.
             </p>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-[#1e2130]" />
+          <div className="border-t border-gray-200" />
 
           {/* Slug */}
           <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Slug
             </p>
             <input
@@ -713,23 +688,22 @@ export default function EditPageClient({
                 setIsDirty(true);
               }}
               placeholder="page-slug"
-              className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
             />
-            <p className="text-[10px] text-slate-600 truncate">
+            <p className="text-[10px] text-gray-400 truncate">
               {language.domain}/{language.value === "no" ? `no/${slug}` : slug}
             </p>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-[#1e2130]" />
+          <div className="border-t border-gray-200" />
 
           {/* SEO fields */}
           <div className="px-4 py-3 space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               SEO
             </p>
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Page Title
               </label>
               <input
@@ -739,11 +713,11 @@ export default function EditPageClient({
                   setIsDirty(true);
                 }}
                 placeholder="Page title..."
-                className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wider">
                 Meta Description
               </label>
               <textarea
@@ -754,13 +728,12 @@ export default function EditPageClient({
                 }}
                 placeholder="Meta description..."
                 rows={4}
-                className="w-full bg-[#0a0c14] border border-[#1e2130] text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
               />
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-[#1e2130]" />
+          <div className="border-t border-gray-200" />
 
           {/* Image translation */}
           <ImageTranslatePanel
