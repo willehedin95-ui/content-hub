@@ -28,24 +28,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No source folder linked" }, { status: 400 });
   }
 
+  const errors: string[] = [];
+
   try {
     let exportedCount = 0;
 
     for (const lang of job.target_languages) {
       const langLabel = LANGUAGES.find((l: { value: string }) => l.value === lang)?.label ?? lang;
-      const langFolderId = await createDriveFolder(job.source_folder_id, langLabel);
+
+      let langFolderId: string;
+      try {
+        langFolderId = await createDriveFolder(job.source_folder_id, langLabel);
+      } catch (err) {
+        const msg = `Failed to create folder "${langLabel}": ${err instanceof Error ? err.message : String(err)}`;
+        console.error(msg);
+        errors.push(msg);
+        continue;
+      }
 
       for (const si of job.source_images ?? []) {
         for (const t of si.image_translations ?? []) {
           if (t.language === lang && t.status === "completed" && t.translated_url) {
             try {
               const imgRes = await fetch(t.translated_url);
+              if (!imgRes.ok) {
+                throw new Error(`HTTP ${imgRes.status} fetching image`);
+              }
               const buffer = Buffer.from(await imgRes.arrayBuffer());
+              if (buffer.length < 1000) {
+                throw new Error(`Image too small (${buffer.length} bytes) — likely an error response`);
+              }
               const filename = si.filename || `${si.id}.png`;
               await uploadToDrive(langFolderId, filename, buffer, "image/png");
               exportedCount++;
             } catch (err) {
-              console.error(`Failed to export ${si.filename}/${lang}:`, err);
+              const msg = `${si.filename ?? si.id}/${lang}: ${err instanceof Error ? err.message : String(err)}`;
+              console.error(`Export file failed:`, msg);
+              errors.push(msg);
             }
           }
         }
@@ -58,10 +77,14 @@ export async function POST(req: NextRequest) {
       .update({ exported_at: new Date().toISOString() })
       .eq("id", jobId);
 
-    return NextResponse.json({ exported: exportedCount });
+    return NextResponse.json({
+      exported: exportedCount,
+      ...(errors.length > 0 && { errors }),
+    });
   } catch (error) {
+    console.error("Drive export top-level error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Export failed" },
+      { error: error instanceof Error ? error.message : "Export failed", errors },
       { status: 500 }
     );
   }

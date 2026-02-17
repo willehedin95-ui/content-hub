@@ -37,6 +37,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [exporting, setExporting] = useState(false);
   const [driveExporting, setDriveExporting] = useState(false);
   const [driveExportDone, setDriveExportDone] = useState(false);
+  const [driveExportError, setDriveExportError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<SourceImage | null>(null);
   const [previewLang, setPreviewLang] = useState<string | null>(null);
   const [showRestartBanner, setShowRestartBanner] = useState(false);
@@ -185,15 +186,23 @@ export default function ImageJobDetail({ initialJob }: Props) {
       const settings = getSettings();
       if (settings.static_ads_quality_enabled !== false && finalJob.source_folder_id) {
         try {
-          await fetch("/api/drive/export", {
+          const exportRes = await fetch("/api/drive/export", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ jobId: finalJob.id }),
           });
-          setDriveExportDone(true);
-          setTimeout(() => setDriveExportDone(false), 3000);
+          const exportData = await exportRes.json().catch(() => ({}));
+          if (!exportRes.ok) {
+            setDriveExportError(exportData.error ?? "Auto-export to Drive failed");
+          } else if (exportData.errors?.length) {
+            setDriveExportError(`Exported ${exportData.exported} files, but ${exportData.errors.length} failed`);
+          } else {
+            setDriveExportDone(true);
+            setTimeout(() => setDriveExportDone(false), 5000);
+          }
+          await refreshJob();
         } catch (err) {
-          console.error("Auto-export to Drive failed:", err);
+          setDriveExportError(err instanceof Error ? err.message : "Auto-export to Drive failed");
         }
       }
 
@@ -339,6 +348,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   async function handleExportToDrive() {
     setDriveExporting(true);
+    setDriveExportError(null);
     try {
       const res = await fetch("/api/drive/export", {
         method: "POST",
@@ -346,14 +356,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
         body: JSON.stringify({ jobId: job.id }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.error("Drive export failed:", data.error);
+        setDriveExportError(data.error ?? "Export failed");
         return;
       }
 
+      if (data.errors?.length) {
+        setDriveExportError(`Exported ${data.exported} files, but ${data.errors.length} failed: ${data.errors[0]}`);
+      }
+
       setDriveExportDone(true);
-      setTimeout(() => setDriveExportDone(false), 3000);
+      setTimeout(() => setDriveExportDone(false), 5000);
+      await refreshJob();
+    } catch (err) {
+      setDriveExportError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setDriveExporting(false);
     }
@@ -425,20 +443,34 @@ export default function ImageJobDetail({ initialJob }: Props) {
           {completedCount > 0 && (
             <>
               {job.source_folder_id && (
-                <button
-                  onClick={handleExportToDrive}
-                  disabled={driveExporting}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-                >
-                  {driveExporting ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : driveExportDone ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5" />
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    onClick={handleExportToDrive}
+                    disabled={driveExporting}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    {driveExporting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : driveExportDone ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : job.exported_at ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    {driveExporting
+                      ? "Exporting..."
+                      : driveExportDone
+                      ? "Exported!"
+                      : "Export to Drive"}
+                  </button>
+                  {job.exported_at && !driveExporting && !driveExportDone && (
+                    <span className="text-[10px] text-gray-400">
+                      Exported {new Date(job.exported_at).toLocaleDateString("sv-SE")}{" "}
+                      {new Date(job.exported_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
                   )}
-                  {driveExporting ? "Exporting..." : driveExportDone ? "Exported!" : "Export to Drive"}
-                </button>
+                </div>
               )}
               <button
                 onClick={handleExport}
@@ -456,6 +488,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
           )}
         </div>
       </div>
+
+      {/* Drive export error */}
+      {driveExportError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span className="text-sm text-red-700">{driveExportError}</span>
+          </div>
+          <button
+            onClick={() => setDriveExportError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-6">
