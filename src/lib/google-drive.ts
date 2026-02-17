@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 
 function getAuth() {
-  const email = process.env.GDRIVE_SERVICE_ACCOUNT_EMAIL;
+  const email = process.env.GDRIVE_SERVICE_ACCOUNT_EMAIL?.trim();
   const key = process.env.GDRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
   if (!email || !key) throw new Error("Google Drive service account not configured");
   return new google.auth.JWT({
