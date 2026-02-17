@@ -147,7 +147,8 @@ async function processWithConcurrency<T, R>(
  */
 export async function optimizeImages(
   html: string,
-  slugPrefix: string
+  slugPrefix: string,
+  onProgress?: (current: number, total: number, detail: string) => void
 ): Promise<OptimizationResult> {
   const urls = extractImageUrls(html);
   const urlMap = new Map<string, string>();
@@ -166,12 +167,16 @@ export async function optimizeImages(
 
   console.log(`[image-optimizer] Found ${urls.length} images to optimize`);
 
+  let completed = 0;
   await processWithConcurrency(urls, CONCURRENCY, async (url) => {
     try {
       const downloaded = await downloadImage(url);
       if (!downloaded) {
         stats.skipped++;
         stats.errors.push(`Download failed: ${url}`);
+        completed++;
+        console.log(`[image-optimizer] [${completed}/${urls.length}] SKIP ${url.slice(0, 80)}`);
+        onProgress?.(completed, urls.length, `Skipped (download failed)`);
         return null;
       }
 
@@ -191,11 +196,18 @@ export async function optimizeImages(
       images.push(optimized);
       stats.optimized++;
       stats.savedBytes += downloaded.buffer.length - webpBuffer.length;
+      completed++;
+      const detail = `${(downloaded.buffer.length / 1024).toFixed(0)}KB → ${(webpBuffer.length / 1024).toFixed(0)}KB`;
+      console.log(`[image-optimizer] [${completed}/${urls.length}] OK ${detail} ${url.slice(0, 80)}`);
+      onProgress?.(completed, urls.length, detail);
     } catch (err) {
       stats.skipped++;
       stats.errors.push(
         `Conversion failed for ${url}: ${err instanceof Error ? err.message : "unknown"}`
       );
+      completed++;
+      console.log(`[image-optimizer] [${completed}/${urls.length}] ERR ${url.slice(0, 80)}: ${err instanceof Error ? err.message : "unknown"}`);
+      onProgress?.(completed, urls.length, `Failed`);
     }
 
     return null;

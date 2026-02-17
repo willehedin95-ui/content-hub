@@ -326,7 +326,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
               const blob = await imgRes.blob();
               const langLabel = LANGUAGES.find((l) => l.value === t.language)?.label ?? t.language;
               const filename = si.filename || `${si.id}.png`;
-              zip.file(`${langLabel}/${filename}`, blob);
+              const ratioFolder = t.aspect_ratio && t.aspect_ratio !== "1:1" ? `${t.aspect_ratio}/` : "";
+              zip.file(`${langLabel}/${ratioFolder}${filename}`, blob);
             } catch {
               // Skip failed downloads
             }
@@ -430,6 +431,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
           <p className="text-sm text-gray-400 mt-1">
             {job.total_images ?? job.source_images?.length ?? 0} images &times;{" "}
             {job.target_languages.length} languages
+            {job.target_ratios && job.target_ratios.length > 1 && (
+              <> &times; {job.target_ratios.length} ratios</>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -589,6 +593,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
                   <div key={t.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs">{langInfo?.flag}</span>
+                      {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
+                        <span className="text-[9px] text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
+                      )}
                       <TranslationStatusBadge status={t.status} />
                       {versionCount > 1 && (
                         <span className="text-[10px] text-gray-400">v{versionCount}</span>
@@ -757,6 +764,9 @@ function ImagePreviewModal({
               >
                 <span>{langInfo?.flag}</span>
                 {t.status === "completed" ? langInfo?.label : t.status === "failed" ? "Failed" : "Pending"}
+                {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
+                  <span className="text-[9px] text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
+                )}
                 {t.status === "failed" && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onRetry(t.id); }}

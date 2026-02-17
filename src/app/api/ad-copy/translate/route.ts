@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import OpenAI from "openai";
 import { calcOpenAICost } from "@/lib/pricing";
-import { LANGUAGES } from "@/types";
+import { Language, LANGUAGES } from "@/types";
+import { getShortLocalizationNote } from "@/lib/localization";
 
 export const maxDuration = 60;
 
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
 
     const openai = new OpenAI({ apiKey });
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
+    const langCode = translation.language as Language;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
           role: "system",
           content: `You are a professional ad copywriter and translator. Translate the following ad copy from English to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
-Adapt cultural references and idioms naturally.
+Adapt cultural references and idioms naturally.${getShortLocalizationNote(langCode)}
 Return ONLY the translated text, no explanations.`,
         },
         {

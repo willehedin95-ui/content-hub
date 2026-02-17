@@ -10,6 +10,8 @@ interface Settings {
   netlify_site_id_sv: string;
   netlify_site_id_dk: string;
   netlify_site_id_no: string;
+  pages_quality_enabled: boolean;
+  pages_quality_threshold: number;
   static_ads_quality_enabled: boolean;
   static_ads_quality_threshold: number;
   static_ads_economy_mode: boolean;
@@ -27,6 +29,8 @@ export default function SettingsPage() {
     netlify_site_id_sv: "",
     netlify_site_id_dk: "",
     netlify_site_id_no: "",
+    pages_quality_enabled: true,
+    pages_quality_threshold: 85,
     static_ads_quality_enabled: true,
     static_ads_quality_threshold: 80,
     static_ads_economy_mode: false,
@@ -40,6 +44,9 @@ export default function SettingsPage() {
   const [kieBalance, setKieBalance] = useState<number | null>(null);
   const [kieLoading, setKieLoading] = useState(false);
   const [kieError, setKieError] = useState<string | null>(null);
+  const [metaStatus, setMetaStatus] = useState<{ name: string; id: string } | null>(null);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
 
   const fetchKieCredits = useCallback(async () => {
     setKieLoading(true);
@@ -133,6 +140,43 @@ export default function SettingsPage() {
           />
         </Section>
 
+        {/* Pages */}
+        <Section title="Pages">
+          <Toggle
+            label="Quality analysis"
+            description="Run automatic quality checks on translated pages"
+            checked={settings.pages_quality_enabled}
+            onChange={(v) => setSettings((s) => ({ ...s, pages_quality_enabled: v }))}
+          />
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">
+              Auto-regenerate threshold
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={settings.pages_quality_threshold}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    pages_quality_threshold: Number(e.target.value),
+                  }))
+                }
+                className="flex-1 accent-indigo-600"
+              />
+              <span className="text-sm font-medium text-gray-700 w-8 text-right">
+                {settings.pages_quality_threshold}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Pages scoring below this threshold will auto-regenerate up to 3 times
+            </p>
+          </div>
+        </Section>
+
         {/* Static Ads */}
         <Section title="Static Ads">
           <Toggle
@@ -219,6 +263,56 @@ export default function SettingsPage() {
             checked={settings.static_ads_email_enabled}
             onChange={(v) => setSettings((s) => ({ ...s, static_ads_email_enabled: v }))}
           />
+        </Section>
+
+        {/* Meta Ads */}
+        <Section title="Meta Ads">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Connection Status</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Set META_SYSTEM_USER_TOKEN, META_AD_ACCOUNT_ID, META_PAGE_ID in env vars
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {metaStatus && (
+                <span className="text-sm font-medium text-emerald-600">
+                  {metaStatus.name}
+                </span>
+              )}
+              {metaError && (
+                <span className="text-xs text-red-500 max-w-[200px] truncate">{metaError}</span>
+              )}
+              <button
+                onClick={async () => {
+                  setMetaLoading(true);
+                  setMetaError(null);
+                  try {
+                    const res = await fetch("/api/meta/verify");
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error ?? "Connection failed");
+                    setMetaStatus(data);
+                  } catch (err) {
+                    setMetaError(err instanceof Error ? err.message : "Connection failed");
+                    setMetaStatus(null);
+                  } finally {
+                    setMetaLoading(false);
+                  }
+                }}
+                disabled={metaLoading}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {metaLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : metaStatus ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                {metaStatus ? "Connected" : metaLoading ? "Testing..." : "Test Connection"}
+              </button>
+            </div>
+          </div>
         </Section>
 
         {/* Kie AI */}

@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   // Verify job exists
   const { data: job, error: jobError } = await db
     .from("image_jobs")
-    .select("id, target_languages")
+    .select("id, target_languages, target_ratios")
     .eq("id", jobId)
     .single();
 
@@ -64,12 +64,16 @@ export async function POST(req: NextRequest) {
       throw new Error(siError?.message ?? "Failed to create source image");
     }
 
-    // Create image_translations for each target language
-    const translationRows = job.target_languages.map((lang: string) => ({
-      source_image_id: sourceImage.id,
-      language: lang,
-      status: "pending",
-    }));
+    // Create image_translations for each (language, ratio) combination
+    const ratios: string[] = job.target_ratios?.length ? job.target_ratios : ["1:1"];
+    const translationRows = job.target_languages.flatMap((lang: string) =>
+      ratios.map((ratio: string) => ({
+        source_image_id: sourceImage.id,
+        language: lang,
+        aspect_ratio: ratio,
+        status: "pending",
+      }))
+    );
 
     await db.from("image_translations").insert(translationRows);
 

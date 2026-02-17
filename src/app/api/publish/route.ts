@@ -66,62 +66,90 @@ export async function POST(req: NextRequest) {
     .update({ status: "publishing", updated_at: new Date().toISOString() })
     .eq("id", translation_id);
 
-  try {
-    let html = translation.translated_html as string;
-    const language = translation.language as Language;
-    const slug = translation.slug || translation.pages.slug;
-    const slugPrefix = slug;
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(event: Record<string, unknown>) {
+        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      }
 
-    // Optimize images: download, convert to WebP, prepare for deploy
-    const imageResult = await optimizeImages(html, slugPrefix);
+      try {
+        let html = translation.translated_html as string;
+        const language = translation.language as Language;
+        const slug = translation.slug || translation.pages.slug;
+        const slugPrefix = slug;
 
-    if (imageResult.stats.errors.length > 0) {
-      console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
-    }
+        // Optimize images with progress
+        send({ step: "images", current: 0, total: 0, message: "Scanning for images…" });
 
-    // Replace image URLs in HTML with optimized deploy paths
-    if (imageResult.urlMap.size > 0) {
-      html = replaceImageUrls(html, imageResult.urlMap);
-    }
+        const imageResult = await optimizeImages(html, slugPrefix, (current, total, detail) => {
+          send({ step: "images", current, total, message: `${current}/${total} compressed (${detail})` });
+        });
 
-    // Build additional files for deploy
-    const additionalFiles = imageResult.images.map((img) => ({
-      path: img.deployPath,
-      sha1: img.sha1,
-      body: img.buffer,
-    }));
+        if (imageResult.stats.errors.length > 0) {
+          console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
+        }
 
-    const result = await publishPage(
-      html,
-      slug,
-      language,
-      netlifyToken,
-      siteId,
-      additionalFiles
-    );
+        // Replace image URLs in HTML with optimized deploy paths
+        if (imageResult.urlMap.size > 0) {
+          html = replaceImageUrls(html, imageResult.urlMap);
+        }
 
-    const { data: updated, error: updateError } = await db
-      .from("translations")
-      .update({
-        status: "published",
-        published_url: result.url,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", translation_id)
-      .select()
-      .single();
+        // Build additional files for deploy
+        const additionalFiles = imageResult.images.map((img) => ({
+          path: img.deployPath,
+          sha1: img.sha1,
+          body: img.buffer,
+        }));
 
-    if (updateError) throw new Error(updateError.message);
+        send({ step: "deploy", message: "Creating Netlify deploy…" });
 
-    return NextResponse.json(updated);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Publish failed";
+        const result = await publishPage(
+          html,
+          slug,
+          language,
+          netlifyToken,
+          siteId,
+          additionalFiles,
+          (current, total) => {
+            send({ step: "upload", current, total, message: `Uploading ${current}/${total} files…` });
+          }
+        );
 
-    await db
-      .from("translations")
-      .update({ status: "translated", updated_at: new Date().toISOString() })
-      .eq("id", translation_id);
+        const { data: updated, error: updateError } = await db
+          .from("translations")
+          .update({
+            status: "published",
+            published_url: result.url,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", translation_id)
+          .select()
+          .single();
 
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+        if (updateError) throw new Error(updateError.message);
+
+        send({ step: "done", url: result.url, data: updated });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Publish failed";
+
+        await db
+          .from("translations")
+          .update({ status: "translated", updated_at: new Date().toISOString() })
+          .eq("id", translation_id);
+
+        send({ step: "error", message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+      "Cache-Control": "no-cache",
+    },
+  });
 }

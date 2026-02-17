@@ -18,6 +18,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { ABTest, Translation, LANGUAGES } from "@/types";
+import { calculateSignificance } from "@/lib/ab-stats";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface Stats {
   control: { views: number; clicks: number; ctr: number };
@@ -49,10 +51,16 @@ export default function ABTestManager({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
+  const [confirmWinner, setConfirmWinner] = useState<"control" | "b" | null>(null);
+  const [confirmDeleteTest, setConfirmDeleteTest] = useState(false);
 
   const isActive = abTest.status === "active";
   const isCompleted = abTest.status === "completed";
   const isDraft = abTest.status === "draft";
+
+  const significance = stats
+    ? calculateSignificance(stats.control.views, stats.control.clicks, stats.variant.views, stats.variant.clicks)
+    : null;
 
   const fetchStats = useCallback(async () => {
     try {
@@ -123,11 +131,7 @@ export default function ABTestManager({
   }
 
   async function handleDeclareWinner(winner: "control" | "b") {
-    const label = winner === "control" ? "Control (A)" : "Variant B";
-    if (!confirm(`Declare "${label}" as the winner? This will deploy it to the main URL and end the test.`)) {
-      return;
-    }
-
+    setConfirmWinner(null);
     setDeclaringWinner(true);
     setError("");
 
@@ -154,10 +158,7 @@ export default function ABTestManager({
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this A/B test? The variant B translation will also be deleted.")) {
-      return;
-    }
-
+    setConfirmDeleteTest(false);
     setDeleting(true);
     setError("");
 
@@ -266,7 +267,7 @@ export default function ABTestManager({
         </div>
 
         <button
-          onClick={handleDelete}
+          onClick={() => setConfirmDeleteTest(true)}
           disabled={deleting}
           className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-3 py-2 transition-colors"
         >
@@ -310,6 +311,74 @@ export default function ABTestManager({
             suffix="%"
             highlight
           />
+        </div>
+      )}
+
+      {/* Statistical significance */}
+      {significance && (isActive || isCompleted) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-gray-400" />
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Statistical Significance
+            </span>
+          </div>
+
+          {!significance.hasEnoughData ? (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500">
+                Not enough data yet. Need at least 30 views per variant.
+              </p>
+              <p className="text-xs text-gray-400">
+                Recommended: ~{significance.minSampleSize.toLocaleString()} views per variant for reliable results.
+              </p>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>Progress toward minimum sample</span>
+                  <span>{Math.round(Math.min(((stats!.control.views + stats!.variant.views) / 2) / Math.max(significance.minSampleSize, 1), 1) * 100)}%</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-400 rounded-full transition-all"
+                    style={{ width: `${Math.min(((stats!.control.views + stats!.variant.views) / 2) / Math.max(significance.minSampleSize, 1) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                {significance.significant ? (
+                  <span className="flex items-center gap-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Statistically Significant
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200 px-2.5 py-1 rounded-full">
+                    Not Yet Significant
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-400">
+                  p = {significance.pValue.toFixed(4)}
+                </span>
+              </div>
+
+              {significance.significant ? (
+                <p className="text-sm text-gray-700">
+                  {significance.confidenceLevel}% confident that{" "}
+                  <span className="font-medium">
+                    {significance.winner === "variant" ? "Variant B" : "Control (A)"}
+                  </span>{" "}
+                  performs better.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No significant difference detected yet. Continue running the test.
+                  Recommended: ~{significance.minSampleSize.toLocaleString()} views per variant.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -441,7 +510,7 @@ export default function ABTestManager({
             </button>
 
             <button
-              onClick={() => handleDeclareWinner("control")}
+              onClick={() => setConfirmWinner("control")}
               disabled={declaringWinner}
               className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium px-4 py-2.5 rounded-lg border border-gray-300 transition-colors"
             >
@@ -454,7 +523,7 @@ export default function ABTestManager({
             </button>
 
             <button
-              onClick={() => handleDeclareWinner("b")}
+              onClick={() => setConfirmWinner("b")}
               disabled={declaringWinner}
               className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium px-4 py-2.5 rounded-lg border border-amber-200 transition-colors"
             >
@@ -523,6 +592,26 @@ export default function ABTestManager({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmWinner}
+        title="Declare winner"
+        message={`Declare "${confirmWinner === "control" ? "Control (A)" : "Variant B"}" as the winner? This will deploy it to the main URL and end the test.`}
+        confirmLabel="Declare Winner"
+        variant="warning"
+        onConfirm={() => confirmWinner && handleDeclareWinner(confirmWinner)}
+        onCancel={() => setConfirmWinner(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteTest}
+        title="Delete A/B test"
+        message="Delete this A/B test? The variant B translation will also be deleted."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteTest(false)}
+      />
     </div>
   );
 }

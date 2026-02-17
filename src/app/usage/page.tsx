@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   DollarSign,
   Languages,
@@ -8,6 +8,7 @@ import {
   Coins,
   Loader2,
   AlertCircle,
+  MessageSquare,
 } from "lucide-react";
 import { UsageLog } from "@/types";
 
@@ -90,6 +91,23 @@ export default function UsagePage() {
     return String(n);
   }
 
+  const breakdown = useMemo(() => {
+    const cats = { pages: 0, images: 0, adCopy: 0 };
+    for (const log of logs) {
+      const cost = Number(log.cost_usd);
+      const purpose = (log.metadata as Record<string, unknown>)?.purpose as string | undefined;
+      if (purpose === "ad_copy_translation" || purpose === "ad_copy_quality_analysis") {
+        cats.adCopy += cost;
+      } else if (log.type === "image_generation" || purpose === "quality_analysis") {
+        cats.images += cost;
+      } else {
+        cats.pages += cost;
+      }
+    }
+    const total = cats.pages + cats.images + cats.adCopy;
+    return { ...cats, total };
+  }, [logs]);
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -168,6 +186,58 @@ export default function UsagePage() {
             <p className="text-lg font-semibold text-gray-900">
               {summary.image_count}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Cost breakdown by feature */}
+      {breakdown.total > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">
+            Cost Breakdown
+          </p>
+          <div className="flex items-center gap-1 h-3 rounded-full overflow-hidden bg-gray-100 mb-3">
+            {breakdown.pages > 0 && (
+              <div
+                className="h-full bg-indigo-500 rounded-full transition-all"
+                style={{ width: `${(breakdown.pages / breakdown.total) * 100}%` }}
+              />
+            )}
+            {breakdown.images > 0 && (
+              <div
+                className="h-full bg-pink-500 rounded-full transition-all"
+                style={{ width: `${(breakdown.images / breakdown.total) * 100}%` }}
+              />
+            )}
+            {breakdown.adCopy > 0 && (
+              <div
+                className="h-full bg-amber-500 rounded-full transition-all"
+                style={{ width: `${(breakdown.adCopy / breakdown.total) * 100}%` }}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-6 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+              <Languages className="w-3 h-3 text-gray-400" />
+              <span className="text-gray-600">Pages</span>
+              <span className="text-gray-400 tabular-nums">{formatUsd(breakdown.pages)}</span>
+              <span className="text-gray-300 tabular-nums">{formatSek(breakdown.pages)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-pink-500" />
+              <ImageIcon className="w-3 h-3 text-gray-400" />
+              <span className="text-gray-600">Images</span>
+              <span className="text-gray-400 tabular-nums">{formatUsd(breakdown.images)}</span>
+              <span className="text-gray-300 tabular-nums">{formatSek(breakdown.images)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              <MessageSquare className="w-3 h-3 text-gray-400" />
+              <span className="text-gray-600">Ad Copy</span>
+              <span className="text-gray-400 tabular-nums">{formatUsd(breakdown.adCopy)}</span>
+              <span className="text-gray-300 tabular-nums">{formatSek(breakdown.adCopy)}</span>
+            </div>
           </div>
         </div>
       )}

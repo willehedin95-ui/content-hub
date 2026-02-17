@@ -17,10 +17,14 @@ import {
   MoveVertical,
   MousePointerClick,
   Link2,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 
 import { Translation, LANGUAGES } from "@/types";
 import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
+import PublishModal from "@/components/pages/PublishModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface Props {
   pageId: string;
@@ -59,6 +63,7 @@ export default function EditPageClient({
   const [padMV, setPadMV] = useState("");
   const [excludeMode, setExcludeMode] = useState(false);
   const [excludeCount, setExcludeCount] = useState(0);
+  const [showPublishModal, setShowPublishModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const prevLinkUrl = useRef("");
   const [slug, setSlug] = useState(translation.slug ?? pageSlug);
@@ -69,10 +74,76 @@ export default function EditPageClient({
     height: number;
   } | null>(null);
 
+  // Element-level editing
+  const selectedElRef = useRef<HTMLElement | null>(null);
+  const [hasSelectedEl, setHasSelectedEl] = useState(false);
+  const [selectedElMargin, setSelectedElMargin] = useState({ top: "", right: "", bottom: "", left: "" });
+  const [elSpacingMode, setElSpacingMode] = useState<"hv" | "individual">("hv");
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [revealHidden, setRevealHidden] = useState(false);
+  const excludeModeRef = useRef(false);
+
+  // Confirm dialogs
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; action: () => void } | null>(null);
+
+  // Autosave
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSavedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "" });
+  const savingRef = useRef(false);
+
+  useEffect(() => { autosaveDataRef.current = { seoTitle, seoDesc, slug }; }, [seoTitle, seoDesc, slug]);
+  useEffect(() => { savingRef.current = saving || publishing || retranslating; }, [saving, publishing, retranslating]);
+
+  const triggerAutosave = useCallback(() => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (savingRef.current) return;
+      setAutoSaveStatus("saving");
+      try {
+        const html = extractHtmlFromIframe();
+        const d = autosaveDataRef.current;
+        const res = await fetch(`/api/translations/${translation.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            translated_html: html,
+            seo_title: d.seoTitle || undefined,
+            seo_description: d.seoDesc || undefined,
+            slug: d.slug || undefined,
+          }),
+        });
+        if (res.ok) {
+          setIsDirty(false);
+          setAutoSaveStatus("saved");
+          if (autoSavedTimeoutRef.current) clearTimeout(autoSavedTimeoutRef.current);
+          autoSavedTimeoutRef.current = setTimeout(() => setAutoSaveStatus("idle"), 3000);
+        } else {
+          setAutoSaveStatus("idle");
+        }
+      } catch {
+        setAutoSaveStatus("idle");
+      }
+    }, 3000);
+  }, [translation.id]);
+
+  const markDirty = useCallback(() => {
+    markDirty();
+    triggerAutosave();
+  }, [triggerAutosave]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (autoSavedTimeoutRef.current) clearTimeout(autoSavedTimeoutRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data?.type === "cc-dirty") {
-        setIsDirty(true);
+        markDirty();
       }
       if (e.data?.type === "cc-image-click") {
         setClickedImage({
@@ -146,7 +217,7 @@ export default function EditPageClient({
         padded.setAttribute("data-cc-pad-skip", "");
       }
       setExcludeCount(doc!.querySelectorAll("[data-cc-pad-skip]").length);
-      setIsDirty(true);
+      markDirty();
     }
 
     doc.addEventListener("click", handleClick, true);
@@ -157,6 +228,65 @@ export default function EditPageClient({
     };
   }, [excludeMode]);
 
+  useEffect(() => { excludeModeRef.current = excludeMode; }, [excludeMode]);
+
+  function handleElMarginChange(side: "top" | "right" | "bottom" | "left", value: string) {
+    const el = selectedElRef.current;
+    if (!el) return;
+    setSelectedElMargin(prev => ({ ...prev, [side]: value }));
+    const prop = `margin${side.charAt(0).toUpperCase() + side.slice(1)}` as
+      "marginTop" | "marginRight" | "marginBottom" | "marginLeft";
+    el.style[prop] = value !== "" ? `${value}px` : "";
+    markDirty();
+  }
+
+  function handleElMarginHV(axis: "h" | "v", value: string) {
+    const el = selectedElRef.current;
+    if (!el) return;
+    if (axis === "h") {
+      setSelectedElMargin(prev => ({ ...prev, left: value, right: value }));
+      el.style.marginLeft = value !== "" ? `${value}px` : "";
+      el.style.marginRight = value !== "" ? `${value}px` : "";
+    } else {
+      setSelectedElMargin(prev => ({ ...prev, top: value, bottom: value }));
+      el.style.marginTop = value !== "" ? `${value}px` : "";
+      el.style.marginBottom = value !== "" ? `${value}px` : "";
+    }
+    markDirty();
+  }
+
+  function handleHideElement() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    el.setAttribute("data-cc-hidden", "");
+    el.style.display = "none";
+    // Deselect
+    el.removeAttribute("data-cc-selected");
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+    // Update count
+    const doc = iframeRef.current?.contentDocument;
+    if (doc) setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+    markDirty();
+  }
+
+  function toggleRevealHidden() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const newState = !revealHidden;
+    setRevealHidden(newState);
+    doc.querySelectorAll("[data-cc-hidden]").forEach(el => {
+      const htmlEl = el as HTMLElement;
+      if (newState) {
+        htmlEl.style.display = "";
+        htmlEl.style.opacity = "0.2";
+      } else {
+        htmlEl.style.display = "none";
+        htmlEl.style.opacity = "";
+      }
+    });
+  }
+
   function buildPaddingCss(dh: string, dv: string, mh: string, mv: string): string {
     const rules: string[] = [];
 
@@ -166,7 +296,7 @@ export default function EditPageClient({
       const inner: string[] = [];
       if (dhVal !== null) inner.push(`[data-cc-padded]:not([data-cc-pad-skip]) { padding-left: ${dhVal}px !important; padding-right: ${dhVal}px !important; }`);
       if (dvVal !== null) inner.push(`body { padding-top: ${dvVal}px !important; padding-bottom: ${dvVal}px !important; }`);
-      rules.push(`@media (min-width: 376px) {\n  ${inner.join("\n  ")}\n}`);
+      rules.push(`@media (min-width: 769px) {\n  ${inner.join("\n  ")}\n}`);
     }
 
     const mhVal = mh !== "" ? parseInt(mh) : null;
@@ -175,7 +305,7 @@ export default function EditPageClient({
       const inner: string[] = [];
       if (mhVal !== null) inner.push(`[data-cc-padded]:not([data-cc-pad-skip]) { padding-left: ${mhVal}px !important; padding-right: ${mhVal}px !important; }`);
       if (mvVal !== null) inner.push(`body { padding-top: ${mvVal}px !important; padding-bottom: ${mvVal}px !important; }`);
-      rules.push(`@media (max-width: 375px) {\n  ${inner.join("\n  ")}\n}`);
+      rules.push(`@media (max-width: 768px) {\n  ${inner.join("\n  ")}\n}`);
     }
 
     return rules.join("\n");
@@ -254,6 +384,73 @@ export default function EditPageClient({
       setLinkUrl(topUrl);
       prevLinkUrl.current = topUrl;
     }
+
+    // Element selection — clear stale ref on reload
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+
+    // Count existing hidden elements
+    setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+
+    // Inject element selection styles
+    const elStyle = doc.createElement("style");
+    elStyle.setAttribute("data-cc-el-toolbar", "true");
+    elStyle.textContent = "[data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }";
+    doc.head.appendChild(elStyle);
+
+    // Click handler for element selection (bubble phase — runs after iframe script)
+    doc.addEventListener("click", function (e: Event) {
+      const target = (e as MouseEvent).target as HTMLElement;
+      const SKIP = ["SCRIPT", "STYLE", "NOSCRIPT", "BR", "HR"];
+      if (SKIP.includes(target.tagName)) return;
+
+      // Un-hide if clicking a revealed hidden element
+      if (target.closest("[data-cc-hidden]")) {
+        const hidden = target.closest("[data-cc-hidden]") as HTMLElement;
+        hidden.removeAttribute("data-cc-hidden");
+        hidden.style.display = "";
+        hidden.style.opacity = "";
+        const count = doc.querySelectorAll("[data-cc-hidden]").length;
+        setHiddenCount(count);
+        markDirty();
+        return;
+      }
+
+      // Skip images — handled by iframe image-click handler
+      if (target.tagName === "IMG") return;
+
+      // Clicking body/html — deselect
+      if (target === body || target.tagName === "HTML") {
+        if (selectedElRef.current) {
+          selectedElRef.current.removeAttribute("data-cc-selected");
+          selectedElRef.current = null;
+          setHasSelectedEl(false);
+        }
+        return;
+      }
+
+      // Skip in exclude mode
+      if (excludeModeRef.current) return;
+
+      // Deselect previous
+      if (selectedElRef.current) {
+        selectedElRef.current.removeAttribute("data-cc-selected");
+      }
+
+      // Select new element (works alongside text editing — both can coexist)
+      target.setAttribute("data-cc-selected", "");
+      selectedElRef.current = target;
+
+      const cs = win!.getComputedStyle(target);
+      setSelectedElMargin({
+        top: String(parseInt(cs.marginTop) || 0),
+        right: String(parseInt(cs.marginRight) || 0),
+        bottom: String(parseInt(cs.marginBottom) || 0),
+        left: String(parseInt(cs.marginLeft) || 0),
+      });
+      setElSpacingMode("hv");
+      setHasSelectedEl(true);
+    }, false);
   }
 
   function syncPaddingToIframe(dh: string, dv: string, mh: string, mv: string) {
@@ -287,7 +484,7 @@ export default function EditPageClient({
       else { mv = value; setPadMV(value); }
     }
     syncPaddingToIframe(dh, dv, mh, mv);
-    setIsDirty(true);
+    markDirty();
   }
 
   function handleLinkUrlChange(newUrl: string) {
@@ -302,7 +499,7 @@ export default function EditPageClient({
       }
     });
     prevLinkUrl.current = newUrl;
-    setIsDirty(true);
+    markDirty();
   }
 
   function extractHtmlFromIframe(): string {
@@ -326,11 +523,17 @@ export default function EditPageClient({
       (el as HTMLElement).style.outline = "";
       el.removeAttribute("data-cc-img-highlight");
     });
+    clone.querySelectorAll("[data-cc-selected]").forEach((el) => {
+      el.removeAttribute("data-cc-selected");
+    });
+    clone.querySelectorAll("[data-cc-el-toolbar]").forEach((el) => el.remove());
 
     return "<!DOCTYPE html>\n" + clone.outerHTML;
   }
 
   async function handleSave() {
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    setAutoSaveStatus("idle");
     setSaving(true);
     setSaveError("");
     setSaved(false);
@@ -369,6 +572,8 @@ export default function EditPageClient({
   }
 
   async function handlePublish() {
+    if (autoSaveTimerRef.current) { clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = null; }
+    setAutoSaveStatus("idle");
     setPublishing(true);
     setSaveError("");
 
@@ -392,33 +597,41 @@ export default function EditPageClient({
         return;
       }
 
-      const pubRes = await fetch("/api/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translation_id: translation.id }),
-      });
-
-      if (!pubRes.ok) {
-        const data = await pubRes.json();
-        setSaveError(data.error || "Publish failed");
-        return;
-      }
-
-      router.push(`/pages/${pageId}`);
-      router.refresh();
+      setIsDirty(false);
+      setShowPublishModal(true);
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : "Publish failed"
+        err instanceof Error ? err.message : "Failed to save before publish"
       );
     } finally {
       setPublishing(false);
     }
   }
 
-  async function handleRetranslate() {
-    if (isDirty && !confirm("This will discard your unsaved changes and re-translate from the original. Continue?")) return;
-    if (!isDirty && translation.status === "published" &&
-        !confirm("This page is already published. Re-translating will overwrite the current translation. Continue?")) return;
+  function requestRetranslate() {
+    if (isDirty) {
+      setConfirmAction({
+        title: "Discard changes",
+        message: "This will discard your unsaved changes and re-translate from the original. Continue?",
+        variant: "warning",
+        action: doRetranslate,
+      });
+      return;
+    }
+    if (translation.status === "published") {
+      setConfirmAction({
+        title: "Overwrite translation",
+        message: "This page is already published. Re-translating will overwrite the current translation. Continue?",
+        variant: "warning",
+        action: doRetranslate,
+      });
+      return;
+    }
+    doRetranslate();
+  }
+
+  async function doRetranslate() {
+    setConfirmAction(null);
     setRetranslating(true);
     setSaveError("");
 
@@ -454,7 +667,15 @@ export default function EditPageClient({
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => {
-              if (isDirty && !confirm("You have unsaved changes. Leave without saving?")) return;
+              if (isDirty) {
+                setConfirmAction({
+                  title: "Unsaved changes",
+                  message: "You have unsaved changes. Leave without saving?",
+                  variant: "warning",
+                  action: () => { setConfirmAction(null); router.push(`/pages/${pageId}`); },
+                });
+                return;
+              }
               router.push(`/pages/${pageId}`);
             }}
             className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm transition-colors shrink-0"
@@ -479,7 +700,17 @@ export default function EditPageClient({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {isDirty && (
+          {autoSaveStatus === "saving" && (
+            <span className="flex items-center gap-1.5 text-xs text-gray-400">
+              <Loader2 className="w-3 h-3 animate-spin" /> Autosaving...
+            </span>
+          )}
+          {autoSaveStatus === "saved" && !isDirty && !saved && (
+            <span className="flex items-center gap-1.5 text-emerald-600 text-xs">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Autosaved
+            </span>
+          )}
+          {isDirty && autoSaveStatus !== "saving" && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
           )}
           {saved && (
@@ -488,7 +719,7 @@ export default function EditPageClient({
             </span>
           )}
           <button
-            onClick={handleRetranslate}
+            onClick={requestRetranslate}
             disabled={saving || publishing || retranslating}
             className="flex items-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-500 text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 transition-colors"
           >
@@ -566,9 +797,16 @@ export default function EditPageClient({
               </div>
               <button
                 onClick={() => {
-                  if (isDirty && !confirm("You have unsaved changes. Reload preview?")) return;
+                  if (isDirty) {
+                    setConfirmAction({
+                      title: "Unsaved changes",
+                      message: "You have unsaved changes. Reload preview?",
+                      variant: "warning",
+                      action: () => { setConfirmAction(null); setIframeKey((k) => k + 1); setIsDirty(false); },
+                    });
+                    return;
+                  }
                   setIframeKey((k) => k + 1);
-                  setIsDirty(false);
                 }}
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
               >
@@ -595,6 +833,107 @@ export default function EditPageClient({
 
         {/* Sidebar */}
         <div className="w-72 border-l border-gray-200 shrink-0 flex flex-col overflow-y-auto bg-white">
+          {/* Element controls (shown when an element is selected) */}
+          {hasSelectedEl && (
+            <>
+              <div className="px-4 py-3 space-y-2 bg-indigo-50/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
+                    Element
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (selectedElRef.current) {
+                        selectedElRef.current.removeAttribute("data-cc-selected");
+                        selectedElRef.current = null;
+                      }
+                      setHasSelectedEl(false);
+                    }}
+                    className="text-[10px] text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    Deselect
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider">Margin</label>
+                    <button
+                      onClick={() => setElSpacingMode(elSpacingMode === "hv" ? "individual" : "hv")}
+                      className="text-[9px] text-gray-400 hover:text-indigo-600 transition-colors"
+                    >
+                      {elSpacingMode === "hv" ? "T R B L" : "H / V"}
+                    </button>
+                  </div>
+                  {elSpacingMode === "hv" ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <MoveHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
+                        <input
+                          type="number"
+                          value={selectedElMargin.left === selectedElMargin.right ? selectedElMargin.left : ""}
+                          onChange={(e) => handleElMarginHV("h", e.target.value)}
+                          placeholder="—"
+                          className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <MoveVertical className="w-3 h-3 text-gray-400 shrink-0" />
+                        <input
+                          type="number"
+                          value={selectedElMargin.top === selectedElMargin.bottom ? selectedElMargin.top : ""}
+                          onChange={(e) => handleElMarginHV("v", e.target.value)}
+                          placeholder="—"
+                          className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(["top", "right", "bottom", "left"] as const).map(side => (
+                        <div key={side} className="space-y-0.5">
+                          <span className="text-[9px] text-gray-400 uppercase block text-center">{side[0].toUpperCase()}</span>
+                          <input
+                            type="number"
+                            value={selectedElMargin[side]}
+                            onChange={(e) => handleElMarginChange(side, e.target.value)}
+                            className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleHideElement}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <EyeOff className="w-3 h-3" /> Hide Element
+                </button>
+              </div>
+              <div className="border-t border-gray-200" />
+            </>
+          )}
+
+          {/* Hidden elements indicator */}
+          {hiddenCount > 0 && !hasSelectedEl && (
+            <>
+              <div className="px-4 py-2">
+                <button
+                  onClick={toggleRevealHidden}
+                  className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
+                    revealHidden
+                      ? "bg-red-50 border-red-300 text-red-700"
+                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  <Eye className="w-3 h-3" />
+                  {revealHidden ? "Click to unhide" : `${hiddenCount} hidden`}
+                </button>
+              </div>
+              <div className="border-t border-gray-200" />
+            </>
+          )}
+
           {/* Padding */}
           <div className="px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -685,13 +1024,13 @@ export default function EditPageClient({
               value={slug}
               onChange={(e) => {
                 setSlug(e.target.value);
-                setIsDirty(true);
+                markDirty();
               }}
               placeholder="page-slug"
               className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
             />
             <p className="text-[10px] text-gray-400 truncate">
-              {language.domain}/{language.value === "no" ? `no/${slug}` : slug}
+              {language.domain}/{slug}
             </p>
           </div>
 
@@ -710,11 +1049,14 @@ export default function EditPageClient({
                 value={seoTitle}
                 onChange={(e) => {
                   setSeoTitle(e.target.value);
-                  setIsDirty(true);
+                  markDirty();
                 }}
                 placeholder="Page title..."
                 className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
               />
+              <p className={`text-[10px] text-right ${seoTitle.length > 60 ? "text-red-500" : seoTitle.length >= 50 ? "text-yellow-500" : "text-gray-400"}`}>
+                {seoTitle.length}/60
+              </p>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] text-gray-400 uppercase tracking-wider">
@@ -724,12 +1066,15 @@ export default function EditPageClient({
                 value={seoDesc}
                 onChange={(e) => {
                   setSeoDesc(e.target.value);
-                  setIsDirty(true);
+                  markDirty();
                 }}
                 placeholder="Meta description..."
                 rows={4}
                 className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
               />
+              <p className={`text-[10px] text-right ${seoDesc.length > 160 ? "text-red-500" : seoDesc.length >= 140 ? "text-yellow-500" : "text-gray-400"}`}>
+                {seoDesc.length}/160
+              </p>
             </div>
           </div>
 
@@ -742,10 +1087,33 @@ export default function EditPageClient({
             language={language}
             clickedImage={clickedImage}
             onClickedImageClear={() => setClickedImage(null)}
-            onImageReplaced={() => setIsDirty(true)}
+            onImageReplaced={() => markDirty()}
           />
         </div>
       </div>
+
+      {/* Publish progress modal */}
+      <PublishModal
+        open={showPublishModal}
+        translationId={translation.id}
+        onClose={(published) => {
+          setShowPublishModal(false);
+          if (published) {
+            router.push(`/pages/${pageId}`);
+            router.refresh();
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title ?? ""}
+        message={confirmAction?.message ?? ""}
+        confirmLabel="Continue"
+        variant={confirmAction?.variant ?? "default"}
+        onConfirm={() => confirmAction?.action()}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

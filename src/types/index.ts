@@ -33,8 +33,19 @@ export interface Translation {
   slug: string | null;
   status: TranslationStatus;
   published_url: string | null;
+  quality_score: number | null;
+  quality_analysis: PageQualityAnalysis | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PageQualityAnalysis {
+  quality_score: number;
+  fluency_issues: string[];
+  grammar_issues: string[];
+  context_errors: string[];
+  name_localization: string[];
+  overall_assessment: string;
 }
 
 export type ABTestStatus = "draft" | "active" | "completed";
@@ -103,6 +114,16 @@ export const LANGUAGES: {
   },
 ];
 
+// --- Image Aspect Ratios ---
+
+export type AspectRatio = "1:1" | "9:16" | "4:5";
+
+export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
+  { value: "1:1", label: "1:1 Square" },
+  { value: "9:16", label: "9:16 Story/Reel" },
+  { value: "4:5", label: "4:5 Feed" },
+];
+
 // --- Image Translation Types ---
 
 export type ImageJobStatus = "draft" | "processing" | "completed" | "failed";
@@ -113,6 +134,7 @@ export interface ImageJob {
   name: string;
   status: ImageJobStatus;
   target_languages: string[];
+  target_ratios: AspectRatio[];
   source_folder_id: string | null;
   auto_export: boolean;
   exported_at: string | null;
@@ -141,6 +163,7 @@ export interface ImageTranslation {
   id: string;
   source_image_id: string;
   language: string;
+  aspect_ratio: AspectRatio;
   status: ImageTranslationStatus;
   translated_url: string | null;
   error_message: string | null;
@@ -206,4 +229,55 @@ export interface AdCopyTranslation {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// --- Meta Ads Types ---
+
+export type MetaCampaignStatus = "draft" | "pushing" | "pushed" | "error";
+export type MetaAdStatus = "pending" | "uploading" | "pushed" | "error";
+
+export const META_OBJECTIVES = [
+  { value: "OUTCOME_TRAFFIC", label: "Traffic" },
+  { value: "OUTCOME_SALES", label: "Sales" },
+  { value: "OUTCOME_LEADS", label: "Leads" },
+  { value: "OUTCOME_ENGAGEMENT", label: "Engagement" },
+] as const;
+
+export const COUNTRY_MAP: Record<Language, string> = {
+  no: "NO",
+  da: "DK",
+  sv: "SE",
+  de: "DE",
+};
+
+export interface MetaCampaign {
+  id: string;
+  name: string;
+  meta_campaign_id: string | null;
+  meta_adset_id: string | null;
+  objective: string;
+  countries: string[];
+  daily_budget: number;
+  language: string;
+  status: MetaCampaignStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  meta_ads?: MetaAd[];
+}
+
+export interface MetaAd {
+  id: string;
+  campaign_id: string;
+  name: string;
+  meta_ad_id: string | null;
+  meta_creative_id: string | null;
+  meta_image_hash: string | null;
+  image_url: string | null;
+  ad_copy: string | null;
+  landing_page_url: string | null;
+  aspect_ratio: string | null;
+  status: MetaAdStatus;
+  error_message: string | null;
+  created_at: string;
 }

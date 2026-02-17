@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, BarChart3, Image, MessageSquare } from "lucide-react";
+import { Layers, Settings, Zap, BarChart3, Image, MessageSquare, FlaskConical, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/", label: "Landing pages", icon: Layers },
+  { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
   { href: "/images", label: "Static ads", icon: Image },
   { href: "/ad-copy", label: "Ad copy", icon: MessageSquare },
+  { href: "/meta-ads", label: "Meta Ads", icon: Megaphone },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -62,7 +64,9 @@ export default function Sidebar() {
       <nav className="flex-1 p-3 space-y-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            href === "/"
+              ? pathname === "/" || pathname.startsWith("/pages")
+              : pathname.startsWith(href);
           const showProgress =
             href === "/images" && progress?.processing && progress.total > 0;
           const pct =

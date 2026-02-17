@@ -58,7 +58,8 @@ export async function publishPage(
   language: Language,
   token: string,
   siteId: string,
-  additionalFiles?: DeployFile[]
+  additionalFiles?: DeployFile[],
+  onProgress?: (current: number, total: number) => void
 ): Promise<NetlifyDeployResult> {
   const filePath = `/${slug}/index.html`;
 
@@ -120,8 +121,10 @@ export async function publishPage(
 
   // Upload additional files (images) — non-fatal on individual failures
   if (additionalFiles) {
-    for (const f of additionalFiles) {
-      if (!requiredSet.has(f.sha1)) continue; // Netlify already has this file
+    const requiredFiles = additionalFiles.filter((f) => requiredSet.has(f.sha1));
+    let uploaded = 0;
+    const totalUploads = requiredFiles.length;
+    for (const f of requiredFiles) {
       try {
         const uploadRes = await fetch(
           `https://api.netlify.com/api/v1/deploys/${deploy.id}/files${f.path}`,
@@ -148,6 +151,8 @@ export async function publishPage(
           err instanceof Error ? err.message : err
         );
       }
+      uploaded++;
+      onProgress?.(uploaded, totalUploads);
     }
   }
 

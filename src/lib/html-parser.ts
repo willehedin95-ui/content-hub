@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { Element, Text as TextNode } from "domhandler";
+import type { Element, Text as TextNode, Node as DomNode } from "domhandler";
 
 export interface ExtractedContent {
   texts: Array<{ id: string; text: string }>;
@@ -112,4 +112,48 @@ export function applyTranslations(
     );
 
   return $2.html();
+}
+
+const SKIP_TAGS = new Set(["script", "style", "noscript", "svg", "path", "head"]);
+const BLOCK_TAGS = new Set([
+  "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+  "li", "tr", "br", "hr", "blockquote", "section", "article", "header", "footer",
+]);
+
+/**
+ * Extract all visible text from HTML as a continuous readable string.
+ * Preserves paragraph breaks for block elements so GPT-4o can evaluate
+ * the full page context holistically.
+ */
+export function extractReadableText(html: string): string {
+  const $ = cheerio.load(html);
+  const parts: string[] = [];
+
+  function walk(nodes: DomNode[]) {
+    for (const node of nodes) {
+      if (node.type === "text") {
+        const text = (node as TextNode).data.trim();
+        if (text) parts.push(text);
+      } else if (node.type === "tag") {
+        const el = node as Element;
+        if (SKIP_TAGS.has(el.tagName?.toLowerCase())) continue;
+        if (BLOCK_TAGS.has(el.tagName?.toLowerCase())) parts.push("\n");
+        walk(el.children);
+        if (BLOCK_TAGS.has(el.tagName?.toLowerCase())) parts.push("\n");
+      }
+    }
+  }
+
+  const body = $("body");
+  if (body.length) {
+    walk(body.contents().toArray());
+  } else {
+    walk($.root().contents().toArray());
+  }
+
+  return parts
+    .join(" ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

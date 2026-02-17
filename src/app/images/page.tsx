@@ -6,6 +6,7 @@ import { Plus, Clock, Image as ImageIcon } from "lucide-react";
 import { ImageJob, LANGUAGES } from "@/types";
 import ImageJobCard from "@/components/images/ImageJobCard";
 import NewConceptModal from "@/components/images/NewConceptModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import JSZip from "jszip";
 
 export default function ImagesPage() {
@@ -13,6 +14,7 @@ export default function ImagesPage() {
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -45,7 +47,7 @@ export default function ImagesPage() {
   }
 
   async function handleDelete(jobId: string) {
-    if (!confirm("Delete this concept and all its translations?")) return;
+    setConfirmDeleteId(null);
     const res = await fetch(`/api/image-jobs/${jobId}`, { method: "DELETE" });
     if (res.ok) setJobs((prev) => prev.filter((j) => j.id !== jobId));
   }
@@ -124,7 +126,7 @@ export default function ImagesPage() {
               key={job.id}
               job={job}
               onRetry={handleRetry}
-              onDelete={handleDelete}
+              onDelete={(id) => setConfirmDeleteId(id)}
               onExport={handleExport}
             />
           ))}
@@ -135,6 +137,16 @@ export default function ImagesPage() {
         open={showModal}
         onClose={() => setShowModal(false)}
         onCreated={handleCreated}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete concept"
+        message="Delete this concept and all its translations?"
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
       />
     </div>
   );

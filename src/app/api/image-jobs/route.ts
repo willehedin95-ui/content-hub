@@ -44,10 +44,11 @@ export async function GET() {
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, target_languages, source_folder_id } = body as {
+  const { name, target_languages, source_folder_id, target_ratios } = body as {
     name?: string;
     target_languages?: string[];
     source_folder_id?: string;
+    target_ratios?: string[];
   };
 
   if (!name?.trim()) {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
     name: name.trim(),
     status: "draft",
     target_languages,
+    target_ratios: target_ratios?.length ? target_ratios : ["1:1"],
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
 

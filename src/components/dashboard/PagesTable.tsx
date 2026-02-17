@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 import StatusDot from "./StatusDot";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const PRODUCT_MAP = Object.fromEntries(PRODUCTS.map((p) => [p.value, p.label]));
 const TYPE_MAP = Object.fromEntries(PAGE_TYPES.map((t) => [t.value, t.label]));
@@ -26,6 +27,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
   const [filter, setFilter] = useState({ product: "", type: "", search: "" });
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const filtered = useMemo(
     () =>
@@ -42,8 +44,8 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
     [pages, filter]
   );
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  async function handleDelete(id: string) {
+    setConfirmDelete(null);
     setDeleting(id);
     setDeleteError("");
 
@@ -231,7 +233,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(page.id, page.name);
+                        setConfirmDelete({ id: page.id, name: page.name });
                       }}
                       disabled={deleting === page.id}
                       className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded"
@@ -246,6 +248,16 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete page"
+        message={confirmDelete ? `Delete "${confirmDelete.name}"? This cannot be undone.` : ""}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete.id)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

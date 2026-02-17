@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
-import { LANGUAGES } from "@/types";
+import { Language, LANGUAGES } from "@/types";
+import { getShortLocalizationNote } from "@/lib/localization";
 
 export const maxDuration = 180;
 
@@ -64,7 +65,8 @@ export async function POST(
   try {
     // Build the prompt
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
-    let prompt = `Recreate this exact image but translate all text from English to ${langLabel}. Keep the same visual style, layout, colors, and design. Only translate the text.`;
+    const langCode = translation.language as Language;
+    let prompt = `Recreate this exact image but translate all text from English to ${langLabel}. Keep the same visual style, layout, colors, and design. Only translate the text.${getShortLocalizationNote(langCode)}`;
 
     // Enhanced prompt for retries with corrections
     if (corrected_text || visual_instructions) {
@@ -81,7 +83,7 @@ export async function POST(
     const resultUrls = await generateImage(
       prompt,
       [translation.source_images.original_url],
-      "1:1"
+      translation.aspect_ratio || "1:1"
     );
 
     if (!resultUrls?.length) {

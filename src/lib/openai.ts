@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { Language } from "@/types";
 import { formatRules } from "./translation-rules";
+import { formatLocalization } from "./localization";
 
 const LANGUAGE_NAMES: Record<Language, string> = {
   sv: "svenska",
@@ -87,6 +88,7 @@ FORMAT & TECHNIQUE:
 - Keep brand names unchanged: ${DO_NOT_TRANSLATE}
 
 LOCALISATION:
+${formatLocalization("da")}
 - Currency/dates/measurements: use Danish standard (da-DK).
 - Address reader as "du" with warm, reassuring tone.
 
@@ -119,6 +121,7 @@ FORMAT & TECHNIQUE:
 - Keep brand names unchanged: ${DO_NOT_TRANSLATE}
 
 LOCALISATION:
+${formatLocalization("no")}
 - Currency/dates/measurements: use Norwegian standard (nb-NO).
 - Address reader as "du" with warm, reassuring tone.
 
@@ -153,6 +156,7 @@ FORMAT & TECHNIK (MUSS BEFOLGT WERDEN):
 - Behalte Markennamen und Produktnamen unverändert: ${DO_NOT_TRANSLATE}
 
 LOKALISIERUNG:
+${formatLocalization("de")}
 - Währung/Daten/Maße/Dezimalstellen: verwende deutschen Standard (de-DE).
 - Anrede: verwende "Sie" in formellen Kontexten, "du" in lockerer Ansprache mit warmer, vertrauensvoller Tonalität.
 
@@ -252,6 +256,7 @@ export async function translateMetas(
         role: "system",
         content: `Translate these SEO meta values from English to ${langName} (${langNameNative}).
 Write naturally for a native ${langName} speaker. Keep brand names unchanged: ${DO_NOT_TRANSLATE}.
+Replace any Swedish or English person names with culturally appropriate ${langName} equivalents.
 
 ADDITIONAL RULES:
 ${formatRules()}

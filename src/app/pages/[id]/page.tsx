@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
-import TranslationRow from "@/components/pages/TranslationRow";
 import EditablePageName from "@/components/pages/EditablePageName";
+import TranslationPanel from "@/components/pages/TranslationPanel";
 import { Page, Translation, ABTest, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +31,6 @@ export default async function PageDetailPage({
     .from("ab_tests")
     .select("*")
     .eq("page_id", id);
-
-  const abTestMap = new Map(
-    (abTests ?? []).map((t: ABTest) => [t.language, t])
-  );
 
   return (
     <div className="p-8 max-w-4xl">
@@ -73,27 +69,12 @@ export default async function PageDetailPage({
       </div>
 
       {/* Translation cards */}
-      <div>
-        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
-          Translations
-        </h2>
-        <div className="space-y-2">
-          {LANGUAGES.filter((lang) => lang.domain).map((lang) => {
-            const translation = p.translations?.find(
-              (t) => t.language === lang.value && t.variant !== "b"
-            );
-            return (
-              <TranslationRow
-                key={lang.value}
-                pageId={p.id}
-                language={lang}
-                translation={translation}
-                abTest={abTestMap.get(lang.value)}
-              />
-            );
-          })}
-        </div>
-      </div>
+      <TranslationPanel
+        pageId={p.id}
+        languages={LANGUAGES.filter((lang) => lang.domain)}
+        translations={p.translations ?? []}
+        abTests={(abTests as ABTest[]) ?? []}
+      />
 
       {/* Meta info */}
       <div className="mt-8 border-t border-gray-200 pt-6">
