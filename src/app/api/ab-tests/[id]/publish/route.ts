@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { publishABTest } from "@/lib/netlify";
+import { publishABTest } from "@/lib/cloudflare-pages";
 import { Language } from "@/types";
 
 export async function POST(
@@ -8,11 +8,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const netlifyToken = process.env.NETLIFY_TOKEN;
 
-  if (!netlifyToken) {
+  if (!process.env.CF_PAGES_ACCOUNT_ID || !process.env.CF_PAGES_API_TOKEN) {
     return NextResponse.json(
-      { error: "Netlify token not configured" },
+      { error: "Cloudflare Pages not configured" },
       { status: 500 }
     );
   }
@@ -50,16 +49,6 @@ export async function POST(
     );
   }
 
-  const siteIdEnvKey = `NETLIFY_SITE_ID_${test.language.toUpperCase()}`;
-  const siteId = process.env[siteIdEnvKey];
-
-  if (!siteId) {
-    return NextResponse.json(
-      { error: `Netlify site ID not configured (${siteIdEnvKey})` },
-      { status: 500 }
-    );
-  }
-
   const appUrl = process.env.APP_URL;
   if (!appUrl) {
     return NextResponse.json(
@@ -81,8 +70,6 @@ export async function POST(
       test.pages.slug,
       test.language as Language,
       test.split,
-      netlifyToken,
-      siteId,
       id,
       appUrl
     );

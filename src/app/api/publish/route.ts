@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { publishPage } from "@/lib/netlify";
+import { publishPage } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
@@ -17,10 +17,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const netlifyToken = process.env.NETLIFY_TOKEN;
-  if (!netlifyToken) {
+  if (!process.env.CF_PAGES_ACCOUNT_ID || !process.env.CF_PAGES_API_TOKEN) {
     return NextResponse.json(
-      { error: "Netlify token not configured" },
+      { error: "Cloudflare Pages not configured. Set CF_PAGES_ACCOUNT_ID and CF_PAGES_API_TOKEN." },
       { status: 500 }
     );
   }
@@ -48,14 +47,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const siteIdEnvKey = `NETLIFY_SITE_ID_${translation.language.toUpperCase()}`;
-  const siteId = process.env[siteIdEnvKey];
-
-  if (!siteId) {
+  const projectKey = `CF_PAGES_PROJECT_${translation.language.toUpperCase()}`;
+  if (!process.env[projectKey]) {
     return NextResponse.json(
-      {
-        error: `Netlify site ID not configured for language: ${translation.language}. Set ${siteIdEnvKey} in environment variables.`,
-      },
+      { error: `Cloudflare Pages project not configured for language: ${translation.language}. Set ${projectKey}.` },
       { status: 500 }
     );
   }
@@ -102,14 +97,12 @@ export async function POST(req: NextRequest) {
           body: img.buffer,
         }));
 
-        send({ step: "deploy", message: "Creating Netlify deploy…" });
+        send({ step: "deploy", message: "Deploying to Cloudflare Pages…" });
 
         const result = await publishPage(
           html,
           slug,
           language,
-          netlifyToken,
-          siteId,
           additionalFiles,
           (current, total) => {
             send({ step: "upload", current, total, message: `Uploading ${current}/${total} files…` });

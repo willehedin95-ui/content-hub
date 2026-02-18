@@ -7,10 +7,6 @@ import Dropdown from "@/components/ui/Dropdown";
 
 interface Settings {
   openai_api_key: string;
-  netlify_token: string;
-  netlify_site_id_sv: string;
-  netlify_site_id_dk: string;
-  netlify_site_id_no: string;
   pages_quality_enabled: boolean;
   pages_quality_threshold: number;
   static_ads_quality_enabled: boolean;
@@ -26,10 +22,6 @@ interface Settings {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
     openai_api_key: "",
-    netlify_token: "",
-    netlify_site_id_sv: "",
-    netlify_site_id_dk: "",
-    netlify_site_id_no: "",
     pages_quality_enabled: true,
     pages_quality_threshold: 85,
     static_ads_quality_enabled: true,
@@ -187,7 +179,7 @@ export default function SettingsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Configure API keys and Netlify site IDs
+          Configure API keys and integration settings
         </p>
       </div>
 
@@ -211,34 +203,18 @@ export default function SettingsPage() {
           />
         </Section>
 
-        {/* Netlify */}
-        <Section title="Netlify">
-          <Field
-            label="API Token"
-            value={settings.netlify_token}
-            onChange={(v) => setSettings((s) => ({ ...s, netlify_token: v }))}
-            secret
-            showSecrets={showKeys}
-            placeholder="nfp_..."
-          />
-          <Field
-            label="🇸🇪 Swedish Site ID (blog.halsobladet.com)"
-            value={settings.netlify_site_id_sv}
-            onChange={(v) => setSettings((s) => ({ ...s, netlify_site_id_sv: v }))}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          />
-          <Field
-            label="🇩🇰 Danish Site ID (smarthelse.dk)"
-            value={settings.netlify_site_id_dk}
-            onChange={(v) => setSettings((s) => ({ ...s, netlify_site_id_dk: v }))}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          />
-          <Field
-            label="🇳🇴 Norwegian Site ID (helseguiden.com)"
-            value={settings.netlify_site_id_no}
-            onChange={(v) => setSettings((s) => ({ ...s, netlify_site_id_no: v }))}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          />
+        {/* Cloudflare Pages */}
+        <Section title="Cloudflare Pages">
+          <p className="text-xs text-gray-400 -mt-2">
+            Page publishing uses Cloudflare Pages (unlimited free deploys). Configure via environment variables:
+          </p>
+          <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs font-mono text-gray-600 space-y-1">
+            <p>CF_PAGES_ACCOUNT_ID</p>
+            <p>CF_PAGES_API_TOKEN</p>
+            <p>CF_PAGES_PROJECT_SV (halsobladet-blog)</p>
+            <p>CF_PAGES_PROJECT_DA (smarthelse)</p>
+            <p>CF_PAGES_PROJECT_NO (helseguiden)</p>
+          </div>
         </Section>
 
         {/* Pages */}
