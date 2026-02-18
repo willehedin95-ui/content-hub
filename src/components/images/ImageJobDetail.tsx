@@ -200,7 +200,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     setProcessing(true);
 
     const queue = [...translations];
-    const CONCURRENCY = 3;
+    const CONCURRENCY = 10;
     const executing = new Set<Promise<void>>();
 
     for (const item of queue) {
@@ -354,18 +354,20 @@ export default function ImageJobDetail({ initialJob }: Props) {
     expandProcessingRef.current = true;
     setExpandProcessing(true);
 
-    for (const si of images) {
-      try {
-        await fetch(`/api/image-jobs/${job.id}/expand`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceImageId: si.id }),
-        });
-      } catch (err) {
-        console.error("Expansion failed for", si.id, err);
-      }
-      await refreshJob();
-    }
+    // Run all expansions in parallel instead of sequentially
+    await Promise.all(
+      images.map(async (si) => {
+        try {
+          await fetch(`/api/image-jobs/${job.id}/expand`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourceImageId: si.id }),
+          });
+        } catch (err) {
+          console.error("Expansion failed for", si.id, err);
+        }
+      })
+    );
 
     expandProcessingRef.current = false;
     setExpandProcessing(false);
