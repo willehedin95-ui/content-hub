@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   title: "Content Hub — Hälsobladet",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <ToastProvider>
+          <Sidebar />
+          <main className="flex-1 overflow-auto">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   );

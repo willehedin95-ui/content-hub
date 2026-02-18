@@ -209,13 +209,13 @@ export default function ABTestManager({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] text-gray-400 mb-1">Control (A)</p>
+            <p className="text-xs text-gray-400 mb-1">Control (A)</p>
             <p className={`text-lg font-bold ${controlWins ? "text-emerald-600" : "text-gray-800"}`}>
               {controlVal.toLocaleString()}{suffix}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-400 mb-1">Variant B</p>
+            <p className="text-xs text-gray-400 mb-1">Variant B</p>
             <p className={`text-lg font-bold ${variantWins ? "text-emerald-600" : "text-gray-800"}`}>
               {variantVal.toLocaleString()}{suffix}
             </p>
@@ -333,7 +333,7 @@ export default function ABTestManager({
                 Recommended: ~{significance.minSampleSize.toLocaleString()} views per variant for reliable results.
               </p>
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] text-gray-400">
+                <div className="flex justify-between text-xs text-gray-400">
                   <span>Progress toward minimum sample</span>
                   <span>{Math.round(Math.min(((stats!.control.views + stats!.variant.views) / 2) / Math.max(significance.minSampleSize, 1), 1) * 100)}%</span>
                 </div>
@@ -358,7 +358,7 @@ export default function ABTestManager({
                     Not Yet Significant
                   </span>
                 )}
-                <span className="text-[10px] text-gray-400">
+                <span className="text-xs text-gray-400">
                   p = {significance.pValue.toFixed(4)}
                 </span>
               </div>

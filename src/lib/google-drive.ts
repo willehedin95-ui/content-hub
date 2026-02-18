@@ -72,7 +72,7 @@ export async function createDriveFolder(
 
   // Check if folder already exists
   const existing = await drive.files.list({
-    q: `'${parentFolderId}' in parents and name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    q: `'${parentFolderId}' in parents and name = '${name.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: "files(id)",
   }, {
     headers: { "x-goog-user-project": "claude-code-william" },

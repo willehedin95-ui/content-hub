@@ -79,7 +79,7 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
     setLoadingAssets(true);
     try {
       const [imgRes, copyRes, pageRes] = await Promise.all([
-        fetch(`/api/meta/assets/images?language=${language}`),
+        fetch(`/api/meta/assets/images?language=${language}&ratio=1:1`),
         fetch(`/api/meta/assets/ad-copy?language=${language}`),
         fetch(`/api/meta/assets/landing-pages?language=${language}`),
       ]);
@@ -317,7 +317,7 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
                                 </div>
                               )}
                               {img.aspect_ratio !== "1:1" && (
-                                <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1 rounded">
+                                <span className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 rounded">
                                   {img.aspect_ratio}
                                 </span>
                               )}
@@ -507,7 +507,7 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
                         <p className="text-xs text-gray-700 line-clamp-2">
                           {combo.copy.translated_text}
                         </p>
-                        <p className="text-[10px] text-gray-400 mt-1 truncate">
+                        <p className="text-xs text-gray-400 mt-1 truncate">
                           {combo.landingPage?.published_url}
                         </p>
                       </div>
@@ -600,7 +600,7 @@ function StepIndicator({ current }: { current: Step }) {
       {steps.map((s, i) => (
         <div key={s.key} className="flex items-center gap-1">
           <span
-            className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+            className={`text-xs font-medium px-1.5 py-0.5 rounded ${
               i === currentIndex
                 ? "bg-indigo-100 text-indigo-700"
                 : i < currentIndex
@@ -612,7 +612,7 @@ function StepIndicator({ current }: { current: Step }) {
             {s.label}
           </span>
           {i < steps.length - 1 && (
-            <span className="text-gray-300 text-[10px]">&gt;</span>
+            <span className="text-gray-300 text-xs">&gt;</span>
           )}
         </div>
       ))}

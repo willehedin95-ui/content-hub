@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X, Upload, Loader2, Trash2, Search, Link, ChevronDown, ChevronRight } from "lucide-react";
-import { Language, LANGUAGES, AspectRatio, ASPECT_RATIOS } from "@/types";
+import { Language, LANGUAGES, Product, PRODUCTS } from "@/types";
 
 interface Props {
   open: boolean;
@@ -31,7 +31,6 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
     } catch {}
     return new Set(LANGUAGES.map((l) => l.value));
   });
-  const [selectedRatios, setSelectedRatios] = useState<Set<AspectRatio>>(new Set(["1:1"]));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,26 +41,22 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
   const [fetchingDrive, setFetchingDrive] = useState(false);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !submitting) onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, submitting, onClose]);
 
   if (!open) return null;
 
   const selectedDriveFiles = driveFiles.filter((f) => f.selected);
   const imageCount = files.length + selectedDriveFiles.length;
-  const totalTranslations = imageCount * selectedLanguages.size * selectedRatios.size;
-  const estimatedMinutes = Math.ceil((totalTranslations * 75) / 60);
-  const estimatedCost = (totalTranslations * 0.09).toFixed(2);
-
-  function toggleRatio(ratio: AspectRatio) {
-    setSelectedRatios((prev) => {
-      const next = new Set(prev);
-      if (next.has(ratio)) {
-        if (next.size > 1) next.delete(ratio);
-      } else {
-        next.add(ratio);
-      }
-      return next;
-    });
-  }
+  const expansionCost = (imageCount * 0.09).toFixed(2);
 
   function toggleLanguage(lang: Language) {
     setSelectedLanguages((prev) => {
@@ -174,8 +169,9 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
         body: JSON.stringify({
           name: name.trim(),
           target_languages: Array.from(selectedLanguages),
-          target_ratios: Array.from(selectedRatios),
+          target_ratios: ["1:1", "9:16"],
           ...(driveFolderId ? { source_folder_id: driveFolderId } : {}),
+          ...(product ? { product } : {}),
         }),
       });
 
@@ -226,11 +222,11 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
         }
       }
 
-      // 3. Set job to processing
+      // 3. Set job to expanding (9:16 expansion happens first, then translate)
       await fetch(`/api/image-jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "processing" }),
+        body: JSON.stringify({ status: "expanding" }),
       });
 
       onCreated(job.id);
@@ -241,12 +237,12 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}>
       <div className="bg-white border border-gray-200 rounded-2xl shadow-xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
           <h2 className="text-lg font-semibold text-gray-900">New Concept</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+          <button onClick={onClose} disabled={submitting} className="text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -357,6 +353,27 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
             )}
           </div>
 
+          {/* Product */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Product</label>
+            <div className="flex gap-2">
+              {PRODUCTS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setProduct(product === p.value ? null : p.value)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    product === p.value
+                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Target Languages — checkboxes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
@@ -386,32 +403,16 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
             </div>
           </div>
 
-          {/* Aspect Ratios — checkboxes */}
+          {/* Concept name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Aspect Ratios</label>
-            <div className="grid grid-cols-3 gap-2">
-              {ASPECT_RATIOS.map((ratio) => {
-                const selected = selectedRatios.has(ratio.value);
-                return (
-                  <label
-                    key={ratio.value}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
-                      selected
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleRatio(ratio.value)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    {ratio.label}
-                  </label>
-                );
-              })}
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Concept Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Spring Campaign — Hydro13"
+              className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+            />
           </div>
 
           {/* No images hint */}
@@ -432,10 +433,10 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
               <div>
                 <p className="text-sm font-medium text-gray-800">{name || "Untitled"}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {imageCount} images &middot; {selectedLanguages.size} languages &middot; {selectedRatios.size} ratio{selectedRatios.size !== 1 ? "s" : ""} &middot; {totalTranslations} translations
+                  {imageCount} images &middot; {selectedLanguages.size} languages &middot; 1:1 + 9:16
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  ~{estimatedCost} USD &middot; ~{estimatedMinutes} min
+                  Step 1: Expand to 9:16 (~{expansionCost} USD)
                 </p>
               </div>
               <button
@@ -444,7 +445,7 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-2.5 rounded-lg transition-colors"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitting ? "Creating..." : "Translate"}
+                {submitting ? "Creating..." : "Create Concept"}
               </button>
             </div>
           )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
+import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
 
 export const maxDuration = 180;
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     const filePath = `${translationId}/${crypto.randomUUID()}.png`;
 
     const { error: uploadError } = await db.storage
-      .from("translated-images")
+      .from(STORAGE_BUCKET)
       .upload(filePath, buffer, {
         contentType: "image/png",
         upsert: false,
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Get public URL
     const { data: urlData } = db.storage
-      .from("translated-images")
+      .from(STORAGE_BUCKET)
       .getPublicUrl(filePath);
 
     // 5. Log usage
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
       type: "image_generation",
       page_id: trans?.page_id ?? null,
       translation_id: translationId,
-      model: "nano-banana-pro",
+      model: KIE_MODEL,
       input_tokens: 0,
       output_tokens: 0,
       cost_usd: KIE_IMAGE_COST,

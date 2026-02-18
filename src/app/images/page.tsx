@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Clock, Image as ImageIcon } from "lucide-react";
-import { ImageJob, LANGUAGES } from "@/types";
+import { ImageJob } from "@/types";
 import ImageJobCard from "@/components/images/ImageJobCard";
 import NewConceptModal from "@/components/images/NewConceptModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import JSZip from "jszip";
+import { exportJobAsZip } from "@/lib/export-zip";
 
 export default function ImagesPage() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function ImagesPage() {
 
   // Poll when any job is processing
   useEffect(() => {
-    const hasProcessing = jobs.some((j) => j.status === "processing");
+    const hasProcessing = jobs.some((j) => j.status === "processing" || j.status === "expanding");
     if (!hasProcessing) return;
 
     const interval = setInterval(fetchJobs, 10000);
@@ -56,33 +56,7 @@ export default function ImagesPage() {
     const res = await fetch(`/api/image-jobs/${jobId}`);
     if (!res.ok) return;
     const job: ImageJob = await res.json();
-
-    const zip = new JSZip();
-    const sourceImages = job.source_images ?? [];
-
-    for (const si of sourceImages) {
-      for (const t of si.image_translations ?? []) {
-        if (t.status === "completed" && t.translated_url) {
-          try {
-            const imgRes = await fetch(t.translated_url);
-            const blob = await imgRes.blob();
-            const langLabel = LANGUAGES.find((l) => l.value === t.language)?.label ?? t.language;
-            const filename = si.filename || `${si.id}.png`;
-            zip.file(`${langLabel}/${filename}`, blob);
-          } catch {
-            // Skip failed downloads
-          }
-        }
-      }
-    }
-
-    const content = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${job.name}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await exportJobAsZip(job);
   }
 
   function handleCreated(jobId: string) {
@@ -100,7 +74,7 @@ export default function ImagesPage() {
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
-          New
+          New Concept
         </button>
       </div>
       <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
@@ -110,13 +84,25 @@ export default function ImagesPage() {
 
       {/* Job list */}
       {loading ? (
-        <div className="text-sm text-gray-400">Loading...</div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="h-4 w-48 bg-gray-200 rounded" />
+                  <div className="h-3 w-32 bg-gray-100 rounded" />
+                </div>
+                <div className="h-8 w-20 bg-gray-100 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : jobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <ImageIcon className="w-10 h-10 text-gray-300 mb-3" />
           <p className="text-gray-500 text-sm">No image concepts yet</p>
           <p className="text-gray-400 text-xs mt-1">
-            Click &quot;+ New&quot; to create your first batch
+            Click &quot;+ New Concept&quot; to create your first batch
           </p>
         </div>
       ) : (

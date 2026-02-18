@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
+import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
 import { getShortLocalizationNote } from "@/lib/localization";
 
@@ -27,7 +28,7 @@ export async function POST(
   // Look up the translation and verify it belongs to this job
   const { data: translation, error: tError } = await db
     .from("image_translations")
-    .select(`*, source_images!inner(id, original_url, job_id)`)
+    .select(`*, source_images!inner(id, original_url, expanded_url, job_id)`)
     .eq("id", translationId)
     .single();
 
@@ -39,17 +40,23 @@ export async function POST(
     return NextResponse.json({ error: "Translation does not belong to this job" }, { status: 400 });
   }
 
-  // Allow "pending" for first attempt, or "completed"/"failed" for retries (new version)
+  // Atomically claim: only update if status is in an allowed state
   const isRetry = corrected_text || visual_instructions;
-  if (!isRetry && translation.status !== "pending") {
-    return NextResponse.json({ error: `Translation is already ${translation.status}` }, { status: 400 });
-  }
-
-  // Mark as processing
-  await db
+  const allowedStatuses = isRetry ? ["completed", "failed"] : ["pending"];
+  const { data: claimed } = await db
     .from("image_translations")
     .update({ status: "processing", updated_at: new Date().toISOString() })
-    .eq("id", translationId);
+    .eq("id", translationId)
+    .in("status", allowedStatuses)
+    .select("id")
+    .single();
+
+  if (!claimed) {
+    return NextResponse.json(
+      { error: "Translation is already being processed" },
+      { status: 409 }
+    );
+  }
 
   // Determine the next version number
   const { data: existingVersions } = await db
@@ -79,10 +86,16 @@ export async function POST(
       }
     }
 
+    // Use expanded image as source for 9:16 translations (pre-expanded canvas)
+    const sourceUrl =
+      translation.aspect_ratio === "9:16" && translation.source_images.expanded_url
+        ? translation.source_images.expanded_url
+        : translation.source_images.original_url;
+
     // Call Kie AI
     const resultUrls = await generateImage(
       prompt,
-      [translation.source_images.original_url],
+      [sourceUrl],
       translation.aspect_ratio || "1:1"
     );
 
@@ -100,14 +113,14 @@ export async function POST(
     // Upload to Supabase Storage
     const filePath = `image-jobs/${jobId}/${translationId}/${crypto.randomUUID()}.png`;
     const { error: uploadError } = await db.storage
-      .from("translated-images")
+      .from(STORAGE_BUCKET)
       .upload(filePath, buffer, { contentType: "image/png", upsert: false });
 
     if (uploadError) {
       throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
-    const { data: urlData } = db.storage.from("translated-images").getPublicUrl(filePath);
+    const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
     const generationTime = (Date.now() - startTime) / 1000;
 
     // Deactivate previous versions
@@ -152,7 +165,7 @@ export async function POST(
       type: "image_generation",
       page_id: null,
       translation_id: null,
-      model: "nano-banana-pro",
+      model: KIE_MODEL,
       input_tokens: 0,
       output_tokens: 0,
       cost_usd: KIE_IMAGE_COST,

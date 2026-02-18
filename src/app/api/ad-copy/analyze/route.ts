@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import OpenAI from "openai";
 import { calcOpenAICost } from "@/lib/pricing";
+import { OPENAI_MODEL } from "@/lib/constants";
+
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const { translationId } = (await req.json()) as { translationId: string };
@@ -33,7 +36,7 @@ export async function POST(req: NextRequest) {
     const openai = new OpenAI({ apiKey });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       max_tokens: 1000,
       response_format: { type: "json_object" },
       messages: [
@@ -79,7 +82,7 @@ Be strict: any grammar error, meaning change, or awkward phrasing should reduce 
       type: "translation",
       page_id: null,
       translation_id: null,
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cost_usd: calcOpenAICost(inputTokens, outputTokens),

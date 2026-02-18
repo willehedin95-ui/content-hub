@@ -42,7 +42,7 @@ export default function ABTestsClient({ tests, languages }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">A/B Tests</h1>
+          <h1 className="text-2xl font-bold text-gray-900">A/B Tests</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {counts.active} active {counts.active === 1 ? "test" : "tests"}
           </p>
@@ -109,14 +109,14 @@ export default function ABTestsClient({ tests, languages }: Props) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${status.bg} ${status.color}`}>
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${status.bg} ${status.color}`}>
                       {status.label}
                     </span>
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-xs text-gray-400">
                       {test.split}% / {100 - test.split}% split
                     </span>
                     {hasWinner && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-amber-600">
+                      <span className="flex items-center gap-0.5 text-xs text-amber-600">
                         <Trophy className="w-3 h-3" />
                         Winner: {test.winner === "control" ? "Control (A)" : "Variant B"}
                       </span>
@@ -126,7 +126,7 @@ export default function ABTestsClient({ tests, languages }: Props) {
 
                 {/* URL */}
                 {test.router_url && (
-                  <span className="text-[10px] text-gray-400 truncate max-w-[200px] hidden lg:block">
+                  <span className="text-xs text-gray-400 truncate max-w-[200px] hidden lg:block">
                     {test.router_url.replace("https://", "")}
                   </span>
                 )}

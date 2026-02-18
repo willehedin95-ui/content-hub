@@ -38,6 +38,15 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
   }, []);
 
   useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && (step === "done" || step === "error")) handleClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, step]);
+
+  useEffect(() => {
     if (!open || !translationId || didStart.current) return;
     didStart.current = true;
 
@@ -192,7 +201,7 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
                     <span>{current} / {total}</span>
                     <span>{pct}%</span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-indigo-500 rounded-full transition-all duration-300"
                       style={{ width: `${pct}%` }}

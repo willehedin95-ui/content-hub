@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Loader2,
   Copy,
@@ -9,20 +9,8 @@ import {
   ChevronUp,
   BarChart3,
 } from "lucide-react";
-import { Language, LANGUAGES, AdCopyJob, AdCopyTranslation } from "@/types";
-
-function getDefaultLanguages(): Language[] {
-  try {
-    const stored = localStorage.getItem("content-hub-settings");
-    if (stored) {
-      const settings = JSON.parse(stored);
-      if (settings.static_ads_default_languages?.length) {
-        return settings.static_ads_default_languages;
-      }
-    }
-  } catch {}
-  return ["sv", "da", "no", "de"];
-}
+import { Language, LANGUAGES, AdCopyJob, AdCopyTranslation, Product, PRODUCTS } from "@/types";
+import { getDefaultLanguages } from "@/lib/settings";
 
 export default function AdCopyPage() {
   const [name, setName] = useState(
@@ -36,6 +24,29 @@ export default function AdCopyPage() {
   const [translating, setTranslating] = useState(false);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [historyJobs, setHistoryJobs] = useState<AdCopyJob[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ad-copy");
+      if (res.ok) {
+        const jobs: AdCopyJob[] = await res.json();
+        setHistoryJobs(jobs.slice(0, 10));
+      }
+    } catch {
+      // silently ignore history fetch errors
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   function toggleLanguage(lang: Language) {
     setSelectedLanguages((prev) => {
@@ -50,6 +61,7 @@ export default function AdCopyPage() {
     if (!sourceText.trim() || selectedLanguages.size === 0) return;
     setTranslating(true);
     setJob(null);
+    setError(null);
 
     try {
       // Create the job
@@ -60,6 +72,7 @@ export default function AdCopyPage() {
           name: name.trim(),
           source_text: sourceText.trim(),
           target_languages: Array.from(selectedLanguages),
+          ...(product ? { product } : {}),
         }),
       });
 
@@ -111,9 +124,10 @@ export default function AdCopyPage() {
         })
       );
     } catch (err) {
-      console.error("Translation error:", err);
+      setError(err instanceof Error ? err.message : "Translation failed");
     } finally {
       setTranslating(false);
+      fetchHistory();
     }
   }
 
@@ -182,6 +196,26 @@ export default function AdCopyPage() {
         </div>
 
         <div>
+          <label className="block text-xs text-gray-500 mb-1.5">Product</label>
+          <div className="flex gap-2">
+            {PRODUCTS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setProduct(product === p.value ? null : p.value)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  product === p.value
+                    ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                    : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <label className="block text-xs text-gray-500 mb-1.5">
             Source text (English)
           </label>
@@ -230,6 +264,12 @@ export default function AdCopyPage() {
         </button>
       </div>
 
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
+          {error}
+        </p>
+      )}
+
       {/* Results */}
       {job?.ad_copy_translations && job.ad_copy_translations.length > 0 && (
         <div className="space-y-3">
@@ -249,6 +289,87 @@ export default function AdCopyPage() {
           ))}
         </div>
       )}
+
+      {/* Recent Jobs History */}
+      <div className="space-y-3 mt-8">
+        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+          Recent Jobs
+        </h2>
+        {historyLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading history...
+          </div>
+        ) : historyJobs.length === 0 ? (
+          <p className="text-sm text-gray-400 py-4">No previous jobs</p>
+        ) : (
+          historyJobs.map((hJob) => {
+            const isExpanded = expandedHistoryId === hJob.id;
+            const translations = hJob.ad_copy_translations ?? [];
+            const langFlags = translations
+              .map((t) => LANGUAGES.find((l) => l.value === t.language)?.flag)
+              .filter(Boolean);
+            const date = new Date(hJob.created_at).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+
+            return (
+              <div
+                key={hJob.id}
+                className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden"
+              >
+                <button
+                  onClick={() =>
+                    setExpandedHistoryId(isExpanded ? null : hJob.id)
+                  }
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-sm font-medium text-gray-700 truncate">
+                      {hJob.name}
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {langFlags.map((flag, i) => (
+                        <span key={i} className="text-sm">
+                          {flag}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <span className="text-xs text-gray-400">{date}</span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    )}
+                  </div>
+                </button>
+
+                {isExpanded && translations.length > 0 && (
+                  <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+                    {translations.map((t) => (
+                      <TranslationCard
+                        key={t.id}
+                        translation={t}
+                        sourceText={hJob.source_text}
+                        analyzing={analyzing.has(t.id)}
+                        copiedId={copiedId}
+                        onAnalyze={() => handleAnalyze(t.id)}
+                        onCopy={(text) => handleCopy(text, t.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
@@ -348,13 +469,13 @@ function TranslationCard({
       {/* Content */}
       <div className="grid grid-cols-2 divide-x divide-gray-100">
         <div className="px-5 py-4">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">
+          <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
             Original
           </p>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{sourceText}</p>
         </div>
         <div className="px-5 py-4">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-2">
+          <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
             Translation
           </p>
           {isProcessing && (
@@ -397,7 +518,7 @@ function TranslationCard({
               )}
               {analysis.accuracy_issues && analysis.accuracy_issues.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                     Accuracy Issues
                   </p>
                   <ul className="text-xs text-gray-600 list-disc list-inside">
@@ -409,7 +530,7 @@ function TranslationCard({
               )}
               {analysis.grammar_issues && analysis.grammar_issues.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                     Grammar Issues
                   </p>
                   <ul className="text-xs text-gray-600 list-disc list-inside">
@@ -421,7 +542,7 @@ function TranslationCard({
               )}
               {analysis.tone_issues && analysis.tone_issues.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                     Tone Issues
                   </p>
                   <ul className="text-xs text-gray-600 list-disc list-inside">

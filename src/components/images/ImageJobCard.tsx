@@ -10,7 +10,7 @@ import {
   ChevronRight,
   Download,
 } from "lucide-react";
-import { ImageJob, LANGUAGES } from "@/types";
+import { ImageJob, LANGUAGES, PRODUCTS } from "@/types";
 
 interface Props {
   job: ImageJob;
@@ -24,16 +24,26 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
   const completed = job.completed_translations ?? 0;
   const failed = job.failed_translations ?? 0;
   const progress = total > 0 ? (completed / total) * 100 : 0;
+  const isExpanding = job.status === "expanding";
+  const isReady = job.status === "ready";
   const isProcessing = job.status === "processing" || (total > 0 && completed + failed < total);
   const hasFailed = failed > 0;
 
-  const StatusIcon = isProcessing
+  const StatusIcon = isExpanding
+    ? Loader2
+    : isReady
+    ? CheckCircle2
+    : isProcessing
     ? Loader2
     : hasFailed
     ? AlertTriangle
     : CheckCircle2;
 
-  const statusColor = isProcessing
+  const statusColor = isExpanding
+    ? "text-indigo-600"
+    : isReady
+    ? "text-indigo-600"
+    : isProcessing
     ? "text-indigo-600"
     : hasFailed
     ? "text-yellow-600"
@@ -49,7 +59,14 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
 
         {/* Info */}
         <Link href={`/images/${job.id}`} className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800 truncate">{job.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-800 truncate">{job.name}</p>
+            {job.product && (
+              <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">
+                {PRODUCTS.find((p) => p.value === job.product)?.label}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             {/* Language flags */}
             <span className="text-sm">
@@ -59,7 +76,12 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
                 .join(" ")}
             </span>
             <span className="text-xs text-gray-400">
-              {job.total_images ?? 0} images &middot; {completed}/{total} ready
+              {job.total_images ?? 0} images &middot;{" "}
+              {isExpanding
+                ? "Expanding to 9:16..."
+                : isReady
+                ? "Ready to translate"
+                : `${completed}/${total} ready`}
             </span>
             {hasFailed && (
               <span className="text-xs text-yellow-600">&middot; {failed} need attention</span>
@@ -100,12 +122,14 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
       </div>
 
       {/* Progress bar */}
-      <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      {!isExpanding && !isReady && (
+        <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -17,10 +17,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, source_text, target_languages } = (await req.json()) as {
+  const { name, source_text, target_languages, product } = (await req.json()) as {
     name?: string;
     source_text?: string;
     target_languages?: string[];
+    product?: string;
   };
 
   if (!name?.trim()) {
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
       source_text: source_text.trim(),
       target_languages,
       status: "processing",
+      ...(product ? { product } : {}),
     })
     .select()
     .single();

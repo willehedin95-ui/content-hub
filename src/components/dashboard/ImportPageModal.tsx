@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -44,7 +44,6 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   const [name, setName] = useState("");
   const [product, setProduct] = useState<Product>("happysleep");
   const [pageType, setPageType] = useState<PageType>("advertorial");
-  const [slug, setSlug] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,7 +62,6 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     setName("");
     setProduct("happysleep");
     setPageType("advertorial");
-    setSlug("");
     setSaving(false);
     setSaveError("");
   }
@@ -120,13 +118,6 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
       setStats({ textBlocks: blocks.length, images: imgs.length, links: linkCount });
       setName(title);
       setUrl(`upload://${file.name}`);
-      setSlug(
-        title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, "")
-          .replace(/\s+/g, "-")
-          .slice(0, 80)
-      );
       setStep("meta");
       setFetching(false);
     };
@@ -162,13 +153,6 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
       setImages(data.images || []);
       setStats(data.stats || null);
       setName(data.title);
-      setSlug(
-        data.title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, "")
-          .replace(/\s+/g, "-")
-          .slice(0, 80)
-      );
       setStep("meta");
     } catch {
       setFetchError("Failed to fetch URL — check your connection and try again");
@@ -178,9 +162,17 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   }
 
   async function handleSave() {
-    if (!name || !slug) return;
+    if (!name) return;
     setSaving(true);
     setSaveError("");
+
+    // Auto-generate a default slug from name (each translation overrides this)
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 80);
 
     try {
       const res = await fetch("/api/pages", {
@@ -212,12 +204,23 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     }
   }
 
+  const isBusy = fetching || saving;
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !isBusy) handleClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, isBusy]);
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] overflow-y-auto">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={isBusy ? undefined : handleClose} />
 
       {/* Modal */}
       <div className="relative w-full max-w-2xl mx-4 mb-8 bg-white border border-gray-200 rounded-2xl shadow-xl">
@@ -231,7 +234,8 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
           </div>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            disabled={isBusy}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
@@ -345,7 +349,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                     {textBlocks.map((block, i) => (
                       <div key={i} className="flex items-start gap-3 px-4 py-2.5">
                         <span
-                          className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 mt-0.5 ${
+                          className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 mt-0.5 ${
                             TAG_STYLES[block.tag] || TAG_STYLES.p
                           }`}
                         >
@@ -376,7 +380,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                           }}
                         />
                         {img.alt && (
-                          <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-[10px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-xs text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
                             {img.alt}
                           </div>
                         )}
@@ -432,23 +436,6 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                   </div>
                 </div>
 
-                <div>
-                  <label htmlFor="modal-slug" className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Slug <span className="text-gray-400 font-normal">(URL path)</span>
-                  </label>
-                  <input
-                    id="modal-slug"
-                    type="text"
-                    value={slug}
-                    onChange={(e) =>
-                      setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-"))
-                    }
-                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 font-mono"
-                  />
-                  <p className="text-gray-400 text-xs mt-1.5">
-                    blog.halsobladet.com/<span className="text-gray-600">{slug || "your-slug"}</span>
-                  </p>
-                </div>
               </div>
 
               {saveError && (
@@ -467,7 +454,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={saving || !name || !slug}
+                  disabled={saving || !name}
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}

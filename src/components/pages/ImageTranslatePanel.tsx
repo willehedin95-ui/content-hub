@@ -263,7 +263,7 @@ export default function ImageTranslatePanel({
 
       {status === "preview" && resultUrl && (
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider">Generated Result</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wider">Generated Result</p>
           <button
             type="button"
             onClick={() => setLightboxSrc(resultUrl)}
@@ -294,7 +294,7 @@ export default function ImageTranslatePanel({
       {status !== "preview" && (
         <>
           <div className="space-y-1.5">
-            <label className="text-[10px] text-gray-400 uppercase tracking-wider">Prompt</label>
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Prompt</label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

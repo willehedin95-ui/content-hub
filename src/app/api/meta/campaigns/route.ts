@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidLanguage, isValidBudget } from "@/lib/validation";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
     countries,
     daily_budget,
     meta_campaign_id,
+    product,
     start_time,
     end_time,
     ads,
@@ -33,8 +35,9 @@ export async function POST(req: NextRequest) {
     objective: string;
     language: string;
     countries: string[];
-    daily_budget: number;
+    daily_budget?: number;
     meta_campaign_id?: string | null;
+    product?: string | null;
     start_time?: string | null;
     end_time?: string | null;
     ads: Array<{
@@ -48,8 +51,16 @@ export async function POST(req: NextRequest) {
     }>;
   };
 
-  if (!name?.trim() || !objective || !language || !countries?.length || !daily_budget || !ads?.length) {
+  if (!name?.trim() || !objective || !language || !countries?.length || !ads?.length) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (!isValidLanguage(language)) {
+    return NextResponse.json({ error: "Invalid language" }, { status: 400 });
+  }
+
+  if (daily_budget && !isValidBudget(daily_budget)) {
+    return NextResponse.json({ error: "Budget must be a positive number" }, { status: 400 });
   }
 
   const db = createServerSupabase();
@@ -62,7 +73,8 @@ export async function POST(req: NextRequest) {
       objective,
       language,
       countries,
-      daily_budget,
+      daily_budget: daily_budget || 0,
+      product: product || null,
       meta_campaign_id: meta_campaign_id || null,
       start_time: start_time || null,
       end_time: end_time || null,
@@ -75,11 +87,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: campError?.message ?? "Failed to create campaign" }, { status: 500 });
   }
 
+  // Auto-pair 9:16 sibling for each 1:1 image
+  const imageUrls = [...new Set(ads.map((a) => a.image_url))];
+  const url9x16Map = new Map<string, string>();
+
+  if (imageUrls.length > 0) {
+    const { data: translations } = await db
+      .from("image_translations")
+      .select("translated_url, source_image_id, language")
+      .in("translated_url", imageUrls);
+
+    if (translations?.length) {
+      const sourceImageIds = [...new Set(translations.map((t) => t.source_image_id))];
+
+      const { data: siblings } = await db
+        .from("image_translations")
+        .select("translated_url, source_image_id, language")
+        .in("source_image_id", sourceImageIds)
+        .eq("aspect_ratio", "9:16")
+        .eq("status", "completed")
+        .not("translated_url", "is", null);
+
+      const siblingMap = new Map<string, string>();
+      for (const s of siblings ?? []) {
+        siblingMap.set(`${s.source_image_id}:${s.language}`, s.translated_url);
+      }
+
+      for (const t of translations) {
+        const url9x16 = siblingMap.get(`${t.source_image_id}:${t.language}`);
+        if (url9x16) {
+          url9x16Map.set(t.translated_url, url9x16);
+        }
+      }
+    }
+  }
+
   // Create ad records
   const adRows = ads.map((ad, i) => ({
     campaign_id: campaign.id,
     name: `${name.trim()} - Ad ${i + 1}`,
     image_url: ad.image_url,
+    image_url_9x16: url9x16Map.get(ad.image_url) || null,
     ad_copy: ad.ad_copy,
     headline: ad.headline || null,
     source_primary_text: ad.source_primary_text || null,

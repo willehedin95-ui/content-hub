@@ -116,24 +116,25 @@ export const LANGUAGES: {
 
 // --- Image Aspect Ratios ---
 
-export type AspectRatio = "1:1" | "9:16" | "4:5";
+export type AspectRatio = "1:1" | "9:16";
 
 export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "1:1", label: "1:1 Square" },
   { value: "9:16", label: "9:16 Story/Reel" },
-  { value: "4:5", label: "4:5 Feed" },
 ];
 
 // --- Image Translation Types ---
 
-export type ImageJobStatus = "draft" | "processing" | "completed" | "failed";
+export type ImageJobStatus = "draft" | "expanding" | "ready" | "processing" | "completed" | "failed";
+export type ExpansionStatus = "pending" | "processing" | "completed" | "failed";
 export type ImageTranslationStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface ImageJob {
   id: string;
   name: string;
+  product: Product | null;
   status: ImageJobStatus;
-  target_languages: string[];
+  target_languages: Language[];
   target_ratios: AspectRatio[];
   source_folder_id: string | null;
   auto_export: boolean;
@@ -155,6 +156,9 @@ export interface SourceImage {
   filename: string | null;
   processing_order: number | null;
   thumbnail_url: string | null;
+  expanded_url: string | null;
+  expansion_status: ExpansionStatus | null;
+  expansion_error: string | null;
   created_at: string;
   image_translations?: ImageTranslation[];
 }
@@ -162,7 +166,7 @@ export interface SourceImage {
 export interface ImageTranslation {
   id: string;
   source_image_id: string;
-  language: string;
+  language: Language;
   aspect_ratio: AspectRatio;
   status: ImageTranslationStatus;
   translated_url: string | null;
@@ -210,21 +214,30 @@ export interface DriveFile {
 export interface AdCopyJob {
   id: string;
   name: string;
+  product: Product | null;
   source_text: string;
-  target_languages: string[];
+  target_languages: Language[];
   status: string;
   created_at: string;
   updated_at: string;
   ad_copy_translations?: AdCopyTranslation[];
 }
 
+export interface AdCopyQualityAnalysis {
+  quality_score: number;
+  fluency_issues: string[];
+  grammar_issues: string[];
+  context_errors: string[];
+  overall_assessment: string;
+}
+
 export interface AdCopyTranslation {
   id: string;
   job_id: string;
-  language: string;
+  language: Language;
   translated_text: string | null;
   quality_score: number | null;
-  quality_analysis: Record<string, unknown> | null;
+  quality_analysis: AdCopyQualityAnalysis | null;
   status: string;
   error_message: string | null;
   created_at: string;
@@ -253,12 +266,13 @@ export const COUNTRY_MAP: Record<Language, string> = {
 export interface MetaCampaign {
   id: string;
   name: string;
+  product: Product | null;
   meta_campaign_id: string | null;
   meta_adset_id: string | null;
   objective: string;
   countries: string[];
   daily_budget: number;
-  language: string;
+  language: Language;
   start_time: string | null;
   end_time: string | null;
   status: MetaCampaignStatus;
@@ -276,6 +290,8 @@ export interface MetaAd {
   meta_creative_id: string | null;
   meta_image_hash: string | null;
   image_url: string | null;
+  image_url_9x16: string | null;
+  meta_image_hash_9x16: string | null;
   ad_copy: string | null;
   headline: string | null;
   source_primary_text: string | null;
@@ -285,4 +301,16 @@ export interface MetaAd {
   status: MetaAdStatus;
   error_message: string | null;
   created_at: string;
+}
+
+export interface MetaCampaignMapping {
+  id: string;
+  product: Product;
+  country: string;
+  meta_campaign_id: string;
+  meta_campaign_name: string | null;
+  template_adset_id: string | null;
+  template_adset_name: string | null;
+  created_at: string;
+  updated_at: string;
 }

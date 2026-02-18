@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { ImageJob, SourceImage } from "@/types";
+import { isValidLanguage, isValidAspectRatio } from "@/lib/validation";
 
 function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
   const allTranslations = job.source_images?.flatMap(
@@ -44,11 +45,12 @@ export async function GET() {
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, target_languages, source_folder_id, target_ratios } = body as {
+  const { name, target_languages, source_folder_id, target_ratios, product } = body as {
     name?: string;
     target_languages?: string[];
     source_folder_id?: string;
     target_ratios?: string[];
+    product?: string;
   };
 
   if (!name?.trim()) {
@@ -56,6 +58,14 @@ export async function POST(req: NextRequest) {
   }
   if (!target_languages?.length) {
     return NextResponse.json({ error: "Target languages required" }, { status: 400 });
+  }
+
+  if (!target_languages.every(isValidLanguage)) {
+    return NextResponse.json({ error: "Invalid language in target_languages" }, { status: 400 });
+  }
+
+  if (target_ratios?.length && !target_ratios.every(isValidAspectRatio)) {
+    return NextResponse.json({ error: "Invalid ratio in target_ratios" }, { status: 400 });
   }
 
   const db = createServerSupabase();
@@ -67,6 +77,7 @@ export async function POST(req: NextRequest) {
     target_ratios: target_ratios?.length ? target_ratios : ["1:1"],
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
+  if (product) insertData.product = product;
 
   const { data: job, error: jobError } = await db
     .from("image_jobs")

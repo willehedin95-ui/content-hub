@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { validateImageFile } from "@/lib/validation";
+import { STORAGE_BUCKET } from "@/lib/constants";
+
+export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -11,6 +15,11 @@ export async function POST(
 
   if (!file) {
     return NextResponse.json({ error: "File is required" }, { status: 400 });
+  }
+
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    return NextResponse.json({ error: validation.error }, { status: validation.status });
   }
 
   const db = createServerSupabase();
@@ -28,11 +37,10 @@ export async function POST(
 
   // Upload to Supabase Storage
   const buffer = Buffer.from(await file.arrayBuffer());
-  const ext = file.name.split(".").pop() || "png";
-  const filePath = `image-jobs/${jobId}/${crypto.randomUUID()}.${ext}`;
+  const filePath = `image-jobs/${jobId}/${crypto.randomUUID()}.${validation.ext}`;
 
   const { error: uploadError } = await db.storage
-    .from("translated-images")
+    .from(STORAGE_BUCKET)
     .upload(filePath, buffer, {
       contentType: file.type || "image/png",
       upsert: false,
@@ -42,40 +50,23 @@ export async function POST(
     return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
   }
 
-  const { data: urlData } = db.storage.from("translated-images").getPublicUrl(filePath);
+  const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-  // Create source_image record
+  // Create source_image record with expansion_status pending
+  // (translations are created later via /create-translations after expansion review)
   const { data: sourceImage, error: siError } = await db
     .from("source_images")
     .insert({
       job_id: jobId,
       original_url: urlData.publicUrl,
       filename: file.name,
+      expansion_status: "pending",
     })
     .select()
     .single();
 
   if (siError || !sourceImage) {
     return NextResponse.json({ error: siError?.message ?? "Failed to create source image" }, { status: 500 });
-  }
-
-  // Create image_translations for each (language, ratio) combination
-  const ratios: string[] = job.target_ratios?.length ? job.target_ratios : ["1:1"];
-  const translationRows = job.target_languages.flatMap((lang: string) =>
-    ratios.map((ratio: string) => ({
-      source_image_id: sourceImage.id,
-      language: lang,
-      aspect_ratio: ratio,
-      status: "pending",
-    }))
-  );
-
-  const { error: itError } = await db
-    .from("image_translations")
-    .insert(translationRows);
-
-  if (itError) {
-    return NextResponse.json({ error: itError.message }, { status: 500 });
   }
 
   return NextResponse.json(sourceImage);

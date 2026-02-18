@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     // In local dev, fall back to system Chrome; in production use @sparticuz/chromium binary
     const isLocal = process.env.NODE_ENV === "development";
     const browser = await puppeteer.launch({
-      args: chromium.args,
+      args: isLocal ? ["--no-sandbox"] : chromium.args,
       executablePath: isLocal
         ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         : await chromium.executablePath(),

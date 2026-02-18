@@ -10,21 +10,16 @@ import {
   RotateCcw,
   Download,
   RefreshCw,
-  X,
   Upload,
+  X,
 } from "lucide-react";
-import JSZip from "jszip";
-import { ImageJob, ImageTranslation, SourceImage, Version, QualityAnalysis, LANGUAGES } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, LANGUAGES, ExpansionStatus } from "@/types";
+import { getSettings } from "@/lib/settings";
+import { exportJobAsZip } from "@/lib/export-zip";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 const MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
-
-function getSettings() {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(localStorage.getItem("content-hub-settings") || "{}");
-  } catch { return {}; }
-}
 
 interface Props {
   initialJob: ImageJob;
@@ -42,6 +37,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [previewLang, setPreviewLang] = useState<string | null>(null);
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
+  const expandProcessingRef = useRef(false);
+  const [expandProcessing, setExpandProcessing] = useState(false);
 
   const allTranslations = job.source_images?.flatMap(
     (si) => si.image_translations ?? []
@@ -52,6 +49,12 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const pendingCount = allTranslations.filter(
     (t) => t.status === "pending" || t.status === "processing"
   ).length;
+
+  // Expansion counts
+  const sourceImages = job.source_images ?? [];
+  const expansionTotal = sourceImages.length;
+  const expansionCompleted = sourceImages.filter(si => si.expansion_status === "completed").length;
+  const expansionFailed = sourceImages.filter(si => si.expansion_status === "failed").length;
 
   const refreshJob = useCallback(async () => {
     const res = await fetch(`/api/image-jobs/${job.id}`);
@@ -84,6 +87,24 @@ export default function ImageJobDetail({ initialJob }: Props) {
       }
     }
     resumeOnMount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Start expansion queue on mount if job is in expanding status
+  useEffect(() => {
+    if (initialJob.status !== "expanding") return;
+    async function startExpansions() {
+      const latest = await refreshJob();
+      const j = latest ?? initialJob;
+      if (j.status !== "expanding") return;
+      const pending = (j.source_images ?? []).filter(
+        (si) => si.expansion_status === "pending" || si.expansion_status === "processing"
+      );
+      if (pending.length > 0 && !expandProcessingRef.current) {
+        startExpansionQueue(pending);
+      }
+    }
+    startExpansions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -312,36 +333,64 @@ export default function ImageJobDetail({ initialJob }: Props) {
     await refreshJob();
   }
 
+  async function startExpansionQueue(images: SourceImage[]) {
+    if (expandProcessingRef.current) return;
+    expandProcessingRef.current = true;
+    setExpandProcessing(true);
+
+    for (const si of images) {
+      try {
+        await fetch(`/api/image-jobs/${job.id}/expand`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceImageId: si.id }),
+        });
+      } catch (err) {
+        console.error("Expansion failed for", si.id, err);
+      }
+      await refreshJob();
+    }
+
+    expandProcessingRef.current = false;
+    setExpandProcessing(false);
+    await refreshJob();
+  }
+
+  async function handleRetryExpansion(sourceImageId: string) {
+    try {
+      await fetch(`/api/image-jobs/${job.id}/expand`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceImageId }),
+      });
+      await refreshJob();
+    } catch (err) {
+      console.error("Expansion retry failed:", err);
+    }
+  }
+
+  async function handleTranslateAll() {
+    setProcessing(true);
+    const res = await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
+    if (!res.ok) {
+      setProcessing(false);
+      return;
+    }
+    const updated = await refreshJob();
+    if (updated) {
+      const pending = getAllPending(updated);
+      if (pending.length > 0) {
+        startQueue(pending);
+      } else {
+        setProcessing(false);
+      }
+    }
+  }
+
   async function handleExport() {
     setExporting(true);
     try {
-      const zip = new JSZip();
-      const sourceImages = job.source_images ?? [];
-
-      for (const si of sourceImages) {
-        for (const t of si.image_translations ?? []) {
-          if (t.status === "completed" && t.translated_url) {
-            try {
-              const imgRes = await fetch(t.translated_url);
-              const blob = await imgRes.blob();
-              const langLabel = LANGUAGES.find((l) => l.value === t.language)?.label ?? t.language;
-              const filename = si.filename || `${si.id}.png`;
-              const ratioFolder = t.aspect_ratio && t.aspect_ratio !== "1:1" ? `${t.aspect_ratio}/` : "";
-              zip.file(`${langLabel}/${ratioFolder}${filename}`, blob);
-            } catch {
-              // Skip failed downloads
-            }
-          }
-        }
-      }
-
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${job.name}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await exportJobAsZip(job);
     } finally {
       setExporting(false);
     }
@@ -469,7 +518,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                       : "Export to Drive"}
                   </button>
                   {job.exported_at && !driveExporting && !driveExportDone && (
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-xs text-gray-400">
                       Exported {new Date(job.exported_at).toLocaleDateString("sv-SE")}{" "}
                       {new Date(job.exported_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
                     </span>
@@ -509,6 +558,118 @@ export default function ImageJobDetail({ initialJob }: Props) {
         </div>
       )}
 
+      {job.status === "expanding" || job.status === "ready" ? (
+        <>
+          {/* Expansion status */}
+          <div className="flex items-center gap-3 mb-6">
+            {expandProcessing || job.status === "expanding" ? (
+              <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Expanding to 9:16... ({expansionCompleted}/{expansionTotal})
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 text-emerald-600 text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  {expansionCompleted} expanded
+                </span>
+                {expansionFailed > 0 && (
+                  <span className="flex items-center gap-1.5 text-yellow-600 text-sm">
+                    <AlertTriangle className="w-4 h-4" />
+                    {expansionFailed} failed
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Source images with expansion preview */}
+          <div className="space-y-4">
+            {sourceImages.map((si) => (
+              <div key={si.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex gap-6 items-start">
+                  {/* Original 1:1 */}
+                  <div className="w-48 shrink-0">
+                    <p className="text-xs text-gray-400 mb-2">Original (1:1)</p>
+                    <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={si.original_url}
+                        alt={si.filename ?? "Original"}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {si.filename && (
+                      <p className="text-xs text-gray-400 mt-1 truncate">{si.filename}</p>
+                    )}
+                  </div>
+
+                  {/* Expanded 9:16 */}
+                  <div className="w-36 shrink-0">
+                    <p className="text-xs text-gray-400 mb-2">Expanded (9:16)</p>
+                    <div className="aspect-[9/16] bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center">
+                      {si.expansion_status === "completed" && si.expanded_url ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={si.expanded_url}
+                          alt="Expanded 9:16"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : si.expansion_status === "processing" ? (
+                        <div className="text-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mx-auto mb-1" />
+                          <p className="text-xs text-gray-400">Expanding...</p>
+                        </div>
+                      ) : si.expansion_status === "failed" ? (
+                        <div className="text-center px-2">
+                          <AlertTriangle className="w-5 h-5 text-red-400 mx-auto mb-1" />
+                          <p className="text-xs text-red-500 mb-1">{si.expansion_error || "Failed"}</p>
+                          <button
+                            onClick={() => handleRetryExpansion(si.id)}
+                            className="text-xs text-indigo-600 hover:underline"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <Loader2 className="w-5 h-5 text-gray-300 mx-auto" />
+                          <p className="text-xs text-gray-400 mt-1">Pending</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Translate All button (ready state) */}
+          {job.status === "ready" && (
+            <div className="mt-6 flex items-center gap-4">
+              <button
+                onClick={handleTranslateAll}
+                disabled={processing}
+                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                    Starting translations...
+                  </>
+                ) : (
+                  "Translate All"
+                )}
+              </button>
+              <p className="text-sm text-gray-400">
+                {(sourceImages.length + expansionCompleted) * job.target_languages.length} translations
+                {" \u2248 $"}{((sourceImages.length + expansionCompleted) * job.target_languages.length * 0.09).toFixed(2)}
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+      <>
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-6">
         {pendingCount > 0 || processing ? (
@@ -594,11 +755,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs">{langInfo?.flag}</span>
                       {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
-                        <span className="text-[9px] text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
+                        <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
                       )}
                       <TranslationStatusBadge status={t.status} />
                       {versionCount > 1 && (
-                        <span className="text-[10px] text-gray-400">v{versionCount}</span>
+                        <span className="text-xs text-gray-400">v{versionCount}</span>
                       )}
                     </div>
                     {t.status === "failed" && (
@@ -617,6 +778,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </div>
         ))}
       </div>
+      </>
+      )}
 
       {/* Preview modal */}
       {previewImage && (
@@ -656,7 +819,7 @@ function TabButton({
     >
       {label}
       <span
-        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+        className={`px-1.5 py-0.5 rounded text-xs font-medium ${
           completed !== undefined && completed === count
             ? "bg-emerald-50 text-emerald-600"
             : "bg-gray-200 text-gray-500"
@@ -668,273 +831,33 @@ function TabButton({
   );
 }
 
-function ImagePreviewModal({
-  sourceImage,
-  activeLang,
-  onChangeLang,
-  onClose,
-  onRetry,
-}: {
-  sourceImage: SourceImage;
-  activeLang: string | null;
-  onChangeLang: (lang: string | null) => void;
-  onClose: () => void;
-  onRetry: (translationId: string) => void;
-}) {
-  const translations = sourceImage.image_translations ?? [];
-  const activeTranslation = activeLang
-    ? translations.find((t) => t.language === activeLang)
-    : null;
-
-  // Get sorted versions for the active translation
-  const versions = (activeTranslation?.versions ?? [])
-    .filter((v) => v.translated_url)
-    .sort((a, b) => b.version_number - a.version_number);
-
-  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
-
-  // Reset active version when language changes
-  useEffect(() => {
-    setActiveVersionId(activeTranslation?.active_version_id ?? null);
-  }, [activeLang, activeTranslation?.active_version_id]);
-
-  const activeVersion = activeVersionId
-    ? versions.find((v) => v.id === activeVersionId)
-    : versions[0]; // default to latest
-
-  const displayUrl = activeVersion?.translated_url ?? activeTranslation?.translated_url ?? sourceImage.original_url;
-  const isOriginal = !activeLang;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white border border-gray-200 rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
-          <div>
-            <p className="text-sm font-medium text-gray-800">
-              {sourceImage.filename ?? "Image"}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {isOriginal
-                ? "Original"
-                : `${LANGUAGES.find((l) => l.value === activeLang)?.label} translation${
-                    activeVersion ? ` (v${activeVersion.version_number})` : ""
-                  }`}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Language tabs */}
-        <div className="flex items-center gap-1 px-5 pt-3 shrink-0">
-          <button
-            onClick={() => onChangeLang(null)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              isOriginal
-                ? "bg-indigo-50 text-indigo-600"
-                : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-            }`}
-          >
-            Original
-          </button>
-          {translations.map((t) => {
-            const langInfo = LANGUAGES.find((l) => l.value === t.language);
-            const isActive = activeLang === t.language;
-            const isReady = t.status === "completed";
-            return (
-              <button
-                key={t.id}
-                onClick={() => isReady && onChangeLang(t.language)}
-                disabled={!isReady}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-600"
-                    : isReady
-                    ? "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                    : "text-gray-300 cursor-not-allowed"
-                }`}
-              >
-                <span>{langInfo?.flag}</span>
-                {t.status === "completed" ? langInfo?.label : t.status === "failed" ? "Failed" : "Pending"}
-                {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
-                  <span className="text-[9px] text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
-                )}
-                {t.status === "failed" && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onRetry(t.id); }}
-                    className="ml-1 text-red-600 hover:text-indigo-700"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Version selector (only when viewing a translation with multiple versions) */}
-        {!isOriginal && versions.length > 1 && (
-          <div className="flex items-center gap-1.5 px-5 pt-2 shrink-0">
-            <span className="text-[10px] text-gray-400 uppercase tracking-wider mr-1">Versions</span>
-            {versions
-              .sort((a, b) => a.version_number - b.version_number)
-              .map((v) => {
-                const isCurrent = v.id === (activeVersionId ?? versions[0]?.id);
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => setActiveVersionId(v.id)}
-                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                      isCurrent
-                        ? "bg-indigo-50 text-indigo-600"
-                        : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    v{v.version_number}
-                    {v.quality_score != null && (
-                      <span className={`ml-1 ${
-                        v.quality_score >= 80 ? "text-emerald-600" :
-                        v.quality_score >= 60 ? "text-yellow-600" : "text-red-600"
-                      }`}>
-                        {Math.round(v.quality_score)}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-          </div>
-        )}
-
-        {/* Quality analysis for active version */}
-        {activeVersion?.quality_score != null && (
-          <QualityDetails version={activeVersion} />
-        )}
-
-        {/* Image */}
-        <div className="flex-1 overflow-auto p-5 flex items-center justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={displayUrl}
-            alt={isOriginal ? "Original" : `${activeLang} translation`}
-            className="max-w-full max-h-[65vh] object-contain rounded-lg"
-          />
-        </div>
-
-        {/* Footer with download */}
-        {!isOriginal && (activeVersion?.translated_url || activeTranslation?.translated_url) && (
-          <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between shrink-0">
-            {activeVersion?.generation_time_seconds != null && (
-              <span className="text-[10px] text-gray-400">
-                Generated in {Math.round(activeVersion.generation_time_seconds)}s
-              </span>
-            )}
-            <a
-              href={activeVersion?.translated_url ?? activeTranslation?.translated_url ?? ""}
-              download={`${activeLang}_${sourceImage.filename ?? "image"}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download
-            </a>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function QualityDetails({ version }: { version: Version }) {
-  const [expanded, setExpanded] = useState(false);
-  const score = version.quality_score ?? 0;
-  const analysis = version.quality_analysis;
-
-  const badgeClasses = score >= 80
-    ? "bg-emerald-50 text-emerald-700"
-    : score >= 60
-    ? "bg-yellow-50 text-yellow-700"
-    : "bg-red-50 text-red-700";
-
-  return (
-    <div className="px-5 pt-2 shrink-0">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${badgeClasses} hover:opacity-80 transition-opacity`}
-      >
-        Quality: {Math.round(score)}/100
-        <span className="text-[9px] ml-0.5">{expanded ? "▲" : "▼"}</span>
-      </button>
-
-      {expanded && analysis && (
-        <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-2">
-          {analysis.overall_assessment && (
-            <p className="text-gray-700">{analysis.overall_assessment}</p>
-          )}
-          {analysis.spelling_errors?.length > 0 && (
-            <div>
-              <span className="text-red-600 font-medium">Spelling errors: </span>
-              <span className="text-gray-600">{analysis.spelling_errors.join(", ")}</span>
-            </div>
-          )}
-          {analysis.grammar_issues?.length > 0 && (
-            <div>
-              <span className="text-yellow-600 font-medium">Grammar issues: </span>
-              <span className="text-gray-600">{analysis.grammar_issues.join(", ")}</span>
-            </div>
-          )}
-          {analysis.missing_text?.length > 0 && (
-            <div>
-              <span className="text-orange-600 font-medium">Missing text: </span>
-              <span className="text-gray-600">{analysis.missing_text.join(", ")}</span>
-            </div>
-          )}
-          {analysis.extracted_text && (
-            <div>
-              <span className="text-gray-500 font-medium">Extracted text: </span>
-              <span className="text-gray-600">{analysis.extracted_text}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function TranslationStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "completed":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+        <span className="flex items-center gap-1 text-xs text-emerald-600">
           <CheckCircle2 className="w-3 h-3" />
           Ready
         </span>
       );
     case "processing":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-indigo-600">
+        <span className="flex items-center gap-1 text-xs text-indigo-600">
           <Loader2 className="w-3 h-3 animate-spin" />
           Generating...
         </span>
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 text-[11px] text-red-600">
+        <span className="flex items-center gap-1 text-xs text-red-600">
           <AlertTriangle className="w-3 h-3" />
           Failed
         </span>
       );
     default:
       return (
-        <span className="flex items-center gap-1 text-[11px] text-gray-400">
+        <span className="flex items-center gap-1 text-xs text-gray-400">
           <Loader2 className="w-3 h-3" />
           Pending
         </span>

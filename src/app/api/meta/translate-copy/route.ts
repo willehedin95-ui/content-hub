@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import OpenAI from "openai";
 import { calcOpenAICost } from "@/lib/pricing";
+import { OPENAI_MODEL } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
 import { getShortLocalizationNote } from "@/lib/localization";
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       max_tokens: 2000,
       messages: [
         {
@@ -71,7 +72,7 @@ Return a JSON object with exactly two keys: "primary_text" and "headline". No ot
       type: "translation",
       page_id: null,
       translation_id: null,
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cost_usd: calcOpenAICost(inputTokens, outputTokens),

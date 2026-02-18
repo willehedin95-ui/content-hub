@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { Language } from "@/types";
 import { formatRules } from "./translation-rules";
 import { formatLocalization } from "./localization";
+import { OPENAI_MODEL } from "./constants";
 
 const LANGUAGE_NAMES: Record<Language, string> = {
   sv: "svenska",
@@ -197,7 +198,7 @@ export async function translateBatch(
         Object.fromEntries(chunk.map(({ id, text }) => [id, text]))
       );
       return client.chat.completions.create({
-        model: "gpt-4o",
+        model: OPENAI_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: inputJson },
@@ -250,7 +251,7 @@ export async function translateMetas(
     return { result: {}, inputTokens: 0, outputTokens: 0 };
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o",
+    model: OPENAI_MODEL,
     messages: [
       {
         role: "system",

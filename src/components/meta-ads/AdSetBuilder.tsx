@@ -11,24 +11,19 @@ import {
   ImageIcon,
   Type,
   Globe,
-  Calendar,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Language,
   LANGUAGES,
   COUNTRY_MAP,
-  META_OBJECTIVES,
+  Product,
+  PRODUCTS,
+  MetaCampaignMapping,
 } from "@/types";
 
 /* ────────────────── Types ────────────────── */
-
-interface MetaCampaignOption {
-  id: string;
-  name: string;
-  status: string;
-  objective: string;
-}
 
 interface ImageAsset {
   id: string;
@@ -39,7 +34,7 @@ interface ImageAsset {
     id: string;
     filename: string | null;
     original_url: string;
-    image_jobs: { id: string; name: string };
+    image_jobs: { id: string; name: string; product: string | null };
   };
 }
 
@@ -49,7 +44,7 @@ interface LandingPageAsset {
   slug: string;
   published_url: string;
   seo_title: string | null;
-  pages: { id: string; name: string; slug: string };
+  pages: { id: string; name: string; slug: string; product: string | null };
 }
 
 interface GroupedImage {
@@ -73,10 +68,10 @@ interface Props {
   onCreated: () => void;
 }
 
-type Step = "campaign" | "images" | "copy" | "details" | "review";
+type Step = "product" | "images" | "copy" | "details" | "review";
 
 const STEPS: { key: Step; label: string }[] = [
-  { key: "campaign", label: "Campaign" },
+  { key: "product", label: "Product" },
   { key: "images", label: "Images" },
   { key: "copy", label: "Ad Copy" },
   { key: "details", label: "Details" },
@@ -86,28 +81,17 @@ const STEPS: { key: Step; label: string }[] = [
 /* ────────────────── Component ────────────────── */
 
 export default function AdSetBuilder({ onClose, onCreated }: Props) {
-  const [step, setStep] = useState<Step>("campaign");
+  const [step, setStep] = useState<Step>("product");
 
-  /* ── Step 1: Campaign & Markets ── */
-  const [campaignMode, setCampaignMode] = useState<"existing" | "new">(
-    "existing"
-  );
-  const [existingCampaigns, setExistingCampaigns] = useState<
-    MetaCampaignOption[]
-  >([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [selectedCampaignId, setSelectedCampaignId] = useState("");
-  const [newCampaignName, setNewCampaignName] = useState("");
-  const [objective, setObjective] = useState("OUTCOME_TRAFFIC");
-  const [selectedMarkets, setSelectedMarkets] = useState<Set<Language>>(
-    new Set()
-  );
+  /* ── Step 1: Product & Markets ── */
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [campaignMappings, setCampaignMappings] = useState<MetaCampaignMapping[]>([]);
+  const [loadingMappings, setLoadingMappings] = useState(true);
+  const [selectedMarkets, setSelectedMarkets] = useState<Set<Language>>(new Set());
 
   /* ── Step 2: Images ── */
   const [groupedImages, setGroupedImages] = useState<GroupedImage[]>([]);
-  const [selectedImageKeys, setSelectedImageKeys] = useState<Set<string>>(
-    new Set()
-  );
+  const [selectedImageKeys, setSelectedImageKeys] = useState<Set<string>>(new Set());
   const [loadingImages, setLoadingImages] = useState(false);
 
   /* ── Step 3: Ad Copy ── */
@@ -122,10 +106,8 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
   const [pageGroups, setPageGroups] = useState<PageGroup[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [urlsByMarket, setUrlsByMarket] = useState<Record<string, string>>({});
-  const [adSetName, setAdSetName] = useState("");
-  const [dailyBudget, setDailyBudget] = useState(50);
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [conceptNumber, setConceptNumber] = useState("");
+  const [conceptName, setConceptName] = useState("");
   const [loadingPages, setLoadingPages] = useState(false);
 
   /* ── Submission ── */
@@ -134,26 +116,50 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
 
   const markets = Array.from(selectedMarkets).sort() as Language[];
 
-  /* ── Fetch existing campaigns from Meta on mount ── */
+  /* ── Escape key to close ── */
   useEffect(() => {
-    fetch("/api/meta/campaigns/list")
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !submitting) onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [submitting, onClose]);
+
+  /* ── Fetch campaign mappings on mount ── */
+  useEffect(() => {
+    fetch("/api/meta/campaign-mappings")
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: MetaCampaignOption[]) => {
-        setExistingCampaigns(data);
-        if (data.length > 0) setSelectedCampaignId(data[0].id);
-      })
+      .then((data: MetaCampaignMapping[]) => setCampaignMappings(data))
       .catch(() => {})
-      .finally(() => setLoadingCampaigns(false));
+      .finally(() => setLoadingMappings(false));
   }, []);
 
-  /* ── Fetch images for all selected markets ── */
+  /* ── Get mapping for a product + market ── */
+  function getMapping(lang: Language): MetaCampaignMapping | undefined {
+    if (!selectedProduct) return undefined;
+    const country = COUNTRY_MAP[lang];
+    return campaignMappings.find(
+      (m) => m.product === selectedProduct && m.country === country
+    );
+  }
+
+  /* ── Check which markets have unmapped combos (need both campaign + template ad set) ── */
+  const unmappedMarkets = markets.filter((m) => {
+    const mapping = getMapping(m);
+    return !mapping || !mapping.template_adset_id;
+  });
+
+  /* ── Fetch images for all selected markets (filtered by product) ── */
   async function fetchImages() {
     if (markets.length === 0) return;
     setLoadingImages(true);
     try {
+      const productParam = selectedProduct ? `&product=${selectedProduct}` : "";
       const results = await Promise.all(
         markets.map(async (lang) => {
-          const res = await fetch(`/api/meta/assets/images?language=${lang}`);
+          const res = await fetch(
+            `/api/meta/assets/images?language=${lang}${productParam}`
+          );
           return {
             lang,
             data: res.ok ? ((await res.json()) as ImageAsset[]) : [],
@@ -190,15 +196,16 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
     }
   }
 
-  /* ── Fetch landing pages for all selected markets ── */
+  /* ── Fetch landing pages for all selected markets (filtered by product) ── */
   async function fetchLandingPages() {
     if (markets.length === 0) return;
     setLoadingPages(true);
     try {
+      const productParam = selectedProduct ? `&product=${selectedProduct}` : "";
       const results = await Promise.all(
         markets.map(async (lang) => {
           const res = await fetch(
-            `/api/meta/assets/landing-pages?language=${lang}`
+            `/api/meta/assets/landing-pages?language=${lang}${productParam}`
           );
           return {
             lang,
@@ -224,6 +231,17 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
     } finally {
       setLoadingPages(false);
     }
+  }
+
+  /* ── Select product (clears downstream state) ── */
+  function handleProductSelect(product: Product) {
+    if (selectedProduct === product) return;
+    setSelectedProduct(product);
+    setSelectedMarkets(new Set());
+    setSelectedImageKeys(new Set());
+    setCopyTranslations({});
+    setUrlsByMarket({});
+    setSelectedPageId(null);
   }
 
   /* ── Toggle market selection (clears downstream state) ── */
@@ -298,6 +316,24 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
     }
   }
 
+  /* ── Auto-populate concept from selected images ── */
+  useEffect(() => {
+    if (selectedImageKeys.size === 0 || groupedImages.length === 0) return;
+    const selectedJobNames = new Set(
+      groupedImages
+        .filter((g) => selectedImageKeys.has(g.key))
+        .map((g) => g.jobName)
+    );
+    if (selectedJobNames.size === 1) {
+      const jobName = [...selectedJobNames][0];
+      const match = jobName.match(/^#(\d+)\s+(.+)$/);
+      if (match) {
+        setConceptNumber(match[1]);
+        setConceptName(match[2].toLowerCase());
+      }
+    }
+  }, [selectedImageKeys, groupedImages]);
+
   /* ── Navigation ── */
   function goToStep(target: Step) {
     setStep(target);
@@ -320,17 +356,6 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
     selectedImageKeys.has(g.key)
   );
 
-  const effectiveObjective =
-    campaignMode === "existing"
-      ? existingCampaigns.find((c) => c.id === selectedCampaignId)
-          ?.objective || "OUTCOME_TRAFFIC"
-      : objective;
-
-  const effectiveCampaignName =
-    campaignMode === "existing"
-      ? existingCampaigns.find((c) => c.id === selectedCampaignId)?.name || ""
-      : newCampaignName;
-
   function getUrlForMarket(lang: string): string {
     return urlsByMarket[lang] || "";
   }
@@ -340,22 +365,26 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
 
   /* ── Validation ── */
   const canProceed: Record<Step, boolean> = {
-    campaign:
+    product:
+      !!selectedProduct &&
       selectedMarkets.size > 0 &&
-      (campaignMode === "existing"
-        ? !!selectedCampaignId
-        : !!newCampaignName.trim()),
+      unmappedMarkets.length === 0,
     images: selectedImageKeys.size > 0,
     copy:
       !!primaryText.trim() &&
       markets.length > 0 &&
       markets.every((m) => copyTranslations[m]?.primary_text?.trim()),
     details:
-      !!adSetName.trim() &&
-      dailyBudget > 0 &&
+      !!conceptNumber.trim() &&
+      !!conceptName.trim() &&
       markets.every((m) => !!getUrlForMarket(m)),
     review: true,
   };
+
+  /* ── Generate ad set name from concept ── */
+  function getAdSetName(countryCode: string): string {
+    return `${countryCode} #${conceptNumber} | statics | ${conceptName.trim().toLowerCase()}`;
+  }
 
   /* ── Submit ── */
   async function handleSubmit() {
@@ -363,31 +392,14 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
     setError("");
 
     try {
-      let metaCampaignId: string | null = null;
-
-      if (campaignMode === "existing") {
-        metaCampaignId = selectedCampaignId;
-      } else {
-        // Create new Meta campaign eagerly
-        const res = await fetch("/api/meta/campaigns/create-meta", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: newCampaignName.trim(),
-            objective,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? "Failed to create Meta campaign");
-        }
-        const { id } = await res.json();
-        metaCampaignId = id;
-      }
-
       // Create one ad set (meta_campaigns row) per market
       for (const market of markets) {
         const countryCode = COUNTRY_MAP[market];
+        const mapping = getMapping(market);
+        if (!mapping || !mapping.template_adset_id) {
+          throw new Error(`No campaign/template mapping for ${selectedProduct} + ${countryCode}`);
+        }
+
         const ads = selectedImgs.map((img) => ({
           image_url: img.translations[market].translated_url,
           ad_copy: copyTranslations[market].primary_text,
@@ -402,14 +414,12 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: `${adSetName.trim()} - ${countryCode}`,
-            objective: effectiveObjective,
+            name: getAdSetName(countryCode),
+            objective: "OUTCOME_TRAFFIC",
             language: market,
             countries: [countryCode],
-            daily_budget: Math.round(dailyBudget * 100),
-            meta_campaign_id: metaCampaignId,
-            start_time: startTime ? new Date(startTime).toISOString() : null,
-            end_time: endTime ? new Date(endTime).toISOString() : null,
+            product: selectedProduct,
+            meta_campaign_id: mapping.meta_campaign_id,
             ads,
           }),
         });
@@ -431,7 +441,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
 
   /* ── Render ── */
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}>
       <div className="bg-white border border-gray-200 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-200 shrink-0">
@@ -444,7 +454,8 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 transition-colors"
+            disabled={submitting}
+            className="text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
@@ -452,126 +463,116 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {/* ── STEP 1: Campaign & Markets ── */}
-          {step === "campaign" && (
+          {/* ── STEP 1: Product & Markets ── */}
+          {step === "product" && (
             <div className="space-y-6">
-              {/* Campaign mode */}
+              {/* Product selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Campaign
+                  Product
                 </label>
-                <div className="flex gap-2 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => setCampaignMode("existing")}
-                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                      campaignMode === "existing"
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-                        : "border-gray-200 text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    Use existing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCampaignMode("new")}
-                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                      campaignMode === "new"
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-                        : "border-gray-200 text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    Create new
-                  </button>
+                <div className="flex gap-2">
+                  {PRODUCTS.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => handleProductSelect(p.value)}
+                      className={`flex items-center gap-2 px-5 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                        selectedProduct === p.value
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                          : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      {selectedProduct === p.value && (
+                        <Check className="w-3.5 h-3.5 text-indigo-600" />
+                      )}
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
-
-                {campaignMode === "existing" ? (
-                  loadingCampaigns ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading campaigns from Meta...
-                    </div>
-                  ) : existingCampaigns.length === 0 ? (
-                    <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-4 py-3">
-                      No active or paused campaigns found in Meta. Create a new
-                      one instead.
-                    </p>
-                  ) : (
-                    <select
-                      value={selectedCampaignId}
-                      onChange={(e) => setSelectedCampaignId(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-                    >
-                      {existingCampaigns.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} (
-                          {META_OBJECTIVES.find((o) => o.value === c.objective)
-                            ?.label || c.objective}
-                          )
-                        </option>
-                      ))}
-                    </select>
-                  )
-                ) : (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={newCampaignName}
-                      onChange={(e) => setNewCampaignName(e.target.value)}
-                      placeholder="e.g., HappySleep Feb 2026"
-                      className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                    <select
-                      value={objective}
-                      onChange={(e) => setObjective(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-                    >
-                      {META_OBJECTIVES.map((obj) => (
-                        <option key={obj.value} value={obj.value}>
-                          {obj.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
 
               {/* Market selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Markets
-                </label>
-                <p className="text-xs text-gray-400 mb-2">
-                  One ad set will be created per market, each with localized
-                  content.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {LANGUAGES.map((lang) => {
-                    const selected = selectedMarkets.has(lang.value);
-                    return (
-                      <button
-                        key={lang.value}
-                        type="button"
-                        onClick={() => toggleMarket(lang.value)}
-                        className={`flex items-center gap-2.5 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
-                          selected
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                            : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                        }`}
-                      >
-                        {selected && (
-                          <Check className="w-3.5 h-3.5 text-indigo-600" />
-                        )}
-                        <span className="text-base">{lang.flag}</span>
-                        {lang.label}
-                        <span className="text-xs text-gray-400 ml-auto">
-                          {COUNTRY_MAP[lang.value]}
-                        </span>
-                      </button>
-                    );
-                  })}
+              {selectedProduct && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Target Markets
+                  </label>
+                  <p className="text-xs text-gray-400 mb-2">
+                    One ad set will be duplicated from template per market, with localized
+                    content.
+                  </p>
+                  {loadingMappings ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading campaign mappings...
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {LANGUAGES.map((lang) => {
+                        const selected = selectedMarkets.has(lang.value);
+                        const mapping = getMapping(lang.value);
+                        const isMapped = !!mapping && !!mapping.template_adset_id;
+
+                        return (
+                          <button
+                            key={lang.value}
+                            type="button"
+                            onClick={() => toggleMarket(lang.value)}
+                            className={`flex items-center gap-2.5 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                              selected
+                                ? isMapped
+                                  ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                                  : "bg-amber-50 border-amber-300 text-amber-700"
+                                : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                            }`}
+                          >
+                            {selected && isMapped && (
+                              <Check className="w-3.5 h-3.5 text-indigo-600" />
+                            )}
+                            {selected && !isMapped && (
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                            )}
+                            {!selected && (
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  isMapped ? "bg-emerald-400" : "bg-gray-300"
+                                }`}
+                              />
+                            )}
+                            <span className="text-base">{lang.flag}</span>
+                            {lang.label}
+                            <span className="text-xs text-gray-400 ml-auto">
+                              {COUNTRY_MAP[lang.value]}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Warning for unmapped markets */}
+                  {unmappedMarkets.length > 0 && selectedMarkets.size > 0 && (
+                    <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-amber-700 font-medium">
+                          Unmapped markets
+                        </p>
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {unmappedMarkets
+                            .map(
+                              (m) =>
+                                `${LANGUAGES.find((l) => l.value === m)?.flag} ${COUNTRY_MAP[m]}`
+                            )
+                            .join(", ")}{" "}
+                          — go to Settings → Meta Campaign Mapping to assign campaigns and template ad sets.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -584,7 +585,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                   Select Images ({selectedImageKeys.size} selected)
                 </h3>
                 <span className="text-xs text-gray-400 ml-auto">
-                  Showing images available in all {markets.length} market
+                  Showing {selectedProduct ? PRODUCTS.find((p) => p.value === selectedProduct)?.label : ""} images for {markets.length} market
                   {markets.length !== 1 ? "s" : ""}
                 </span>
               </div>
@@ -638,7 +639,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                                 </div>
                               )}
                               {img.aspectRatio !== "1:1" && (
-                                <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1 rounded">
+                                <span className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 rounded">
                                   {img.aspectRatio}
                                 </span>
                               )}
@@ -841,82 +842,40 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                 </div>
               </div>
 
-              {/* Ad Set Name */}
+              {/* Concept */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Ad Set Name
+                  Concept
                 </label>
-                <input
-                  type="text"
-                  value={adSetName}
-                  onChange={(e) => setAdSetName(e.target.value)}
-                  placeholder="e.g., HappySleep Feb"
-                  className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-                />
-                {adSetName.trim() && (
-                  <p className="text-xs text-gray-400 mt-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-gray-500">#</span>
+                    <input
+                      type="text"
+                      value={conceptNumber}
+                      onChange={(e) => setConceptNumber(e.target.value.replace(/\D/g, ""))}
+                      placeholder="015"
+                      className="w-20 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={conceptName}
+                    onChange={(e) => setConceptName(e.target.value)}
+                    placeholder="concept name"
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                {conceptNumber.trim() && conceptName.trim() && (
+                  <p className="text-xs text-gray-400 mt-1.5">
                     Creates:{" "}
                     {markets
                       .map(
-                        (m) => `"${adSetName.trim()} - ${COUNTRY_MAP[m]}"`
+                        (m) => `"${COUNTRY_MAP[m]} #${conceptNumber} | statics | ${conceptName.trim().toLowerCase()}"`
                       )
                       .join(", ")}
                   </p>
                 )}
-              </div>
-
-              {/* Daily Budget */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Daily Budget
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={dailyBudget}
-                    onChange={(e) => setDailyBudget(Number(e.target.value))}
-                    className="w-32 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-                  />
-                  <span className="text-xs text-gray-400">
-                    per ad set / day
-                  </span>
-                </div>
-              </div>
-
-              {/* Schedule */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-gray-500" />
-                  <label className="text-sm font-medium text-gray-700">
-                    Schedule
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Start
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      End (optional)
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -931,23 +890,9 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                 </h3>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <span className="text-gray-400">Campaign</span>
+                    <span className="text-gray-400">Product</span>
                     <p className="text-gray-700 font-medium">
-                      {effectiveCampaignName}
-                      {campaignMode === "new" && (
-                        <span className="text-gray-400 font-normal">
-                          {" "}
-                          (new)
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Objective</span>
-                    <p className="text-gray-700 font-medium">
-                      {META_OBJECTIVES.find(
-                        (o) => o.value === effectiveObjective
-                      )?.label}
+                      {PRODUCTS.find((p) => p.value === selectedProduct)?.label}
                     </p>
                   </div>
                   <div>
@@ -963,20 +908,9 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-400">Budget</span>
+                    <span className="text-gray-400">Concept</span>
                     <p className="text-gray-700 font-medium">
-                      {dailyBudget}/day per ad set
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Schedule</span>
-                    <p className="text-gray-700 font-medium">
-                      {startTime
-                        ? new Date(startTime).toLocaleDateString()
-                        : "Immediate"}
-                      {endTime
-                        ? ` → ${new Date(endTime).toLocaleDateString()}`
-                        : ""}
+                      #{conceptNumber} | {conceptName.trim().toLowerCase()}
                     </p>
                   </div>
                   <div>
@@ -995,6 +929,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
               {markets.map((lang) => {
                 const langInfo = LANGUAGES.find((l) => l.value === lang);
                 const t = copyTranslations[lang];
+                const mapping = getMapping(lang);
                 return (
                   <div
                     key={lang}
@@ -1006,9 +941,14 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                         {langInfo?.label} ({COUNTRY_MAP[lang]})
                       </h4>
                       <span className="text-xs text-gray-400 ml-auto">
-                        {adSetName.trim()} - {COUNTRY_MAP[lang]}
+                        {getAdSetName(COUNTRY_MAP[lang])}
                       </span>
                     </div>
+                    {mapping && (
+                      <p className="text-xs text-gray-400 mb-2">
+                        Campaign: {mapping.meta_campaign_name || mapping.meta_campaign_id}
+                      </p>
+                    )}
                     <div className="space-y-2 text-xs">
                       <div>
                         <span className="text-gray-400">Primary Text</span>
@@ -1064,8 +1004,8 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
               )}
 
               <p className="text-xs text-gray-400">
-                Ad sets will be created as <strong>Paused</strong> in Meta Ads
-                Manager. You can review and activate them there.
+                Template ad sets will be duplicated as <strong>Paused</strong> in Meta Ads
+                Manager. All settings (targeting, placements, budget) are inherited from the template.
               </p>
             </div>
           )}
@@ -1074,7 +1014,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 shrink-0">
           <div>
-            {step !== "campaign" && (
+            {step !== "product" && (
               <button
                 onClick={goBack}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -1133,7 +1073,7 @@ function StepIndicator({
       {steps.map((s, i) => (
         <div key={s.key} className="flex items-center gap-1">
           <span
-            className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+            className={`text-xs font-medium px-1.5 py-0.5 rounded ${
               i === currentIndex
                 ? "bg-indigo-100 text-indigo-700"
                 : i < currentIndex
@@ -1147,7 +1087,7 @@ function StepIndicator({
             {s.label}
           </span>
           {i < steps.length - 1 && (
-            <span className="text-gray-300 text-[10px]">&gt;</span>
+            <span className="text-gray-300 text-xs">&gt;</span>
           )}
         </div>
       ))}

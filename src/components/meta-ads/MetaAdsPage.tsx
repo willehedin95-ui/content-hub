@@ -22,16 +22,18 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [showBuilder, setShowBuilder] = useState(false);
   const [pushing, setPushing] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
 
   async function handlePush(campaignId: string) {
     setPushing(campaignId);
+    setPushError(null);
     try {
       const res = await fetch(`/api/meta/campaigns/${campaignId}/push`, {
         method: "POST",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Push failed");
+        setPushError(data.error ?? "Push failed");
       }
       router.refresh();
       // Refresh campaigns list
@@ -46,9 +48,12 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
     setShowBuilder(false);
     router.refresh();
     fetch("/api/meta/campaigns")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to refresh campaigns");
+        return r.json();
+      })
       .then(setCampaigns)
-      .catch(() => {});
+      .catch(() => setPushError("Ad set created, but failed to refresh the list. Reload the page."));
   }
 
   return (
@@ -68,6 +73,12 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
           New Ad Set
         </button>
       </div>
+
+      {pushError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
+          {pushError}
+        </p>
+      )}
 
       {campaigns.length === 0 ? (
         <div className="text-center py-16">
@@ -247,28 +258,28 @@ function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case "pushed":
       return (
-        <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+        <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
           <CheckCircle2 className="w-3 h-3" />
           Pushed
         </span>
       );
     case "pushing":
       return (
-        <span className="flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+        <span className="flex items-center gap-1 text-xs font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
           <Loader2 className="w-3 h-3 animate-spin" />
           Pushing
         </span>
       );
     case "error":
       return (
-        <span className="flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+        <span className="flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
           <AlertCircle className="w-3 h-3" />
           Error
         </span>
       );
     default:
       return (
-        <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+        <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
           Draft
         </span>
       );

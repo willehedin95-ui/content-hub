@@ -15,15 +15,16 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  MoreHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { getPageQualitySettings } from "@/lib/settings";
 
 const MAX_RETRIES = 3;
-const DEFAULT_THRESHOLD = 85;
 
 const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   none: "Not started",
@@ -40,21 +41,6 @@ const AB_STATUS_LABELS: Record<string, string> = {
   active: "A/B Active",
   completed: "A/B Completed",
 };
-
-function getQualitySettings(): { enabled: boolean; threshold: number } {
-  if (typeof window === "undefined") return { enabled: true, threshold: DEFAULT_THRESHOLD };
-  try {
-    const stored = localStorage.getItem("content-hub-settings");
-    if (stored) {
-      const s = JSON.parse(stored);
-      return {
-        enabled: s.pages_quality_enabled ?? true,
-        threshold: s.pages_quality_threshold ?? DEFAULT_THRESHOLD,
-      };
-    }
-  } catch { /* ignore */ }
-  return { enabled: true, threshold: DEFAULT_THRESHOLD };
-}
 
 function scoreColor(score: number): string {
   if (score >= 85) return "text-emerald-600";
@@ -91,12 +77,26 @@ export default function TranslationRow({
   const [showDetails, setShowDetails] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [confirmRepublish, setConfirmRepublish] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
+
+  // Close "more" dropdown on outside click
+  useEffect(() => {
+    if (!showMore) return;
+    function handleClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setShowMore(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showMore]);
 
   // Sync from props when translation changes
   useEffect(() => {
@@ -137,7 +137,7 @@ export default function TranslationRow({
     setShowDetails(false);
     setAttempt(0);
 
-    const settings = getQualitySettings();
+    const settings = getPageQualitySettings();
     const tid = translation?.id;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
@@ -280,36 +280,28 @@ export default function TranslationRow({
 
   const isProcessing = loading === "translate" || loading === "regenerate";
 
-  // Not started — show translate button
+  // Not started — compact row
   if (!translation) {
     return (
-      <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-lg">{language.flag}</span>
-            <div>
-              <p className="text-gray-800 font-medium text-sm">{language.label}</p>
-              <p className="text-gray-400 text-[10px]">{language.domain}</p>
-            </div>
+            <span className="text-base">{language.flag}</span>
+            <span className="text-gray-500 text-sm">{language.label}</span>
+            <span className="text-xs text-gray-300">{language.domain}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <StatusDot status="none" />
-              <span className="text-xs text-gray-400">Not started</span>
-            </div>
-            <button
-              onClick={handleTranslate}
-              disabled={loading !== null}
-              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-600 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors"
-            >
-              {isProcessing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Globe className="w-3.5 h-3.5" />
-              )}
-              {isProcessing ? (progressLabel || "Translating…") : "Translate"}
-            </button>
-          </div>
+          <button
+            onClick={handleTranslate}
+            disabled={loading !== null}
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-600 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors"
+          >
+            {isProcessing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Globe className="w-3.5 h-3.5" />
+            )}
+            {isProcessing ? (progressLabel || "Translating…") : "Translate"}
+          </button>
         </div>
 
         {error && (
@@ -323,7 +315,7 @@ export default function TranslationRow({
   }
 
   const displayUrl = abTest?.router_url || translation.published_url;
-  const settings = getQualitySettings();
+  const settings = getPageQualitySettings();
 
   // Has translation — show full row
   return (
@@ -334,7 +326,7 @@ export default function TranslationRow({
           <span className="text-lg">{language.flag}</span>
           <div>
             <p className="text-gray-800 font-medium text-sm">{language.label}</p>
-            <p className="text-gray-400 text-[10px]">{language.domain}</p>
+            <p className="text-gray-400 text-xs">{language.domain}</p>
           </div>
         </div>
 
@@ -370,6 +362,7 @@ export default function TranslationRow({
               <CheckCircle2 className={`w-3.5 h-3.5 ${scoreColor(qualityScore)}`} />
             ) : null}
             <span className={scoreColor(qualityScore)}>{qualityScore}%</span>
+            <span className="text-gray-400 font-normal">/ {settings.threshold}</span>
             {showDetails ? (
               <ChevronUp className="w-3 h-3 text-gray-400" />
             ) : (
@@ -420,22 +413,6 @@ export default function TranslationRow({
             </Link>
           ) : (
             <>
-              {/* Regenerate */}
-              {canPublish && (
-                <button
-                  onClick={handleRegenerate}
-                  disabled={loading !== null}
-                  className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed text-indigo-600 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors"
-                  title="Regenerate translation"
-                >
-                  {loading === "regenerate" ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  )}
-                  Regenerate
-                </button>
-              )}
               <Link
                 href={`/pages/${pageId}/edit/${language.value}`}
                 className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
@@ -444,19 +421,6 @@ export default function TranslationRow({
                 Edit
               </Link>
               <button
-                onClick={handleCreateABTest}
-                disabled={loading !== null || !canPublish}
-                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
-                title="Create A/B test"
-              >
-                {loading === "ab" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <FlaskConical className="w-3.5 h-3.5" />
-                )}
-                A/B
-              </button>
-              <button
                 onClick={handlePublish}
                 disabled={!canPublish || loading !== null}
                 className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
@@ -464,6 +428,46 @@ export default function TranslationRow({
                 <Upload className="w-3.5 h-3.5" />
                 Publish
               </button>
+              {/* Secondary actions menu */}
+              {canPublish && (
+                <div ref={moreRef} className="relative">
+                  <button
+                    onClick={() => setShowMore((p) => !p)}
+                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="More actions"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                  {showMore && (
+                    <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+                      <button
+                        onClick={() => { setShowMore(false); handleRegenerate(); }}
+                        disabled={loading !== null}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      >
+                        {loading === "regenerate" ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        )}
+                        Regenerate translation
+                      </button>
+                      <button
+                        onClick={() => { setShowMore(false); handleCreateABTest(); }}
+                        disabled={loading !== null}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      >
+                        {loading === "ab" ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <FlaskConical className="w-3.5 h-3.5" />
+                        )}
+                        Create A/B test
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -475,7 +479,7 @@ export default function TranslationRow({
           <p className="text-xs text-gray-600">{qualityAnalysis.overall_assessment}</p>
           {qualityAnalysis.fluency_issues.length > 0 && (
             <div>
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Fluency issues</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Fluency issues</p>
               <ul className="text-xs text-gray-500 space-y-0.5">
                 {qualityAnalysis.fluency_issues.map((issue, i) => (
                   <li key={i}>- {issue}</li>
@@ -485,7 +489,7 @@ export default function TranslationRow({
           )}
           {qualityAnalysis.grammar_issues.length > 0 && (
             <div>
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Grammar issues</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Grammar issues</p>
               <ul className="text-xs text-gray-500 space-y-0.5">
                 {qualityAnalysis.grammar_issues.map((issue, i) => (
                   <li key={i}>- {issue}</li>
@@ -495,7 +499,7 @@ export default function TranslationRow({
           )}
           {qualityAnalysis.context_errors.length > 0 && (
             <div>
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Context errors</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Context errors</p>
               <ul className="text-xs text-gray-500 space-y-0.5">
                 {qualityAnalysis.context_errors.map((issue, i) => (
                   <li key={i}>- {issue}</li>
@@ -505,7 +509,7 @@ export default function TranslationRow({
           )}
           {qualityAnalysis.name_localization.length > 0 && (
             <div>
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Unlocalized names</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Unlocalized names</p>
               <ul className="text-xs text-gray-500 space-y-0.5">
                 {qualityAnalysis.name_localization.map((issue, i) => (
                   <li key={i}>- {issue}</li>

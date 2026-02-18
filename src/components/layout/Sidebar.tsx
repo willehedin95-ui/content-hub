@@ -55,7 +55,7 @@ export default function Sidebar() {
             <p className="text-sm font-semibold text-gray-900 leading-tight">
               Content Hub
             </p>
-            <p className="text-[10px] text-gray-400">Hälsobladet</p>
+            <p className="text-xs text-gray-400">Hälsobladet</p>
           </div>
         </div>
       </div>
@@ -89,13 +89,13 @@ export default function Sidebar() {
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="flex-1">{label}</span>
                 {showProgress && (
-                  <span className="text-[10px] tabular-nums text-indigo-500">
+                  <span className="text-xs tabular-nums text-indigo-500">
                     {progress!.completed}/{progress!.total}
                   </span>
                 )}
               </div>
               {showProgress && (
-                <div className="ml-7 h-1 rounded-full bg-indigo-100 overflow-hidden">
+                <div className="ml-7 h-1.5 rounded-full bg-indigo-100 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-indigo-500 transition-all duration-500"
                     style={{ width: `${pct}%` }}

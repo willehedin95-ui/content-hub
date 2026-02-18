@@ -1,6 +1,8 @@
+import { KIE_MODEL } from "./constants";
+
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_TIME_MS = 180_000; // 3 minutes
+const MAX_POLL_TIME_MS = 160_000; // ~2.7 min — leaves buffer before Vercel's 180s maxDuration
 
 interface CreateTaskResponse {
   code: number;
@@ -57,7 +59,7 @@ export async function createImageTask(
       Authorization: `Bearer ${getApiKey()}`,
     },
     body: JSON.stringify({
-      model: "nano-banana-pro",
+      model: KIE_MODEL,
       input,
     }),
   });

@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertCircle,
   MessageSquare,
+  Download,
 } from "lucide-react";
 import { UsageLog } from "@/types";
 
@@ -108,10 +109,28 @@ export default function UsagePage() {
     return { ...cats, total };
   }, [logs]);
 
+  function exportCsv() {
+    if (logs.length === 0) return;
+    const header = "Date,Type,Model,Page,Input Tokens,Output Tokens,Cost USD,Cost SEK";
+    const rows = logs.map((log) => {
+      const date = new Date(log.created_at).toISOString();
+      const page = log.pages?.name?.replace(/,/g, " ") ?? "";
+      return `${date},${log.type},${log.model},${page},${log.input_tokens},${log.output_tokens},${Number(log.cost_usd).toFixed(4)},${(Number(log.cost_usd) * sekRate).toFixed(2)}`;
+    });
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `content-hub-usage-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Usage & Costs</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Usage & Costs</h1>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-400">USD → SEK</label>
@@ -134,6 +153,15 @@ export default function UsagePage() {
               </option>
             ))}
           </select>
+          <button
+            onClick={exportCsv}
+            disabled={logs.length === 0}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40"
+            title="Export as CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </button>
         </div>
       </div>
 
@@ -143,7 +171,7 @@ export default function UsagePage() {
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="w-4 h-4 text-emerald-600" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+              <span className="text-xs text-gray-400 uppercase tracking-wider">
                 Total Cost (USD)
               </span>
             </div>
@@ -154,7 +182,7 @@ export default function UsagePage() {
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <Coins className="w-4 h-4 text-amber-600" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+              <span className="text-xs text-gray-400 uppercase tracking-wider">
                 Total Cost (SEK)
               </span>
             </div>
@@ -165,21 +193,21 @@ export default function UsagePage() {
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <Languages className="w-4 h-4 text-indigo-600" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+              <span className="text-xs text-gray-400 uppercase tracking-wider">
                 Translations
               </span>
             </div>
             <p className="text-lg font-semibold text-gray-900">
               {summary.translation_count}
             </p>
-            <p className="text-[10px] text-gray-400 mt-0.5">
+            <p className="text-xs text-gray-400 mt-0.5">
               {formatTokens(summary.total_input_tokens + summary.total_output_tokens)} tokens
             </p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <ImageIcon className="w-4 h-4 text-pink-600" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">
+              <span className="text-xs text-gray-400 uppercase tracking-wider">
                 Image Generations
               </span>
             </div>
@@ -193,7 +221,7 @@ export default function UsagePage() {
       {/* Cost breakdown by feature */}
       {breakdown.total > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">
+          <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">
             Cost Breakdown
           </p>
           <div className="flex items-center gap-1 h-3 rounded-full overflow-hidden bg-gray-100 mb-3">
@@ -267,25 +295,25 @@ export default function UsagePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 text-left">
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium">
                   Date
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium">
                   Type
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium">
                   Model
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium">
                   Page
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium text-right">
                   Tokens
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium text-right">
                   Cost (USD)
                 </th>
-                <th className="px-4 py-3 text-[10px] text-gray-400 uppercase tracking-wider font-medium text-right">
+                <th className="px-4 py-3 text-xs text-gray-400 uppercase tracking-wider font-medium text-right">
                   Cost (SEK)
                 </th>
               </tr>

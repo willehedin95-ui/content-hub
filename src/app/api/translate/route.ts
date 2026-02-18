@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { extractContent, applyTranslations } from "@/lib/html-parser";
 import { translateBatch, translateMetas } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
+import { OPENAI_MODEL } from "@/lib/constants";
 import { Language } from "@/types";
 
 export const maxDuration = 180;
@@ -38,33 +39,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
   }
 
-  // Guard against concurrent translation requests (e.g. double-click)
+  // Atomically claim this translation — prevents concurrent requests
   const { data: existing } = await db
     .from("translations")
-    .select("status")
+    .select("id, status")
     .eq("page_id", page_id)
     .eq("language", language)
     .eq("variant", "control")
     .single();
 
-  if (existing?.status === "translating") {
-    return NextResponse.json(
-      { error: "Translation already in progress" },
-      { status: 409 }
-    );
-  }
+  if (existing) {
+    if (existing.status === "translating") {
+      return NextResponse.json(
+        { error: "Translation already in progress" },
+        { status: 409 }
+      );
+    }
+    // Atomic update: only claim if still not "translating"
+    const { data: claimed } = await db
+      .from("translations")
+      .update({ status: "translating", updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .neq("status", "translating")
+      .select("id")
+      .single();
 
-  // Mark as translating
-  await db.from("translations").upsert(
-    {
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "Translation already in progress" },
+        { status: 409 }
+      );
+    }
+  } else {
+    await db.from("translations").insert({
       page_id,
       language,
       variant: "control",
       status: "translating",
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: "page_id,language,variant" }
-  );
+    });
+  }
 
   try {
     // Extract translatable content (modifiedHtml has {{id}} placeholders already injected)
@@ -131,7 +145,7 @@ export async function POST(req: NextRequest) {
       type: "translation",
       page_id,
       translation_id: translation.id,
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       input_tokens: totalInputTokens,
       output_tokens: totalOutputTokens,
       cost_usd: costUsd,

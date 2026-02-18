@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { extractReadableText } from "@/lib/html-parser";
 import { calcOpenAICost } from "@/lib/pricing";
+import { OPENAI_MODEL } from "@/lib/constants";
 import { LANGUAGES } from "@/types";
 import OpenAI from "openai";
 
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     const openai = new OpenAI({ apiKey });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       max_tokens: 1500,
       response_format: { type: "json_object" },
       messages: [
@@ -116,7 +117,7 @@ Be strict: any Swedish name left unchanged, grammar error, or unnatural phrasing
       type: "translation",
       page_id: translation.page_id,
       translation_id: translation_id,
-      model: "gpt-4o",
+      model: OPENAI_MODEL,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cost_usd: calcOpenAICost(inputTokens, outputTokens),

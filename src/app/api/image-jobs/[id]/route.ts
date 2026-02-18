@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { STORAGE_BUCKET } from "@/lib/constants";
 
 export async function GET(
   _req: NextRequest,
@@ -74,15 +75,30 @@ export async function DELETE(
   const { id } = await params;
   const db = createServerSupabase();
 
-  // Clean up storage files
-  const { data: files } = await db.storage
-    .from("translated-images")
+  // Clean up storage files (nested: image-jobs/{id}/{translationId}/{file}.png)
+  const { data: subfolders } = await db.storage
+    .from(STORAGE_BUCKET)
     .list(`image-jobs/${id}`);
 
-  if (files?.length) {
-    await db.storage
-      .from("translated-images")
-      .remove(files.map((f) => `image-jobs/${id}/${f.name}`));
+  const allPaths: string[] = [];
+  for (const item of subfolders ?? []) {
+    const prefix = `image-jobs/${id}/${item.name}`;
+    if (!item.id) {
+      // It's a folder — list its contents
+      const { data: nested } = await db.storage
+        .from(STORAGE_BUCKET)
+        .list(prefix);
+      for (const file of nested ?? []) {
+        allPaths.push(`${prefix}/${file.name}`);
+      }
+    } else {
+      // It's a file at this level
+      allPaths.push(prefix);
+    }
+  }
+
+  if (allPaths.length) {
+    await db.storage.from(STORAGE_BUCKET).remove(allPaths);
   }
 
   // Delete job (CASCADE handles source_images and image_translations)

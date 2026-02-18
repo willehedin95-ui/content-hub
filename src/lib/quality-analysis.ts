@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { QualityAnalysis } from "@/types";
+import { OPENAI_MODEL } from "./constants";
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -19,7 +20,7 @@ export async function analyzeTranslationQuality(
   const openai = getOpenAI();
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: OPENAI_MODEL,
     max_tokens: 1500,
     response_format: { type: "json_object" },
     messages: [

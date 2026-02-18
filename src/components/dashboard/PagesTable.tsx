@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2, ChevronRight, AlertCircle } from "lucide-react";
+import { ExternalLink, Trash2, ChevronRight, AlertCircle, X } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 import StatusDot from "./StatusDot";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -28,6 +28,13 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
+
+  // Auto-dismiss delete error after 8 seconds
+  useEffect(() => {
+    if (!deleteError) return;
+    const t = setTimeout(() => setDeleteError(""), 8000);
+    return () => clearTimeout(t);
+  }, [deleteError]);
 
   const filtered = useMemo(
     () =>
@@ -113,7 +120,10 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
       {deleteError && (
         <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          {deleteError}
+          <span className="flex-1">{deleteError}</span>
+          <button onClick={() => setDeleteError("")} className="text-red-400 hover:text-red-600 shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -247,6 +257,22 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Status legend */}
+      <div className="flex items-center gap-4 mt-4 px-1">
+        {([
+          { color: "bg-gray-300", label: "Not started" },
+          { color: "bg-yellow-400", label: "Translating" },
+          { color: "bg-blue-500", label: "Translated" },
+          { color: "bg-emerald-500", label: "Published" },
+          { color: "bg-red-500", label: "Error" },
+        ] as const).map((s) => (
+          <div key={s.label} className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${s.color}`} />
+            <span className="text-xs text-gray-400">{s.label}</span>
+          </div>
+        ))}
       </div>
 
       <ConfirmDialog

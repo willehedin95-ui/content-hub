@@ -20,8 +20,13 @@ function getPageId(): string {
 
 async function metaFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const url = `${META_API_BASE}${path}`;
-  const separator = path.includes("?") ? "&" : "?";
-  return fetch(`${url}${separator}access_token=${getToken()}`, options);
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${getToken()}`,
+    },
+  });
 }
 
 async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -41,9 +46,7 @@ export async function listCampaigns(): Promise<
   }>(
     `/act_${getAdAccountId()}/campaigns?fields=id,name,status,objective&limit=50`
   );
-  return data.data.filter(
-    (c) => c.status === "ACTIVE" || c.status === "PAUSED"
-  );
+  return data.data.filter((c) => c.status === "ACTIVE");
 }
 
 export async function verifyConnection(): Promise<{
@@ -55,6 +58,17 @@ export async function verifyConnection(): Promise<{
 }
 
 export async function uploadImage(imageUrl: string): Promise<{ hash: string; url: string }> {
+  // Only allow downloads from our Supabase Storage domain
+  try {
+    const u = new URL(imageUrl);
+    if (!u.hostname.endsWith(".supabase.co")) {
+      throw new Error("Image URL must be from Supabase Storage");
+    }
+  } catch (e) {
+    if (e instanceof TypeError) throw new Error("Invalid image URL");
+    throw e;
+  }
+
   const imgRes = await fetch(imageUrl);
   if (!imgRes.ok) throw new Error("Failed to download image for Meta upload");
   const buffer = Buffer.from(await imgRes.arrayBuffer());
@@ -121,11 +135,75 @@ export async function createAdSet(params: {
 export async function createAdCreative(params: {
   name: string;
   imageHash: string;
+  imageHash9x16?: string;
   primaryText: string;
   headline?: string;
   linkUrl: string;
   callToAction?: string;
 }): Promise<{ id: string }> {
+  const cta = params.callToAction || "LEARN_MORE";
+
+  // If we have both 1:1 and 9:16 images, use asset_feed_spec for placement customization
+  if (params.imageHash9x16) {
+    return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: params.name,
+        object_story_spec: {
+          page_id: getPageId(),
+        },
+        asset_feed_spec: {
+          ad_formats: ["SINGLE_IMAGE"],
+          images: [
+            { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
+            { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
+          ],
+          bodies: [{ text: params.primaryText }],
+          titles: params.headline ? [{ text: params.headline }] : undefined,
+          link_urls: [{ website_url: params.linkUrl }],
+          call_to_action_types: [cta],
+          asset_customization_rules: [
+            {
+              customization_spec: {
+                publisher_platforms: ["facebook"],
+                facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+              },
+              image_label: { name: "feed_image" },
+            },
+            {
+              customization_spec: {
+                publisher_platforms: ["facebook"],
+                facebook_positions: ["story", "reels", "facebook_reels"],
+              },
+              image_label: { name: "story_image" },
+            },
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram"],
+                instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
+              },
+              image_label: { name: "feed_image" },
+            },
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram"],
+                instagram_positions: ["story", "reels"],
+              },
+              image_label: { name: "story_image" },
+            },
+          ],
+        },
+        degrees_of_freedom_spec: {
+          creative_features_spec: {
+            standard_enhancements: { enroll_status: "OPT_OUT" },
+          },
+        },
+      }),
+    });
+  }
+
+  // Single image: use standard object_story_spec
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -138,7 +216,7 @@ export async function createAdCreative(params: {
           message: params.primaryText,
           name: params.headline || undefined,
           link: params.linkUrl,
-          call_to_action: { type: params.callToAction || "LEARN_MORE" },
+          call_to_action: { type: cta },
         },
       },
       degrees_of_freedom_spec: {
@@ -148,6 +226,33 @@ export async function createAdCreative(params: {
       },
     }),
   });
+}
+
+export async function duplicateAdSet(adSetId: string): Promise<{ copied_adset_id: string }> {
+  return metaJson(`/${adSetId}/copies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status_option: "PAUSED",
+    }),
+  });
+}
+
+export async function updateAdSet(adSetId: string, params: { name: string }): Promise<{ success: boolean }> {
+  return metaJson(`/${adSetId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: params.name }),
+  });
+}
+
+export async function listAdSets(campaignId: string): Promise<
+  Array<{ id: string; name: string; status: string }>
+> {
+  const data = await metaJson<{
+    data: Array<{ id: string; name: string; status: string }>;
+  }>(`/${campaignId}/adsets?fields=id,name,status&limit=50`);
+  return data.data;
 }
 
 export async function createAd(params: {

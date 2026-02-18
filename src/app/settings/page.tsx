@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Save, Eye, EyeOff, CheckCircle2, RefreshCw, Loader2 } from "lucide-react";
-import { Language, LANGUAGES } from "@/types";
+import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping } from "@/types";
+import Dropdown from "@/components/ui/Dropdown";
 
 interface Settings {
   openai_api_key: string;
@@ -47,6 +48,12 @@ export default function SettingsPage() {
   const [metaStatus, setMetaStatus] = useState<{ name: string; id: string } | null>(null);
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
+  const [campaignMappings, setCampaignMappings] = useState<MetaCampaignMapping[]>([]);
+  const [metaCampaigns, setMetaCampaigns] = useState<{ id: string; name: string; status: string; objective: string }[]>([]);
+  const [mappingsLoading, setMappingsLoading] = useState(true);
+  const [mappingSaving, setMappingSaving] = useState<string | null>(null);
+  const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, { id: string; name: string; status: string }[]>>({});
+  const [adSetsLoading, setAdSetsLoading] = useState<string | null>(null);
 
   const fetchKieCredits = useCallback(async () => {
     setKieLoading(true);
@@ -67,8 +74,20 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem("content-hub-settings");
-    if (stored) setSettings(JSON.parse(stored));
+    try {
+      const stored = localStorage.getItem("content-hub-settings");
+      if (stored) setSettings(JSON.parse(stored));
+    } catch {}
+
+    // Fetch campaign mappings + Meta campaigns
+    Promise.all([
+      fetch("/api/meta/campaign-mappings").then((r) => r.ok ? r.json() : []),
+      fetch("/api/meta/campaigns/list").then((r) => r.ok ? r.json() : []),
+    ]).then(([mappings, campaigns]) => {
+      setCampaignMappings(mappings);
+      setMetaCampaigns(campaigns);
+    }).finally(() => setMappingsLoading(false));
+
     return () => {
       if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
     };
@@ -79,6 +98,88 @@ export default function SettingsPage() {
     setSaved(true);
     if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
     savedTimeoutRef.current = setTimeout(() => setSaved(false), 2500);
+  }
+
+  async function fetchAdSetsForCampaign(metaCampaignId: string) {
+    if (adSetsByCampaign[metaCampaignId]) return;
+    setAdSetsLoading(metaCampaignId);
+    try {
+      const res = await fetch(`/api/meta/adsets?campaign_id=${metaCampaignId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdSetsByCampaign((prev) => ({ ...prev, [metaCampaignId]: data }));
+      }
+    } finally {
+      setAdSetsLoading(null);
+    }
+  }
+
+  async function handleTemplateAdSetChange(product: string, country: string, adSetId: string) {
+    const cellKey = `${product}-${country}`;
+    setMappingSaving(cellKey);
+    try {
+      const mapping = campaignMappings.find((m) => m.product === product && m.country === country);
+      if (!mapping) return;
+      const allAdSets = Object.values(adSetsByCampaign).flat();
+      const adSet = allAdSets.find((a) => a.id === adSetId);
+      const res = await fetch("/api/meta/campaign-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product,
+          country,
+          meta_campaign_id: mapping.meta_campaign_id,
+          meta_campaign_name: mapping.meta_campaign_name,
+          template_adset_id: adSetId || null,
+          template_adset_name: adSet?.name ?? null,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setCampaignMappings((prev) => {
+          const without = prev.filter((m) => !(m.product === product && m.country === country));
+          return [...without, updated];
+        });
+      }
+    } finally {
+      setMappingSaving(null);
+    }
+  }
+
+  async function handleMappingChange(product: string, country: string, metaCampaignId: string) {
+    const cellKey = `${product}-${country}`;
+    setMappingSaving(cellKey);
+    try {
+      if (!metaCampaignId) {
+        // Remove mapping
+        const existing = campaignMappings.find((m) => m.product === product && m.country === country);
+        if (existing) {
+          await fetch(`/api/meta/campaign-mappings?id=${existing.id}`, { method: "DELETE" });
+          setCampaignMappings((prev) => prev.filter((m) => m.id !== existing.id));
+        }
+      } else {
+        const campaign = metaCampaigns.find((c) => c.id === metaCampaignId);
+        const res = await fetch("/api/meta/campaign-mappings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product,
+            country,
+            meta_campaign_id: metaCampaignId,
+            meta_campaign_name: campaign?.name ?? null,
+          }),
+        });
+        if (res.ok) {
+          const mapping = await res.json();
+          setCampaignMappings((prev) => {
+            const without = prev.filter((m) => !(m.product === product && m.country === country));
+            return [...without, mapping];
+          });
+        }
+      }
+    } finally {
+      setMappingSaving(null);
+    }
   }
 
   return (
@@ -171,7 +272,7 @@ export default function SettingsPage() {
                 {settings.pages_quality_threshold}
               </span>
             </div>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-xs text-gray-400 mt-1">
               Pages scoring below this threshold will auto-regenerate up to 3 times
             </p>
           </div>
@@ -313,6 +414,108 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+        </Section>
+
+        {/* Meta Campaign Mapping */}
+        <Section title="Meta Campaign Mapping">
+          <p className="text-xs text-gray-400 -mt-2">
+            Map each product + country to a Meta campaign and template ad set. New ad sets will be duplicated from the template.
+          </p>
+          {mappingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading mappings...
+            </div>
+          ) : metaCampaigns.length === 0 ? (
+            <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-4 py-3">
+              No active campaigns found in Meta. Create campaigns in Meta Ads Manager first.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {PRODUCTS.map((prod) => (
+                <div key={prod.value}>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">{prod.label}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {LANGUAGES.map((lang) => {
+                      const country = COUNTRY_MAP[lang.value];
+                      const mapping = campaignMappings.find(
+                        (m) => m.product === prod.value && m.country === country
+                      );
+                      const cellKey = `${prod.value}-${country}`;
+                      const isSaving = mappingSaving === cellKey;
+                      const campaignAdSets = mapping?.meta_campaign_id
+                        ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
+                        : [];
+                      const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
+
+                      return (
+                        <div key={lang.value} className="relative">
+                          <label className="block text-xs text-gray-400 mb-1">
+                            {lang.flag} {country}
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <Dropdown
+                              value={mapping?.meta_campaign_id ?? ""}
+                              onChange={(v) => handleMappingChange(prod.value, country, v)}
+                              options={[
+                                { value: "", label: "Not mapped" },
+                                ...metaCampaigns.map((c) => ({
+                                  value: c.id,
+                                  label: c.name,
+                                })),
+                              ]}
+                              placeholder="Not mapped"
+                              className="flex-1"
+                            />
+                            {isSaving && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 shrink-0" />
+                            )}
+                            {!isSaving && mapping && mapping.template_adset_id && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            )}
+                            {!isSaving && mapping && !mapping.template_adset_id && (
+                              <span className="w-3.5 h-3.5 text-amber-500 shrink-0 text-xs">!</span>
+                            )}
+                          </div>
+                          {mapping?.meta_campaign_id && (
+                            <div className="mt-1">
+                              {campaignAdSets.length === 0 && !isLoadingAdSets ? (
+                                <button
+                                  onClick={() => fetchAdSetsForCampaign(mapping.meta_campaign_id)}
+                                  className="text-xs text-indigo-600 hover:text-indigo-800"
+                                >
+                                  Load ad sets for template
+                                </button>
+                              ) : isLoadingAdSets ? (
+                                <div className="flex items-center gap-1 text-xs text-gray-400">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Loading ad sets...
+                                </div>
+                              ) : (
+                                <Dropdown
+                                  value={mapping?.template_adset_id ?? ""}
+                                  onChange={(v) => handleTemplateAdSetChange(prod.value, country, v)}
+                                  options={[
+                                    { value: "", label: "No template" },
+                                    ...campaignAdSets.map((a) => ({
+                                      value: a.id,
+                                      label: a.name,
+                                    })),
+                                  ]}
+                                  placeholder="Select template ad set"
+                                  className="flex-1"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
         {/* Kie AI */}
