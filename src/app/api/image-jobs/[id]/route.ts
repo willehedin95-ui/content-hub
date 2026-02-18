@@ -50,13 +50,17 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { status } = body as { status?: string };
+  const { status, target_languages } = body as { status?: string; target_languages?: string[] };
 
   const db = createServerSupabase();
 
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (status) updateData.status = status;
+  if (target_languages) updateData.target_languages = target_languages;
+
   const { data, error } = await db
     .from("image_jobs")
-    .update({ status, updated_at: new Date().toISOString() })
+    .update(updateData)
     .eq("id", id)
     .select()
     .single();

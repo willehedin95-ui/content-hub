@@ -13,7 +13,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, LANGUAGES, ExpansionStatus } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, ExpansionStatus } from "@/types";
 import { getSettings } from "@/lib/settings";
 import { exportJobAsZip } from "@/lib/export-zip";
 import ImagePreviewModal from "./ImagePreviewModal";
@@ -39,6 +39,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const processingRef = useRef(false);
   const expandProcessingRef = useRef(false);
   const [expandProcessing, setExpandProcessing] = useState(false);
+  const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
+    // Init from job if already set, otherwise from settings defaults
+    if (initialJob.target_languages?.length) {
+      return new Set(initialJob.target_languages as Language[]);
+    }
+    try {
+      const stored = localStorage.getItem("content-hub-settings");
+      if (stored) {
+        const settings = JSON.parse(stored);
+        if (settings.static_ads_default_languages?.length) {
+          return new Set(settings.static_ads_default_languages);
+        }
+      }
+    } catch {}
+    return new Set(LANGUAGES.map((l) => l.value));
+  });
 
   const allTranslations = job.source_images?.flatMap(
     (si) => si.image_translations ?? []
@@ -370,7 +386,16 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
   async function handleTranslateAll() {
+    if (selectedLanguages.size === 0) return;
     setProcessing(true);
+
+    // Save selected languages to job before creating translations
+    await fetch(`/api/image-jobs/${job.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_languages: Array.from(selectedLanguages) }),
+    });
+
     const res = await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
     if (!res.ok) {
       setProcessing(false);
@@ -646,27 +671,65 @@ export default function ImageJobDetail({ initialJob }: Props) {
             ))}
           </div>
 
-          {/* Translate All button (ready state) */}
+          {/* Language selection + Translate All (ready state) */}
           {job.status === "ready" && (
-            <div className="mt-6 flex items-center gap-4">
-              <button
-                onClick={handleTranslateAll}
-                disabled={processing}
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
-                    Starting translations...
-                  </>
-                ) : (
-                  "Translate All"
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
+                <div className="flex flex-wrap gap-2">
+                  {LANGUAGES.map((lang) => {
+                    const selected = selectedLanguages.has(lang.value);
+                    return (
+                      <label
+                        key={lang.value}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
+                          selected
+                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                            : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            setSelectedLanguages((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(lang.value)) next.delete(lang.value);
+                              else next.add(lang.value);
+                              return next;
+                            });
+                          }}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>{lang.flag}</span>
+                        {lang.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleTranslateAll}
+                  disabled={processing || selectedLanguages.size === 0}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  {processing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                      Starting translations...
+                    </>
+                  ) : (
+                    "Translate All"
+                  )}
+                </button>
+                {selectedLanguages.size > 0 && (
+                  <p className="text-sm text-gray-400">
+                    {(sourceImages.length + expansionCompleted) * selectedLanguages.size} translations
+                    {" \u2248 $"}{((sourceImages.length + expansionCompleted) * selectedLanguages.size * 0.09).toFixed(2)}
+                  </p>
                 )}
-              </button>
-              <p className="text-sm text-gray-400">
-                {(sourceImages.length + expansionCompleted) * job.target_languages.length} translations
-                {" \u2248 $"}{((sourceImages.length + expansionCompleted) * job.target_languages.length * 0.09).toFixed(2)}
-              </p>
+              </div>
             </div>
           )}
         </>

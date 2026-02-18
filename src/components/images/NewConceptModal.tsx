@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { X, Upload, Loader2, Trash2, Search, Link, ChevronDown, ChevronRight } from "lucide-react";
-import { Language, LANGUAGES, Product, PRODUCTS } from "@/types";
+import { Product, PRODUCTS } from "@/types";
 
 interface Props {
   open: boolean;
@@ -19,18 +19,6 @@ interface DriveFileItem {
 export default function NewConceptModal({ open, onClose, onCreated }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
-  const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
-    try {
-      const stored = localStorage.getItem("content-hub-settings");
-      if (stored) {
-        const settings = JSON.parse(stored);
-        if (settings.static_ads_default_languages?.length) {
-          return new Set(settings.static_ads_default_languages);
-        }
-      }
-    } catch {}
-    return new Set(LANGUAGES.map((l) => l.value));
-  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,18 +45,6 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
   const selectedDriveFiles = driveFiles.filter((f) => f.selected);
   const imageCount = files.length + selectedDriveFiles.length;
   const expansionCost = (imageCount * 0.09).toFixed(2);
-
-  function toggleLanguage(lang: Language) {
-    setSelectedLanguages((prev) => {
-      const next = new Set(prev);
-      if (next.has(lang)) {
-        next.delete(lang);
-      } else {
-        next.add(lang);
-      }
-      return next;
-    });
-  }
 
   function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
@@ -156,19 +132,18 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
 
   async function handleSubmit() {
     const hasImages = files.length > 0 || selectedDriveFiles.length > 0;
-    if (!hasImages || selectedLanguages.size === 0 || !name.trim()) return;
+    if (!hasImages || !name.trim()) return;
 
     setSubmitting(true);
     setError("");
 
     try {
-      // 1. Create the job
+      // 1. Create the job (languages selected later, after expansion review)
       const createRes = await fetch("/api/image-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          target_languages: Array.from(selectedLanguages),
           target_ratios: ["1:1", "9:16"],
           ...(driveFolderId ? { source_folder_id: driveFolderId } : {}),
           ...(product ? { product } : {}),
@@ -374,35 +349,6 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
             </div>
           </div>
 
-          {/* Target Languages — checkboxes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
-            <div className="grid grid-cols-2 gap-2">
-              {LANGUAGES.map((lang) => {
-                const selected = selectedLanguages.has(lang.value);
-                return (
-                  <label
-                    key={lang.value}
-                    className={`flex items-center gap-2.5 px-4 py-3 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
-                      selected
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleLanguage(lang.value)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-base">{lang.flag}</span>
-                    {lang.label}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Concept name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Concept Name</label>
@@ -428,15 +374,15 @@ export default function NewConceptModal({ open, onClose, onCreated }: Props) {
           )}
 
           {/* Summary + Submit */}
-          {imageCount > 0 && selectedLanguages.size > 0 && (
+          {imageCount > 0 && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-800">{name || "Untitled"}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {imageCount} images &middot; {selectedLanguages.size} languages &middot; 1:1 + 9:16
+                  {imageCount} images &middot; expand to 9:16 (~{expansionCost} USD)
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Step 1: Expand to 9:16 (~{expansionCost} USD)
+                  Languages selected after expansion review
                 </p>
               </div>
               <button

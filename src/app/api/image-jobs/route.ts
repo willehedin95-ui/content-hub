@@ -56,11 +56,7 @@ export async function POST(req: NextRequest) {
   if (!name?.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
-  if (!target_languages?.length) {
-    return NextResponse.json({ error: "Target languages required" }, { status: 400 });
-  }
-
-  if (!target_languages.every(isValidLanguage)) {
+  if (target_languages?.length && !target_languages.every(isValidLanguage)) {
     return NextResponse.json({ error: "Invalid language in target_languages" }, { status: 400 });
   }
 
@@ -73,7 +69,7 @@ export async function POST(req: NextRequest) {
   const insertData: Record<string, unknown> = {
     name: name.trim(),
     status: "draft",
-    target_languages,
+    target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["1:1"],
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
