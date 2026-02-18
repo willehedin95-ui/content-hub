@@ -566,6 +566,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
               <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Expanding to 9:16... ({expansionCompleted}/{expansionTotal})
+                <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
               </div>
             ) : (
               <div className="flex items-center gap-3">
@@ -619,6 +620,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                         <div className="text-center">
                           <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mx-auto mb-1" />
                           <p className="text-xs text-gray-400">Expanding...</p>
+                          <p className="text-xs text-gray-300 mt-0.5"><ElapsedTimer /></p>
                         </div>
                       ) : si.expansion_status === "failed" ? (
                         <div className="text-center px-2">
@@ -831,6 +833,21 @@ function TabButton({
   );
 }
 
+
+function ElapsedTimer() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return (
+    <span className="tabular-nums">
+      {mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`}
+    </span>
+  );
+}
 
 function TranslationStatusBadge({ status }: { status: string }) {
   switch (status) {

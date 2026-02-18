@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, BarChart3, Image, MessageSquare, FlaskConical, Megaphone } from "lucide-react";
+import { Layers, Settings, Zap, BarChart3, Image, MessageSquare, FlaskConical, Megaphone, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createBrowserSupabase } from "@/lib/supabase";
 
 const nav = [
   { href: "/", label: "Landing pages", icon: Layers },
@@ -22,8 +23,9 @@ interface Progress {
   total: number;
 }
 
-export default function Sidebar() {
+export default function Sidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
 
   const fetchProgress = useCallback(async () => {
@@ -42,6 +44,13 @@ export default function Sidebar() {
     const interval = setInterval(fetchProgress, ms);
     return () => clearInterval(interval);
   }, [fetchProgress, progress?.processing]);
+
+  async function handleSignOut() {
+    const supabase = createBrowserSupabase();
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+    router.refresh();
+  }
 
   return (
     <aside className="w-56 min-h-screen bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -107,9 +116,22 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-gray-200">
-        <p className="text-[10px] text-gray-400">Content Hub v1.0</p>
+      {/* User footer */}
+      <div className="px-4 py-3 border-t border-gray-200">
+        {userEmail && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 truncate flex-1 mr-2" title={userEmail}>
+              {userEmail}
+            </p>
+            <button
+              onClick={handleSignOut}
+              className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

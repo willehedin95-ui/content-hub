@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@sparticuz/chromium": "^143.0.4",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.47.0",
     "cheerio": "^1.0.0",
     "clsx": "^2.1.1",

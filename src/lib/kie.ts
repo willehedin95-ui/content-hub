@@ -2,7 +2,7 @@ import { KIE_MODEL } from "./constants";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_TIME_MS = 160_000; // ~2.7 min — leaves buffer before Vercel's 180s maxDuration
+const MAX_POLL_TIME_MS = 280_000; // ~4.7 min — leaves buffer before Vercel's 300s maxDuration
 
 interface CreateTaskResponse {
   code: number;
@@ -113,11 +113,11 @@ export async function pollTaskResult(taskId: string): Promise<string[]> {
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 
-  throw new Error("Kie.ai task timed out after 3 minutes");
+  throw new Error("Kie.ai task timed out after 5 minutes");
 }
 
 export async function getCredits(): Promise<{ balance: number }> {
-  const res = await fetch("https://api.kie.ai/api/v1/user/balance", {
+  const res = await fetch("https://api.kie.ai/api/v1/chat/credit", {
     headers: {
       Authorization: `Bearer ${getApiKey()}`,
     },
@@ -129,7 +129,7 @@ export async function getCredits(): Promise<{ balance: number }> {
   }
 
   const data = await res.json();
-  return { balance: data.data?.balance ?? 0 };
+  return { balance: typeof data.data === "number" ? data.data : 0 };
 }
 
 export async function generateImage(

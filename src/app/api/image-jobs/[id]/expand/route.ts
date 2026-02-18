@@ -4,7 +4,7 @@ import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET, EXPANSION_PROMPT } from "@/lib/constants";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export async function POST(
   req: NextRequest,
