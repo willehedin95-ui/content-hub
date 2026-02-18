@@ -18,15 +18,31 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, objective, language, countries, daily_budget, ads } = body as {
+  const {
+    name,
+    objective,
+    language,
+    countries,
+    daily_budget,
+    meta_campaign_id,
+    start_time,
+    end_time,
+    ads,
+  } = body as {
     name: string;
     objective: string;
     language: string;
     countries: string[];
     daily_budget: number;
+    meta_campaign_id?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
     ads: Array<{
       image_url: string;
       ad_copy: string;
+      headline?: string;
+      source_primary_text?: string;
+      source_headline?: string;
       landing_page_url: string;
       aspect_ratio?: string;
     }>;
@@ -38,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
-  // Create campaign
+  // Create campaign (ad set) record
   const { data: campaign, error: campError } = await db
     .from("meta_campaigns")
     .insert({
@@ -47,6 +63,9 @@ export async function POST(req: NextRequest) {
       language,
       countries,
       daily_budget,
+      meta_campaign_id: meta_campaign_id || null,
+      start_time: start_time || null,
+      end_time: end_time || null,
       status: "draft",
     })
     .select()
@@ -62,6 +81,9 @@ export async function POST(req: NextRequest) {
     name: `${name.trim()} - Ad ${i + 1}`,
     image_url: ad.image_url,
     ad_copy: ad.ad_copy,
+    headline: ad.headline || null,
+    source_primary_text: ad.source_primary_text || null,
+    source_headline: ad.source_headline || null,
     landing_page_url: ad.landing_page_url,
     aspect_ratio: ad.aspect_ratio || null,
     status: "pending",

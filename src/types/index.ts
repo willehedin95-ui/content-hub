@@ -259,6 +259,8 @@ export interface MetaCampaign {
   countries: string[];
   daily_budget: number;
   language: string;
+  start_time: string | null;
+  end_time: string | null;
   status: MetaCampaignStatus;
   error_message: string | null;
   created_at: string;
@@ -275,6 +277,9 @@ export interface MetaAd {
   meta_image_hash: string | null;
   image_url: string | null;
   ad_copy: string | null;
+  headline: string | null;
+  source_primary_text: string | null;
+  source_headline: string | null;
   landing_page_url: string | null;
   aspect_ratio: string | null;
   status: MetaAdStatus;

@@ -33,6 +33,19 @@ async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data as T;
 }
 
+export async function listCampaigns(): Promise<
+  Array<{ id: string; name: string; status: string; objective: string }>
+> {
+  const data = await metaJson<{
+    data: Array<{ id: string; name: string; status: string; objective: string }>;
+  }>(
+    `/act_${getAdAccountId()}/campaigns?fields=id,name,status,objective&limit=50`
+  );
+  return data.data.filter(
+    (c) => c.status === "ACTIVE" || c.status === "PAUSED"
+  );
+}
+
 export async function verifyConnection(): Promise<{
   name: string;
   account_status: number;

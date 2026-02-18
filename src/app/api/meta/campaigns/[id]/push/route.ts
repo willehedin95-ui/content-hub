@@ -39,24 +39,31 @@ export async function POST(
     .eq("id", id);
 
   try {
-    // 1. Create Meta campaign
-    const metaCampaign = await createCampaign({
-      name: campaign.name,
-      objective: campaign.objective,
-      status: "PAUSED",
-    });
+    // 1. Create or reuse Meta campaign
+    let metaCampaignId = campaign.meta_campaign_id;
 
-    await db
-      .from("meta_campaigns")
-      .update({ meta_campaign_id: metaCampaign.id })
-      .eq("id", id);
+    if (!metaCampaignId) {
+      const metaCampaign = await createCampaign({
+        name: campaign.name,
+        objective: campaign.objective,
+        status: "PAUSED",
+      });
+      metaCampaignId = metaCampaign.id;
+
+      await db
+        .from("meta_campaigns")
+        .update({ meta_campaign_id: metaCampaignId })
+        .eq("id", id);
+    }
 
     // 2. Create Meta ad set
     const metaAdSet = await createAdSet({
       name: `${campaign.name} - Ad Set`,
-      campaignId: metaCampaign.id,
+      campaignId: metaCampaignId,
       dailyBudget: campaign.daily_budget,
       countries: campaign.countries,
+      startTime: campaign.start_time || undefined,
+      endTime: campaign.end_time || undefined,
       status: "PAUSED",
     });
 
@@ -87,6 +94,7 @@ export async function POST(
           name: ad.name,
           imageHash,
           primaryText: ad.ad_copy,
+          headline: ad.headline || undefined,
           linkUrl: ad.landing_page_url,
         });
         await db

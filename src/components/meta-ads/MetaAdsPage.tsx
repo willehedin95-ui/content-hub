@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { MetaCampaign, LANGUAGES } from "@/types";
-import CampaignBuilder from "./CampaignBuilder";
+import AdSetBuilder from "./AdSetBuilder";
 
 interface Props {
   initialCampaigns: MetaCampaign[];
@@ -65,16 +65,16 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
-          New Campaign
+          New Ad Set
         </button>
       </div>
 
       {campaigns.length === 0 ? (
         <div className="text-center py-16">
           <Megaphone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-400">No campaigns yet.</p>
+          <p className="text-sm text-gray-400">No ad sets yet.</p>
           <p className="text-xs text-gray-400 mt-1">
-            Create a campaign to push your translated ads to Meta.
+            Create an ad set to push your translated ads to Meta.
           </p>
         </div>
       ) : (
@@ -123,6 +123,17 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
                             <span className="text-xs text-gray-300">|</span>
                             <span className="text-xs text-red-600">
                               {errorCount} failed
+                            </span>
+                          </>
+                        )}
+                        {campaign.start_time && (
+                          <>
+                            <span className="text-xs text-gray-300">|</span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(campaign.start_time).toLocaleDateString()}
+                              {campaign.end_time
+                                ? ` → ${new Date(campaign.end_time).toLocaleDateString()}`
+                                : ""}
                             </span>
                           </>
                         )}
@@ -199,6 +210,9 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
                           )}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-gray-700">{ad.name}</p>
+                            {ad.headline && (
+                              <p className="truncate text-gray-500 font-medium">{ad.headline}</p>
+                            )}
                             {ad.ad_copy && (
                               <p className="truncate text-gray-400">{ad.ad_copy.slice(0, 60)}</p>
                             )}
@@ -220,7 +234,7 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
       )}
 
       {showBuilder && (
-        <CampaignBuilder
+        <AdSetBuilder
           onClose={() => setShowBuilder(false)}
           onCreated={handleCreated}
         />
