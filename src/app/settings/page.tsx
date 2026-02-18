@@ -26,10 +26,10 @@ interface Settings {
 }
 
 const TABS = [
-  { id: "pages", label: "Landing Pages", icon: FileText },
-  { id: "static-ads", label: "Static Ads", icon: Image },
-  { id: "meta-ads", label: "Meta Ads", icon: Megaphone },
-  { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "pages", label: "Landing Pages", icon: FileText, group: "SETTINGS" },
+  { id: "static-ads", label: "Static Ads", icon: Image, group: "SETTINGS" },
+  { id: "meta-ads", label: "Meta Ads", icon: Megaphone, group: "CONNECTIONS" },
+  { id: "integrations", label: "Integrations", icon: Plug, group: "CONNECTIONS" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -205,205 +205,273 @@ export default function SettingsPage() {
     }
   }
 
+  // Group tabs by their group label
+  const groups = Array.from(new Set(TABS.map((t) => t.group)));
+
   return (
     <div className="flex h-[calc(100vh-64px)]">
       {/* Sidebar */}
-      <nav className="w-56 shrink-0 border-r border-gray-200 bg-gray-50/50 p-4 space-y-1">
-        <h1 className="text-lg font-bold text-gray-900 px-3 mb-4">Settings</h1>
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-white text-gray-900 shadow-sm border border-gray-200"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {tab.label}
-            </button>
-          );
-        })}
+      <nav className="w-56 shrink-0 border-r border-gray-200 bg-gray-50/30 px-4 pt-6 pb-4">
+        {groups.map((group) => (
+          <div key={group} className="mb-5">
+            <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase px-3 mb-2">
+              {group}
+            </p>
+            <div className="space-y-0.5">
+              {TABS.filter((t) => t.group === group).map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? "bg-white text-gray-900 font-medium shadow-sm border border-gray-200/80"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8 max-w-2xl">
+      <div className="flex-1 overflow-y-auto px-10 py-8 max-w-2xl">
         {activeTab === "pages" && (
-          <TabPanel title="Landing Pages" description="Quality settings for translated landing pages">
-            <Card>
-              <Toggle
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Landing Pages</h2>
+            <SettingsCard>
+              <Row
                 label="Quality analysis"
                 description="Run automatic quality checks on translated pages"
-                checked={settings.pages_quality_enabled}
-                onChange={(v) => setSettings((s) => ({ ...s, pages_quality_enabled: v }))}
+                action={
+                  <ToggleSwitch
+                    checked={settings.pages_quality_enabled}
+                    onChange={(v) => setSettings((s) => ({ ...s, pages_quality_enabled: v }))}
+                  />
+                }
               />
-              <Divider />
-              <Slider
+              <RowDivider />
+              <Row
                 label="Auto-regenerate threshold"
-                description="Pages scoring below this threshold will auto-regenerate up to 3 times"
-                value={settings.pages_quality_threshold}
-                onChange={(v) => setSettings((s) => ({ ...s, pages_quality_threshold: v }))}
+                description="Pages scoring below this will auto-regenerate (max 3 times)"
+                action={
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={settings.pages_quality_threshold}
+                      onChange={(e) => setSettings((s) => ({ ...s, pages_quality_threshold: Number(e.target.value) }))}
+                      className="w-24 accent-indigo-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
+                      {settings.pages_quality_threshold}
+                    </span>
+                  </div>
+                }
               />
-            </Card>
-            <SaveBar saved={saved} onSave={handleSave} />
-          </TabPanel>
+            </SettingsCard>
+            <SaveButton saved={saved} onSave={handleSave} />
+          </>
         )}
 
         {activeTab === "static-ads" && (
-          <TabPanel title="Static Ads" description="Image translation quality and batch processing settings">
-            <Card title="Quality">
-              <Toggle
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Static Ads</h2>
+            <SettingsCard>
+              <Row
                 label="Quality analysis"
                 description="Run automatic quality checks on generated images"
-                checked={settings.static_ads_quality_enabled}
-                onChange={(v) => setSettings((s) => ({ ...s, static_ads_quality_enabled: v }))}
+                action={
+                  <ToggleSwitch
+                    checked={settings.static_ads_quality_enabled}
+                    onChange={(v) => setSettings((s) => ({ ...s, static_ads_quality_enabled: v }))}
+                  />
+                }
               />
-              <Divider />
-              <Slider
+              <RowDivider />
+              <Row
                 label="Auto-regenerate threshold"
-                description="Images scoring below this threshold will auto-regenerate up to 5 times"
-                value={settings.static_ads_quality_threshold}
-                onChange={(v) => setSettings((s) => ({ ...s, static_ads_quality_threshold: v }))}
+                description="Images scoring below this will auto-regenerate (max 5 times)"
+                action={
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={settings.static_ads_quality_threshold}
+                      onChange={(e) => setSettings((s) => ({ ...s, static_ads_quality_threshold: Number(e.target.value) }))}
+                      className="w-24 accent-indigo-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
+                      {settings.static_ads_quality_threshold}
+                    </span>
+                  </div>
+                }
               />
-              <Divider />
-              <Toggle
+              <RowDivider />
+              <Row
                 label="Economy mode"
-                description="Use faster, lower-cost generation settings"
-                checked={settings.static_ads_economy_mode}
-                onChange={(v) => setSettings((s) => ({ ...s, static_ads_economy_mode: v }))}
+                description="Skip quality analysis to save costs"
+                action={
+                  <ToggleSwitch
+                    checked={settings.static_ads_economy_mode}
+                    onChange={(v) => setSettings((s) => ({ ...s, static_ads_economy_mode: v }))}
+                  />
+                }
               />
-            </Card>
-
-            <Card title="Defaults">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target languages
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {LANGUAGES.map((lang) => {
-                    const selected = settings.static_ads_default_languages.includes(lang.value);
-                    return (
-                      <button
-                        key={lang.value}
-                        type="button"
-                        onClick={() =>
-                          setSettings((s) => ({
-                            ...s,
-                            static_ads_default_languages: selected
-                              ? s.static_ads_default_languages.filter((l) => l !== lang.value)
-                              : [...s.static_ads_default_languages, lang.value],
-                          }))
-                        }
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
-                          selected
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-600"
-                            : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                        }`}
-                      >
-                        <span className="text-base">{lang.flag}</span>
-                        {lang.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
-
-            <Card title="Notifications">
-              <Toggle
-                label="Email notifications"
-                description="Send email when batch jobs complete"
-                checked={settings.static_ads_email_enabled}
-                onChange={(v) => setSettings((s) => ({ ...s, static_ads_email_enabled: v }))}
+              <RowDivider />
+              <Row
+                label="Default languages"
+                description="Pre-selected when creating new concepts"
+                action={
+                  <div className="flex gap-1.5">
+                    {LANGUAGES.map((lang) => {
+                      const selected = settings.static_ads_default_languages.includes(lang.value);
+                      return (
+                        <button
+                          key={lang.value}
+                          type="button"
+                          onClick={() =>
+                            setSettings((s) => ({
+                              ...s,
+                              static_ads_default_languages: selected
+                                ? s.static_ads_default_languages.filter((l) => l !== lang.value)
+                                : [...s.static_ads_default_languages, lang.value],
+                            }))
+                          }
+                          className={`w-9 h-9 rounded-lg border text-base flex items-center justify-center transition-colors ${
+                            selected
+                              ? "bg-indigo-50 border-indigo-300"
+                              : "bg-white border-gray-200 opacity-40 hover:opacity-70"
+                          }`}
+                          title={lang.label}
+                        >
+                          {lang.flag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                }
               />
-              <Divider />
-              <Field
+            </SettingsCard>
+
+            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mt-8 mb-3">Notifications</h3>
+            <SettingsCard>
+              <Row
+                label="Email on completion"
+                description="Send email when batch jobs finish"
+                action={
+                  <ToggleSwitch
+                    checked={settings.static_ads_email_enabled}
+                    onChange={(v) => setSettings((s) => ({ ...s, static_ads_email_enabled: v }))}
+                  />
+                }
+              />
+              <RowDivider />
+              <Row
                 label="Email address"
-                value={settings.static_ads_notification_email}
-                onChange={(v) => setSettings((s) => ({ ...s, static_ads_notification_email: v }))}
-                placeholder="email@example.com"
+                description={settings.static_ads_notification_email || "Not configured"}
+                action={
+                  <input
+                    type="text"
+                    value={settings.static_ads_notification_email}
+                    onChange={(e) => setSettings((s) => ({ ...s, static_ads_notification_email: e.target.value }))}
+                    placeholder="email@example.com"
+                    className="w-48 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                }
               />
-            </Card>
-            <SaveBar saved={saved} onSave={handleSave} />
-          </TabPanel>
+            </SettingsCard>
+            <SaveButton saved={saved} onSave={handleSave} />
+          </>
         )}
 
         {activeTab === "meta-ads" && (
-          <TabPanel title="Meta Ads" description="Campaign mappings and connection settings">
-            <Card title="Connection">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Meta Business</p>
-                  {metaStatus && (
-                    <p className="text-xs text-emerald-600 mt-0.5">{metaStatus.name}</p>
-                  )}
-                  {metaError && (
-                    <p className="text-xs text-red-500 mt-0.5">{metaError}</p>
-                  )}
-                  {!metaStatus && !metaError && (
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Configured via environment variables
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={testMetaConnection}
-                  disabled={metaLoading}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
-                >
-                  {metaLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : metaStatus ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  )}
-                  {metaStatus ? "Connected" : metaLoading ? "Testing..." : "Test Connection"}
-                </button>
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Meta Ads</h2>
+            <SettingsCard>
+              <Row
+                label="Meta Business"
+                description={
+                  metaStatus
+                    ? metaStatus.name
+                    : metaError
+                    ? metaError
+                    : "Configured via environment variables"
+                }
+                descriptionColor={metaStatus ? "text-emerald-600" : metaError ? "text-red-500" : undefined}
+                action={
+                  <button
+                    onClick={testMetaConnection}
+                    disabled={metaLoading}
+                    className="text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-2 transition-colors disabled:opacity-50"
+                  >
+                    {metaLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : metaStatus ? (
+                      "Connected"
+                    ) : (
+                      "Test Connection"
+                    )}
+                  </button>
+                }
+              />
+            </SettingsCard>
+
+            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mt-8 mb-3">Campaign Mapping</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              Map each product + country to a Meta campaign and template ad set.
+            </p>
+            {mappingsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading mappings...
               </div>
-            </Card>
-
-            <Card title="Campaign Mapping">
-              <p className="text-xs text-gray-400">
-                Map each product + country to a Meta campaign and template ad set. New ad sets will be duplicated from the template.
-              </p>
-              {mappingsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading mappings...
-                </div>
-              ) : metaCampaigns.length === 0 ? (
-                <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-4 py-3">
+            ) : metaCampaigns.length === 0 ? (
+              <SettingsCard>
+                <div className="py-2 text-sm text-gray-400">
                   No active campaigns found in Meta. Create campaigns in Meta Ads Manager first.
-                </p>
-              ) : (
-                <div className="space-y-5">
-                  {PRODUCTS.map((prod) => (
-                    <div key={prod.value}>
-                      <p className="text-xs font-semibold text-gray-600 mb-2">{prod.label}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {LANGUAGES.map((lang) => {
-                          const country = COUNTRY_MAP[lang.value];
-                          const mapping = campaignMappings.find(
-                            (m) => m.product === prod.value && m.country === country
-                          );
-                          const cellKey = `${prod.value}-${country}`;
-                          const isSaving = mappingSaving === cellKey;
-                          const campaignAdSets = mapping?.meta_campaign_id
-                            ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
-                            : [];
-                          const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
+                </div>
+              </SettingsCard>
+            ) : (
+              <div className="space-y-5">
+                {PRODUCTS.map((prod) => (
+                  <div key={prod.value}>
+                    <p className="text-xs font-semibold text-gray-500 mb-2">{prod.label}</p>
+                    <SettingsCard>
+                      {LANGUAGES.map((lang, i) => {
+                        const country = COUNTRY_MAP[lang.value];
+                        const mapping = campaignMappings.find(
+                          (m) => m.product === prod.value && m.country === country
+                        );
+                        const cellKey = `${prod.value}-${country}`;
+                        const isSaving = mappingSaving === cellKey;
+                        const campaignAdSets = mapping?.meta_campaign_id
+                          ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
+                          : [];
+                        const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
 
-                          return (
-                            <div key={lang.value} className="relative">
-                              <label className="block text-xs text-gray-400 mb-1">
-                                {lang.flag} {country}
-                              </label>
-                              <div className="flex items-center gap-1">
+                        return (
+                          <div key={lang.value}>
+                            {i > 0 && <RowDivider />}
+                            <div className="py-1">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-base">{lang.flag}</span>
+                                  <span className="text-sm font-medium text-gray-700">{country}</span>
+                                  {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
+                                  {!isSaving && mapping?.template_adset_id && (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  )}
+                                </div>
                                 <Dropdown
                                   value={mapping?.meta_campaign_id ?? ""}
                                   onChange={(v) => handleMappingChange(prod.value, country, v)}
@@ -415,32 +483,21 @@ export default function SettingsPage() {
                                     })),
                                   ]}
                                   placeholder="Not mapped"
-                                  className="flex-1"
+                                  className="w-56"
                                 />
-                                {isSaving && (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 shrink-0" />
-                                )}
-                                {!isSaving && mapping && mapping.template_adset_id && (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                )}
-                                {!isSaving && mapping && !mapping.template_adset_id && (
-                                  <span className="w-3.5 h-3.5 text-amber-500 shrink-0 text-xs">!</span>
-                                )}
                               </div>
                               {mapping?.meta_campaign_id && (
-                                <div className="mt-1">
+                                <div className="mt-2 flex items-center justify-between">
+                                  <span className="text-xs text-gray-400 pl-7">Template ad set</span>
                                   {campaignAdSets.length === 0 && !isLoadingAdSets ? (
                                     <button
                                       onClick={() => fetchAdSetsForCampaign(mapping.meta_campaign_id)}
                                       className="text-xs text-indigo-600 hover:text-indigo-800"
                                     >
-                                      Load ad sets for template
+                                      Load ad sets
                                     </button>
                                   ) : isLoadingAdSets ? (
-                                    <div className="flex items-center gap-1 text-xs text-gray-400">
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                      Loading ad sets...
-                                    </div>
+                                    <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
                                   ) : (
                                     <Dropdown
                                       value={mapping?.template_adset_id ?? ""}
@@ -452,85 +509,85 @@ export default function SettingsPage() {
                                           label: a.name,
                                         })),
                                       ]}
-                                      placeholder="Select template ad set"
-                                      className="flex-1"
+                                      placeholder="Select template"
+                                      className="w-56"
                                     />
                                   )}
                                 </div>
                               )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </TabPanel>
-        )}
-
-        {activeTab === "integrations" && (
-          <TabPanel title="Integrations" description="External service connections and credits">
-            <Card title="Kie AI">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Credit Balance</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Credits used for image translation (nano-banana-pro)
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {kieBalance !== null && (
-                    <span className="text-lg font-semibold text-gray-800">
-                      {kieBalance.toLocaleString()}
-                    </span>
-                  )}
-                  {kieError && (
-                    <span className="text-xs text-red-500">{kieError}</span>
-                  )}
-                  <button
-                    onClick={fetchKieCredits}
-                    disabled={kieLoading}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
-                  >
-                    {kieLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    )}
-                    {kieBalance === null && !kieLoading ? "Check" : "Refresh"}
-                  </button>
-                </div>
-              </div>
-            </Card>
-
-            <Card title="Services">
-              <p className="text-xs text-gray-400 mb-3">
-                All API keys and tokens are configured via environment variables in Vercel.
-              </p>
-              <div className="space-y-2">
-                {[
-                  { name: "OpenAI", env: "OPENAI_API_KEY", desc: "GPT-4o text translation & quality analysis" },
-                  { name: "Cloudflare Pages", env: "CF_PAGES_*", desc: "Landing page hosting (3 projects)" },
-                  { name: "Meta Marketing", env: "META_*", desc: "Ad campaign management" },
-                  { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image translation" },
-                  { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },
-                  { name: "Google Drive", env: "GDRIVE_*", desc: "Import/export images" },
-                ].map((svc) => (
-                  <div key={svc.name} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">{svc.name}</p>
-                      <p className="text-xs text-gray-400">{svc.desc}</p>
-                    </div>
-                    <code className="text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">
-                      {svc.env}
-                    </code>
+                          </div>
+                        );
+                      })}
+                    </SettingsCard>
                   </div>
                 ))}
               </div>
-            </Card>
-          </TabPanel>
+            )}
+          </>
+        )}
+
+        {activeTab === "integrations" && (
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Integrations</h2>
+            <SettingsCard>
+              <Row
+                label="Kie AI Credits"
+                description="Image generation (nano-banana-pro)"
+                action={
+                  <div className="flex items-center gap-3">
+                    {kieBalance !== null && (
+                      <span className="text-lg font-semibold text-gray-800 tabular-nums">
+                        {kieBalance.toLocaleString()}
+                      </span>
+                    )}
+                    {kieError && <span className="text-xs text-red-500">{kieError}</span>}
+                    <button
+                      onClick={fetchKieCredits}
+                      disabled={kieLoading}
+                      className="text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-2 transition-colors disabled:opacity-50"
+                    >
+                      {kieLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : kieBalance === null ? (
+                        "Check"
+                      ) : (
+                        "Refresh"
+                      )}
+                    </button>
+                  </div>
+                }
+              />
+            </SettingsCard>
+
+            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mt-8 mb-3">Services</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              All API keys configured via environment variables in Vercel.
+            </p>
+            <SettingsCard>
+              {[
+                { name: "OpenAI", env: "OPENAI_API_KEY", desc: "GPT-4o text translation & quality analysis" },
+                { name: "Cloudflare Pages", env: "CF_PAGES_*", desc: "Landing page hosting" },
+                { name: "Meta Marketing", env: "META_*", desc: "Ad campaign management" },
+                { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image generation & translation" },
+                { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },
+                { name: "Google Drive", env: "GDRIVE_*", desc: "Image import & export" },
+              ].map((svc, i) => (
+                <div key={svc.name}>
+                  {i > 0 && <RowDivider />}
+                  <Row
+                    label={svc.name}
+                    description={svc.desc}
+                    action={
+                      <code className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                        {svc.env}
+                      </code>
+                    }
+                  />
+                </div>
+              ))}
+            </SettingsCard>
+          </>
         )}
       </div>
     </div>
@@ -539,146 +596,76 @@ export default function SettingsPage() {
 
 /* ─── Sub-components ────────────────────────────────── */
 
-function TabPanel({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
+function SettingsCard({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-        <p className="text-gray-500 text-sm mt-0.5">{description}</p>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function Card({ title, children }: { title?: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4 shadow-sm">
-      {title && <h3 className="text-sm font-semibold text-gray-700">{title}</h3>}
+    <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
       {children}
     </div>
   );
 }
 
-function SaveBar({ saved, onSave }: { saved: boolean; onSave: () => void }) {
+function Row({
+  label,
+  description,
+  descriptionColor,
+  action,
+}: {
+  label: string;
+  description: string;
+  descriptionColor?: string;
+  action: React.ReactNode;
+}) {
   return (
-    <div className="pt-2">
+    <div className="flex items-center justify-between py-2.5">
+      <div className="min-w-0 mr-4">
+        <p className="text-sm font-medium text-gray-800">{label}</p>
+        <p className={`text-xs mt-0.5 ${descriptionColor ?? "text-gray-400"}`}>{description}</p>
+      </div>
+      <div className="shrink-0">{action}</div>
+    </div>
+  );
+}
+
+function RowDivider() {
+  return <div className="border-t border-gray-100" />;
+}
+
+function SaveButton({ saved, onSave }: { saved: boolean; onSave: () => void }) {
+  return (
+    <div className="mt-5">
       <button
         onClick={onSave}
-        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-5 py-2.5 transition-colors font-medium"
       >
-        {saved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+        {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Save className="w-4 h-4" />}
         {saved ? "Saved!" : "Save Settings"}
       </button>
     </div>
   );
 }
 
-function Divider() {
-  return <div className="border-t border-gray-100" />;
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
-      <input
-        id={id}
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-white border border-gray-300 text-gray-800 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-      />
-    </div>
-  );
-}
-
-function Slider({
-  label,
-  description,
-  value,
-  onChange,
-}: {
-  label: string;
-  description?: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
-      <div className="flex items-center gap-3">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 accent-indigo-600"
-        />
-        <span className="text-sm font-semibold text-gray-700 w-8 text-right">{value}</span>
-      </div>
-      {description && (
-        <p className="text-xs text-gray-400 mt-1">{description}</p>
-      )}
-    </div>
-  );
-}
-
-function Toggle({
-  label,
-  description,
+function ToggleSwitch({
   checked,
   onChange,
 }: {
-  label: string;
-  description?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium text-gray-700">{label}</p>
-        {description && (
-          <p className="text-xs text-gray-400 mt-0.5">{description}</p>
-        )}
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-          checked ? "bg-indigo-600" : "bg-gray-200"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+        checked ? "bg-indigo-600" : "bg-gray-200"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+          checked ? "translate-x-6" : "translate-x-1"
         }`}
-      >
-        <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-            checked ? "translate-x-6" : "translate-x-1"
-          }`}
-        />
-      </button>
-    </div>
+      />
+    </button>
   );
 }
