@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Download, RotateCcw } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { X, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import { SourceImage, Version, LANGUAGES } from "@/types";
 import QualityDetails from "./QualityDetails";
 
@@ -11,6 +11,10 @@ interface Props {
   onChangeLang: (lang: string | null) => void;
   onClose: () => void;
   onRetry: (translationId: string) => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  currentIndex?: number;
+  totalCount?: number;
 }
 
 export default function ImagePreviewModal({
@@ -19,6 +23,10 @@ export default function ImagePreviewModal({
   onChangeLang,
   onClose,
   onRetry,
+  onPrev,
+  onNext,
+  currentIndex,
+  totalCount,
 }: Props) {
   const translations = sourceImage.image_translations ?? [];
   const activeTranslation = activeLang
@@ -44,6 +52,25 @@ export default function ImagePreviewModal({
   const displayUrl = activeVersion?.translated_url ?? activeTranslation?.translated_url ?? sourceImage.original_url;
   const isOriginal = !activeLang;
 
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "ArrowLeft" && onPrev) {
+        onPrev();
+      } else if (e.key === "ArrowRight" && onNext) {
+        onNext();
+      }
+    },
+    [onClose, onPrev, onNext]
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
@@ -51,8 +78,29 @@ export default function ImagePreviewModal({
       role="dialog"
       aria-modal="true"
     >
+      {/* Prev arrow */}
+      {onPrev && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPrev(); }}
+          className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Next arrow */}
+      {onNext && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      )}
+
       <div
-        className="bg-white border border-gray-200 rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white border border-gray-200 rounded-2xl shadow-xl max-w-4xl w-full flex flex-col overflow-hidden"
+        style={{ height: "85vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -67,6 +115,9 @@ export default function ImagePreviewModal({
                 : `${LANGUAGES.find((l) => l.value === activeLang)?.label} translation${
                     activeVersion ? ` (v${activeVersion.version_number})` : ""
                   }`}
+              {currentIndex != null && totalCount != null && (
+                <span className="ml-2">{currentIndex + 1} / {totalCount}</span>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
@@ -159,34 +210,22 @@ export default function ImagePreviewModal({
           <QualityDetails version={activeVersion} />
         )}
 
-        {/* Image */}
-        <div className="flex-1 overflow-auto p-5 flex items-center justify-center">
+        {/* Image — fixed container so layout doesn't shift between tabs */}
+        <div className="flex-1 min-h-0 overflow-auto p-5 flex items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={displayUrl}
             alt={isOriginal ? "Original" : `${activeLang} translation`}
-            className="max-w-full max-h-[65vh] object-contain rounded-lg"
+            className="max-w-full max-h-full object-contain rounded-lg"
           />
         </div>
 
-        {/* Footer with download */}
-        {!isOriginal && (activeVersion?.translated_url || activeTranslation?.translated_url) && (
-          <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between shrink-0">
-            {activeVersion?.generation_time_seconds != null && (
-              <span className="text-xs text-gray-400">
-                Generated in {Math.round(activeVersion.generation_time_seconds)}s
-              </span>
-            )}
-            <a
-              href={activeVersion?.translated_url ?? activeTranslation?.translated_url ?? ""}
-              download={`${activeLang}_${sourceImage.filename ?? "image"}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download
-            </a>
+        {/* Generation time (no download button) */}
+        {!isOriginal && activeVersion?.generation_time_seconds != null && (
+          <div className="px-5 py-2 border-t border-gray-200 shrink-0">
+            <span className="text-xs text-gray-400">
+              Generated in {Math.round(activeVersion.generation_time_seconds)}s
+            </span>
           </div>
         )}
       </div>

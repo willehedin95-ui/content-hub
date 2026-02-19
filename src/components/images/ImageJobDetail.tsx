@@ -1369,15 +1369,23 @@ export default function ImageJobDetail({ initialJob }: Props) {
       )}
 
       {/* Preview modal (always rendered regardless of tab) */}
-      {previewImage && (
-        <ImagePreviewModal
-          sourceImage={previewImage}
-          activeLang={previewLang}
-          onChangeLang={setPreviewLang}
-          onClose={() => setPreviewImage(null)}
-          onRetry={(id) => { handleRetrySingle(id); }}
-        />
-      )}
+      {previewImage && (() => {
+        const allImages = job.source_images ?? [];
+        const currentIdx = allImages.findIndex((si) => si.id === previewImage.id);
+        return (
+          <ImagePreviewModal
+            sourceImage={previewImage}
+            activeLang={previewLang}
+            onChangeLang={setPreviewLang}
+            onClose={() => setPreviewImage(null)}
+            onRetry={(id) => { handleRetrySingle(id); }}
+            onPrev={currentIdx > 0 ? () => { setPreviewImage(allImages[currentIdx - 1]); setPreviewLang(null); } : undefined}
+            onNext={currentIdx < allImages.length - 1 ? () => { setPreviewImage(allImages[currentIdx + 1]); setPreviewLang(null); } : undefined}
+            currentIndex={currentIdx}
+            totalCount={allImages.length}
+          />
+        );
+      })()}
     </div>
   );
 }
