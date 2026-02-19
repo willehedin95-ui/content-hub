@@ -22,7 +22,7 @@ import {
   Undo2,
 } from "lucide-react";
 
-import { Translation, LANGUAGES } from "@/types";
+import { Translation, LANGUAGES, PageQualityAnalysis } from "@/types";
 import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -83,6 +83,12 @@ export default function EditPageClient({
   const [hiddenCount, setHiddenCount] = useState(0);
   const [revealHidden, setRevealHidden] = useState(false);
   const excludeModeRef = useRef(false);
+
+  // Quality analysis
+  const [qualityScore, setQualityScore] = useState<number | null>(translation.quality_score ?? null);
+  const [qualityAnalysis, setQualityAnalysis] = useState<PageQualityAnalysis | null>(translation.quality_analysis ?? null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showQualityDetails, setShowQualityDetails] = useState(false);
 
   // Confirm dialogs
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; action: () => void } | null>(null);
@@ -644,10 +650,32 @@ export default function EditPageClient({
     doRetranslate();
   }
 
+  async function runQualityAnalysis() {
+    setAnalyzing(true);
+    try {
+      const res = await fetch("/api/translate/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translation.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQualityScore(data.quality_score ?? null);
+        setQualityAnalysis(data);
+      }
+    } catch (err) {
+      console.error("Quality analysis failed:", err);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function doRetranslate() {
     setConfirmAction(null);
     setRetranslating(true);
     setSaveError("");
+    setQualityScore(null);
+    setQualityAnalysis(null);
 
     try {
       const res = await fetch("/api/translate", {
@@ -665,6 +693,11 @@ export default function EditPageClient({
       setIsDirty(false);
       setIframeKey((k) => k + 1);
       router.refresh();
+
+      // Run quality analysis after translation
+      setRetranslating(false);
+      await runQualityAnalysis();
+      return; // skip the finally setRetranslating since we already set it
     } catch (err) {
       setSaveError(
         err instanceof Error ? err.message : "Re-translation failed"
@@ -703,6 +736,35 @@ export default function EditPageClient({
           <span className="flex items-center gap-1.5 text-gray-900 text-sm font-medium shrink-0">
             {language.flag} {language.label}
           </span>
+          {/* Quality score badge */}
+          {analyzing ? (
+            <span className="flex items-center gap-1 text-xs text-indigo-600 shrink-0">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Analyzing...
+            </span>
+          ) : qualityScore != null ? (
+            <button
+              onClick={() => setShowQualityDetails(!showQualityDetails)}
+              className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 transition-colors ${
+                qualityScore >= 85
+                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  : qualityScore >= 60
+                  ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                  : "bg-red-50 text-red-700 hover:bg-red-100"
+              }`}
+              title="Click to toggle quality details"
+            >
+              {qualityScore}
+            </button>
+          ) : (
+            <button
+              onClick={runQualityAnalysis}
+              className="text-xs text-gray-400 hover:text-indigo-600 shrink-0 transition-colors"
+              title="Run quality analysis"
+            >
+              Analyze
+            </button>
+          )}
           {variantLabel && (
             <>
               <span className="text-gray-300 shrink-0">/</span>
@@ -784,6 +846,35 @@ export default function EditPageClient({
         <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border-b border-red-200 px-6 py-2 shrink-0">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {saveError}
+        </div>
+      )}
+
+      {/* Quality analysis details panel */}
+      {showQualityDetails && qualityAnalysis && (
+        <div className="bg-gray-50 border-b border-gray-200 px-6 py-3 shrink-0">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1.5 text-xs max-w-3xl">
+              <p className="text-gray-600">{qualityAnalysis.overall_assessment}</p>
+              {qualityAnalysis.fluency_issues?.length > 0 && (
+                <p className="text-amber-600">Fluency: {qualityAnalysis.fluency_issues.join("; ")}</p>
+              )}
+              {qualityAnalysis.grammar_issues?.length > 0 && (
+                <p className="text-red-600">Grammar: {qualityAnalysis.grammar_issues.join("; ")}</p>
+              )}
+              {qualityAnalysis.context_errors?.length > 0 && (
+                <p className="text-orange-600">Context: {qualityAnalysis.context_errors.join("; ")}</p>
+              )}
+              {qualityAnalysis.name_localization?.length > 0 && (
+                <p className="text-blue-600">Names: {qualityAnalysis.name_localization.join("; ")}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowQualityDetails(false)}
+              className="text-gray-400 hover:text-gray-600 transition-colors ml-4"
+            >
+              <span className="text-xs">Close</span>
+            </button>
+          </div>
         </div>
       )}
 
