@@ -23,7 +23,7 @@ import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LAN
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 
-const MAX_VERSIONS = 5;
+const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
 
 interface Props {
@@ -42,6 +42,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const cancelRef = useRef(false);
   const [processStartTime, setProcessStartTime] = useState<number | null>(null);
   const [processedInSession, setProcessedInSession] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showTranslateConfirm, setShowTranslateConfirm] = useState(false);
   // Meta push state
   const [primaryTexts, setPrimaryTexts] = useState<string[]>(() => {
     const arr = initialJob.ad_copy_primary ?? [];
@@ -333,8 +335,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   const sourceImages = job.source_images ?? [];
 
-  const refreshJob = useCallback(async () => {
-    const res = await fetch(`/api/image-jobs/${job.id}`);
+  const refreshJob = useCallback(async (compact = false) => {
+    const url = compact
+      ? `/api/image-jobs/${job.id}?compact=true`
+      : `/api/image-jobs/${job.id}`;
+    const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
       setJob(data);
@@ -342,6 +347,42 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }
     return null;
   }, [job.id]);
+
+  // Throttled refresh: coalesces rapid refresh requests to max 1 per 2 seconds
+  // Uses compact mode to skip full version history during processing
+  const throttledRefreshPending = useRef(false);
+  const throttledRefreshTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastRefreshTime = useRef(0);
+
+  const requestThrottledRefresh = useCallback(() => {
+    throttledRefreshPending.current = true;
+    const now = Date.now();
+    const elapsed = now - lastRefreshTime.current;
+    const MIN_INTERVAL = 2000;
+
+    if (elapsed >= MIN_INTERVAL) {
+      throttledRefreshPending.current = false;
+      lastRefreshTime.current = now;
+      refreshJob(true);
+    } else if (!throttledRefreshTimer.current) {
+      throttledRefreshTimer.current = setTimeout(() => {
+        throttledRefreshTimer.current = null;
+        if (throttledRefreshPending.current) {
+          throttledRefreshPending.current = false;
+          lastRefreshTime.current = Date.now();
+          refreshJob(true);
+        }
+      }, MIN_INTERVAL - elapsed);
+    }
+  }, [refreshJob]);
+
+  useEffect(() => {
+    return () => {
+      if (throttledRefreshTimer.current) {
+        clearTimeout(throttledRefreshTimer.current);
+      }
+    };
+  }, []);
 
   // Start processing pending translations on mount (and auto-resume stalled ones)
   useEffect(() => {
@@ -403,7 +444,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
           }
         }
       }
-    }, 60_000);
+    }, 120_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processing]);
@@ -443,14 +484,14 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
   function getStalledTranslations(j: ImageJob): ImageTranslation[] {
-    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     return (
       j.source_images?.flatMap(
         (si) =>
           si.image_translations?.filter(
             (t) =>
               t.status === "processing" &&
-              new Date(t.updated_at).getTime() < twoMinutesAgo
+              new Date(t.updated_at).getTime() < fiveMinutesAgo
           ) ?? []
       ) ?? []
     );
@@ -521,7 +562,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
     let visual_instructions: string | undefined;
     let attempts = 0;
 
-    while (attempts < MAX_VERSIONS) {
+    const maxVersions = settings.static_ads_max_retries ?? DEFAULT_MAX_VERSIONS;
+    while (attempts < maxVersions) {
       attempts++;
 
       try {
@@ -538,7 +580,6 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
         if (!translateRes.ok) break;
         const { versionId } = await translateRes.json();
-        await refreshJob();
 
         // Quality analysis (skip if disabled or no versionId)
         if (!qualityEnabled || !versionId) break;
@@ -551,7 +592,6 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
         if (!analyzeRes.ok) break;
         const analysis: QualityAnalysis = await analyzeRes.json();
-        await refreshJob();
 
         // Check quality — if good enough, stop
         if (analysis.quality_score >= threshold) break;
@@ -576,7 +616,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       }
     }
 
-    await refreshJob();
+    requestThrottledRefresh();
   }
 
   async function handleRetryAll() {
@@ -602,6 +642,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   async function handleTranslateAll() {
     if (selectedLanguages.size === 0) return;
+    setShowTranslateConfirm(false);
     setProcessing(true);
 
     // Save selected languages to job before creating translations
@@ -687,11 +728,12 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </p>
         </div>
         <button
-          onClick={refreshJob}
-          className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
+          onClick={async () => { setRefreshing(true); await refreshJob(); setRefreshing(false); }}
+          disabled={refreshing}
+          className="text-gray-400 hover:text-gray-700 p-2 transition-colors disabled:opacity-50"
           title="Refresh"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
 
@@ -815,7 +857,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
             </div>
             <div className="flex items-center gap-4">
               <button
-                onClick={handleTranslateAll}
+                onClick={() => setShowTranslateConfirm(true)}
                 disabled={processing || selectedLanguages.size === 0}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
               >
@@ -836,11 +878,56 @@ export default function ImageJobDetail({ initialJob }: Props) {
                 )}
               </div>
             </div>
+
+            {/* Translate confirmation dialog */}
+            {showTranslateConfirm && (() => {
+              const translatableCount = sourceImages.filter(si => !si.skip_translation).length;
+              const totalTranslations = translatableCount * selectedLanguages.size;
+              const estCost = totalTranslations * 0.09;
+              const estMinutes = Math.ceil(Math.ceil(totalTranslations / 10) * 75 / 60);
+              return (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowTranslateConfirm(false)}>
+                  <div className="bg-white border border-gray-200 rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+                    <h3 className="text-base font-semibold text-gray-900 mb-3">Start translation batch?</h3>
+                    <div className="space-y-2 mb-5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Images</span>
+                        <span className="text-gray-800 font-medium">{translatableCount}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Languages</span>
+                        <span className="text-gray-800 font-medium">{selectedLanguages.size} ({Array.from(selectedLanguages).map(l => LANGUAGES.find(li => li.value === l)?.flag).join(" ")})</span>
+                      </div>
+                      <div className="flex justify-between text-sm border-t border-gray-100 pt-2">
+                        <span className="text-gray-500">Total translations</span>
+                        <span className="text-gray-800 font-medium">{totalTranslations}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Estimated cost</span>
+                        <span className="text-gray-800 font-medium">${estCost.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Estimated time</span>
+                        <span className="text-gray-800 font-medium">~{estMinutes} min</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowTranslateConfirm(false)} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        Cancel
+                      </button>
+                      <button onClick={handleTranslateAll} className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">
+                        Start
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
         </>
       ) : (
       <>
       {/* Status summary */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-3">
         {pendingCount > 0 || processing ? (
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
@@ -889,6 +976,31 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </span>
         )}
       </div>
+
+      {/* Progress bar */}
+      {totalCount > 0 && (
+        <div className="mb-6">
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
+            {completedCount > 0 && (
+              <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(completedCount / totalCount) * 100}%` }} />
+            )}
+            {failedCount > 0 && (
+              <div className="bg-red-400 h-full transition-all duration-500" style={{ width: `${(failedCount / totalCount) * 100}%` }} />
+            )}
+          </div>
+          <div className="flex items-center gap-4 mt-1.5">
+            {job.target_languages.map((lang) => {
+              const langInfo = LANGUAGES.find((l) => l.value === lang);
+              const counts = langCounts.get(lang);
+              return (
+                <span key={lang} className="text-xs text-gray-400">
+                  {langInfo?.flag} {counts?.completed ?? 0}/{counts?.total ?? 0}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Language tabs */}
       <div className="flex items-center gap-1 border-b border-gray-200 mb-6">

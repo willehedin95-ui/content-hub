@@ -1,7 +1,8 @@
 import { KIE_MODEL } from "./constants";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
-const POLL_INTERVAL_MS = 3000;
+const POLL_INITIAL_MS = 2000;
+const POLL_MAX_MS = 10_000;
 const MAX_POLL_TIME_MS = 280_000; // ~4.7 min — leaves buffer before Vercel's 300s maxDuration
 
 interface CreateTaskResponse {
@@ -79,6 +80,7 @@ export async function createImageTask(
 
 export async function pollTaskResult(taskId: string): Promise<string[]> {
   const startTime = Date.now();
+  let pollInterval = POLL_INITIAL_MS;
 
   while (Date.now() - startTime < MAX_POLL_TIME_MS) {
     const res = await fetch(
@@ -109,8 +111,9 @@ export async function pollTaskResult(taskId: string): Promise<string[]> {
       );
     }
 
-    // Still waiting — sleep before next poll
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    // Exponential backoff: 2s → 4s → 8s → 10s (capped)
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    pollInterval = Math.min(pollInterval * 2, POLL_MAX_MS);
   }
 
   throw new Error("Kie.ai task timed out after 5 minutes");

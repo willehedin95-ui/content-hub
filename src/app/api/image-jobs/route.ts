@@ -16,31 +16,31 @@ function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const url = new URL(req.url);
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "20", 10)));
+  const offset = (page - 1) * limit;
 
-  const [jobsResult, campaignsResult] = await Promise.all([
+  // List page only needs translation status, not full version history
+  const [jobsResult, countResult, campaignsResult] = await Promise.all([
     db
       .from("image_jobs")
-      .select(`*, source_images(*, image_translations(*, versions(*)))`)
-      .order("created_at", { ascending: false }),
+      .select(`*, source_images(id, filename, original_url, skip_translation, image_translations(id, language, status, aspect_ratio, translated_url, active_version_id, updated_at))`)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1),
+    db
+      .from("image_jobs")
+      .select("id", { count: "exact", head: true }),
     db
       .from("meta_campaigns")
       .select("image_job_id, countries, language, status")
       .not("image_job_id", "is", null),
   ]);
 
-  let { data: jobs, error } = jobsResult;
-
-  // Fall back to query without versions if table doesn't exist yet
-  if (error && error.message?.includes("versions")) {
-    const fallback = await db
-      .from("image_jobs")
-      .select(`*, source_images(*, image_translations(*))`)
-      .order("created_at", { ascending: false });
-    jobs = fallback.data;
-    error = fallback.error;
-  }
+  const { data: jobs, error } = jobsResult;
+  const totalCount = countResult.count ?? 0;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -60,7 +60,7 @@ export async function GET() {
     ...computeCounts(job),
     deployments: deploymentsByJob.get(job.id) ?? [],
   }));
-  return NextResponse.json(enriched);
+  return NextResponse.json({ jobs: enriched, total: totalCount, page, limit });
 }
 
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload

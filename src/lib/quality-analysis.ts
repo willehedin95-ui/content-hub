@@ -21,37 +21,22 @@ export async function analyzeTranslationQuality(
 
   const response = await openai.chat.completions.create({
     model: OPENAI_MODEL,
-    max_tokens: 1500,
+    max_tokens: 800,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
-        content: `You are a quality analyst for translated ad images. You compare an original English ad image with its ${targetLanguage} translation and evaluate the quality of the translation.
+        content: `Compare an English ad image with its ${targetLanguage} translation. Return JSON:
+{"quality_score":<0-100>,"spelling_errors":[],"grammar_issues":[],"missing_text":[],"overall_assessment":"<1-2 sentences>","extracted_text":"<all visible text in translated image>"}
 
-You must respond with a JSON object with these exact fields:
-{
-  "quality_score": <number 0-100>,
-  "spelling_errors": [<list of specific spelling mistakes found>],
-  "grammar_issues": [<list of specific grammar problems>],
-  "missing_text": [<list of text elements that were not translated or are missing>],
-  "overall_assessment": "<1-2 sentence summary of quality>",
-  "extracted_text": "<all visible text in the translated image>"
-}
-
-Scoring guide:
-- 90-100: Perfect or near-perfect translation with correct spelling, grammar, and all text present
-- 70-89: Good translation with minor issues (small typo, slightly awkward phrasing)
-- 50-69: Acceptable but has noticeable problems (multiple typos, missing text, grammar errors)
-- 0-49: Poor quality (significant missing text, wrong language, major errors)
-
-Be strict about spelling and grammar. Even one misspelled word should reduce the score.`,
+Scoring: 90-100 perfect, 70-89 minor issues, 50-69 noticeable problems, 0-49 major errors. Be strict — one misspelled word reduces score.`,
       },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: `Compare these two images. The first is the original English ad, the second is the ${targetLanguage} translation. Evaluate the translation quality.`,
+            text: `Image 1: English original. Image 2: ${targetLanguage} translation. Evaluate quality.`,
           },
           {
             type: "image_url",

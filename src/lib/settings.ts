@@ -1,4 +1,4 @@
-import { Language } from "@/types";
+import { Language, AspectRatio } from "@/types";
 
 export interface Settings {
   // Static ads
@@ -6,11 +6,18 @@ export interface Settings {
   static_ads_economy_mode?: boolean;
   static_ads_quality_threshold?: number;
   static_ads_default_languages?: Language[];
+  static_ads_default_ratios?: AspectRatio[];
+  static_ads_max_retries?: number;
+  static_ads_auto_export?: boolean;
   static_ads_email_enabled?: boolean;
   static_ads_notification_email?: string;
   // Pages
   pages_quality_enabled?: boolean;
   pages_quality_threshold?: number;
+  // Meta
+  meta_default_daily_budget?: number;
+  meta_default_objective?: string;
+  meta_default_schedule_time?: string; // HH:mm format, e.g. "06:00"
 }
 
 export function getSettings(): Settings {

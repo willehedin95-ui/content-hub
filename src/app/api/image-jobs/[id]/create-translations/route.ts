@@ -19,7 +19,7 @@ export async function POST(
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  if (job.status !== "ready") {
+  if (job.status !== "ready" && job.status !== "draft") {
     return NextResponse.json(
       { error: `Job is not ready for translation (status: ${job.status})` },
       { status: 400 }

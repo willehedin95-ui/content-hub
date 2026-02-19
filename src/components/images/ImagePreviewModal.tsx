@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { X, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { X, RotateCcw, ChevronLeft, ChevronRight, Columns2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { SourceImage, Version, LANGUAGES } from "@/types";
 import QualityDetails from "./QualityDetails";
 
@@ -39,11 +39,19 @@ export default function ImagePreviewModal({
     .sort((a, b) => b.version_number - a.version_number);
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
 
   // Reset active version when language changes
   useEffect(() => {
     setActiveVersionId(activeTranslation?.active_version_id ?? null);
   }, [activeLang, activeTranslation?.active_version_id]);
+
+  // Reset zoom on language/image change
+  useEffect(() => {
+    setZoom(1);
+  }, [activeLang, sourceImage.id]);
 
   const activeVersion = activeVersionId
     ? versions.find((v) => v.id === activeVersionId)
@@ -61,6 +69,14 @@ export default function ImagePreviewModal({
         onPrev();
       } else if (e.key === "ArrowRight" && onNext) {
         onNext();
+      } else if (e.key === "c" && !e.metaKey && !e.ctrlKey) {
+        setCompareMode(prev => !prev);
+      } else if (e.key === "+" || e.key === "=") {
+        setZoom(z => Math.min(z + 0.5, 4));
+      } else if (e.key === "-") {
+        setZoom(z => Math.max(z - 0.5, 0.5));
+      } else if (e.key === "0") {
+        setZoom(1);
       }
     },
     [onClose, onPrev, onNext]
@@ -120,9 +136,36 @@ export default function ImagePreviewModal({
               )}
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Compare toggle */}
+            {!isOriginal && (
+              <button
+                onClick={() => setCompareMode(prev => !prev)}
+                className={`p-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  compareMode ? "bg-indigo-50 text-indigo-600" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+                title="Compare with original (C)"
+              >
+                <Columns2 className="w-4 h-4" />
+              </button>
+            )}
+            {/* Zoom controls */}
+            <button onClick={() => setZoom(z => Math.max(z - 0.5, 0.5))} className="text-gray-400 hover:text-gray-700 p-1.5 transition-colors" title="Zoom out (-)">
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-gray-400 tabular-nums w-8 text-center">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="text-gray-400 hover:text-gray-700 p-1.5 transition-colors" title="Zoom in (+)">
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            {zoom !== 1 && (
+              <button onClick={() => setZoom(1)} className="text-gray-400 hover:text-gray-700 p-1.5 transition-colors" title="Reset zoom (0)">
+                <Maximize2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors ml-1">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Language tabs */}
@@ -211,13 +254,50 @@ export default function ImagePreviewModal({
         )}
 
         {/* Image — fixed container so layout doesn't shift between tabs */}
-        <div className="flex-1 min-h-0 overflow-auto p-5 flex items-center justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={displayUrl}
-            alt={isOriginal ? "Original" : `${activeLang} translation`}
-            className="max-w-full max-h-full object-contain rounded-lg"
-          />
+        <div
+          ref={imageContainerRef}
+          className={`flex-1 min-h-0 overflow-auto p-5 flex items-center justify-center ${compareMode ? "gap-3" : ""}`}
+          onWheel={(e) => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault();
+              setZoom(z => Math.min(Math.max(z + (e.deltaY < 0 ? 0.25 : -0.25), 0.5), 4));
+            }
+          }}
+        >
+          {compareMode && !isOriginal ? (
+            <>
+              <div className="flex-1 flex flex-col items-center min-w-0">
+                <span className="text-xs text-gray-400 mb-1.5">Original</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={sourceImage.original_url}
+                  alt="Original"
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 0.15s" }}
+                />
+              </div>
+              <div className="w-px bg-gray-200 self-stretch shrink-0" />
+              <div className="flex-1 flex flex-col items-center min-w-0">
+                <span className="text-xs text-gray-400 mb-1.5">{LANGUAGES.find(l => l.value === activeLang)?.label} translation</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={displayUrl}
+                  alt={`${activeLang} translation`}
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 0.15s" }}
+                />
+              </div>
+            </>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={displayUrl}
+              alt={isOriginal ? "Original" : `${activeLang} translation`}
+              className="max-w-full max-h-full object-contain rounded-lg"
+              style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 0.15s" }}
+              onDoubleClick={() => setZoom(z => z === 1 ? 2 : 1)}
+            />
+          )}
         </div>
 
         {/* Generation time (no download button) */}

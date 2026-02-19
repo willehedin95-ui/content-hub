@@ -171,7 +171,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          target_ratios: ["1:1"],
+          target_ratios: getSettings().static_ads_default_ratios?.length ? getSettings().static_ads_default_ratios : ["1:1"],
           target_languages: Array.from(selectedLanguages),
           ...(selectedFolder ? { source_folder_id: selectedFolder.id } : {}),
           product,
@@ -191,28 +191,42 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
       const job = await createRes.json();
       onCreated(job.id);
 
-      // Download ALL files from Drive (fire and forget)
+      // Download ALL files from Drive in parallel (fire and forget)
       const allFiles = [...driveFiles];
       (async () => {
         try {
-          for (const driveFile of allFiles) {
-            await fetch("/api/drive/download", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                fileId: driveFile.id,
-                fileName: driveFile.name,
-                jobId: job.id,
-                skipTranslation: !driveFile.translate,
-              }),
-            });
+          const DOWNLOAD_CONCURRENCY = 5;
+          const queue = [...allFiles];
+          const executing = new Set<Promise<void>>();
+
+          for (const driveFile of queue) {
+            const p = (async () => {
+              try {
+                const res = await fetch("/api/drive/download", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    fileId: driveFile.id,
+                    fileName: driveFile.name,
+                    jobId: job.id,
+                    skipTranslation: !driveFile.translate,
+                  }),
+                });
+                if (!res.ok) {
+                  console.error(`Download failed for ${driveFile.name}:`, await res.text());
+                }
+              } catch (err) {
+                console.error(`Download error for ${driveFile.name}:`, err);
+              }
+            })().then(() => { executing.delete(p); });
+            executing.add(p);
+            if (executing.size >= DOWNLOAD_CONCURRENCY) {
+              await Promise.race(executing);
+            }
           }
-          await fetch(`/api/image-jobs/${job.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "ready" }),
-          });
-          // Auto-create translations so detail page can start immediately
+          await Promise.all(executing);
+
+          // Create translations directly (skips the intermediate "ready" state)
           await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
         } catch (err) {
           console.error("Background import failed:", err);
@@ -349,12 +363,12 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                       )}
                     </div>
                     {/* Translate badge */}
-                    <div className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
+                    <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full flex items-center justify-center text-[9px] font-semibold leading-none ${
                       file.translate
                         ? "bg-indigo-600 text-white"
-                        : "bg-gray-300 text-gray-600"
+                        : "bg-gray-400 text-white"
                     }`}>
-                      {file.translate ? "T" : "—"}
+                      {file.translate ? "Translate" : "Skip"}
                     </div>
                     {/* Filename */}
                     <div className="px-1 py-0.5 bg-white">

@@ -13,6 +13,7 @@ import {
   Globe,
 } from "lucide-react";
 import { Language, LANGUAGES, COUNTRY_MAP, META_OBJECTIVES } from "@/types";
+import { getSettings } from "@/lib/settings";
 
 interface ImageAsset {
   id: string;
@@ -55,9 +56,11 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
 
   // Step 1: Setup
   const [name, setName] = useState("");
-  const [objective, setObjective] = useState("OUTCOME_TRAFFIC");
+  const [objective, setObjective] = useState(() => getSettings().meta_default_objective ?? "OUTCOME_TRAFFIC");
   const [language, setLanguage] = useState<Language>("no");
-  const [dailyBudget, setDailyBudget] = useState(50);
+  const [dailyBudget, setDailyBudget] = useState(() => getSettings().meta_default_daily_budget ?? 50);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState(() => getSettings().meta_default_schedule_time ?? "06:00");
 
   // Step 2: Assets
   const [images, setImages] = useState<ImageAsset[]>([]);
@@ -144,6 +147,10 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
         aspect_ratio: combo.image.aspect_ratio,
       }));
 
+      const startTime = scheduleDate
+        ? new Date(`${scheduleDate}T${scheduleTime || "00:00"}:00`).toISOString()
+        : null;
+
       const res = await fetch("/api/meta/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,6 +160,7 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
           language,
           countries: [country],
           daily_budget: Math.round(dailyBudget * 100),
+          ...(startTime ? { start_time: startTime } : {}),
           ads,
         }),
       });
@@ -266,6 +274,30 @@ export default function CampaignBuilder({ onClose, onCreated }: Props) {
                   />
                   <span className="text-xs text-gray-400">/day</span>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Schedule
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                    className="bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                  <input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    className="bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {scheduleDate ? "Campaign will start at this date/time" : "Leave empty to start manually"}
+                </p>
               </div>
             </div>
           )}

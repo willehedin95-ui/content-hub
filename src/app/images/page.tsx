@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { ImageJob, Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignStatus } from "@/types";
 import NewConceptModal from "@/components/images/NewConceptModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
-function getLanguageStatus(job: ImageJob): Map<Language, "done" | "partial" | "none"> {
+const PAGE_SIZE = 20;
+
+function getLanguageStatus(job: ImageJob): Map<Language, { status: "done" | "partial" | "none"; completed: number; total: number }> {
   const langCounts = new Map<Language, { total: number; completed: number }>();
   for (const si of job.source_images ?? []) {
     for (const t of si.image_translations ?? []) {
@@ -18,12 +20,12 @@ function getLanguageStatus(job: ImageJob): Map<Language, "done" | "partial" | "n
       langCounts.set(t.language, entry);
     }
   }
-  const result = new Map<Language, "done" | "partial" | "none">();
+  const result = new Map<Language, { status: "done" | "partial" | "none"; completed: number; total: number }>();
   for (const lang of job.target_languages) {
     const counts = langCounts.get(lang);
-    if (!counts || counts.total === 0) result.set(lang, "none");
-    else if (counts.completed === counts.total) result.set(lang, "done");
-    else result.set(lang, "partial");
+    if (!counts || counts.total === 0) result.set(lang, { status: "none", completed: 0, total: 0 });
+    else if (counts.completed === counts.total) result.set(lang, { status: "done", completed: counts.completed, total: counts.total });
+    else result.set(lang, { status: "partial", completed: counts.completed, total: counts.total });
   }
   return result;
 }
@@ -73,6 +75,19 @@ const COUNTRY_FLAGS: Record<string, string> = {
   DE: "🇩🇪",
 };
 
+type SortField = "concept_number" | "name" | "status" | "created_at";
+type SortDir = "asc" | "desc";
+
+const STATUS_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "Importing", label: "Importing" },
+  { value: "Ready", label: "Ready" },
+  { value: "Translating", label: "Translating" },
+  { value: "Translated", label: "Translated" },
+  { value: "Pushing", label: "Pushing" },
+  { value: "Published", label: "Published" },
+] as const;
+
 export default function ImagesPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ImageJob[]>([]);
@@ -80,18 +95,61 @@ export default function ImagesPage() {
   const [showModal, setShowModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [avgSeconds, setAvgSeconds] = useState(75);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const fetchJobs = useCallback(async () => {
+  // Filter & sort state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [productFilter, setProductFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  // Filter and sort jobs client-side
+  const filteredJobs = jobs.filter((job) => {
+    if (searchQuery && !job.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (statusFilter !== "all" && getOverallStatus(job).label !== statusFilter) return false;
+    if (productFilter !== "all" && job.product !== productFilter) return false;
+    return true;
+  }).sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    switch (sortField) {
+      case "concept_number": return ((a.concept_number ?? 0) - (b.concept_number ?? 0)) * dir;
+      case "name": return a.name.localeCompare(b.name) * dir;
+      case "status": return getOverallStatus(a).label.localeCompare(getOverallStatus(b).label) * dir;
+      case "created_at": return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
+      default: return 0;
+    }
+  });
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "created_at" ? "desc" : "asc");
+    }
+  }
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-0 group-hover/sort:opacity-50" />;
+    return sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+  }
+
+  const fetchJobs = useCallback(async (p = page) => {
     try {
-      const res = await fetch("/api/image-jobs");
+      const res = await fetch(`/api/image-jobs?page=${p}&limit=${PAGE_SIZE}`);
       if (res.ok) {
         const data = await res.json();
-        setJobs(data);
+        setJobs(data.jobs ?? data);
+        if (data.total !== undefined) setTotalCount(data.total);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page]);
 
   // Fetch average generation time
   useEffect(() => {
@@ -119,7 +177,10 @@ export default function ImagesPage() {
   async function handleDelete(jobId: string) {
     setConfirmDeleteId(null);
     const res = await fetch(`/api/image-jobs/${jobId}`, { method: "DELETE" });
-    if (res.ok) setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    if (res.ok) {
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+      setTotalCount((n) => Math.max(0, n - 1));
+    }
   }
 
   function handleCreated(jobId: string) {
@@ -140,10 +201,69 @@ export default function ImagesPage() {
           New Concept
         </button>
       </div>
-      <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
+      <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
         <Clock className="w-3.5 h-3.5" />
         Current average: ~{avgSeconds}s per image
       </p>
+
+      {/* Filters */}
+      {!loading && jobs.length > 0 && (
+        <div className="flex items-center gap-3 mb-4">
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search concepts..."
+              className="w-full bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-indigo-400 transition-colors"
+            />
+          </div>
+          {/* Status filter */}
+          <div className="flex items-center gap-1">
+            {STATUS_FILTERS.map((sf) => (
+              <button
+                key={sf.value}
+                onClick={() => setStatusFilter(sf.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  statusFilter === sf.value
+                    ? "bg-indigo-50 text-indigo-600"
+                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {sf.label}
+              </button>
+            ))}
+          </div>
+          {/* Product filter */}
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+            <button
+              onClick={() => setProductFilter("all")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                productFilter === "all"
+                  ? "bg-indigo-50 text-indigo-600"
+                  : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              All
+            </button>
+            {PRODUCTS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setProductFilter(p.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  productFilter === p.value
+                    ? "bg-indigo-50 text-indigo-600"
+                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -173,18 +293,30 @@ export default function ImagesPage() {
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {/* Table header */}
           <div className="grid grid-cols-[48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
-            <div>#</div>
-            <div>Name</div>
+            <button onClick={() => toggleSort("concept_number")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
+              # <SortIcon field="concept_number" />
+            </button>
+            <button onClick={() => toggleSort("name")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors text-left">
+              Name <SortIcon field="name" />
+            </button>
             <div>Product</div>
             <div>Translations</div>
             <div>Markets</div>
-            <div>Status</div>
-            <div>Created</div>
+            <button onClick={() => toggleSort("status")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
+              Status <SortIcon field="status" />
+            </button>
+            <button onClick={() => toggleSort("created_at")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
+              Created <SortIcon field="created_at" />
+            </button>
             <div></div>
           </div>
 
           {/* Table rows */}
-          {jobs.map((job) => {
+          {filteredJobs.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-gray-400">
+              No concepts match your filters
+            </div>
+          ) : filteredJobs.map((job) => {
             const langStatus = getLanguageStatus(job);
             const marketStatus = getMarketStatus(job);
             const status = getOverallStatus(job);
@@ -215,12 +347,15 @@ export default function ImagesPage() {
                 <div className="flex items-center gap-1.5">
                   {job.target_languages.map((lang) => {
                     const langInfo = LANGUAGES.find((l) => l.value === lang);
-                    const s = langStatus.get(lang) ?? "none";
+                    const info = langStatus.get(lang) ?? { status: "none", completed: 0, total: 0 };
+                    const tooltip = info.total > 0
+                      ? `${langInfo?.label}: ${info.completed}/${info.total} translated`
+                      : `${langInfo?.label}: not started`;
                     return (
-                      <span key={lang} className="relative inline-flex items-center" title={`${langInfo?.label}: ${s === "done" ? "translated" : s === "partial" ? "in progress" : "not started"}`}>
+                      <span key={lang} className="relative inline-flex items-center" title={tooltip}>
                         <span className="text-sm">{langInfo?.flag}</span>
                         <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
-                          s === "done" ? "bg-emerald-500" : s === "partial" ? "bg-amber-400" : "bg-gray-300"
+                          info.status === "done" ? "bg-emerald-500" : info.status === "partial" ? "bg-amber-400" : "bg-gray-300"
                         }`} />
                       </span>
                     );
@@ -265,6 +400,36 @@ export default function ImagesPage() {
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-xs text-gray-400">
+            {totalCount} concepts
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setPage((p) => p - 1); fetchJobs(page - 1); }}
+              disabled={page <= 1}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Prev
+            </button>
+            <span className="text-xs text-gray-500 tabular-nums">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => { setPage((p) => p + 1); fetchJobs(page + 1); }}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+            >
+              Next
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 

@@ -8,12 +8,26 @@ export async function GET(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const url = new URL(_req.url);
+  const compact = url.searchParams.get("compact") === "true";
 
-  let { data: job, error } = await db
-    .from("image_jobs")
-    .select(`*, source_images(*, image_translations(*, versions(*)))`)
-    .eq("id", id)
-    .single();
+  // Compact mode: skip full version history, only fetch active versions
+  const select = compact
+    ? `*, source_images(*, image_translations(*, versions!inner(*)))`
+    : `*, source_images(*, image_translations(*, versions(*)))`;
+
+  let { data: job, error } = compact
+    ? await db
+        .from("image_jobs")
+        .select(select)
+        .eq("id", id)
+        .eq("source_images.image_translations.versions.is_active", true)
+        .single()
+    : await db
+        .from("image_jobs")
+        .select(select)
+        .eq("id", id)
+        .single();
 
   // Fall back to query without versions if table doesn't exist yet
   if (error && error.message?.includes("versions")) {

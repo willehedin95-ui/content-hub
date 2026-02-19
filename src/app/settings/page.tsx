@@ -13,7 +13,7 @@ import {
   Plug,
   X,
 } from "lucide-react";
-import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping } from "@/types";
+import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
 import Dropdown from "@/components/ui/Dropdown";
 
 interface Settings {
@@ -23,8 +23,14 @@ interface Settings {
   static_ads_quality_threshold: number;
   static_ads_economy_mode: boolean;
   static_ads_default_languages: Language[];
+  static_ads_default_ratios: AspectRatio[];
+  static_ads_max_retries: number;
+  static_ads_auto_export: boolean;
   static_ads_notification_email: string;
   static_ads_email_enabled: boolean;
+  meta_default_daily_budget: number;
+  meta_default_objective: string;
+  meta_default_schedule_time: string;
 }
 
 const TABS = [
@@ -46,8 +52,14 @@ export default function SettingsPage() {
     static_ads_quality_threshold: 80,
     static_ads_economy_mode: false,
     static_ads_default_languages: ["sv", "da", "no", "de"],
+    static_ads_default_ratios: ["1:1"],
+    static_ads_max_retries: 5,
+    static_ads_auto_export: false,
     static_ads_notification_email: "",
     static_ads_email_enabled: false,
+    meta_default_daily_budget: 50,
+    meta_default_objective: "OUTCOME_TRAFFIC",
+    meta_default_schedule_time: "06:00",
   });
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -224,7 +236,15 @@ export default function SettingsPage() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) router.back(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-[740px] max-h-[85vh] flex overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-[740px] h-[85vh] flex overflow-hidden relative">
+        {/* Close button — top right */}
+        <button
+          onClick={() => router.back()}
+          className="absolute top-3 right-3 z-10 text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
         {/* Sidebar */}
         <nav className="w-48 shrink-0 border-r border-gray-100 bg-gray-50/50 px-3 pt-5 pb-4 flex flex-col">
           <div className="flex items-center justify-between px-2 mb-4">
@@ -257,16 +277,6 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
-          {/* Close button at bottom */}
-          <div className="mt-auto pt-2">
-            <button
-              onClick={() => router.back()}
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1.5"
-            >
-              <X className="w-3.5 h-3.5" />
-              Close
-            </button>
-          </div>
         </nav>
 
         {/* Content */}
@@ -389,6 +399,70 @@ export default function SettingsPage() {
                     </div>
                   }
                 />
+                <RowDivider />
+                <Row
+                  label="Default aspect ratios"
+                  description="Pre-selected when creating new concepts"
+                  action={
+                    <div className="flex gap-1.5">
+                      {ASPECT_RATIOS.map((ratio) => {
+                        const selected = settings.static_ads_default_ratios.includes(ratio.value);
+                        return (
+                          <button
+                            key={ratio.value}
+                            type="button"
+                            onClick={() =>
+                              setSettings((s) => ({
+                                ...s,
+                                static_ads_default_ratios: selected
+                                  ? s.static_ads_default_ratios.filter((r) => r !== ratio.value)
+                                  : [...s.static_ads_default_ratios, ratio.value],
+                              }))
+                            }
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                              selected
+                                ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                                : "bg-white border-gray-200 text-gray-400 hover:text-gray-600"
+                            }`}
+                          >
+                            {ratio.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Max auto-retries"
+                  description="Times to regenerate a low-quality image"
+                  action={
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        value={settings.static_ads_max_retries}
+                        onChange={(e) => setSettings((s) => ({ ...s, static_ads_max_retries: Number(e.target.value) }))}
+                        className="w-20 accent-indigo-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
+                        {settings.static_ads_max_retries}
+                      </span>
+                    </div>
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Auto-export to Drive"
+                  description="Export translations when all images complete"
+                  action={
+                    <ToggleSwitch
+                      checked={settings.static_ads_auto_export}
+                      onChange={(v) => setSettings((s) => ({ ...s, static_ads_auto_export: v }))}
+                    />
+                  }
+                />
               </SettingsCard>
 
               <SectionHeader>Notifications</SectionHeader>
@@ -449,6 +523,54 @@ export default function SettingsPage() {
                   }
                 />
               </SettingsCard>
+
+              <SectionHeader>Defaults</SectionHeader>
+              <SettingsCard>
+                <Row
+                  label="Daily budget"
+                  description="Default budget for new campaigns"
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={10}
+                        value={settings.meta_default_daily_budget}
+                        onChange={(e) => setSettings((s) => ({ ...s, meta_default_daily_budget: Number(e.target.value) }))}
+                        className="w-20 bg-white border border-gray-200 text-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:border-indigo-500 tabular-nums"
+                      />
+                    </div>
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Default objective"
+                  description="Pre-selected for new campaigns"
+                  action={
+                    <Dropdown
+                      value={settings.meta_default_objective}
+                      onChange={(v) => setSettings((s) => ({ ...s, meta_default_objective: v }))}
+                      options={META_OBJECTIVES.map((o) => ({ value: o.value, label: o.label }))}
+                      className="w-36"
+                    />
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Default schedule time"
+                  description="Start time for new campaigns"
+                  action={
+                    <input
+                      type="time"
+                      value={settings.meta_default_schedule_time}
+                      onChange={(e) => setSettings((s) => ({ ...s, meta_default_schedule_time: e.target.value }))}
+                      className="bg-white border border-gray-200 text-gray-800 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-indigo-500 tabular-nums"
+                    />
+                  }
+                />
+              </SettingsCard>
+              <SaveButton saved={saved} onSave={handleSave} />
 
               <SectionHeader>Campaign Mapping</SectionHeader>
               <p className="text-xs text-gray-400 mb-2.5">
