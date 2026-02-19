@@ -1,5 +1,5 @@
 export const OPENAI_MODEL = "gpt-4o";
-export const KIE_MODEL = "nano-banana-pro";
+export const KIE_MODEL = "google/nano-banana";
 export const STORAGE_BUCKET = "translated-images";
 
 export const EXPANSION_PROMPT = `Outpaint this square (1:1) image to 9:16 vertical format by seamlessly extending the canvas above and below.
