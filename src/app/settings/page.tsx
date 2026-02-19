@@ -628,7 +628,7 @@ export default function SettingsPage() {
                   description="Default budget for new campaigns"
                   action={
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm text-gray-400">$</span>
+                      <span className="text-sm text-gray-400">kr</span>
                       <input
                         type="number"
                         min={0}
