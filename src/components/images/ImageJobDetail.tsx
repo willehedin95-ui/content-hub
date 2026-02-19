@@ -19,7 +19,7 @@ import {
   EyeOff,
   Square,
 } from "lucide-react";
-import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, COUNTRY_MAP } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, COUNTRY_MAP, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 
@@ -62,6 +62,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [docError, setDocError] = useState<string | null>(null);
   const [docMatchedTab, setDocMatchedTab] = useState<string | null>(null);
   const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [copyTranslations, setCopyTranslations] = useState<ConceptCopyTranslations>(
+    () => initialJob.ad_copy_translations ?? {}
+  );
+  const [translatingCopy, setTranslatingCopy] = useState(false);
+  const [translatingLang, setTranslatingLang] = useState<Language | null>(null);
 
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
     // Init from job if already set, otherwise from settings defaults
@@ -237,6 +242,31 @@ export default function ImageJobDetail({ initialJob }: Props) {
       console.error("Fetch from doc failed:", err);
     } finally {
       setFetchingDoc(false);
+    }
+  }
+
+  // Translate ad copy for all languages (or a specific one)
+  async function handleTranslateCopy(lang?: Language) {
+    if (lang) {
+      setTranslatingLang(lang);
+    } else {
+      setTranslatingCopy(true);
+    }
+    try {
+      const res = await fetch(`/api/image-jobs/${initialJob.id}/translate-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lang ? { language: lang } : {}),
+      });
+      const data = await res.json();
+      if (data.translations) {
+        setCopyTranslations(data.translations);
+      }
+    } catch (err) {
+      console.error("Copy translation failed:", err);
+    } finally {
+      setTranslatingCopy(false);
+      setTranslatingLang(null);
     }
   }
 
@@ -1094,6 +1124,131 @@ export default function ImageJobDetail({ initialJob }: Props) {
             )}
           </div>
 
+          {/* Translate Copy section */}
+          {primaryTexts.some((t) => t.trim()) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-700">Translations</h3>
+                <button
+                  onClick={() => handleTranslateCopy()}
+                  disabled={translatingCopy || !primaryTexts.some((t) => t.trim())}
+                  className="flex items-center gap-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  {translatingCopy ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Translating...
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="w-3.5 h-3.5" />
+                      {Object.keys(copyTranslations).length > 0 ? "Re-translate All" : "Translate All"}
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Per-language translation cards */}
+              <div className="space-y-3">
+                {job.target_languages.map((lang) => {
+                  const langInfo = LANGUAGES.find((l) => l.value === lang);
+                  const ct = copyTranslations[lang] as ConceptCopyTranslation | undefined;
+
+                  return (
+                    <div key={lang} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      {/* Language header */}
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{langInfo?.flag}</span>
+                          <span className="text-sm font-medium text-gray-700">{langInfo?.label}</span>
+                          {ct?.status === "completed" && ct.quality_score != null && (
+                            <QualityBadge score={ct.quality_score} />
+                          )}
+                          {ct?.status === "translating" && (
+                            <span className="flex items-center gap-1 text-xs text-indigo-600">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Translating...
+                            </span>
+                          )}
+                          {ct?.status === "error" && (
+                            <span className="flex items-center gap-1 text-xs text-red-600">
+                              <AlertTriangle className="w-3 h-3" />
+                              {ct.error || "Failed"}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleTranslateCopy(lang as Language)}
+                          disabled={translatingLang === lang || translatingCopy}
+                          className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                        >
+                          {translatingLang === lang ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3 h-3" />
+                          )}
+                          {ct ? "Re-translate" : "Translate"}
+                        </button>
+                      </div>
+
+                      {/* Translation content */}
+                      {ct?.status === "completed" && (
+                        <div className="px-4 py-3 space-y-3">
+                          {/* Primary texts */}
+                          {ct.primary_texts.map((text, i) => (
+                            <div key={`p-${i}`} className="space-y-1">
+                              {ct.primary_texts.length > 1 && (
+                                <p className="text-xs text-gray-400">Primary text {i + 1}</p>
+                              )}
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{text}</p>
+                            </div>
+                          ))}
+
+                          {/* Headlines */}
+                          {ct.headlines.length > 0 && ct.headlines.some((h) => h.trim()) && (
+                            <div className="border-t border-gray-100 pt-2">
+                              {ct.headlines.map((text, i) => (
+                                <div key={`h-${i}`} className="space-y-1">
+                                  {ct.headlines.length > 1 && (
+                                    <p className="text-xs text-gray-400">Headline {i + 1}</p>
+                                  )}
+                                  <p className="text-sm font-medium text-gray-700">{text}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Quality analysis details */}
+                          {ct.quality_analysis && (
+                            <div className="border-t border-gray-100 pt-2">
+                              <p className="text-xs text-gray-500 mb-1">{ct.quality_analysis.overall_assessment}</p>
+                              {ct.quality_analysis.fluency_issues?.length > 0 && (
+                                <p className="text-xs text-amber-600">Fluency: {ct.quality_analysis.fluency_issues.join("; ")}</p>
+                              )}
+                              {ct.quality_analysis.grammar_issues?.length > 0 && (
+                                <p className="text-xs text-red-600">Grammar: {ct.quality_analysis.grammar_issues.join("; ")}</p>
+                              )}
+                              {ct.quality_analysis.context_errors?.length > 0 && (
+                                <p className="text-xs text-orange-600">Context: {ct.quality_analysis.context_errors.join("; ")}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Empty state */}
+                      {!ct && (
+                        <div className="px-4 py-3">
+                          <p className="text-xs text-gray-400">Not translated yet</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Concept number preview */}
           {primaryTexts.some((t) => t.trim()) && landingPageId && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
@@ -1107,30 +1262,44 @@ export default function ImageJobDetail({ initialJob }: Props) {
                   </p>
                 );
               })}
-              <p className="text-xs text-gray-400 mt-2">
-                Scheduled to start at 03:00 CET. Copy will be auto-translated per market.
-              </p>
             </div>
           )}
 
           {/* Push button */}
-          <button
-            onClick={handlePushToMeta}
-            disabled={pushing || !primaryTexts.some((t) => t.trim()) || !landingPageId}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
-          >
-            {pushing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Pushing to Meta...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Push to All Markets ({job.target_languages.length})
-              </>
-            )}
-          </button>
+          {(() => {
+            const allLangsTranslated = job.target_languages.every(
+              (lang) => copyTranslations[lang]?.status === "completed"
+            );
+            const hasCopy = primaryTexts.some((t) => t.trim());
+            const canPush = hasCopy && landingPageId && allLangsTranslated;
+
+            return (
+              <div className="space-y-2">
+                <button
+                  onClick={handlePushToMeta}
+                  disabled={pushing || !canPush}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
+                >
+                  {pushing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Pushing to Meta...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Push to All Markets ({job.target_languages.length})
+                    </>
+                  )}
+                </button>
+                {!allLangsTranslated && hasCopy && (
+                  <p className="text-xs text-gray-400">
+                    Translate all ad copy before pushing to Meta
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Push results */}
           {pushResults && (
@@ -1298,6 +1467,20 @@ function ProcessingTimer({ startTime, processedCount, remainingCount }: {
   return (
     <span className="text-xs text-gray-400 tabular-nums">
       {elapsedStr}{etaStr && <> &middot; {etaStr}</>}
+    </span>
+  );
+}
+
+function QualityBadge({ score }: { score: number }) {
+  const color =
+    score >= 90
+      ? "bg-emerald-50 text-emerald-700"
+      : score >= 70
+      ? "bg-amber-50 text-amber-700"
+      : "bg-red-50 text-red-700";
+  return (
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${color}`}>
+      {score}
     </span>
   );
 }

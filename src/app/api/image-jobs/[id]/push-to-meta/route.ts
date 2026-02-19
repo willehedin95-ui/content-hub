@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { Language, COUNTRY_MAP, LANGUAGES } from "@/types";
+import { Language, COUNTRY_MAP, LANGUAGES, ConceptCopyTranslations } from "@/types";
 import {
   duplicateAdSet,
   updateAdSet,
@@ -168,13 +168,19 @@ export async function POST(
     }
 
     try {
-      // Translate all ad copy variants in one API call
-      const { translatedPrimaries, translatedHeadlines } = await translateAdCopyBatch(
-        primaryTexts,
-        headlineTexts,
-        lang,
-        db
-      );
+      // Use pre-translated copy if available, otherwise translate on-the-fly
+      const preTranslated = (job.ad_copy_translations as ConceptCopyTranslations)?.[lang];
+      let translatedPrimaries: string[];
+      let translatedHeadlines: string[];
+
+      if (preTranslated?.status === "completed" && preTranslated.primary_texts.length > 0) {
+        translatedPrimaries = preTranslated.primary_texts;
+        translatedHeadlines = preTranslated.headlines;
+      } else {
+        const result = await translateAdCopyBatch(primaryTexts, headlineTexts, lang, db);
+        translatedPrimaries = result.translatedPrimaries;
+        translatedHeadlines = result.translatedHeadlines;
+      }
 
       // Generate ad set name
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;

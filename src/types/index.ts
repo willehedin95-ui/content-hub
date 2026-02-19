@@ -152,6 +152,8 @@ export interface ImageJob {
   completed_translations?: number;
   failed_translations?: number;
   deployments?: Array<{ country: string; language: Language; status: MetaCampaignStatus }>;
+  // Per-language translated ad copy with quality scores (stored as JSON in DB)
+  ad_copy_translations?: ConceptCopyTranslations;
 }
 
 export interface SourceImage {
@@ -233,6 +235,18 @@ export interface AdCopyQualityAnalysis {
   context_errors: string[];
   overall_assessment: string;
 }
+
+// Per-language translated ad copy stored on image_jobs.ad_copy_translations
+export interface ConceptCopyTranslation {
+  primary_texts: string[];
+  headlines: string[];
+  quality_score: number | null;
+  quality_analysis: AdCopyQualityAnalysis | null;
+  status: "pending" | "translating" | "completed" | "error";
+  error?: string;
+}
+
+export type ConceptCopyTranslations = Record<string, ConceptCopyTranslation>;
 
 export interface AdCopyTranslation {
   id: string;
