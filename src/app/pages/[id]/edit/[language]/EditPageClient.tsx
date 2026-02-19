@@ -947,262 +947,277 @@ export default function EditPageClient({
 
         {/* Sidebar */}
         <div className="w-72 border-l border-gray-200 shrink-0 flex flex-col overflow-y-auto bg-white">
-          {/* Element controls (shown when an element is selected) */}
-          {hasSelectedEl && (
+          {clickedImage ? (
+            /* Image clicked: ImageTranslatePanel takes over the full sidebar */
+            <ImageTranslatePanel
+              iframeRef={iframeRef}
+              translationId={translation.id}
+              language={language}
+              clickedImage={clickedImage}
+              onClickedImageClear={() => setClickedImage(null)}
+              onImageReplaced={() => markDirty()}
+            />
+          ) : (
+            /* Normal view: page settings */
             <>
-              <div className="px-4 py-3 space-y-2 bg-indigo-50/50">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
-                    Element
-                  </p>
-                  <button
-                    onClick={() => {
-                      if (selectedElRef.current) {
-                        selectedElRef.current.removeAttribute("data-cc-selected");
-                        selectedElRef.current = null;
-                      }
-                      setHasSelectedEl(false);
-                    }}
-                    className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                  >
-                    Deselect
-                  </button>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-gray-500 uppercase tracking-wider">Margin</label>
+              {/* Element controls (shown when an element is selected) */}
+              {hasSelectedEl && (
+                <>
+                  <div className="px-4 py-3 space-y-2 bg-indigo-50/50">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
+                        Element
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (selectedElRef.current) {
+                            selectedElRef.current.removeAttribute("data-cc-selected");
+                            selectedElRef.current = null;
+                          }
+                          setHasSelectedEl(false);
+                        }}
+                        className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                      >
+                        Deselect
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-gray-500 uppercase tracking-wider">Margin</label>
+                        <button
+                          onClick={() => setElSpacingMode(elSpacingMode === "hv" ? "individual" : "hv")}
+                          className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                        >
+                          {elSpacingMode === "hv" ? "T R B L" : "H / V"}
+                        </button>
+                      </div>
+                      {elSpacingMode === "hv" ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <MoveHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
+                            <input
+                              type="number"
+                              value={selectedElMargin.left === selectedElMargin.right ? selectedElMargin.left : ""}
+                              onChange={(e) => handleElMarginHV("h", e.target.value)}
+                              placeholder="—"
+                              className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <MoveVertical className="w-3 h-3 text-gray-400 shrink-0" />
+                            <input
+                              type="number"
+                              value={selectedElMargin.top === selectedElMargin.bottom ? selectedElMargin.top : ""}
+                              onChange={(e) => handleElMarginHV("v", e.target.value)}
+                              placeholder="—"
+                              className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {(["top", "right", "bottom", "left"] as const).map(side => (
+                            <div key={side} className="space-y-0.5">
+                              <span className="text-xs text-gray-400 uppercase block text-center">{side[0].toUpperCase()}</span>
+                              <input
+                                type="number"
+                                value={selectedElMargin[side]}
+                                onChange={(e) => handleElMarginChange(side, e.target.value)}
+                                className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
-                      onClick={() => setElSpacingMode(elSpacingMode === "hv" ? "individual" : "hv")}
-                      className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                      onClick={handleHideElement}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                     >
-                      {elSpacingMode === "hv" ? "T R B L" : "H / V"}
+                      <EyeOff className="w-3 h-3" /> Hide Element
                     </button>
                   </div>
-                  {elSpacingMode === "hv" ? (
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1.5 flex-1">
-                        <MoveHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
-                        <input
-                          type="number"
-                          value={selectedElMargin.left === selectedElMargin.right ? selectedElMargin.left : ""}
-                          onChange={(e) => handleElMarginHV("h", e.target.value)}
-                          placeholder="—"
-                          className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-1">
-                        <MoveVertical className="w-3 h-3 text-gray-400 shrink-0" />
-                        <input
-                          type="number"
-                          value={selectedElMargin.top === selectedElMargin.bottom ? selectedElMargin.top : ""}
-                          onChange={(e) => handleElMarginHV("v", e.target.value)}
-                          placeholder="—"
-                          className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {(["top", "right", "bottom", "left"] as const).map(side => (
-                        <div key={side} className="space-y-0.5">
-                          <span className="text-xs text-gray-400 uppercase block text-center">{side[0].toUpperCase()}</span>
-                          <input
-                            type="number"
-                            value={selectedElMargin[side]}
-                            onChange={(e) => handleElMarginChange(side, e.target.value)}
-                            className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="border-t border-gray-200" />
+                </>
+              )}
+
+              {/* Hidden elements indicator */}
+              {hiddenCount > 0 && !hasSelectedEl && (
+                <>
+                  <div className="px-4 py-2">
+                    <button
+                      onClick={toggleRevealHidden}
+                      className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
+                        revealHidden
+                          ? "bg-red-50 border-red-300 text-red-700"
+                          : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      <Eye className="w-3 h-3" />
+                      {revealHidden ? "Click to unhide" : `${hiddenCount} hidden`}
+                    </button>
+                  </div>
+                  <div className="border-t border-gray-200" />
+                </>
+              )}
+
+              {/* Padding */}
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Padding
+                  </p>
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    {viewMode === "desktop" ? (
+                      <><Monitor className="w-3 h-3" /> Desktop</>
+                    ) : (
+                      <><Smartphone className="w-3 h-3" /> Mobile</>
+                    )}
+                  </span>
                 </div>
-                <button
-                  onClick={handleHideElement}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <EyeOff className="w-3 h-3" /> Hide Element
-                </button>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="number"
+                      min="0"
+                      value={viewMode === "desktop" ? padDH : padMH}
+                      onChange={(e) => handlePaddingChange("h", e.target.value)}
+                      placeholder="—"
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="number"
+                      min="0"
+                      value={viewMode === "desktop" ? padDV : padMV}
+                      onChange={(e) => handlePaddingChange("v", e.target.value)}
+                      placeholder="—"
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setExcludeMode(!excludeMode)}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
+                      excludeMode
+                        ? "bg-amber-50 border-amber-300 text-amber-700"
+                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                    }`}
+                  >
+                    <MousePointerClick className="w-3 h-3" />
+                    Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
+                  </button>
+                  <span className="text-xs text-gray-400">
+                    {viewMode === "desktop" ? "Desktop" : "Mobile"} view
+                  </span>
+                </div>
               </div>
+
               <div className="border-t border-gray-200" />
+
+              {/* Destination URL */}
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Destination URL
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={(e) => handleLinkUrlChange(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+                  />
+                </div>
+                <p className="text-xs text-gray-400">
+                  Applied to all links on the page.
+                </p>
+              </div>
+
+              <div className="border-t border-gray-200" />
+
+              {/* Slug */}
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Slug
+                </p>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={(e) => {
+                    setSlug(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder="page-slug"
+                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+                />
+                <p className="text-xs text-gray-400 truncate">
+                  {language.domain}/{slug}
+                </p>
+              </div>
+
+              <div className="border-t border-gray-200" />
+
+              {/* SEO fields */}
+              <div className="px-4 py-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  SEO
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">
+                    Page Title
+                  </label>
+                  <input
+                    value={seoTitle}
+                    onChange={(e) => {
+                      setSeoTitle(e.target.value);
+                      markDirty();
+                    }}
+                    placeholder="Page title..."
+                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                  <p className={`text-xs text-right ${seoTitle.length > 60 ? "text-red-500" : seoTitle.length >= 50 ? "text-yellow-500" : "text-gray-400"}`}>
+                    {seoTitle.length}/60
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-gray-400 uppercase tracking-wider">
+                    Meta Description
+                  </label>
+                  <textarea
+                    value={seoDesc}
+                    onChange={(e) => {
+                      setSeoDesc(e.target.value);
+                      markDirty();
+                    }}
+                    placeholder="Meta description..."
+                    rows={4}
+                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                  />
+                  <p className={`text-xs text-right ${seoDesc.length > 160 ? "text-red-500" : seoDesc.length >= 140 ? "text-yellow-500" : "text-gray-400"}`}>
+                    {seoDesc.length}/160
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200" />
+
+              {/* Images hint */}
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Images
+                </p>
+                <p className="text-xs text-gray-400">
+                  Click an image in the preview to translate or replace it.
+                </p>
+              </div>
             </>
           )}
-
-          {/* Hidden elements indicator */}
-          {hiddenCount > 0 && !hasSelectedEl && (
-            <>
-              <div className="px-4 py-2">
-                <button
-                  onClick={toggleRevealHidden}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
-                    revealHidden
-                      ? "bg-red-50 border-red-300 text-red-700"
-                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                  }`}
-                >
-                  <Eye className="w-3 h-3" />
-                  {revealHidden ? "Click to unhide" : `${hiddenCount} hidden`}
-                </button>
-              </div>
-              <div className="border-t border-gray-200" />
-            </>
-          )}
-
-          {/* Padding */}
-          <div className="px-4 py-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Padding
-              </p>
-              <span className="flex items-center gap-1 text-xs text-gray-400">
-                {viewMode === "desktop" ? (
-                  <><Monitor className="w-3 h-3" /> Desktop</>
-                ) : (
-                  <><Smartphone className="w-3 h-3" /> Mobile</>
-                )}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 flex-1">
-                <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                <input
-                  type="number"
-                  min="0"
-                  value={viewMode === "desktop" ? padDH : padMH}
-                  onChange={(e) => handlePaddingChange("h", e.target.value)}
-                  placeholder="—"
-                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 flex-1">
-                <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                <input
-                  type="number"
-                  min="0"
-                  value={viewMode === "desktop" ? padDV : padMV}
-                  onChange={(e) => handlePaddingChange("v", e.target.value)}
-                  placeholder="—"
-                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setExcludeMode(!excludeMode)}
-                className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
-                  excludeMode
-                    ? "bg-amber-50 border-amber-300 text-amber-700"
-                    : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                }`}
-              >
-                <MousePointerClick className="w-3 h-3" />
-                Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
-              </button>
-              <span className="text-xs text-gray-400">
-                {viewMode === "desktop" ? "Desktop" : "Mobile"} view
-              </span>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Destination URL */}
-          <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Destination URL
-            </p>
-            <div className="flex items-center gap-1.5">
-              <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-              <input
-                type="url"
-                value={linkUrl}
-                onChange={(e) => handleLinkUrlChange(e.target.value)}
-                placeholder="https://..."
-                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
-              />
-            </div>
-            <p className="text-xs text-gray-400">
-              Applied to all links on the page.
-            </p>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Slug */}
-          <div className="px-4 py-3 space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Slug
-            </p>
-            <input
-              type="text"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                markDirty();
-              }}
-              placeholder="page-slug"
-              className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
-            />
-            <p className="text-xs text-gray-400 truncate">
-              {language.domain}/{slug}
-            </p>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* SEO fields */}
-          <div className="px-4 py-3 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              SEO
-            </p>
-            <div className="space-y-1.5">
-              <label className="text-xs text-gray-400 uppercase tracking-wider">
-                Page Title
-              </label>
-              <input
-                value={seoTitle}
-                onChange={(e) => {
-                  setSeoTitle(e.target.value);
-                  markDirty();
-                }}
-                placeholder="Page title..."
-                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
-              />
-              <p className={`text-xs text-right ${seoTitle.length > 60 ? "text-red-500" : seoTitle.length >= 50 ? "text-yellow-500" : "text-gray-400"}`}>
-                {seoTitle.length}/60
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-gray-400 uppercase tracking-wider">
-                Meta Description
-              </label>
-              <textarea
-                value={seoDesc}
-                onChange={(e) => {
-                  setSeoDesc(e.target.value);
-                  markDirty();
-                }}
-                placeholder="Meta description..."
-                rows={4}
-                className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
-              />
-              <p className={`text-xs text-right ${seoDesc.length > 160 ? "text-red-500" : seoDesc.length >= 140 ? "text-yellow-500" : "text-gray-400"}`}>
-                {seoDesc.length}/160
-              </p>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200" />
-
-          {/* Image translation */}
-          <ImageTranslatePanel
-            iframeRef={iframeRef}
-            translationId={translation.id}
-            language={language}
-            clickedImage={clickedImage}
-            onClickedImageClear={() => setClickedImage(null)}
-            onImageReplaced={() => markDirty()}
-          />
         </div>
       </div>
 
