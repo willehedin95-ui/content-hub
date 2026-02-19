@@ -17,6 +17,7 @@ import {
   ImageIcon,
   Type,
   EyeOff,
+  Square,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, COUNTRY_MAP } from "@/types";
 import { getSettings } from "@/lib/settings";
@@ -38,6 +39,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [previewLang, setPreviewLang] = useState<string | null>(null);
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
+  const cancelRef = useRef(false);
+  const [processStartTime, setProcessStartTime] = useState<number | null>(null);
+  const [processedInSession, setProcessedInSession] = useState(0);
   // Meta push state
   const [primaryTexts, setPrimaryTexts] = useState<string[]>(() => {
     const arr = initialJob.ad_copy_primary ?? [];
@@ -422,18 +426,27 @@ export default function ImageJobDetail({ initialJob }: Props) {
     );
   }
 
+  function handleCancel() {
+    cancelRef.current = true;
+  }
+
   async function startQueue(translations: ImageTranslation[]) {
     if (processingRef.current) return;
     processingRef.current = true;
+    cancelRef.current = false;
     setProcessing(true);
+    setProcessStartTime(Date.now());
+    setProcessedInSession(0);
 
     const queue = [...translations];
     const CONCURRENCY = 10;
     const executing = new Set<Promise<void>>();
 
     for (const item of queue) {
+      if (cancelRef.current) break;
       const p = processOne(item).then(() => {
         executing.delete(p);
+        setProcessedInSession((n) => n + 1);
       });
       executing.add(p);
       if (executing.size >= CONCURRENCY) {
@@ -443,7 +456,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
     await Promise.all(executing);
 
     processingRef.current = false;
+    cancelRef.current = false;
     setProcessing(false);
+    setProcessStartTime(null);
     const finalJob = await refreshJob();
     playNotificationSound();
 
@@ -797,9 +812,27 @@ export default function ImageJobDetail({ initialJob }: Props) {
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-6">
         {pendingCount > 0 || processing ? (
-          <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Processing... ({completedCount}/{totalCount})
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Processing... ({completedCount}/{totalCount})
+            </div>
+            {processStartTime && (
+              <ProcessingTimer
+                startTime={processStartTime}
+                processedCount={processedInSession}
+                remainingCount={pendingCount}
+              />
+            )}
+            {processing && (
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg transition-colors"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                Stop
+              </button>
+            )}
           </div>
         ) : failedCount > 0 ? (
           <div className="flex items-center gap-3">
@@ -1228,6 +1261,43 @@ function ElapsedTimer() {
   return (
     <span className="tabular-nums">
       {mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`}
+    </span>
+  );
+}
+
+function ProcessingTimer({ startTime, processedCount, remainingCount }: {
+  startTime: number;
+  processedCount: number;
+  remainingCount: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const elapsed = Math.floor((now - startTime) / 1000);
+  const elapsedMin = Math.floor(elapsed / 60);
+  const elapsedSec = elapsed % 60;
+  const elapsedStr = elapsedMin > 0
+    ? `${elapsedMin}m ${elapsedSec.toString().padStart(2, "0")}s`
+    : `${elapsedSec}s`;
+
+  // Estimate remaining time based on avg per image
+  let etaStr = "";
+  if (processedCount > 0 && remainingCount > 0) {
+    const avgPerItem = elapsed / processedCount;
+    const etaSec = Math.ceil(avgPerItem * remainingCount);
+    const etaMin = Math.floor(etaSec / 60);
+    const etaRemSec = etaSec % 60;
+    etaStr = etaMin > 0
+      ? `~${etaMin}m ${etaRemSec.toString().padStart(2, "0")}s left`
+      : `~${etaRemSec}s left`;
+  }
+
+  return (
+    <span className="text-xs text-gray-400 tabular-nums">
+      {elapsedStr}{etaStr && <> &middot; {etaStr}</>}
     </span>
   );
 }
