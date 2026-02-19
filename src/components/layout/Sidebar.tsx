@@ -10,8 +10,7 @@ import { createBrowserSupabase } from "@/lib/supabase";
 const nav = [
   { href: "/", label: "Landing pages", icon: Layers },
   { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
-  { href: "/images", label: "Static ads", icon: Image },
-  { href: "/ad-copy", label: "Ad copy", icon: MessageSquare },
+  { href: "/images", label: "Concepts", icon: Image },
   { href: "/meta-ads", label: "Meta Ads", icon: Megaphone },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -53,7 +52,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   }
 
   return (
-    <aside className="w-56 min-h-screen bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <aside className="w-56 h-screen bg-white border-r border-gray-200 flex flex-col shrink-0 sticky top-0">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-200">
         <div className="flex items-center gap-2">

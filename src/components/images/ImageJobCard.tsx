@@ -24,26 +24,23 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
   const completed = job.completed_translations ?? 0;
   const failed = job.failed_translations ?? 0;
   const progress = total > 0 ? (completed / total) * 100 : 0;
-  const isExpanding = job.status === "expanding";
+  const isDraft = job.status === "draft";
   const isReady = job.status === "ready";
   const isProcessing = job.status === "processing" || (total > 0 && completed + failed < total);
+  const isLoading = isDraft || isProcessing;
   const hasFailed = failed > 0;
 
-  const StatusIcon = isExpanding
+  const StatusIcon = isLoading
     ? Loader2
     : isReady
     ? CheckCircle2
-    : isProcessing
-    ? Loader2
     : hasFailed
     ? AlertTriangle
     : CheckCircle2;
 
-  const statusColor = isExpanding
+  const statusColor = isLoading
     ? "text-indigo-600"
     : isReady
-    ? "text-indigo-600"
-    : isProcessing
     ? "text-indigo-600"
     : hasFailed
     ? "text-yellow-600"
@@ -54,7 +51,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
       <div className="flex items-center gap-4">
         {/* Status icon */}
         <StatusIcon
-          className={`w-5 h-5 shrink-0 ${statusColor} ${isProcessing ? "animate-spin" : ""}`}
+          className={`w-5 h-5 shrink-0 ${statusColor} ${isLoading ? "animate-spin" : ""}`}
         />
 
         {/* Info */}
@@ -77,8 +74,8 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
             </span>
             <span className="text-xs text-gray-400">
               {job.total_images ?? 0} images &middot;{" "}
-              {isExpanding
-                ? "Expanding to 9:16..."
+              {isDraft
+                ? "Importing from Drive..."
                 : isReady
                 ? "Ready to translate"
                 : `${completed}/${total} ready`}
@@ -122,7 +119,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
       </div>
 
       {/* Progress bar */}
-      {!isExpanding && !isReady && (
+      {!isDraft && !isReady && (
         <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
           <div
             className="h-full bg-emerald-500 rounded-full transition-all duration-500"

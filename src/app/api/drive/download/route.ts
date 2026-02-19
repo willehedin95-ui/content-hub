@@ -6,10 +6,11 @@ import { STORAGE_BUCKET } from "@/lib/constants";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const { fileId, fileName, jobId } = (await req.json()) as {
+  const { fileId, fileName, jobId, skipTranslation } = (await req.json()) as {
     fileId: string;
     fileName: string;
     jobId: string;
+    skipTranslation?: boolean;
   };
 
   if (!fileId || !jobId) {
@@ -57,15 +58,14 @@ export async function POST(req: NextRequest) {
 
     const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-    // Create source_image record with expansion_status pending
-    // (translations are created later via /create-translations after expansion review)
+    // Create source_image record
     const { data: sourceImage, error: siError } = await db
       .from("source_images")
       .insert({
         job_id: jobId,
         original_url: urlData.publicUrl,
         filename: fileName || `${fileId}.png`,
-        expansion_status: "pending",
+        skip_translation: skipTranslation ?? false,
       })
       .select()
       .single();

@@ -37,6 +37,25 @@ export interface DriveFile {
   thumbnailLink?: string;
 }
 
+export interface DriveFolder {
+  id: string;
+  name: string;
+}
+
+export async function listDriveFolders(parentFolderId: string): Promise<DriveFolder[]> {
+  const auth = getAuth();
+  const drive = google.drive({ version: "v3", auth });
+
+  const res = await drive.files.list({
+    q: `'${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+    orderBy: "name",
+    pageSize: 200,
+  });
+
+  return (res.data.files ?? []) as DriveFolder[];
+}
+
 export async function listDriveFiles(folderId: string): Promise<DriveFile[]> {
   const auth = getAuth();
   const drive = google.drive({ version: "v3", auth });

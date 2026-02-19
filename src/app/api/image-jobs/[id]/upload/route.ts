@@ -52,15 +52,13 @@ export async function POST(
 
   const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-  // Create source_image record with expansion_status pending
-  // (translations are created later via /create-translations after expansion review)
+  // Create source_image record
   const { data: sourceImage, error: siError } = await db
     .from("source_images")
     .insert({
       job_id: jobId,
       original_url: urlData.publicUrl,
       filename: file.name,
-      expansion_status: "pending",
     })
     .select()
     .single();

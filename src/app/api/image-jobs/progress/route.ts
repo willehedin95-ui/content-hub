@@ -4,17 +4,40 @@ import { createServerSupabase } from "@/lib/supabase";
 export async function GET() {
   const db = createServerSupabase();
 
-  const { data: jobs, error } = await db
-    .from("image_jobs")
-    .select("id, status, source_images(id, image_translations(status))")
-    .eq("status", "processing");
+  // Fetch processing jobs + average generation time in parallel
+  const [jobsResult, avgResult] = await Promise.all([
+    db
+      .from("image_jobs")
+      .select("id, status, source_images(id, image_translations(status))")
+      .eq("status", "processing"),
+    db
+      .from("image_translations")
+      .select("created_at, updated_at")
+      .eq("status", "completed")
+      .order("updated_at", { ascending: false })
+      .limit(50),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ processing: false, completed: 0, total: 0 });
+  // Compute average seconds per translation from recent completions
+  let avgSeconds = 75; // fallback default
+  const recentTranslations = avgResult.data ?? [];
+  if (recentTranslations.length >= 5) {
+    const durations = recentTranslations
+      .map((t) => {
+        const created = new Date(t.created_at).getTime();
+        const updated = new Date(t.updated_at).getTime();
+        const diff = (updated - created) / 1000;
+        return diff > 0 && diff < 600 ? diff : null; // ignore outliers > 10min
+      })
+      .filter((d): d is number => d !== null);
+    if (durations.length >= 5) {
+      avgSeconds = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+    }
   }
 
-  if (!jobs || jobs.length === 0) {
-    return NextResponse.json({ processing: false, completed: 0, total: 0 });
+  const jobs = jobsResult.data;
+  if (jobsResult.error || !jobs || jobs.length === 0) {
+    return NextResponse.json({ processing: false, completed: 0, total: 0, avgSeconds });
   }
 
   let completed = 0;
@@ -32,5 +55,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ processing: true, completed, total });
+  return NextResponse.json({ processing: true, completed, total, avgSeconds });
 }

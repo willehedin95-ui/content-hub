@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { ImageJob, SourceImage } from "@/types";
+import { ImageJob, Language, MetaCampaignStatus, SourceImage } from "@/types";
 import { isValidLanguage, isValidAspectRatio } from "@/lib/validation";
 
 function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
@@ -19,10 +19,18 @@ function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
 export async function GET() {
   const db = createServerSupabase();
 
-  let { data: jobs, error } = await db
-    .from("image_jobs")
-    .select(`*, source_images(*, image_translations(*, versions(*)))`)
-    .order("created_at", { ascending: false });
+  const [jobsResult, campaignsResult] = await Promise.all([
+    db
+      .from("image_jobs")
+      .select(`*, source_images(*, image_translations(*, versions(*)))`)
+      .order("created_at", { ascending: false }),
+    db
+      .from("meta_campaigns")
+      .select("image_job_id, countries, language, status")
+      .not("image_job_id", "is", null),
+  ]);
+
+  let { data: jobs, error } = jobsResult;
 
   // Fall back to query without versions if table doesn't exist yet
   if (error && error.message?.includes("versions")) {
@@ -38,7 +46,20 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const enriched = (jobs ?? []).map(computeCounts);
+  // Group deployments by image_job_id
+  const deploymentsByJob = new Map<string, Array<{ country: string; language: Language; status: MetaCampaignStatus }>>();
+  for (const c of campaignsResult.data ?? []) {
+    const list = deploymentsByJob.get(c.image_job_id) ?? [];
+    for (const country of c.countries) {
+      list.push({ country, language: c.language, status: c.status });
+    }
+    deploymentsByJob.set(c.image_job_id, list);
+  }
+
+  const enriched = (jobs ?? []).map((job) => ({
+    ...computeCounts(job),
+    deployments: deploymentsByJob.get(job.id) ?? [],
+  }));
   return NextResponse.json(enriched);
 }
 

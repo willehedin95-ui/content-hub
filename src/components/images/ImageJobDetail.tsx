@@ -8,14 +8,18 @@ import {
   Loader2,
   AlertTriangle,
   RotateCcw,
-  Download,
   RefreshCw,
-  Upload,
   X,
+  Send,
+  ExternalLink,
+  FileText,
+  Globe,
+  ImageIcon,
+  Type,
+  EyeOff,
 } from "lucide-react";
-import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, ExpansionStatus } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, COUNTRY_MAP } from "@/types";
 import { getSettings } from "@/lib/settings";
-import { exportJobAsZip } from "@/lib/export-zip";
 import ImagePreviewModal from "./ImagePreviewModal";
 
 const MAX_VERSIONS = 5;
@@ -27,18 +31,34 @@ interface Props {
 
 export default function ImageJobDetail({ initialJob }: Props) {
   const [job, setJob] = useState<ImageJob>(initialJob);
+  const [detailTab, setDetailTab] = useState<"images" | "ad-copy">("images");
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   const [processing, setProcessing] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [driveExporting, setDriveExporting] = useState(false);
-  const [driveExportDone, setDriveExportDone] = useState(false);
-  const [driveExportError, setDriveExportError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<SourceImage | null>(null);
   const [previewLang, setPreviewLang] = useState<string | null>(null);
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
-  const expandProcessingRef = useRef(false);
-  const [expandProcessing, setExpandProcessing] = useState(false);
+  // Meta push state
+  const [primaryTexts, setPrimaryTexts] = useState<string[]>(() => {
+    const arr = initialJob.ad_copy_primary ?? [];
+    return arr.length > 0 ? arr : [""];
+  });
+  const [headlines, setHeadlines] = useState<string[]>(() => {
+    const arr = initialJob.ad_copy_headline ?? [];
+    return arr.length > 0 ? arr : [""];
+  });
+  const [landingPageId, setLandingPageId] = useState(initialJob.landing_page_id ?? "");
+  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string }>>([]);
+  const [pushing, setPushing] = useState(false);
+  const [pushResults, setPushResults] = useState<Array<{ language: string; country: string; status: string; error?: string }> | null>(null);
+  const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
+  const [savingCopy, setSavingCopy] = useState(false);
+  const [fetchingDoc, setFetchingDoc] = useState(false);
+  const [docTabs, setDocTabs] = useState<Array<{ id: string; title: string }> | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [docMatchedTab, setDocMatchedTab] = useState<string | null>(null);
+  const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
     // Init from job if already set, otherwise from settings defaults
     if (initialJob.target_languages?.length) {
@@ -56,6 +76,217 @@ export default function ImageJobDetail({ initialJob }: Props) {
     return new Set(LANGUAGES.map((l) => l.value));
   });
 
+  // Fetch landing pages for this product
+  useEffect(() => {
+    if (!initialJob.product) return;
+    fetch(`/api/meta/assets/landing-pages?language=no&product=${initialJob.product}`)
+      .then((res) => res.json())
+      .then((data) => {
+        // Deduplicate by page ID
+        const seen = new Set<string>();
+        const pages: Array<{ id: string; name: string; slug: string; product: string }> = [];
+        for (const t of data ?? []) {
+          const pageId = (t.pages as { id: string; name: string; slug: string; product: string }).id;
+          if (!seen.has(pageId)) {
+            seen.add(pageId);
+            pages.push(t.pages as { id: string; name: string; slug: string; product: string });
+          }
+        }
+        setLandingPages(pages);
+      })
+      .catch(() => {});
+  }, [initialJob.product]);
+
+  // Fetch existing deployments for this concept
+  const fetchDeployments = useCallback(async () => {
+    const res = await fetch("/api/meta/campaigns");
+    if (res.ok) {
+      const all: MetaCampaign[] = await res.json();
+      setDeployments(all.filter((c) => c.image_job_id === initialJob.id));
+    }
+  }, [initialJob.id]);
+
+  useEffect(() => {
+    fetchDeployments();
+  }, [fetchDeployments]);
+
+  // Auto-save ad copy on change (debounced)
+  const saveCopy = useCallback(async (primaries: string[], hdlines: string[]) => {
+    setSavingCopy(true);
+    await fetch(`/api/image-jobs/${initialJob.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ad_copy_primary: primaries.filter((t) => t.trim()),
+        ad_copy_headline: hdlines.filter((t) => t.trim()),
+      }),
+    });
+    setSavingCopy(false);
+  }, [initialJob.id]);
+
+  function handlePrimaryChange(index: number, value: string) {
+    setPrimaryTexts((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
+      copyDebounceRef.current = setTimeout(() => saveCopy(next, headlines), 1000);
+      return next;
+    });
+  }
+
+  function handleHeadlineChange(index: number, value: string) {
+    setHeadlines((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
+      copyDebounceRef.current = setTimeout(() => saveCopy(primaryTexts, next), 1000);
+      return next;
+    });
+  }
+
+  function addPrimaryText() {
+    setPrimaryTexts((prev) => [...prev, ""]);
+  }
+
+  function removePrimaryText(index: number) {
+    setPrimaryTexts((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
+      copyDebounceRef.current = setTimeout(() => saveCopy(next, headlines), 500);
+      return next.length > 0 ? next : [""];
+    });
+  }
+
+  function addHeadline() {
+    setHeadlines((prev) => [...prev, ""]);
+  }
+
+  function removeHeadline(index: number) {
+    setHeadlines((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
+      copyDebounceRef.current = setTimeout(() => saveCopy(primaryTexts, next), 500);
+      return next.length > 0 ? next : [""];
+    });
+  }
+
+  // Load available doc tabs when switching to ad-copy tab
+  useEffect(() => {
+    if (detailTab !== "ad-copy" || docTabs !== null) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/image-jobs/${initialJob.id}/fetch-copy`);
+        const data = await res.json().catch(() => ({}));
+        if (data.availableTabs?.length) {
+          setDocTabs(data.availableTabs);
+        }
+        // If auto-matched, populate the copy fields
+        if (res.ok && data.primaryTexts?.length) {
+          setPrimaryTexts(data.primaryTexts);
+          if (data.headlines?.length) setHeadlines(data.headlines);
+          if (data.matchedTab) setDocMatchedTab(data.matchedTab);
+          await saveCopy(data.primaryTexts, data.headlines || headlines);
+        }
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailTab]);
+
+  // Fetch ad copy from Google Doc
+  async function handleFetchFromDoc(tabId?: string) {
+    setFetchingDoc(true);
+    setDocError(null);
+    setDocMatchedTab(null);
+    try {
+      const url = tabId
+        ? `/api/image-jobs/${initialJob.id}/fetch-copy?tab_id=${tabId}`
+        : `/api/image-jobs/${initialJob.id}/fetch-copy`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (data.error === "no_match" && data.availableTabs?.length) {
+          setDocTabs(data.availableTabs);
+          setDocError(data.message);
+          return;
+        }
+        throw new Error(data.error || "Failed to fetch copy from doc");
+      }
+
+      // Store available tabs for manual selection dropdown
+      if (data.availableTabs?.length) {
+        setDocTabs(data.availableTabs);
+      }
+      if (data.matchedTab) {
+        setDocMatchedTab(data.matchedTab);
+      }
+      if (data.primaryTexts?.length) {
+        setPrimaryTexts(data.primaryTexts);
+      }
+      if (data.headlines?.length) {
+        setHeadlines(data.headlines);
+      }
+      // Save immediately
+      await saveCopy(data.primaryTexts || primaryTexts, data.headlines || headlines);
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Failed to fetch copy");
+      console.error("Fetch from doc failed:", err);
+    } finally {
+      setFetchingDoc(false);
+    }
+  }
+
+  // Save landing page selection
+  async function handleLandingPageChange(pageId: string) {
+    setLandingPageId(pageId);
+    await fetch(`/api/image-jobs/${initialJob.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ landing_page_id: pageId || null }),
+    });
+  }
+
+  // Push to Meta
+  async function handlePushToMeta() {
+    setPushing(true);
+    setPushResults(null);
+    try {
+      const res = await fetch(`/api/image-jobs/${initialJob.id}/push-to-meta`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.results) {
+        setPushResults(data.results);
+        await fetchDeployments();
+      } else {
+        setPushResults([{ language: "all", country: "all", status: "error", error: data.error || "Push failed" }]);
+      }
+    } catch (err) {
+      setPushResults([{ language: "all", country: "all", status: "error", error: "Push failed" }]);
+    } finally {
+      setPushing(false);
+      playNotificationSound();
+    }
+  }
+
+  // Play notification sound
+  const playNotificationSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.frequency.setValueAtTime(587, ctx.currentTime); // D5
+      oscillator.frequency.setValueAtTime(784, ctx.currentTime + 0.15); // G5
+      oscillator.frequency.setValueAtTime(988, ctx.currentTime + 0.3); // B5
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.5);
+    } catch {}
+  }, []);
+
   const allTranslations = job.source_images?.flatMap(
     (si) => si.image_translations ?? []
   ) ?? [];
@@ -66,11 +297,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     (t) => t.status === "pending" || t.status === "processing"
   ).length;
 
-  // Expansion counts
   const sourceImages = job.source_images ?? [];
-  const expansionTotal = sourceImages.length;
-  const expansionCompleted = sourceImages.filter(si => si.expansion_status === "completed").length;
-  const expansionFailed = sourceImages.filter(si => si.expansion_status === "failed").length;
 
   const refreshJob = useCallback(async () => {
     const res = await fetch(`/api/image-jobs/${job.id}`);
@@ -106,23 +333,24 @@ export default function ImageJobDetail({ initialJob }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Start expansion queue on mount if job is in expanding status
+  // Poll when job is "draft" (importing from Drive in background)
   useEffect(() => {
-    if (initialJob.status !== "expanding") return;
-    async function startExpansions() {
-      const latest = await refreshJob();
-      const j = latest ?? initialJob;
-      if (j.status !== "expanding") return;
-      const pending = (j.source_images ?? []).filter(
-        (si) => si.expansion_status === "pending" || si.expansion_status === "processing"
-      );
-      if (pending.length > 0 && !expandProcessingRef.current) {
-        startExpansionQueue(pending);
-      }
-    }
-    startExpansions();
+    if (job.status !== "draft") return;
+    const interval = setInterval(() => refreshJob(), 3000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [job.status]);
+
+  // Auto-start translation queue when pending translations appear (e.g. after background create-translations)
+  useEffect(() => {
+    if (job.status !== "processing") return;
+    if (processingRef.current) return;
+    const pending = getAllPending(job);
+    if (pending.length > 0) {
+      startQueue(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.status]);
 
   // Watchdog timer: detect and recover stalled translations while processing
   useEffect(() => {
@@ -217,33 +445,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
     processingRef.current = false;
     setProcessing(false);
     const finalJob = await refreshJob();
+    playNotificationSound();
 
-    // Auto-export to Drive if enabled
+    // Send email notification if enabled
     if (finalJob) {
       const settings = getSettings();
-      if (settings.static_ads_quality_enabled !== false && finalJob.source_folder_id) {
-        try {
-          const exportRes = await fetch("/api/drive/export", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jobId: finalJob.id }),
-          });
-          const exportData = await exportRes.json().catch(() => ({}));
-          if (!exportRes.ok) {
-            setDriveExportError(exportData.error ?? "Auto-export to Drive failed");
-          } else if (exportData.errors?.length) {
-            setDriveExportError(`Exported ${exportData.exported} files, but ${exportData.errors.length} failed`);
-          } else {
-            setDriveExportDone(true);
-            setTimeout(() => setDriveExportDone(false), 5000);
-          }
-          await refreshJob();
-        } catch (err) {
-          setDriveExportError(err instanceof Error ? err.message : "Auto-export to Drive failed");
-        }
-      }
-
-      // Send email notification if enabled
       if (settings.static_ads_email_enabled && settings.static_ads_notification_email) {
         try {
           await fetch("/api/notify", {
@@ -349,44 +555,6 @@ export default function ImageJobDetail({ initialJob }: Props) {
     await refreshJob();
   }
 
-  async function startExpansionQueue(images: SourceImage[]) {
-    if (expandProcessingRef.current) return;
-    expandProcessingRef.current = true;
-    setExpandProcessing(true);
-
-    // Run all expansions in parallel instead of sequentially
-    await Promise.all(
-      images.map(async (si) => {
-        try {
-          await fetch(`/api/image-jobs/${job.id}/expand`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourceImageId: si.id }),
-          });
-        } catch (err) {
-          console.error("Expansion failed for", si.id, err);
-        }
-      })
-    );
-
-    expandProcessingRef.current = false;
-    setExpandProcessing(false);
-    await refreshJob();
-  }
-
-  async function handleRetryExpansion(sourceImageId: string) {
-    try {
-      await fetch(`/api/image-jobs/${job.id}/expand`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceImageId }),
-      });
-      await refreshJob();
-    } catch (err) {
-      console.error("Expansion retry failed:", err);
-    }
-  }
-
   async function handleTranslateAll() {
     if (selectedLanguages.size === 0) return;
     setProcessing(true);
@@ -414,45 +582,6 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }
   }
 
-  async function handleExport() {
-    setExporting(true);
-    try {
-      await exportJobAsZip(job);
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function handleExportToDrive() {
-    setDriveExporting(true);
-    setDriveExportError(null);
-    try {
-      const res = await fetch("/api/drive/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId: job.id }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setDriveExportError(data.error ?? "Export failed");
-        return;
-      }
-
-      if (data.errors?.length) {
-        setDriveExportError(`Exported ${data.exported} files, but ${data.errors.length} failed: ${data.errors[0]}`);
-      }
-
-      setDriveExportDone(true);
-      setTimeout(() => setDriveExportDone(false), 5000);
-      await refreshJob();
-    } catch (err) {
-      setDriveExportError(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setDriveExporting(false);
-    }
-  }
 
   // Filter images based on active tab
   const filteredImages = (job.source_images ?? []).map((si) => ({
@@ -480,7 +609,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Static ads
+        Concepts
       </Link>
 
       {/* Stall detection banner */}
@@ -501,7 +630,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
           <p className="text-sm text-gray-400 mt-1">
@@ -512,210 +641,139 @@ export default function ImageJobDetail({ initialJob }: Props) {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={refreshJob}
-            className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          {completedCount > 0 && (
-            <>
-              {job.source_folder_id && (
-                <div className="flex flex-col items-end gap-1">
-                  <button
-                    onClick={handleExportToDrive}
-                    disabled={driveExporting}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-                  >
-                    {driveExporting ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : driveExportDone ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : job.exported_at ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5" />
-                    )}
-                    {driveExporting
-                      ? "Exporting..."
-                      : driveExportDone
-                      ? "Exported!"
-                      : "Export to Drive"}
-                  </button>
-                  {job.exported_at && !driveExporting && !driveExportDone && (
-                    <span className="text-xs text-gray-400">
-                      Exported {new Date(job.exported_at).toLocaleDateString("sv-SE")}{" "}
-                      {new Date(job.exported_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  )}
-                </div>
-              )}
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-700 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-2 transition-colors"
-              >
-                {exporting ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Download className="w-3.5 h-3.5" />
-                )}
-                Export
-              </button>
-            </>
-          )}
-        </div>
+        <button
+          onClick={refreshJob}
+          className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Drive export error */}
-      {driveExportError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-            <span className="text-sm text-red-700">{driveExportError}</span>
-          </div>
-          <button
-            onClick={() => setDriveExportError(null)}
-            className="text-red-400 hover:text-red-600 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      {/* Detail tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
+        <button
+          onClick={() => setDetailTab("images")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            detailTab === "images"
+              ? "text-indigo-600 border-indigo-500"
+              : "text-gray-400 hover:text-gray-700 border-transparent"
+          }`}
+        >
+          <ImageIcon className="w-4 h-4" />
+          Images
+        </button>
+        <button
+          onClick={() => setDetailTab("ad-copy")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            detailTab === "ad-copy"
+              ? "text-indigo-600 border-indigo-500"
+              : "text-gray-400 hover:text-gray-700 border-transparent"
+          }`}
+        >
+          <Type className="w-4 h-4" />
+          Ad Copy &amp; Push
+        </button>
+      </div>
 
-      {job.status === "expanding" || job.status === "ready" ? (
-        <>
-          {/* Expansion status */}
-          <div className="flex items-center gap-3 mb-6">
-            {expandProcessing || job.status === "expanding" ? (
-              <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Expanding to 9:16... ({expansionCompleted}/{expansionTotal})
-                <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-emerald-600 text-sm">
-                  <CheckCircle2 className="w-4 h-4" />
-                  {expansionCompleted} expanded
-                </span>
-                {expansionFailed > 0 && (
-                  <span className="flex items-center gap-1.5 text-yellow-600 text-sm">
-                    <AlertTriangle className="w-4 h-4" />
-                    {expansionFailed} failed
-                  </span>
-                )}
-              </div>
+      {detailTab === "images" ? (
+      <>
+      {job.status === "draft" ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Importing from Drive...
+            {sourceImages.length > 0 && (
+              <span className="text-gray-500 ml-1">{sourceImages.length} imported</span>
             )}
+            <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
           </div>
 
-          {/* Source images with expansion preview */}
-          <div className="space-y-4">
+          {/* Skeleton image grid — show imported images + placeholder skeletons */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {sourceImages.map((si) => (
-              <div key={si.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex gap-6 items-start">
-                  {/* Original 1:1 */}
-                  <div className="w-48 shrink-0">
-                    <p className="text-xs text-gray-400 mb-2">Original (1:1)</p>
-                    <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={si.original_url}
-                        alt={si.filename ?? "Original"}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    {si.filename && (
-                      <p className="text-xs text-gray-400 mt-1 truncate">{si.filename}</p>
-                    )}
-                  </div>
-
-                  {/* Expanded 9:16 */}
-                  <div className="w-36 shrink-0">
-                    <p className="text-xs text-gray-400 mb-2">Expanded (9:16)</p>
-                    <div className="aspect-[9/16] bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center">
-                      {si.expansion_status === "completed" && si.expanded_url ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={si.expanded_url}
-                          alt="Expanded 9:16"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : si.expansion_status === "processing" ? (
-                        <div className="text-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mx-auto mb-1" />
-                          <p className="text-xs text-gray-400">Expanding...</p>
-                          <p className="text-xs text-gray-300 mt-0.5"><ElapsedTimer /></p>
-                        </div>
-                      ) : si.expansion_status === "failed" ? (
-                        <div className="text-center px-2">
-                          <AlertTriangle className="w-5 h-5 text-red-400 mx-auto mb-1" />
-                          <p className="text-xs text-red-500 mb-1">{si.expansion_error || "Failed"}</p>
-                          <button
-                            onClick={() => handleRetryExpansion(si.id)}
-                            className="text-xs text-indigo-600 hover:underline"
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-center">
-                          <Loader2 className="w-5 h-5 text-gray-300 mx-auto" />
-                          <p className="text-xs text-gray-400 mt-1">Pending</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="aspect-square bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={si.original_url} alt={si.filename ?? ""} className="w-full h-full object-cover" />
+                </div>
+                {si.filename && <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>}
+              </div>
+            ))}
+            {/* Pulsing skeleton placeholders for images still loading */}
+            {Array.from({ length: Math.max(0, 4 - sourceImages.length) }).map((_, i) => (
+              <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden animate-pulse">
+                <div className="aspect-square bg-gray-200" />
+                <div className="px-2 py-1.5">
+                  <div className="h-3 bg-gray-200 rounded w-3/4" />
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Language selection + Translate All (ready state) */}
-          {job.status === "ready" && (
-            <div className="mt-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
-                <div className="flex flex-wrap gap-2">
-                  {LANGUAGES.map((lang) => {
-                    const selected = selectedLanguages.has(lang.value);
-                    return (
-                      <label
-                        key={lang.value}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
-                          selected
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                            : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => {
-                            setSelectedLanguages((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(lang.value)) next.delete(lang.value);
-                              else next.add(lang.value);
-                              return next;
-                            });
-                          }}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span>{lang.flag}</span>
-                        {lang.label}
-                      </label>
-                    );
-                  })}
+        </div>
+      ) : job.status === "ready" ? (
+        <>
+          {/* Source images preview */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
+            {sourceImages.map((si) => (
+              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="aspect-square bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={si.original_url}
+                    alt={si.filename ?? "Original"}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
+                {si.filename && (
+                  <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>
+                )}
               </div>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={handleTranslateAll}
-                  disabled={processing || selectedLanguages.size === 0}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
-                >
+            ))}
+          </div>
+
+          {/* Language selection + Translate All */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
+              <div className="flex flex-wrap gap-2">
+                {LANGUAGES.map((lang) => {
+                  const selected = selectedLanguages.has(lang.value);
+                  return (
+                    <label
+                      key={lang.value}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
+                        selected
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                          : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => {
+                          setSelectedLanguages((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(lang.value)) next.delete(lang.value);
+                            else next.add(lang.value);
+                            return next;
+                          });
+                        }}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>{lang.flag}</span>
+                      {lang.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleTranslateAll}
+                disabled={processing || selectedLanguages.size === 0}
+                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
+              >
                   {processing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
@@ -727,13 +785,12 @@ export default function ImageJobDetail({ initialJob }: Props) {
                 </button>
                 {selectedLanguages.size > 0 && (
                   <p className="text-sm text-gray-400">
-                    {(sourceImages.length + expansionCompleted) * selectedLanguages.size} translations
-                    {" \u2248 $"}{((sourceImages.length + expansionCompleted) * selectedLanguages.size * 0.09).toFixed(2)}
+                    {sourceImages.length * selectedLanguages.size} translations
+                    {" \u2248 $"}{(sourceImages.length * selectedLanguages.size * 0.09).toFixed(2)}
                   </p>
                 )}
               </div>
             </div>
-          )}
         </>
       ) : (
       <>
@@ -814,7 +871,12 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
             {/* Translation statuses */}
             <div className="p-2.5 space-y-1">
-              {(si.image_translations ?? []).map((t) => {
+              {si.skip_translation ? (
+                <div className="flex items-center gap-1.5">
+                  <EyeOff className="w-3 h-3 text-gray-400" />
+                  <span className="text-xs text-gray-400">Original only</span>
+                </div>
+              ) : (si.image_translations ?? []).map((t) => {
                 const langInfo = LANGUAGES.find((l) => l.value === t.language);
                 const versionCount = t.versions?.length ?? 0;
                 return (
@@ -847,8 +909,264 @@ export default function ImageJobDetail({ initialJob }: Props) {
       </div>
       </>
       )}
+      </>
+      ) : (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Send className="w-5 h-5 text-indigo-600" />
+            Push to Meta
+          </h2>
 
-      {/* Preview modal */}
+          {/* Ad Copy from Google Doc */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleFetchFromDoc()}
+                disabled={fetchingDoc}
+                className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                {fetchingDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                {fetchingDoc ? "Fetching..." : "Auto-match from doc"}
+              </button>
+              {docTabs && docTabs.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleFetchFromDoc(e.target.value);
+                    }
+                  }}
+                  value=""
+                  disabled={fetchingDoc}
+                  className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">Pick a tab...</option>
+                  {docTabs.map((tab) => (
+                    <option key={tab.id} value={tab.id}>{tab.title}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {docMatchedTab && (
+              <p className="text-xs text-green-600">Loaded from tab: &ldquo;{docMatchedTab}&rdquo;</p>
+            )}
+
+            {docError && (
+              <p className="text-xs text-red-600">{docError}</p>
+            )}
+          </div>
+
+          {/* Primary Texts */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                <FileText className="w-4 h-4" />
+                Primary Text ({primaryTexts.length} of 5)
+                {savingCopy && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+              </label>
+              {primaryTexts.length < 5 && (
+                <button
+                  onClick={addPrimaryText}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  + Add variant
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {primaryTexts.map((text, i) => (
+                <div key={i} className="flex gap-2">
+                  <textarea
+                    value={text}
+                    onChange={(e) => handlePrimaryChange(i, e.target.value)}
+                    placeholder={i === 0 ? "Enter English ad copy..." : `Variant ${i + 1}`}
+                    rows={2}
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 resize-none"
+                  />
+                  {primaryTexts.length > 1 && (
+                    <button
+                      onClick={() => removePrimaryText(i)}
+                      className="text-gray-300 hover:text-red-500 transition-colors p-1 self-start mt-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Headlines */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                Headline ({headlines.length} of 5)
+                {savingCopy && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+              </label>
+              {headlines.length < 5 && (
+                <button
+                  onClick={addHeadline}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  + Add variant
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {headlines.map((text, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={(e) => handleHeadlineChange(i, e.target.value)}
+                    placeholder={i === 0 ? "Short headline..." : `Variant ${i + 1}`}
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                  {headlines.length > 1 && (
+                    <button
+                      onClick={() => removeHeadline(i)}
+                      className="text-gray-300 hover:text-red-500 transition-colors p-1 self-start mt-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Landing Page */}
+          <div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
+              <Globe className="w-4 h-4" />
+              Landing Page
+            </label>
+            {landingPages.length > 0 ? (
+              <select
+                value={landingPageId}
+                onChange={(e) => handleLandingPageChange(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">Select a landing page...</option>
+                {landingPages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm text-gray-400">
+                No published landing pages found for this product
+              </p>
+            )}
+          </div>
+
+          {/* Concept number preview */}
+          {primaryTexts.some((t) => t.trim()) && landingPageId && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-gray-400 mb-1">Ad set naming preview</p>
+              {job.target_languages.map((lang) => {
+                const country = COUNTRY_MAP[lang as Language];
+                const numStr = job.concept_number ? String(job.concept_number).padStart(3, "0") : "auto";
+                return (
+                  <p key={lang} className="text-sm text-gray-700">
+                    {country} #{numStr} | statics | {job.name.toLowerCase()}
+                  </p>
+                );
+              })}
+              <p className="text-xs text-gray-400 mt-2">
+                Scheduled to start at 03:00 CET. Copy will be auto-translated per market.
+              </p>
+            </div>
+          )}
+
+          {/* Push button */}
+          <button
+            onClick={handlePushToMeta}
+            disabled={pushing || !primaryTexts.some((t) => t.trim()) || !landingPageId}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
+          >
+            {pushing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Pushing to Meta...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Push to All Markets ({job.target_languages.length})
+              </>
+            )}
+          </button>
+
+          {/* Push results */}
+          {pushResults && (
+            <div className="space-y-2">
+              {pushResults.map((r, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${
+                    r.status === "pushed"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {r.status === "pushed" ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                  )}
+                  <span>
+                    {r.country}: {r.status === "pushed" ? "Pushed successfully" : r.error}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Existing deployments */}
+          {deployments.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-700">Deployments</h3>
+              {deployments.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{d.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {d.meta_ads?.length ?? 0} ads &middot;{" "}
+                      {d.status === "pushed" ? (
+                        <span className="text-emerald-600">Pushed</span>
+                      ) : d.status === "pushing" ? (
+                        <span className="text-indigo-600">Pushing...</span>
+                      ) : d.status === "error" ? (
+                        <span className="text-red-600">Error</span>
+                      ) : (
+                        <span className="text-gray-500">Draft</span>
+                      )}
+                    </p>
+                  </div>
+                  {d.meta_adset_id && (
+                    <a
+                      href={`https://www.facebook.com/adsmanager/manage/adsets?act=${process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID}&selected_adset_ids=${d.meta_adset_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View in Meta
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview modal (always rendered regardless of tab) */}
       {previewImage && (
         <ImagePreviewModal
           sourceImage={previewImage}

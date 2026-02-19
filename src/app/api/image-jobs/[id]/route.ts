@@ -50,13 +50,26 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { status, target_languages } = body as { status?: string; target_languages?: string[] };
+  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, concept_number, ad_copy_doc_id } = body as {
+    status?: string;
+    target_languages?: string[];
+    ad_copy_primary?: string[];
+    ad_copy_headline?: string[];
+    landing_page_id?: string | null;
+    concept_number?: number | null;
+    ad_copy_doc_id?: string | null;
+  };
 
   const db = createServerSupabase();
 
   const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (status) updateData.status = status;
   if (target_languages) updateData.target_languages = target_languages;
+  if (ad_copy_primary !== undefined) updateData.ad_copy_primary = ad_copy_primary;
+  if (ad_copy_headline !== undefined) updateData.ad_copy_headline = ad_copy_headline;
+  if (landing_page_id !== undefined) updateData.landing_page_id = landing_page_id;
+  if (concept_number !== undefined) updateData.concept_number = concept_number;
+  if (ad_copy_doc_id !== undefined) updateData.ad_copy_doc_id = ad_copy_doc_id;
 
   const { data, error } = await db
     .from("image_jobs")

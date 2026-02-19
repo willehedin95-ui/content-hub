@@ -125,8 +125,7 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
 
 // --- Image Translation Types ---
 
-export type ImageJobStatus = "draft" | "expanding" | "ready" | "processing" | "completed" | "failed";
-export type ExpansionStatus = "pending" | "processing" | "completed" | "failed";
+export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed";
 export type ImageTranslationStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface ImageJob {
@@ -140,6 +139,11 @@ export interface ImageJob {
   auto_export: boolean;
   exported_at: string | null;
   notified_at: string | null;
+  ad_copy_primary: string[];
+  ad_copy_headline: string[];
+  ad_copy_doc_id: string | null;
+  landing_page_id: string | null;
+  concept_number: number | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
@@ -147,6 +151,7 @@ export interface ImageJob {
   total_translations?: number;
   completed_translations?: number;
   failed_translations?: number;
+  deployments?: Array<{ country: string; language: Language; status: MetaCampaignStatus }>;
 }
 
 export interface SourceImage {
@@ -156,9 +161,7 @@ export interface SourceImage {
   filename: string | null;
   processing_order: number | null;
   thumbnail_url: string | null;
-  expanded_url: string | null;
-  expansion_status: ExpansionStatus | null;
-  expansion_error: string | null;
+  skip_translation: boolean;
   created_at: string;
   image_translations?: ImageTranslation[];
 }
@@ -267,6 +270,7 @@ export interface MetaCampaign {
   id: string;
   name: string;
   product: Product | null;
+  image_job_id: string | null;
   meta_campaign_id: string | null;
   meta_adset_id: string | null;
   objective: string;

@@ -137,14 +137,68 @@ export async function createAdCreative(params: {
   imageHash: string;
   imageHash9x16?: string;
   primaryText: string;
+  primaryTexts?: string[];
   headline?: string;
+  headlines?: string[];
   linkUrl: string;
   callToAction?: string;
 }): Promise<{ id: string }> {
   const cta = params.callToAction || "LEARN_MORE";
 
-  // If we have both 1:1 and 9:16 images, use asset_feed_spec for placement customization
-  if (params.imageHash9x16) {
+  // Build bodies and titles arrays (multi-variant support)
+  const bodies = params.primaryTexts?.length
+    ? params.primaryTexts.map((t) => ({ text: t }))
+    : [{ text: params.primaryText }];
+  const titles = params.headlines?.length
+    ? params.headlines.map((t) => ({ text: t }))
+    : params.headline
+    ? [{ text: params.headline }]
+    : undefined;
+
+  // Use asset_feed_spec when we have multiple images, texts, or headlines
+  const useAssetFeed = params.imageHash9x16 || bodies.length > 1 || (titles && titles.length > 1);
+
+  if (useAssetFeed) {
+    const images = params.imageHash9x16
+      ? [
+          { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
+          { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
+        ]
+      : [{ hash: params.imageHash }];
+
+    const assetCustomizationRules = params.imageHash9x16
+      ? [
+          {
+            customization_spec: {
+              publisher_platforms: ["facebook"],
+              facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+            },
+            image_label: { name: "feed_image" },
+          },
+          {
+            customization_spec: {
+              publisher_platforms: ["facebook"],
+              facebook_positions: ["story", "reels", "facebook_reels"],
+            },
+            image_label: { name: "story_image" },
+          },
+          {
+            customization_spec: {
+              publisher_platforms: ["instagram"],
+              instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
+            },
+            image_label: { name: "feed_image" },
+          },
+          {
+            customization_spec: {
+              publisher_platforms: ["instagram"],
+              instagram_positions: ["story", "reels"],
+            },
+            image_label: { name: "story_image" },
+          },
+        ]
+      : undefined;
+
     return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -155,44 +209,12 @@ export async function createAdCreative(params: {
         },
         asset_feed_spec: {
           ad_formats: ["SINGLE_IMAGE"],
-          images: [
-            { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
-            { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
-          ],
-          bodies: [{ text: params.primaryText }],
-          titles: params.headline ? [{ text: params.headline }] : undefined,
+          images,
+          bodies,
+          titles,
           link_urls: [{ website_url: params.linkUrl }],
           call_to_action_types: [cta],
-          asset_customization_rules: [
-            {
-              customization_spec: {
-                publisher_platforms: ["facebook"],
-                facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
-              },
-              image_label: { name: "feed_image" },
-            },
-            {
-              customization_spec: {
-                publisher_platforms: ["facebook"],
-                facebook_positions: ["story", "reels", "facebook_reels"],
-              },
-              image_label: { name: "story_image" },
-            },
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram"],
-                instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
-              },
-              image_label: { name: "feed_image" },
-            },
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram"],
-                instagram_positions: ["story", "reels"],
-              },
-              image_label: { name: "story_image" },
-            },
-          ],
+          ...(assetCustomizationRules ? { asset_customization_rules: assetCustomizationRules } : {}),
         },
         degrees_of_freedom_spec: {
           creative_features_spec: {
@@ -203,7 +225,7 @@ export async function createAdCreative(params: {
     });
   }
 
-  // Single image: use standard object_story_spec
+  // Single image, single text: use standard object_story_spec
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

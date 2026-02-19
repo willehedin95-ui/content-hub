@@ -28,7 +28,7 @@ export async function POST(
   // Look up the translation and verify it belongs to this job
   const { data: translation, error: tError } = await db
     .from("image_translations")
-    .select(`*, source_images!inner(id, original_url, expanded_url, job_id)`)
+    .select(`*, source_images!inner(id, original_url, job_id)`)
     .eq("id", translationId)
     .single();
 
@@ -86,16 +86,10 @@ export async function POST(
       }
     }
 
-    // Use expanded image as source for 9:16 translations (pre-expanded canvas)
-    const sourceUrl =
-      translation.aspect_ratio === "9:16" && translation.source_images.expanded_url
-        ? translation.source_images.expanded_url
-        : translation.source_images.original_url;
-
     // Call Kie AI
     const resultUrls = await generateImage(
       prompt,
-      [sourceUrl],
+      [translation.source_images.original_url],
       translation.aspect_ratio || "1:1"
     );
 

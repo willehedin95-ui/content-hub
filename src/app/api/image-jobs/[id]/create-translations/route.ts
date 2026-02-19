@@ -26,17 +26,19 @@ export async function POST(
     );
   }
 
-  // Get all source images
+  // Get source images that need translation
   const { data: sourceImages, error: siError } = await db
     .from("source_images")
-    .select("id, expansion_status")
+    .select("id, skip_translation")
     .eq("job_id", jobId);
 
   if (siError || !sourceImages?.length) {
     return NextResponse.json({ error: "No source images found" }, { status: 400 });
   }
 
-  // Create translation rows for each (source_image × language × ratio)
+  const translatableImages = sourceImages.filter((si) => !si.skip_translation);
+
+  // Create translation rows for each (source_image × language)
   const translationRows: {
     source_image_id: string;
     language: string;
@@ -44,25 +46,14 @@ export async function POST(
     status: string;
   }[] = [];
 
-  for (const si of sourceImages) {
+  for (const si of translatableImages) {
     for (const lang of job.target_languages) {
-      // Always create 1:1 translations
       translationRows.push({
         source_image_id: si.id,
         language: lang,
         aspect_ratio: "1:1",
         status: "pending",
       });
-
-      // Only create 9:16 translations for images with successful expansion
-      if (si.expansion_status === "completed") {
-        translationRows.push({
-          source_image_id: si.id,
-          language: lang,
-          aspect_ratio: "9:16",
-          status: "pending",
-        });
-      }
     }
   }
 
@@ -87,6 +78,7 @@ export async function POST(
   return NextResponse.json({
     created: translationRows.length,
     languages: job.target_languages.length,
-    images: sourceImages.length,
+    images: translatableImages.length,
+    skipped: sourceImages.length - translatableImages.length,
   });
 }
