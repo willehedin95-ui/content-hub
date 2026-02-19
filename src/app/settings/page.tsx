@@ -13,7 +13,7 @@ import {
   Plug,
   X,
 } from "lucide-react";
-import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
+import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
 import Dropdown from "@/components/ui/Dropdown";
 
 interface Settings {
@@ -75,6 +75,10 @@ export default function SettingsPage() {
   const [mappingSaving, setMappingSaving] = useState<string | null>(null);
   const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, { id: string; name: string; status: string }[]>>({});
   const [adSetsLoading, setAdSetsLoading] = useState<string | null>(null);
+  const [metaPages, setMetaPages] = useState<{ id: string; name: string }[]>([]);
+  const [metaPagesLoading, setMetaPagesLoading] = useState(false);
+  const [pageConfigs, setPageConfigs] = useState<MetaPageConfig[]>([]);
+  const [pageConfigSaving, setPageConfigSaving] = useState<string | null>(null);
 
   const fetchKieCredits = useCallback(async () => {
     setKieLoading(true);
@@ -106,9 +110,11 @@ export default function SettingsPage() {
     Promise.all([
       fetch("/api/meta/campaign-mappings").then((r) => r.ok ? r.json() : []),
       fetch("/api/meta/campaigns/list").then((r) => r.ok ? r.json() : []),
-    ]).then(([mappings, campaigns]) => {
+      fetch("/api/meta/page-config").then((r) => r.ok ? r.json() : []),
+    ]).then(([mappings, campaigns, configs]) => {
       setCampaignMappings(mappings);
       setMetaCampaigns(campaigns);
+      setPageConfigs(configs);
     }).finally(() => setMappingsLoading(false));
 
     return () => {
@@ -226,6 +232,46 @@ export default function SettingsPage() {
       setMetaStatus(null);
     } finally {
       setMetaLoading(false);
+    }
+  }
+
+  async function fetchMetaPages() {
+    if (metaPages.length > 0) return;
+    setMetaPagesLoading(true);
+    try {
+      const res = await fetch("/api/meta/pages");
+      if (res.ok) {
+        const data = await res.json();
+        setMetaPages(data);
+      }
+    } finally {
+      setMetaPagesLoading(false);
+    }
+  }
+
+  async function handlePageConfigChange(country: string, metaPageId: string) {
+    setPageConfigSaving(country);
+    try {
+      if (!metaPageId) return;
+      const page = metaPages.find((p) => p.id === metaPageId);
+      const res = await fetch("/api/meta/page-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country,
+          meta_page_id: metaPageId,
+          meta_page_name: page?.name ?? null,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPageConfigs((prev) => {
+          const without = prev.filter((c) => c.country !== country);
+          return [...without, updated];
+        });
+      }
+    } finally {
+      setPageConfigSaving(null);
     }
   }
 
@@ -522,6 +568,57 @@ export default function SettingsPage() {
                     </ActionButton>
                   }
                 />
+              </SettingsCard>
+
+              <SectionHeader>Facebook Pages</SectionHeader>
+              <p className="text-xs text-gray-400 mb-2.5">
+                Assign a Facebook page to each country. Ads will be published under the correct page.
+              </p>
+              <SettingsCard>
+                {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
+                  const country = COUNTRY_MAP[lang.value];
+                  const config = pageConfigs.find((c) => c.country === country);
+                  const isSaving = pageConfigSaving === country;
+                  return (
+                    <div key={lang.value}>
+                      {i > 0 && <RowDivider />}
+                      <div className="flex items-center justify-between py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm">{lang.flag}</span>
+                          <span className="text-sm font-medium text-gray-700">{country}</span>
+                          {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                          {!isSaving && config?.meta_page_id && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                          )}
+                        </div>
+                        {metaPages.length === 0 && !metaPagesLoading ? (
+                          <button
+                            onClick={fetchMetaPages}
+                            className="text-xs text-indigo-600 hover:text-indigo-800"
+                          >
+                            Load pages
+                          </button>
+                        ) : metaPagesLoading ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                        ) : (
+                          <Dropdown
+                            value={config?.meta_page_id ?? ""}
+                            onChange={(v) => handlePageConfigChange(country, v)}
+                            options={[
+                              { value: "", label: "Not assigned" },
+                              ...metaPages.map((p) => ({
+                                value: p.id,
+                                label: p.name,
+                              })),
+                            ]}
+                            placeholder="Not assigned"
+                            className="w-52"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </SettingsCard>
 
               <SectionHeader>Defaults</SectionHeader>

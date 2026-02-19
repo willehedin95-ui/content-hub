@@ -132,6 +132,15 @@ export async function createAdSet(params: {
   });
 }
 
+export async function listPages(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  const data = await metaJson<{
+    data: Array<{ id: string; name: string }>;
+  }>(`/me/accounts?fields=id,name&limit=50`);
+  return data.data;
+}
+
 export async function createAdCreative(params: {
   name: string;
   imageHash: string;
@@ -142,8 +151,10 @@ export async function createAdCreative(params: {
   headlines?: string[];
   linkUrl: string;
   callToAction?: string;
+  pageId?: string;
 }): Promise<{ id: string }> {
   const cta = params.callToAction || "LEARN_MORE";
+  const pageId = params.pageId || getPageId();
 
   // Build bodies and titles arrays (multi-variant support)
   const bodies = params.primaryTexts?.length
@@ -205,7 +216,7 @@ export async function createAdCreative(params: {
       body: JSON.stringify({
         name: params.name,
         object_story_spec: {
-          page_id: getPageId(),
+          page_id: pageId,
         },
         asset_feed_spec: {
           ad_formats: ["SINGLE_IMAGE"],
@@ -232,7 +243,7 @@ export async function createAdCreative(params: {
     body: JSON.stringify({
       name: params.name,
       object_story_spec: {
-        page_id: getPageId(),
+        page_id: pageId,
         link_data: {
           image_hash: params.imageHash,
           message: params.primaryText,

@@ -332,3 +332,12 @@ export interface MetaCampaignMapping {
   created_at: string;
   updated_at: string;
 }
+
+export interface MetaPageConfig {
+  id: string;
+  country: string;
+  meta_page_id: string;
+  meta_page_name: string | null;
+  created_at: string;
+  updated_at: string;
+}

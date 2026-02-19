@@ -130,6 +130,13 @@ export async function POST(
       .eq("country", country)
       .single();
 
+    // Look up Facebook page for this country
+    const { data: pageConfig } = await db
+      .from("meta_page_config")
+      .select("meta_page_id")
+      .eq("country", country)
+      .single();
+
     if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
       results.push({
         language: lang,
@@ -244,6 +251,7 @@ export async function POST(
             headline: translatedHeadlines[0] || undefined,
             headlines: translatedHeadlines.length > 1 ? translatedHeadlines : undefined,
             linkUrl: landingUrl,
+            pageId: pageConfig?.meta_page_id,
           });
 
           // Create ad
