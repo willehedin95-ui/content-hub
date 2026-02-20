@@ -104,13 +104,24 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("content-hub-settings");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSettings((s) => ({ ...s, ...parsed }));
-      }
-    } catch {}
+    // Load settings from DB (source of truth), fall back to localStorage cache
+    fetch("/api/settings")
+      .then((r) => r.ok ? r.json() : null)
+      .then((dbSettings) => {
+        if (dbSettings && Object.keys(dbSettings).length > 0) {
+          setSettings((s) => ({ ...s, ...dbSettings }));
+          localStorage.setItem("content-hub-settings", JSON.stringify(dbSettings));
+        } else {
+          // Fall back to localStorage if DB is empty (first migration)
+          try {
+            const stored = localStorage.getItem("content-hub-settings");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              setSettings((s) => ({ ...s, ...parsed }));
+            }
+          } catch {}
+        }
+      });
 
     Promise.all([
       fetch("/api/meta/campaign-mappings").then((r) => r.ok ? r.json() : []),
@@ -138,8 +149,14 @@ export default function SettingsPage() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [router]);
 
-  function handleSave() {
+  async function handleSave() {
+    // Save to DB (source of truth) and localStorage (cache)
     localStorage.setItem("content-hub-settings", JSON.stringify(settings));
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
     setSaved(true);
     if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
     savedTimeoutRef.current = setTimeout(() => setSaved(false), 2500);
