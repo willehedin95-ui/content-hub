@@ -122,12 +122,26 @@ export async function POST(req: NextRequest) {
 
 /**
  * Replace the src attribute of an image in HTML by matching the original URL.
- * Uses string replacement to avoid full DOM parsing overhead.
+ * Handles HTML entity encoding mismatches (DOMParser decodes &amp; → & but raw HTML keeps &amp;).
  */
 function replaceImageSrc(html: string, oldSrc: string, newSrc: string): string {
-  // Escape special regex chars in URL
+  // Try direct match first
   const escaped = oldSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Match src="oldSrc" or src='oldSrc'
   const pattern = new RegExp(`(src=["'])${escaped}(["'])`, "g");
-  return html.replace(pattern, `$1${newSrc}$2`);
+  const result = html.replace(pattern, `$1${newSrc}$2`);
+  if (result !== html) return result;
+
+  // Try with HTML entity encoding (& → &amp;) — DOMParser decodes entities
+  const encodedSrc = oldSrc.replace(/&/g, "&amp;");
+  if (encodedSrc !== oldSrc) {
+    const escapedEncoded = encodedSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const encodedPattern = new RegExp(`(src=["'])${escapedEncoded}(["'])`, "g");
+    const encodedResult = html.replace(encodedPattern, `$1${newSrc}$2`);
+    if (encodedResult !== html) return encodedResult;
+  }
+
+  // Also try srcset attributes (some pages use srcset)
+  const srcsetEscaped = oldSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const srcsetPattern = new RegExp(srcsetEscaped, "g");
+  return html.replace(srcsetPattern, newSrc);
 }

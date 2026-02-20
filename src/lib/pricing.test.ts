@@ -35,12 +35,12 @@ describe("calcOpenAICost", () => {
 });
 
 describe("pricing constants", () => {
-  it("GPT-4o input cost is $2.50 per 1M tokens", () => {
-    expect(GPT4O_INPUT_COST).toBe(2.5);
+  it("GPT-4.1 input cost is $2.00 per 1M tokens", () => {
+    expect(GPT4O_INPUT_COST).toBe(2.0);
   });
 
-  it("GPT-4o output cost is $10.00 per 1M tokens", () => {
-    expect(GPT4O_OUTPUT_COST).toBe(10.0);
+  it("GPT-4.1 output cost is $8.00 per 1M tokens", () => {
+    expect(GPT4O_OUTPUT_COST).toBe(8.0);
   });
 
   it("Kie.ai image cost is $0.09 per image", () => {

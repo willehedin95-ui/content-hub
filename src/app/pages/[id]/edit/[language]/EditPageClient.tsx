@@ -1012,6 +1012,73 @@ export default function EditPageClient({
           ) : (
             /* Normal view: page settings */
             <>
+              {/* Padding section — always visible */}
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Padding
+                  </p>
+                  <div className="flex items-center bg-gray-100 rounded-md border border-gray-200 p-0.5">
+                    <button
+                      onClick={() => setViewMode("desktop")}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
+                        viewMode === "desktop"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      <Monitor className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode("mobile")}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
+                        viewMode === "mobile"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      <Smartphone className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="number"
+                      min="0"
+                      value={viewMode === "desktop" ? padDH : padMH}
+                      onChange={(e) => handlePaddingChange("h", e.target.value)}
+                      placeholder="—"
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="number"
+                      min="0"
+                      value={viewMode === "desktop" ? padDV : padMV}
+                      onChange={(e) => handlePaddingChange("v", e.target.value)}
+                      placeholder="—"
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => setExcludeMode(!excludeMode)}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
+                    excludeMode
+                      ? "bg-amber-50 border-amber-300 text-amber-700"
+                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  <MousePointerClick className="w-3 h-3" />
+                  Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
+                </button>
+              </div>
+              <div className="border-t border-gray-200" />
+
               {/* Element controls (shown when an element is selected) */}
               {hasSelectedEl && (
                 <>
@@ -1154,64 +1221,6 @@ export default function EditPageClient({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Padding */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Padding
-                  </p>
-                  <span className="flex items-center gap-1 text-xs text-gray-400">
-                    {viewMode === "desktop" ? (
-                      <><Monitor className="w-3 h-3" /> Desktop</>
-                    ) : (
-                      <><Smartphone className="w-3 h-3" /> Mobile</>
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <input
-                      type="number"
-                      min="0"
-                      value={viewMode === "desktop" ? padDH : padMH}
-                      onChange={(e) => handlePaddingChange("h", e.target.value)}
-                      placeholder="—"
-                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <input
-                      type="number"
-                      min="0"
-                      value={viewMode === "desktop" ? padDV : padMV}
-                      onChange={(e) => handlePaddingChange("v", e.target.value)}
-                      placeholder="—"
-                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setExcludeMode(!excludeMode)}
-                    className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
-                      excludeMode
-                        ? "bg-amber-50 border-amber-300 text-amber-700"
-                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                    }`}
-                  >
-                    <MousePointerClick className="w-3 h-3" />
-                    Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
-                  </button>
-                  <span className="text-xs text-gray-400">
-                    {viewMode === "desktop" ? "Desktop" : "Mobile"} view
-                  </span>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-200" />
-
               {/* Destination URL */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">

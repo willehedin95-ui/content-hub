@@ -1,6 +1,6 @@
-// GPT-4o pricing (per 1M tokens)
-export const GPT4O_INPUT_COST = 2.5; // $/1M input tokens
-export const GPT4O_OUTPUT_COST = 10.0; // $/1M output tokens
+// GPT-4.1 pricing (per 1M tokens)
+export const GPT4O_INPUT_COST = 2.0; // $/1M input tokens
+export const GPT4O_OUTPUT_COST = 8.0; // $/1M output tokens
 
 // Kie.ai nano-banana-pro (per image generation at 2K resolution)
 export const KIE_IMAGE_COST = 0.09; // $0.09 per image (18 credits at 2K)

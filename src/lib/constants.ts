@@ -1,4 +1,4 @@
-export const OPENAI_MODEL = "gpt-4o";
+export const OPENAI_MODEL = "gpt-4.1";
 export const KIE_MODEL = "nano-banana-pro";
 export const STORAGE_BUCKET = "translated-images";
 
