@@ -1,4 +1,5 @@
 import { KIE_MODEL } from "./constants";
+import { withRetry, isTransientError } from "./retry";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 const POLL_INITIAL_MS = 2000;
@@ -53,29 +54,34 @@ export async function createImageTask(
     input.seed = seed;
   }
 
-  const res = await fetch(`${KIE_API_BASE}/createTask`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getApiKey()}`,
+  return withRetry(
+    async () => {
+      const res = await fetch(`${KIE_API_BASE}/createTask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getApiKey()}`,
+        },
+        body: JSON.stringify({
+          model: KIE_MODEL,
+          input,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Kie.ai createTask failed (${res.status}): ${text}`);
+      }
+
+      const data: CreateTaskResponse = await res.json();
+      if (data.code !== 200) {
+        throw new Error(`Kie.ai createTask error: ${data.msg}`);
+      }
+
+      return data.data.taskId;
     },
-    body: JSON.stringify({
-      model: KIE_MODEL,
-      input,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Kie.ai createTask failed (${res.status}): ${text}`);
-  }
-
-  const data: CreateTaskResponse = await res.json();
-  if (data.code !== 200) {
-    throw new Error(`Kie.ai createTask error: ${data.msg}`);
-  }
-
-  return data.data.taskId;
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
 }
 
 export async function pollTaskResult(taskId: string): Promise<string[]> {
@@ -120,19 +126,24 @@ export async function pollTaskResult(taskId: string): Promise<string[]> {
 }
 
 export async function getCredits(): Promise<{ balance: number }> {
-  const res = await fetch("https://api.kie.ai/api/v1/chat/credit", {
-    headers: {
-      Authorization: `Bearer ${getApiKey()}`,
+  return withRetry(
+    async () => {
+      const res = await fetch("https://api.kie.ai/api/v1/chat/credit", {
+        headers: {
+          Authorization: `Bearer ${getApiKey()}`,
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Kie.ai balance check failed (${res.status}): ${text}`);
+      }
+
+      const data = await res.json();
+      return { balance: typeof data.data === "number" ? data.data : 0 };
     },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Kie.ai balance check failed (${res.status}): ${text}`);
-  }
-
-  const data = await res.json();
-  return { balance: typeof data.data === "number" ? data.data : 0 };
+    { maxAttempts: 2, initialDelayMs: 1000, isRetryable: isTransientError }
+  );
 }
 
 export async function generateImage(

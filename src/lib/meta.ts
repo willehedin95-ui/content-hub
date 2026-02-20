@@ -1,4 +1,7 @@
+import { withRetry, isTransientError } from "./retry";
+
 const META_API_BASE = "https://graph.facebook.com/v22.0";
+const META_FETCH_TIMEOUT_MS = 30_000;
 
 function getToken(): string {
   const token = process.env.META_SYSTEM_USER_TOKEN;
@@ -20,22 +23,50 @@ function getPageId(): string {
 
 async function metaFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const url = `${META_API_BASE}${path}`;
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${getToken()}`,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), META_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await metaFetch(path, options);
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error?.message ?? `Meta API error (${res.status})`);
-  }
-  return data as T;
+  return withRetry(
+    async () => {
+      const res = await metaFetch(path, options);
+
+      if (!res.ok) {
+        // Try to parse error body for a message, but don't crash on HTML/non-JSON responses
+        let errorMessage = `Meta API error (${res.status})`;
+        try {
+          const contentType = res.headers.get("content-type") ?? "";
+          if (contentType.includes("application/json")) {
+            const data = await res.json();
+            errorMessage = data.error?.message ?? errorMessage;
+          } else {
+            const text = await res.text();
+            errorMessage = `Meta API error (${res.status}): ${text.slice(0, 200)}`;
+          }
+        } catch {
+          // Ignore parse errors — use the generic message
+        }
+        throw new Error(errorMessage);
+      }
+
+      return (await res.json()) as T;
+    },
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
 }
 
 export async function listCampaigns(): Promise<
@@ -58,11 +89,12 @@ export async function verifyConnection(): Promise<{
 }
 
 export async function uploadImage(imageUrl: string): Promise<{ hash: string; url: string }> {
-  // Only allow downloads from our Supabase Storage domain
+  // Only allow downloads from our Supabase Storage domain (exact <project>.supabase.co)
   try {
     const u = new URL(imageUrl);
-    if (!u.hostname.endsWith(".supabase.co")) {
-      throw new Error("Image URL must be from Supabase Storage");
+    const parts = u.hostname.split(".");
+    if (!(parts.length === 3 && parts[1] === "supabase" && parts[2] === "co") || u.protocol !== "https:") {
+      throw new Error("Image URL must be from Supabase Storage (https://<project>.supabase.co)");
     }
   } catch (e) {
     if (e instanceof TypeError) throw new Error("Invalid image URL");

@@ -95,7 +95,12 @@ No other text.`,
       const translateContent = translateResponse.choices[0]?.message?.content?.trim();
       if (!translateContent) throw new Error("No translation returned");
 
-      const parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
+      let parsed: { primary_texts: string[]; headlines: string[] };
+      try {
+        parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
+      } catch {
+        throw new Error("Translation returned invalid JSON");
+      }
 
       // Log translation usage
       const tInput = translateResponse.usage?.prompt_tokens ?? 0;
@@ -147,7 +152,12 @@ Be strict: any grammar error, meaning change, or awkward phrasing should reduce 
       const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
       if (!analyzeContent) throw new Error("No analysis returned");
 
-      const analysis = JSON.parse(analyzeContent);
+      let analysis;
+      try {
+        analysis = JSON.parse(analyzeContent);
+      } catch {
+        throw new Error("Quality analysis returned invalid JSON");
+      }
 
       // Log analysis usage
       const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;

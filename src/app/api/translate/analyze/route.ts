@@ -98,7 +98,12 @@ Be strict: any Swedish name left unchanged, grammar error, or unnatural phrasing
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error("No analysis returned");
 
-    const analysis = JSON.parse(content);
+    let analysis;
+    try {
+      analysis = JSON.parse(content);
+    } catch {
+      throw new Error("Quality analysis returned invalid JSON");
+    }
     const inputTokens = response.usage?.prompt_tokens ?? 0;
     const outputTokens = response.usage?.completion_tokens ?? 0;
 

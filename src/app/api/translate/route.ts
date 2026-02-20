@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { extractContent, applyTranslations } from "@/lib/html-parser";
+import { extractContent, extractReadableText, applyTranslations } from "@/lib/html-parser";
 import { translateBatch, translateMetas } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
@@ -40,9 +40,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Atomically claim this translation — prevents concurrent requests
+  const STALE_MS = 10 * 60 * 1000; // 10 minutes
   const { data: existing } = await db
     .from("translations")
-    .select("id, status")
+    .select("id, status, updated_at")
     .eq("page_id", page_id)
     .eq("language", language)
     .eq("variant", "control")
@@ -50,10 +51,18 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     if (existing.status === "translating") {
-      return NextResponse.json(
-        { error: "Translation already in progress" },
-        { status: 409 }
-      );
+      const age = Date.now() - new Date(existing.updated_at).getTime();
+      if (age < STALE_MS) {
+        return NextResponse.json(
+          { error: "Translation already in progress" },
+          { status: 409 }
+        );
+      }
+      // Stale claim — reset so it can be re-claimed
+      await db.from("translations")
+        .update({ status: "error", updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+        .eq("status", "translating");
     }
     // Atomic update: only claim if still not "translating"
     const { data: claimed } = await db
@@ -84,6 +93,9 @@ export async function POST(req: NextRequest) {
     // Extract translatable content (modifiedHtml has {{id}} placeholders already injected)
     const { texts, metas, alts, modifiedHtml } = extractContent(page.original_html);
 
+    // Extract full readable text for context — so each chunk sees the whole page
+    const pageContext = extractReadableText(page.original_html);
+
     // Translate text nodes + alts together
     const allTexts = [
       ...texts,
@@ -92,7 +104,8 @@ export async function POST(req: NextRequest) {
     const batchResult = await translateBatch(
       allTexts,
       language as Language,
-      apiKey
+      apiKey,
+      { pageContext }
     );
     const metasResult = await translateMetas(
       metas,

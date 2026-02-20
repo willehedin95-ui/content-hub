@@ -9,6 +9,11 @@ export type TranslationStatus =
   | "published"
   | "error";
 
+export interface PageImageSelection {
+  src: string;
+  alt: string;
+}
+
 export interface Page {
   id: string;
   name: string;
@@ -17,6 +22,7 @@ export interface Page {
   source_url: string;
   original_html: string;
   slug: string;
+  images_to_translate: PageImageSelection[];
   created_at: string;
   translations?: Translation[];
 }
@@ -35,6 +41,9 @@ export interface Translation {
   published_url: string | null;
   quality_score: number | null;
   quality_analysis: PageQualityAnalysis | null;
+  image_status: "translating" | "done" | "error" | null;
+  images_done: number;
+  images_total: number;
   created_at: string;
   updated_at: string;
 }

@@ -20,6 +20,8 @@ import {
   EyeOff,
   Eye,
   Undo2,
+  Settings,
+  X,
 } from "lucide-react";
 
 import { Translation, LANGUAGES, PageQualityAnalysis } from "@/types";
@@ -65,6 +67,8 @@ export default function EditPageClient({
   const [excludeMode, setExcludeMode] = useState(false);
   const [excludeCount, setExcludeCount] = useState(0);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [fixingQuality, setFixingQuality] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const prevLinkUrl = useRef("");
   const [slug, setSlug] = useState(translation.slug ?? pageSlug);
@@ -670,6 +674,40 @@ export default function EditPageClient({
     }
   }
 
+  async function handleFixQuality() {
+    setFixingQuality(true);
+    setSaveError("");
+
+    try {
+      const res = await fetch("/api/translate/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translation.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setSaveError(data.error || "Fix failed");
+        return;
+      }
+
+      setIsDirty(false);
+      setIframeKey((k) => k + 1);
+      router.refresh();
+
+      // Re-analyze the fixed translation
+      setFixingQuality(false);
+      setQualityScore(null);
+      setQualityAnalysis(null);
+      await runQualityAnalysis();
+      return;
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Fix failed");
+    } finally {
+      setFixingQuality(false);
+    }
+  }
+
   async function doRetranslate() {
     setConfirmAction(null);
     setRetranslating(true);
@@ -868,12 +906,26 @@ export default function EditPageClient({
                 <p className="text-blue-600">Names: {qualityAnalysis.name_localization.join("; ")}</p>
               )}
             </div>
-            <button
-              onClick={() => setShowQualityDetails(false)}
-              className="text-gray-400 hover:text-gray-600 transition-colors ml-4"
-            >
-              <span className="text-xs">Close</span>
-            </button>
+            <div className="flex items-center gap-2 ml-4 shrink-0">
+              <button
+                onClick={handleFixQuality}
+                disabled={fixingQuality || retranslating || saving}
+                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
+              >
+                {fixingQuality ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                {fixingQuality ? "Fixing…" : "Fix quality"}
+              </button>
+              <button
+                onClick={() => setShowQualityDetails(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <span className="text-xs">Close</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1061,8 +1113,49 @@ export default function EditPageClient({
                 </>
               )}
 
+              {/* Page settings button */}
+              <div className="px-4 py-3">
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="w-full flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-medium py-2.5 rounded-lg border border-gray-200 transition-colors"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  Page Settings
+                </button>
+              </div>
+
+              <div className="border-t border-gray-200" />
+
+              {/* Images hint */}
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Images
+                </p>
+                <p className="text-xs text-gray-400">
+                  Click an image in the preview to translate or replace it.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Page settings modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+              <h2 className="text-sm font-semibold text-gray-900">Page Settings</h2>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
               {/* Padding */}
-              <div className="px-4 py-3 space-y-2">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Padding
@@ -1120,7 +1213,7 @@ export default function EditPageClient({
               <div className="border-t border-gray-200" />
 
               {/* Destination URL */}
-              <div className="px-4 py-3 space-y-2">
+              <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Destination URL
                 </p>
@@ -1142,7 +1235,7 @@ export default function EditPageClient({
               <div className="border-t border-gray-200" />
 
               {/* Slug */}
-              <div className="px-4 py-3 space-y-2">
+              <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Slug
                 </p>
@@ -1164,7 +1257,7 @@ export default function EditPageClient({
               <div className="border-t border-gray-200" />
 
               {/* SEO fields */}
-              <div className="px-4 py-3 space-y-3">
+              <div className="space-y-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   SEO
                 </p>
@@ -1204,22 +1297,18 @@ export default function EditPageClient({
                   </p>
                 </div>
               </div>
-
-              <div className="border-t border-gray-200" />
-
-              {/* Images hint */}
-              <div className="px-4 py-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Images
-                </p>
-                <p className="text-xs text-gray-400">
-                  Click an image in the preview to translate or replace it.
-                </p>
-              </div>
-            </>
-          )}
+            </div>
+            <div className="flex justify-end px-5 py-4 border-t border-gray-200 shrink-0">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Publish progress modal */}
       <PublishModal

@@ -67,7 +67,7 @@ export default function ImageTranslatePanel({
   useEffect(() => {
     if (clickedImage) {
       setPrompt(
-        `Recreate this exact image but translate all English text to ${language.label}. Keep the same visual style, layout, colors, fonts, and composition. Only change the language of the text.\n\nCULTURAL LOCALISATION (MANDATORY):\n- Replace ALL Swedish/English person names with culturally appropriate ${language.label} names.\n- Translate date expressions (like "X dagar sedan") and UI elements (Reply, Comment) to ${language.label}.\n- The result should look as if ORIGINALLY CREATED for a ${language.label} audience.\n- PRESERVE: Product images, star ratings, brand names (HappySleep, Hydro13), layout.`
+        `Recreate this exact image but translate all text to ${language.label}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, fonts, and composition. Only change the language of the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: HappySleep, Hydro13, Hälsobladet, OEKO-TEX, CertiPUR-US, Trustpilot, Standard 100.\n\nCULTURAL LOCALISATION (MANDATORY):\n- Replace ALL Swedish/English person names with culturally appropriate ${language.label} names.\n- Translate date expressions (like "X dagar sedan") and UI elements (Reply, Comment) to ${language.label}.\n- The result should look as if ORIGINALLY CREATED for a ${language.label} audience.\n- PRESERVE: Product images, star ratings, logos, certification badges, layout.`
       );
       setStatus("idle");
       setResultUrl(null);

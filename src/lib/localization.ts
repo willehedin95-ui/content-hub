@@ -72,6 +72,17 @@ export function formatLocalization(lang: Language): string {
   return [nameBlock, dateBlock, uiBlock].join("\n");
 }
 
+/** Brand names and certificates that must NEVER be translated in images */
+export const NEVER_TRANSLATE = [
+  "HappySleep",
+  "Hydro13",
+  "Hälsobladet",
+  "OEKO-TEX",
+  "CertiPUR-US",
+  "Trustpilot",
+  "Standard 100",
+];
+
 /**
  * Short localization instruction for image/ad-copy pipelines
  * that don't use the full SYSTEM_PROMPTS structure.
@@ -86,5 +97,5 @@ export function getShortLocalizationNote(lang: Language): string {
     .map((n) => `${n.from} → ${n.to}`)
     .join(", ");
 
-  return `\n\nCULTURAL LOCALISATION (MANDATORY):\n- Replace ALL Swedish/English person names with culturally appropriate ${label} names. Examples: ${examplesStr}.\n- Translate ALL UI text (Reply/Svar, Comment/Kommentar, dates like "X dagar sedan") to ${label}.\n- The result should look as if ORIGINALLY CREATED for a ${label} audience.\n- PRESERVE: Product images, star ratings, brand names (HappySleep, Hydro13), overall layout.`;
+  return `\n\nCULTURAL LOCALISATION (MANDATORY):\n- Replace ALL Swedish/English person names with culturally appropriate ${label} names. Examples: ${examplesStr}.\n- Translate ALL UI text (Reply/Svar, Comment/Kommentar, dates like "X dagar sedan") to ${label}.\n- The result should look as if ORIGINALLY CREATED for a ${label} audience.\n- NEVER translate these brand names and certificates — keep them EXACTLY as-is: ${NEVER_TRANSLATE.join(", ")}.\n- PRESERVE: Product images, star ratings, logos, certification badges, overall layout.`;
 }

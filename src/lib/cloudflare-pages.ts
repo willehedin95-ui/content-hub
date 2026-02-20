@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { Language } from "@/types";
 import { createServerSupabase } from "@/lib/supabase";
+import { fetchWithRetry } from "./retry";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
 
@@ -49,7 +50,7 @@ async function getUploadToken(
   apiToken: string,
   projectName: string
 ): Promise<string> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${CF_API}/accounts/${accountId}/pages/projects/${projectName}/upload-token`,
     { headers: { Authorization: `Bearer ${apiToken}` } }
   );
@@ -93,13 +94,14 @@ async function uploadFiles(
       base64: true,
     }));
 
-    const res = await fetch(`${CF_API}/pages/assets/upload`, {
+    const res = await fetchWithRetry(`${CF_API}/pages/assets/upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${jwt}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      timeoutMs: 60_000,
     });
 
     if (!res.ok) {
@@ -110,7 +112,7 @@ async function uploadFiles(
 
 async function upsertHashes(jwt: string, hashes: string[]): Promise<void> {
   if (hashes.length === 0) return;
-  const res = await fetch(`${CF_API}/pages/assets/upsert-hashes`, {
+  const res = await fetchWithRetry(`${CF_API}/pages/assets/upsert-hashes`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${jwt}`,
@@ -132,12 +134,13 @@ async function createDeployment(
   const formData = new FormData();
   formData.append("manifest", JSON.stringify(manifest));
 
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${CF_API}/accounts/${accountId}/pages/projects/${projectName}/deployments`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${apiToken}` },
       body: formData,
+      timeoutMs: 60_000,
     }
   );
 
@@ -154,7 +157,7 @@ async function getProjectBaseUrl(
   apiToken: string,
   projectName: string
 ): Promise<string> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${CF_API}/accounts/${accountId}/pages/projects/${projectName}`,
     { headers: { Authorization: `Bearer ${apiToken}` } }
   );

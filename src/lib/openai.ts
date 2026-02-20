@@ -3,6 +3,7 @@ import { Language } from "@/types";
 import { formatRules } from "./translation-rules";
 import { formatLocalization } from "./localization";
 import { OPENAI_MODEL } from "./constants";
+import { withRetry, isTransientError } from "./retry";
 
 const LANGUAGE_NAMES: Record<Language, string> = {
   sv: "svenska",
@@ -172,14 +173,25 @@ Keine Erklärungen, keine Kommentare, keine zusätzlichen Schlüssel.`,
 export async function translateBatch(
   texts: Array<{ id: string; text: string }>,
   language: Language,
-  apiKey: string
+  apiKey: string,
+  options?: { pageContext?: string; qualityFeedback?: string }
 ): Promise<{
   result: Record<string, string>;
   inputTokens: number;
   outputTokens: number;
 }> {
   const client = new OpenAI({ apiKey });
-  const systemPrompt = SYSTEM_PROMPTS[language];
+  let systemPrompt = SYSTEM_PROMPTS[language];
+
+  // Add full page context so the AI understands what it's translating
+  if (options?.pageContext) {
+    systemPrompt += `\n\nFULL PAGE CONTEXT (read this FIRST to understand the story/topic, then translate the JSON values below with this context in mind — do NOT include this context in your output):\n---\n${options.pageContext.slice(0, 6000)}\n---`;
+  }
+
+  // Add quality feedback for fix/improve passes
+  if (options?.qualityFeedback) {
+    systemPrompt += `\n\nQUALITY ISSUES FROM PREVIOUS ATTEMPT (fix these specific problems in your translation):\n${options.qualityFeedback}`;
+  }
 
   // Split into chunks to avoid token limits, then translate all in parallel
   const CHUNK_SIZE = 80;
@@ -192,33 +204,51 @@ export async function translateBatch(
     chunks.push(texts.slice(i, i + CHUNK_SIZE));
   }
 
-  const responses = await Promise.all(
+  const settled = await Promise.allSettled(
     chunks.map((chunk) => {
       const inputJson = JSON.stringify(
         Object.fromEntries(chunk.map(({ id, text }) => [id, text]))
       );
-      return client.chat.completions.create({
-        model: OPENAI_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: inputJson },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      });
+      return withRetry(
+        () =>
+          client.chat.completions.create({
+            model: OPENAI_MODEL,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: inputJson },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3,
+          }),
+        { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+      );
     })
   );
 
-  for (const response of responses) {
-    const translated = JSON.parse(
-      response.choices[0].message.content || "{}"
-    ) as Record<string, string>;
-    Object.assign(result, translated);
+  const failedChunks: string[] = [];
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      failedChunks.push(outcome.reason instanceof Error ? outcome.reason.message : "Unknown error");
+      continue;
+    }
+    const response = outcome.value;
+    try {
+      const translated = JSON.parse(
+        response.choices[0].message.content || "{}"
+      ) as Record<string, string>;
+      Object.assign(result, translated);
+    } catch {
+      failedChunks.push("Failed to parse translation chunk response");
+    }
 
     if (response.usage) {
       totalInputTokens += response.usage.prompt_tokens;
       totalOutputTokens += response.usage.completion_tokens;
     }
+  }
+
+  if (failedChunks.length > 0 && failedChunks.length === chunks.length) {
+    throw new Error(`All translation chunks failed: ${failedChunks[0]}`);
   }
 
   return { result, inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
@@ -250,12 +280,14 @@ export async function translateMetas(
   if (Object.keys(input).length === 0)
     return { result: {}, inputTokens: 0, outputTokens: 0 };
 
-  const response = await client.chat.completions.create({
-    model: OPENAI_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: `Translate these SEO meta values from English to ${langName} (${langNameNative}).
+  const response = await withRetry(
+    () =>
+      client.chat.completions.create({
+        model: OPENAI_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `Translate these SEO meta values from English to ${langName} (${langNameNative}).
 Write naturally for a native ${langName} speaker. Keep brand names unchanged: ${DO_NOT_TRANSLATE}.
 Replace any Swedish or English person names with culturally appropriate ${langName} equivalents.
 
@@ -263,15 +295,24 @@ ADDITIONAL RULES:
 ${formatRules()}
 
 Return ONLY valid JSON with the same keys and translated values.`,
-      },
-      { role: "user", content: JSON.stringify(input) },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.3,
-  });
+          },
+          { role: "user", content: JSON.stringify(input) },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      }),
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
+
+  let parsedMetas = {};
+  try {
+    parsedMetas = JSON.parse(response.choices[0].message.content || "{}");
+  } catch {
+    // LLM returned malformed JSON — return empty rather than crash
+  }
 
   return {
-    result: JSON.parse(response.choices[0].message.content || "{}"),
+    result: parsedMetas,
     inputTokens: response.usage?.prompt_tokens ?? 0,
     outputTokens: response.usage?.completion_tokens ?? 0,
   };

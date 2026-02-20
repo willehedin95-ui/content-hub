@@ -16,11 +16,13 @@ import {
   ChevronUp,
   CheckCircle2,
   MoreHorizontal,
+  Image as ImageIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus } from "@/types";
+import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
+import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getPageQualitySettings } from "@/lib/settings";
 
@@ -59,14 +61,16 @@ export default function TranslationRow({
   language,
   translation,
   abTest,
+  imagesToTranslate,
 }: {
   pageId: string;
   language: (typeof LANGUAGES)[number];
   translation?: Translation;
   abTest?: ABTest;
+  imagesToTranslate?: PageImageSelection[];
 }) {
   const router = useRouter();
-  const [loading, setLoading] = useState<"translate" | "publish" | "ab" | "analyze" | "regenerate" | null>(null);
+  const [loading, setLoading] = useState<"translate" | "publish" | "ab" | "analyze" | "regenerate" | "fix" | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -78,6 +82,9 @@ export default function TranslationRow({
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [confirmRepublish, setConfirmRepublish] = useState(false);
   const [showMore, setShowMore] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [pageHtml, setPageHtml] = useState("");
+  const [imageProgress, setImageProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,22 +137,78 @@ export default function TranslationRow({
     return await res.json();
   }
 
+  async function fetchTranslatedHtml(tid: string): Promise<string> {
+    try {
+      const res = await fetch(`/api/preview/${tid}`);
+      if (res.ok) return await res.text();
+    } catch { /* ignore */ }
+    return "";
+  }
+
+  async function openImageModal(tid: string) {
+    const html = await fetchTranslatedHtml(tid);
+    if (html) {
+      setPageHtml(html);
+      setShowImageModal(true);
+    }
+  }
+
+  async function translateImages(translationId: string): Promise<void> {
+    const images = imagesToTranslate || [];
+    if (images.length === 0) return;
+
+    setImageProgress({ done: 0, total: images.length, errors: [] });
+
+    for (const img of images) {
+      try {
+        const res = await fetch("/api/translate-page-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            translationId,
+            imageUrl: img.src,
+            imageIndex: 0,
+            language: language.value,
+            aspectRatio: "1:1",
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          setImageProgress((prev) =>
+            prev ? { ...prev, done: prev.done + 1, errors: [...prev.errors, data.error || "Image failed"] } : prev
+          );
+        } else {
+          setImageProgress((prev) =>
+            prev ? { ...prev, done: prev.done + 1 } : prev
+          );
+        }
+      } catch {
+        setImageProgress((prev) =>
+          prev ? { ...prev, done: prev.done + 1, errors: [...prev.errors, "Network error"] } : prev
+        );
+      }
+    }
+  }
+
   async function translateWithQualityLoop() {
     setError("");
     setQualityScore(null);
     setQualityAnalysis(null);
     setShowDetails(false);
     setAttempt(0);
+    setImageProgress(null);
 
     const settings = getPageQualitySettings();
     const tid = translation?.id;
+    const hasImages = (imagesToTranslate?.length ?? 0) > 0;
 
     for (let i = 0; i < MAX_RETRIES; i++) {
       setAttempt(i + 1);
 
-      // Translate
+      // Translate text
       if (i === 0) {
-        setProgressLabel("Translating…");
+        setProgressLabel("Translating text…");
       } else {
         setProgressLabel(`Retranslating (attempt ${i + 1}/${MAX_RETRIES})…`);
       }
@@ -162,26 +225,41 @@ export default function TranslationRow({
         return;
       }
 
-      // Analyze (if quality enabled)
+      // After text translation: run quality analysis + image translation in parallel
+      const parallelTasks: Promise<unknown>[] = [];
+
+      // Quality analysis (if enabled)
+      let analysisResult: PageQualityAnalysis | null = null;
+      if (settings.enabled) {
+        setProgressLabel("Analyzing quality…");
+        parallelTasks.push(
+          doAnalyze(translationId).then((a) => { analysisResult = a; })
+        );
+      }
+
+      // Image translation (runs in parallel with quality)
+      if (hasImages && i === 0) {
+        // Only translate images on first attempt (not on retries)
+        parallelTasks.push(translateImages(translationId));
+      }
+
+      await Promise.all(parallelTasks);
+
       if (!settings.enabled) {
         router.refresh();
         return;
       }
 
-      setProgressLabel("Analyzing quality…");
-      const analysis = await doAnalyze(translationId);
-
-      if (!analysis) {
-        // Analysis failed but translation succeeded — still usable
+      if (!analysisResult) {
         router.refresh();
         return;
       }
 
-      setQualityScore(analysis.quality_score);
-      setQualityAnalysis(analysis);
+      const finalAnalysis = analysisResult as PageQualityAnalysis;
+      setQualityScore(finalAnalysis.quality_score);
+      setQualityAnalysis(finalAnalysis);
 
-      if (analysis.quality_score >= settings.threshold) {
-        // Quality is good — done
+      if (finalAnalysis.quality_score >= settings.threshold) {
         router.refresh();
         return;
       }
@@ -206,6 +284,7 @@ export default function TranslationRow({
       setLoading(null);
       setProgressLabel("");
       setAttempt(0);
+      setImageProgress(null);
     }
   }
 
@@ -219,6 +298,43 @@ export default function TranslationRow({
       setLoading(null);
       setProgressLabel("");
       setAttempt(0);
+      setImageProgress(null);
+    }
+  }
+
+  async function handleFixQuality() {
+    if (!translation?.id) return;
+    setLoading("fix");
+    setError("");
+    setProgressLabel("Fixing quality issues…");
+
+    try {
+      const res = await fetch("/api/translate/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translation.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Fix failed");
+        return;
+      }
+
+      // Re-analyze the fixed translation
+      setProgressLabel("Re-analyzing quality…");
+      const analysis = await doAnalyze(translation.id);
+      if (analysis) {
+        setQualityScore(analysis.quality_score);
+        setQualityAnalysis(analysis);
+      }
+
+      router.refresh();
+    } catch {
+      setError("Fix failed — check your connection and try again");
+    } finally {
+      setLoading(null);
+      setProgressLabel("");
     }
   }
 
@@ -278,7 +394,7 @@ export default function TranslationRow({
     copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }
 
-  const isProcessing = loading === "translate" || loading === "regenerate";
+  const isProcessing = loading === "translate" || loading === "regenerate" || loading === "fix";
 
   // Not started — compact row
   if (!translation) {
@@ -303,6 +419,19 @@ export default function TranslationRow({
             {isProcessing ? (progressLabel || "Translating…") : "Translate"}
           </button>
         </div>
+
+        {isProcessing && imageProgress && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            {imageProgress.done < imageProgress.total ? (
+              <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+            ) : (
+              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            )}
+            <span className="text-xs text-amber-600">
+              Images {imageProgress.done}/{imageProgress.total}
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 text-red-600 text-xs mt-2 bg-red-50 rounded-lg px-3 py-2">
@@ -333,10 +462,25 @@ export default function TranslationRow({
         {/* Status */}
         <div className="flex items-center gap-1.5 shrink-0">
           {isProcessing ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-              <span className="text-xs text-indigo-600">{progressLabel || "Translating…"}</span>
-            </>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                <span className="text-xs text-indigo-600">{progressLabel || "Translating…"}</span>
+              </div>
+              {imageProgress && (
+                <div className="flex items-center gap-1.5">
+                  {imageProgress.done < imageProgress.total ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                  ) : (
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  )}
+                  <span className="text-xs text-amber-600">
+                    Images {imageProgress.done}/{imageProgress.total}
+                    {imageProgress.errors.length > 0 && ` (${imageProgress.errors.length} failed)`}
+                  </span>
+                </div>
+              )}
+            </div>
           ) : hasActiveTest ? (
             <>
               <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
@@ -354,21 +498,39 @@ export default function TranslationRow({
 
         {/* Quality score badge */}
         {qualityScore !== null && !isProcessing && (
-          <button
-            onClick={() => setShowDetails((d) => !d)}
-            className={`flex items-center gap-1.5 shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${scoreBg(qualityScore)}`}
-          >
-            {qualityScore >= settings.threshold ? (
-              <CheckCircle2 className={`w-3.5 h-3.5 ${scoreColor(qualityScore)}`} />
-            ) : null}
-            <span className={scoreColor(qualityScore)}>{qualityScore}%</span>
-            <span className="text-gray-400 font-normal">/ {settings.threshold}</span>
-            {showDetails ? (
-              <ChevronUp className="w-3 h-3 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-3 h-3 text-gray-400" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => setShowDetails((d) => !d)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${scoreBg(qualityScore)}`}
+            >
+              {qualityScore >= settings.threshold ? (
+                <CheckCircle2 className={`w-3.5 h-3.5 ${scoreColor(qualityScore)}`} />
+              ) : null}
+              <span className={scoreColor(qualityScore)}>{qualityScore}%</span>
+              <span className="text-gray-400 font-normal">/ {settings.threshold}</span>
+              {showDetails ? (
+                <ChevronUp className="w-3 h-3 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-gray-400" />
+              )}
+            </button>
+            {qualityScore < settings.threshold && (
+              <button
+                onClick={() => { handleFixQuality(); }}
+                disabled={loading !== null}
+                className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-full transition-colors disabled:opacity-40"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Fix
+              </button>
             )}
-          </button>
+          </div>
+        )}
+        {loading === "fix" && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+            <span className="text-xs text-amber-600">{progressLabel || "Fixing…"}</span>
+          </div>
         )}
 
         {/* Published URL + copy */}
@@ -440,6 +602,20 @@ export default function TranslationRow({
                   </button>
                   {showMore && (
                     <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+                      {qualityScore !== null && qualityScore < settings.threshold && (
+                        <button
+                          onClick={() => { setShowMore(false); handleFixQuality(); }}
+                          disabled={loading !== null}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-40 transition-colors"
+                        >
+                          {loading === "fix" ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                          Fix quality issues
+                        </button>
+                      )}
                       <button
                         onClick={() => { setShowMore(false); handleRegenerate(); }}
                         disabled={loading !== null}
@@ -451,6 +627,17 @@ export default function TranslationRow({
                           <RefreshCw className="w-3.5 h-3.5" />
                         )}
                         Regenerate translation
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setShowMore(false);
+                          if (translation?.id) await openImageModal(translation.id);
+                        }}
+                        disabled={loading !== null}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        Translate images
                       </button>
                       <button
                         onClick={() => { setShowMore(false); handleCreateABTest(); }}
@@ -549,6 +736,19 @@ export default function TranslationRow({
         onConfirm={confirmAndPublish}
         onCancel={() => setConfirmRepublish(false)}
       />
+
+      {translation?.id && (
+        <ImageSelectionModal
+          open={showImageModal}
+          translationId={translation.id}
+          language={language}
+          pageHtml={pageHtml}
+          onClose={(translated) => {
+            setShowImageModal(false);
+            if (translated) router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

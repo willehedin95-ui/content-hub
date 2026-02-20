@@ -1,4 +1,26 @@
 import { google } from "googleapis";
+import { withRetry } from "./retry";
+
+/** Check if a Google API error is retryable (429, 5xx, network errors). */
+function isGoogleRetryable(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const code = (error as { code?: number | string }).code;
+    if (typeof code === "number") {
+      return code === 429 || code >= 500;
+    }
+    if (typeof code === "string") {
+      const n = parseInt(code, 10);
+      if (!isNaN(n)) return n === 429 || n >= 500;
+    }
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("network") || msg.includes("rate limit")) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Service account auth — used for reading (list, download, folder metadata)
 function getAuth() {
@@ -43,43 +65,58 @@ export interface DriveFolder {
 }
 
 export async function listDriveFolders(parentFolderId: string): Promise<DriveFolder[]> {
-  const auth = getAuth();
-  const drive = google.drive({ version: "v3", auth });
+  return withRetry(
+    async () => {
+      const auth = getAuth();
+      const drive = google.drive({ version: "v3", auth });
 
-  const res = await drive.files.list({
-    q: `'${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-    fields: "files(id, name)",
-    orderBy: "name",
-    pageSize: 200,
-  });
+      const res = await drive.files.list({
+        q: `'${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: "files(id, name)",
+        orderBy: "name",
+        pageSize: 200,
+      });
 
-  return (res.data.files ?? []) as DriveFolder[];
+      return (res.data.files ?? []) as DriveFolder[];
+    },
+    { maxAttempts: 3, initialDelayMs: 1000, isRetryable: isGoogleRetryable }
+  );
 }
 
 export async function listDriveFiles(folderId: string): Promise<DriveFile[]> {
-  const auth = getAuth();
-  const drive = google.drive({ version: "v3", auth });
+  return withRetry(
+    async () => {
+      const auth = getAuth();
+      const drive = google.drive({ version: "v3", auth });
 
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
-    fields: "files(id, name, mimeType, thumbnailLink)",
-    orderBy: "name",
-    pageSize: 100,
-  });
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
+        fields: "files(id, name, mimeType, thumbnailLink)",
+        orderBy: "name",
+        pageSize: 100,
+      });
 
-  return (res.data.files ?? []) as DriveFile[];
+      return (res.data.files ?? []) as DriveFile[];
+    },
+    { maxAttempts: 3, initialDelayMs: 1000, isRetryable: isGoogleRetryable }
+  );
 }
 
 export async function downloadDriveFile(fileId: string): Promise<Buffer> {
-  const auth = getAuth();
-  const drive = google.drive({ version: "v3", auth });
+  return withRetry(
+    async () => {
+      const auth = getAuth();
+      const drive = google.drive({ version: "v3", auth });
 
-  const res = await drive.files.get(
-    { fileId, alt: "media" },
-    { responseType: "arraybuffer" }
+      const res = await drive.files.get(
+        { fileId, alt: "media" },
+        { responseType: "arraybuffer" }
+      );
+
+      return Buffer.from(res.data as ArrayBuffer);
+    },
+    { maxAttempts: 3, initialDelayMs: 1000, isRetryable: isGoogleRetryable }
   );
-
-  return Buffer.from(res.data as ArrayBuffer);
 }
 
 export async function createDriveFolder(
@@ -121,33 +158,43 @@ export async function uploadToDrive(
   buffer: Buffer,
   mimeType: string
 ): Promise<string> {
-  const auth = getUploadAuth();
-  const drive = google.drive({ version: "v3", auth });
+  return withRetry(
+    async () => {
+      const auth = getUploadAuth();
+      const drive = google.drive({ version: "v3", auth });
 
-  const { Readable } = await import("stream");
+      const { Readable } = await import("stream");
 
-  const res = await drive.files.create({
-    requestBody: {
-      name: filename,
-      parents: [folderId],
+      const res = await drive.files.create({
+        requestBody: {
+          name: filename,
+          parents: [folderId],
+        },
+        media: {
+          mimeType,
+          body: Readable.from(buffer),
+        },
+        fields: "id",
+      }, {
+        headers: { "x-goog-user-project": "claude-code-william" },
+      });
+
+      return res.data.id!;
     },
-    media: {
-      mimeType,
-      body: Readable.from(buffer),
-    },
-    fields: "id",
-  }, {
-    headers: { "x-goog-user-project": "claude-code-william" },
-  });
-
-  return res.data.id!;
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isGoogleRetryable }
+  );
 }
 
 export async function getFolderName(folderId: string): Promise<string> {
-  const auth = getAuth();
-  const drive = google.drive({ version: "v3", auth });
-  const res = await drive.files.get({ fileId: folderId, fields: "name" });
-  return res.data.name ?? "Untitled";
+  return withRetry(
+    async () => {
+      const auth = getAuth();
+      const drive = google.drive({ version: "v3", auth });
+      const res = await drive.files.get({ fileId: folderId, fields: "name" });
+      return res.data.name ?? "Untitled";
+    },
+    { maxAttempts: 2, initialDelayMs: 1000, isRetryable: isGoogleRetryable }
+  );
 }
 
 export function extractFolderId(url: string): string | null {

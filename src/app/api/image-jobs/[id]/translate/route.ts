@@ -4,7 +4,7 @@ import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
-import { getShortLocalizationNote } from "@/lib/localization";
+import { getShortLocalizationNote, NEVER_TRANSLATE } from "@/lib/localization";
 
 export const maxDuration = 180;
 
@@ -73,11 +73,12 @@ export async function POST(
     // Build the prompt
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
     const langCode = translation.language as Language;
-    let prompt = `Recreate this exact image but translate all text from English to ${langLabel}. Keep the same visual style, layout, colors, and design. Only translate the text.${getShortLocalizationNote(langCode)}`;
+    const neverTranslateList = NEVER_TRANSLATE.join(", ");
+    let prompt = `Recreate this exact image but translate all text to ${langLabel}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, and design. Only translate the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: ${neverTranslateList}.${getShortLocalizationNote(langCode)}`;
 
     // Enhanced prompt for retries with corrections
     if (corrected_text || visual_instructions) {
-      prompt = `Recreate this exact image but translate all text from English to ${langLabel}. Keep the same visual style, layout, colors, and design. Only translate the text.`;
+      prompt = `Recreate this exact image but translate all text to ${langLabel}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, and design. Only translate the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: ${neverTranslateList}.`;
       if (corrected_text) {
         prompt += `\n\nIMPORTANT - Use these exact corrected translations:\n${corrected_text}`;
       }

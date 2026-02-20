@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Loader2 } from "lucide-react";
-import { Translation, ABTest, LANGUAGES } from "@/types";
+import { Translation, ABTest, LANGUAGES, PageImageSelection } from "@/types";
 import TranslationRow from "./TranslationRow";
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   languages: (typeof LANGUAGES)[number][];
   translations: Translation[];
   abTests: ABTest[];
+  imagesToTranslate?: PageImageSelection[];
 }
 
-export default function TranslationPanel({ pageId, languages, translations, abTests }: Props) {
+export default function TranslationPanel({ pageId, languages, translations, abTests, imagesToTranslate }: Props) {
   const router = useRouter();
   const [translatingAll, setTranslatingAll] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -26,6 +27,11 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
   });
 
   async function handleTranslateAll() {
+    const confirmed = window.confirm(
+      `Translate ${untranslatedLangs.length} language${untranslatedLangs.length > 1 ? "s" : ""}? This will use OpenAI API credits.`
+    );
+    if (!confirmed) return;
+
     setTranslatingAll(true);
     const langs = untranslatedLangs;
     setProgress({ done: 0, total: langs.length });
@@ -85,6 +91,7 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
               language={lang}
               translation={translation}
               abTest={abTestMap.get(lang.value)}
+              imagesToTranslate={imagesToTranslate}
             />
           );
         })}

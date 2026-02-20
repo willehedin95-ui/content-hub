@@ -74,6 +74,7 @@ export default async function PageDetailPage({
         languages={LANGUAGES.filter((lang) => lang.domain)}
         translations={p.translations ?? []}
         abTests={(abTests as ABTest[]) ?? []}
+        imagesToTranslate={p.images_to_translate}
       />
 
       {/* Meta info */}

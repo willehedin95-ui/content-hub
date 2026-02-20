@@ -12,6 +12,9 @@ import {
   LinkIcon,
   Upload,
   X,
+  Check,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { PRODUCTS, PAGE_TYPES, Product, PageType } from "@/types";
 import type { TextBlock, ImageBlock } from "@/app/api/fetch-url/route";
@@ -40,6 +43,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   const [images, setImages] = useState<ImageBlock[]>([]);
   const [stats, setStats] = useState<{ textBlocks: number; images: number; links: number } | null>(null);
   const [previewTab, setPreviewTab] = useState<"text" | "images">("text");
+  const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
 
   const [name, setName] = useState("");
   const [product, setProduct] = useState<Product>("happysleep");
@@ -59,6 +63,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     setImages([]);
     setStats(null);
     setPreviewTab("text");
+    setSelectedImages(new Set());
     setName("");
     setProduct("happysleep");
     setPageType("advertorial");
@@ -174,6 +179,11 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
       .replace(/-+/g, "-")
       .slice(0, 80);
 
+    // Build images_to_translate from selected image indices
+    const imagesToTranslate = images
+      .filter((_, i) => selectedImages.has(i))
+      .map((img) => ({ src: img.src, alt: img.alt }));
+
     try {
       const res = await fetch("/api/pages", {
         method: "POST",
@@ -185,6 +195,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
           source_url: url,
           original_html: fetchedHtml,
           slug,
+          images_to_translate: imagesToTranslate,
         }),
       });
 
@@ -338,6 +349,11 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                   </TabBtn>
                   <TabBtn active={previewTab === "images"} onClick={() => setPreviewTab("images")}>
                     <ImageIcon className="w-3.5 h-3.5" /> Images ({images.length})
+                    {selectedImages.size > 0 && (
+                      <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        {selectedImages.size} to translate
+                      </span>
+                    )}
                   </TabBtn>
                 </div>
 
@@ -364,28 +380,81 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                 )}
 
                 {previewTab === "images" && (
-                  <div className="max-h-48 overflow-y-auto p-4 grid grid-cols-3 gap-3">
-                    {images.length === 0 && (
-                      <p className="col-span-3 text-gray-400 text-sm text-center py-8">No images found</p>
+                  <div className="max-h-48 overflow-y-auto p-4">
+                    {images.length === 0 ? (
+                      <p className="text-gray-400 text-sm text-center py-8">No images found</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedImages.size === images.length) {
+                                setSelectedImages(new Set());
+                              } else {
+                                setSelectedImages(new Set(images.map((_, i) => i)));
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+                          >
+                            {selectedImages.size === images.length ? (
+                              <CheckSquare className="w-3.5 h-3.5" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                            {selectedImages.size === images.length ? "Deselect all" : "Select all for translation"}
+                          </button>
+                          <span className="text-xs text-gray-400">
+                            {selectedImages.size} selected
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          {images.map((img, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                setSelectedImages((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(i)) next.delete(i);
+                                  else next.add(i);
+                                  return next;
+                                });
+                              }}
+                              className={`relative group aspect-video bg-white rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                                selectedImages.has(i)
+                                  ? "border-indigo-500 ring-2 ring-indigo-200"
+                                  : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={img.src}
+                                alt={img.alt}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                              <div
+                                className={`absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                                  selectedImages.has(i)
+                                    ? "bg-indigo-500 text-white"
+                                    : "bg-white/80 border border-gray-300 text-transparent"
+                                }`}
+                              >
+                                <Check className="w-3 h-3" />
+                              </div>
+                              {img.alt && (
+                                <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-xs text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {img.alt}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </>
                     )}
-                    {images.map((img, i) => (
-                      <div key={i} className="relative group aspect-video bg-white rounded-lg overflow-hidden border border-gray-200">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.src}
-                          alt={img.alt}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                        {img.alt && (
-                          <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-xs text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                            {img.alt}
-                          </div>
-                        )}
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>

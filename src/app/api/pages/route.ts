@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const db = createServerSupabase();
   const body = await req.json();
 
-  const { name, product, page_type, source_url, original_html, slug } = body;
+  const { name, product, page_type, source_url, original_html, slug, images_to_translate } = body;
 
   if (!name || !product || !page_type || !source_url || !original_html || !slug) {
     return NextResponse.json(
@@ -50,7 +50,15 @@ export async function POST(req: NextRequest) {
 
   const { data: page, error } = await db
     .from("pages")
-    .insert({ name, product, page_type, source_url, original_html, slug })
+    .insert({
+      name,
+      product,
+      page_type,
+      source_url,
+      original_html,
+      slug,
+      images_to_translate: images_to_translate || [],
+    })
     .select()
     .single();
 

@@ -56,7 +56,12 @@ Scoring: 90-100 perfect, 70-89 minor issues, 50-69 noticeable problems, 0-49 maj
     throw new Error("No response from quality analysis");
   }
 
-  const parsed = JSON.parse(content) as QualityAnalysis;
+  let parsed: QualityAnalysis;
+  try {
+    parsed = JSON.parse(content) as QualityAnalysis;
+  } catch {
+    throw new Error("Quality analysis returned invalid JSON");
+  }
 
   // Ensure all fields exist with defaults
   const analysis: QualityAnalysis = {
