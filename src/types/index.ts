@@ -350,3 +350,10 @@ export interface MetaPageConfig {
   created_at: string;
   updated_at: string;
 }
+
+export interface MarketProductUrl {
+  id: string;
+  product: string;
+  country: string;
+  url: string;
+}

@@ -24,15 +24,17 @@ import {
   X,
 } from "lucide-react";
 
-import { Translation, LANGUAGES, PageQualityAnalysis } from "@/types";
+import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
 import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import Dropdown from "@/components/ui/Dropdown";
 
 interface Props {
   pageId: string;
   pageName: string;
   pageSlug: string;
+  pageProduct?: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
   variantLabel?: string;
@@ -42,6 +44,7 @@ export default function EditPageClient({
   pageId,
   pageName,
   pageSlug,
+  pageProduct,
   translation,
   language,
   variantLabel,
@@ -93,6 +96,10 @@ export default function EditPageClient({
   const [qualityAnalysis, setQualityAnalysis] = useState<PageQualityAnalysis | null>(translation.quality_analysis ?? null);
   const [analyzing, setAnalyzing] = useState(false);
   const [showQualityDetails, setShowQualityDetails] = useState(false);
+
+  // Market product URLs
+  const [marketUrls, setMarketUrls] = useState<MarketProductUrl[]>([]);
+  const [urlMode, setUrlMode] = useState<"saved" | "custom">("custom");
 
   // Confirm dialogs
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; action: () => void } | null>(null);
@@ -150,6 +157,24 @@ export default function EditPageClient({
       if (autoSavedTimeoutRef.current) clearTimeout(autoSavedTimeoutRef.current);
     };
   }, []);
+
+  // Fetch market product URLs
+  useEffect(() => {
+    fetch("/api/market-urls")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setMarketUrls);
+  }, []);
+
+  // Auto-detect URL mode when market URLs load and linkUrl is set
+  const country = COUNTRY_MAP[language.value];
+  const filteredUrls = marketUrls.filter((u) => u.country === country);
+
+  useEffect(() => {
+    if (marketUrls.length > 0 && linkUrl) {
+      const match = filteredUrls.find((u) => u.url === linkUrl);
+      setUrlMode(match ? "saved" : "custom");
+    }
+  }, [marketUrls.length, linkUrl]);
 
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
@@ -1226,16 +1251,52 @@ export default function EditPageClient({
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Destination URL
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  <input
-                    type="url"
-                    value={linkUrl}
-                    onChange={(e) => handleLinkUrlChange(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
-                  />
-                </div>
+                {filteredUrls.length > 0 ? (
+                  <>
+                    <Dropdown
+                      value={urlMode === "saved" ? linkUrl : "__custom__"}
+                      onChange={(v) => {
+                        if (v === "__custom__") {
+                          setUrlMode("custom");
+                        } else {
+                          setUrlMode("saved");
+                          handleLinkUrlChange(v);
+                        }
+                      }}
+                      options={[
+                        ...filteredUrls.map((u) => ({
+                          value: u.url,
+                          label: `${PRODUCTS.find((p) => p.value === u.product)?.label ?? u.product} — ${u.url}`,
+                        })),
+                        { value: "__custom__", label: "Custom URL..." },
+                      ]}
+                      placeholder="Select product URL"
+                    />
+                    {urlMode === "custom" && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <input
+                          type="url"
+                          value={linkUrl}
+                          onChange={(e) => handleLinkUrlChange(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="url"
+                      value={linkUrl}
+                      onChange={(e) => handleLinkUrlChange(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+                    />
+                  </div>
+                )}
                 <p className="text-xs text-gray-400">
                   Applied to all links on the page.
                 </p>

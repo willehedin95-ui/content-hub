@@ -12,8 +12,9 @@ import {
   Megaphone,
   Plug,
   X,
+  Globe,
 } from "lucide-react";
-import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
+import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
 import Dropdown from "@/components/ui/Dropdown";
 
 interface Settings {
@@ -36,6 +37,7 @@ interface Settings {
 const TABS = [
   { id: "pages", label: "Landing Pages", icon: FileText, group: "SETTINGS" },
   { id: "static-ads", label: "Static Ads", icon: Image, group: "SETTINGS" },
+  { id: "markets", label: "Markets", icon: Globe, group: "SETTINGS" },
   { id: "meta-ads", label: "Meta Ads", icon: Megaphone, group: "CONNECTIONS" },
   { id: "integrations", label: "Integrations", icon: Plug, group: "CONNECTIONS" },
 ] as const;
@@ -79,6 +81,9 @@ export default function SettingsPage() {
   const [metaPagesLoading, setMetaPagesLoading] = useState(false);
   const [pageConfigs, setPageConfigs] = useState<MetaPageConfig[]>([]);
   const [pageConfigSaving, setPageConfigSaving] = useState<string | null>(null);
+  const [marketUrls, setMarketUrls] = useState<MarketProductUrl[]>([]);
+  const [marketUrlSaving, setMarketUrlSaving] = useState<string | null>(null);
+  const [marketUrlDrafts, setMarketUrlDrafts] = useState<Record<string, string>>({});
 
   const fetchKieCredits = useCallback(async () => {
     setKieLoading(true);
@@ -111,10 +116,12 @@ export default function SettingsPage() {
       fetch("/api/meta/campaign-mappings").then((r) => r.ok ? r.json() : []),
       fetch("/api/meta/campaigns/list").then((r) => r.ok ? r.json() : []),
       fetch("/api/meta/page-config").then((r) => r.ok ? r.json() : []),
-    ]).then(([mappings, campaigns, configs]) => {
+      fetch("/api/market-urls").then((r) => r.ok ? r.json() : []),
+    ]).then(([mappings, campaigns, configs, urls]) => {
       setCampaignMappings(mappings);
       setMetaCampaigns(campaigns);
       setPageConfigs(configs);
+      setMarketUrls(urls);
     }).finally(() => setMappingsLoading(false));
 
     return () => {
@@ -272,6 +279,27 @@ export default function SettingsPage() {
       }
     } finally {
       setPageConfigSaving(null);
+    }
+  }
+
+  async function handleMarketUrlSave(product: string, country: string, url: string) {
+    const cellKey = `${product}-${country}`;
+    setMarketUrlSaving(cellKey);
+    try {
+      const res = await fetch("/api/market-urls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product, country, url }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setMarketUrls((prev) => [
+          ...prev.filter((u) => !(u.product === product && u.country === country)),
+          updated,
+        ]);
+      }
+    } finally {
+      setMarketUrlSaving(null);
     }
   }
 
@@ -542,6 +570,199 @@ export default function SettingsPage() {
             </>
           )}
 
+          {activeTab === "markets" && (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-5">Markets</h2>
+              {mappingsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading...
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {LANGUAGES.filter((l) => l.domain).map((lang) => {
+                    const country = COUNTRY_MAP[lang.value];
+                    return (
+                      <div key={lang.value}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-lg">{lang.flag}</span>
+                          <h3 className="text-sm font-semibold text-gray-900">{country} — {lang.label}</h3>
+                        </div>
+
+                        {/* Product URLs */}
+                        <SectionHeader>Product URLs</SectionHeader>
+                        <SettingsCard>
+                          {PRODUCTS.map((prod, i) => {
+                            const cellKey = `${prod.value}-${country}`;
+                            const existing = marketUrls.find((u) => u.product === prod.value && u.country === country);
+                            const draft = marketUrlDrafts[cellKey];
+                            const value = draft !== undefined ? draft : existing?.url ?? "";
+                            const isSaving = marketUrlSaving === cellKey;
+                            return (
+                              <div key={prod.value}>
+                                {i > 0 && <RowDivider />}
+                                <div className="flex items-center justify-between py-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-sm font-medium text-gray-700">{prod.label}</span>
+                                    {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                                    {!isSaving && existing?.url && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                                  </div>
+                                  <input
+                                    type="url"
+                                    value={value}
+                                    onChange={(e) => setMarketUrlDrafts((d) => ({ ...d, [cellKey]: e.target.value }))}
+                                    onBlur={() => {
+                                      if (draft !== undefined && draft !== (existing?.url ?? "")) {
+                                        handleMarketUrlSave(prod.value, country, draft);
+                                      }
+                                      setMarketUrlDrafts((d) => {
+                                        const next = { ...d };
+                                        delete next[cellKey];
+                                        return next;
+                                      });
+                                    }}
+                                    placeholder="https://..."
+                                    className="w-64 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </SettingsCard>
+
+                        {/* Facebook Page */}
+                        <SectionHeader>Facebook Page</SectionHeader>
+                        <SettingsCard>
+                          {(() => {
+                            const config = pageConfigs.find((c) => c.country === country);
+                            const isSaving = pageConfigSaving === country;
+                            return (
+                              <div className="flex items-center justify-between py-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-medium text-gray-700">Page</span>
+                                  {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                                  {!isSaving && config?.meta_page_id && (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  )}
+                                </div>
+                                {metaPages.length === 0 && !metaPagesLoading ? (
+                                  <button
+                                    onClick={fetchMetaPages}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800"
+                                  >
+                                    Load pages
+                                  </button>
+                                ) : metaPagesLoading ? (
+                                  <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                                ) : (
+                                  <Dropdown
+                                    value={config?.meta_page_id ?? ""}
+                                    onChange={(v) => handlePageConfigChange(country, v)}
+                                    options={[
+                                      { value: "", label: "Not assigned" },
+                                      ...metaPages.map((p) => ({
+                                        value: p.id,
+                                        label: p.name,
+                                      })),
+                                    ]}
+                                    placeholder="Not assigned"
+                                    className="w-52"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </SettingsCard>
+
+                        {/* Campaign Mappings */}
+                        <SectionHeader>Campaign Mappings</SectionHeader>
+                        {metaCampaigns.length === 0 ? (
+                          <SettingsCard>
+                            <div className="py-2 text-sm text-gray-400">
+                              No active campaigns found in Meta.
+                            </div>
+                          </SettingsCard>
+                        ) : (
+                          <SettingsCard>
+                            {PRODUCTS.map((prod, i) => {
+                              const mapping = campaignMappings.find(
+                                (m) => m.product === prod.value && m.country === country
+                              );
+                              const cellKey = `${prod.value}-${country}`;
+                              const isSaving = mappingSaving === cellKey;
+                              const campaignAdSets = mapping?.meta_campaign_id
+                                ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
+                                : [];
+                              const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
+                              return (
+                                <div key={prod.value}>
+                                  {i > 0 && <RowDivider />}
+                                  <div className="py-1">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-sm font-medium text-gray-700">{prod.label}</span>
+                                        {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                                        {!isSaving && mapping?.template_adset_id && (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                        )}
+                                      </div>
+                                      <Dropdown
+                                        value={mapping?.meta_campaign_id ?? ""}
+                                        onChange={(v) => handleMappingChange(prod.value, country, v)}
+                                        options={[
+                                          { value: "", label: "Not mapped" },
+                                          ...metaCampaigns.map((c) => ({
+                                            value: c.id,
+                                            label: c.name,
+                                          })),
+                                        ]}
+                                        placeholder="Not mapped"
+                                        className="w-52"
+                                      />
+                                    </div>
+                                    {mapping?.meta_campaign_id && (
+                                      <div className="mt-1.5 flex items-center justify-between">
+                                        <span className="text-xs text-gray-400 pl-4">Template ad set</span>
+                                        {campaignAdSets.length === 0 && !isLoadingAdSets ? (
+                                          <button
+                                            onClick={() => fetchAdSetsForCampaign(mapping.meta_campaign_id)}
+                                            className="text-xs text-indigo-600 hover:text-indigo-800"
+                                          >
+                                            Load ad sets
+                                          </button>
+                                        ) : isLoadingAdSets ? (
+                                          <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                                        ) : (
+                                          <Dropdown
+                                            value={mapping?.template_adset_id ?? ""}
+                                            onChange={(v) => handleTemplateAdSetChange(prod.value, country, v)}
+                                            options={[
+                                              { value: "", label: "No template" },
+                                              ...campaignAdSets.map((a) => ({
+                                                value: a.id,
+                                                label: a.name,
+                                              })),
+                                            ]}
+                                            placeholder="Select template"
+                                            className="w-52"
+                                          />
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </SettingsCard>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
           {activeTab === "meta-ads" && (
             <>
               <h2 className="text-lg font-semibold text-gray-900 mb-5">Meta Ads</h2>
@@ -568,57 +789,6 @@ export default function SettingsPage() {
                     </ActionButton>
                   }
                 />
-              </SettingsCard>
-
-              <SectionHeader>Facebook Pages</SectionHeader>
-              <p className="text-xs text-gray-400 mb-2.5">
-                Assign a Facebook page to each country. Ads will be published under the correct page.
-              </p>
-              <SettingsCard>
-                {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
-                  const country = COUNTRY_MAP[lang.value];
-                  const config = pageConfigs.find((c) => c.country === country);
-                  const isSaving = pageConfigSaving === country;
-                  return (
-                    <div key={lang.value}>
-                      {i > 0 && <RowDivider />}
-                      <div className="flex items-center justify-between py-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm">{lang.flag}</span>
-                          <span className="text-sm font-medium text-gray-700">{country}</span>
-                          {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
-                          {!isSaving && config?.meta_page_id && (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                          )}
-                        </div>
-                        {metaPages.length === 0 && !metaPagesLoading ? (
-                          <button
-                            onClick={fetchMetaPages}
-                            className="text-xs text-indigo-600 hover:text-indigo-800"
-                          >
-                            Load pages
-                          </button>
-                        ) : metaPagesLoading ? (
-                          <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
-                        ) : (
-                          <Dropdown
-                            value={config?.meta_page_id ?? ""}
-                            onChange={(v) => handlePageConfigChange(country, v)}
-                            options={[
-                              { value: "", label: "Not assigned" },
-                              ...metaPages.map((p) => ({
-                                value: p.id,
-                                label: p.name,
-                              })),
-                            ]}
-                            placeholder="Not assigned"
-                            className="w-52"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
               </SettingsCard>
 
               <SectionHeader>Defaults</SectionHeader>
@@ -668,105 +838,6 @@ export default function SettingsPage() {
                 />
               </SettingsCard>
               <SaveButton saved={saved} onSave={handleSave} />
-
-              <SectionHeader>Campaign Mapping</SectionHeader>
-              <p className="text-xs text-gray-400 mb-2.5">
-                Map each product + country to a Meta campaign and template ad set.
-              </p>
-              {mappingsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading mappings...
-                </div>
-              ) : metaCampaigns.length === 0 ? (
-                <SettingsCard>
-                  <div className="py-2 text-sm text-gray-400">
-                    No active campaigns found in Meta.
-                  </div>
-                </SettingsCard>
-              ) : (
-                <div className="space-y-4">
-                  {PRODUCTS.map((prod) => (
-                    <div key={prod.value}>
-                      <p className="text-xs font-semibold text-gray-500 mb-1.5">{prod.label}</p>
-                      <SettingsCard>
-                        {LANGUAGES.map((lang, i) => {
-                          const country = COUNTRY_MAP[lang.value];
-                          const mapping = campaignMappings.find(
-                            (m) => m.product === prod.value && m.country === country
-                          );
-                          const cellKey = `${prod.value}-${country}`;
-                          const isSaving = mappingSaving === cellKey;
-                          const campaignAdSets = mapping?.meta_campaign_id
-                            ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
-                            : [];
-                          const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
-
-                          return (
-                            <div key={lang.value}>
-                              {i > 0 && <RowDivider />}
-                              <div className="py-1">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-sm">{lang.flag}</span>
-                                    <span className="text-sm font-medium text-gray-700">{country}</span>
-                                    {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
-                                    {!isSaving && mapping?.template_adset_id && (
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                    )}
-                                  </div>
-                                  <Dropdown
-                                    value={mapping?.meta_campaign_id ?? ""}
-                                    onChange={(v) => handleMappingChange(prod.value, country, v)}
-                                    options={[
-                                      { value: "", label: "Not mapped" },
-                                      ...metaCampaigns.map((c) => ({
-                                        value: c.id,
-                                        label: c.name,
-                                      })),
-                                    ]}
-                                    placeholder="Not mapped"
-                                    className="w-52"
-                                  />
-                                </div>
-                                {mapping?.meta_campaign_id && (
-                                  <div className="mt-1.5 flex items-center justify-between">
-                                    <span className="text-xs text-gray-400 pl-6">Template ad set</span>
-                                    {campaignAdSets.length === 0 && !isLoadingAdSets ? (
-                                      <button
-                                        onClick={() => fetchAdSetsForCampaign(mapping.meta_campaign_id)}
-                                        className="text-xs text-indigo-600 hover:text-indigo-800"
-                                      >
-                                        Load ad sets
-                                      </button>
-                                    ) : isLoadingAdSets ? (
-                                      <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
-                                    ) : (
-                                      <Dropdown
-                                        value={mapping?.template_adset_id ?? ""}
-                                        onChange={(v) => handleTemplateAdSetChange(prod.value, country, v)}
-                                        options={[
-                                          { value: "", label: "No template" },
-                                          ...campaignAdSets.map((a) => ({
-                                            value: a.id,
-                                            label: a.name,
-                                          })),
-                                        ]}
-                                        placeholder="Select template"
-                                        className="w-52"
-                                      />
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </SettingsCard>
-                    </div>
-                  ))}
-                </div>
-              )}
             </>
           )}
 

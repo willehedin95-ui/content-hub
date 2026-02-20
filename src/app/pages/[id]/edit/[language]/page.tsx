@@ -37,7 +37,7 @@ export default async function EditTranslationPage({
   // Fetch page name and slug
   const { data: page, error: pError } = await db
     .from("pages")
-    .select("id, name, slug")
+    .select("id, name, slug, product")
     .eq("id", id)
     .single();
 
@@ -48,6 +48,7 @@ export default async function EditTranslationPage({
       pageId={id}
       pageName={page.name}
       pageSlug={page.slug}
+      pageProduct={page.product}
       translation={translation}
       language={lang}
       variantLabel={variant === "b" ? "Variant B" : undefined}
