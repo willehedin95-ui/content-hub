@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -10,7 +11,7 @@ export async function GET() {
     .order("country");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch page config");
   }
 
   return NextResponse.json(data ?? []);
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to save page config");
   }
 
   return NextResponse.json(data);

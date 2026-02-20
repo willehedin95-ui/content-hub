@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { STORAGE_BUCKET } from "@/lib/constants";
+import { computeCounts } from "@/lib/image-utils";
+import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
   const url = new URL(_req.url);
   const compact = url.searchParams.get("compact") === "true";
@@ -41,21 +47,11 @@ export async function GET(
   }
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    return safeError(error, "Failed to fetch image job", 404);
   }
 
   // Compute aggregated counts
-  const allTranslations = job.source_images?.flatMap(
-    (si: { image_translations?: { status: string }[] }) => si.image_translations ?? []
-  ) ?? [];
-
-  return NextResponse.json({
-    ...job,
-    total_images: job.source_images?.length ?? 0,
-    total_translations: allTranslations.length,
-    completed_translations: allTranslations.filter((t: { status: string }) => t.status === "completed").length,
-    failed_translations: allTranslations.filter((t: { status: string }) => t.status === "failed").length,
-  });
+  return NextResponse.json(computeCounts(job));
 }
 
 export async function PATCH(
@@ -63,6 +59,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const body = await req.json();
   const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, concept_number, ad_copy_doc_id } = body as {
     status?: string;
@@ -76,7 +75,16 @@ export async function PATCH(
 
   const db = createServerSupabase();
 
-  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const updateData: {
+    updated_at: string;
+    status?: string;
+    target_languages?: string[];
+    ad_copy_primary?: string[];
+    ad_copy_headline?: string[];
+    landing_page_id?: string | null;
+    concept_number?: number | null;
+    ad_copy_doc_id?: string | null;
+  } = { updated_at: new Date().toISOString() };
   if (status) updateData.status = status;
   if (target_languages) updateData.target_languages = target_languages;
   if (ad_copy_primary !== undefined) updateData.ad_copy_primary = ad_copy_primary;
@@ -93,7 +101,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to update image job");
   }
 
   return NextResponse.json(data);
@@ -104,6 +112,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Clean up storage files (nested: image-jobs/{id}/{translationId}/{file}.png)
@@ -136,7 +147,7 @@ export async function DELETE(
   const { error } = await db.from("image_jobs").delete().eq("id", id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to delete image job");
   }
 
   return NextResponse.json({ success: true });

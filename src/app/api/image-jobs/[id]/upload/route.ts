@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { validateImageFile } from "@/lib/validation";
+import { validateImageFile, isValidUUID } from "@/lib/validation";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
 export const maxDuration = 60;
@@ -10,6 +10,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
 
@@ -36,6 +39,9 @@ export async function POST(
   }
 
   // Upload to Supabase Storage
+  // NOTE: Entire file is buffered in memory. The 50MB limit in validateImageFile()
+  // keeps memory usage safe for Vercel serverless (~256MB). For larger files,
+  // consider client-side pre-signed URL uploads directly to Supabase Storage.
   const buffer = Buffer.from(await file.arrayBuffer());
   const filePath = `image-jobs/${jobId}/${crypto.randomUUID()}.${validation.ext}`;
 

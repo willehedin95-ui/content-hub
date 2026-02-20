@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { publishABTest } from "@/lib/cloudflare-pages";
 import { Language } from "@/types";
+import { isValidUUID } from "@/lib/validation";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
 
   if (!process.env.CF_PAGES_ACCOUNT_ID || !process.env.CF_PAGES_API_TOKEN) {
     return NextResponse.json(

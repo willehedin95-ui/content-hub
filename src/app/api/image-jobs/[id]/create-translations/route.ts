@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Verify job exists and is in "ready" status
@@ -66,7 +71,7 @@ export async function POST(
     .insert(translationRows);
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
+    return safeError(insertError, "Failed to create image translations");
   }
 
   // Move job to processing

@@ -3,6 +3,8 @@ import * as cheerio from "cheerio";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { isAllowedUrl } from "@/lib/validation";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMIT_FETCH_URL } from "@/lib/constants";
 
 export const maxDuration = 60;
 
@@ -97,6 +99,14 @@ async function makeSelfContained(html: string, pageUrl: string): Promise<string>
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit("fetch-url", RATE_LIMIT_FETCH_URL);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rl.retryAfterMs ?? 60000) / 1000)) } }
+    );
+  }
+
   const { url } = await req.json();
 
   if (!url || typeof url !== "string") {
@@ -110,68 +120,79 @@ export async function POST(req: NextRequest) {
 
   let html = "";
 
+  // Overall timeout for the entire Puppeteer session (maxDuration is 60s)
+  const BROWSER_TIMEOUT_MS = 45_000;
+
   try {
-    // Use Puppeteer to render JavaScript-heavy pages (e.g. Lovable/React apps)
-    // In local dev, fall back to system Chrome; in production use @sparticuz/chromium binary
-    const isLocal = process.env.NODE_ENV === "development";
-    const browser = await puppeteer.launch({
-      args: isLocal ? ["--no-sandbox"] : chromium.args,
-      executablePath: isLocal
-        ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        : await chromium.executablePath(),
-      headless: true,
-    });
+    const browserWork = async (): Promise<string> => {
+      // Use Puppeteer to render JavaScript-heavy pages (e.g. Lovable/React apps)
+      // In local dev, fall back to system Chrome; in production use @sparticuz/chromium binary
+      const isLocal = process.env.NODE_ENV === "development";
+      const browser = await puppeteer.launch({
+        args: isLocal ? ["--no-sandbox"] : chromium.args,
+        executablePath: isLocal
+          ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          : await chromium.executablePath(),
+        headless: true,
+      });
 
-    try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      );
+      try {
+        const page = await browser.newPage();
+        await page.setUserAgent(
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        );
 
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+        await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
 
-      // Slowly scroll through the entire page to trigger intersection observers
-      // and lazy-loaded sections, then scroll back to top
-      await page.evaluate(async () => {
-        await new Promise<void>((resolve) => {
-          let totalHeight = 0;
-          const distance = 200;
-          const timer = setInterval(() => {
-            window.scrollBy(0, distance);
-            totalHeight += distance;
-            if (totalHeight >= document.body.scrollHeight) {
-              clearInterval(timer);
-              window.scrollTo(0, 0);
-              resolve();
+        // Slowly scroll through the entire page to trigger intersection observers
+        // and lazy-loaded sections, then scroll back to top
+        await page.evaluate(async () => {
+          await new Promise<void>((resolve) => {
+            let totalHeight = 0;
+            const distance = 200;
+            const timer = setInterval(() => {
+              window.scrollBy(0, distance);
+              totalHeight += distance;
+              if (totalHeight >= document.body.scrollHeight) {
+                clearInterval(timer);
+                window.scrollTo(0, 0);
+                resolve();
+              }
+            }, 80);
+          });
+        });
+
+        // Wait for any newly triggered network requests to finish
+        await new Promise((r) => setTimeout(r, 2000));
+
+        // Force all Framer Motion / CSS-animation hidden elements into their
+        // final visible state before capturing. Without the JS runtime, elements
+        // with inline `opacity:0` or off-screen transforms would stay invisible.
+        await page.evaluate(() => {
+          document.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+            if (el.style.opacity === "0") el.style.opacity = "1";
+            if (el.style.visibility === "hidden") el.style.visibility = "visible";
+            const t = el.style.transform;
+            if (t && t !== "none" && (t.includes("translateY") || t.includes("translateX"))) {
+              el.style.transform = "none";
             }
-          }, 80);
+          });
+          const sheet = document.createElement("style");
+          sheet.textContent = "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
+          document.head.appendChild(sheet);
         });
-      });
 
-      // Wait for any newly triggered network requests to finish
-      await new Promise((r) => setTimeout(r, 2000));
+        return await page.content();
+      } finally {
+        await browser.close();
+      }
+    };
 
-      // Force all Framer Motion / CSS-animation hidden elements into their
-      // final visible state before capturing. Without the JS runtime, elements
-      // with inline `opacity:0` or off-screen transforms would stay invisible.
-      await page.evaluate(() => {
-        document.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
-          if (el.style.opacity === "0") el.style.opacity = "1";
-          if (el.style.visibility === "hidden") el.style.visibility = "visible";
-          const t = el.style.transform;
-          if (t && t !== "none" && (t.includes("translateY") || t.includes("translateX"))) {
-            el.style.transform = "none";
-          }
-        });
-        const sheet = document.createElement("style");
-        sheet.textContent = "* { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; }";
-        document.head.appendChild(sheet);
-      });
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Page fetch timed out after 45 seconds")), BROWSER_TIMEOUT_MS)
+    );
 
-      html = await page.content();
-    } finally {
-      await browser.close();
-    }
+    html = await Promise.race([browserWork(), timeout]);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

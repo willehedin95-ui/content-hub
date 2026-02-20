@@ -703,8 +703,7 @@ export default function EditPageClient({
         const data = await res.json().catch(() => ({}));
         setSaveError(data.error || "Quality analysis failed");
       }
-    } catch (err) {
-      console.error("Quality analysis failed:", err);
+    } catch {
       setSaveError("Quality analysis failed — check your connection");
     } finally {
       setAnalyzing(false);
@@ -815,7 +814,7 @@ export default function EditPageClient({
           <span className="text-gray-500 text-sm truncate">{pageName}</span>
           <span className="text-gray-300 shrink-0">/</span>
           <span className="flex items-center gap-1.5 text-gray-900 text-sm font-medium shrink-0">
-            {language.flag} {language.label}
+            <span role="img" aria-label={language.label}>{language.flag}</span> {language.label}
           </span>
           {/* Quality score badge */}
           {analyzing ? (

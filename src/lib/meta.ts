@@ -69,15 +69,33 @@ async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> 
   );
 }
 
+interface MetaPaginatedResponse<T> {
+  data: T[];
+  paging?: { next?: string };
+}
+
+async function metaJsonPaginated<T>(path: string, maxPages = 10): Promise<T[]> {
+  const results: T[] = [];
+  let url: string | null = path;
+
+  for (let page = 0; url && page < maxPages; page++) {
+    const resp: MetaPaginatedResponse<T> = await metaJson(url);
+    results.push(...resp.data);
+    // Meta returns full URLs for pagination — strip the base to use with metaJson
+    const nextUrl = resp.paging?.next;
+    url = nextUrl ? nextUrl.replace(META_API_BASE, "") : null;
+  }
+
+  return results;
+}
+
 export async function listCampaigns(): Promise<
   Array<{ id: string; name: string; status: string; objective: string }>
 > {
-  const data = await metaJson<{
-    data: Array<{ id: string; name: string; status: string; objective: string }>;
-  }>(
+  const all = await metaJsonPaginated<{ id: string; name: string; status: string; objective: string }>(
     `/act_${getAdAccountId()}/campaigns?fields=id,name,status,objective&limit=50`
   );
-  return data.data.filter((c) => c.status === "ACTIVE");
+  return all.filter((c) => c.status === "ACTIVE");
 }
 
 export async function verifyConnection(): Promise<{
@@ -101,8 +119,14 @@ export async function uploadImage(imageUrl: string): Promise<{ hash: string; url
     throw e;
   }
 
-  const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) throw new Error("Failed to download image for Meta upload");
+  const imgRes = await withRetry(
+    async () => {
+      const res = await fetch(imageUrl);
+      if (!res.ok) throw new Error(`Failed to download image (${res.status})`);
+      return res;
+    },
+    { maxAttempts: 3, initialDelayMs: 1000, isRetryable: isTransientError }
+  );
   const buffer = Buffer.from(await imgRes.arrayBuffer());
   const base64 = buffer.toString("base64");
 
@@ -167,10 +191,9 @@ export async function createAdSet(params: {
 export async function listPages(): Promise<
   Array<{ id: string; name: string }>
 > {
-  const data = await metaJson<{
-    data: Array<{ id: string; name: string }>;
-  }>(`/me/accounts?fields=id,name&limit=50`);
-  return data.data;
+  return metaJsonPaginated<{ id: string; name: string }>(
+    `/me/accounts?fields=id,name&limit=50`
+  );
 }
 
 export async function createAdCreative(params: {
@@ -303,11 +326,11 @@ export async function duplicateAdSet(adSetId: string): Promise<{ copied_adset_id
   });
 }
 
-export async function updateAdSet(adSetId: string, params: { name: string }): Promise<{ success: boolean }> {
+export async function updateAdSet(adSetId: string, params: { name?: string; start_time?: string }): Promise<{ success: boolean }> {
   return metaJson(`/${adSetId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: params.name }),
+    body: JSON.stringify(params),
   });
 }
 

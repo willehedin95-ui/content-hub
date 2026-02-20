@@ -65,29 +65,56 @@ export default function SettingsPage() {
   });
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [kieBalance, setKieBalance] = useState<number | null>(null);
-  const [kieLoading, setKieLoading] = useState(false);
-  const [kieError, setKieError] = useState<string | null>(null);
-  const [metaStatus, setMetaStatus] = useState<{ name: string; id: string } | null>(null);
-  const [metaLoading, setMetaLoading] = useState(false);
-  const [metaError, setMetaError] = useState<string | null>(null);
-  const [campaignMappings, setCampaignMappings] = useState<MetaCampaignMapping[]>([]);
-  const [metaCampaigns, setMetaCampaigns] = useState<{ id: string; name: string; status: string; objective: string }[]>([]);
-  const [mappingsLoading, setMappingsLoading] = useState(true);
-  const [mappingSaving, setMappingSaving] = useState<string | null>(null);
-  const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, { id: string; name: string; status: string }[]>>({});
-  const [adSetsLoading, setAdSetsLoading] = useState<string | null>(null);
-  const [metaPages, setMetaPages] = useState<{ id: string; name: string }[]>([]);
-  const [metaPagesLoading, setMetaPagesLoading] = useState(false);
-  const [pageConfigs, setPageConfigs] = useState<MetaPageConfig[]>([]);
-  const [pageConfigSaving, setPageConfigSaving] = useState<string | null>(null);
-  const [marketUrls, setMarketUrls] = useState<MarketProductUrl[]>([]);
-  const [marketUrlSaving, setMarketUrlSaving] = useState<string | null>(null);
-  const [marketUrlDrafts, setMarketUrlDrafts] = useState<Record<string, string>>({});
+
+  // KIE AI integration state
+  const [kie, setKie] = useState<{
+    balance: number | null;
+    loading: boolean;
+    error: string | null;
+  }>({ balance: null, loading: false, error: null });
+
+  // Meta connection state
+  const [meta, setMeta] = useState<{
+    status: { name: string; id: string } | null;
+    loading: boolean;
+    error: string | null;
+  }>({ status: null, loading: false, error: null });
+
+  // Campaign mappings state
+  const [mappings, setMappings] = useState<{
+    campaignMappings: MetaCampaignMapping[];
+    metaCampaigns: { id: string; name: string; status: string; objective: string }[];
+    loading: boolean;
+    saving: string | null;
+  }>({ campaignMappings: [], metaCampaigns: [], loading: true, saving: null });
+
+  // Ad sets state
+  const [adSets, setAdSets] = useState<{
+    byCampaign: Record<string, { id: string; name: string; status: string }[]>;
+    loading: string | null;
+  }>({ byCampaign: {}, loading: null });
+
+  // Meta pages state
+  const [metaPages, setMetaPages] = useState<{
+    pages: { id: string; name: string }[];
+    loading: boolean;
+  }>({ pages: [], loading: false });
+
+  // Page configs state
+  const [pageConfigs, setPageConfigs] = useState<{
+    configs: MetaPageConfig[];
+    saving: string | null;
+  }>({ configs: [], saving: null });
+
+  // Market URLs state
+  const [marketUrls, setMarketUrls] = useState<{
+    urls: MarketProductUrl[];
+    saving: string | null;
+    drafts: Record<string, string>;
+  }>({ urls: [], saving: null, drafts: {} });
 
   const fetchKieCredits = useCallback(async () => {
-    setKieLoading(true);
-    setKieError(null);
+    setKie(prev => ({ ...prev, loading: true, error: null }));
     try {
       const res = await fetch("/api/kie-credits");
       if (!res.ok) {
@@ -95,11 +122,13 @@ export default function SettingsPage() {
         throw new Error(data.error ?? "Failed to fetch");
       }
       const data = await res.json();
-      setKieBalance(data.balance);
+      setKie(prev => ({ ...prev, balance: data.balance, loading: false }));
     } catch (err) {
-      setKieError(err instanceof Error ? err.message : "Failed to fetch credits");
-    } finally {
-      setKieLoading(false);
+      setKie(prev => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "Failed to fetch credits",
+        loading: false,
+      }));
     }
   }, []);
 
@@ -128,12 +157,11 @@ export default function SettingsPage() {
       fetch("/api/meta/campaigns/list").then((r) => r.ok ? r.json() : []),
       fetch("/api/meta/page-config").then((r) => r.ok ? r.json() : []),
       fetch("/api/market-urls").then((r) => r.ok ? r.json() : []),
-    ]).then(([mappings, campaigns, configs, urls]) => {
-      setCampaignMappings(mappings);
-      setMetaCampaigns(campaigns);
-      setPageConfigs(configs);
-      setMarketUrls(urls);
-    }).finally(() => setMappingsLoading(false));
+    ]).then(([campaignMappings, metaCampaigns, configs, urls]) => {
+      setMappings(prev => ({ ...prev, campaignMappings, metaCampaigns }));
+      setPageConfigs(prev => ({ ...prev, configs }));
+      setMarketUrls(prev => ({ ...prev, urls }));
+    }).finally(() => setMappings(prev => ({ ...prev, loading: false })));
 
     return () => {
       if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
@@ -163,27 +191,27 @@ export default function SettingsPage() {
   }
 
   async function fetchAdSetsForCampaign(metaCampaignId: string) {
-    if (adSetsByCampaign[metaCampaignId]) return;
-    setAdSetsLoading(metaCampaignId);
+    if (adSets.byCampaign[metaCampaignId]) return;
+    setAdSets(prev => ({ ...prev, loading: metaCampaignId }));
     try {
       const res = await fetch(`/api/meta/adsets?campaign_id=${metaCampaignId}`);
       if (res.ok) {
         const data = await res.json();
-        setAdSetsByCampaign((prev) => ({ ...prev, [metaCampaignId]: data }));
+        setAdSets(prev => ({ ...prev, byCampaign: { ...prev.byCampaign, [metaCampaignId]: data } }));
       }
     } finally {
-      setAdSetsLoading(null);
+      setAdSets(prev => ({ ...prev, loading: null }));
     }
   }
 
   async function handleTemplateAdSetChange(product: string, country: string, adSetId: string) {
     const cellKey = `${product}-${country}`;
-    setMappingSaving(cellKey);
+    setMappings(prev => ({ ...prev, saving: cellKey }));
     try {
-      const mapping = campaignMappings.find((m) => m.product === product && m.country === country);
+      const mapping = mappings.campaignMappings.find((m) => m.product === product && m.country === country);
       if (!mapping) return;
-      const allAdSets = Object.values(adSetsByCampaign).flat();
-      const adSet = allAdSets.find((a) => a.id === adSetId);
+      const allAdSetsList = Object.values(adSets.byCampaign).flat();
+      const adSet = allAdSetsList.find((a) => a.id === adSetId);
       const res = await fetch("/api/meta/campaign-mappings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,28 +226,34 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setCampaignMappings((prev) => {
-          const without = prev.filter((m) => !(m.product === product && m.country === country));
-          return [...without, updated];
-        });
+        setMappings(prev => ({
+          ...prev,
+          campaignMappings: [
+            ...prev.campaignMappings.filter((m) => !(m.product === product && m.country === country)),
+            updated,
+          ],
+        }));
       }
     } finally {
-      setMappingSaving(null);
+      setMappings(prev => ({ ...prev, saving: null }));
     }
   }
 
   async function handleMappingChange(product: string, country: string, metaCampaignId: string) {
     const cellKey = `${product}-${country}`;
-    setMappingSaving(cellKey);
+    setMappings(prev => ({ ...prev, saving: cellKey }));
     try {
       if (!metaCampaignId) {
-        const existing = campaignMappings.find((m) => m.product === product && m.country === country);
+        const existing = mappings.campaignMappings.find((m) => m.product === product && m.country === country);
         if (existing) {
           await fetch(`/api/meta/campaign-mappings?id=${existing.id}`, { method: "DELETE" });
-          setCampaignMappings((prev) => prev.filter((m) => m.id !== existing.id));
+          setMappings(prev => ({
+            ...prev,
+            campaignMappings: prev.campaignMappings.filter((m) => m.id !== existing.id),
+          }));
         }
       } else {
-        const campaign = metaCampaigns.find((c) => c.id === metaCampaignId);
+        const campaign = mappings.metaCampaigns.find((c) => c.id === metaCampaignId);
         const res = await fetch("/api/meta/campaign-mappings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -232,52 +266,55 @@ export default function SettingsPage() {
         });
         if (res.ok) {
           const mapping = await res.json();
-          setCampaignMappings((prev) => {
-            const without = prev.filter((m) => !(m.product === product && m.country === country));
-            return [...without, mapping];
-          });
+          setMappings(prev => ({
+            ...prev,
+            campaignMappings: [
+              ...prev.campaignMappings.filter((m) => !(m.product === product && m.country === country)),
+              mapping,
+            ],
+          }));
         }
       }
     } finally {
-      setMappingSaving(null);
+      setMappings(prev => ({ ...prev, saving: null }));
     }
   }
 
   async function testMetaConnection() {
-    setMetaLoading(true);
-    setMetaError(null);
+    setMeta(prev => ({ ...prev, loading: true, error: null }));
     try {
       const res = await fetch("/api/meta/verify");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Connection failed");
-      setMetaStatus(data);
+      setMeta(prev => ({ ...prev, status: data, loading: false }));
     } catch (err) {
-      setMetaError(err instanceof Error ? err.message : "Connection failed");
-      setMetaStatus(null);
-    } finally {
-      setMetaLoading(false);
+      setMeta({
+        status: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Connection failed",
+      });
     }
   }
 
   async function fetchMetaPages() {
-    if (metaPages.length > 0) return;
-    setMetaPagesLoading(true);
+    if (metaPages.pages.length > 0) return;
+    setMetaPages(prev => ({ ...prev, loading: true }));
     try {
       const res = await fetch("/api/meta/pages");
       if (res.ok) {
         const data = await res.json();
-        setMetaPages(data);
+        setMetaPages(prev => ({ ...prev, pages: data }));
       }
     } finally {
-      setMetaPagesLoading(false);
+      setMetaPages(prev => ({ ...prev, loading: false }));
     }
   }
 
   async function handlePageConfigChange(country: string, metaPageId: string) {
-    setPageConfigSaving(country);
+    setPageConfigs(prev => ({ ...prev, saving: country }));
     try {
       if (!metaPageId) return;
-      const page = metaPages.find((p) => p.id === metaPageId);
+      const page = metaPages.pages.find((p) => p.id === metaPageId);
       const res = await fetch("/api/meta/page-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -289,19 +326,19 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setPageConfigs((prev) => {
-          const without = prev.filter((c) => c.country !== country);
-          return [...without, updated];
-        });
+        setPageConfigs(prev => ({
+          ...prev,
+          configs: [...prev.configs.filter((c) => c.country !== country), updated],
+        }));
       }
     } finally {
-      setPageConfigSaving(null);
+      setPageConfigs(prev => ({ ...prev, saving: null }));
     }
   }
 
   async function handleMarketUrlSave(product: string, country: string, url: string) {
     const cellKey = `${product}-${country}`;
-    setMarketUrlSaving(cellKey);
+    setMarketUrls(prev => ({ ...prev, saving: cellKey }));
     try {
       const res = await fetch("/api/market-urls", {
         method: "POST",
@@ -310,13 +347,13 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setMarketUrls((prev) => [
-          ...prev.filter((u) => !(u.product === product && u.country === country)),
-          updated,
-        ]);
+        setMarketUrls(prev => ({
+          ...prev,
+          urls: [...prev.urls.filter((u) => !(u.product === product && u.country === country)), updated],
+        }));
       }
     } finally {
-      setMarketUrlSaving(null);
+      setMarketUrls(prev => ({ ...prev, saving: null }));
     }
   }
 
@@ -483,7 +520,7 @@ export default function SettingsPage() {
                             }`}
                             title={lang.label}
                           >
-                            {lang.flag}
+                            <span role="img" aria-label={lang.label}>{lang.flag}</span>
                           </button>
                         );
                       })}
@@ -590,7 +627,7 @@ export default function SettingsPage() {
           {activeTab === "markets" && (
             <>
               <h2 className="text-lg font-semibold text-gray-900 mb-5">Markets</h2>
-              {mappingsLoading ? (
+              {mappings.loading ? (
                 <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Loading...
@@ -602,7 +639,7 @@ export default function SettingsPage() {
                     return (
                       <div key={lang.value}>
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="text-lg">{lang.flag}</span>
+                          <span className="text-lg" role="img" aria-label={lang.label}>{lang.flag}</span>
                           <h3 className="text-sm font-semibold text-gray-900">{country} — {lang.label}</h3>
                         </div>
 
@@ -611,10 +648,10 @@ export default function SettingsPage() {
                         <SettingsCard>
                           {PRODUCTS.map((prod, i) => {
                             const cellKey = `${prod.value}-${country}`;
-                            const existing = marketUrls.find((u) => u.product === prod.value && u.country === country);
-                            const draft = marketUrlDrafts[cellKey];
+                            const existing = marketUrls.urls.find((u) => u.product === prod.value && u.country === country);
+                            const draft = marketUrls.drafts[cellKey];
                             const value = draft !== undefined ? draft : existing?.url ?? "";
-                            const isSaving = marketUrlSaving === cellKey;
+                            const isSaving = marketUrls.saving === cellKey;
                             return (
                               <div key={prod.value}>
                                 {i > 0 && <RowDivider />}
@@ -627,15 +664,15 @@ export default function SettingsPage() {
                                   <input
                                     type="url"
                                     value={value}
-                                    onChange={(e) => setMarketUrlDrafts((d) => ({ ...d, [cellKey]: e.target.value }))}
+                                    onChange={(e) => setMarketUrls(prev => ({ ...prev, drafts: { ...prev.drafts, [cellKey]: e.target.value } }))}
                                     onBlur={() => {
                                       if (draft !== undefined && draft !== (existing?.url ?? "")) {
                                         handleMarketUrlSave(prod.value, country, draft);
                                       }
-                                      setMarketUrlDrafts((d) => {
-                                        const next = { ...d };
-                                        delete next[cellKey];
-                                        return next;
+                                      setMarketUrls(prev => {
+                                        const nextDrafts = { ...prev.drafts };
+                                        delete nextDrafts[cellKey];
+                                        return { ...prev, drafts: nextDrafts };
                                       });
                                     }}
                                     placeholder="https://..."
@@ -651,8 +688,8 @@ export default function SettingsPage() {
                         <SectionHeader>Facebook Page</SectionHeader>
                         <SettingsCard>
                           {(() => {
-                            const config = pageConfigs.find((c) => c.country === country);
-                            const isSaving = pageConfigSaving === country;
+                            const config = pageConfigs.configs.find((c) => c.country === country);
+                            const isSaving = pageConfigs.saving === country;
                             return (
                               <div className="flex items-center justify-between py-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -662,14 +699,14 @@ export default function SettingsPage() {
                                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                                   )}
                                 </div>
-                                {metaPages.length === 0 && !metaPagesLoading ? (
+                                {metaPages.pages.length === 0 && !metaPages.loading ? (
                                   <button
                                     onClick={fetchMetaPages}
                                     className="text-xs text-indigo-600 hover:text-indigo-800"
                                   >
                                     Load pages
                                   </button>
-                                ) : metaPagesLoading ? (
+                                ) : metaPages.loading ? (
                                   <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
                                 ) : (
                                   <Dropdown
@@ -677,7 +714,7 @@ export default function SettingsPage() {
                                     onChange={(v) => handlePageConfigChange(country, v)}
                                     options={[
                                       { value: "", label: "Not assigned" },
-                                      ...metaPages.map((p) => ({
+                                      ...metaPages.pages.map((p) => ({
                                         value: p.id,
                                         label: p.name,
                                       })),
@@ -693,7 +730,7 @@ export default function SettingsPage() {
 
                         {/* Campaign Mappings */}
                         <SectionHeader>Campaign Mappings</SectionHeader>
-                        {metaCampaigns.length === 0 ? (
+                        {mappings.metaCampaigns.length === 0 ? (
                           <SettingsCard>
                             <div className="py-2 text-sm text-gray-400">
                               No active campaigns found in Meta.
@@ -702,15 +739,15 @@ export default function SettingsPage() {
                         ) : (
                           <SettingsCard>
                             {PRODUCTS.map((prod, i) => {
-                              const mapping = campaignMappings.find(
+                              const mapping = mappings.campaignMappings.find(
                                 (m) => m.product === prod.value && m.country === country
                               );
                               const cellKey = `${prod.value}-${country}`;
-                              const isSaving = mappingSaving === cellKey;
+                              const isSaving = mappings.saving === cellKey;
                               const campaignAdSets = mapping?.meta_campaign_id
-                                ? adSetsByCampaign[mapping.meta_campaign_id] ?? []
+                                ? adSets.byCampaign[mapping.meta_campaign_id] ?? []
                                 : [];
-                              const isLoadingAdSets = adSetsLoading === mapping?.meta_campaign_id;
+                              const isLoadingAdSets = adSets.loading === mapping?.meta_campaign_id;
                               return (
                                 <div key={prod.value}>
                                   {i > 0 && <RowDivider />}
@@ -728,7 +765,7 @@ export default function SettingsPage() {
                                         onChange={(v) => handleMappingChange(prod.value, country, v)}
                                         options={[
                                           { value: "", label: "Not mapped" },
-                                          ...metaCampaigns.map((c) => ({
+                                          ...mappings.metaCampaigns.map((c) => ({
                                             value: c.id,
                                             label: c.name,
                                           })),
@@ -787,18 +824,18 @@ export default function SettingsPage() {
                 <Row
                   label="Meta Business"
                   description={
-                    metaStatus
-                      ? metaStatus.name
-                      : metaError
-                      ? metaError
+                    meta.status
+                      ? meta.status.name
+                      : meta.error
+                      ? meta.error
                       : "Configured via environment variables"
                   }
-                  descriptionColor={metaStatus ? "text-emerald-600" : metaError ? "text-red-500" : undefined}
+                  descriptionColor={meta.status ? "text-emerald-600" : meta.error ? "text-red-500" : undefined}
                   action={
-                    <ActionButton onClick={testMetaConnection} disabled={metaLoading}>
-                      {metaLoading ? (
+                    <ActionButton onClick={testMetaConnection} disabled={meta.loading}>
+                      {meta.loading ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : metaStatus ? (
+                      ) : meta.status ? (
                         "Connected"
                       ) : (
                         "Test"
@@ -867,16 +904,16 @@ export default function SettingsPage() {
                   description="Image generation (nano-banana-pro)"
                   action={
                     <div className="flex items-center gap-2.5">
-                      {kieBalance !== null && (
+                      {kie.balance !== null && (
                         <span className="text-base font-semibold text-gray-800 tabular-nums">
-                          {kieBalance.toLocaleString()}
+                          {kie.balance.toLocaleString()}
                         </span>
                       )}
-                      {kieError && <span className="text-xs text-red-500">{kieError}</span>}
-                      <ActionButton onClick={fetchKieCredits} disabled={kieLoading}>
-                        {kieLoading ? (
+                      {kie.error && <span className="text-xs text-red-500">{kie.error}</span>}
+                      <ActionButton onClick={fetchKieCredits} disabled={kie.loading}>
+                        {kie.loading ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : kieBalance === null ? (
+                        ) : kie.balance === null ? (
                           "Check"
                         ) : (
                           <RefreshCw className="w-3.5 h-3.5" />

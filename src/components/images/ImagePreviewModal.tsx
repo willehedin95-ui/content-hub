@@ -197,7 +197,7 @@ export default function ImagePreviewModal({
                     : "text-gray-300 cursor-not-allowed"
                 }`}
               >
-                <span>{langInfo?.flag}</span>
+                <span role="img" aria-label={langInfo?.label ?? t.language}>{langInfo?.flag}</span>
                 {t.status === "completed" ? langInfo?.label : t.status === "failed" ? "Failed" : "Pending"}
                 {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
                   <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>

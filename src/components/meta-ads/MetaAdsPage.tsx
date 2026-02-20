@@ -35,8 +35,7 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
         const data = await res.json().catch(() => ({}));
         setPushError(data.error ?? "Push failed");
       }
-      router.refresh();
-      // Refresh campaigns list
+      // Refresh campaigns list from API (server component refresh doesn't update client state)
       const listRes = await fetch("/api/meta/campaigns");
       if (listRes.ok) setCampaigns(await listRes.json());
     } finally {
@@ -111,7 +110,7 @@ export default function MetaAdsPage({ initialCampaigns }: Props) {
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-gray-400">
-                          {langInfo?.flag} {langInfo?.label}
+                          <span role="img" aria-label={langInfo?.label ?? campaign.language}>{langInfo?.flag}</span> {langInfo?.label}
                         </span>
                         <span className="text-xs text-gray-300">|</span>
                         <span className="text-xs text-gray-400">

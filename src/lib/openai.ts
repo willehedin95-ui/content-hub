@@ -114,6 +114,10 @@ IMPORTANT: Return ONLY the translated HTML. No explanations, no markdown code fe
     .replace(/\n?```\s*$/i, "")
     .trim();
 
+  // Sanitize to strip any dangerous elements (scripts, event handlers, etc.)
+  const { sanitizeHtml } = await import("./sanitize");
+  translatedHtml = sanitizeHtml(translatedHtml);
+
   return {
     result: translatedHtml,
     inputTokens: response.usage?.prompt_tokens ?? 0,

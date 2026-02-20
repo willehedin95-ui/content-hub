@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -11,7 +12,7 @@ export async function GET() {
     .order("product");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch market URLs");
   }
 
   return NextResponse.json(data ?? []);
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to save market URL");
   }
 
   return NextResponse.json(data);

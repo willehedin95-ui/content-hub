@@ -5,6 +5,7 @@ import { getShortLocalizationNote } from "@/lib/localization";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 import OpenAI from "openai";
+import { isValidUUID } from "@/lib/validation";
 
 export const maxDuration = 120;
 
@@ -20,6 +21,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const body = await req.json();
   const targetLang = body.language as Language | undefined;
 

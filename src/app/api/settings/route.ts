@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -11,7 +12,7 @@ export async function GET() {
     .single();
 
   if (error && error.code !== "PGRST116") {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch settings");
   }
 
   return NextResponse.json(data?.settings ?? {});
@@ -35,7 +36,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", existing.id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeError(error, "Failed to update settings");
     }
   } else {
     const { error } = await db
@@ -43,7 +44,7 @@ export async function PUT(req: NextRequest) {
       .insert({ settings });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeError(error, "Failed to save settings");
     }
   }
 

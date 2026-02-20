@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { analyzeTranslationQuality } from "@/lib/quality-analysis";
 import { calcOpenAICost } from "@/lib/pricing";
+import { isValidUUID } from "@/lib/validation";
 
 export const maxDuration = 60;
 
@@ -10,6 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const { versionId } = (await req.json()) as { versionId: string };
 
   if (!versionId) {

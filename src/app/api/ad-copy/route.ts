@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -10,7 +11,7 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch ad copy jobs");
   }
 
   return NextResponse.json(jobs ?? []);
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (jobError || !job) {
-    return NextResponse.json({ error: jobError?.message ?? "Failed to create job" }, { status: 500 });
+    return safeError(jobError, "Failed to create ad copy job");
   }
 
   // Create translation rows for each language

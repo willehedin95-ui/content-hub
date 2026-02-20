@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Load the concept

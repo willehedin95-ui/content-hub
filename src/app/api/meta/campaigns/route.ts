@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidLanguage, isValidBudget } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
+import { META_OBJECTIVES, COUNTRY_MAP } from "@/types";
 
 export async function GET() {
   const db = createServerSupabase();
@@ -11,7 +13,7 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch campaigns");
   }
 
   return NextResponse.json(data ?? []);
@@ -63,6 +65,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Budget must be a positive number" }, { status: 400 });
   }
 
+  const validObjectives: readonly string[] = META_OBJECTIVES.map((o) => o.value);
+  if (!validObjectives.includes(objective)) {
+    return NextResponse.json({ error: "Invalid campaign objective" }, { status: 400 });
+  }
+
+  const validCountries = Object.values(COUNTRY_MAP);
+  if (!countries.every((c: string) => validCountries.includes(c))) {
+    return NextResponse.json({ error: "Invalid country code" }, { status: 400 });
+  }
+
+  if (start_time && isNaN(Date.parse(start_time))) {
+    return NextResponse.json({ error: "Invalid start_time format" }, { status: 400 });
+  }
+  if (end_time && isNaN(Date.parse(end_time))) {
+    return NextResponse.json({ error: "Invalid end_time format" }, { status: 400 });
+  }
+
   const db = createServerSupabase();
 
   // Create campaign (ad set) record
@@ -84,7 +103,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (campError || !campaign) {
-    return NextResponse.json({ error: campError?.message ?? "Failed to create campaign" }, { status: 500 });
+    return safeError(campError, "Failed to create campaign");
   }
 
   // Auto-pair 9:16 sibling for each 1:1 image
@@ -140,7 +159,7 @@ export async function POST(req: NextRequest) {
   const { error: adError } = await db.from("meta_ads").insert(adRows);
 
   if (adError) {
-    return NextResponse.json({ error: adError.message }, { status: 500 });
+    return safeError(adError, "Failed to create ads");
   }
 
   // Return campaign with ads

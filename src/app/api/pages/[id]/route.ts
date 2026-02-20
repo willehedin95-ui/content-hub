@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   const { data: page, error } = await db
@@ -15,7 +20,7 @@ export async function GET(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    return safeError(error, "Failed to fetch page", 404);
   }
 
   return NextResponse.json(page);
@@ -26,6 +31,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const body = await req.json();
   const { name } = body as { name?: string };
 
@@ -43,7 +51,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to update page");
   }
 
   return NextResponse.json(data);
@@ -54,12 +62,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   const { error } = await db.from("pages").delete().eq("id", id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to delete page");
   }
 
   return NextResponse.json({ success: true });

@@ -353,7 +353,7 @@ export default function ImagesPage() {
                       : `${langInfo?.label}: not started`;
                     return (
                       <span key={lang} className="relative inline-flex items-center" title={tooltip}>
-                        <span className="text-sm">{langInfo?.flag}</span>
+                        <span className="text-sm" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                         <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
                           info.status === "done" ? "bg-emerald-500" : info.status === "partial" ? "bg-amber-400" : "bg-gray-300"
                         }`} />
@@ -369,7 +369,7 @@ export default function ImagesPage() {
                     const depStatus = marketStatus.get(country);
                     return (
                       <span key={country} className="relative inline-flex items-center" title={`${country}: ${depStatus === "pushed" ? "published" : depStatus === "pushing" ? "pushing" : depStatus === "error" ? "error" : "not deployed"}`}>
-                        <span className={`text-sm ${!depStatus ? "opacity-30" : ""}`}>{COUNTRY_FLAGS[country]}</span>
+                        <span className={`text-sm ${!depStatus ? "opacity-30" : ""}`} role="img" aria-label={country}>{COUNTRY_FLAGS[country]}</span>
                         {depStatus && (
                           <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
                             depStatus === "pushed" ? "bg-emerald-500" : depStatus === "pushing" ? "bg-blue-500" : depStatus === "error" ? "bg-red-500" : "bg-gray-300"

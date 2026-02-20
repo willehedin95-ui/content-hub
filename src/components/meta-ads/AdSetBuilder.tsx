@@ -540,7 +540,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                                 }`}
                               />
                             )}
-                            <span className="text-base">{lang.flag}</span>
+                            <span className="text-base" role="img" aria-label={lang.label}>{lang.flag}</span>
                             {lang.label}
                             <span className="text-xs text-gray-400 ml-auto">
                               {COUNTRY_MAP[lang.value]}
@@ -562,10 +562,12 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                         <p className="text-xs text-amber-600 mt-0.5">
                           {unmappedMarkets
                             .map(
-                              (m) =>
-                                `${LANGUAGES.find((l) => l.value === m)?.flag} ${COUNTRY_MAP[m]}`
+                              (m) => {
+                                const li = LANGUAGES.find((l) => l.value === m);
+                                return <span key={m}><span role="img" aria-label={li?.label ?? m}>{li?.flag}</span> {COUNTRY_MAP[m]}</span>;
+                              }
                             )
-                            .join(", ")}{" "}
+                            .reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}{" "}
                           — go to Settings → Meta Campaign Mapping to assign campaigns and template ad sets.
                         </p>
                       </div>
@@ -719,7 +721,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                     return (
                       <div key={lang} className="bg-gray-50 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-base">{langInfo?.flag}</span>
+                          <span className="text-base" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                           <span className="text-sm font-medium text-gray-700">
                             {langInfo?.label}
                           </span>
@@ -821,7 +823,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                     const langInfo = LANGUAGES.find((l) => l.value === lang);
                     return (
                       <div key={lang} className="flex items-center gap-2">
-                        <span className="text-sm w-6 text-center">
+                        <span className="text-sm w-6 text-center" role="img" aria-label={langInfo?.label ?? lang}>
                           {langInfo?.flag}
                         </span>
                         <input
@@ -898,12 +900,10 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                   <div>
                     <span className="text-gray-400">Markets</span>
                     <p className="text-gray-700 font-medium">
-                      {markets
-                        .map(
-                          (m) =>
-                            LANGUAGES.find((l) => l.value === m)?.flag
-                        )
-                        .join(" ")}{" "}
+                      {markets.map((m) => {
+                        const li = LANGUAGES.find((l) => l.value === m);
+                        return <span key={m} role="img" aria-label={li?.label ?? m}>{li?.flag} </span>;
+                      })}
                       ({markets.length})
                     </p>
                   </div>
@@ -936,7 +936,7 @@ export default function AdSetBuilder({ onClose, onCreated }: Props) {
                     className="border border-gray-200 rounded-xl p-4"
                   >
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="text-lg">{langInfo?.flag}</span>
+                      <span className="text-lg" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                       <h4 className="text-sm font-semibold text-gray-900">
                         {langInfo?.label} ({COUNTRY_MAP[lang]})
                       </h4>

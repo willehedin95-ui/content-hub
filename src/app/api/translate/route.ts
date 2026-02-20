@@ -3,12 +3,21 @@ import { createServerSupabase } from "@/lib/supabase";
 import { extractBlocks, stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
 import { translateFullHtml, translateMetas } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
-import { OPENAI_MODEL } from "@/lib/constants";
+import { OPENAI_MODEL, RATE_LIMIT_TRANSLATE, STALE_CLAIM_MS } from "@/lib/constants";
 import { Language } from "@/types";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit("translate", RATE_LIMIT_TRANSLATE);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rl.retryAfterMs ?? 60000) / 1000)) } }
+    );
+  }
+
   const { page_id, language } = await req.json();
 
   if (!page_id || !language) {
@@ -39,68 +48,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
   }
 
-  // Atomically claim this translation — prevents concurrent requests
-  const STALE_MS = 10 * 60 * 1000; // 10 minutes
-  const { data: existing } = await db
+  // Atomically claim this translation — prevents concurrent requests.
+  // Step 1: Ensure the row exists (upsert with ignoreDuplicates — no-ops if already present)
+  const now = new Date().toISOString();
+  const staleThreshold = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+
+  await db.from("translations").upsert(
+    { page_id, language, variant: "control", status: "draft", updated_at: now },
+    { onConflict: "page_id,language,variant", ignoreDuplicates: true }
+  );
+
+  // Step 2: Atomic claim — single UPDATE that succeeds only if:
+  //   - status is NOT "translating", OR
+  //   - status IS "translating" but the claim is stale (older than 10 min)
+  const { data: claimed } = await db
     .from("translations")
-    .select("id, status, updated_at")
+    .update({ status: "translating", updated_at: now })
     .eq("page_id", page_id)
     .eq("language", language)
     .eq("variant", "control")
+    .or(`status.neq.translating,updated_at.lt.${staleThreshold}`)
+    .select("id")
     .single();
 
-  if (existing) {
-    if (existing.status === "translating") {
-      const age = Date.now() - new Date(existing.updated_at).getTime();
-      if (age < STALE_MS) {
-        return NextResponse.json(
-          { error: "Translation already in progress" },
-          { status: 409 }
-        );
-      }
-      // Stale claim — reset so it can be re-claimed
-      await db.from("translations")
-        .update({ status: "error", updated_at: new Date().toISOString() })
-        .eq("id", existing.id)
-        .eq("status", "translating");
-    }
-    // Atomic update: only claim if still not "translating"
-    const { data: claimed } = await db
-      .from("translations")
-      .update({ status: "translating", updated_at: new Date().toISOString() })
-      .eq("id", existing.id)
-      .neq("status", "translating")
-      .select("id")
-      .single();
-
-    if (!claimed) {
-      return NextResponse.json(
-        { error: "Translation already in progress" },
-        { status: 409 }
-      );
-    }
-  } else {
-    // Use upsert to handle race condition when two requests arrive simultaneously
-    // for the same page/language with no existing row — the unique constraint
-    // ensures only one wins, the other gets the existing row back.
-    const { data: inserted } = await db.from("translations").upsert(
-      {
-        page_id,
-        language,
-        variant: "control",
-        status: "translating",
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "page_id,language,variant" }
-    ).select("id, status").single();
-
-    // If the upsert hit an existing row that's already translating, reject
-    if (inserted && inserted.status !== "translating") {
-      await db.from("translations")
-        .update({ status: "translating", updated_at: new Date().toISOString() })
-        .eq("id", inserted.id)
-        .neq("status", "translating");
-    }
+  if (!claimed) {
+    return NextResponse.json(
+      { error: "Translation already in progress" },
+      { status: 409 }
+    );
   }
 
   try {

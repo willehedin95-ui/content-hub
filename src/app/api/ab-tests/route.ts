@@ -1,19 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { safeError } from "@/lib/api-error";
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const url = new URL(req.url);
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(url.searchParams.get("limit") ?? String(DEFAULT_PAGE_SIZE), 10)));
+  const offset = (page - 1) * limit;
 
-  const { data, error } = await db
-    .from("ab_tests")
-    .select(`*, pages (name, slug)`)
-    .order("created_at", { ascending: false });
+  const [dataResult, countResult] = await Promise.all([
+    db
+      .from("ab_tests")
+      .select(`*, pages (name, slug)`)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1),
+    db.from("ab_tests").select("id", { count: "exact", head: true }),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (dataResult.error) {
+    return safeError(dataResult.error, "Failed to fetch A/B tests");
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({
+    tests: dataResult.data,
+    total: countResult.count ?? 0,
+    page,
+    limit,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -87,10 +102,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (vErr || !variant) {
-    return NextResponse.json(
-      { error: vErr?.message || "Failed to create variant" },
-      { status: 500 }
-    );
+    return safeError(vErr, "Failed to create variant");
   }
 
   // Create the A/B test record
@@ -110,10 +122,7 @@ export async function POST(req: NextRequest) {
   if (tErr || !test) {
     // Clean up the variant if test creation fails
     await db.from("translations").delete().eq("id", variant.id);
-    return NextResponse.json(
-      { error: tErr?.message || "Failed to create A/B test" },
-      { status: 500 }
-    );
+    return safeError(tErr, "Failed to create A/B test");
   }
 
   return NextResponse.json(test, { status: 201 });

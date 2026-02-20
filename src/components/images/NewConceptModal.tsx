@@ -425,7 +425,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                         : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
                     }`}
                   >
-                    <span>{lang.flag}</span>
+                    <span role="img" aria-label={lang.label}>{lang.flag}</span>
                     {lang.label}
                   </button>
                 );

@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { extractContent, applyTranslations } from "@/lib/html-parser";
+import { sanitizeHtml } from "@/lib/sanitize";
+import { safeError } from "@/lib/api-error";
 import * as cheerio from "cheerio";
+import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   const { data, error } = await db
@@ -35,6 +41,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const body = await req.json();
   const { translated_html, translated_texts, seo_title, seo_description, slug } =
     body as {
@@ -86,7 +95,7 @@ export async function PUT(
       $('meta[property="og:description"]').attr("content", seo_description);
     }
 
-    finalHtml = $.html();
+    finalHtml = sanitizeHtml($.html());
   } else {
     // Legacy segment editing path — rebuild HTML from placeholders
     const { modifiedHtml } = extractContent(
@@ -128,7 +137,7 @@ export async function PUT(
     .single();
 
   if (saveError) {
-    return NextResponse.json({ error: saveError.message }, { status: 500 });
+    return safeError(saveError, "Failed to save translation");
   }
 
   return NextResponse.json(updated);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Globe, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Translation, ABTest, LANGUAGES, PageImageSelection } from "@/types";
 import TranslationRow from "./TranslationRow";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getPageQualitySettings } from "@/lib/settings";
 
 interface Props {
@@ -22,6 +23,7 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
   const [translatingAll, setTranslatingAll] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [stuckWarning, setStuckWarning] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const stuckTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Register translate functions from each row (for Phase 2 callback ref pattern)
@@ -71,69 +73,73 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
     if (rowFns.length > 0) {
       // Phase 2 path: trigger each row's full translate pipeline
       const estimate = computeTotalEstimate(rowFns.length);
-      const confirmed = window.confirm(
-        `Translate ${rowFns.length} language${rowFns.length > 1 ? "s" : ""}? This includes text, quality analysis, and images.\n\nEstimated time: ${estimate}`
-      );
-      if (!confirmed) return;
+      setConfirmAction({
+        title: "Translate All",
+        message: `Translate ${rowFns.length} language${rowFns.length > 1 ? "s" : ""}? This includes text, quality analysis, and images.\n\nEstimated time: ${estimate}`,
+        onConfirm: async () => {
+          setConfirmAction(null);
+          setTranslatingAll(true);
+          setStuckWarning(false);
+          setProgress({ done: 0, total: rowFns.length });
 
-      setTranslatingAll(true);
-      setStuckWarning(false);
-      setProgress({ done: 0, total: rowFns.length });
+          // Start stuck timer — scale with number of languages since they run sequentially
+          const stuckMs = STUCK_TIMEOUT_BASE_MS * rowFns.length;
+          stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
 
-      // Start stuck timer — scale with number of languages since they run sequentially
-      const stuckMs = STUCK_TIMEOUT_BASE_MS * rowFns.length;
-      stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
-
-      // Run sequentially to avoid OpenAI rate limits and Vercel concurrency limits
-      for (const fn of rowFns) {
-        try {
-          await fn();
-        } finally {
-          setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
-        }
-      }
-      if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
-      setTranslatingAll(false);
-      setStuckWarning(false);
-      router.refresh();
-      // Delayed second refresh to catch late DB updates
-      setTimeout(() => router.refresh(), 5000);
+          // Run sequentially to avoid OpenAI rate limits and Vercel concurrency limits
+          for (const fn of rowFns) {
+            try {
+              await fn();
+            } finally {
+              setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+            }
+          }
+          if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
+          setTranslatingAll(false);
+          setStuckWarning(false);
+          router.refresh();
+          // Delayed second refresh to catch late DB updates
+          setTimeout(() => router.refresh(), 5000);
+        },
+      });
       return;
     }
 
     // Fallback: raw API calls (legacy path)
-    const confirmed = window.confirm(
-      `Translate ${untranslatedLangs.length} language${untranslatedLangs.length > 1 ? "s" : ""}? This will use API credits.`
-    );
-    if (!confirmed) return;
-
-    setTranslatingAll(true);
-    setStuckWarning(false);
     const langs = untranslatedLangs;
-    setProgress({ done: 0, total: langs.length });
+    setConfirmAction({
+      title: "Translate All",
+      message: `Translate ${langs.length} language${langs.length > 1 ? "s" : ""}? This will use API credits.`,
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setTranslatingAll(true);
+        setStuckWarning(false);
+        setProgress({ done: 0, total: langs.length });
 
-    // Start stuck timer — scale with number of languages since they run sequentially
-    const stuckMs = STUCK_TIMEOUT_BASE_MS * langs.length;
-    stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
+        // Start stuck timer — scale with number of languages since they run sequentially
+        const stuckMs = STUCK_TIMEOUT_BASE_MS * langs.length;
+        stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
 
-    // Run sequentially to avoid rate limits
-    for (const lang of langs) {
-      try {
-        await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ page_id: pageId, language: lang.value }),
-        });
-      } finally {
-        setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
-      }
-    }
-    if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
-    setTranslatingAll(false);
-    setStuckWarning(false);
-    router.refresh();
-    // Delayed second refresh to catch late DB state updates
-    setTimeout(() => router.refresh(), 5000);
+        // Run sequentially to avoid rate limits
+        for (const lang of langs) {
+          try {
+            await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ page_id: pageId, language: lang.value }),
+            });
+          } finally {
+            setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+          }
+        }
+        if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
+        setTranslatingAll(false);
+        setStuckWarning(false);
+        router.refresh();
+        // Delayed second refresh to catch late DB state updates
+        setTimeout(() => router.refresh(), 5000);
+      },
+    });
   }
 
   return (
@@ -204,6 +210,15 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction?.title ?? ""}
+        message={confirmAction?.message ?? ""}
+        confirmLabel="Translate"
+        onConfirm={() => confirmAction?.onConfirm()}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

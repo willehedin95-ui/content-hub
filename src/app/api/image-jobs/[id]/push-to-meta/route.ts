@@ -12,6 +12,7 @@ import { getShortLocalizationNote } from "@/lib/localization";
 import OpenAI from "openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
+import { isValidUUID } from "@/lib/validation";
 
 export const maxDuration = 300;
 
@@ -33,6 +34,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Load the concept with images + translations
@@ -60,24 +64,34 @@ export async function POST(
     return NextResponse.json({ error: "Landing page is required" }, { status: 400 });
   }
 
-  // Auto-assign concept number if not set
+  // Auto-assign concept number if not set (atomic to prevent duplicates)
   let conceptNumber = job.concept_number;
   if (!conceptNumber) {
-    const { data: maxRow } = await db
-      .from("image_jobs")
-      .select("concept_number")
-      .eq("product", job.product)
-      .not("concept_number", "is", null)
-      .order("concept_number", { ascending: false })
-      .limit(1)
-      .single();
+    const { data: assigned, error: rpcError } = await db.rpc("assign_next_concept_number", {
+      p_job_id: jobId,
+      p_product: job.product,
+    });
 
-    conceptNumber = (maxRow?.concept_number ?? 0) + 1;
+    if (rpcError || assigned === null || assigned === undefined) {
+      // Fallback: non-atomic assignment (safe for single-user tool)
+      const { data: maxRow } = await db
+        .from("image_jobs")
+        .select("concept_number")
+        .eq("product", job.product)
+        .not("concept_number", "is", null)
+        .order("concept_number", { ascending: false })
+        .limit(1)
+        .single();
 
-    await db
-      .from("image_jobs")
-      .update({ concept_number: conceptNumber })
-      .eq("id", jobId);
+      conceptNumber = (maxRow?.concept_number ?? 0) + 1;
+
+      await db
+        .from("image_jobs")
+        .update({ concept_number: conceptNumber })
+        .eq("id", jobId);
+    } else {
+      conceptNumber = assigned;
+    }
   }
 
   const conceptNumberStr = String(conceptNumber).padStart(3, "0");
@@ -195,12 +209,9 @@ export async function POST(
       // Duplicate template ad set
       const { copied_adset_id } = await duplicateAdSet(mapping.template_adset_id);
 
-      // Rename and set start time
-      await updateAdSet(copied_adset_id, { name: adSetName });
-
-      // Set start_time to next 03:00 CET
+      // Rename and set start time (single API call, with retry via metaJson)
       const startTime = getNext0300CET();
-      await updateAdSetStartTime(copied_adset_id, startTime);
+      await updateAdSet(copied_adset_id, { name: adSetName, start_time: startTime });
 
       // Create meta_campaigns record
       const { data: campaign } = await db
@@ -396,70 +407,52 @@ No other text.`,
 }
 
 /**
- * Get the next 03:00 CET as ISO string.
+ * Get the next 03:00 CET/CEST as ISO string.
  * If it's currently before 03:00 CET, returns today at 03:00.
  * If it's after 03:00 CET, returns tomorrow at 03:00.
+ *
+ * Works correctly regardless of server timezone (including UTC on Vercel)
+ * by comparing UTC timestamps of 03:00 on consecutive days in Europe/Oslo.
  */
 function getNext0300CET(): string {
   const now = new Date();
+  const TZ = "Europe/Oslo";
 
-  // CET = UTC+1, CEST = UTC+2
-  // Use Europe/Oslo timezone offset to determine current CET/CEST
-  const cetFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Oslo",
+  // Get today's date components in CET/CEST
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
   });
+  const todayCET = formatter.format(now); // "YYYY-MM-DD"
 
-  const parts = cetFormatter.formatToParts(now);
-  const cetHour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const cetYear = parseInt(parts.find((p) => p.type === "year")?.value ?? "0");
-  const cetMonth = parseInt(parts.find((p) => p.type === "month")?.value ?? "0") - 1;
-  const cetDay = parseInt(parts.find((p) => p.type === "day")?.value ?? "0");
+  // Build "today at 03:00" in Europe/Oslo by binary-searching for the UTC ms
+  // that corresponds to 03:00 in CET/CEST
+  function cetDateToUTC(dateStr: string, hour: number): Date {
+    // Start with a rough UTC guess (CET is UTC+1 or UTC+2)
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const guess = new Date(Date.UTC(y, m - 1, d, hour - 1, 0, 0));
 
-  // Build target date in CET
-  const target = new Date(Date.UTC(cetYear, cetMonth, cetDay, 2, 0, 0)); // 03:00 CET = 02:00 UTC (winter), adjusted below
+    // Verify what hour this actually is in CET and adjust
+    const hourFmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: TZ,
+      hour: "2-digit",
+      hour12: false,
+    });
+    const actualHour = parseInt(hourFmt.format(guess));
+    const diff = hour - actualHour;
+    return new Date(guess.getTime() - diff * 3600_000);
+  }
 
-  // Calculate actual UTC offset for CET/CEST
-  const cetDate = new Date(cetYear, cetMonth, cetDay, 3, 0, 0);
-  const utcEquivalent = new Date(cetDate.toLocaleString("en-US", { timeZone: "UTC" }));
-  const cetEquivalent = new Date(cetDate.toLocaleString("en-US", { timeZone: "Europe/Oslo" }));
-  const offsetMs = utcEquivalent.getTime() - cetEquivalent.getTime();
-
-  // 03:00 CET in UTC
-  const target0300 = new Date(Date.UTC(cetYear, cetMonth, cetDay, 3, 0, 0) + offsetMs);
+  const target0300 = cetDateToUTC(todayCET, 3);
 
   // If already past 03:00 CET today, use tomorrow
   if (now >= target0300) {
-    target0300.setUTCDate(target0300.getUTCDate() + 1);
+    const tomorrow = new Date(now.getTime() + 86400_000);
+    const tomorrowCET = formatter.format(tomorrow);
+    return cetDateToUTC(tomorrowCET, 3).toISOString();
   }
 
   return target0300.toISOString();
-}
-
-/**
- * Update ad set start_time via Meta API
- */
-async function updateAdSetStartTime(adSetId: string, startTime: string) {
-  const META_API_BASE = "https://graph.facebook.com/v22.0";
-  const token = process.env.META_SYSTEM_USER_TOKEN;
-  if (!token) throw new Error("META_SYSTEM_USER_TOKEN is not set");
-
-  const res = await fetch(`${META_API_BASE}/${adSetId}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ start_time: startTime }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error?.message ?? `Failed to set start_time (${res.status})`);
-  }
 }

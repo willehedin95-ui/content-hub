@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   const { data, error } = await db
@@ -26,10 +31,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const { split } = await req.json();
   const db = createServerSupabase();
 
-  const updates: Record<string, unknown> = {
+  const updates: { updated_at: string; split?: number } = {
     updated_at: new Date().toISOString(),
   };
 
@@ -51,10 +59,7 @@ export async function PUT(
     .single();
 
   if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message || "Update failed" },
-      { status: 500 }
-    );
+    return safeError(error, "Failed to update A/B test");
   }
 
   return NextResponse.json(data);
@@ -65,6 +70,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Fetch the test to get the variant_id

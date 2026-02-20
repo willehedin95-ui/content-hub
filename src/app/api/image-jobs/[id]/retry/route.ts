@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const includeStalled = _req.nextUrl.searchParams.get("include_stalled") === "true";
   const db = createServerSupabase();
 
@@ -17,7 +22,7 @@ export async function POST(
     .eq("status", "failed");
 
   if (findError) {
-    return NextResponse.json({ error: findError.message }, { status: 500 });
+    return safeError(findError, "Failed to find failed translations");
   }
 
   let ids = (failed ?? []).map((t) => t.id);
@@ -31,7 +36,7 @@ export async function POST(
       .eq("status", "processing");
 
     if (stalledError) {
-      return NextResponse.json({ error: stalledError.message }, { status: 500 });
+      return safeError(stalledError, "Failed to find stalled translations");
     }
 
     if (stalled?.length) {
@@ -54,7 +59,7 @@ export async function POST(
     .in("id", ids);
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return safeError(updateError, "Failed to reset translations for retry");
   }
 
   // Set job back to processing

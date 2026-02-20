@@ -105,7 +105,7 @@ export default function ABTestsClient({ tests, languages }: Props) {
                       {test.pages.name}
                     </span>
                     {lang && (
-                      <span className="text-xs text-gray-400">{lang.flag}</span>
+                      <span className="text-xs text-gray-400" role="img" aria-label={lang.label}>{lang.flag}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">

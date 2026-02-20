@@ -152,11 +152,22 @@ async function createDeployment(
   return { id: json.result.id, url: json.result.url };
 }
 
+function getProjectCustomDomain(language: Language): string | undefined {
+  const key = `CF_PAGES_DOMAIN_${language.toUpperCase()}`;
+  return process.env[key] || undefined;
+}
+
 async function getProjectBaseUrl(
   accountId: string,
   apiToken: string,
-  projectName: string
+  projectName: string,
+  language: Language
 ): Promise<string> {
+  // Prefer explicit custom domain env var (CF_PAGES_DOMAIN_SV, etc.)
+  const envDomain = getProjectCustomDomain(language);
+  if (envDomain) return `https://${envDomain}`;
+
+  // Fall back to CF API detection
   const res = await fetchWithRetry(
     `${CF_API}/accounts/${accountId}/pages/projects/${projectName}`,
     { headers: { Authorization: `Bearer ${apiToken}` } }
@@ -284,7 +295,7 @@ export async function publishPage(
   await saveManifest(projectName, manifest);
 
   // Get base URL (prefer custom domain)
-  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName);
+  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
 
   return {
     url: `${baseUrl}/${slug}`,
@@ -400,7 +411,7 @@ export async function publishABTest(
 
   await saveManifest(projectName, manifest);
 
-  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName);
+  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
 
   return {
     routerUrl: `${baseUrl}${prefix}`,

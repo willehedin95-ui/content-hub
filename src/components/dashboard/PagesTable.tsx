@@ -146,7 +146,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                   key={l.value}
                   className="text-center px-4 py-3 text-gray-500 font-medium"
                 >
-                  {l.flag}
+                  <span role="img" aria-label={l.label}>{l.flag}</span>
                 </th>
               ))}
               <th className="text-left px-4 py-3 text-gray-500 font-medium">

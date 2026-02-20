@@ -226,13 +226,15 @@ export interface DriveFile {
 
 // --- Ad Copy Types ---
 
+export type AdCopyJobStatus = "draft" | "translating" | "completed" | "error";
+
 export interface AdCopyJob {
   id: string;
   name: string;
   product: Product | null;
   source_text: string;
   target_languages: Language[];
-  status: string;
+  status: AdCopyJobStatus;
   created_at: string;
   updated_at: string;
   ad_copy_translations?: AdCopyTranslation[];
@@ -258,6 +260,8 @@ export interface ConceptCopyTranslation {
 
 export type ConceptCopyTranslations = Record<string, ConceptCopyTranslation>;
 
+export type AdCopyTranslationStatus = "pending" | "translating" | "completed" | "error" | "failed";
+
 export interface AdCopyTranslation {
   id: string;
   job_id: string;
@@ -265,7 +269,7 @@ export interface AdCopyTranslation {
   translated_text: string | null;
   quality_score: number | null;
   quality_analysis: AdCopyQualityAnalysis | null;
-  status: string;
+  status: AdCopyTranslationStatus;
   error_message: string | null;
   created_at: string;
   updated_at: string;

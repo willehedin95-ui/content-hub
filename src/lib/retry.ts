@@ -20,19 +20,23 @@ interface RetryOptions {
 
 /**
  * Default retryable check: retries on network errors and 429/5xx HTTP status codes.
+ * Matches structured patterns like "error (429)", "HTTP 502:", "(503)" to avoid
+ * false positives from unrelated numbers in error messages.
  */
 export function isTransientError(error: unknown): boolean {
   if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
+    const msg = error.message;
+    const msgLower = msg.toLowerCase();
     // Network errors
-    if (msg.includes("fetch failed") || msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("network")) {
+    if (msgLower.includes("fetch failed") || msgLower.includes("econnreset") || msgLower.includes("etimedout") || msgLower.includes("abort")) {
       return true;
     }
-    // Rate limits and server errors (check for status codes in message)
-    if (msg.includes("429") || msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("504")) {
+    // Rate limits and server errors — match status codes in structured patterns
+    // e.g. "Meta API error (429)", "HTTP 502:", "Failed to download image (503)"
+    if (/\b(429|5\d{2})\b/.test(msg)) {
       return true;
     }
-    if (msg.includes("rate limit") || msg.includes("too many requests")) {
+    if (msgLower.includes("rate limit") || msgLower.includes("too many requests")) {
       return true;
     }
   }

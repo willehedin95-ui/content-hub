@@ -34,41 +34,58 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [job, setJob] = useState<ImageJob>(initialJob);
   const [detailTab, setDetailTab] = useState<"images" | "ad-copy">("images");
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
-  const [processing, setProcessing] = useState(false);
+  // Processing states
+  const [proc, setProc] = useState<{
+    processing: boolean;
+    startTime: number | null;
+    processedInSession: number;
+    refreshing: boolean;
+  }>({ processing: false, startTime: null, processedInSession: 0, refreshing: false });
+
   const [previewImage, setPreviewImage] = useState<SourceImage | null>(null);
   const [previewLang, setPreviewLang] = useState<string | null>(null);
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
   const cancelRef = useRef(false);
-  const [processStartTime, setProcessStartTime] = useState<number | null>(null);
-  const [processedInSession, setProcessedInSession] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const [showTranslateConfirm, setShowTranslateConfirm] = useState(false);
-  // Meta push state
-  const [primaryTexts, setPrimaryTexts] = useState<string[]>(() => {
-    const arr = initialJob.ad_copy_primary ?? [];
-    return arr.length > 0 ? arr : [""];
-  });
-  const [headlines, setHeadlines] = useState<string[]>(() => {
-    const arr = initialJob.ad_copy_headline ?? [];
-    return arr.length > 0 ? arr : [""];
-  });
-  const [landingPageId, setLandingPageId] = useState(initialJob.landing_page_id ?? "");
+
+  // Meta push states
+  const [metaPush, setMetaPush] = useState<{
+    primaryTexts: string[];
+    headlines: string[];
+    landingPageId: string;
+    pushing: boolean;
+    pushResults: Array<{ language: string; country: string; status: string; error?: string }> | null;
+  }>(() => ({
+    primaryTexts: (initialJob.ad_copy_primary ?? []).length > 0 ? initialJob.ad_copy_primary! : [""],
+    headlines: (initialJob.ad_copy_headline ?? []).length > 0 ? initialJob.ad_copy_headline! : [""],
+    landingPageId: initialJob.landing_page_id ?? "",
+    pushing: false,
+    pushResults: null,
+  }));
+
   const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string }>>([]);
-  const [pushing, setPushing] = useState(false);
-  const [pushResults, setPushResults] = useState<Array<{ language: string; country: string; status: string; error?: string }> | null>(null);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
-  const [savingCopy, setSavingCopy] = useState(false);
-  const [fetchingDoc, setFetchingDoc] = useState(false);
-  const [docTabs, setDocTabs] = useState<Array<{ id: string; title: string }> | null>(null);
-  const [docError, setDocError] = useState<string | null>(null);
-  const [docMatchedTab, setDocMatchedTab] = useState<string | null>(null);
+
+  // Doc fetch states
+  const [doc, setDoc] = useState<{
+    fetching: boolean;
+    tabs: Array<{ id: string; title: string }> | null;
+    error: string | null;
+    matchedTab: string | null;
+  }>({ fetching: false, tabs: null, error: null, matchedTab: null });
+
+  // Copy translation states
+  const [copyState, setCopyState] = useState<{
+    saving: boolean;
+    translating: boolean;
+    translatingLang: Language | null;
+  }>({ saving: false, translating: false, translatingLang: null });
+
   const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [copyTranslations, setCopyTranslations] = useState<ConceptCopyTranslations>(
     () => initialJob.ad_copy_translations ?? {}
   );
-  const [translatingCopy, setTranslatingCopy] = useState(false);
-  const [translatingLang, setTranslatingLang] = useState<Language | null>(null);
 
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
     // Init from job if already set, otherwise from settings defaults
@@ -123,7 +140,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   // Auto-save ad copy on change (debounced)
   const saveCopy = useCallback(async (primaries: string[], hdlines: string[]) => {
-    setSavingCopy(true);
+    setCopyState(prev => ({ ...prev, saving: true }));
     await fetch(`/api/image-jobs/${initialJob.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -132,71 +149,74 @@ export default function ImageJobDetail({ initialJob }: Props) {
         ad_copy_headline: hdlines.filter((t) => t.trim()),
       }),
     });
-    setSavingCopy(false);
+    setCopyState(prev => ({ ...prev, saving: false }));
   }, [initialJob.id]);
 
   function handlePrimaryChange(index: number, value: string) {
-    setPrimaryTexts((prev) => {
-      const next = [...prev];
+    setMetaPush((prev) => {
+      const next = [...prev.primaryTexts];
       next[index] = value;
       if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
-      copyDebounceRef.current = setTimeout(() => saveCopy(next, headlines), 1000);
-      return next;
+      copyDebounceRef.current = setTimeout(() => saveCopy(next, prev.headlines), 1000);
+      return { ...prev, primaryTexts: next };
     });
   }
 
   function handleHeadlineChange(index: number, value: string) {
-    setHeadlines((prev) => {
-      const next = [...prev];
+    setMetaPush((prev) => {
+      const next = [...prev.headlines];
       next[index] = value;
       if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
-      copyDebounceRef.current = setTimeout(() => saveCopy(primaryTexts, next), 1000);
-      return next;
+      copyDebounceRef.current = setTimeout(() => saveCopy(prev.primaryTexts, next), 1000);
+      return { ...prev, headlines: next };
     });
   }
 
   function addPrimaryText() {
-    setPrimaryTexts((prev) => [...prev, ""]);
+    setMetaPush((prev) => ({ ...prev, primaryTexts: [...prev.primaryTexts, ""] }));
   }
 
   function removePrimaryText(index: number) {
-    setPrimaryTexts((prev) => {
-      const next = prev.filter((_, i) => i !== index);
+    setMetaPush((prev) => {
+      const next = prev.primaryTexts.filter((_, i) => i !== index);
       if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
-      copyDebounceRef.current = setTimeout(() => saveCopy(next, headlines), 500);
-      return next.length > 0 ? next : [""];
+      copyDebounceRef.current = setTimeout(() => saveCopy(next, prev.headlines), 500);
+      return { ...prev, primaryTexts: next.length > 0 ? next : [""] };
     });
   }
 
   function addHeadline() {
-    setHeadlines((prev) => [...prev, ""]);
+    setMetaPush((prev) => ({ ...prev, headlines: [...prev.headlines, ""] }));
   }
 
   function removeHeadline(index: number) {
-    setHeadlines((prev) => {
-      const next = prev.filter((_, i) => i !== index);
+    setMetaPush((prev) => {
+      const next = prev.headlines.filter((_, i) => i !== index);
       if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
-      copyDebounceRef.current = setTimeout(() => saveCopy(primaryTexts, next), 500);
-      return next.length > 0 ? next : [""];
+      copyDebounceRef.current = setTimeout(() => saveCopy(prev.primaryTexts, next), 500);
+      return { ...prev, headlines: next.length > 0 ? next : [""] };
     });
   }
 
   // Load available doc tabs when switching to ad-copy tab
   useEffect(() => {
-    if (detailTab !== "ad-copy" || docTabs !== null) return;
+    if (detailTab !== "ad-copy" || doc.tabs !== null) return;
     (async () => {
       try {
         const res = await fetch(`/api/image-jobs/${initialJob.id}/fetch-copy`);
         const data = await res.json().catch(() => ({}));
         if (data.availableTabs?.length) {
-          setDocTabs(data.availableTabs);
+          setDoc(prev => ({ ...prev, tabs: data.availableTabs }));
         }
         // If auto-matched, populate the copy fields
         if (res.ok && data.primaryTexts?.length) {
-          setPrimaryTexts(data.primaryTexts);
-          if (data.headlines?.length) setHeadlines(data.headlines);
-          if (data.matchedTab) setDocMatchedTab(data.matchedTab);
-          await saveCopy(data.primaryTexts, data.headlines || headlines);
+          setMetaPush(prev => ({
+            ...prev,
+            primaryTexts: data.primaryTexts,
+            ...(data.headlines?.length ? { headlines: data.headlines } : {}),
+          }));
+          if (data.matchedTab) setDoc(prev => ({ ...prev, matchedTab: data.matchedTab }));
+          await saveCopy(data.primaryTexts, data.headlines || metaPush.headlines);
         }
       } catch {}
     })();
@@ -205,9 +225,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   // Fetch ad copy from Google Doc
   async function handleFetchFromDoc(tabId?: string) {
-    setFetchingDoc(true);
-    setDocError(null);
-    setDocMatchedTab(null);
+    setDoc(prev => ({ ...prev, fetching: true, error: null, matchedTab: null }));
     try {
       const url = tabId
         ? `/api/image-jobs/${initialJob.id}/fetch-copy?tab_id=${tabId}`
@@ -217,8 +235,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
       if (!res.ok) {
         if (data.error === "no_match" && data.availableTabs?.length) {
-          setDocTabs(data.availableTabs);
-          setDocError(data.message);
+          setDoc(prev => ({ ...prev, tabs: data.availableTabs, error: data.message }));
           return;
         }
         throw new Error(data.error || "Failed to fetch copy from doc");
@@ -226,33 +243,32 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
       // Store available tabs for manual selection dropdown
       if (data.availableTabs?.length) {
-        setDocTabs(data.availableTabs);
+        setDoc(prev => ({ ...prev, tabs: data.availableTabs }));
       }
       if (data.matchedTab) {
-        setDocMatchedTab(data.matchedTab);
+        setDoc(prev => ({ ...prev, matchedTab: data.matchedTab }));
       }
-      if (data.primaryTexts?.length) {
-        setPrimaryTexts(data.primaryTexts);
-      }
-      if (data.headlines?.length) {
-        setHeadlines(data.headlines);
-      }
+      setMetaPush(prev => ({
+        ...prev,
+        ...(data.primaryTexts?.length ? { primaryTexts: data.primaryTexts } : {}),
+        ...(data.headlines?.length ? { headlines: data.headlines } : {}),
+      }));
       // Save immediately
-      await saveCopy(data.primaryTexts || primaryTexts, data.headlines || headlines);
+      await saveCopy(data.primaryTexts || metaPush.primaryTexts, data.headlines || metaPush.headlines);
     } catch (err) {
-      setDocError(err instanceof Error ? err.message : "Failed to fetch copy");
+      setDoc(prev => ({ ...prev, error: err instanceof Error ? err.message : "Failed to fetch copy" }));
       console.error("Fetch from doc failed:", err);
     } finally {
-      setFetchingDoc(false);
+      setDoc(prev => ({ ...prev, fetching: false }));
     }
   }
 
   // Translate ad copy for all languages (or a specific one)
   async function handleTranslateCopy(lang?: Language) {
     if (lang) {
-      setTranslatingLang(lang);
+      setCopyState(prev => ({ ...prev, translatingLang: lang }));
     } else {
-      setTranslatingCopy(true);
+      setCopyState(prev => ({ ...prev, translating: true }));
     }
     try {
       const res = await fetch(`/api/image-jobs/${initialJob.id}/translate-copy`, {
@@ -267,14 +283,13 @@ export default function ImageJobDetail({ initialJob }: Props) {
     } catch (err) {
       console.error("Copy translation failed:", err);
     } finally {
-      setTranslatingCopy(false);
-      setTranslatingLang(null);
+      setCopyState(prev => ({ ...prev, translating: false, translatingLang: null }));
     }
   }
 
   // Save landing page selection
   async function handleLandingPageChange(pageId: string) {
-    setLandingPageId(pageId);
+    setMetaPush(prev => ({ ...prev, landingPageId: pageId }));
     await fetch(`/api/image-jobs/${initialJob.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -284,23 +299,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   // Push to Meta
   async function handlePushToMeta() {
-    setPushing(true);
-    setPushResults(null);
+    setMetaPush(prev => ({ ...prev, pushing: true, pushResults: null }));
     try {
       const res = await fetch(`/api/image-jobs/${initialJob.id}/push-to-meta`, {
         method: "POST",
       });
       const data = await res.json();
       if (data.results) {
-        setPushResults(data.results);
+        setMetaPush(prev => ({ ...prev, pushResults: data.results }));
         await fetchDeployments();
       } else {
-        setPushResults([{ language: "all", country: "all", status: "error", error: data.error || "Push failed" }]);
+        setMetaPush(prev => ({ ...prev, pushResults: [{ language: "all", country: "all", status: "error", error: data.error || "Push failed" }] }));
       }
     } catch (err) {
-      setPushResults([{ language: "all", country: "all", status: "error", error: "Push failed" }]);
+      setMetaPush(prev => ({ ...prev, pushResults: [{ language: "all", country: "all", status: "error", error: "Push failed" }] }));
     } finally {
-      setPushing(false);
+      setMetaPush(prev => ({ ...prev, pushing: false }));
       playNotificationSound();
     }
   }
@@ -429,7 +443,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   // Watchdog timer: detect and recover stalled translations while processing
   useEffect(() => {
-    if (!processing) return;
+    if (!proc.processing) return;
     const interval = setInterval(async () => {
       const updated = await refreshJob();
       if (!updated) return;
@@ -447,7 +461,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }, 120_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processing]);
+  }, [proc.processing]);
 
   // Stall detection banner
   useEffect(() => {
@@ -505,9 +519,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     if (processingRef.current) return;
     processingRef.current = true;
     cancelRef.current = false;
-    setProcessing(true);
-    setProcessStartTime(Date.now());
-    setProcessedInSession(0);
+    setProc({ processing: true, startTime: Date.now(), processedInSession: 0, refreshing: false });
 
     const queue = [...translations];
     const CONCURRENCY = 10;
@@ -517,7 +529,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       if (cancelRef.current) break;
       const p = processOne(item).then(() => {
         executing.delete(p);
-        setProcessedInSession((n) => n + 1);
+        setProc(prev => ({ ...prev, processedInSession: prev.processedInSession + 1 }));
       });
       executing.add(p);
       if (executing.size >= CONCURRENCY) {
@@ -528,8 +540,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
     processingRef.current = false;
     cancelRef.current = false;
-    setProcessing(false);
-    setProcessStartTime(null);
+    setProc(prev => ({ ...prev, processing: false, startTime: null }));
     const finalJob = await refreshJob();
     playNotificationSound();
 
@@ -643,7 +654,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
   async function handleTranslateAll() {
     if (selectedLanguages.size === 0) return;
     setShowTranslateConfirm(false);
-    setProcessing(true);
+    setProc(prev => ({ ...prev, processing: true }));
 
     // Save selected languages to job before creating translations
     await fetch(`/api/image-jobs/${job.id}`, {
@@ -654,7 +665,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
     const res = await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
     if (!res.ok) {
-      setProcessing(false);
+      setProc(prev => ({ ...prev, processing: false }));
       return;
     }
     const updated = await refreshJob();
@@ -663,7 +674,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       if (pending.length > 0) {
         startQueue(pending);
       } else {
-        setProcessing(false);
+        setProc(prev => ({ ...prev, processing: false }));
       }
     }
   }
@@ -728,12 +739,12 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </p>
         </div>
         <button
-          onClick={async () => { setRefreshing(true); await refreshJob(); setRefreshing(false); }}
-          disabled={refreshing}
+          onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}
+          disabled={proc.refreshing}
           className="text-gray-400 hover:text-gray-700 p-2 transition-colors disabled:opacity-50"
           title="Refresh"
         >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
 
@@ -848,7 +859,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                         }}
                         className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <span>{lang.flag}</span>
+                      <span role="img" aria-label={lang.label}>{lang.flag}</span>
                       {lang.label}
                     </label>
                   );
@@ -858,10 +869,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setShowTranslateConfirm(true)}
-                disabled={processing || selectedLanguages.size === 0}
+                disabled={proc.processing || selectedLanguages.size === 0}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
               >
-                  {processing ? (
+                  {proc.processing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
                       Starting translations...
@@ -896,7 +907,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Languages</span>
-                        <span className="text-gray-800 font-medium">{selectedLanguages.size} ({Array.from(selectedLanguages).map(l => LANGUAGES.find(li => li.value === l)?.flag).join(" ")})</span>
+                        <span className="text-gray-800 font-medium">{selectedLanguages.size} ({Array.from(selectedLanguages).map(l => { const li = LANGUAGES.find(li => li.value === l); return <span key={l} role="img" aria-label={li?.label ?? l}>{li?.flag}</span>; })})</span>
                       </div>
                       <div className="flex justify-between text-sm border-t border-gray-100 pt-2">
                         <span className="text-gray-500">Total translations</span>
@@ -928,20 +939,20 @@ export default function ImageJobDetail({ initialJob }: Props) {
       <>
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-3">
-        {pendingCount > 0 || processing ? (
+        {pendingCount > 0 || proc.processing ? (
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
               <Loader2 className="w-4 h-4 animate-spin" />
               Processing... ({completedCount}/{totalCount})
             </div>
-            {processStartTime && (
+            {proc.startTime && (
               <ProcessingTimer
-                startTime={processStartTime}
-                processedCount={processedInSession}
+                startTime={proc.startTime}
+                processedCount={proc.processedInSession}
                 remainingCount={pendingCount}
               />
             )}
-            {processing && (
+            {proc.processing && (
               <button
                 onClick={handleCancel}
                 className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg transition-colors"
@@ -994,7 +1005,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
               const counts = langCounts.get(lang);
               return (
                 <span key={lang} className="text-xs text-gray-400">
-                  {langInfo?.flag} {counts?.completed ?? 0}/{counts?.total ?? 0}
+                  <span role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span> {counts?.completed ?? 0}/{counts?.total ?? 0}
                 </span>
               );
             })}
@@ -1018,7 +1029,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
               key={lang}
               active={activeTab === lang}
               onClick={() => setActiveTab(lang)}
-              label={`${langInfo?.flag ?? ""} ${lang.toUpperCase()}`}
+              label={`${langInfo?.label ?? lang.toUpperCase()}`}
               count={counts?.total ?? 0}
               completed={counts?.completed}
             />
@@ -1057,7 +1068,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                 return (
                   <div key={t.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs">{langInfo?.flag}</span>
+                      <span className="text-xs" role="img" aria-label={langInfo?.label ?? t.language}>{langInfo?.flag}</span>
                       {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
                         <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
                       )}
@@ -1097,13 +1108,13 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleFetchFromDoc()}
-                disabled={fetchingDoc}
+                disabled={doc.fetching}
                 className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
               >
-                {fetchingDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                {fetchingDoc ? "Fetching..." : "Auto-match from doc"}
+                {doc.fetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                {doc.fetching ? "Fetching..." : "Auto-match from doc"}
               </button>
-              {docTabs && docTabs.length > 0 && (
+              {doc.tabs && doc.tabs.length > 0 && (
                 <select
                   onChange={(e) => {
                     if (e.target.value) {
@@ -1111,23 +1122,23 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     }
                   }}
                   value=""
-                  disabled={fetchingDoc}
+                  disabled={doc.fetching}
                   className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="">Pick a tab...</option>
-                  {docTabs.map((tab) => (
+                  {doc.tabs.map((tab) => (
                     <option key={tab.id} value={tab.id}>{tab.title}</option>
                   ))}
                 </select>
               )}
             </div>
 
-            {docMatchedTab && (
-              <p className="text-xs text-green-600">Loaded from tab: &ldquo;{docMatchedTab}&rdquo;</p>
+            {doc.matchedTab && (
+              <p className="text-xs text-green-600">Loaded from tab: &ldquo;{doc.matchedTab}&rdquo;</p>
             )}
 
-            {docError && (
-              <p className="text-xs text-red-600">{docError}</p>
+            {doc.error && (
+              <p className="text-xs text-red-600">{doc.error}</p>
             )}
           </div>
 
@@ -1136,10 +1147,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
             <div className="flex items-center justify-between mb-1.5">
               <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
                 <FileText className="w-4 h-4" />
-                Primary Text ({primaryTexts.length} of 5)
-                {savingCopy && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                Primary Text ({metaPush.primaryTexts.length} of 5)
+                {copyState.saving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
               </label>
-              {primaryTexts.length < 5 && (
+              {metaPush.primaryTexts.length < 5 && (
                 <button
                   onClick={addPrimaryText}
                   className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
@@ -1149,7 +1160,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
               )}
             </div>
             <div className="space-y-2">
-              {primaryTexts.map((text, i) => (
+              {metaPush.primaryTexts.map((text, i) => (
                 <div key={i} className="flex gap-2">
                   <textarea
                     value={text}
@@ -1158,7 +1169,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     rows={2}
                     className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 resize-none"
                   />
-                  {primaryTexts.length > 1 && (
+                  {metaPush.primaryTexts.length > 1 && (
                     <button
                       onClick={() => removePrimaryText(i)}
                       className="text-gray-300 hover:text-red-500 transition-colors p-1 self-start mt-1"
@@ -1175,10 +1186,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                Headline ({headlines.length} of 5)
-                {savingCopy && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+                Headline ({metaPush.headlines.length} of 5)
+                {copyState.saving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
               </label>
-              {headlines.length < 5 && (
+              {metaPush.headlines.length < 5 && (
                 <button
                   onClick={addHeadline}
                   className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
@@ -1188,7 +1199,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
               )}
             </div>
             <div className="space-y-2">
-              {headlines.map((text, i) => (
+              {metaPush.headlines.map((text, i) => (
                 <div key={i} className="flex gap-2">
                   <input
                     type="text"
@@ -1197,7 +1208,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     placeholder={i === 0 ? "Short headline..." : `Variant ${i + 1}`}
                     className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
                   />
-                  {headlines.length > 1 && (
+                  {metaPush.headlines.length > 1 && (
                     <button
                       onClick={() => removeHeadline(i)}
                       className="text-gray-300 hover:text-red-500 transition-colors p-1 self-start mt-1"
@@ -1218,7 +1229,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
             </label>
             {landingPages.length > 0 ? (
               <select
-                value={landingPageId}
+                value={metaPush.landingPageId}
                 onChange={(e) => handleLandingPageChange(e.target.value)}
                 className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
               >
@@ -1237,16 +1248,16 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </div>
 
           {/* Translate Copy section */}
-          {primaryTexts.some((t) => t.trim()) && (
+          {metaPush.primaryTexts.some((t) => t.trim()) && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-700">Translations</h3>
                 <button
                   onClick={() => handleTranslateCopy()}
-                  disabled={translatingCopy || !primaryTexts.some((t) => t.trim())}
+                  disabled={copyState.translating || !metaPush.primaryTexts.some((t) => t.trim())}
                   className="flex items-center gap-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
                 >
-                  {translatingCopy ? (
+                  {copyState.translating ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       Translating...
@@ -1271,7 +1282,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
                       {/* Language header */}
                       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">{langInfo?.flag}</span>
+                          <span className="text-base" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                           <span className="text-sm font-medium text-gray-700">{langInfo?.label}</span>
                           {ct?.status === "completed" && ct.quality_score != null && (
                             <QualityBadge score={ct.quality_score} />
@@ -1291,10 +1302,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
                         </div>
                         <button
                           onClick={() => handleTranslateCopy(lang as Language)}
-                          disabled={translatingLang === lang || translatingCopy}
+                          disabled={copyState.translatingLang === lang || copyState.translating}
                           className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
                         >
-                          {translatingLang === lang ? (
+                          {copyState.translatingLang === lang ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
                             <RotateCcw className="w-3 h-3" />
@@ -1362,7 +1373,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
           )}
 
           {/* Concept number preview */}
-          {primaryTexts.some((t) => t.trim()) && landingPageId && (
+          {metaPush.primaryTexts.some((t) => t.trim()) && metaPush.landingPageId && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
               <p className="text-xs text-gray-400 mb-1">Ad set naming preview</p>
               {job.target_languages.map((lang) => {
@@ -1382,17 +1393,17 @@ export default function ImageJobDetail({ initialJob }: Props) {
             const allLangsTranslated = job.target_languages.every(
               (lang) => copyTranslations[lang]?.status === "completed"
             );
-            const hasCopy = primaryTexts.some((t) => t.trim());
-            const canPush = hasCopy && landingPageId && allLangsTranslated;
+            const hasCopy = metaPush.primaryTexts.some((t) => t.trim());
+            const canPush = hasCopy && metaPush.landingPageId && allLangsTranslated;
 
             return (
               <div className="space-y-2">
                 <button
                   onClick={handlePushToMeta}
-                  disabled={pushing || !canPush}
+                  disabled={metaPush.pushing || !canPush}
                   className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
                 >
-                  {pushing ? (
+                  {metaPush.pushing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Pushing to Meta...
@@ -1414,9 +1425,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
           })()}
 
           {/* Push results */}
-          {pushResults && (
+          {metaPush.pushResults && (
             <div className="space-y-2">
-              {pushResults.map((r, i) => (
+              {metaPush.pushResults.map((r, i) => (
                 <div
                   key={i}
                   className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${

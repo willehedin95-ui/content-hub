@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { ImageJob, Language, MetaCampaignStatus, SourceImage } from "@/types";
+import { Language, MetaCampaignStatus } from "@/types";
 import { isValidLanguage, isValidAspectRatio } from "@/lib/validation";
-
-function computeCounts(job: ImageJob & { source_images: SourceImage[] }) {
-  const allTranslations = job.source_images?.flatMap(
-    (si) => si.image_translations ?? []
-  ) ?? [];
-  return {
-    ...job,
-    total_images: job.source_images?.length ?? 0,
-    total_translations: allTranslations.length,
-    completed_translations: allTranslations.filter((t) => t.status === "completed").length,
-    failed_translations: allTranslations.filter((t) => t.status === "failed").length,
-  };
-}
+import { computeCounts } from "@/lib/image-utils";
+import { safeError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
@@ -43,7 +32,7 @@ export async function GET(req: NextRequest) {
   const totalCount = countResult.count ?? 0;
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeError(error, "Failed to fetch image jobs");
   }
 
   // Group deployments by image_job_id
@@ -87,7 +76,14 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
-  const insertData: Record<string, unknown> = {
+  const insertData: {
+    name: string;
+    status: string;
+    target_languages: string[];
+    target_ratios: string[];
+    source_folder_id?: string;
+    product?: string;
+  } = {
     name: name.trim(),
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
@@ -103,7 +99,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (jobError || !job) {
-    return NextResponse.json({ error: jobError?.message ?? "Failed to create job" }, { status: 500 });
+    return safeError(jobError, "Failed to create job");
   }
 
   return NextResponse.json(job);

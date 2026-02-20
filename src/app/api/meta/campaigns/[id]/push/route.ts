@@ -9,6 +9,7 @@ import {
   createAdCreative,
   createAd,
 } from "@/lib/meta";
+import { isValidUUID } from "@/lib/validation";
 
 export const maxDuration = 180;
 
@@ -17,6 +18,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const db = createServerSupabase();
 
   // Load campaign with ads
@@ -62,10 +66,12 @@ export async function POST(
         .eq("id", id);
     }
 
-    // 2. Duplicate template ad set or create from scratch
-    let metaAdSetId: string;
+    // 2. Duplicate template ad set or create from scratch (skip on retry if already created)
+    let metaAdSetId: string | null = campaign.meta_adset_id;
 
-    if (campaign.product) {
+    if (metaAdSetId) {
+      // Already have an ad set from a previous attempt — reuse it
+    } else if (campaign.product) {
       // New flow: duplicate template ad set from mapping
       const { data: mapping } = await db
         .from("meta_campaign_mappings")
@@ -97,13 +103,43 @@ export async function POST(
       metaAdSetId = metaAdSet.id;
     }
 
+    if (!metaAdSetId) {
+      throw new Error("Failed to resolve ad set ID");
+    }
+    const resolvedAdSetId: string = metaAdSetId;
+
     await db
       .from("meta_campaigns")
-      .update({ meta_adset_id: metaAdSetId })
+      .update({ meta_adset_id: resolvedAdSetId })
       .eq("id", id);
 
     // 3. Process each ad (concurrently, max 3 at a time)
-    const ads = campaign.meta_ads ?? [];
+    // On retry, skip ads that were already pushed successfully
+    const ads = (campaign.meta_ads ?? []).filter(
+      (a: { status: string }) => a.status !== "pushed"
+    );
+
+    if (ads.length === 0) {
+      // Nothing to push — check if any ads exist at all
+      const allAds = campaign.meta_ads ?? [];
+      const anyPushed = allAds.some((a: { status: string }) => a.status === "pushed");
+      await db
+        .from("meta_campaigns")
+        .update({
+          status: anyPushed ? "pushed" : "error",
+          error_message: anyPushed ? null : "No ads to push",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      const { data: updated } = await db
+        .from("meta_campaigns")
+        .select("*, meta_ads(*)")
+        .eq("id", id)
+        .single();
+      return NextResponse.json(updated);
+    }
+
     const CONCURRENCY = 3;
 
     async function pushOneAd(ad: typeof ads[number]) {
@@ -133,7 +169,7 @@ export async function POST(
 
         const metaAd = await createAd({
           name: ad.name,
-          adSetId: metaAdSetId,
+          adSetId: resolvedAdSetId,
           creativeId: creative.id,
           status: "PAUSED",
         });
@@ -158,7 +194,7 @@ export async function POST(
     await Promise.all(executing);
 
     // Mark campaign as pushed only if at least one ad succeeded
-    const hasSuccess = ads.length === 0 || (await db
+    const hasSuccess = (await db
       .from("meta_ads")
       .select("id")
       .eq("campaign_id", id)

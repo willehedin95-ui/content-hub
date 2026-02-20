@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { sanitizeHtml } from "@/lib/sanitize";
+import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const origin = new URL(_req.url).origin;
   const db = createServerSupabase();
 
@@ -117,10 +122,8 @@ export async function GET(
 })();
 </script>`;
 
-  const html = (translation.translated_html as string).replace(
-    /<\/body>/i,
-    editorScript + "</body>"
-  );
+  const safeHtml = sanitizeHtml(translation.translated_html as string);
+  const html = safeHtml.replace(/<\/body>/i, editorScript + "</body>");
 
   return new NextResponse(html, {
     headers: {

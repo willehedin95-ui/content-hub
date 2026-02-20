@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
-import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { KIE_MODEL, STORAGE_BUCKET, RATE_LIMIT_IMAGE_TRANSLATE } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
 import { getShortLocalizationNote, NEVER_TRANSLATE } from "@/lib/localization";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { isValidUUID } from "@/lib/validation";
 
 export const maxDuration = 180;
 
@@ -12,7 +14,18 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const rl = checkRateLimit("image-translate", RATE_LIMIT_IMAGE_TRANSLATE);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rl.retryAfterMs ?? 60000) / 1000)) } }
+    );
+  }
+
   const { id: jobId } = await params;
+  if (!isValidUUID(jobId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
   const { translationId, corrected_text, visual_instructions } = (await req.json()) as {
     translationId: string;
     corrected_text?: string;

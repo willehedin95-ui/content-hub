@@ -242,7 +242,7 @@ export default function ABTestManager({
           <div className="flex items-center gap-3">
             <FlaskConical className="w-6 h-6 text-amber-600" />
             <h1 className="text-2xl font-bold text-gray-900">A/B Test</h1>
-            <span className="text-lg">{language.flag}</span>
+            <span className="text-lg" role="img" aria-label={language.label}>{language.flag}</span>
             <span className="text-gray-500 text-lg">{language.label}</span>
           </div>
           <div className="flex items-center gap-3 mt-2">

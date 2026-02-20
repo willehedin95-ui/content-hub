@@ -157,8 +157,8 @@ export default function AdCopyPage() {
           };
         });
       }
-    } catch (err) {
-      console.error("Analysis error:", err);
+    } catch {
+      // Error already surfaced through component state
     } finally {
       setAnalyzing((prev) => {
         const next = new Set(prev);
@@ -246,7 +246,7 @@ export default function AdCopyPage() {
                       : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
                   }`}
                 >
-                  <span className="text-base">{lang.flag}</span>
+                  <span className="text-base" role="img" aria-label={lang.label}>{lang.flag}</span>
                   {lang.label}
                 </button>
               );
@@ -333,11 +333,14 @@ export default function AdCopyPage() {
                       {hJob.name}
                     </span>
                     <span className="flex items-center gap-1 shrink-0">
-                      {langFlags.map((flag, i) => (
-                        <span key={i} className="text-sm">
-                          {flag}
-                        </span>
-                      ))}
+                      {translations.map((t, i) => {
+                        const li = LANGUAGES.find((l) => l.value === t.language);
+                        return (
+                          <span key={i} className="text-sm" role="img" aria-label={li?.label ?? t.language}>
+                            {li?.flag}
+                          </span>
+                        );
+                      })}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0 ml-3">
@@ -393,7 +396,7 @@ function TranslationCard({
   const lang = LANGUAGES.find((l) => l.value === t.language);
   const isCompleted = t.status === "completed";
   const isFailed = t.status === "failed";
-  const isProcessing = t.status === "processing" || t.status === "pending";
+  const isProcessing = t.status === "translating" || t.status === "pending";
 
   const scoreColor =
     t.quality_score != null
@@ -416,7 +419,7 @@ function TranslationCard({
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <span className="text-base">{lang?.flag}</span>
+          <span className="text-base" role="img" aria-label={lang?.label ?? t.language}>{lang?.flag}</span>
           <span className="text-sm font-medium text-gray-700">
             {lang?.label ?? t.language}
           </span>
