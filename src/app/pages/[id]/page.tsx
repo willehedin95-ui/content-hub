@@ -26,6 +26,29 @@ export default async function PageDetailPage({
 
   const p = page as Page & { translations: Translation[] };
 
+  // Recover stuck "publishing" or "translating" translations (stale > 10 min)
+  const STALE_MS = 10 * 60 * 1000;
+  const stuckTranslations = (p.translations ?? []).filter(
+    (t) =>
+      (t.status === "publishing" || t.status === "translating") &&
+      Date.now() - new Date(t.updated_at).getTime() > STALE_MS
+  );
+  if (stuckTranslations.length > 0) {
+    await Promise.all(
+      stuckTranslations.map((t) =>
+        db
+          .from("translations")
+          .update({ status: "error", updated_at: new Date().toISOString() })
+          .eq("id", t.id)
+          .in("status", ["publishing", "translating"])
+      )
+    );
+    // Update local data to reflect the recovery
+    for (const t of stuckTranslations) {
+      t.status = "error";
+    }
+  }
+
   // Fetch A/B tests for this page
   const { data: abTests } = await db
     .from("ab_tests")

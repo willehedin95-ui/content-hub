@@ -5,11 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   Loader2,
   Link2,
-  CheckCircle2,
   AlertCircle,
-  FileText,
   Image as ImageIcon,
-  LinkIcon,
   Upload,
   X,
   Check,
@@ -21,14 +18,11 @@ import type { TextBlock, ImageBlock } from "@/app/api/fetch-url/route";
 
 type Step = "url" | "meta";
 
-const TAG_STYLES: Record<string, string> = {
-  h1: "bg-purple-50 text-purple-700 border-purple-200",
-  h2: "bg-blue-50 text-blue-700 border-blue-200",
-  h3: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  h4: "bg-teal-50 text-teal-700 border-teal-200",
-  p: "bg-gray-100 text-gray-600 border-gray-200",
-  li: "bg-gray-100 text-gray-500 border-gray-200",
-};
+const FETCH_STAGES = [
+  "Connecting...",
+  "Rendering page...",
+  "Extracting content...",
+];
 
 export default function ImportPageModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -36,13 +30,13 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
 
   const [url, setUrl] = useState("");
   const [fetching, setFetching] = useState(false);
+  const [fetchStage, setFetchStage] = useState(0);
   const [fetchError, setFetchError] = useState("");
   const [fetchedHtml, setFetchedHtml] = useState("");
   const [fetchedTitle, setFetchedTitle] = useState("");
   const [textBlocks, setTextBlocks] = useState<TextBlock[]>([]);
   const [images, setImages] = useState<ImageBlock[]>([]);
   const [stats, setStats] = useState<{ textBlocks: number; images: number; links: number } | null>(null);
-  const [previewTab, setPreviewTab] = useState<"text" | "images">("text");
   const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
 
   const [name, setName] = useState("");
@@ -51,24 +45,26 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fetchStageTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   function reset() {
     setStep("url");
     setUrl("");
     setFetching(false);
+    setFetchStage(0);
     setFetchError("");
     setFetchedHtml("");
     setFetchedTitle("");
     setTextBlocks([]);
     setImages([]);
     setStats(null);
-    setPreviewTab("text");
     setSelectedImages(new Set());
     setName("");
     setProduct("happysleep");
     setPageType("advertorial");
     setSaving(false);
     setSaveError("");
+    if (fetchStageTimerRef.current) clearInterval(fetchStageTimerRef.current);
   }
 
   function handleClose() {
@@ -121,6 +117,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
       setTextBlocks(blocks);
       setImages(imgs);
       setStats({ textBlocks: blocks.length, images: imgs.length, links: linkCount });
+      setSelectedImages(new Set());
       setName(title);
       setUrl(`upload://${file.name}`);
       setStep("meta");
@@ -133,16 +130,26 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     reader.readAsText(file);
   }
 
-  async function handleFetch() {
-    if (!url.trim()) return;
+  async function handleFetch(urlOverride?: string) {
+    const targetUrl = (urlOverride || url).trim();
+    if (!targetUrl) return;
+    if (fetching) return;
     setFetching(true);
     setFetchError("");
+    setFetchStage(0);
+
+    // Cycle through loading stages for visual feedback
+    let stage = 0;
+    fetchStageTimerRef.current = setInterval(() => {
+      stage = Math.min(stage + 1, FETCH_STAGES.length - 1);
+      setFetchStage(stage);
+    }, 3000);
 
     try {
       const res = await fetch("/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: targetUrl }),
       });
 
       const data = await res.json();
@@ -157,12 +164,22 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
       setTextBlocks(data.textBlocks || []);
       setImages(data.images || []);
       setStats(data.stats || null);
+      setSelectedImages(new Set());
       setName(data.title);
       setStep("meta");
     } catch {
       setFetchError("Failed to fetch URL — check your connection and try again");
     } finally {
       setFetching(false);
+      if (fetchStageTimerRef.current) clearInterval(fetchStageTimerRef.current);
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = e.clipboardData.getData("text").trim();
+    if (/^https?:\/\/.+/.test(pasted)) {
+      // Let the paste update the input, then auto-fetch
+      setTimeout(() => handleFetch(pasted), 50);
     }
   }
 
@@ -226,6 +243,12 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, isBusy]);
 
+  useEffect(() => {
+    return () => {
+      if (fetchStageTimerRef.current) clearInterval(fetchStageTimerRef.current);
+    };
+  }, []);
+
   if (!open) return null;
 
   return (
@@ -253,7 +276,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
           {/* Step indicator */}
           <div className="flex items-center gap-3 mb-6">
             <StepBadge n={1} label="Import" active={step === "url"} done={step === "meta"} />
@@ -275,19 +298,36 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleFetch()}
+                      onPaste={handlePaste}
                       placeholder="https://..."
                       className="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <button
-                    onClick={handleFetch}
+                    onClick={() => handleFetch()}
                     disabled={fetching || !url.trim()}
                     className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-3 rounded-lg transition-colors whitespace-nowrap"
                   >
                     {fetching && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {fetching ? "Fetching…" : "Fetch Page"}
+                    {fetching ? "Fetching..." : "Fetch Page"}
                   </button>
                 </div>
+
+                {/* Loading stages */}
+                {fetching && (
+                  <div className="mt-3 flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-500 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-indigo-700">{FETCH_STAGES[fetchStage]}</p>
+                      <div className="mt-1.5 h-1 bg-indigo-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-[3000ms] ease-linear"
+                          style={{ width: `${((fetchStage + 1) / FETCH_STAGES.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {fetchError && (
                   <div className="mt-3 flex items-start gap-2 text-red-600 text-sm">
@@ -323,140 +363,94 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
 
           {step === "meta" && (
             <div className="space-y-5">
-              {/* Success banner with stats */}
-              <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-emerald-700 text-sm font-medium truncate">{fetchedTitle}</p>
-                  <p className="text-emerald-500 text-xs mt-0.5 truncate">
-                    {url.startsWith("upload://") ? `Uploaded: ${url.replace("upload://", "")}` : url}
-                  </p>
-                  {stats && (
-                    <div className="flex gap-4 mt-2">
-                      <StatChip icon={<FileText className="w-3 h-3" />} label={`${stats.textBlocks} text blocks`} />
-                      <StatChip icon={<ImageIcon className="w-3 h-3" />} label={`${stats.images} images`} />
-                      <StatChip icon={<LinkIcon className="w-3 h-3" />} label={`${stats.links} links`} />
-                    </div>
+              {/* Images to translate */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-gray-200 flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  Images ({images.length})
+                  {selectedImages.size > 0 && (
+                    <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">
+                      {selectedImages.size} to translate
+                    </span>
                   )}
                 </div>
-              </div>
 
-              {/* Content preview */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                <div className="flex border-b border-gray-200">
-                  <TabBtn active={previewTab === "text"} onClick={() => setPreviewTab("text")}>
-                    <FileText className="w-3.5 h-3.5" /> Text Blocks ({textBlocks.length})
-                  </TabBtn>
-                  <TabBtn active={previewTab === "images"} onClick={() => setPreviewTab("images")}>
-                    <ImageIcon className="w-3.5 h-3.5" /> Images ({images.length})
-                    {selectedImages.size > 0 && (
-                      <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                        {selectedImages.size} to translate
-                      </span>
-                    )}
-                  </TabBtn>
-                </div>
-
-                {previewTab === "text" && (
-                  <div className="max-h-48 overflow-y-auto divide-y divide-gray-200">
-                    {textBlocks.length === 0 && (
-                      <p className="text-gray-400 text-sm px-4 py-8 text-center">No text blocks found</p>
-                    )}
-                    {textBlocks.map((block, i) => (
-                      <div key={i} className="flex items-start gap-3 px-4 py-2.5">
-                        <span
-                          className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 mt-0.5 ${
-                            TAG_STYLES[block.tag] || TAG_STYLES.p
-                          }`}
+                <div className="max-h-72 overflow-y-auto p-4">
+                  {images.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-8">No images found</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedImages.size === images.length) {
+                              setSelectedImages(new Set());
+                            } else {
+                              setSelectedImages(new Set(images.map((_, i) => i)));
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
                         >
-                          {block.tag}
+                          {selectedImages.size === images.length ? (
+                            <CheckSquare className="w-3.5 h-3.5" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5" />
+                          )}
+                          {selectedImages.size === images.length ? "Deselect all" : "Select all for translation"}
+                        </button>
+                        <span className="text-xs text-gray-400">
+                          {selectedImages.size} selected
                         </span>
-                        <p className="text-gray-700 text-sm leading-snug line-clamp-2">
-                          {block.text}
-                        </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {previewTab === "images" && (
-                  <div className="max-h-48 overflow-y-auto p-4">
-                    {images.length === 0 ? (
-                      <p className="text-gray-400 text-sm text-center py-8">No images found</p>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between mb-2">
+                      <div className="grid grid-cols-3 gap-3">
+                        {images.map((img, i) => (
                           <button
+                            key={i}
                             type="button"
                             onClick={() => {
-                              if (selectedImages.size === images.length) {
-                                setSelectedImages(new Set());
-                              } else {
-                                setSelectedImages(new Set(images.map((_, i) => i)));
-                              }
+                              setSelectedImages((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              });
                             }}
-                            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+                            className={`relative group aspect-video bg-white rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                              selectedImages.has(i)
+                                ? "border-indigo-500 ring-2 ring-indigo-200"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
                           >
-                            {selectedImages.size === images.length ? (
-                              <CheckSquare className="w-3.5 h-3.5" />
-                            ) : (
-                              <Square className="w-3.5 h-3.5" />
-                            )}
-                            {selectedImages.size === images.length ? "Deselect all" : "Select all for translation"}
-                          </button>
-                          <span className="text-xs text-gray-400">
-                            {selectedImages.size} selected
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          {images.map((img, i) => (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => {
-                                setSelectedImages((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(i)) next.delete(i);
-                                  else next.add(i);
-                                  return next;
-                                });
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={img.src}
+                              alt={img.alt}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
                               }}
-                              className={`relative group aspect-video bg-white rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                            />
+                            <div
+                              className={`absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center transition-colors ${
                                 selectedImages.has(i)
-                                  ? "border-indigo-500 ring-2 ring-indigo-200"
-                                  : "border-gray-200 hover:border-gray-300"
+                                  ? "bg-indigo-500 text-white"
+                                  : "bg-white/80 border border-gray-300 text-transparent"
                               }`}
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={img.src}
-                                alt={img.alt}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = "none";
-                                }}
-                              />
-                              <div
-                                className={`absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                                  selectedImages.has(i)
-                                    ? "bg-indigo-500 text-white"
-                                    : "bg-white/80 border border-gray-300 text-transparent"
-                                }`}
-                              >
-                                <Check className="w-3 h-3" />
+                              <Check className="w-3 h-3" />
+                            </div>
+                            {img.alt && (
+                              <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-xs text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                {img.alt}
                               </div>
-                              {img.alt && (
-                                <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-xs text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {img.alt}
-                                </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Page details form */}
@@ -527,7 +521,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {saving ? "Saving…" : "Save & Continue →"}
+                  {saving ? "Saving..." : "Save & Continue"}
                 </button>
               </div>
             </div>
@@ -544,30 +538,10 @@ function StepBadge({ n, label, active, done }: { n: number; label: string; activ
       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
         done ? "bg-emerald-500 text-white" : active ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-400"
       }`}>
-        {done ? "✓" : n}
+        {done ? <Check className="w-3 h-3" /> : n}
       </div>
       <span className={`text-sm font-medium ${active ? "text-gray-900" : "text-gray-400"}`}>{label}</span>
     </div>
   );
 }
 
-function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <span className="flex items-center gap-1 text-emerald-500 text-xs">
-      {icon}{label}
-    </span>
-  );
-}
-
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors ${
-        active ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50" : "text-gray-400 hover:text-gray-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}

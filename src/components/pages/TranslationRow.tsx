@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   MoreHorizontal,
   Image as ImageIcon,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
@@ -26,7 +27,7 @@ import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { getPageQualitySettings } from "@/lib/settings";
 
-const MAX_RETRIES = 3;
+const MAX_FIX_ROUNDS = 3;
 
 const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   none: "Not started",
@@ -56,18 +57,29 @@ function scoreBg(score: number): string {
   return "bg-red-50 border-red-200";
 }
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+}
+
 export default function TranslationRow({
   pageId,
   language,
   translation,
   abTest,
   imagesToTranslate,
+  onRegisterTranslate,
+  onUnregisterTranslate,
 }: {
   pageId: string;
   language: (typeof LANGUAGES)[number];
   translation?: Translation;
   abTest?: ABTest;
   imagesToTranslate?: PageImageSelection[];
+  onRegisterTranslate?: (fn: () => Promise<void>) => void;
+  onUnregisterTranslate?: () => void;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<"translate" | "publish" | "ab" | "analyze" | "regenerate" | "fix" | null>(null);
@@ -85,11 +97,17 @@ export default function TranslationRow({
   const [showImageModal, setShowImageModal] = useState(false);
   const [pageHtml, setPageHtml] = useState("");
   const [imageProgress, setImageProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+  const [timeEstimate, setTimeEstimate] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (abortRef.current) abortRef.current.abort();
     };
   }, []);
 
@@ -111,27 +129,67 @@ export default function TranslationRow({
     if (translation?.quality_analysis) setQualityAnalysis(translation.quality_analysis);
   }, [translation?.quality_score, translation?.quality_analysis]);
 
+  // Register translate function for "Translate All" callback ref pattern
+  useEffect(() => {
+    if (onRegisterTranslate) {
+      onRegisterTranslate(handleTranslate);
+    }
+    return () => {
+      if (onUnregisterTranslate) onUnregisterTranslate();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRegisterTranslate, onUnregisterTranslate]);
+
   const status: TranslationStatus | "none" = translation?.status ?? "none";
   const canPublish =
     status === "translated" || status === "published" || status === "error";
   const hasActiveTest = abTest && abTest.status !== "completed";
+
+  function handleCancel() {
+    if (abortRef.current) abortRef.current.abort();
+    setLoading(null);
+    setProgressLabel("");
+    setAttempt(0);
+    setImageProgress(null);
+    setTimeEstimate(null);
+    setElapsedSeconds(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+    setError("Cancelled");
+    router.refresh();
+  }
 
   async function doTranslate(): Promise<{ ok: boolean; translationId?: string }> {
     const res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page_id: pageId, language: language.value }),
+      signal: abortRef.current?.signal,
     });
     const data = await res.json();
     if (!res.ok) return { ok: false };
     return { ok: true, translationId: data.id };
   }
 
-  async function doAnalyze(translationId: string): Promise<PageQualityAnalysis | null> {
+  async function doAnalyze(
+    translationId: string,
+    previousContext?: {
+      applied_corrections: { find: string; replace: string }[];
+      previous_score: number;
+      previous_issues: {
+        fluency_issues: string[];
+        grammar_issues: string[];
+        context_errors: string[];
+      };
+    }
+  ): Promise<PageQualityAnalysis | null> {
     const res = await fetch("/api/translate/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translation_id: translationId }),
+      body: JSON.stringify({
+        translation_id: translationId,
+        ...(previousContext && { previous_context: previousContext }),
+      }),
+      signal: abortRef.current?.signal,
     });
     if (!res.ok) return null;
     return await res.json();
@@ -160,6 +218,7 @@ export default function TranslationRow({
     setImageProgress({ done: 0, total: images.length, errors: [] });
 
     for (const img of images) {
+      if (abortRef.current?.signal.aborted) return;
       try {
         const res = await fetch("/api/translate-page-images", {
           method: "POST",
@@ -167,10 +226,10 @@ export default function TranslationRow({
           body: JSON.stringify({
             translationId,
             imageUrl: img.src,
-            imageIndex: 0,
             language: language.value,
             aspectRatio: "1:1",
           }),
+          signal: abortRef.current?.signal,
         });
 
         if (!res.ok) {
@@ -191,6 +250,12 @@ export default function TranslationRow({
     }
   }
 
+  function computeEstimateSeconds(): number {
+    const settings = getPageQualitySettings();
+    const imageCount = imagesToTranslate?.length ?? 0;
+    return 15 + (settings.enabled ? 8 : 0) + imageCount * 20;
+  }
+
   async function translateWithQualityLoop() {
     setError("");
     setQualityScore(null);
@@ -199,76 +264,106 @@ export default function TranslationRow({
     setAttempt(0);
     setImageProgress(null);
 
+    // Create new abort controller for this run
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    // Start time estimate + elapsed timer
+    const estimate = computeEstimateSeconds();
+    setTimeEstimate(estimate);
+    setElapsedSeconds(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
     const settings = getPageQualitySettings();
     const tid = translation?.id;
     const hasImages = (imagesToTranslate?.length ?? 0) > 0;
 
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      setAttempt(i + 1);
+    // Step 1: Translate once
+    setProgressLabel("Translating text…");
+    const result = await doTranslate();
+    if (!result.ok) {
+      setError("Translation failed");
+      return;
+    }
 
-      // Translate text
-      if (i === 0) {
-        setProgressLabel("Translating text…");
-      } else {
-        setProgressLabel(`Retranslating (attempt ${i + 1}/${MAX_RETRIES})…`);
+    const translationId = result.translationId || tid;
+    if (!translationId) {
+      setError("No translation ID returned");
+      return;
+    }
+
+    // Step 2: Quality analysis + image translation in parallel
+    const parallelTasks: Promise<unknown>[] = [];
+    let analysisResult: PageQualityAnalysis | null = null;
+
+    if (settings.enabled) {
+      setProgressLabel("Analyzing quality…");
+      parallelTasks.push(
+        doAnalyze(translationId).then((a) => { analysisResult = a; })
+      );
+    }
+
+    if (hasImages) {
+      parallelTasks.push(translateImages(translationId));
+    }
+
+    await Promise.all(parallelTasks);
+
+    if (!settings.enabled || !analysisResult) {
+      router.refresh();
+      return;
+    }
+
+    let currentAnalysis: PageQualityAnalysis = analysisResult;
+    setQualityScore(currentAnalysis.quality_score);
+    setQualityAnalysis(currentAnalysis);
+
+    // Step 3: Auto-fix loop — apply corrections up to MAX_FIX_ROUNDS times
+    for (let fixRound = 0; fixRound < MAX_FIX_ROUNDS; fixRound++) {
+      if (currentAnalysis.quality_score >= settings.threshold) {
+        break; // Quality is good enough
       }
 
-      const result = await doTranslate();
-      if (!result.ok) {
-        setError("Translation failed");
-        return;
+      const corrections = currentAnalysis.suggested_corrections;
+      if (!corrections?.length) {
+        break; // No corrections to apply
       }
 
-      const translationId = result.translationId || tid;
-      if (!translationId) {
-        setError("No translation ID returned");
-        return;
-      }
+      setProgressLabel(`Fixing issues (round ${fixRound + 1}/${MAX_FIX_ROUNDS})…`);
 
-      // After text translation: run quality analysis + image translation in parallel
-      const parallelTasks: Promise<unknown>[] = [];
+      // Apply corrections
+      const fixRes = await fetch("/api/translate/fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ translation_id: translationId }),
+        signal: abortRef.current?.signal,
+      });
 
-      // Quality analysis (if enabled)
-      let analysisResult: PageQualityAnalysis | null = null;
-      if (settings.enabled) {
-        setProgressLabel("Analyzing quality…");
-        parallelTasks.push(
-          doAnalyze(translationId).then((a) => { analysisResult = a; })
-        );
-      }
+      if (!fixRes.ok) break;
+      const fixData = await fixRes.json();
 
-      // Image translation (runs in parallel with quality)
-      if (hasImages && i === 0) {
-        // Only translate images on first attempt (not on retries)
-        parallelTasks.push(translateImages(translationId));
-      }
+      if (!fixData.corrections_applied) break; // Nothing was applied
 
-      await Promise.all(parallelTasks);
+      // Re-analyze with context about what was fixed
+      setProgressLabel(`Re-analyzing (round ${fixRound + 1}/${MAX_FIX_ROUNDS})…`);
+      const newAnalysis = await doAnalyze(translationId, {
+        applied_corrections: fixData.applied_corrections ?? [],
+        previous_score: fixData.previous_score ?? currentAnalysis.quality_score ?? 0,
+        previous_issues: fixData.previous_issues ?? {
+          fluency_issues: [],
+          grammar_issues: [],
+          context_errors: [],
+        },
+      });
 
-      if (!settings.enabled) {
-        router.refresh();
-        return;
-      }
+      if (!newAnalysis) break;
 
-      if (!analysisResult) {
-        router.refresh();
-        return;
-      }
-
-      const finalAnalysis = analysisResult as PageQualityAnalysis;
-      setQualityScore(finalAnalysis.quality_score);
-      setQualityAnalysis(finalAnalysis);
-
-      if (finalAnalysis.quality_score >= settings.threshold) {
-        router.refresh();
-        return;
-      }
-
-      // Below threshold — retry unless last attempt
-      if (i === MAX_RETRIES - 1) {
-        router.refresh();
-        return;
-      }
+      currentAnalysis = newAnalysis;
+      setQualityScore(newAnalysis.quality_score);
+      setQualityAnalysis(newAnalysis);
     }
 
     router.refresh();
@@ -278,13 +373,16 @@ export default function TranslationRow({
     setLoading("translate");
     try {
       await translateWithQualityLoop();
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError("Translation failed — check your connection and try again");
     } finally {
       setLoading(null);
       setProgressLabel("");
       setAttempt(0);
       setImageProgress(null);
+      // Keep timeEstimate and elapsedSeconds so the final time stays visible
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   }
 
@@ -292,13 +390,17 @@ export default function TranslationRow({
     setLoading("regenerate");
     try {
       await translateWithQualityLoop();
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError("Regeneration failed — check your connection and try again");
     } finally {
       setLoading(null);
       setProgressLabel("");
       setAttempt(0);
       setImageProgress(null);
+      setTimeEstimate(null);
+      setElapsedSeconds(0);
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   }
 
@@ -306,13 +408,36 @@ export default function TranslationRow({
     if (!translation?.id) return;
     setLoading("fix");
     setError("");
-    setProgressLabel("Fixing quality issues…");
+
+    // Create abort controller for fix operation
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
 
     try {
+      // If the current analysis has no suggested_corrections (old format),
+      // re-analyze first to get corrections, then apply them
+      const needsReanalysis = !qualityAnalysis?.suggested_corrections?.length;
+
+      if (needsReanalysis) {
+        setProgressLabel("Analyzing for corrections…");
+        const freshAnalysis = await doAnalyze(translation.id);
+        if (freshAnalysis) {
+          setQualityScore(freshAnalysis.quality_score);
+          setQualityAnalysis(freshAnalysis);
+        }
+        if (!freshAnalysis?.suggested_corrections?.length) {
+          setError("Analysis found no actionable corrections");
+          return;
+        }
+      }
+
+      // Apply the corrections from the analysis
+      setProgressLabel("Applying corrections…");
       const res = await fetch("/api/translate/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ translation_id: translation.id }),
+        signal: abortRef.current?.signal,
       });
 
       if (!res.ok) {
@@ -321,16 +446,34 @@ export default function TranslationRow({
         return;
       }
 
-      // Re-analyze the fixed translation
+      const fixData = await res.json();
+
+      // Re-analyze with context about what was just fixed (prevents endless loop)
       setProgressLabel("Re-analyzing quality…");
-      const analysis = await doAnalyze(translation.id);
+      const analysis = await doAnalyze(translation.id, {
+        applied_corrections: fixData.applied_corrections ?? [],
+        previous_score: fixData.previous_score ?? qualityScore ?? 0,
+        previous_issues: fixData.previous_issues ?? {
+          fluency_issues: [],
+          grammar_issues: [],
+          context_errors: [],
+        },
+      });
       if (analysis) {
         setQualityScore(analysis.quality_score);
         setQualityAnalysis(analysis);
       }
 
       router.refresh();
-    } catch {
+
+      // Show brief success info
+      if (fixData.corrections_applied !== undefined) {
+        console.log(
+          `Fix applied ${fixData.corrections_applied} corrections, ${fixData.corrections_failed} failed`
+        );
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError("Fix failed — check your connection and try again");
     } finally {
       setLoading(null);
@@ -418,18 +561,36 @@ export default function TranslationRow({
             )}
             {isProcessing ? (progressLabel || "Translating…") : "Translate"}
           </button>
+          {isProcessing && (
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors"
+              title="Cancel"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {isProcessing && imageProgress && (
-          <div className="flex items-center gap-1.5 mt-1.5">
-            {imageProgress.done < imageProgress.total ? (
-              <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-            ) : (
-              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+        {isProcessing && (
+          <div className="flex items-center gap-3 mt-1.5">
+            {timeEstimate !== null && (
+              <span className="text-xs text-gray-400">
+                {formatElapsed(elapsedSeconds)}
+              </span>
             )}
-            <span className="text-xs text-amber-600">
-              Images {imageProgress.done}/{imageProgress.total}
-            </span>
+            {imageProgress && (
+              <div className="flex items-center gap-1.5">
+                {imageProgress.done < imageProgress.total ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                ) : (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                )}
+                <span className="text-xs text-amber-600">
+                  Images {imageProgress.done}/{imageProgress.total}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -466,6 +627,18 @@ export default function TranslationRow({
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
                 <span className="text-xs text-indigo-600">{progressLabel || "Translating…"}</span>
+                {timeEstimate !== null && (
+                  <span className="text-xs text-gray-400">
+                    {formatElapsed(elapsedSeconds)}
+                  </span>
+                )}
+                <button
+                  onClick={handleCancel}
+                  className="text-gray-400 hover:text-red-600 transition-colors ml-1"
+                  title="Cancel"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
               </div>
               {imageProgress && (
                 <div className="flex items-center gap-1.5">
@@ -499,6 +672,9 @@ export default function TranslationRow({
         {/* Quality score badge */}
         {qualityScore !== null && !isProcessing && (
           <div className="flex items-center gap-1.5 shrink-0">
+            {elapsedSeconds > 0 && (
+              <span className="text-xs text-gray-400">{formatElapsed(elapsedSeconds)}</span>
+            )}
             <button
               onClick={() => setShowDetails((d) => !d)}
               className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${scoreBg(qualityScore)}`}
@@ -514,7 +690,7 @@ export default function TranslationRow({
                 <ChevronDown className="w-3 h-3 text-gray-400" />
               )}
             </button>
-            {qualityScore < settings.threshold && (
+            {qualityAnalysis?.suggested_corrections && qualityAnalysis.suggested_corrections.length > 0 && (
               <button
                 onClick={() => { handleFixQuality(); }}
                 disabled={loading !== null}
@@ -526,13 +702,6 @@ export default function TranslationRow({
             )}
           </div>
         )}
-        {loading === "fix" && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-            <span className="text-xs text-amber-600">{progressLabel || "Fixing…"}</span>
-          </div>
-        )}
-
         {/* Published URL + copy */}
         <div className="flex-1 min-w-0">
           {displayUrl ? (
@@ -602,7 +771,7 @@ export default function TranslationRow({
                   </button>
                   {showMore && (
                     <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
-                      {qualityScore !== null && qualityScore < settings.threshold && (
+                      {qualityAnalysis?.suggested_corrections && qualityAnalysis.suggested_corrections.length > 0 && (
                         <button
                           onClick={() => { setShowMore(false); handleFixQuality(); }}
                           disabled={loading !== null}

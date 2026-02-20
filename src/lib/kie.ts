@@ -84,7 +84,7 @@ export async function createImageTask(
   );
 }
 
-export async function pollTaskResult(taskId: string): Promise<string[]> {
+export async function pollTaskResult(taskId: string): Promise<{ urls: string[]; costTimeMs: number | null }> {
   const startTime = Date.now();
   let pollInterval = POLL_INITIAL_MS;
 
@@ -108,7 +108,7 @@ export async function pollTaskResult(taskId: string): Promise<string[]> {
       const result = JSON.parse(data.data.resultJson) as {
         resultUrls: string[];
       };
-      return result.resultUrls;
+      return { urls: result.resultUrls, costTimeMs: data.data.costTime ?? null };
     }
 
     if (data.data.state === "fail") {
@@ -151,7 +151,7 @@ export async function generateImage(
   imageUrls: string[],
   aspectRatio: string = "2:3",
   seed?: number
-): Promise<string[]> {
+): Promise<{ urls: string[]; costTimeMs: number | null }> {
   const taskId = await createImageTask(prompt, imageUrls, aspectRatio, "2K", seed);
   return pollTaskResult(taskId);
 }

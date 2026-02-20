@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 interface PageImage {
@@ -36,8 +37,16 @@ function extractImagesFromHtml(html: string): PageImage[] {
     const src = img.getAttribute("src");
     if (!src) return;
     // Skip tiny images (icons, spacers, tracking pixels)
-    const w = parseInt(img.getAttribute("width") || "0");
-    const h = parseInt(img.getAttribute("height") || "0");
+    // Check HTML attributes first, then inline style width/height as fallback
+    let w = parseInt(img.getAttribute("width") || "0");
+    let h = parseInt(img.getAttribute("height") || "0");
+    if (w === 0 || h === 0) {
+      const style = img.getAttribute("style") || "";
+      const wMatch = style.match(/width:\s*(\d+)px/);
+      const hMatch = style.match(/height:\s*(\d+)px/);
+      if (wMatch) w = parseInt(wMatch[1]);
+      if (hMatch) h = parseInt(hMatch[1]);
+    }
     // Skip data URIs and very small known dimensions
     if (src.startsWith("data:")) return;
     if (w > 0 && h > 0 && w < 50 && h < 50) return;
@@ -60,6 +69,8 @@ export default function ImageSelectionModal({
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [errors, setErrors] = useState<string[]>([]);
   const [anyTranslated, setAnyTranslated] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [successCount, setSuccessCount] = useState(0);
 
   useEffect(() => {
     if (open && pageHtml) {
@@ -70,6 +81,8 @@ export default function ImageSelectionModal({
       setProgress({ done: 0, total: 0 });
       setErrors([]);
       setAnyTranslated(false);
+      setCompleted(false);
+      setSuccessCount(0);
     }
   }, [open, pageHtml]);
 
@@ -105,8 +118,12 @@ export default function ImageSelectionModal({
     if (selectedImages.length === 0) return;
 
     setTranslating(true);
+    setCompleted(false);
+    setSuccessCount(0);
     setProgress({ done: 0, total: selectedImages.length });
     setErrors([]);
+
+    let successes = 0;
 
     // Process images sequentially to avoid overwhelming the API
     for (const img of selectedImages) {
@@ -130,6 +147,7 @@ export default function ImageSelectionModal({
           setErrors((prev) => [...prev, data.error || `Image ${img.index + 1} failed`]);
         } else {
           setAnyTranslated(true);
+          successes++;
         }
       } catch {
         setErrors((prev) => [...prev, `Image ${img.index + 1}: network error`]);
@@ -137,6 +155,8 @@ export default function ImageSelectionModal({
       setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
     }
 
+    setSuccessCount(successes);
+    setCompleted(true);
     setTranslating(false);
   }
 
@@ -237,30 +257,57 @@ export default function ImageSelectionModal({
           </div>
         )}
 
+        {/* Success banner */}
+        {completed && successCount > 0 && (
+          <div className="px-5 py-3 bg-emerald-50 border-t border-emerald-200 shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-emerald-700">
+                {successCount} image{successCount !== 1 ? "s" : ""} translated successfully
+              </span>
+            </div>
+            <p className="text-xs text-emerald-600 mt-1">
+              The translated HTML has been updated. Close to see the changes.
+            </p>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200 shrink-0">
-          <button
-            onClick={() => onClose(anyTranslated)}
-            disabled={translating}
-            className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 transition-colors"
-          >
-            {anyTranslated ? "Done" : "Skip"}
-          </button>
-
-          {translating ? (
-            <div className="flex items-center gap-2 text-sm text-indigo-600">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Translating {progress.done}/{progress.total} images...
-            </div>
-          ) : (
+          {completed ? (
             <button
-              onClick={handleTranslate}
-              disabled={selected.size === 0 || images.length === 0}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              onClick={() => onClose(anyTranslated)}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors ml-auto"
             >
-              <ImageIcon className="w-4 h-4" />
-              Translate {selected.size > 0 ? `(${selected.size})` : "Selected"}
+              <Check className="w-4 h-4" />
+              Close
             </button>
+          ) : (
+            <>
+              <button
+                onClick={() => onClose(anyTranslated)}
+                disabled={translating}
+                className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 transition-colors"
+              >
+                Skip
+              </button>
+
+              {translating ? (
+                <div className="flex items-center gap-2 text-sm text-indigo-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Translating {progress.done}/{progress.total} images...
+                </div>
+              ) : (
+                <button
+                  onClick={handleTranslate}
+                  disabled={selected.size === 0 || images.length === 0}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  Translate {selected.size > 0 ? `(${selected.size})` : "Selected"}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

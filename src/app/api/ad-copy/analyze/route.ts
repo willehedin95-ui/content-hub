@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
       response_format: { type: "json_object" },
       messages: [
         {

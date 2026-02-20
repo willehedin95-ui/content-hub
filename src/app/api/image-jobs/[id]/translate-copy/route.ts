@@ -72,7 +72,7 @@ export async function POST(
       // Step 1: Translate
       const translateResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
-        max_tokens: 4000,
+        max_completion_tokens: 4000,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -120,7 +120,7 @@ No other text.`,
 
       const analyzeResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
-        max_tokens: 1500,
+        max_completion_tokens: 1500,
         response_format: { type: "json_object" },
         messages: [
           {

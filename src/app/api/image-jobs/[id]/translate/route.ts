@@ -88,7 +88,7 @@ export async function POST(
     }
 
     // Call Kie AI
-    const resultUrls = await generateImage(
+    const { urls: resultUrls, costTimeMs } = await generateImage(
       prompt,
       [translation.source_images.original_url],
       translation.aspect_ratio || "1:1"
@@ -171,6 +171,8 @@ export async function POST(
         version_number: nextVersionNumber,
         source_url: translation.source_images.original_url,
         generation_time_seconds: generationTime,
+        duration_ms: Math.round(generationTime * 1000),
+        kie_cost_time_ms: costTimeMs,
       },
     });
 

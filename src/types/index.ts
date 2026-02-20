@@ -55,6 +55,7 @@ export interface PageQualityAnalysis {
   context_errors: string[];
   name_localization: string[];
   overall_assessment: string;
+  suggested_corrections?: { find: string; replace: string }[];
 }
 
 export type ABTestStatus = "draft" | "active" | "completed";

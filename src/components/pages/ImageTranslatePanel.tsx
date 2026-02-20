@@ -72,14 +72,16 @@ export default function ImageTranslatePanel({
       setStatus("idle");
       setResultUrl(null);
       setError("");
+      setElapsed(0);
     }
   }, [clickedImage, language.label]);
 
   useEffect(() => {
     if (status !== "loading") {
-      setElapsed(0);
+      // Keep elapsed visible (don't reset) — only clear the interval
       return;
     }
+    setElapsed(0);
     const start = Date.now();
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - start) / 1000));
@@ -263,7 +265,12 @@ export default function ImageTranslatePanel({
 
       {status === "preview" && resultUrl && (
         <div className="space-y-2">
-          <p className="text-xs text-gray-400 uppercase tracking-wider">Generated Result</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">Generated Result</p>
+            {elapsed > 0 && (
+              <span className="text-xs text-gray-400">{elapsed}s</span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setLightboxSrc(resultUrl)}

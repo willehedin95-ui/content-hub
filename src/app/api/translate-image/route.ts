@@ -22,8 +22,25 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const startTime = Date.now();
+    const db = createServerSupabase();
+
+    // Validate translationId exists before calling expensive Kie AI
+    const { data: trans, error: transErr } = await db
+      .from("translations")
+      .select("id, page_id")
+      .eq("id", translationId)
+      .single();
+
+    if (transErr || !trans) {
+      return NextResponse.json(
+        { error: "Translation not found" },
+        { status: 404 }
+      );
+    }
+
     // 1. Call Kie.ai nano-banana-pro — original image is already on a public URL
-    const resultUrls = await generateImage(
+    const { urls: resultUrls, costTimeMs } = await generateImage(
       prompt,
       [imageUrl],
       aspectRatio || "1:1"
@@ -44,7 +61,6 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await resultRes.arrayBuffer());
 
     // 3. Upload to Supabase Storage
-    const db = createServerSupabase();
     const filePath = `${translationId}/${crypto.randomUUID()}.png`;
 
     const { error: uploadError } = await db.storage
@@ -63,17 +79,12 @@ export async function POST(req: NextRequest) {
       .from(STORAGE_BUCKET)
       .getPublicUrl(filePath);
 
-    // 5. Log usage
-    // Look up the translation to get the page_id
-    const { data: trans } = await db
-      .from("translations")
-      .select("page_id")
-      .eq("id", translationId)
-      .single();
+    // 5. Log usage (trans already fetched above for validation)
+    const durationMs = Date.now() - startTime;
 
     await db.from("usage_logs").insert({
       type: "image_generation",
-      page_id: trans?.page_id ?? null,
+      page_id: trans.page_id,
       translation_id: translationId,
       model: KIE_MODEL,
       input_tokens: 0,
@@ -82,10 +93,12 @@ export async function POST(req: NextRequest) {
       metadata: {
         image_url: imageUrl,
         aspect_ratio: aspectRatio || "1:1",
+        duration_ms: durationMs,
+        kie_cost_time_ms: costTimeMs,
       },
     });
 
-    return NextResponse.json({ newImageUrl: urlData.publicUrl });
+    return NextResponse.json({ newImageUrl: urlData.publicUrl, duration_ms: durationMs });
   } catch (error) {
     console.error("Image translation error:", error);
     return NextResponse.json(

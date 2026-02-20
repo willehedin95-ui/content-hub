@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { extractContent, extractReadableText, applyTranslations } from "@/lib/html-parser";
-import { translateBatch, translateMetas } from "@/lib/openai";
+import { extractBlocks, stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
+import { translateFullHtml, translateMetas } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { Language } from "@/types";
@@ -80,47 +80,55 @@ export async function POST(req: NextRequest) {
       );
     }
   } else {
-    await db.from("translations").insert({
-      page_id,
-      language,
-      variant: "control",
-      status: "translating",
-      updated_at: new Date().toISOString(),
-    });
+    // Use upsert to handle race condition when two requests arrive simultaneously
+    // for the same page/language with no existing row — the unique constraint
+    // ensures only one wins, the other gets the existing row back.
+    const { data: inserted } = await db.from("translations").upsert(
+      {
+        page_id,
+        language,
+        variant: "control",
+        status: "translating",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "page_id,language,variant" }
+    ).select("id, status").single();
+
+    // If the upsert hit an existing row that's already translating, reject
+    if (inserted && inserted.status !== "translating") {
+      await db.from("translations")
+        .update({ status: "translating", updated_at: new Date().toISOString() })
+        .eq("id", inserted.id)
+        .neq("status", "translating");
+    }
   }
 
   try {
-    // Extract translatable content (modifiedHtml has {{id}} placeholders already injected)
-    const { texts, metas, alts, modifiedHtml } = extractContent(page.original_html);
+    const startTime = Date.now();
 
-    // Extract full readable text for context — so each chunk sees the whole page
-    const pageContext = extractReadableText(page.original_html);
+    // Extract metas from the original HTML (for SEO title/description)
+    const { metas } = extractBlocks(page.original_html);
 
-    // Translate text nodes + alts together
-    const allTexts = [
-      ...texts,
-      ...alts.map(({ id, alt }) => ({ id, text: alt })),
-    ];
-    const batchResult = await translateBatch(
-      allTexts,
-      language as Language,
-      apiKey,
-      { pageContext }
-    );
-    const metasResult = await translateMetas(
-      metas,
-      language as Language,
-      apiKey
-    );
+    // Strip non-translatable content (CSS, SVGs, scripts) from the body.
+    // This reduces ~146K chars → ~51K chars (~13K tokens) — well within GPT limits.
+    const { bodyHtml, headHtml, stripped } = stripForTranslation(page.original_html);
 
-    const translatedTexts = batchResult.result;
+    // Full-HTML translation: send the cleaned body to GPT as one piece.
+    // GPT sees the full narrative and translates all text naturally — like
+    // pasting the full text into a GPT chat and asking it to translate.
+    const [htmlResult, metasResult] = await Promise.all([
+      translateFullHtml(bodyHtml, language as Language, apiKey),
+      translateMetas(metas, language as Language, apiKey),
+    ]);
+
     const translatedMetas = metasResult.result;
 
-    // Reconstruct HTML using modifiedHtml (which has the {{id}} placeholders)
-    const translatedHtml = applyTranslations(
-      modifiedHtml,
-      translatedTexts,
-      translatedMetas
+    // Restore stripped elements + re-attach head + apply meta translations
+    const translatedHtml = restoreAfterTranslation(
+      htmlResult.result,
+      headHtml,
+      stripped,
+      translatedMetas,
     );
 
     // Save translation
@@ -132,7 +140,7 @@ export async function POST(req: NextRequest) {
           language,
           variant: "control",
           translated_html: translatedHtml,
-          translated_texts: translatedTexts,
+          translated_texts: null,
           seo_title: translatedMetas.title || null,
           seo_description: translatedMetas.description || null,
           status: "translated",
@@ -148,10 +156,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Log usage
-    const totalInputTokens =
-      batchResult.inputTokens + metasResult.inputTokens;
-    const totalOutputTokens =
-      batchResult.outputTokens + metasResult.outputTokens;
+    const totalInputTokens = htmlResult.inputTokens + metasResult.inputTokens;
+    const totalOutputTokens = htmlResult.outputTokens + metasResult.outputTokens;
     const costUsd = calcOpenAICost(totalInputTokens, totalOutputTokens);
 
     await db.from("usage_logs").insert({
@@ -164,8 +170,8 @@ export async function POST(req: NextRequest) {
       cost_usd: costUsd,
       metadata: {
         language,
-        text_count: allTexts.length,
-        chunk_count: Math.ceil(allTexts.length / 80),
+        approach: "full-html",
+        duration_ms: Date.now() - startTime,
       },
     });
 

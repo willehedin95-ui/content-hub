@@ -679,21 +679,33 @@ export default function EditPageClient({
     doRetranslate();
   }
 
-  async function runQualityAnalysis() {
+  async function runQualityAnalysis(previousContext?: {
+    applied_corrections: { find: string; replace: string }[];
+    previous_score: number;
+    previous_issues: Record<string, string[]>;
+  }) {
     setAnalyzing(true);
+    setSaveError("");
     try {
       const res = await fetch("/api/translate/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translation_id: translation.id }),
+        body: JSON.stringify({
+          translation_id: translation.id,
+          ...(previousContext && { previous_context: previousContext }),
+        }),
       });
       if (res.ok) {
         const data = await res.json();
         setQualityScore(data.quality_score ?? null);
         setQualityAnalysis(data);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSaveError(data.error || "Quality analysis failed");
       }
     } catch (err) {
       console.error("Quality analysis failed:", err);
+      setSaveError("Quality analysis failed — check your connection");
     } finally {
       setAnalyzing(false);
     }
@@ -716,15 +728,21 @@ export default function EditPageClient({
         return;
       }
 
+      const fixData = await res.json();
+
       setIsDirty(false);
       setIframeKey((k) => k + 1);
       router.refresh();
 
-      // Re-analyze the fixed translation
+      // Re-analyze with previous_context so score floor is enforced
       setFixingQuality(false);
       setQualityScore(null);
       setQualityAnalysis(null);
-      await runQualityAnalysis();
+      await runQualityAnalysis({
+        applied_corrections: fixData.applied_corrections ?? [],
+        previous_score: fixData.previous_score ?? 0,
+        previous_issues: fixData.previous_issues ?? {},
+      });
       return;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Fix failed");
@@ -821,7 +839,7 @@ export default function EditPageClient({
             </button>
           ) : (
             <button
-              onClick={runQualityAnalysis}
+              onClick={() => runQualityAnalysis()}
               className="text-xs text-gray-400 hover:text-indigo-600 shrink-0 transition-colors"
               title="Run quality analysis"
             >

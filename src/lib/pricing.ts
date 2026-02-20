@@ -1,4 +1,4 @@
-// GPT-4.1 pricing (per 1M tokens)
+// GPT-5.2 pricing (per 1M tokens)
 export const GPT4O_INPUT_COST = 2.0; // $/1M input tokens
 export const GPT4O_OUTPUT_COST = 8.0; // $/1M output tokens
 

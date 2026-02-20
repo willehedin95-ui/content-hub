@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { extractContent, extractReadableText, applyTranslations } from "@/lib/html-parser";
-import { translateBatch, translateMetas } from "@/lib/openai";
-import { calcOpenAICost } from "@/lib/pricing";
-import { OPENAI_MODEL } from "@/lib/constants";
-import { Language, PageQualityAnalysis } from "@/types";
+import { applyCorrectionsList } from "@/lib/openai";
+import { PageQualityAnalysis } from "@/types";
 
-export const maxDuration = 180;
+export const maxDuration = 60;
 
 /**
- * Re-translate a page using quality analysis feedback to fix specific issues.
- * Uses the full page context + quality issues to produce a better translation.
+ * Fix quality issues in an existing translation.
+ * Applies the suggested_corrections from the quality analysis directly —
+ * no second GPT call needed since the analysis already identified what to fix.
  */
 export async function POST(req: NextRequest) {
   const { translation_id } = await req.json();
@@ -22,20 +20,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "OpenAI API key not configured" },
-      { status: 500 }
-    );
-  }
-
   const db = createServerSupabase();
 
-  // Load the translation + page
+  // Load the translation
   const { data: translation, error: tError } = await db
     .from("translations")
-    .select("*, pages!inner(original_html)")
+    .select("*")
     .eq("id", translation_id)
     .single();
 
@@ -43,27 +33,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Translation not found" }, { status: 404 });
   }
 
-  // Build quality feedback string from the analysis
+  if (!translation.translated_html) {
+    return NextResponse.json(
+      { error: "No translated HTML to fix — translate the page first" },
+      { status: 400 }
+    );
+  }
+
+  // Get corrections from quality analysis
   const analysis = translation.quality_analysis as PageQualityAnalysis | null;
-  let qualityFeedback = "";
-  if (analysis) {
-    const parts: string[] = [];
-    if (analysis.overall_assessment) {
-      parts.push(`Overall: ${analysis.overall_assessment}`);
-    }
-    if (analysis.fluency_issues?.length > 0) {
-      parts.push(`Fluency issues: ${analysis.fluency_issues.join("; ")}`);
-    }
-    if (analysis.grammar_issues?.length > 0) {
-      parts.push(`Grammar issues: ${analysis.grammar_issues.join("; ")}`);
-    }
-    if (analysis.context_errors?.length > 0) {
-      parts.push(`Context errors: ${analysis.context_errors.join("; ")}`);
-    }
-    if (analysis.name_localization?.length > 0) {
-      parts.push(`Unlocalized names: ${analysis.name_localization.join("; ")}`);
-    }
-    qualityFeedback = parts.join("\n");
+  const corrections = analysis?.suggested_corrections;
+
+  if (!corrections || corrections.length === 0) {
+    return NextResponse.json(
+      { error: "No suggested corrections in quality analysis — re-analyze first" },
+      { status: 400 }
+    );
   }
 
   // Claim the translation (with stale claim recovery)
@@ -76,7 +61,6 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-    // Stale claim — reset so it can be re-claimed
     await db.from("translations")
       .update({ status: "error", updated_at: new Date().toISOString() })
       .eq("id", translation_id)
@@ -98,43 +82,28 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const originalHtml = translation.pages.original_html;
-    const language = translation.language as Language;
-
-    // Extract translatable content
-    const { texts, metas, alts, modifiedHtml } = extractContent(originalHtml);
-    const pageContext = extractReadableText(originalHtml);
-
-    // Translate with full context + quality feedback
-    const allTexts = [
-      ...texts,
-      ...alts.map(({ id, alt }: { id: string; alt: string }) => ({ id, text: alt })),
-    ];
-    const batchResult = await translateBatch(
-      allTexts,
-      language,
-      apiKey,
-      { pageContext, qualityFeedback: qualityFeedback || undefined }
+    // Apply corrections directly from the analysis
+    const { html: fixedHtml, applied, failed } = applyCorrectionsList(
+      translation.translated_html,
+      corrections
     );
-    const metasResult = await translateMetas(metas, language, apiKey);
 
-    const translatedTexts = batchResult.result;
-    const translatedMetas = metasResult.result;
+    console.log(
+      `[translate/fix] ${corrections.length} corrections → ${applied} applied, ${failed.length} failed`
+    );
 
-    // Reconstruct HTML
-    const translatedHtml = applyTranslations(modifiedHtml, translatedTexts, translatedMetas);
+    // Build list of successfully applied corrections (for context-aware re-analysis)
+    const failedSet = new Set(failed);
+    const appliedCorrections = corrections.filter(
+      (c) => !failedSet.has(c.find.slice(0, 80))
+    );
 
-    // Save
+    // Save the fixed HTML — keep quality_score/quality_analysis for context
     const { error: saveError } = await db
       .from("translations")
       .update({
-        translated_html: translatedHtml,
-        translated_texts: translatedTexts,
-        seo_title: translatedMetas.title || null,
-        seo_description: translatedMetas.description || null,
+        translated_html: fixedHtml,
         status: "translated",
-        quality_score: null,
-        quality_analysis: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", translation_id);
@@ -143,29 +112,21 @@ export async function POST(req: NextRequest) {
       throw new Error(saveError.message);
     }
 
-    // Log usage
-    const totalInputTokens = batchResult.inputTokens + metasResult.inputTokens;
-    const totalOutputTokens = batchResult.outputTokens + metasResult.outputTokens;
-
-    await db.from("usage_logs").insert({
-      type: "translation",
-      page_id: translation.page_id,
-      translation_id,
-      model: OPENAI_MODEL,
-      input_tokens: totalInputTokens,
-      output_tokens: totalOutputTokens,
-      cost_usd: calcOpenAICost(totalInputTokens, totalOutputTokens),
-      metadata: {
-        language,
-        purpose: "fix_quality",
-        text_count: allTexts.length,
-        chunk_count: Math.ceil(allTexts.length / 80),
-        had_quality_feedback: !!qualityFeedback,
+    return NextResponse.json({
+      success: true,
+      id: translation_id,
+      corrections_applied: applied,
+      corrections_failed: failed.length,
+      applied_corrections: appliedCorrections,
+      previous_score: analysis?.quality_score ?? null,
+      previous_issues: {
+        fluency_issues: analysis?.fluency_issues ?? [],
+        grammar_issues: analysis?.grammar_issues ?? [],
+        context_errors: analysis?.context_errors ?? [],
       },
     });
-
-    return NextResponse.json({ success: true, id: translation_id });
   } catch (err) {
+    console.error("[translate/fix] Error:", err);
     const message = err instanceof Error ? err.message : "Fix failed";
 
     await db

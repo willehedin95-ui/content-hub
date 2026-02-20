@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   try {
     const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
       messages: [
         {
           role: "system",

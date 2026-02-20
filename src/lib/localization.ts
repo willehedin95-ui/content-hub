@@ -1,37 +1,13 @@
 import { Language } from "@/types";
 
 /**
- * Per-language name mapping examples for cultural localization.
- * Source names are Swedish (the primary source culture).
- * These are EXAMPLES for the LLM — it should apply the same principle
- * to any Swedish/English names it encounters, not only these specific ones.
+ * Universal character names that sound natural in ALL target languages
+ * (Swedish, Danish, Norwegian, German). Use these in source content
+ * so GPT never needs to rename characters during translation.
  */
-export const NAME_EXAMPLES: Record<Language, { from: string; to: string }[]> = {
-  sv: [],
-  no: [
-    { from: "Anna Lindberg", to: "Anne Haugen" },
-    { from: "Peter Svensson", to: "Petter Johansen" },
-    { from: "Erik Johansson", to: "Erik Hansen" },
-    { from: "Maria Karlsson", to: "Maria Olsen" },
-    { from: "Lars Andersson", to: "Lars Andersen" },
-    { from: "Emma Nilsson", to: "Emma Larsen" },
-  ],
-  da: [
-    { from: "Anna Lindberg", to: "Anne Vestergaard" },
-    { from: "Peter Svensson", to: "Peter Nielsen" },
-    { from: "Erik Johansson", to: "Erik Jensen" },
-    { from: "Maria Karlsson", to: "Maria Pedersen" },
-    { from: "Lars Andersson", to: "Lars Andersen" },
-    { from: "Emma Nilsson", to: "Emma Christensen" },
-  ],
-  de: [
-    { from: "Anna Lindberg", to: "Anna Weber" },
-    { from: "Peter Svensson", to: "Peter Müller" },
-    { from: "Erik Johansson", to: "Erik Fischer" },
-    { from: "Maria Karlsson", to: "Maria Schneider" },
-    { from: "Lars Andersson", to: "Lars Hoffmann" },
-    { from: "Emma Nilsson", to: "Emma Becker" },
-  ],
+export const UNIVERSAL_NAMES = {
+  female: ["Emma", "Anna", "Ella", "Maria", "Sara", "Ida", "Nora", "Hanna", "Maja", "Liv"],
+  male: ["Erik", "Lars", "Emil", "Oscar", "Noah", "Oliver", "Anton", "Axel", "Magnus", "Karl"],
 };
 
 const LANGUAGE_LABELS: Record<Language, string> = {
@@ -63,9 +39,8 @@ export function formatLocalization(lang: Language): string {
   if (lang === "sv") return "";
 
   const label = LANGUAGE_LABELS[lang];
-  const nameExamples = NAME_EXAMPLES[lang];
 
-  const nameBlock = `- NAMES (MANDATORY): Replace ALL Swedish and English person names with culturally appropriate ${label} equivalents. Use common, natural-sounding names for the target culture. Examples:\n${nameExamples.map((n) => `  ${n.from} → ${n.to}`).join("\n")}\n  Apply the same principle to ANY other Swedish/English names encountered.`;
+  const nameBlock = `- NAMES: Keep ALL character and person names EXACTLY as they appear in the source text. Do NOT rename, replace, or localise any person names. They have been pre-selected to work naturally across all Nordic languages.`;
   const dateBlock = `- DATES & TIME: ${DATE_FORMATS[lang]}`;
   const uiBlock = `- UI ELEMENTS: ${UI_ELEMENTS[lang]}`;
 
@@ -75,8 +50,11 @@ export function formatLocalization(lang: Language): string {
 /** Brand names and certificates that must NEVER be translated in images */
 export const NEVER_TRANSLATE = [
   "HappySleep",
+  "HappySleep Ergo",
   "Hydro13",
   "Hälsobladet",
+  "SwedishBalance",
+  "Nordic Cradle",
   "OEKO-TEX",
   "CertiPUR-US",
   "Trustpilot",
@@ -91,11 +69,6 @@ export function getShortLocalizationNote(lang: Language): string {
   if (lang === "sv") return "";
 
   const label = LANGUAGE_LABELS[lang];
-  const nameExamples = NAME_EXAMPLES[lang];
-  const examplesStr = nameExamples
-    .slice(0, 3)
-    .map((n) => `${n.from} → ${n.to}`)
-    .join(", ");
 
-  return `\n\nCULTURAL LOCALISATION (MANDATORY):\n- Replace ALL Swedish/English person names with culturally appropriate ${label} names. Examples: ${examplesStr}.\n- Translate ALL UI text (Reply/Svar, Comment/Kommentar, dates like "X dagar sedan") to ${label}.\n- The result should look as if ORIGINALLY CREATED for a ${label} audience.\n- NEVER translate these brand names and certificates — keep them EXACTLY as-is: ${NEVER_TRANSLATE.join(", ")}.\n- PRESERVE: Product images, star ratings, logos, certification badges, overall layout.`;
+  return `\n\nCULTURAL LOCALISATION:\n- Keep ALL person names exactly as they appear — do NOT rename or localise them.\n- Translate ALL UI text (Reply/Svar, Comment/Kommentar, dates like "X dagar sedan") to ${label}.\n- The result should look as if ORIGINALLY CREATED for a ${label} audience.\n- NEVER translate these brand names and certificates — keep them EXACTLY as-is: ${NEVER_TRANSLATE.join(", ")}.\n- PRESERVE: Product images, star ratings, logos, certification badges, overall layout.`;
 }

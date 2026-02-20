@@ -350,7 +350,7 @@ async function translateAdCopyBatch(
 
   const response = await openai.chat.completions.create({
     model: OPENAI_MODEL,
-    max_tokens: 4000,
+    max_completion_tokens: 4000,
     messages: [
       {
         role: "system",
