@@ -227,7 +227,7 @@ export default function TranslationRow({
             translationId,
             imageUrl: img.src,
             language: language.value,
-            aspectRatio: "1:1",
+            // Omit aspectRatio — server auto-detects from actual image dimensions via sharp
           }),
           signal: abortRef.current?.signal,
         });

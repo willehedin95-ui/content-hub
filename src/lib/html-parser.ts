@@ -333,17 +333,20 @@ export function restoreAfterTranslation(
     `<!DOCTYPE html><html><head>${headHtml}</head><body>${restoredBody}</body></html>`
   );
 
-  // Apply meta translations
+  // Apply meta translations — use dedicated og fields when available, fallback to title/description
   if (metaTranslations.title) {
     $("title").text(metaTranslations.title);
-    $('meta[property="og:title"]').attr("content", metaTranslations.title);
   }
   if (metaTranslations.description) {
     $('meta[name="description"]').attr("content", metaTranslations.description);
-    $('meta[property="og:description"]').attr(
-      "content",
-      metaTranslations.description
-    );
+  }
+  const ogTitle = metaTranslations.ogTitle || metaTranslations.title;
+  const ogDesc = metaTranslations.ogDescription || metaTranslations.description;
+  if (ogTitle) {
+    $('meta[property="og:title"]').attr("content", ogTitle);
+  }
+  if (ogDesc) {
+    $('meta[property="og:description"]').attr("content", ogDesc);
   }
 
   return $.html();

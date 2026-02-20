@@ -15,7 +15,7 @@ interface Props {
   imagesToTranslate?: PageImageSelection[];
 }
 
-const STUCK_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+const STUCK_TIMEOUT_BASE_MS = 3 * 60 * 1000; // 3 minutes base
 
 export default function TranslationPanel({ pageId, languages, translations, abTests, imagesToTranslate }: Props) {
   const router = useRouter();
@@ -80,8 +80,9 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
       setStuckWarning(false);
       setProgress({ done: 0, total: rowFns.length });
 
-      // Start stuck timer
-      stuckTimerRef.current = setTimeout(() => setStuckWarning(true), STUCK_TIMEOUT_MS);
+      // Start stuck timer — scale with number of languages since they run sequentially
+      const stuckMs = STUCK_TIMEOUT_BASE_MS * rowFns.length;
+      stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
 
       // Run sequentially to avoid OpenAI rate limits and Vercel concurrency limits
       for (const fn of rowFns) {
@@ -111,8 +112,9 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
     const langs = untranslatedLangs;
     setProgress({ done: 0, total: langs.length });
 
-    // Start stuck timer
-    stuckTimerRef.current = setTimeout(() => setStuckWarning(true), STUCK_TIMEOUT_MS);
+    // Start stuck timer — scale with number of languages since they run sequentially
+    const stuckMs = STUCK_TIMEOUT_BASE_MS * langs.length;
+    stuckTimerRef.current = setTimeout(() => setStuckWarning(true), stuckMs);
 
     // Run sequentially to avoid rate limits
     for (const lang of langs) {

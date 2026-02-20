@@ -36,10 +36,6 @@ const UI_ELEMENTS: Record<Language, string> = {
  * Injected into the LOCALISATION section of each SYSTEM_PROMPT.
  */
 export function formatLocalization(lang: Language): string {
-  if (lang === "sv") return "";
-
-  const label = LANGUAGE_LABELS[lang];
-
   const nameBlock = `- NAMES: Keep ALL character and person names EXACTLY as they appear in the source text. Do NOT rename, replace, or localise any person names. They have been pre-selected to work naturally across all Nordic languages.`;
   const dateBlock = `- DATES & TIME: ${DATE_FORMATS[lang]}`;
   const uiBlock = `- UI ELEMENTS: ${UI_ELEMENTS[lang]}`;

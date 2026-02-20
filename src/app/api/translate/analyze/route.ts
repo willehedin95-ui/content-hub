@@ -151,6 +151,7 @@ SCORING: The previous score was ${previous_context.previous_score}. Since correc
       model: OPENAI_MODEL,
       max_completion_tokens: 4000,
       response_format: { type: "json_object" },
+      temperature: 0.2, // Low temperature for consistent, repeatable quality scores
       messages: [
         {
           role: "system",

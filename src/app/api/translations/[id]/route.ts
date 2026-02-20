@@ -107,6 +107,9 @@ export async function PUT(
     );
   }
 
+  // Clear quality data if the HTML content actually changed (scores would be stale)
+  const htmlChanged = finalHtml !== translation.translated_html;
+
   const { data: updated, error: saveError } = await db
     .from("translations")
     .update({
@@ -117,6 +120,7 @@ export async function PUT(
       slug: slug ?? translation.slug,
       status:
         translation.status === "published" ? "translated" : translation.status,
+      ...(htmlChanged && { quality_score: null, quality_analysis: null }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
