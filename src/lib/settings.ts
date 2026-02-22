@@ -18,6 +18,9 @@ export interface Settings {
   meta_default_daily_budget?: number;
   meta_default_objective?: string;
   meta_default_schedule_time?: string; // HH:mm format, e.g. "06:00"
+  // Analytics
+  ga4_measurement_id?: string;
+  shopify_domains?: string; // comma-separated store domains for UTM link tagging
 }
 
 export function getSettings(): Settings {

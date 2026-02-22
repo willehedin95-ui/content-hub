@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { publishABTest } from "@/lib/cloudflare-pages";
+import { publishABTest, ABTestAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { Language } from "@/types";
 import { isValidUUID } from "@/lib/validation";
 
@@ -61,6 +61,22 @@ export async function POST(
     );
   }
 
+  // Load analytics settings from DB
+  const { data: settingsRow } = await db
+    .from("app_settings")
+    .select("settings")
+    .limit(1)
+    .single();
+
+  const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const analytics: ABTestAnalyticsConfig = {
+    ga4MeasurementId: (appSettings.ga4_measurement_id as string) || undefined,
+    shopifyDomains: ((appSettings.shopify_domains as string) || "")
+      .split(",")
+      .map((d: string) => d.trim())
+      .filter(Boolean),
+  };
+
   // Mark test as active before deploying
   await db
     .from("ab_tests")
@@ -75,7 +91,8 @@ export async function POST(
       test.language as Language,
       test.split,
       id,
-      appUrl
+      appUrl,
+      analytics
     );
 
     // Update test with router URL

@@ -326,6 +326,53 @@ function injectTrackingScript(
   return html.replace(/<\/body>/i, script + "</body>");
 }
 
+function injectUTMRewriter(
+  html: string,
+  testId: string,
+  variant: "a" | "b",
+  shopifyDomains: string[]
+): string {
+  if (shopifyDomains.length === 0) return html;
+  const script = `<script data-cc-utm="true">
+(function(){
+  var t=${JSON.stringify(testId)};
+  var v=${JSON.stringify(variant)};
+  var d=${JSON.stringify(shopifyDomains)};
+  document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('a[href]').forEach(function(a){
+      try{
+        var u=new URL(a.href,location.href);
+        if(!d.some(function(h){return u.hostname.indexOf(h)!==-1}))return;
+        u.searchParams.set('utm_source','abtest');
+        u.searchParams.set('utm_medium','landingpage');
+        u.searchParams.set('utm_campaign',t);
+        u.searchParams.set('utm_content',v);
+        a.href=u.toString();
+      }catch(e){}
+    });
+  });
+})();
+</script>`;
+  return html.replace(/<\/body>/i, script + "</body>");
+}
+
+function injectGA4Script(
+  html: string,
+  measurementId: string,
+  testId: string,
+  variant: "a" | "b"
+): string {
+  const script = `<!-- GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
+<script>
+window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());
+gtag('config',${JSON.stringify(measurementId)});
+gtag('event','ab_test_view',{test_id:${JSON.stringify(testId)},variant:${JSON.stringify(variant)}});
+</script>`;
+  return html.replace(/<\/head>/i, script + "</head>");
+}
+
 function buildRouterHtml(slug: string, split: number): string {
   const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "_");
   return `<!DOCTYPE html>
@@ -351,6 +398,11 @@ function buildRouterHtml(slug: string, split: number): string {
  * Deploy an A/B test: router page + two variant pages.
  * The router redirects visitors to /a/ or /b/ based on cookie.
  */
+export interface ABTestAnalyticsConfig {
+  ga4MeasurementId?: string;
+  shopifyDomains?: string[];
+}
+
 export async function publishABTest(
   controlHtml: string,
   variantHtml: string,
@@ -358,7 +410,8 @@ export async function publishABTest(
   language: Language,
   split: number,
   testId: string,
-  appUrl: string
+  appUrl: string,
+  analytics?: ABTestAnalyticsConfig
 ): Promise<ABTestDeployResult> {
   const { accountId, apiToken } = getConfig();
   const projectName = getProjectName(language);
@@ -369,8 +422,21 @@ export async function publishABTest(
   const variantPath = `${prefix}/b/index.html`;
 
   const routerHtml = buildRouterHtml(slug, split);
-  const trackedControlHtml = injectTrackingScript(controlHtml, appUrl, testId, "a");
-  const trackedVariantHtml = injectTrackingScript(variantHtml, appUrl, testId, "b");
+  let trackedControlHtml = injectTrackingScript(controlHtml, appUrl, testId, "a");
+  let trackedVariantHtml = injectTrackingScript(variantHtml, appUrl, testId, "b");
+
+  // Inject UTM link rewriting
+  const domains = analytics?.shopifyDomains?.filter(Boolean) ?? [];
+  if (domains.length > 0) {
+    trackedControlHtml = injectUTMRewriter(trackedControlHtml, testId, "a", domains);
+    trackedVariantHtml = injectUTMRewriter(trackedVariantHtml, testId, "b", domains);
+  }
+
+  // Inject GA4
+  if (analytics?.ga4MeasurementId) {
+    trackedControlHtml = injectGA4Script(trackedControlHtml, analytics.ga4MeasurementId, testId, "a");
+    trackedVariantHtml = injectGA4Script(trackedVariantHtml, analytics.ga4MeasurementId, testId, "b");
+  }
 
   const newFiles = [
     { path: routerPath, content: Buffer.from(routerHtml, "utf-8") },

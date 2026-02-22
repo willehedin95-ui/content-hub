@@ -15,7 +15,7 @@ import {
   Globe,
 } from "lucide-react";
 import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
-import Dropdown from "@/components/ui/Dropdown";
+import Dropdown from "@/components/ui/dropdown";
 
 interface Settings {
   pages_quality_enabled: boolean;
@@ -32,6 +32,8 @@ interface Settings {
   meta_default_daily_budget: number;
   meta_default_objective: string;
   meta_default_schedule_time: string;
+  ga4_measurement_id: string;
+  shopify_domains: string;
 }
 
 const TABS = [
@@ -62,6 +64,8 @@ export default function SettingsPage() {
     meta_default_daily_budget: 50,
     meta_default_objective: "OUTCOME_TRAFFIC",
     meta_default_schedule_time: "06:00",
+    ga4_measurement_id: "",
+    shopify_domains: "",
   });
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -72,6 +76,13 @@ export default function SettingsPage() {
     loading: boolean;
     error: string | null;
   }>({ balance: null, loading: false, error: null });
+
+  // Shopify connection state
+  const [shopify, setShopify] = useState<{
+    status: { shop: string } | null;
+    loading: boolean;
+    error: string | null;
+  }>({ status: null, loading: false, error: null });
 
   // Meta connection state
   const [meta, setMeta] = useState<{
@@ -289,6 +300,22 @@ export default function SettingsPage() {
       setMeta(prev => ({ ...prev, status: data, loading: false }));
     } catch (err) {
       setMeta({
+        status: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Connection failed",
+      });
+    }
+  }
+
+  async function testShopifyConnection() {
+    setShopify(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/shopify/verify");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Connection failed");
+      setShopify(prev => ({ ...prev, status: data, loading: false }));
+    } catch (err) {
+      setShopify({
         status: null,
         loading: false,
         error: err instanceof Error ? err.message : "Connection failed",
@@ -924,6 +951,62 @@ export default function SettingsPage() {
                 />
               </SettingsCard>
 
+              <SectionHeader>A/B Test Analytics</SectionHeader>
+              <SettingsCard>
+                <Row
+                  label="Shopify"
+                  description={
+                    shopify.status
+                      ? shopify.status.shop
+                      : shopify.error
+                      ? shopify.error
+                      : "Configured via environment variables"
+                  }
+                  descriptionColor={shopify.status ? "text-emerald-600" : shopify.error ? "text-red-500" : undefined}
+                  action={
+                    <ActionButton onClick={testShopifyConnection} disabled={shopify.loading}>
+                      {shopify.loading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : shopify.status ? (
+                        "Connected"
+                      ) : (
+                        "Test"
+                      )}
+                    </ActionButton>
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="GA4 Measurement ID"
+                  description={settings.ga4_measurement_id || "Not configured"}
+                  descriptionColor={settings.ga4_measurement_id ? "text-emerald-600" : undefined}
+                  action={
+                    <input
+                      type="text"
+                      value={settings.ga4_measurement_id}
+                      onChange={(e) => setSettings((s) => ({ ...s, ga4_measurement_id: e.target.value }))}
+                      placeholder="G-XXXXXXXXXX"
+                      className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Shopify store domains"
+                  description="Outbound links to these domains get UTM tags"
+                  action={
+                    <input
+                      type="text"
+                      value={settings.shopify_domains}
+                      onChange={(e) => setSettings((s) => ({ ...s, shopify_domains: e.target.value }))}
+                      placeholder="store.myshopify.com"
+                      className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  }
+                />
+              </SettingsCard>
+              <SaveButton saved={saved} onSave={handleSave} />
+
               <SectionHeader>Services</SectionHeader>
               <p className="text-xs text-gray-400 mb-2.5">
                 All API keys configured via environment variables in Vercel.
@@ -933,6 +1016,7 @@ export default function SettingsPage() {
                   { name: "OpenAI", env: "OPENAI_API_KEY", desc: "GPT-4o text translation & quality analysis" },
                   { name: "Cloudflare Pages", env: "CF_PAGES_*", desc: "Landing page hosting" },
                   { name: "Meta Marketing", env: "META_*", desc: "Ad campaign management" },
+                  { name: "Shopify", env: "SHOPIFY_*", desc: "Order data for A/B test conversions" },
                   { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image generation & translation" },
                   { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },
                   { name: "Google Drive", env: "GDRIVE_*", desc: "Image import & export" },

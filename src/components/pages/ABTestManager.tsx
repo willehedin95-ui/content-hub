@@ -16,14 +16,28 @@ import {
   Eye,
   MousePointerClick,
   TrendingUp,
+  ShoppingCart,
+  DollarSign,
+  Percent,
+  RefreshCw,
 } from "lucide-react";
 import { ABTest, Translation, LANGUAGES } from "@/types";
 import { calculateSignificance } from "@/lib/ab-stats";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
+
+interface VariantStats {
+  views: number;
+  clicks: number;
+  ctr: number;
+  conversions: number;
+  revenue: number;
+  cvr: number;
+  revenuePerVisitor: number;
+}
 
 interface Stats {
-  control: { views: number; clicks: number; ctr: number };
-  variant: { views: number; clicks: number; ctr: number };
+  control: VariantStats;
+  variant: VariantStats;
 }
 
 interface Props {
@@ -53,6 +67,7 @@ export default function ABTestManager({
   const [stats, setStats] = useState<Stats | null>(null);
   const [confirmWinner, setConfirmWinner] = useState<"control" | "b" | null>(null);
   const [confirmDeleteTest, setConfirmDeleteTest] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const isActive = abTest.status === "active";
   const isCompleted = abTest.status === "completed";
@@ -72,6 +87,22 @@ export default function ABTestManager({
       // Stats fetch is non-critical, silently retry on next poll
     }
   }, [abTest.id]);
+
+  const syncConversions = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/ab-tests/${abTest.id}/sync-conversions`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        await fetchStats();
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setSyncing(false);
+    }
+  }, [abTest.id, fetchStats]);
 
   // Fetch stats on mount and poll every 30s while active
   useEffect(() => {
@@ -187,6 +218,7 @@ export default function ABTestManager({
     icon: Icon,
     controlVal,
     variantVal,
+    prefix,
     suffix,
     highlight,
   }: {
@@ -194,6 +226,7 @@ export default function ABTestManager({
     icon: typeof Eye;
     controlVal: number;
     variantVal: number;
+    prefix?: string;
     suffix?: string;
     highlight?: boolean;
   }) {
@@ -211,13 +244,13 @@ export default function ABTestManager({
           <div>
             <p className="text-xs text-gray-400 mb-1">Control (A)</p>
             <p className={`text-lg font-bold ${controlWins ? "text-emerald-600" : "text-gray-800"}`}>
-              {controlVal.toLocaleString()}{suffix}
+              {prefix}{controlVal.toLocaleString()}{suffix}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Variant B</p>
             <p className={`text-lg font-bold ${variantWins ? "text-emerald-600" : "text-gray-800"}`}>
-              {variantVal.toLocaleString()}{suffix}
+              {prefix}{variantVal.toLocaleString()}{suffix}
             </p>
           </div>
         </div>
@@ -290,28 +323,86 @@ export default function ABTestManager({
 
       {/* Stats panel */}
       {stats && (isActive || isCompleted) && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <StatCard
-            label="Page Views"
-            icon={Eye}
-            controlVal={stats.control.views}
-            variantVal={stats.variant.views}
-          />
-          <StatCard
-            label="Outbound Clicks"
-            icon={MousePointerClick}
-            controlVal={stats.control.clicks}
-            variantVal={stats.variant.clicks}
-          />
-          <StatCard
-            label="Click-Through Rate"
-            icon={TrendingUp}
-            controlVal={stats.control.ctr}
-            variantVal={stats.variant.ctr}
-            suffix="%"
-            highlight
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <StatCard
+              label="Page Views"
+              icon={Eye}
+              controlVal={stats.control.views}
+              variantVal={stats.variant.views}
+            />
+            <StatCard
+              label="Outbound Clicks"
+              icon={MousePointerClick}
+              controlVal={stats.control.clicks}
+              variantVal={stats.variant.clicks}
+            />
+            <StatCard
+              label="Click-Through Rate"
+              icon={TrendingUp}
+              controlVal={stats.control.ctr}
+              variantVal={stats.variant.ctr}
+              suffix="%"
+              highlight
+            />
+          </div>
+
+          {/* Conversion stats */}
+          {(stats.control.conversions > 0 || stats.variant.conversions > 0) && (
+            <div className="grid grid-cols-4 gap-4 mb-4">
+              <StatCard
+                label="Conversions"
+                icon={ShoppingCart}
+                controlVal={stats.control.conversions}
+                variantVal={stats.variant.conversions}
+                highlight
+              />
+              <StatCard
+                label="Revenue"
+                icon={DollarSign}
+                controlVal={stats.control.revenue}
+                variantVal={stats.variant.revenue}
+                prefix="kr "
+                highlight
+              />
+              <StatCard
+                label="Conversion Rate"
+                icon={Percent}
+                controlVal={stats.control.cvr}
+                variantVal={stats.variant.cvr}
+                suffix="%"
+                highlight
+              />
+              <StatCard
+                label="Rev / Visitor"
+                icon={TrendingUp}
+                controlVal={stats.control.revenuePerVisitor}
+                variantVal={stats.variant.revenuePerVisitor}
+                prefix="kr "
+                highlight
+              />
+            </div>
+          )}
+
+          {/* Sync conversions button */}
+          <div className="flex items-center gap-2 mb-6">
+            <button
+              onClick={syncConversions}
+              disabled={syncing}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
+              {syncing ? "Syncing..." : "Sync Shopify conversions"}
+            </button>
+            {stats.control.conversions === 0 && stats.variant.conversions === 0 && (
+              <span className="text-xs text-gray-400">No conversions synced yet</span>
+            )}
+          </div>
+        </>
       )}
 
       {/* Statistical significance */}
