@@ -27,14 +27,15 @@ import {
 import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
 import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
 import PublishModal from "@/components/pages/PublishModal";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import Dropdown from "@/components/ui/Dropdown";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
+import Dropdown from "@/components/ui/dropdown";
 
 interface Props {
   pageId: string;
   pageName: string;
   pageSlug: string;
   pageProduct?: string;
+  originalHtml: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
   variantLabel?: string;
@@ -45,6 +46,7 @@ export default function EditPageClient({
   pageName,
   pageSlug,
   pageProduct,
+  originalHtml,
   translation,
   language,
   variantLabel,
@@ -81,6 +83,7 @@ export default function EditPageClient({
     width: number;
     height: number;
   } | null>(null);
+  const [bgImageTranslating, setBgImageTranslating] = useState(false);
 
   // Element-level editing
   const selectedElRef = useRef<HTMLElement | null>(null);
@@ -196,13 +199,13 @@ export default function EditPageClient({
 
   useEffect(() => {
     function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (isDirty) {
+      if (isDirty || bgImageTranslating) {
         e.preventDefault();
       }
     }
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
+  }, [isDirty, bgImageTranslating]);
 
   useEffect(() => {
     return () => {
@@ -856,6 +859,11 @@ export default function EditPageClient({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {bgImageTranslating && (
+            <span className="flex items-center gap-1.5 text-xs text-amber-600">
+              <Loader2 className="w-3 h-3 animate-spin" /> Translating image...
+            </span>
+          )}
           {autoSaveStatus === "saving" && (
             <span className="flex items-center gap-1.5 text-xs text-gray-400">
               <Loader2 className="w-3 h-3 animate-spin" /> Autosaving...
@@ -1048,8 +1056,10 @@ export default function EditPageClient({
               translationId={translation.id}
               language={language}
               clickedImage={clickedImage}
+              originalHtml={originalHtml}
               onClickedImageClear={() => setClickedImage(null)}
               onImageReplaced={() => markDirty()}
+              onImageTranslating={setBgImageTranslating}
             />
           ) : (
             /* Normal view: page settings */

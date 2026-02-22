@@ -18,13 +18,14 @@ import {
   MoreHorizontal,
   Image as ImageIcon,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
 import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { getPageQualitySettings } from "@/lib/settings";
 
 const MAX_FIX_ROUNDS = 3;
@@ -105,10 +106,13 @@ export default function TranslationRow({
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [confirmRepublish, setConfirmRepublish] = useState(false);
   const [showMore, setShowMore] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [pageHtml, setPageHtml] = useState("");
   const [imageProgress, setImageProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+  const [bgImageProgress, setBgImageProgress] = useState<{ done: number; total: number; status: string } | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const bgPollRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
@@ -116,9 +120,18 @@ export default function TranslationRow({
     return () => {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (bgPollRef.current) clearInterval(bgPollRef.current);
       if (abortRef.current) abortRef.current.abort();
     };
   }, []);
+
+  // Start polling if translation has background image work in progress (e.g. after page reload)
+  useEffect(() => {
+    if (translation?.image_status === "translating" && translation.id) {
+      startImagePolling(translation.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translation?.id, translation?.image_status]);
 
   // Close "more" dropdown on outside click
   useEffect(() => {
@@ -165,6 +178,41 @@ export default function TranslationRow({
     setImageProgress(null);
     if (timerRef.current) clearInterval(timerRef.current);
     router.refresh();
+  }
+
+  function startImagePolling(tid: string) {
+    if (bgPollRef.current) clearInterval(bgPollRef.current);
+
+    // Show initial state
+    setBgImageProgress({
+      done: translation?.images_done ?? 0,
+      total: translation?.images_total ?? 0,
+      status: "translating",
+    });
+
+    bgPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/translations/${tid}/image-status`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        setBgImageProgress({
+          done: data.images_done,
+          total: data.images_total,
+          status: data.image_status,
+        });
+
+        if (data.image_status === "done" || data.image_status === "error") {
+          if (bgPollRef.current) clearInterval(bgPollRef.current);
+          bgPollRef.current = null;
+          router.refresh();
+          // Clear after 5s
+          setTimeout(() => setBgImageProgress(null), 5000);
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 5000);
   }
 
   async function doTranslate(): Promise<{ ok: boolean; translationId?: string }> {
@@ -226,7 +274,8 @@ export default function TranslationRow({
 
     setImageProgress({ done: 0, total: images.length, errors: [] });
 
-    for (const img of images) {
+    for (let idx = 0; idx < images.length; idx++) {
+      const img = images[idx];
       if (abortRef.current?.signal.aborted) return;
       try {
         const res = await fetch("/api/translate-page-images", {
@@ -236,7 +285,8 @@ export default function TranslationRow({
             translationId,
             imageUrl: img.src,
             language: language.value,
-            // Omit aspectRatio — server auto-detects from actual image dimensions via sharp
+            // First call initializes batch tracking in DB
+            ...(idx === 0 && { batchInit: true, batchTotal: images.length }),
           }),
           signal: abortRef.current?.signal,
         });
@@ -513,6 +563,24 @@ export default function TranslationRow({
     }
   }
 
+  async function handleDelete() {
+    if (!translation?.id) return;
+    setProgress(prev => ({ ...prev, loading: "translate", error: "" }));
+    try {
+      const res = await fetch(`/api/translations/${translation.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setProgress(prev => ({ ...prev, error: data.error || "Failed to delete translation" }));
+        return;
+      }
+      router.refresh();
+    } catch {
+      setProgress(prev => ({ ...prev, error: "Failed to delete — check your connection" }));
+    } finally {
+      setProgress(prev => ({ ...prev, loading: null }));
+    }
+  }
+
   function handleCopyUrl() {
     const url = abTest?.router_url || translation?.published_url;
     if (!url) return;
@@ -647,10 +715,28 @@ export default function TranslationRow({
               </span>
             </>
           ) : (
-            <>
-              <StatusDot status={status} />
-              <span className="text-xs text-gray-500">{STATUS_LABELS[status]}</span>
-            </>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <StatusDot status={status} />
+                <span className="text-xs text-gray-500">{STATUS_LABELS[status]}</span>
+              </div>
+              {bgImageProgress && (
+                <div className="flex items-center gap-1.5">
+                  {bgImageProgress.status === "translating" ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                  ) : bgImageProgress.status === "done" ? (
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  ) : (
+                    <AlertCircle className="w-3 h-3 text-red-500" />
+                  )}
+                  <span className={`text-xs ${bgImageProgress.status === "done" ? "text-emerald-600" : bgImageProgress.status === "error" ? "text-red-600" : "text-amber-600"}`}>
+                    Images {bgImageProgress.done}/{bgImageProgress.total}
+                    {bgImageProgress.status === "done" && " — done!"}
+                    {bgImageProgress.status === "error" && " — error"}
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -805,6 +891,15 @@ export default function TranslationRow({
                         )}
                         Create A/B test
                       </button>
+                      <div className="border-t border-gray-100 my-1" />
+                      <button
+                        onClick={() => { setShowMore(false); setConfirmDelete(true); }}
+                        disabled={progress.loading !== null}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete translation
+                      </button>
                     </div>
                   )}
                 </div>
@@ -891,15 +986,29 @@ export default function TranslationRow({
         onCancel={() => setConfirmRepublish(false)}
       />
 
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete translation"
+        message={`Delete the ${language.label} translation? This removes all translated text and images. You can re-translate from the English source afterwards.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => { setConfirmDelete(false); handleDelete(); }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+
       {translation?.id && (
         <ImageSelectionModal
           open={showImageModal}
           translationId={translation.id}
           language={language}
           pageHtml={pageHtml}
-          onClose={(translated) => {
+          onClose={(translated, stillTranslating) => {
             setShowImageModal(false);
-            if (translated) router.refresh();
+            if (stillTranslating && translation?.id) {
+              startImagePolling(translation.id);
+            } else if (translated) {
+              router.refresh();
+            }
           }}
         />
       )}

@@ -5,6 +5,7 @@ import { sanitizeHtml } from "@/lib/sanitize";
 import { safeError } from "@/lib/api-error";
 import * as cheerio from "cheerio";
 import { isValidUUID } from "@/lib/validation";
+import { STORAGE_BUCKET } from "@/lib/constants";
 
 export async function GET(
   _req: NextRequest,
@@ -141,4 +142,66 @@ export async function PUT(
   }
 
   return NextResponse.json(updated);
+}
+
+/**
+ * DELETE /api/translations/[id]
+ * Deletes a translation and its associated storage images.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+  const db = createServerSupabase();
+
+  // Check translation exists and is not part of an active A/B test
+  const { data: translation, error: fetchError } = await db
+    .from("translations")
+    .select("id, page_id, language, variant")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !translation) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Block deletion if there's an active A/B test using this translation
+  const { data: activeTests } = await db
+    .from("ab_tests")
+    .select("id")
+    .or(`control_id.eq.${id},variant_id.eq.${id}`)
+    .in("status", ["draft", "active"]);
+
+  if (activeTests && activeTests.length > 0) {
+    return NextResponse.json(
+      { error: "Cannot delete — translation is part of an active A/B test. End the test first." },
+      { status: 409 }
+    );
+  }
+
+  // Clean up storage images (files under translationId/ prefix)
+  const { data: files } = await db.storage
+    .from(STORAGE_BUCKET)
+    .list(id);
+
+  if (files && files.length > 0) {
+    const paths = files.map((f) => `${id}/${f.name}`);
+    await db.storage.from(STORAGE_BUCKET).remove(paths);
+  }
+
+  // Delete the translation row
+  const { error: deleteError } = await db
+    .from("translations")
+    .delete()
+    .eq("id", id);
+
+  if (deleteError) {
+    return safeError(deleteError, "Failed to delete translation");
+  }
+
+  return NextResponse.json({ ok: true });
 }
