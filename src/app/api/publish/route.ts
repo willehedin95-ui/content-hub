@@ -78,6 +78,22 @@ export async function POST(req: NextRequest) {
         // (optional causes fallback font on first load, correct font only on refresh)
         html = html.replace(/font-display:\s*optional/g, "font-display: swap");
 
+        // Strip editor CSS artifacts (dashed outlines, data-cc-* selectors) from
+        // legacy saves that weren't cleaned during extractHtmlFromIframe
+        html = html.replace(/<style[^>]*data-cc-exclude-mode[^>]*>[\s\S]*?<\/style>/gi, "");
+        html = html.replace(/<style[^>]*data-cc-custom[^>]*>[\s\S]*?<\/style>/gi, (match) => {
+          // Keep padding CSS but strip editor-only dashed outline rules
+          let css = match.replace(/\[data-cc-padded\](?::hover)?[^{]*\{[^}]*outline[^}]*\}/g, "");
+          css = css.replace(/\[data-cc-pad-skip\][^{]*\{[^}]*\}/g, "");
+          return css;
+        });
+        // Remove orphaned data-cc-* attributes from elements
+        html = html.replace(/ data-cc-padded(?:="[^"]*")?/g, "");
+        html = html.replace(/ data-cc-pad-skip(?:="[^"]*")?/g, "");
+        html = html.replace(/ data-cc-editable(?:="[^"]*")?/g, "");
+        html = html.replace(/ data-cc-hidden(?:="[^"]*")?/g, "");
+        html = html.replace(/ contenteditable="[^"]*"/g, "");
+
         // Optimize images with progress
         send({ step: "images", current: 0, total: 0, message: "Scanning for images…" });
 

@@ -358,6 +358,21 @@ export default function EditPageClient({
     const win = doc.defaultView;
     if (!win) return;
 
+    // Clean orphaned editor styles from previously-saved HTML
+    doc.querySelectorAll("style[data-cc-exclude-mode]").forEach(el => el.remove());
+    // Remove any style tags containing editor dashed-outline CSS (legacy saves)
+    doc.querySelectorAll("style").forEach(el => {
+      const css = el.textContent || "";
+      if (css.includes("data-cc-pad-skip") && css.includes("dashed")) el.remove();
+    });
+
+    // Convert clean data-pad attributes (from extractHtmlFromIframe) back to
+    // editor data-cc-padded so the padding controls work
+    doc.querySelectorAll("[data-pad]").forEach(el => {
+      el.setAttribute("data-cc-padded", "");
+      el.removeAttribute("data-pad");
+    });
+
     const SKIP_TAGS = ["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "BR", "HR", "IMG"];
     const allElements = body.querySelectorAll("*");
     const limit = Math.min(allElements.length, 500);
@@ -387,6 +402,8 @@ export default function EditPageClient({
       }
     }
 
+    // Check for existing padding settings — either from old data-cc-custom
+    // or from clean style tags with [data-pad] selectors
     const existing = doc.querySelector("style[data-cc-custom]");
     if (existing) {
       const dh = existing.getAttribute("data-pad-dh");
@@ -397,6 +414,34 @@ export default function EditPageClient({
       if (dv) setPadDV(dv);
       if (mh) setPadMH(mh);
       if (mv) setPadMV(mv);
+      // Rewrite clean selectors back to editor selectors and tag for cleanup
+      existing.textContent = (existing.textContent || "")
+        .replace(/\[data-pad\]/g, "[data-cc-padded]:not([data-cc-pad-skip])");
+      return;
+    }
+
+    // Detect clean [data-pad] style from a previous save (no data-cc-custom attr)
+    const cleanPadStyle = Array.from(doc.querySelectorAll("style")).find(
+      s => (s.textContent || "").includes("[data-pad]") && !s.hasAttribute("data-cc-custom")
+    );
+    if (cleanPadStyle) {
+      // Parse padding values from the CSS
+      const css = cleanPadStyle.textContent || "";
+      const dhMatch = css.match(/min-width:\s*769px\)[^}]*\[data-pad\][^{]*\{\s*padding-left:\s*(\d+)px/);
+      const mhMatch = css.match(/max-width:\s*768px\)[^}]*\[data-pad\][^{]*\{\s*padding-left:\s*(\d+)px/);
+      const dvMatch = css.match(/min-width:\s*769px\)[^}]*body[^{]*\{\s*padding-top:\s*(\d+)px/);
+      const mvMatch = css.match(/max-width:\s*768px\)[^}]*body[^{]*\{\s*padding-top:\s*(\d+)px/);
+      if (dhMatch) setPadDH(dhMatch[1]);
+      if (mhMatch) setPadMH(mhMatch[1]);
+      if (dvMatch) setPadDV(dvMatch[1]);
+      if (mvMatch) setPadMV(mvMatch[1]);
+      // Convert to editor-managed style tag
+      cleanPadStyle.setAttribute("data-cc-custom", "true");
+      if (dhMatch) cleanPadStyle.setAttribute("data-pad-dh", dhMatch[1]);
+      if (dvMatch) cleanPadStyle.setAttribute("data-pad-dv", dvMatch[1]);
+      if (mhMatch) cleanPadStyle.setAttribute("data-pad-mh", mhMatch[1]);
+      if (mvMatch) cleanPadStyle.setAttribute("data-pad-mv", mvMatch[1]);
+      cleanPadStyle.textContent = css.replace(/\[data-pad\]/g, "[data-cc-padded]:not([data-cc-pad-skip])");
       return;
     }
 
@@ -570,8 +615,13 @@ export default function EditPageClient({
     clone.querySelectorAll("[data-cc-selected]").forEach((el) => {
       el.removeAttribute("data-cc-selected");
     });
-    // Clean padding/hide editor attributes (keep inline styles — they're functional)
+    // Clean padding/hide editor attributes
+    // Rename data-cc-padded → data-pad (clean, non-editor attribute) for
+    // elements that are NOT excluded, so the padding CSS still applies.
     clone.querySelectorAll("[data-cc-padded]").forEach((el) => {
+      if (!el.hasAttribute("data-cc-pad-skip")) {
+        el.setAttribute("data-pad", "");
+      }
       el.removeAttribute("data-cc-padded");
     });
     clone.querySelectorAll("[data-cc-pad-skip]").forEach((el) => {
@@ -580,6 +630,26 @@ export default function EditPageClient({
     clone.querySelectorAll("[data-cc-hidden]").forEach((el) => {
       el.removeAttribute("data-cc-hidden");
     });
+
+    // Rewrite the data-cc-custom style tag to use clean selectors and strip
+    // any editor-only rules (dashed outlines, hover highlights)
+    const customStyle = clone.querySelector("style[data-cc-custom]");
+    if (customStyle) {
+      let css = customStyle.textContent || "";
+      // Rewrite editor selectors to clean ones
+      css = css.replace(/\[data-cc-padded\]:not\(\[data-cc-pad-skip\]\)/g, "[data-pad]");
+      // Remove any editor dashed outline / hover rules that leaked in
+      css = css.replace(/\[data-cc-padded\][^{]*\{[^}]*\}/g, "");
+      css = css.replace(/\[data-cc-pad-skip\][^{]*\{[^}]*\}/g, "");
+      customStyle.textContent = css.trim();
+      customStyle.removeAttribute("data-cc-custom");
+      customStyle.removeAttribute("data-pad-dh");
+      customStyle.removeAttribute("data-pad-dv");
+      customStyle.removeAttribute("data-pad-mh");
+      customStyle.removeAttribute("data-pad-mv");
+      // Remove if empty after cleanup
+      if (!customStyle.textContent.trim()) customStyle.remove();
+    }
 
     return "<!DOCTYPE html>\n" + clone.outerHTML;
   }
