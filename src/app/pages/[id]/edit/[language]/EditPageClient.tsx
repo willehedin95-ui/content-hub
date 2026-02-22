@@ -402,8 +402,40 @@ export default function EditPageClient({
       }
     }
 
-    // Check for existing padding settings — either from old data-cc-custom
-    // or from clean style tags with [data-pad] selectors
+    // Detect link URL, element selection, hidden count — these must run
+    // regardless of padding settings (no early returns before this block)
+    setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
+
+    const links = doc.querySelectorAll("a[href]");
+    const urlCounts = new Map<string, number>();
+    links.forEach((a) => {
+      const href = (a as HTMLAnchorElement).href;
+      if (!href || href.startsWith("javascript:") || href === "#" || href.startsWith("mailto:")) return;
+      urlCounts.set(href, (urlCounts.get(href) || 0) + 1);
+    });
+    let topUrl = "";
+    let topCount = 0;
+    urlCounts.forEach((count, url) => {
+      if (count > topCount) { topUrl = url; topCount = count; }
+    });
+    if (topUrl) {
+      setLinkUrl(topUrl);
+      prevLinkUrl.current = topUrl;
+    }
+
+    // Element selection — clear stale ref on reload
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+
+    // Count existing hidden elements
+    setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+
+    // Inject element selection styles
+    const elStyle = doc.createElement("style");
+    elStyle.setAttribute("data-cc-el-toolbar", "true");
+    elStyle.textContent = "[data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }";
+
+    // Restore padding settings from saved style tags
     const existing = doc.querySelector("style[data-cc-custom]");
     if (existing) {
       const dh = existing.getAttribute("data-pad-dh");
@@ -449,37 +481,6 @@ export default function EditPageClient({
       setPadDH(String(maxH));
       setPadMH(String(maxH));
     }
-
-    setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
-
-    const links = doc.querySelectorAll("a[href]");
-    const urlCounts = new Map<string, number>();
-    links.forEach((a) => {
-      const href = (a as HTMLAnchorElement).href;
-      if (!href || href.startsWith("javascript:") || href === "#" || href.startsWith("mailto:")) return;
-      urlCounts.set(href, (urlCounts.get(href) || 0) + 1);
-    });
-    let topUrl = "";
-    let topCount = 0;
-    urlCounts.forEach((count, url) => {
-      if (count > topCount) { topUrl = url; topCount = count; }
-    });
-    if (topUrl) {
-      setLinkUrl(topUrl);
-      prevLinkUrl.current = topUrl;
-    }
-
-    // Element selection — clear stale ref on reload
-    selectedElRef.current = null;
-    setHasSelectedEl(false);
-
-    // Count existing hidden elements
-    setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
-
-    // Inject element selection styles
-    const elStyle = doc.createElement("style");
-    elStyle.setAttribute("data-cc-el-toolbar", "true");
-    elStyle.textContent = "[data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }";
     doc.head.appendChild(elStyle);
 
     // Click handler for element selection (bubble phase — runs after iframe script)
