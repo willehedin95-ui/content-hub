@@ -74,6 +74,10 @@ export async function POST(req: NextRequest) {
         const slug = translation.slug || translation.pages.slug;
         const slugPrefix = slug;
 
+        // Fix font-display: optional → swap so web fonts always render
+        // (optional causes fallback font on first load, correct font only on refresh)
+        html = html.replace(/font-display:\s*optional/g, "font-display: swap");
+
         // Optimize images with progress
         send({ step: "images", current: 0, total: 0, message: "Scanning for images…" });
 

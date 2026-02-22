@@ -41,14 +41,24 @@ async function makeSelfContained(html: string, pageUrl: string): Promise<string>
     linkEls.push($(el));
   });
 
+  // Use a modern browser User-Agent when fetching CSS so Google Fonts
+  // returns woff2 format (much smaller) instead of ttf
+  const CSS_FETCH_UA =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
   await Promise.all(linkEls.map(async (el) => {
     const href = el.attr("href");
     if (!href) return;
     try {
       const cssUrl = resolve(href);
-      const res = await fetch(cssUrl);
+      const res = await fetch(cssUrl, {
+        headers: { "User-Agent": CSS_FETCH_UA },
+      });
       if (res.ok) {
-        const css = await res.text();
+        let css = await res.text();
+        // Ensure web fonts always display (avoid font-display: optional which
+        // causes fallback font on first load, correct font only on refresh)
+        css = css.replace(/font-display:\s*optional/g, "font-display: swap");
         el.replaceWith(`<style>${css}</style>`);
       } else {
         el.attr("href", cssUrl);
