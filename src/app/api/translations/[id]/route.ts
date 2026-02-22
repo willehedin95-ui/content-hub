@@ -80,11 +80,18 @@ export async function PUT(
     // Inline editing path — HTML comes directly from the client
     const $ = cheerio.load(translated_html);
 
-    // Server-side sanitization: strip editor artifacts
+    // Server-side sanitization: strip ALL editor artifacts
     $("[data-cc-editor]").remove();
     $("[data-cc-injected]").remove();
+    $("[data-cc-el-toolbar]").remove();
+    $("[data-cc-exclude-mode]").remove();
     $("[data-cc-editable]").removeAttr("data-cc-editable");
     $("[contenteditable]").removeAttr("contenteditable");
+    $("[data-cc-padded]").removeAttr("data-cc-padded");
+    $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
+    $("[data-cc-hidden]").removeAttr("data-cc-hidden");
+    $("[data-cc-selected]").removeAttr("data-cc-selected");
+    $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
 
     // Apply SEO meta tags
     if (seo_title) {

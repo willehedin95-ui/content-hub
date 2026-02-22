@@ -549,8 +549,13 @@ export default function EditPageClient({
     const doc = iframe.contentDocument;
     const clone = doc.documentElement.cloneNode(true) as HTMLElement;
 
+    // Remove all editor-injected elements (styles, scripts, toolbars)
     clone.querySelectorAll("[data-cc-editor]").forEach((el) => el.remove());
     clone.querySelectorAll("[data-cc-injected]").forEach((el) => el.remove());
+    clone.querySelectorAll("[data-cc-el-toolbar]").forEach((el) => el.remove());
+    clone.querySelectorAll("[data-cc-exclude-mode]").forEach((el) => el.remove());
+
+    // Strip editor-only attributes
     clone.querySelectorAll("[data-cc-editable]").forEach((el) => {
       el.removeAttribute("data-cc-editable");
       el.removeAttribute("contenteditable");
@@ -565,7 +570,16 @@ export default function EditPageClient({
     clone.querySelectorAll("[data-cc-selected]").forEach((el) => {
       el.removeAttribute("data-cc-selected");
     });
-    clone.querySelectorAll("[data-cc-el-toolbar]").forEach((el) => el.remove());
+    // Clean padding/hide editor attributes (keep inline styles — they're functional)
+    clone.querySelectorAll("[data-cc-padded]").forEach((el) => {
+      el.removeAttribute("data-cc-padded");
+    });
+    clone.querySelectorAll("[data-cc-pad-skip]").forEach((el) => {
+      el.removeAttribute("data-cc-pad-skip");
+    });
+    clone.querySelectorAll("[data-cc-hidden]").forEach((el) => {
+      el.removeAttribute("data-cc-hidden");
+    });
 
     return "<!DOCTYPE html>\n" + clone.outerHTML;
   }
