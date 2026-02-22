@@ -52,7 +52,12 @@ async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> 
           const contentType = res.headers.get("content-type") ?? "";
           if (contentType.includes("application/json")) {
             const data = await res.json();
-            errorMessage = data.error?.message ?? errorMessage;
+            const err = data.error;
+            // Include detailed error info from Meta's response
+            const parts = [err?.message, err?.error_user_msg, err?.error_user_title]
+              .filter(Boolean);
+            if (err?.error_subcode) parts.push(`(subcode: ${err.error_subcode})`);
+            errorMessage = parts.join(" — ") || errorMessage;
           } else {
             const text = await res.text();
             errorMessage = `Meta API error (${res.status}): ${text.slice(0, 200)}`;

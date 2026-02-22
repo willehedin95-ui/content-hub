@@ -207,11 +207,13 @@ export async function POST(
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
 
       // Duplicate template ad set
-      const { copied_adset_id } = await duplicateAdSet(mapping.template_adset_id);
+      const dupResult = await duplicateAdSet(mapping.template_adset_id);
+      const copied_adset_id = dupResult.copied_adset_id;
 
-      // Rename and set start time (single API call, with retry via metaJson)
-      const startTime = getNext0300CET();
-      await updateAdSet(copied_adset_id, { name: adSetName, start_time: startTime });
+      // Rename the duplicated ad set (don't set start_time — duplicated ad sets
+      // inherit "started" status from the template, and Meta rejects start_time
+      // changes on already-started ad sets)
+      await updateAdSet(copied_adset_id, { name: adSetName });
 
       // Create meta_campaigns record
       const { data: campaign } = await db
@@ -226,7 +228,6 @@ export async function POST(
           countries: [country],
           language: lang,
           daily_budget: 0,
-          start_time: startTime,
           status: "pushing",
         })
         .select()
@@ -404,55 +405,4 @@ No other text.`,
     translatedPrimaries: parsed.primary_texts,
     translatedHeadlines: parsed.headlines,
   };
-}
-
-/**
- * Get the next 03:00 CET/CEST as ISO string.
- * If it's currently before 03:00 CET, returns today at 03:00.
- * If it's after 03:00 CET, returns tomorrow at 03:00.
- *
- * Works correctly regardless of server timezone (including UTC on Vercel)
- * by comparing UTC timestamps of 03:00 on consecutive days in Europe/Oslo.
- */
-function getNext0300CET(): string {
-  const now = new Date();
-  const TZ = "Europe/Oslo";
-
-  // Get today's date components in CET/CEST
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const todayCET = formatter.format(now); // "YYYY-MM-DD"
-
-  // Build "today at 03:00" in Europe/Oslo by binary-searching for the UTC ms
-  // that corresponds to 03:00 in CET/CEST
-  function cetDateToUTC(dateStr: string, hour: number): Date {
-    // Start with a rough UTC guess (CET is UTC+1 or UTC+2)
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const guess = new Date(Date.UTC(y, m - 1, d, hour - 1, 0, 0));
-
-    // Verify what hour this actually is in CET and adjust
-    const hourFmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: TZ,
-      hour: "2-digit",
-      hour12: false,
-    });
-    const actualHour = parseInt(hourFmt.format(guess));
-    const diff = hour - actualHour;
-    return new Date(guess.getTime() - diff * 3600_000);
-  }
-
-  const target0300 = cetDateToUTC(todayCET, 3);
-
-  // If already past 03:00 CET today, use tomorrow
-  if (now >= target0300) {
-    const tomorrow = new Date(now.getTime() + 86400_000);
-    const tomorrowCET = formatter.format(tomorrow);
-    return cetDateToUTC(tomorrowCET, 3).toISOString();
-  }
-
-  return target0300.toISOString();
 }
