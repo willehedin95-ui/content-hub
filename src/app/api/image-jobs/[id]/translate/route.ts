@@ -26,10 +26,11 @@ export async function POST(
   if (!isValidUUID(jobId)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
-  const { translationId, corrected_text, visual_instructions } = (await req.json()) as {
+  const { translationId, corrected_text, visual_instructions, retry } = (await req.json()) as {
     translationId: string;
     corrected_text?: string;
     visual_instructions?: string;
+    retry?: boolean;
   };
 
   if (!translationId) {
@@ -54,7 +55,7 @@ export async function POST(
   }
 
   // Atomically claim: only update if status is in an allowed state
-  const isRetry = corrected_text || visual_instructions;
+  const isRetry = corrected_text || visual_instructions || retry;
   const allowedStatuses = isRetry ? ["completed", "failed"] : ["pending"];
   const { data: claimed } = await db
     .from("image_translations")

@@ -10,18 +10,18 @@ import {
   RotateCcw,
   RefreshCw,
   X,
-  Send,
-  ExternalLink,
   FileText,
   Globe,
-  ImageIcon,
   Type,
   EyeOff,
   Square,
+  Wrench,
 } from "lucide-react";
-import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, COUNTRY_MAP, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
+import MetaAdPreview from "./MetaAdPreview";
+import ConceptStepper, { StepDef } from "./ConceptStepper";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -30,9 +30,38 @@ interface Props {
   initialJob: ImageJob;
 }
 
+function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boolean, boolean, boolean] {
+  // Step 1: Images — all translations complete
+  const allTrans = j.source_images?.flatMap((si) => si.image_translations ?? []) ?? [];
+  const totalTrans = allTrans.length;
+  const completedTrans = allTrans.filter((t) => t.status === "completed").length;
+  const step1 = totalTrans > 0 && completedTrans === totalTrans;
+
+  // Step 2: Ad Copy — has primary text + landing page + all target languages translated
+  const hasPrimary = (j.ad_copy_primary ?? []).some((t: string) => t.trim());
+  const hasLanding = !!j.landing_page_id;
+  const allLangsTranslated = j.target_languages.length > 0 && j.target_languages.every(
+    (lang) => ct[lang]?.status === "completed"
+  );
+  const step2 = hasPrimary && hasLanding && allLangsTranslated;
+
+  // Step 3: Preview & Push — pushed or marked ready
+  const hasPushed = (j.deployments ?? []).some((d) => d.status === "pushed");
+  const step3 = hasPushed || !!j.marked_ready_at;
+
+  return [step1, step2, step3];
+}
+
+function computeCurrentStep(j: ImageJob, ct: ConceptCopyTranslations): number {
+  const [step1, step2] = computeStepCompletion(j, ct);
+  if (!step1) return 0;
+  if (!step2) return 1;
+  return 2;
+}
+
 export default function ImageJobDetail({ initialJob }: Props) {
   const [job, setJob] = useState<ImageJob>(initialJob);
-  const [detailTab, setDetailTab] = useState<"images" | "ad-copy">("images");
+  const [step, setStep] = useState<number>(() => computeCurrentStep(initialJob, initialJob.ad_copy_translations ?? {}));
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   // Processing states
   const [proc, setProc] = useState<{
@@ -66,6 +95,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
 
   const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
+  const [previewData, setPreviewData] = useState<{
+    landingPageUrls: Record<string, string>;
+    campaignMappings: MetaCampaignMapping[];
+    pageConfigs: MetaPageConfig[];
+  } | null>(null);
 
   // Doc fetch states
   const [doc, setDoc] = useState<{
@@ -138,6 +172,16 @@ export default function ImageJobDetail({ initialJob }: Props) {
     fetchDeployments();
   }, [fetchDeployments]);
 
+  // Fetch preview data when preview step is opened (lazy load)
+  useEffect(() => {
+    if (step !== 2) return;
+    // Always refetch when switching to preview step to get fresh data
+    fetch(`/api/image-jobs/${initialJob.id}/preview-data`)
+      .then((res) => res.json())
+      .then((data) => setPreviewData(data))
+      .catch(() => {});
+  }, [step, initialJob.id, metaPush.landingPageId]);
+
   // Auto-save ad copy on change (debounced)
   const saveCopy = useCallback(async (primaries: string[], hdlines: string[]) => {
     setCopyState(prev => ({ ...prev, saving: true }));
@@ -198,9 +242,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
     });
   }
 
-  // Load available doc tabs when switching to ad-copy tab
+  // Load available doc tabs when switching to ad-copy step
   useEffect(() => {
-    if (detailTab !== "ad-copy" || doc.tabs !== null) return;
+    if (step !== 1 || doc.tabs !== null) return;
     (async () => {
       try {
         const res = await fetch(`/api/image-jobs/${initialJob.id}/fetch-copy`);
@@ -221,7 +265,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailTab]);
+  }, [step]);
 
   // Fetch ad copy from Google Doc
   async function handleFetchFromDoc(tabId?: string) {
@@ -264,7 +308,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
   // Translate ad copy for all languages (or a specific one)
-  async function handleTranslateCopy(lang?: Language) {
+  async function handleTranslateCopy(lang?: Language, corrections?: string) {
     if (lang) {
       setCopyState(prev => ({ ...prev, translatingLang: lang }));
     } else {
@@ -274,7 +318,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
       const res = await fetch(`/api/image-jobs/${initialJob.id}/translate-copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lang ? { language: lang } : {}),
+        body: JSON.stringify({
+          ...(lang ? { language: lang } : {}),
+          ...(corrections ? { corrections } : {}),
+        }),
       });
       const data = await res.json();
       if (data.translations) {
@@ -372,7 +419,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     throttledRefreshPending.current = true;
     const now = Date.now();
     const elapsed = now - lastRefreshTime.current;
-    const MIN_INTERVAL = 2000;
+    const MIN_INTERVAL = 5000;
 
     if (elapsed >= MIN_INTERVAL) {
       throttledRefreshPending.current = false;
@@ -522,7 +569,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     setProc({ processing: true, startTime: Date.now(), processedInSession: 0, refreshing: false });
 
     const queue = [...translations];
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 3;
     const executing = new Set<Promise<void>>();
 
     for (const item of queue) {
@@ -646,7 +693,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     await fetch(`/api/image-jobs/${job.id}/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationId }),
+      body: JSON.stringify({ translationId, retry: true }),
     });
     await refreshJob();
   }
@@ -706,7 +753,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Concepts
+        Ad Concepts
       </Link>
 
       {/* Stall detection banner */}
@@ -748,33 +795,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
         </button>
       </div>
 
-      {/* Detail tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setDetailTab("images")}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-            detailTab === "images"
-              ? "text-indigo-600 border-indigo-500"
-              : "text-gray-400 hover:text-gray-700 border-transparent"
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" />
-          Images
-        </button>
-        <button
-          onClick={() => setDetailTab("ad-copy")}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-            detailTab === "ad-copy"
-              ? "text-indigo-600 border-indigo-500"
-              : "text-gray-400 hover:text-gray-700 border-transparent"
-          }`}
-        >
-          <Type className="w-4 h-4" />
-          Ad Copy &amp; Push
-        </button>
-      </div>
+      {/* Wizard stepper */}
+      {(() => {
+        const [s1, s2, s3] = computeStepCompletion(job, copyTranslations);
+        const steps: StepDef[] = [
+          { label: "Images", complete: s1 },
+          { label: "Ad Copy", complete: s2 },
+          { label: "Preview & Push", complete: s3 },
+        ];
+        return (
+          <div className="mb-6">
+            <ConceptStepper steps={steps} currentStep={step} onStepClick={setStep} />
+          </div>
+        );
+      })()}
 
-      {detailTab === "images" ? (
+      {step === 0 ? (
       <>
       {job.status === "draft" ? (
         <div className="space-y-4">
@@ -1096,11 +1132,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
       </>
       )}
       </>
-      ) : (
+      ) : step === 1 ? (
         <div className="space-y-6">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Send className="w-5 h-5 text-indigo-600" />
-            Push to Meta
+            <Type className="w-5 h-5 text-indigo-600" />
+            Ad Copy
           </h2>
 
           {/* Ad Copy from Google Doc */}
@@ -1166,8 +1202,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
                     value={text}
                     onChange={(e) => handlePrimaryChange(i, e.target.value)}
                     placeholder={i === 0 ? "Enter English ad copy..." : `Variant ${i + 1}`}
-                    rows={2}
-                    className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 resize-none"
+                    rows={4}
+                    className="flex-1 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 resize-y"
                   />
                   {metaPush.primaryTexts.length > 1 && (
                     <button
@@ -1354,6 +1390,31 @@ export default function ImageJobDetail({ initialJob }: Props) {
                               {ct.quality_analysis.context_errors?.length > 0 && (
                                 <p className="text-xs text-orange-600">Context: {ct.quality_analysis.context_errors.join("; ")}</p>
                               )}
+                              {(ct.quality_analysis.fluency_issues?.length > 0 ||
+                                ct.quality_analysis.grammar_issues?.length > 0 ||
+                                ct.quality_analysis.context_errors?.length > 0) && (
+                                <button
+                                  onClick={() => {
+                                    const issues: string[] = [];
+                                    if (ct.quality_analysis!.fluency_issues?.length)
+                                      issues.push(`Fluency issues: ${ct.quality_analysis!.fluency_issues.join("; ")}`);
+                                    if (ct.quality_analysis!.grammar_issues?.length)
+                                      issues.push(`Grammar issues: ${ct.quality_analysis!.grammar_issues.join("; ")}`);
+                                    if (ct.quality_analysis!.context_errors?.length)
+                                      issues.push(`Context errors: ${ct.quality_analysis!.context_errors.join("; ")}`);
+                                    handleTranslateCopy(lang as Language, issues.join("\n"));
+                                  }}
+                                  disabled={copyState.translatingLang === lang || copyState.translating}
+                                  className="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {copyState.translatingLang === lang ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Wrench className="w-3 h-3" />
+                                  )}
+                                  Fix issues
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1372,123 +1433,28 @@ export default function ImageJobDetail({ initialJob }: Props) {
             </div>
           )}
 
-          {/* Concept number preview */}
-          {metaPush.primaryTexts.some((t) => t.trim()) && metaPush.landingPageId && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-              <p className="text-xs text-gray-400 mb-1">Ad set naming preview</p>
-              {job.target_languages.map((lang) => {
-                const country = COUNTRY_MAP[lang as Language];
-                const numStr = job.concept_number ? String(job.concept_number).padStart(3, "0") : "auto";
-                return (
-                  <p key={lang} className="text-sm text-gray-700">
-                    {country} #{numStr} | statics | {job.name.toLowerCase()}
-                  </p>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Push button */}
-          {(() => {
-            const allLangsTranslated = job.target_languages.every(
-              (lang) => copyTranslations[lang]?.status === "completed"
-            );
-            const hasCopy = metaPush.primaryTexts.some((t) => t.trim());
-            const canPush = hasCopy && metaPush.landingPageId && allLangsTranslated;
-
-            return (
-              <div className="space-y-2">
-                <button
-                  onClick={handlePushToMeta}
-                  disabled={metaPush.pushing || !canPush}
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
-                >
-                  {metaPush.pushing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Pushing to Meta...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Push to All Markets ({job.target_languages.length})
-                    </>
-                  )}
-                </button>
-                {!allLangsTranslated && hasCopy && (
-                  <p className="text-xs text-gray-400">
-                    Translate all ad copy before pushing to Meta
-                  </p>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Push results */}
-          {metaPush.pushResults && (
-            <div className="space-y-2">
-              {metaPush.pushResults.map((r, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${
-                    r.status === "pushed"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  {r.status === "pushed" ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                  )}
-                  <span>
-                    {r.country}: {r.status === "pushed" ? "Pushed successfully" : r.error}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Existing deployments */}
-          {deployments.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-700">Deployments</h3>
-              {deployments.map((d) => (
-                <div
-                  key={d.id}
-                  className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{d.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {d.meta_ads?.length ?? 0} ads &middot;{" "}
-                      {d.status === "pushed" ? (
-                        <span className="text-emerald-600">Pushed</span>
-                      ) : d.status === "pushing" ? (
-                        <span className="text-indigo-600">Pushing...</span>
-                      ) : d.status === "error" ? (
-                        <span className="text-red-600">Error</span>
-                      ) : (
-                        <span className="text-gray-500">Draft</span>
-                      )}
-                    </p>
-                  </div>
-                  {d.meta_adset_id && (
-                    <a
-                      href={`https://www.facebook.com/adsmanager/manage/adsets?act=${process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID}&selected_adset_ids=${d.meta_adset_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      View in Meta
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+      ) : (
+        <MetaAdPreview
+          job={job}
+          copyTranslations={copyTranslations}
+          metaPush={metaPush}
+          deployments={deployments}
+          onPushToMeta={handlePushToMeta}
+          landingPageUrls={previewData?.landingPageUrls ?? {}}
+          campaignMappings={previewData?.campaignMappings ?? []}
+          pageConfigs={previewData?.pageConfigs ?? []}
+          markedReadyAt={job.marked_ready_at}
+          onMarkReady={async () => {
+            const now = new Date().toISOString();
+            await fetch(`/api/image-jobs/${job.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ marked_ready_at: now }),
+            });
+            setJob(prev => ({ ...prev, marked_ready_at: now }));
+          }}
+        />
       )}
 
       {/* Preview modal (always rendered regardless of tab) */}
