@@ -33,6 +33,7 @@ interface Settings {
   meta_default_objective: string;
   meta_default_schedule_time: string;
   ga4_measurement_ids: Record<string, string>;
+  clarity_project_id: string;
   shopify_domains: string;
 }
 
@@ -65,6 +66,7 @@ export default function SettingsPage() {
     meta_default_objective: "OUTCOME_TRAFFIC",
     meta_default_schedule_time: "06:00",
     ga4_measurement_ids: {},
+    clarity_project_id: "",
     shopify_domains: "",
   });
   const [saved, setSaved] = useState(false);
@@ -951,7 +953,7 @@ export default function SettingsPage() {
                 />
               </SettingsCard>
 
-              <SectionHeader>A/B Test Analytics</SectionHeader>
+              <SectionHeader>Page Analytics</SectionHeader>
               <SettingsCard>
                 <Row
                   label="Shopify"
@@ -1001,6 +1003,21 @@ export default function SettingsPage() {
                     </div>
                   );
                 })}
+                <RowDivider />
+                <Row
+                  label="Microsoft Clarity"
+                  description={settings.clarity_project_id || "Not configured"}
+                  descriptionColor={settings.clarity_project_id ? "text-emerald-600" : undefined}
+                  action={
+                    <input
+                      type="text"
+                      value={settings.clarity_project_id}
+                      onChange={(e) => setSettings((s) => ({ ...s, clarity_project_id: e.target.value }))}
+                      placeholder="Project ID"
+                      className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  }
+                />
                 <RowDivider />
                 <Row
                   label="Shopify store domains"

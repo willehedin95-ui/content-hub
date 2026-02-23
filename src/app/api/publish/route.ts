@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { publishPage } from "@/lib/cloudflare-pages";
+import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
@@ -117,6 +117,23 @@ export async function POST(req: NextRequest) {
           body: img.buffer,
         }));
 
+        // Load analytics settings
+        const { data: settingsRow } = await db
+          .from("app_settings")
+          .select("settings")
+          .limit(1)
+          .single();
+        const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+        const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
+        const analytics: PageAnalyticsConfig = {
+          ga4MeasurementId: ga4Ids[language] || undefined,
+          clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
+          shopifyDomains: ((appSettings.shopify_domains as string) || "")
+            .split(",")
+            .map((d: string) => d.trim())
+            .filter(Boolean),
+        };
+
         send({ step: "deploy", message: "Deploying to Cloudflare Pages…" });
 
         const result = await publishPage(
@@ -126,7 +143,8 @@ export async function POST(req: NextRequest) {
           additionalFiles,
           (current, total) => {
             send({ step: "upload", current, total, message: `Uploading ${current}/${total} files…` });
-          }
+          },
+          analytics
         );
 
         const { data: updated, error: updateError } = await db

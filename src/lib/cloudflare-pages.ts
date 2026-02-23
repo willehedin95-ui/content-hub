@@ -218,10 +218,16 @@ export async function publishPage(
   slug: string,
   language: Language,
   additionalFiles?: DeployFile[],
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  analytics?: PageAnalyticsConfig
 ): Promise<CFDeployResult> {
   const { accountId, apiToken } = getConfig();
   const projectName = getProjectName(language);
+
+  // Inject analytics scripts if configured
+  if (analytics) {
+    html = injectPageAnalytics(html, { ...analytics, slug });
+  }
 
   const htmlPath = `/${slug}/index.html`;
   const htmlBuffer = Buffer.from(html, "utf-8");
@@ -303,6 +309,63 @@ export async function publishPage(
   };
 }
 
+/**
+ * Analytics config for all published pages (regular + AB test).
+ * AB test context is optional — only set for AB test variant pages.
+ */
+export interface PageAnalyticsConfig {
+  ga4MeasurementId?: string;
+  clarityProjectId?: string;
+  shopifyDomains?: string[];
+  /** Page slug — used for UTM campaign on non-AB pages */
+  slug?: string;
+  /** AB test context — only set for AB test variant pages */
+  abTest?: { testId: string; variant: "a" | "b" };
+}
+
+function injectClarityScript(html: string, projectId: string): string {
+  if (html.includes('data-cc-clarity="true"')) return html;
+  const script = `<!-- Clarity -->
+<script data-cc-clarity="true">
+(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window,document,"clarity","script",${JSON.stringify(projectId)});
+</script>`;
+  return html.replace(/<\/head>/i, script + "</head>");
+}
+
+/**
+ * Inject all configured analytics scripts into HTML.
+ * Used by both publishPage() and publishABTest().
+ */
+function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string {
+  // GA4
+  if (config.ga4MeasurementId) {
+    if (config.abTest) {
+      html = injectGA4Script(html, config.ga4MeasurementId, config.abTest.testId, config.abTest.variant);
+    } else {
+      html = injectGA4ScriptBasic(html, config.ga4MeasurementId);
+    }
+  }
+
+  // Clarity
+  if (config.clarityProjectId) {
+    html = injectClarityScript(html, config.clarityProjectId);
+  }
+
+  // UTM link rewriting
+  if (config.shopifyDomains?.length) {
+    if (config.abTest) {
+      html = injectUTMRewriter(html, config.abTest.testId, config.abTest.variant, config.shopifyDomains);
+    } else if (config.slug) {
+      html = injectUTMRewriterPage(html, config.slug, config.shopifyDomains);
+    }
+  }
+
+  return html;
+}
+
 function injectTrackingScript(
   html: string,
   appUrl: string,
@@ -373,6 +436,48 @@ gtag('event','ab_test_view',{test_id:${JSON.stringify(testId)},variant:${JSON.st
   return html.replace(/<\/head>/i, script + "</head>");
 }
 
+/** GA4 injection for regular pages (no AB test event) */
+function injectGA4ScriptBasic(html: string, measurementId: string): string {
+  if (html.includes('data-cc-ga4="true"')) return html;
+  const script = `<!-- GA4 -->
+<script data-cc-ga4="true" async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
+<script>
+window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());
+gtag('config',${JSON.stringify(measurementId)});
+</script>`;
+  return html.replace(/<\/head>/i, script + "</head>");
+}
+
+/** UTM link rewriting for regular pages (no variant, uses slug as campaign) */
+function injectUTMRewriterPage(
+  html: string,
+  slug: string,
+  shopifyDomains: string[]
+): string {
+  if (shopifyDomains.length === 0) return html;
+  if (html.includes('data-cc-utm="true"')) return html;
+  const script = `<script data-cc-utm="true">
+(function(){
+  var s=${JSON.stringify(slug)};
+  var d=${JSON.stringify(shopifyDomains)};
+  document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('a[href]').forEach(function(a){
+      try{
+        var u=new URL(a.href,location.href);
+        if(!d.some(function(h){return u.hostname.indexOf(h)!==-1}))return;
+        u.searchParams.set('utm_source','page');
+        u.searchParams.set('utm_medium','landingpage');
+        u.searchParams.set('utm_campaign',s);
+        a.href=u.toString();
+      }catch(e){}
+    });
+  });
+})();
+</script>`;
+  return html.replace(/<\/body>/i, script + "</body>");
+}
+
 function buildRouterHtml(slug: string, split: number): string {
   const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "_");
   return `<!DOCTYPE html>
@@ -400,6 +505,7 @@ function buildRouterHtml(slug: string, split: number): string {
  */
 export interface ABTestAnalyticsConfig {
   ga4MeasurementId?: string;
+  clarityProjectId?: string;
   shopifyDomains?: string[];
 }
 
@@ -422,21 +528,23 @@ export async function publishABTest(
   const variantPath = `${prefix}/b/index.html`;
 
   const routerHtml = buildRouterHtml(slug, split);
+  // Inject AB test tracking pixel
   let trackedControlHtml = injectTrackingScript(controlHtml, appUrl, testId, "a");
   let trackedVariantHtml = injectTrackingScript(variantHtml, appUrl, testId, "b");
 
-  // Inject UTM link rewriting
-  const domains = analytics?.shopifyDomains?.filter(Boolean) ?? [];
-  if (domains.length > 0) {
-    trackedControlHtml = injectUTMRewriter(trackedControlHtml, testId, "a", domains);
-    trackedVariantHtml = injectUTMRewriter(trackedVariantHtml, testId, "b", domains);
-  }
-
-  // Inject GA4
-  if (analytics?.ga4MeasurementId) {
-    trackedControlHtml = injectGA4Script(trackedControlHtml, analytics.ga4MeasurementId, testId, "a");
-    trackedVariantHtml = injectGA4Script(trackedVariantHtml, analytics.ga4MeasurementId, testId, "b");
-  }
+  // Inject analytics (GA4, Clarity, UTM) via shared helper
+  const controlAnalytics: PageAnalyticsConfig = {
+    ga4MeasurementId: analytics?.ga4MeasurementId,
+    clarityProjectId: analytics?.clarityProjectId,
+    shopifyDomains: analytics?.shopifyDomains,
+    abTest: { testId, variant: "a" },
+  };
+  const variantAnalytics: PageAnalyticsConfig = {
+    ...controlAnalytics,
+    abTest: { testId, variant: "b" },
+  };
+  trackedControlHtml = injectPageAnalytics(trackedControlHtml, controlAnalytics);
+  trackedVariantHtml = injectPageAnalytics(trackedVariantHtml, variantAnalytics);
 
   const newFiles = [
     { path: routerPath, content: Buffer.from(routerHtml, "utf-8") },

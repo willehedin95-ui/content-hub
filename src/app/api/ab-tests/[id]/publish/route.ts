@@ -72,6 +72,7 @@ export async function POST(
   const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
   const analytics: ABTestAnalyticsConfig = {
     ga4MeasurementId: ga4Ids[test.language] || undefined,
+    clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
     shopifyDomains: ((appSettings.shopify_domains as string) || "")
       .split(",")
       .map((d: string) => d.trim())

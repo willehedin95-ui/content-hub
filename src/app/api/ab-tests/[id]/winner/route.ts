@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { publishPage } from "@/lib/cloudflare-pages";
+import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { Language } from "@/types";
 import { isValidUUID } from "@/lib/validation";
 
@@ -58,12 +58,32 @@ export async function POST(
     );
   }
 
+  // Load analytics settings
+  const { data: settingsRow } = await db
+    .from("app_settings")
+    .select("settings")
+    .limit(1)
+    .single();
+  const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
+  const analytics: PageAnalyticsConfig = {
+    ga4MeasurementId: ga4Ids[test.language] || undefined,
+    clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
+    shopifyDomains: ((appSettings.shopify_domains as string) || "")
+      .split(",")
+      .map((d: string) => d.trim())
+      .filter(Boolean),
+  };
+
   try {
     // Deploy the winning HTML to the main slug (replaces router)
     const result = await publishPage(
       winnerTranslation.translated_html,
       test.pages.slug,
-      test.language as Language
+      test.language as Language,
+      undefined,
+      undefined,
+      analytics
     );
 
     // Update the control translation with the published URL

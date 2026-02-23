@@ -18,8 +18,9 @@ export interface Settings {
   meta_default_daily_budget?: number;
   meta_default_objective?: string;
   meta_default_schedule_time?: string; // HH:mm format, e.g. "06:00"
-  // Analytics
+  // Analytics (injected into all published pages)
   ga4_measurement_ids?: Record<string, string>; // per-language GA4 measurement IDs, e.g. { sv: "G-xxx", da: "G-xxx" }
+  clarity_project_id?: string; // Microsoft Clarity project ID
   shopify_domains?: string; // comma-separated store domains for UTM link tagging
 }
 
