@@ -3,17 +3,65 @@ import { withRetry, isTransientError } from "./retry";
 const SHOPIFY_API_VERSION = "2024-01";
 const SHOPIFY_FETCH_TIMEOUT_MS = 30_000;
 
-function getConfig() {
-  const storeUrl = process.env.SHOPIFY_STORE_URL;
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
-  if (!storeUrl || !token) {
-    throw new Error("SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN must be configured");
+// Token cache — avoids requesting a new token on every API call
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+/**
+ * Get an access token using the client_credentials OAuth flow.
+ * Tokens are cached in-memory and refreshed 5 minutes before expiry.
+ */
+async function getAccessToken(): Promise<string> {
+  // Return cached token if it's still valid (with 5 min buffer)
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 5 * 60 * 1000) {
+    return cachedToken.token;
   }
-  return { storeUrl, token };
+
+  const storeUrl = process.env.SHOPIFY_STORE_URL;
+  const clientId = process.env.SHOPIFY_CLIENT_ID;
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+
+  if (!storeUrl || !clientId || !clientSecret) {
+    throw new Error(
+      "SHOPIFY_STORE_URL, SHOPIFY_CLIENT_ID, and SHOPIFY_CLIENT_SECRET must be configured"
+    );
+  }
+
+  const res = await fetch(
+    `https://${storeUrl}/admin/oauth/access_token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Shopify OAuth error (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  cachedToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+
+  return cachedToken.token;
+}
+
+function getStoreUrl(): string {
+  const storeUrl = process.env.SHOPIFY_STORE_URL;
+  if (!storeUrl) throw new Error("SHOPIFY_STORE_URL must be configured");
+  return storeUrl;
 }
 
 async function shopifyFetch(path: string): Promise<Response> {
-  const { storeUrl, token } = getConfig();
+  const storeUrl = getStoreUrl();
+  const token = await getAccessToken();
   const url = `https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}${path}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SHOPIFY_FETCH_TIMEOUT_MS);
@@ -153,5 +201,9 @@ export async function getConversionsForTest(
  * Check if Shopify credentials are configured.
  */
 export function isShopifyConfigured(): boolean {
-  return !!(process.env.SHOPIFY_STORE_URL && process.env.SHOPIFY_ACCESS_TOKEN);
+  return !!(
+    process.env.SHOPIFY_STORE_URL &&
+    process.env.SHOPIFY_CLIENT_ID &&
+    process.env.SHOPIFY_CLIENT_SECRET
+  );
 }
