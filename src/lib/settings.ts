@@ -19,7 +19,7 @@ export interface Settings {
   meta_default_objective?: string;
   meta_default_schedule_time?: string; // HH:mm format, e.g. "06:00"
   // Analytics
-  ga4_measurement_id?: string;
+  ga4_measurement_ids?: Record<string, string>; // per-language GA4 measurement IDs, e.g. { sv: "G-xxx", da: "G-xxx" }
   shopify_domains?: string; // comma-separated store domains for UTM link tagging
 }
 

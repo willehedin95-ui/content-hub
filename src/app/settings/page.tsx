@@ -32,7 +32,7 @@ interface Settings {
   meta_default_daily_budget: number;
   meta_default_objective: string;
   meta_default_schedule_time: string;
-  ga4_measurement_id: string;
+  ga4_measurement_ids: Record<string, string>;
   shopify_domains: string;
 }
 
@@ -64,7 +64,7 @@ export default function SettingsPage() {
     meta_default_daily_budget: 50,
     meta_default_objective: "OUTCOME_TRAFFIC",
     meta_default_schedule_time: "06:00",
-    ga4_measurement_id: "",
+    ga4_measurement_ids: {},
     shopify_domains: "",
   });
   const [saved, setSaved] = useState(false);
@@ -976,20 +976,31 @@ export default function SettingsPage() {
                   }
                 />
                 <RowDivider />
-                <Row
-                  label="GA4 Measurement ID"
-                  description={settings.ga4_measurement_id || "Not configured"}
-                  descriptionColor={settings.ga4_measurement_id ? "text-emerald-600" : undefined}
-                  action={
-                    <input
-                      type="text"
-                      value={settings.ga4_measurement_id}
-                      onChange={(e) => setSettings((s) => ({ ...s, ga4_measurement_id: e.target.value }))}
-                      placeholder="G-XXXXXXXXXX"
-                      className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  }
-                />
+                {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
+                  const mid = settings.ga4_measurement_ids[lang.value] || "";
+                  return (
+                    <div key={lang.value}>
+                      {i > 0 && <RowDivider />}
+                      <Row
+                        label={`GA4 — ${lang.label}`}
+                        description={mid || "Not configured"}
+                        descriptionColor={mid ? "text-emerald-600" : undefined}
+                        action={
+                          <input
+                            type="text"
+                            value={mid}
+                            onChange={(e) => setSettings((s) => ({
+                              ...s,
+                              ga4_measurement_ids: { ...s.ga4_measurement_ids, [lang.value]: e.target.value },
+                            }))}
+                            placeholder="G-XXXXXXXXXX"
+                            className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                          />
+                        }
+                      />
+                    </div>
+                  );
+                })}
                 <RowDivider />
                 <Row
                   label="Shopify store domains"
