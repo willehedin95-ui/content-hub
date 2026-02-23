@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  Send,
   ExternalLink,
   Globe,
   BookmarkCheck,
@@ -396,23 +395,34 @@ export default function MetaAdPreview({
         <button
           onClick={onPushToMeta}
           disabled={metaPush.pushing || !canPush}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-6 py-3 rounded-lg transition-colors"
+          className="group relative flex items-center gap-2.5 bg-white disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 text-sm font-semibold px-6 py-3 rounded-xl transition-all hover:shadow-md"
+          style={{
+            border: "2px solid transparent",
+            backgroundImage: "linear-gradient(white, white), linear-gradient(135deg, #0081FB, #00C2FF, #0081FB)",
+            backgroundOrigin: "border-box",
+            backgroundClip: "padding-box, border-box",
+          }}
         >
           {metaPush.pushing ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Pushing to Meta...
+              <Loader2 className="w-4 h-4 animate-spin text-[#0081FB]" />
+              <span>Publishing on Meta...</span>
             </>
           ) : (
             <>
-              <Send className="w-4 h-4" />
-              Push to All Markets ({job.target_languages.length})
+              <svg viewBox="0 0 36 36" className="w-5 h-5 shrink-0" aria-label="Meta logo">
+                <path
+                  d="M7.5 18c0-3.78 1.22-7.08 3.13-9.04C12.2 7.32 14.17 6.5 16 6.5c2.36 0 3.88 1.18 5.28 3.24l.66.97.66-.97C24.02 7.68 25.54 6.5 27.9 6.5c4.87 0 8.1 5.8 8.1 11.5 0 6.52-3.58 11.5-8 11.5-2.36 0-3.95-1.18-5.38-3.24L18 20.1l-4.62 6.16C11.95 28.32 10.36 29.5 8 29.5 3.58 29.5 0 24.52 0 18c0-5.7 3.23-11.5 8.1-11.5 1.83 0 3.8.82 5.37 2.46C11.72 10.92 10.5 14.22 10.5 18c0 1.38.14 2.7.42 3.9-.5.7-1.16 1.1-1.92 1.1-1.57 0-3.5-2.7-3.5-5zm21 0c0 2.3-1.93 5-3.5 5-.76 0-1.42-.4-1.93-1.12.28-1.18.43-2.5.43-3.88 0-3.78-1.22-7.08-3.13-9.04 1.4-1.7 2.8-2.46 4.13-2.46 2.63 0 4 3.66 4 5.5z"
+                  fill="#0081FB"
+                />
+              </svg>
+              <span>Publish on Meta ({job.target_languages.length})</span>
             </>
           )}
         </button>
         {!allLangsTranslated && hasCopy && (
           <p className="text-xs text-gray-400">
-            Translate all ad copy before pushing to Meta
+            Translate all ad copy before publishing to Meta
           </p>
         )}
       </div>
@@ -454,7 +464,7 @@ export default function MetaAdPreview({
               )}
               <span>
                 {r.country}:{" "}
-                {r.status === "pushed" ? "Pushed successfully" : r.error}
+                {r.status === "pushed" ? "Published — ads are live" : r.error}
               </span>
             </div>
           ))}
@@ -475,13 +485,27 @@ export default function MetaAdPreview({
                 <p className="text-xs text-gray-400">
                   {d.meta_ads?.length ?? 0} ads &middot;{" "}
                   {d.status === "pushed" ? (
-                    <span className="text-emerald-600">Pushed</span>
+                    <span className="text-emerald-600">Live</span>
                   ) : d.status === "pushing" ? (
-                    <span className="text-indigo-600">Pushing...</span>
+                    <span className="text-indigo-600">Publishing...</span>
                   ) : d.status === "error" ? (
                     <span className="text-red-600">Error</span>
                   ) : (
                     <span className="text-gray-500">Draft</span>
+                  )}
+                  {d.status === "pushed" && d.updated_at && (
+                    <span>
+                      {" "}&middot;{" "}
+                      {new Date(d.updated_at).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}{" "}
+                      {new Date(d.updated_at).toLocaleTimeString("en-GB", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
                   )}
                 </p>
               </div>

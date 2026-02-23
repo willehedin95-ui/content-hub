@@ -301,12 +301,12 @@ export async function POST(
             pageId: pageConfig?.meta_page_id,
           });
 
-          // Create ad
+          // Create ad (ACTIVE so it goes live immediately)
           const metaAd = await createAd({
             name: adName,
             adSetId: newAdSetId,
             creativeId: creative.id,
-            status: "PAUSED",
+            status: "ACTIVE",
             urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
           });
 
