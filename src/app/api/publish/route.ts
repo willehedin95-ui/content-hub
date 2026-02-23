@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
           .from("translations")
           .update({
             status: "published",
-            published_url: result.url,
+            published_url: result.url.trim(),
             updated_at: new Date().toISOString(),
           })
           .eq("id", translation_id)

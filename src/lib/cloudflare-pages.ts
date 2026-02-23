@@ -154,7 +154,7 @@ async function createDeployment(
 
 function getProjectCustomDomain(language: Language): string | undefined {
   const key = `CF_PAGES_DOMAIN_${language.toUpperCase()}`;
-  return process.env[key] || undefined;
+  return process.env[key]?.trim() || undefined;
 }
 
 async function getProjectBaseUrl(

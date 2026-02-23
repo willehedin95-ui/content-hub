@@ -108,7 +108,7 @@ export async function POST(
       .not("published_url", "is", null);
 
     for (const t of landingPageTranslations ?? []) {
-      landingUrlByLang.set(t.language, t.published_url);
+      landingUrlByLang.set(t.language, t.published_url.trim());
     }
   }
 
