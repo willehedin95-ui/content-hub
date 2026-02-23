@@ -291,15 +291,36 @@ export function stripForTranslation(fullHtml: string): {
   const stripped: Array<{ placeholder: string; original: string }> = [];
   let counter = 0;
 
+  function stripElement(el: Element) {
+    const placeholder = `<!-- __STRIP_${counter}__ -->`;
+    const original = $(el).toString();
+    stripped.push({ placeholder, original });
+    $(el).replaceWith(placeholder);
+    counter++;
+  }
+
+  // Strip scripts, styles, SVGs, noscript
   $("body")
     .find("style, svg, noscript, script")
-    .each((_, el) => {
-      const placeholder = `<!-- __STRIP_${counter}__ -->`;
-      const original = $(el).toString();
-      stripped.push({ placeholder, original });
-      $(el).replaceWith(placeholder);
-      counter++;
-    });
+    .each((_, el) => stripElement(el as Element));
+
+  // Strip hidden elements (display:none, visibility:hidden, hidden attribute)
+  $("body [hidden]").each((_, el) => stripElement(el as Element));
+  $("body").find("[style]").each((_, el) => {
+    const style = $(el).attr("style") || "";
+    if (/display\s*:\s*none/i.test(style) || /visibility\s*:\s*hidden/i.test(style)) {
+      stripElement(el as Element);
+    }
+  });
+
+  // Strip common Shopify/ecommerce non-content elements
+  $("body").find("iframe, video, audio, canvas, [data-shopify]").each((_, el) => {
+    // Only strip if the element has no meaningful text
+    const text = $(el).text().trim();
+    if (text.length < 10) {
+      stripElement(el as Element);
+    }
+  });
 
   const bodyHtml = $("body").html() || "";
 

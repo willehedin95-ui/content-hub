@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { extractBlocks, stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
-import { translateFullHtml, translateMetas } from "@/lib/openai";
+import { extractBlocks, applyBlockTranslations, stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
+import { translateFullHtml, translateMetas, translateBlocks, translateBatch } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL, RATE_LIMIT_TRANSLATE, STALE_CLAIM_MS } from "@/lib/constants";
 import { Language } from "@/types";
 import { checkRateLimit } from "@/lib/rate-limit";
+
+// Pages larger than this (after stripping scripts/styles) use block-based translation
+const FULL_HTML_MAX_CHARS = 80_000;
 
 export const maxDuration = 180;
 
@@ -113,32 +116,55 @@ export async function POST(req: NextRequest) {
 
     const startTime = Date.now();
 
-    // Extract metas from the original HTML (for SEO title/description)
-    const { metas } = extractBlocks(page.original_html);
-
     // Strip non-translatable content (CSS, SVGs, scripts) from the body.
-    // This reduces ~146K chars → ~51K chars (~13K tokens) — well within GPT limits.
     const { bodyHtml, headHtml, stripped } = stripForTranslation(page.original_html);
+    const useLargePageMode = bodyHtml.length > FULL_HTML_MAX_CHARS;
 
-    // Full-HTML translation: send the cleaned body to GPT as one piece.
-    // GPT sees the full narrative and translates all text naturally — like
-    // pasting the full text into a GPT chat and asking it to translate.
-    const [htmlResult, metasResult] = await Promise.all([
-      translateFullHtml(bodyHtml, language as Language, apiKey, sourceLanguage),
-      translateMetas(metas, language as Language, apiKey, sourceLanguage),
-    ]);
+    let translatedHtml: string;
+    let totalInputTokens: number;
+    let totalOutputTokens: number;
+    let approach: string;
 
-    const translatedMetas = metasResult.result;
+    if (!useLargePageMode) {
+      // Standard full-HTML translation for normal-sized pages
+      const { metas } = extractBlocks(page.original_html);
 
-    // Restore stripped elements + re-attach head + apply meta translations
-    const translatedHtml = restoreAfterTranslation(
-      htmlResult.result,
-      headHtml,
-      stripped,
-      translatedMetas,
-    );
+      const [htmlResult, metasResult] = await Promise.all([
+        translateFullHtml(bodyHtml, language as Language, apiKey, sourceLanguage),
+        translateMetas(metas, language as Language, apiKey, sourceLanguage),
+      ]);
+
+      const translatedMetas = metasResult.result;
+      translatedHtml = restoreAfterTranslation(htmlResult.result, headHtml, stripped, translatedMetas);
+      totalInputTokens = htmlResult.inputTokens + metasResult.inputTokens;
+      totalOutputTokens = htmlResult.outputTokens + metasResult.outputTokens;
+      approach = "full-html";
+    } else {
+      // Block-based translation for large pages — extracts only the text,
+      // translates it as JSON, and merges back into the original HTML template.
+      console.log(`[translate] Large page (${bodyHtml.length} chars stripped), using block-based translation`);
+      const { blocks, metas, alts, modifiedHtml } = extractBlocks(page.original_html);
+
+      const translationOpts = { sourceLanguage };
+      const [blocksResult, altsResult, metasResult] = await Promise.all([
+        blocks.length > 0
+          ? translateBlocks(blocks, language as Language, apiKey, translationOpts)
+          : Promise.resolve({ result: {} as Record<string, string>, inputTokens: 0, outputTokens: 0 }),
+        alts.length > 0
+          ? translateBatch(alts.map((a) => ({ id: a.id, text: a.alt })), language as Language, apiKey, translationOpts)
+          : Promise.resolve({ result: {} as Record<string, string>, inputTokens: 0, outputTokens: 0 }),
+        translateMetas(metas, language as Language, apiKey, sourceLanguage),
+      ]);
+
+      const allTranslations = { ...blocksResult.result, ...altsResult.result };
+      translatedHtml = applyBlockTranslations(modifiedHtml, allTranslations, metasResult.result);
+      totalInputTokens = blocksResult.inputTokens + altsResult.inputTokens + metasResult.inputTokens;
+      totalOutputTokens = blocksResult.outputTokens + altsResult.outputTokens + metasResult.outputTokens;
+      approach = "block-based";
+    }
 
     // Save translation
+    const seoMetas = extractBlocks(translatedHtml).metas;
     const { data: translation, error: saveError } = await db
       .from("translations")
       .upsert(
@@ -148,8 +174,8 @@ export async function POST(req: NextRequest) {
           variant: "control",
           translated_html: translatedHtml,
           translated_texts: null,
-          seo_title: translatedMetas.title || null,
-          seo_description: translatedMetas.description || null,
+          seo_title: seoMetas.title || null,
+          seo_description: seoMetas.description || null,
           status: "translated",
           updated_at: new Date().toISOString(),
         },
@@ -163,8 +189,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Log usage
-    const totalInputTokens = htmlResult.inputTokens + metasResult.inputTokens;
-    const totalOutputTokens = htmlResult.outputTokens + metasResult.outputTokens;
     const costUsd = calcOpenAICost(totalInputTokens, totalOutputTokens);
 
     await db.from("usage_logs").insert({
@@ -178,7 +202,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         language,
         source_language: sourceLanguage,
-        approach: "full-html",
+        approach,
         duration_ms: Date.now() - startTime,
       },
     });

@@ -283,7 +283,7 @@ export async function translateBatch(
   texts: Array<{ id: string; text: string }>,
   language: Language,
   apiKey: string,
-  options?: { pageContext?: string; qualityFeedback?: string }
+  options?: { pageContext?: string; qualityFeedback?: string; sourceLanguage?: string }
 ): Promise<{
   result: Record<string, string>;
   inputTokens: number;
@@ -291,6 +291,13 @@ export async function translateBatch(
 }> {
   const client = new OpenAI({ apiKey });
   let systemPrompt = SYSTEM_PROMPTS[language];
+
+  // Override source language when it's not English
+  if (options?.sourceLanguage && options.sourceLanguage !== "en") {
+    const srcName = LANGUAGE_NAMES_EN[options.sourceLanguage] || options.sourceLanguage;
+    const tgtName = LANGUAGE_NAMES_EN[language] || language;
+    systemPrompt = `IMPORTANT: The source text is in ${srcName} (NOT English). Translate from ${srcName} to ${tgtName}.\n\n` + systemPrompt;
+  }
 
   // Add full page context so the AI understands what it's translating
   if (options?.pageContext) {
@@ -386,7 +393,7 @@ export async function translateBlocks(
   blocks: Array<{ id: string; tag: string; html: string }>,
   language: Language,
   apiKey: string,
-  options?: { pageContext?: string; qualityFeedback?: string }
+  options?: { pageContext?: string; qualityFeedback?: string; sourceLanguage?: string }
 ): Promise<{
   result: Record<string, string>;
   inputTokens: number;
@@ -394,6 +401,13 @@ export async function translateBlocks(
 }> {
   const client = new OpenAI({ apiKey });
   let systemPrompt = SYSTEM_PROMPTS[language] + HTML_PRESERVATION_INSTRUCTION;
+
+  // Override source language when it's not English
+  if (options?.sourceLanguage && options.sourceLanguage !== "en") {
+    const srcName = LANGUAGE_NAMES_EN[options.sourceLanguage] || options.sourceLanguage;
+    const tgtName = LANGUAGE_NAMES_EN[language] || language;
+    systemPrompt = `IMPORTANT: The source text is in ${srcName} (NOT English). Translate from ${srcName} to ${tgtName}.\n\n` + systemPrompt;
+  }
 
   if (options?.pageContext) {
     systemPrompt += `\n\nFULL PAGE CONTEXT (read this FIRST to understand the story/topic, then translate the JSON values below with this context in mind — do NOT include this context in your output):\n---\n${options.pageContext.slice(0, 6000)}\n---`;
