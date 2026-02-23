@@ -22,6 +22,7 @@ import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 import MetaAdPreview from "./MetaAdPreview";
 import ConceptStepper, { StepDef } from "./ConceptStepper";
+import EditableTags from "@/components/pages/EditableTags";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -95,7 +96,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     pushResults: null,
   }));
 
-  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string }>>([]);
+  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[] }>>([]);
   const [abTests, setAbTests] = useState<Array<{ id: string; name: string; slug: string; language: string; router_url: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
@@ -120,6 +121,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }>({ saving: false, translating: false, translatingLang: null });
 
   const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const translatedCopyDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [copyTranslations, setCopyTranslations] = useState<ConceptCopyTranslations>(
     () => initialJob.ad_copy_translations ?? {}
   );
@@ -154,15 +156,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
       .then((results) => {
         // Deduplicate pages across languages
         const seenPages = new Set<string>();
-        const pages: Array<{ id: string; name: string; slug: string; product: string }> = [];
+        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[] }> = [];
         const seenTests = new Set<string>();
         const tests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }> = [];
         for (const data of results) {
           for (const t of data.pages ?? []) {
-            const pageId = (t.pages as { id: string; name: string; slug: string; product: string }).id;
+            const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[] }).id;
             if (!seenPages.has(pageId)) {
               seenPages.add(pageId);
-              pages.push(t.pages as { id: string; name: string; slug: string; product: string });
+              pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[] });
             }
           }
           for (const ab of data.abTests ?? []) {
@@ -232,6 +234,26 @@ export default function ImageJobDetail({ initialJob }: Props) {
       if (copyDebounceRef.current) clearTimeout(copyDebounceRef.current);
       copyDebounceRef.current = setTimeout(() => saveCopy(prev.primaryTexts, next), 1000);
       return { ...prev, headlines: next };
+    });
+  }
+
+  function handleTranslatedCopyChange(lang: string, field: "primary_texts" | "headlines", index: number, value: string) {
+    setCopyTranslations((prev) => {
+      const ct = prev[lang];
+      if (!ct) return prev;
+      const updated = { ...ct, [field]: ct[field].map((t, i) => (i === index ? value : t)) };
+      const next = { ...prev, [lang]: updated };
+      if (translatedCopyDebounceRef.current) clearTimeout(translatedCopyDebounceRef.current);
+      translatedCopyDebounceRef.current = setTimeout(async () => {
+        setCopyState((s) => ({ ...s, saving: true }));
+        await fetch(`/api/image-jobs/${initialJob.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ad_copy_translations: next }),
+        });
+        setCopyState((s) => ({ ...s, saving: false }));
+      }, 1000);
+      return next;
     });
   }
 
@@ -499,9 +521,19 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }, []);
 
   // Poll when job is "draft" (importing from Drive in background)
+  // Also auto-recover: if stuck in draft with source images for >2min, retry create-translations
   useEffect(() => {
     if (job.status !== "draft") return;
     const interval = setInterval(() => refreshJob(), 3000);
+
+    const staleMs = Date.now() - new Date(job.created_at).getTime();
+    const hasImages = (job.source_images?.length ?? 0) > 0;
+    if (staleMs > 2 * 60 * 1000 && hasImages) {
+      fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" })
+        .then((res) => { if (res.ok) refreshJob(); })
+        .catch(() => {});
+    }
+
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.status]);
@@ -813,6 +845,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
               <> &times; {job.target_ratios.length} ratios</>
             )}
           </p>
+          <div className="mt-2">
+            <EditableTags entityId={job.id} entityType="image-job" initialTags={job.tags ?? []} />
+          </div>
         </div>
         <button
           onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}
@@ -1302,11 +1337,22 @@ export default function ImageJobDetail({ initialJob }: Props) {
                   <option value="">Select a destination...</option>
                   {landingPages.length > 0 && (
                     <optgroup label="Landing Pages">
-                      {landingPages.map((page) => (
-                        <option key={page.id} value={page.id}>
-                          {page.name}
-                        </option>
-                      ))}
+                      {[...landingPages]
+                        .sort((a, b) => {
+                          const conceptTags = new Set(job.tags ?? []);
+                          if (conceptTags.size === 0) return 0;
+                          const aOverlap = (a.tags ?? []).filter((t) => conceptTags.has(t)).length;
+                          const bOverlap = (b.tags ?? []).filter((t) => conceptTags.has(t)).length;
+                          return bOverlap - aOverlap;
+                        })
+                        .map((page) => {
+                          const overlap = (job.tags ?? []).filter((t) => (page.tags ?? []).includes(t));
+                          return (
+                            <option key={page.id} value={page.id}>
+                              {page.name}{overlap.length > 0 ? ` (${overlap.join(", ")})` : ""}
+                            </option>
+                          );
+                        })}
                     </optgroup>
                   )}
                   {abTests.length > 0 && (
@@ -1411,19 +1457,29 @@ export default function ImageJobDetail({ initialJob }: Props) {
                               {ct.primary_texts.length > 1 && (
                                 <p className="text-xs text-gray-400">Primary text {i + 1}</p>
                               )}
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{text}</p>
+                              <textarea
+                                value={text}
+                                onChange={(e) => handleTranslatedCopyChange(lang, "primary_texts", i, e.target.value)}
+                                rows={3}
+                                className="w-full bg-white border border-gray-200 text-sm text-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 resize-y"
+                              />
                             </div>
                           ))}
 
                           {/* Headlines */}
                           {ct.headlines.length > 0 && ct.headlines.some((h) => h.trim()) && (
-                            <div className="border-t border-gray-100 pt-2">
+                            <div className="border-t border-gray-100 pt-2 space-y-2">
                               {ct.headlines.map((text, i) => (
                                 <div key={`h-${i}`} className="space-y-1">
                                   {ct.headlines.length > 1 && (
                                     <p className="text-xs text-gray-400">Headline {i + 1}</p>
                                   )}
-                                  <p className="text-sm font-medium text-gray-700">{text}</p>
+                                  <input
+                                    type="text"
+                                    value={text}
+                                    onChange={(e) => handleTranslatedCopyChange(lang, "headlines", i, e.target.value)}
+                                    className="w-full bg-white border border-gray-200 text-sm font-medium text-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+                                  />
                                 </div>
                               ))}
                             </div>

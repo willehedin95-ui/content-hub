@@ -14,6 +14,8 @@ import {
   Square,
 } from "lucide-react";
 import { PRODUCTS, PAGE_TYPES, Product, PageType } from "@/types";
+import TagInput from "@/components/ui/tag-input";
+import { useAllTags } from "@/lib/hooks/use-all-tags";
 import type { TextBlock, ImageBlock } from "@/app/api/fetch-url/route";
 
 type Step = "url" | "meta";
@@ -43,6 +45,8 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   const [product, setProduct] = useState<Product>("happysleep");
   const [pageType, setPageType] = useState<PageType>("advertorial");
   const [sourceLanguage, setSourceLanguage] = useState("en");
+  const [tags, setTags] = useState<string[]>([]);
+  const { tags: allTags } = useAllTags();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +68,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     setProduct("happysleep");
     setPageType("advertorial");
     setSourceLanguage("en");
+    setTags([]);
     setSaving(false);
     setSaveError("");
     if (fetchStageTimerRef.current) clearInterval(fetchStageTimerRef.current);
@@ -216,6 +221,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
           slug,
           source_language: sourceLanguage,
           images_to_translate: imagesToTranslate,
+          ...(tags.length ? { tags } : {}),
         }),
       });
 
@@ -514,6 +520,17 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                       <option value="no">Norwegian</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Tags</label>
+                  <TagInput
+                    value={tags}
+                    onChange={setTags}
+                    suggestions={allTags}
+                    placeholder="Add tags..."
+                  />
                 </div>
 
               </div>

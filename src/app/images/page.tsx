@@ -7,6 +7,8 @@ import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Sea
 import { ImageJob, Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignStatus } from "@/types";
 import NewConceptModal from "@/components/images/NewConceptModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { TagBadge, getTagColor } from "@/components/ui/tag-input";
+import { useAllTags } from "@/lib/hooks/use-all-tags";
 
 const PAGE_SIZE = 20;
 
@@ -119,6 +121,8 @@ export default function ImagesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [productFilter, setProductFilter] = useState<string>("all");
+  const [tagFilter, setTagFilter] = useState<string>("all");
+  const { tags: allTags } = useAllTags();
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -133,6 +137,7 @@ export default function ImagesPage() {
       if (!match) return false;
     }
     if (productFilter !== "all" && job.product !== productFilter) return false;
+    if (tagFilter !== "all" && !(job.tags ?? []).includes(tagFilter)) return false;
     return true;
   }).sort((a, b) => {
     const dir = sortDir === "asc" ? 1 : -1;
@@ -283,6 +288,37 @@ export default function ImagesPage() {
               </button>
             ))}
           </div>
+          {/* Tag filter */}
+          {allTags.length > 0 && (
+            <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+              <button
+                onClick={() => setTagFilter("all")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  tagFilter === "all"
+                    ? "bg-indigo-50 text-indigo-600"
+                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                All Tags
+              </button>
+              {allTags.map((tag) => {
+                const color = getTagColor(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => setTagFilter(tag)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                      tagFilter === tag
+                        ? `${color.bg} ${color.text} ${color.border}`
+                        : "text-gray-400 hover:text-gray-700 hover:bg-gray-100 border-transparent"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -354,9 +390,19 @@ export default function ImagesPage() {
                   {conceptNum ? String(conceptNum).padStart(3, "0") : "—"}
                 </span>
 
-                {/* Name */}
+                {/* Name + Tags */}
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-sm font-medium text-gray-800 truncate">{job.name}</span>
+                  {(job.tags ?? []).length > 0 && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {(job.tags ?? []).slice(0, 2).map((tag) => (
+                        <TagBadge key={tag} tag={tag} />
+                      ))}
+                      {(job.tags ?? []).length > 2 && (
+                        <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 2}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Product */}

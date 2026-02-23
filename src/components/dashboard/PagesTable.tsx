@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
+import { TagBadge } from "@/components/ui/tag-input";
+import { useAllTags } from "@/lib/hooks/use-all-tags";
 import StatusDot from "./StatusDot";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -34,7 +36,8 @@ function getTranslationUrl(translations: Translation[], lang: string) {
 
 export default function PagesTable({ pages, onImport }: { pages: Page[]; onImport?: () => void }) {
   const router = useRouter();
-  const [filter, setFilter] = useState({ product: "", type: "", search: "" });
+  const [filter, setFilter] = useState({ product: "", type: "", search: "", tag: "" });
+  const { tags: allTags } = useAllTags();
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
@@ -51,6 +54,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
       pages.filter((p) => {
         if (filter.product && p.product !== filter.product) return false;
         if (filter.type && p.page_type !== filter.type) return false;
+        if (filter.tag && !(p.tags ?? []).includes(filter.tag)) return false;
         if (
           filter.search &&
           !p.name.toLowerCase().includes(filter.search.toLowerCase())
@@ -131,6 +135,25 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
           </SelectContent>
         </Select>
 
+        {allTags.length > 0 && (
+          <Select
+            value={filter.tag || "__all__"}
+            onValueChange={(v) => setFilter((f) => ({ ...f, tag: v === "__all__" ? "" : v }))}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="All Tags" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Tags</SelectItem>
+              {allTags.map((tag) => (
+                <SelectItem key={tag} value={tag}>
+                  {tag}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <span className="text-muted-foreground text-sm ml-auto tabular-nums">
           {filtered.length} page{filtered.length !== 1 ? "s" : ""}
         </span>
@@ -197,7 +220,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                       No pages match your filters.{" "}
                       <button
                         onClick={() =>
-                          setFilter({ product: "", type: "", search: "" })
+                          setFilter({ product: "", type: "", search: "", tag: "" })
                         }
                         className="text-primary hover:underline"
                       >
@@ -215,7 +238,16 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                 onClick={() => router.push(`/pages/${page.id}`)}
               >
                 <td className="px-4 py-3">
-                  <span className="text-foreground font-medium">{page.name}</span>
+                  <div>
+                    <span className="text-foreground font-medium">{page.name}</span>
+                    {(page.tags ?? []).length > 0 && (
+                      <div className="flex items-center gap-1 mt-1">
+                        {(page.tags ?? []).map((tag) => (
+                          <TagBadge key={tag} tag={tag} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-muted-foreground capitalize">

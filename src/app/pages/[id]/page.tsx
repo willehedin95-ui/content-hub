@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
+import EditableTags from "@/components/pages/EditableTags";
 import TranslationPanel from "@/components/pages/TranslationPanel";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
@@ -77,6 +78,9 @@ export default async function PageDetailPage({
               </span>
             )}
             <span className="text-xs font-mono text-gray-400">/{p.slug}</span>
+          </div>
+          <div className="mt-2">
+            <EditableTags entityId={p.id} entityType="page" initialTags={p.tags ?? []} />
           </div>
         </div>
         <a

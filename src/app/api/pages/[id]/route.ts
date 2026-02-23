@@ -35,17 +35,21 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const body = await req.json();
-  const { name } = body as { name?: string };
+  const { name, tags } = body as { name?: string; tags?: string[] };
 
-  if (!name?.trim()) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  const updateData: Record<string, unknown> = {};
+  if (name?.trim()) updateData.name = name.trim();
+  if (tags !== undefined) updateData.tags = tags;
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
   const db = createServerSupabase();
 
   const { data, error } = await db
     .from("pages")
-    .update({ name: name.trim() })
+    .update(updateData)
     .eq("id", id)
     .select()
     .single();

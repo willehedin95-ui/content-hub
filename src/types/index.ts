@@ -24,6 +24,7 @@ export interface Page {
   slug: string;
   source_language: string;
   images_to_translate: PageImageSelection[];
+  tags: string[];
   created_at: string;
   translations?: Translation[];
 }
@@ -159,6 +160,7 @@ export interface ImageJob {
   ab_test_id: string | null;
   concept_number: number | null;
   marked_ready_at: string | null;
+  tags: string[];
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];

@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { X, Loader2, FolderOpen, ChevronDown, Search, Languages } from "lucide-react";
 import { Language, LANGUAGES, Product, PRODUCTS } from "@/types";
 import { getSettings } from "@/lib/settings";
+import TagInput from "@/components/ui/tag-input";
+import { useAllTags } from "@/lib/hooks/use-all-tags";
 
 interface Props {
   open: boolean;
@@ -42,6 +44,8 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
   const [driveFiles, setDriveFiles] = useState<DriveFileItem[]>([]);
   const [fetchingDrive, setFetchingDrive] = useState(false);
   const [product, setProduct] = useState<Product>("happysleep");
+  const [tags, setTags] = useState<string[]>([]);
+  const { tags: allTags } = useAllTags();
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
     try {
       const settings = getSettings();
@@ -177,6 +181,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
           target_languages: Array.from(selectedLanguages),
           ...(selectedFolder ? { source_folder_id: selectedFolder.id } : {}),
           product,
+          ...(tags.length ? { tags } : {}),
         }),
       });
 
@@ -229,7 +234,17 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
           await Promise.all(executing);
 
           // Create translations directly (skips the intermediate "ready" state)
-          await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
+          // Retry up to 3 times since this is fire-and-forget and failures leave the job stuck
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const ctRes = await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
+              if (ctRes.ok) break;
+              console.error(`create-translations attempt ${attempt + 1} failed:`, ctRes.status, await ctRes.text());
+            } catch (ctErr) {
+              console.error(`create-translations attempt ${attempt + 1} error:`, ctErr);
+            }
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+          }
         } catch (err) {
           console.error("Background import failed:", err);
         }
@@ -401,6 +416,17 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+            <TagInput
+              value={tags}
+              onChange={setTags}
+              suggestions={allTags}
+              placeholder="Add tags (e.g., neck pain, snoring)..."
+            />
           </div>
 
           {/* Languages */}

@@ -55,12 +55,13 @@ export async function GET(req: NextRequest) {
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, target_languages, source_folder_id, target_ratios, product } = body as {
+  const { name, target_languages, source_folder_id, target_ratios, product, tags } = body as {
     name?: string;
     target_languages?: string[];
     source_folder_id?: string;
     target_ratios?: string[];
     product?: string;
+    tags?: string[];
   };
 
   if (!name?.trim()) {
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
   if (product) insertData.product = product;
   if (conceptNumber !== null) insertData.concept_number = conceptNumber;
+  if (tags?.length) (insertData as Record<string, unknown>).tags = tags;
 
   const { data: job, error: jobError } = await db
     .from("image_jobs")
