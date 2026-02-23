@@ -86,7 +86,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     landingPageId: string;
     abTestId: string;
     pushing: boolean;
-    pushResults: Array<{ language: string; country: string; status: string; error?: string }> | null;
+    pushResults: Array<{ language: string; country: string; status: string; error?: string; scheduled_time?: string }> | null;
   }>(() => ({
     primaryTexts: (initialJob.ad_copy_primary ?? []).length > 0 ? initialJob.ad_copy_primary! : [""],
     headlines: (initialJob.ad_copy_headline ?? []).length > 0 ? initialJob.ad_copy_headline! : [""],

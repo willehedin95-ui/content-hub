@@ -96,6 +96,26 @@ export async function POST(
   // Strip leading "#XXX " prefix from concept name to avoid duplication in ad set name
   const conceptName = job.name.replace(/^#\d+\s*/, "").toLowerCase();
 
+  // Load default schedule time from settings (e.g. "03:00")
+  let scheduledStartTime: string | null = null;
+  const { data: settingsRow } = await db
+    .from("app_settings")
+    .select("settings")
+    .limit(1)
+    .single();
+  const scheduleHHMM = (settingsRow?.settings as Record<string, unknown>)?.meta_default_schedule_time as string | undefined;
+  if (scheduleHHMM) {
+    const [hh, mm] = scheduleHHMM.split(":").map(Number);
+    const now = new Date();
+    const scheduled = new Date(now);
+    scheduled.setHours(hh, mm, 0, 0);
+    // If the time has already passed today, schedule for tomorrow
+    if (scheduled <= now) {
+      scheduled.setDate(scheduled.getDate() + 1);
+    }
+    scheduledStartTime = scheduled.toISOString();
+  }
+
   // Get landing page URLs for each language
   const landingUrlByLang = new Map<string, string>();
 
@@ -141,7 +161,7 @@ export async function POST(
     }
   }
 
-  const results: Array<{ language: string; country: string; status: string; error?: string; campaign_id?: string }> = [];
+  const results: Array<{ language: string; country: string; status: string; error?: string; campaign_id?: string; scheduled_time?: string }> = [];
 
   // Process each target language
   for (const lang of job.target_languages as Language[]) {
@@ -221,10 +241,13 @@ export async function POST(
       // Generate ad set name
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
 
-      // Duplicate template ad set and rename
+      // Duplicate template ad set, rename, and schedule
       const dupResult = await duplicateAdSet(mapping.template_adset_id);
       const newAdSetId = dupResult.copied_adset_id;
-      await updateAdSet(newAdSetId, { name: adSetName });
+      await updateAdSet(newAdSetId, {
+        name: adSetName,
+        ...(scheduledStartTime ? { start_time: scheduledStartTime } : {}),
+      });
 
       // Create meta_campaigns record
       const { data: campaign } = await db
@@ -240,6 +263,7 @@ export async function POST(
           language: lang,
           daily_budget: 0,
           status: "pushing",
+          start_time: scheduledStartTime,
         })
         .select()
         .single();
@@ -372,6 +396,7 @@ export async function POST(
         country,
         status: hasSuccess ? "pushed" : "error",
         campaign_id: campaign.id,
+        scheduled_time: scheduledStartTime || undefined,
         error: hasSuccess ? undefined : "Some or all ads failed to push",
       });
     } catch (err) {
@@ -384,7 +409,7 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ results });
+  return NextResponse.json({ results, scheduled_time: scheduledStartTime });
 }
 
 /**
