@@ -1,4 +1,5 @@
 export const OPENAI_MODEL = "gpt-5.2";
+export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 export const KIE_MODEL = "nano-banana-pro";
 export const STORAGE_BUCKET = "translated-images";
 

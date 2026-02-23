@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
       source_language: source_language || "en",
       images_to_translate: images_to_translate || [],
       tags: tags || [],
+      swiped_from_url: body.swiped_from_url || null,
     })
     .select()
     .single();

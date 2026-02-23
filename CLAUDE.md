@@ -9,6 +9,8 @@ Always commit changes after finishing a task. **Do NOT push to `main` automatica
 
 This saves deploy credits by catching issues locally before triggering a production build.
 
+**When pushing to Vercel**: Always tell the user the git short hash of the pushed commit (e.g. `508b6dd`) so they can verify the deploy is live by checking the version shown in the sidebar footer.
+
 ## Dev server management
 
 **Only one dev server at a time.** Before starting a new dev server:

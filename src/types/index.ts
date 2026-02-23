@@ -25,6 +25,7 @@ export interface Page {
   source_language: string;
   images_to_translate: PageImageSelection[];
   tags: string[];
+  swiped_from_url: string | null;
   created_at: string;
   translations?: Translation[];
 }
@@ -91,7 +92,7 @@ export const PAGE_TYPES: { value: PageType; label: string }[] = [
 export interface UsageLog {
   id: string;
   created_at: string;
-  type: "translation" | "image_generation";
+  type: "translation" | "image_generation" | "claude_rewrite";
   page_id: string | null;
   translation_id: string | null;
   model: string;
@@ -368,4 +369,69 @@ export interface MarketProductUrl {
   product: string;
   country: string;
   url: string;
+}
+
+// --- Product Bank Types ---
+
+export type ImageCategory = "hero" | "lifestyle" | "detail" | "before-after" | "testimonial" | "other";
+
+export const IMAGE_CATEGORIES: { value: ImageCategory; label: string }[] = [
+  { value: "hero", label: "Hero" },
+  { value: "lifestyle", label: "Lifestyle" },
+  { value: "detail", label: "Detail" },
+  { value: "before-after", label: "Before/After" },
+  { value: "testimonial", label: "Testimonial" },
+  { value: "other", label: "Other" },
+];
+
+export interface ProductFull {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  benefits: string[];
+  usps: string[];
+  claims: string[];
+  certifications: string[];
+  ingredients: string | null;
+  price_info: Record<string, unknown>;
+  target_audience: string | null;
+  competitor_keywords: string[];
+  created_at: string;
+  updated_at: string;
+  product_images?: ProductImage[];
+  copywriting_guidelines?: CopywritingGuideline[];
+  reference_pages?: ReferencePage[];
+}
+
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  category: ImageCategory;
+  url: string;
+  alt_text: string | null;
+  description: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface CopywritingGuideline {
+  id: string;
+  product_id: string | null;
+  name: string;
+  content: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReferencePage {
+  id: string;
+  product_id: string | null;
+  name: string;
+  url: string | null;
+  content: string;
+  notes: string | null;
+  created_at: string;
 }
