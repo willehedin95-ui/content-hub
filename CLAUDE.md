@@ -27,7 +27,7 @@ Multiple concurrent dev servers have caused system performance issues in the pas
 - **Styling**: Tailwind CSS, light theme (`bg-gray-50` base, `bg-white` cards, `border-gray-200` borders, indigo-600 primary)
 - **Database**: Supabase (PostgreSQL) — server-side uses `createServerSupabase()` with service role key
 - **Storage**: Supabase Storage `translated-images` bucket for all uploaded/generated images
-- **APIs**: OpenAI GPT-4o (text translation + quality analysis), Kie AI nano-banana-pro (image translation), Cloudflare Pages (publishing via direct upload API), Google Drive (service account import/export), Resend (email notifications), Meta Marketing API v22.0 (ad campaign management)
+- **APIs**: OpenAI GPT-4o (text translation + quality analysis), Kie AI nano-banana-pro (image translation), Anthropic Claude (page swiper copywriting), Cloudflare Pages (publishing via direct upload API), Google Drive (service account import/export), Resend (email notifications), Meta Marketing API v22.0 (ad campaign management)
 - **Icons**: lucide-react
 - **Build**: `npm run build` — always verify build passes before committing
 
@@ -61,7 +61,7 @@ curl -X POST "https://api.supabase.com/v1/projects/<project-ref>/database/query"
   -d '{"query": "SQL here"}'
 ```
 
-Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source_images`, `image_translations`, `versions`, `ad_copy_jobs`, `ad_copy_translations`, `meta_campaigns`, `meta_ads`, `meta_campaign_mappings`, `meta_page_configs`, `market_product_urls`, `cf_pages_manifests`
+Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source_images`, `image_translations`, `versions`, `ad_copy_jobs`, `ad_copy_translations`, `meta_campaigns`, `meta_ads`, `meta_campaign_mappings`, `meta_page_configs`, `market_product_urls`, `cf_pages_manifests`, `products`, `product_images`, `copywriting_guidelines`, `reference_pages`
 
 ## Hosting & domains
 
@@ -87,6 +87,8 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **Concepts — aspect ratios**: Each image job can target multiple ratios (1:1, 9:16, 4:5) alongside multiple languages. Creates one `image_translation` per (language, ratio) combo. Stored as `target_ratios` on `image_jobs` and `aspect_ratio` on `image_translations`.
 - **Meta Ads — Concept Push**: From the concept detail page's "Preview & Push" tab, push translated image ads to Meta. Per target language: duplicates a template ad set, uploads 1:1 images, creates ad creatives (`object_story_spec`), creates ads with `image_cropping: OPT_OUT` (prevents auto-crop on stories/reels). Ad set naming: `"{COUNTRY} #{number} | statics | {name}"` (concept `#XXX` prefix stripped). Template ad sets + campaign mappings configured in Settings (`meta_campaign_mappings`, `meta_page_config` tables). Tracks state in `meta_campaigns`/`meta_ads`. Uses System User token via `src/lib/meta.ts`. Env vars: `META_SYSTEM_USER_TOKEN`, `META_AD_ACCOUNT_ID`, `META_PAGE_ID`.
 - **Meta Ads — Campaign Builder**: Standalone campaign builder at `/meta-ads` for manual campaign creation (separate from concept push).
+- **Product Bank** (`/products`): Rich product database with info, images, copywriting guidelines, and reference pages. Replaces the simple product enum with full product profiles. Tables: `products`, `product_images`, `copywriting_guidelines`, `reference_pages`.
+- **Page Swiper** (`/swiper`): Paste a competitor URL → Puppeteer fetches it → Claude (Anthropic) rewrites all copy for a selected product using product bank context → manual image replacement from product bank → save as new page in hub. Code: `src/lib/claude.ts` wraps Anthropic API with dynamic system prompt built from product bank data. Env var: `ANTHROPIC_API_KEY`.
 - **Settings**: Configurable quality threshold, default languages, economy mode, notification email, Kie AI credit balance, Meta Ads connection test
 
 ## Product context
@@ -98,5 +100,6 @@ The owner is a solopreneur running an ecommerce store (HappySleep, Hydro13 brand
 4. Translating static image ads via AI with quality control
 5. Translating ad copy text
 6. Pushing assembled campaigns (images + copy + landing page URLs) to Meta Ads Manager
+7. Swiping competitor pages — rewriting copy for our products using Claude AI
 
 The vision is to eliminate manual export/download/upload workflows — everything flows from Ron's English originals through translation to ad platform deployment in one tool. Google Ads integration is planned for a later stage.
