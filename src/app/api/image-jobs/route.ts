@@ -76,6 +76,12 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
+  // Extract concept number from name like "#002 Bold Text" or "#019 - Swipes 2"
+  const trimmedName = name.trim();
+  const conceptNumberMatch = trimmedName.match(/^#(\d+)\s*[-–—]?\s*/);
+  const conceptNumber = conceptNumberMatch ? parseInt(conceptNumberMatch[1], 10) : null;
+  const cleanName = trimmedName.replace(/^#\d+\s*[-–—]?\s*/, "");
+
   const insertData: {
     name: string;
     status: string;
@@ -83,14 +89,16 @@ export async function POST(req: NextRequest) {
     target_ratios: string[];
     source_folder_id?: string;
     product?: string;
+    concept_number?: number;
   } = {
-    name: name.trim(),
+    name: cleanName,
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["1:1"],
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
   if (product) insertData.product = product;
+  if (conceptNumber !== null) insertData.concept_number = conceptNumber;
 
   const { data: job, error: jobError } = await db
     .from("image_jobs")
