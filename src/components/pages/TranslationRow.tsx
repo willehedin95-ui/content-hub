@@ -419,23 +419,41 @@ export default function TranslationRow({
     router.refresh();
   }
 
+  // Ensure a translation row exists (instant same-language copy) and return its ID
+  async function ensureSameLanguageCopy(): Promise<string | null> {
+    const res = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_id: pageId, language: language.value }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setProgress(prev => ({ ...prev, loading: null, error: data.error || "Failed to prepare page" }));
+      return null;
+    }
+    return data.id;
+  }
+
   async function handleDirectPublish() {
     setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page…" }));
     try {
-      // Call translate API which does an instant same-language copy
-      const res = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_id: pageId, language: language.value }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setProgress(prev => ({ ...prev, loading: null, error: data.error || "Failed to prepare page" }));
-        return;
-      }
-      // Got the translation ID — open publish modal
-      setDirectPublishId(data.id);
+      const id = await ensureSameLanguageCopy();
+      if (!id) return;
+      setDirectPublishId(id);
       setShowDirectPublishModal(true);
+    } catch {
+      setProgress(prev => ({ ...prev, error: "Failed to prepare page — check your connection" }));
+    } finally {
+      setProgress(prev => ({ ...prev, loading: null, progressLabel: "" }));
+    }
+  }
+
+  async function handleDirectEdit() {
+    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page…" }));
+    try {
+      const id = await ensureSameLanguageCopy();
+      if (!id) return;
+      router.push(`/pages/${pageId}/edit/${language.value}`);
     } catch {
       setProgress(prev => ({ ...prev, error: "Failed to prepare page — check your connection" }));
     } finally {
@@ -594,18 +612,32 @@ export default function TranslationRow({
             <span className="text-xs text-gray-300">{language.domain}</span>
           </div>
           {isSameLanguage ? (
-            <button
-              onClick={handleDirectPublish}
-              disabled={progress.loading !== null}
-              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
-            >
-              {isProcessing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Upload className="w-3.5 h-3.5" />
-              )}
-              {isProcessing ? (progress.progressLabel || "Preparing…") : "Publish"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDirectEdit}
+                disabled={progress.loading !== null}
+                className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
+              >
+                {isProcessing && progress.progressLabel === "Preparing page…" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Pencil className="w-3.5 h-3.5" />
+                )}
+                Edit
+              </button>
+              <button
+                onClick={handleDirectPublish}
+                disabled={progress.loading !== null}
+                className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                Publish
+              </button>
+            </div>
           ) : (
           <button
             onClick={handleTranslate}
