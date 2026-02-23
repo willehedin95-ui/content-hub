@@ -13,11 +13,12 @@ interface Props {
   languages: (typeof LANGUAGES)[number][];
   translations: Translation[];
   imagesToTranslate?: PageImageSelection[];
+  sourceLanguage?: string;
 }
 
 const STUCK_TIMEOUT_BASE_MS = 3 * 60 * 1000; // 3 minutes base
 
-export default function TranslationPanel({ pageId, languages, translations, imagesToTranslate }: Props) {
+export default function TranslationPanel({ pageId, languages, translations, imagesToTranslate, sourceLanguage }: Props) {
   const router = useRouter();
   const [translatingAll, setTranslatingAll] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -44,6 +45,8 @@ export default function TranslationPanel({ pageId, languages, translations, imag
   }, []);
 
   const untranslatedLangs = languages.filter((lang) => {
+    // Skip same-language rows — they don't need translation, they get published directly
+    if (sourceLanguage && lang.value === sourceLanguage) return false;
     const t = translations.find((tr) => tr.language === lang.value && tr.variant !== "b");
     return !t || t.status === "draft";
   });
@@ -199,7 +202,7 @@ export default function TranslationPanel({ pageId, languages, translations, imag
               pageId={pageId}
               language={lang}
               translation={translation}
-
+              sourceLanguage={sourceLanguage}
               imagesToTranslate={imagesToTranslate}
               onRegisterTranslate={(fn) => registerTranslate(lang.value, fn)}
               onUnregisterTranslate={() => unregisterTranslate(lang.value)}

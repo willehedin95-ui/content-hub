@@ -63,6 +63,7 @@ export default function TranslationRow({
   pageId,
   language,
   translation,
+  sourceLanguage,
   imagesToTranslate,
   onRegisterTranslate,
   onUnregisterTranslate,
@@ -70,10 +71,12 @@ export default function TranslationRow({
   pageId: string;
   language: (typeof LANGUAGES)[number];
   translation?: Translation;
+  sourceLanguage?: string;
   imagesToTranslate?: PageImageSelection[];
   onRegisterTranslate?: (fn: () => Promise<void>) => void;
   onUnregisterTranslate?: () => void;
 }) {
+  const isSameLanguage = sourceLanguage === language.value;
   const router = useRouter();
 
   // Loading/progress states
@@ -100,6 +103,9 @@ export default function TranslationRow({
   const [showMore, setShowMore] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  // For same-language direct publish: holds the translation ID after the instant copy
+  const [directPublishId, setDirectPublishId] = useState<string | null>(null);
+  const [showDirectPublishModal, setShowDirectPublishModal] = useState(false);
   const [pageHtml, setPageHtml] = useState("");
   const [imageProgress, setImageProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
   const [bgImageProgress, setBgImageProgress] = useState<{ done: number; total: number; status: string } | null>(null);
@@ -413,6 +419,30 @@ export default function TranslationRow({
     router.refresh();
   }
 
+  async function handleDirectPublish() {
+    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page…" }));
+    try {
+      // Call translate API which does an instant same-language copy
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: pageId, language: language.value }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setProgress(prev => ({ ...prev, loading: null, error: data.error || "Failed to prepare page" }));
+        return;
+      }
+      // Got the translation ID — open publish modal
+      setDirectPublishId(data.id);
+      setShowDirectPublishModal(true);
+    } catch {
+      setProgress(prev => ({ ...prev, error: "Failed to prepare page — check your connection" }));
+    } finally {
+      setProgress(prev => ({ ...prev, loading: null, progressLabel: "" }));
+    }
+  }
+
   async function handleTranslate() {
     setProgress(prev => ({ ...prev, loading: "translate" }));
     try {
@@ -563,6 +593,20 @@ export default function TranslationRow({
             <span className="text-gray-500 text-sm">{language.label}</span>
             <span className="text-xs text-gray-300">{language.domain}</span>
           </div>
+          {isSameLanguage ? (
+            <button
+              onClick={handleDirectPublish}
+              disabled={progress.loading !== null}
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+            >
+              {isProcessing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              {isProcessing ? (progress.progressLabel || "Preparing…") : "Publish"}
+            </button>
+          ) : (
           <button
             onClick={handleTranslate}
             disabled={progress.loading !== null}
@@ -575,6 +619,7 @@ export default function TranslationRow({
             )}
             {isProcessing ? (progress.progressLabel || "Translating\u2026") : "Translate"}
           </button>
+          )}
           {isProcessing && (
             <button
               onClick={handleCancel}
@@ -613,6 +658,19 @@ export default function TranslationRow({
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             {progress.error}
           </div>
+        )}
+
+        {/* Direct publish modal for same-language pages */}
+        {directPublishId && (
+          <PublishModal
+            open={showDirectPublishModal}
+            translationId={directPublishId}
+            onClose={(published) => {
+              setShowDirectPublishModal(false);
+              setDirectPublishId(null);
+              if (published) router.refresh();
+            }}
+          />
         )}
       </div>
     );

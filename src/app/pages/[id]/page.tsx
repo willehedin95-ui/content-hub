@@ -100,6 +100,7 @@ export default async function PageDetailPage({
         languages={LANGUAGES.filter((lang) => lang.domain)}
         translations={p.translations ?? []}
         imagesToTranslate={p.images_to_translate}
+        sourceLanguage={p.source_language || "en"}
       />
 
       {/* Meta info */}
