@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
 
   const db = createServerSupabase();
 
+  // Fetch published landing pages
   let query = db
     .from("translations")
     .select("id, language, slug, published_url, seo_title, pages!inner(id, name, slug, product)")
@@ -24,11 +25,24 @@ export async function GET(req: NextRequest) {
     query = query.eq("pages.product", product);
   }
 
-  const { data, error } = await query.order("updated_at", { ascending: false });
+  // Fetch active AB tests for this language
+  const [pagesResult, abTestsResult] = await Promise.all([
+    query.order("updated_at", { ascending: false }),
+    db
+      .from("ab_tests")
+      .select("id, name, slug, language, router_url, status")
+      .eq("language", language)
+      .eq("status", "active")
+      .not("router_url", "is", null)
+      .order("created_at", { ascending: false }),
+  ]);
 
-  if (error) {
-    return safeError(error, "Failed to fetch landing page assets");
+  if (pagesResult.error) {
+    return safeError(pagesResult.error, "Failed to fetch landing page assets");
   }
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json({
+    pages: pagesResult.data ?? [],
+    abTests: abTestsResult.data ?? [],
+  });
 }

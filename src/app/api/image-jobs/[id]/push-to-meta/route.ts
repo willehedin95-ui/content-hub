@@ -97,16 +97,32 @@ export async function POST(
   const conceptName = job.name.replace(/^#\d+\s*/, "").toLowerCase();
 
   // Get landing page URLs for each language
-  const { data: landingPageTranslations } = await db
-    .from("translations")
-    .select("language, published_url")
-    .eq("page_id", job.landing_page_id)
-    .eq("status", "published")
-    .not("published_url", "is", null);
-
   const landingUrlByLang = new Map<string, string>();
-  for (const t of landingPageTranslations ?? []) {
-    landingUrlByLang.set(t.language, t.published_url);
+
+  if (job.landing_page_id) {
+    const { data: landingPageTranslations } = await db
+      .from("translations")
+      .select("language, published_url")
+      .eq("page_id", job.landing_page_id)
+      .eq("status", "published")
+      .not("published_url", "is", null);
+
+    for (const t of landingPageTranslations ?? []) {
+      landingUrlByLang.set(t.language, t.published_url);
+    }
+  }
+
+  // Override with AB test router URL for its language (if selected)
+  if (job.ab_test_id) {
+    const { data: abTest } = await db
+      .from("ab_tests")
+      .select("language, router_url")
+      .eq("id", job.ab_test_id)
+      .single();
+
+    if (abTest?.router_url) {
+      landingUrlByLang.set(abTest.language, abTest.router_url);
+    }
   }
 
   // Get completed image translations grouped by language

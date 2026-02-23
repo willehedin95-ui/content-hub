@@ -37,9 +37,9 @@ function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boole
   const completedTrans = allTrans.filter((t) => t.status === "completed").length;
   const step1 = totalTrans > 0 && completedTrans === totalTrans;
 
-  // Step 2: Ad Copy — has primary text + landing page + all target languages translated
+  // Step 2: Ad Copy — has primary text + landing page/AB test + all target languages translated
   const hasPrimary = (j.ad_copy_primary ?? []).some((t: string) => t.trim());
-  const hasLanding = !!j.landing_page_id;
+  const hasLanding = !!j.landing_page_id || !!j.ab_test_id;
   const allLangsTranslated = j.target_languages.length > 0 && j.target_languages.every(
     (lang) => ct[lang]?.status === "completed"
   );
@@ -83,17 +83,20 @@ export default function ImageJobDetail({ initialJob }: Props) {
     primaryTexts: string[];
     headlines: string[];
     landingPageId: string;
+    abTestId: string;
     pushing: boolean;
     pushResults: Array<{ language: string; country: string; status: string; error?: string }> | null;
   }>(() => ({
     primaryTexts: (initialJob.ad_copy_primary ?? []).length > 0 ? initialJob.ad_copy_primary! : [""],
     headlines: (initialJob.ad_copy_headline ?? []).length > 0 ? initialJob.ad_copy_headline! : [""],
     landingPageId: initialJob.landing_page_id ?? "",
+    abTestId: initialJob.ab_test_id ?? "",
     pushing: false,
     pushResults: null,
   }));
 
   const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string }>>([]);
+  const [abTests, setAbTests] = useState<Array<{ id: string; name: string; slug: string; language: string; router_url: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
     landingPageUrls: Record<string, string>;
@@ -138,26 +141,42 @@ export default function ImageJobDetail({ initialJob }: Props) {
     return new Set(LANGUAGES.map((l) => l.value));
   });
 
-  // Fetch landing pages for this product
+  // Fetch landing pages and AB tests for this product
   useEffect(() => {
     if (!initialJob.product) return;
-    fetch(`/api/meta/assets/landing-pages?language=no&product=${initialJob.product}`)
-      .then((res) => res.json())
-      .then((data) => {
-        // Deduplicate by page ID
-        const seen = new Set<string>();
+    // Fetch for all target languages to get AB tests across languages
+    const langs = initialJob.target_languages?.length ? initialJob.target_languages : ["no"];
+    const fetches = langs.map((lang) =>
+      fetch(`/api/meta/assets/landing-pages?language=${lang}&product=${initialJob.product}`)
+        .then((res) => res.json())
+    );
+    Promise.all(fetches)
+      .then((results) => {
+        // Deduplicate pages across languages
+        const seenPages = new Set<string>();
         const pages: Array<{ id: string; name: string; slug: string; product: string }> = [];
-        for (const t of data ?? []) {
-          const pageId = (t.pages as { id: string; name: string; slug: string; product: string }).id;
-          if (!seen.has(pageId)) {
-            seen.add(pageId);
-            pages.push(t.pages as { id: string; name: string; slug: string; product: string });
+        const seenTests = new Set<string>();
+        const tests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }> = [];
+        for (const data of results) {
+          for (const t of data.pages ?? []) {
+            const pageId = (t.pages as { id: string; name: string; slug: string; product: string }).id;
+            if (!seenPages.has(pageId)) {
+              seenPages.add(pageId);
+              pages.push(t.pages as { id: string; name: string; slug: string; product: string });
+            }
+          }
+          for (const ab of data.abTests ?? []) {
+            if (!seenTests.has(ab.id)) {
+              seenTests.add(ab.id);
+              tests.push(ab);
+            }
           }
         }
         setLandingPages(pages);
+        setAbTests(tests);
       })
       .catch(() => {});
-  }, [initialJob.product]);
+  }, [initialJob.product, initialJob.target_languages]);
 
   // Fetch existing deployments for this concept
   const fetchDeployments = useCallback(async () => {
@@ -334,14 +353,24 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }
   }
 
-  // Save landing page selection
-  async function handleLandingPageChange(pageId: string) {
-    setMetaPush(prev => ({ ...prev, landingPageId: pageId }));
-    await fetch(`/api/image-jobs/${initialJob.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ landing_page_id: pageId || null }),
-    });
+  // Save website URL selection (landing page or AB test)
+  async function handleWebsiteUrlChange(value: string) {
+    if (value.startsWith("abtest:")) {
+      const abTestId = value.replace("abtest:", "");
+      setMetaPush(prev => ({ ...prev, landingPageId: "", abTestId }));
+      await fetch(`/api/image-jobs/${initialJob.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ab_test_id: abTestId, landing_page_id: null }),
+      });
+    } else {
+      setMetaPush(prev => ({ ...prev, landingPageId: value, abTestId: "" }));
+      await fetch(`/api/image-jobs/${initialJob.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ landing_page_id: value || null, ab_test_id: null }),
+      });
+    }
   }
 
   // Push to Meta
@@ -1257,28 +1286,51 @@ export default function ImageJobDetail({ initialJob }: Props) {
             </div>
           </div>
 
-          {/* Landing Page */}
+          {/* Website URL */}
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
               <Globe className="w-4 h-4" />
-              Landing Page
+              Website URL
             </label>
-            {landingPages.length > 0 ? (
-              <select
-                value={metaPush.landingPageId}
-                onChange={(e) => handleLandingPageChange(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">Select a landing page...</option>
-                {landingPages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
+            {landingPages.length > 0 || abTests.length > 0 ? (
+              <>
+                <select
+                  value={metaPush.abTestId ? `abtest:${metaPush.abTestId}` : metaPush.landingPageId}
+                  onChange={(e) => handleWebsiteUrlChange(e.target.value)}
+                  className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">Select a destination...</option>
+                  {landingPages.length > 0 && (
+                    <optgroup label="Landing Pages">
+                      {landingPages.map((page) => (
+                        <option key={page.id} value={page.id}>
+                          {page.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {abTests.length > 0 && (
+                    <optgroup label="A/B Tests">
+                      {abTests.map((test) => (
+                        <option key={test.id} value={`abtest:${test.id}`}>
+                          {test.name} ({test.language.toUpperCase()})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                {metaPush.abTestId && (() => {
+                  const selectedTest = abTests.find((t) => t.id === metaPush.abTestId);
+                  return selectedTest ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      AB test URL for {selectedTest.language.toUpperCase()}, regular page for other languages
+                    </p>
+                  ) : null;
+                })()}
+              </>
             ) : (
               <p className="text-sm text-gray-400">
-                No published landing pages found for this product
+                No published pages or active A/B tests found
               </p>
             )}
           </div>

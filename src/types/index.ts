@@ -155,6 +155,7 @@ export interface ImageJob {
   ad_copy_headline: string[];
   ad_copy_doc_id: string | null;
   landing_page_id: string | null;
+  ab_test_id: string | null;
   concept_number: number | null;
   marked_ready_at: string | null;
   created_at: string;

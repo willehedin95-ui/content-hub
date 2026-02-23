@@ -63,12 +63,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const body = await req.json();
-  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, concept_number, ad_copy_doc_id, marked_ready_at } = body as {
+  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, ab_test_id, concept_number, ad_copy_doc_id, marked_ready_at } = body as {
     status?: string;
     target_languages?: string[];
     ad_copy_primary?: string[];
     ad_copy_headline?: string[];
     landing_page_id?: string | null;
+    ab_test_id?: string | null;
     concept_number?: number | null;
     ad_copy_doc_id?: string | null;
     marked_ready_at?: string | null;
@@ -83,6 +84,7 @@ export async function PATCH(
     ad_copy_primary?: string[];
     ad_copy_headline?: string[];
     landing_page_id?: string | null;
+    ab_test_id?: string | null;
     concept_number?: number | null;
     ad_copy_doc_id?: string | null;
     marked_ready_at?: string | null;
@@ -92,6 +94,7 @@ export async function PATCH(
   if (ad_copy_primary !== undefined) updateData.ad_copy_primary = ad_copy_primary;
   if (ad_copy_headline !== undefined) updateData.ad_copy_headline = ad_copy_headline;
   if (landing_page_id !== undefined) updateData.landing_page_id = landing_page_id;
+  if (ab_test_id !== undefined) updateData.ab_test_id = ab_test_id;
   if (concept_number !== undefined) updateData.concept_number = concept_number;
   if (ad_copy_doc_id !== undefined) updateData.ad_copy_doc_id = ad_copy_doc_id;
   if (marked_ready_at !== undefined) updateData.marked_ready_at = marked_ready_at;
