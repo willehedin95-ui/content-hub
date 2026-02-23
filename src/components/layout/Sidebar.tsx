@@ -131,6 +131,9 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
             </button>
           </div>
         )}
+        <p className="text-[10px] text-muted-foreground/50 mt-1 font-mono">
+          v{process.env.NEXT_PUBLIC_BUILD_ID}
+        </p>
       </div>
     </aside>
   );
