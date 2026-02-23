@@ -12,14 +12,22 @@ export const maxDuration = 180;
 /**
  * Translate a single image from a page translation and update the HTML.
  * Called once per selected image from the ImageSelectionModal.
+ *
+ * Optional batch tracking params:
+ * - batchInit: true  → sets image_status='translating', images_done=0, images_total=batchTotal
+ * - batchTotal: N    → total images in this batch (used with batchInit)
+ *
+ * After each image: increments images_done. When images_done >= images_total: sets image_status='done'.
  */
 export async function POST(req: NextRequest) {
-  const { translationId, imageUrl, imageIndex, language, aspectRatio } = (await req.json()) as {
+  const { translationId, imageUrl, imageIndex, language, aspectRatio, batchInit, batchTotal } = (await req.json()) as {
     translationId: string;
     imageUrl: string;
     imageIndex?: number;
     language: string;
     aspectRatio?: string;
+    batchInit?: boolean;
+    batchTotal?: number;
   };
 
   if (!translationId || !imageUrl || !language) {
@@ -34,12 +42,24 @@ export async function POST(req: NextRequest) {
   // Verify translation exists
   const { data: translation, error: tError } = await db
     .from("translations")
-    .select("id, page_id, translated_html")
+    .select("id, page_id, translated_html, images_done, images_total")
     .eq("id", translationId)
     .single();
 
   if (tError || !translation) {
     return NextResponse.json({ error: "Translation not found" }, { status: 404 });
+  }
+
+  // Initialize batch tracking if this is the first call in a batch
+  if (batchInit && batchTotal) {
+    await db
+      .from("translations")
+      .update({
+        image_status: "translating",
+        images_done: 0,
+        images_total: batchTotal,
+      })
+      .eq("id", translationId);
   }
 
   try {
@@ -155,9 +175,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Increment batch progress
+    await incrementImageProgress(db, translationId);
+
     return NextResponse.json({ newImageUrl });
   } catch (error) {
     console.error("Page image translation error:", error);
+
+    // Still increment progress on error so the count reflects attempted images
+    await incrementImageProgress(db, translationId, true);
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Image translation failed" },
       { status: 500 }
@@ -240,4 +267,29 @@ function replaceImageSrc(html: string, oldSrc: string, newSrc: string, imageInde
 
   // Strategy 7: srcset fallback
   return html.replace(new RegExp(esc(oldSrc), "g"), newSrc);
+}
+
+/** Increment images_done and set image_status to 'done' or 'error' when batch is complete. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function incrementImageProgress(db: any, translationId: string, isError = false) {
+  // Read current progress
+  const { data } = await db
+    .from("translations")
+    .select("images_done, images_total, image_status")
+    .eq("id", translationId)
+    .single();
+
+  if (!data || data.image_status !== "translating") return;
+
+  const newDone = (data.images_done ?? 0) + 1;
+  const total = data.images_total ?? 0;
+
+  const update: Record<string, unknown> = { images_done: newDone };
+
+  // Mark as done/error when all images have been attempted
+  if (total > 0 && newDone >= total) {
+    update.image_status = isError ? "error" : "done";
+  }
+
+  await db.from("translations").update(update).eq("id", translationId);
 }

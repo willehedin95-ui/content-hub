@@ -5,15 +5,12 @@ import Link from "next/link";
 import {
   FlaskConical,
   Trophy,
+  Plus,
 } from "lucide-react";
 import { ABTest, ABTestStatus, LANGUAGES } from "@/types";
 
-interface ABTestWithPage extends ABTest {
-  pages: { id: string; name: string; slug: string };
-}
-
 interface Props {
-  tests: ABTestWithPage[];
+  tests: ABTest[];
   languages: typeof LANGUAGES;
 }
 
@@ -47,6 +44,13 @@ export default function ABTestsClient({ tests, languages }: Props) {
             {counts.active} active {counts.active === 1 ? "test" : "tests"}
           </p>
         </div>
+        <Link
+          href="/ab-tests/new"
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Create New Test
+        </Link>
       </div>
 
       {/* Filter tabs */}
@@ -75,7 +79,7 @@ export default function ABTestsClient({ tests, languages }: Props) {
           <FlaskConical className="w-8 h-8 text-gray-300 mx-auto mb-3" />
           <p className="text-sm text-gray-500">
             {filter === "all"
-              ? "No A/B tests yet. Create one from a landing page."
+              ? "No A/B tests yet. Create one to start testing."
               : `No ${filter} tests.`}
           </p>
         </div>
@@ -89,7 +93,7 @@ export default function ABTestsClient({ tests, languages }: Props) {
             return (
               <Link
                 key={test.id}
-                href={`/pages/${test.page_id}/ab-test/${test.language}`}
+                href={`/ab-tests/${test.id}`}
                 className="flex items-center gap-4 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all group"
               >
                 {/* Status indicator */}
@@ -98,11 +102,11 @@ export default function ABTestsClient({ tests, languages }: Props) {
                   test.status === "completed" ? "bg-indigo-500" : "bg-gray-300"
                 }`} />
 
-                {/* Page info */}
+                {/* Test info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 truncate">
-                      {test.pages.name}
+                      {test.name || test.slug}
                     </span>
                     {lang && (
                       <span className="text-xs text-gray-400" role="img" aria-label={lang.label}>{lang.flag}</span>
@@ -118,18 +122,16 @@ export default function ABTestsClient({ tests, languages }: Props) {
                     {hasWinner && (
                       <span className="flex items-center gap-0.5 text-xs text-amber-600">
                         <Trophy className="w-3 h-3" />
-                        Winner: {test.winner === "control" ? "Control (A)" : "Variant B"}
+                        Winner: {test.winner === "control" ? "Variant A" : "Variant B"}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* URL */}
-                {test.router_url && (
-                  <span className="text-xs text-gray-400 truncate max-w-[200px] hidden lg:block">
-                    {test.router_url.replace("https://", "")}
-                  </span>
-                )}
+                {/* Slug */}
+                <span className="text-xs text-gray-400 truncate max-w-[200px] hidden lg:block">
+                  /{test.slug}
+                </span>
 
                 {/* Action hint */}
                 <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

@@ -62,7 +62,9 @@ export type ABTestStatus = "draft" | "active" | "completed";
 
 export interface ABTest {
   id: string;
-  page_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
   language: Language;
   status: ABTestStatus;
   control_id: string;
@@ -154,6 +156,7 @@ export interface ImageJob {
   ad_copy_doc_id: string | null;
   landing_page_id: string | null;
   concept_number: number | null;
+  marked_ready_at: string | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];

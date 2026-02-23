@@ -172,6 +172,7 @@ export async function POST(
           adSetId: resolvedAdSetId,
           creativeId: creative.id,
           status: "PAUSED",
+          urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
         });
         await db.from("meta_ads").update({ meta_ad_id: metaAd.id, status: "pushed" }).eq("id", ad.id);
       } catch (adError) {

@@ -216,59 +216,48 @@ export async function createAdCreative(params: {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
 
-  // Build bodies and titles arrays (multi-variant support)
-  const bodies = params.primaryTexts?.length
-    ? params.primaryTexts.map((t) => ({ text: t }))
-    : [{ text: params.primaryText }];
-  const titles = params.headlines?.length
-    ? params.headlines.map((t) => ({ text: t }))
-    : params.headline
-    ? [{ text: params.headline }]
-    : undefined;
-
-  // Use asset_feed_spec when we have multiple images, texts, or headlines
-  const useAssetFeed = params.imageHash9x16 || bodies.length > 1 || (titles && titles.length > 1);
+  // Use asset_feed_spec when we have a 9:16 image variant for placement
+  // customization (1:1 for feed, 9:16 for stories/reels).
+  // The ad set MUST have is_dynamic_creative=true (set at creation time).
+  const useAssetFeed = !!params.imageHash9x16;
 
   if (useAssetFeed) {
-    const images = params.imageHash9x16
-      ? [
-          { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
-          { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
-        ]
-      : [{ hash: params.imageHash }];
+    // 9:16 placement customization: feed gets 1:1, stories/reels get 9:16
+    const images = [
+      { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
+      { hash: params.imageHash9x16!, adlabels: [{ name: "story_image" }] },
+    ];
 
-    const assetCustomizationRules = params.imageHash9x16
-      ? [
-          {
-            customization_spec: {
-              publisher_platforms: ["facebook"],
-              facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
-            },
-            image_label: { name: "feed_image" },
-          },
-          {
-            customization_spec: {
-              publisher_platforms: ["facebook"],
-              facebook_positions: ["story", "reels", "facebook_reels"],
-            },
-            image_label: { name: "story_image" },
-          },
-          {
-            customization_spec: {
-              publisher_platforms: ["instagram"],
-              instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
-            },
-            image_label: { name: "feed_image" },
-          },
-          {
-            customization_spec: {
-              publisher_platforms: ["instagram"],
-              instagram_positions: ["story", "reels"],
-            },
-            image_label: { name: "story_image" },
-          },
-        ]
-      : undefined;
+    const assetCustomizationRules = [
+      {
+        customization_spec: {
+          publisher_platforms: ["facebook"],
+          facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+        },
+        image_label: { name: "feed_image" },
+      },
+      {
+        customization_spec: {
+          publisher_platforms: ["facebook"],
+          facebook_positions: ["story", "reels", "facebook_reels"],
+        },
+        image_label: { name: "story_image" },
+      },
+      {
+        customization_spec: {
+          publisher_platforms: ["instagram"],
+          instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
+        },
+        image_label: { name: "feed_image" },
+      },
+      {
+        customization_spec: {
+          publisher_platforms: ["instagram"],
+          instagram_positions: ["story", "reels"],
+        },
+        image_label: { name: "story_image" },
+      },
+    ];
 
     return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
       method: "POST",
@@ -281,16 +270,11 @@ export async function createAdCreative(params: {
         asset_feed_spec: {
           ad_formats: ["SINGLE_IMAGE"],
           images,
-          bodies,
-          titles,
+          bodies: [{ text: params.primaryText }],
+          titles: params.headline ? [{ text: params.headline }] : undefined,
           link_urls: [{ website_url: params.linkUrl }],
           call_to_action_types: [cta],
-          ...(assetCustomizationRules ? { asset_customization_rules: assetCustomizationRules } : {}),
-        },
-        degrees_of_freedom_spec: {
-          creative_features_spec: {
-            standard_enhancements: { enroll_status: "OPT_OUT" },
-          },
+          asset_customization_rules: assetCustomizationRules,
         },
       }),
     });
@@ -310,11 +294,6 @@ export async function createAdCreative(params: {
           name: params.headline || undefined,
           link: params.linkUrl,
           call_to_action: { type: cta },
-        },
-      },
-      degrees_of_freedom_spec: {
-        creative_features_spec: {
-          standard_enhancements: { enroll_status: "OPT_OUT" },
         },
       },
     }),
@@ -339,6 +318,54 @@ export async function updateAdSet(adSetId: string, params: { name?: string; star
   });
 }
 
+interface AdSetTemplateConfig {
+  campaign_id: string;
+  billing_event: string;
+  optimization_goal: string;
+  targeting: Record<string, unknown>;
+  promoted_object?: Record<string, unknown>;
+  attribution_spec?: Array<Record<string, unknown>>;
+  bid_strategy?: string;
+  daily_budget?: string;
+}
+
+/**
+ * Fetch a template ad set's config so we can create new ad sets with the same settings.
+ */
+export async function getAdSetConfig(adSetId: string): Promise<AdSetTemplateConfig> {
+  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,daily_budget`);
+}
+
+/**
+ * Create a new ad set from scratch using a template's config.
+ * Supports is_dynamic_creative=true (required for asset_feed_spec with 9:16 placement rules).
+ * Meta's is_dynamic_creative can only be set at creation time, not updated later.
+ */
+export async function createAdSetFromTemplate(params: {
+  templateConfig: AdSetTemplateConfig;
+  name: string;
+  isDynamicCreative?: boolean;
+}): Promise<{ id: string }> {
+  const cfg = params.templateConfig;
+  return metaJson(`/act_${getAdAccountId()}/adsets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: params.name,
+      campaign_id: cfg.campaign_id,
+      billing_event: cfg.billing_event,
+      optimization_goal: cfg.optimization_goal,
+      targeting: cfg.targeting,
+      promoted_object: cfg.promoted_object,
+      attribution_spec: cfg.attribution_spec,
+      bid_strategy: cfg.bid_strategy,
+      daily_budget: cfg.daily_budget || "0",
+      is_dynamic_creative: params.isDynamicCreative || false,
+      status: "PAUSED",
+    }),
+  });
+}
+
 export async function listAdSets(campaignId: string): Promise<
   Array<{ id: string; name: string; status: string }>
 > {
@@ -353,6 +380,7 @@ export async function createAd(params: {
   adSetId: string;
   creativeId: string;
   status?: string;
+  urlTags?: string;
 }): Promise<{ id: string }> {
   return metaJson(`/act_${getAdAccountId()}/ads`, {
     method: "POST",
@@ -362,6 +390,50 @@ export async function createAd(params: {
       adset_id: params.adSetId,
       creative: { creative_id: params.creativeId },
       status: params.status || "PAUSED",
+      // Prevent Meta from auto-cropping the image for vertical placements (stories/reels).
+      // Without this, a 1:1 image gets zoomed-in to fill 9:16, cutting off content.
+      creative_features_spec: {
+        image_cropping: { enroll_status: "OPT_OUT" },
+      },
+      ...(params.urlTags ? { url_tags: params.urlTags } : {}),
     }),
   });
+}
+
+// ---- Analytics Insights ----
+
+export interface MetaInsightsRow {
+  impressions: string;
+  clicks: string;
+  spend: string;
+  ctr: string;
+  cpc: string;
+  cpm: string;
+  campaign_id?: string;
+  campaign_name?: string;
+  date_start: string;
+  date_stop: string;
+}
+
+export async function getAccountInsights(
+  since: string,
+  until: string
+): Promise<MetaInsightsRow[]> {
+  const fields = "impressions,clicks,spend,ctr,cpc,cpm";
+  const timeRange = JSON.stringify({ since, until });
+  const data = await metaJson<{ data: MetaInsightsRow[] }>(
+    `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=account`
+  );
+  return data.data;
+}
+
+export async function getCampaignInsights(
+  since: string,
+  until: string
+): Promise<MetaInsightsRow[]> {
+  const fields = "impressions,clicks,spend,ctr,cpc,cpm,campaign_id,campaign_name";
+  const timeRange = JSON.stringify({ since, until });
+  return metaJsonPaginated<MetaInsightsRow>(
+    `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=50`
+  );
 }

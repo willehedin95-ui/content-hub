@@ -63,7 +63,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const body = await req.json();
-  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, concept_number, ad_copy_doc_id } = body as {
+  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, concept_number, ad_copy_doc_id, marked_ready_at } = body as {
     status?: string;
     target_languages?: string[];
     ad_copy_primary?: string[];
@@ -71,6 +71,7 @@ export async function PATCH(
     landing_page_id?: string | null;
     concept_number?: number | null;
     ad_copy_doc_id?: string | null;
+    marked_ready_at?: string | null;
   };
 
   const db = createServerSupabase();
@@ -84,6 +85,7 @@ export async function PATCH(
     landing_page_id?: string | null;
     concept_number?: number | null;
     ad_copy_doc_id?: string | null;
+    marked_ready_at?: string | null;
   } = { updated_at: new Date().toISOString() };
   if (status) updateData.status = status;
   if (target_languages) updateData.target_languages = target_languages;
@@ -92,6 +94,7 @@ export async function PATCH(
   if (landing_page_id !== undefined) updateData.landing_page_id = landing_page_id;
   if (concept_number !== undefined) updateData.concept_number = concept_number;
   if (ad_copy_doc_id !== undefined) updateData.ad_copy_doc_id = ad_copy_doc_id;
+  if (marked_ready_at !== undefined) updateData.marked_ready_at = marked_ready_at;
 
   const { data, error } = await db
     .from("image_jobs")

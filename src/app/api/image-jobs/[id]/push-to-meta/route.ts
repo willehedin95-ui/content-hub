@@ -23,11 +23,9 @@ export const maxDuration = 300;
  * 1. Look up campaign mapping (product × country)
  * 2. Auto-assign concept number if not set
  * 3. Translate ad copy (English → target language)
- * 4. Duplicate template ad set
- * 5. Rename ad set: "{COUNTRY} #{number} | statics | {concept_name}"
- * 6. Set start_time to next 03:00 CET
- * 7. Upload images + create ads
- * 8. Create meta_campaigns + meta_ads records
+ * 4. Duplicate template ad set + rename
+ * 5. Upload images + create ads (with image_cropping OPT_OUT to prevent auto-crop)
+ * 6. Create meta_campaigns + meta_ads records
  */
 export async function POST(
   _req: NextRequest,
@@ -95,7 +93,8 @@ export async function POST(
   }
 
   const conceptNumberStr = String(conceptNumber).padStart(3, "0");
-  const conceptName = job.name.toLowerCase();
+  // Strip leading "#XXX " prefix from concept name to avoid duplication in ad set name
+  const conceptName = job.name.replace(/^#\d+\s*/, "").toLowerCase();
 
   // Get landing page URLs for each language
   const { data: landingPageTranslations } = await db
@@ -206,14 +205,10 @@ export async function POST(
       // Generate ad set name
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
 
-      // Duplicate template ad set
+      // Duplicate template ad set and rename
       const dupResult = await duplicateAdSet(mapping.template_adset_id);
-      const copied_adset_id = dupResult.copied_adset_id;
-
-      // Rename the duplicated ad set (don't set start_time — duplicated ad sets
-      // inherit "started" status from the template, and Meta rejects start_time
-      // changes on already-started ad sets)
-      await updateAdSet(copied_adset_id, { name: adSetName });
+      const newAdSetId = dupResult.copied_adset_id;
+      await updateAdSet(newAdSetId, { name: adSetName });
 
       // Create meta_campaigns record
       const { data: campaign } = await db
@@ -223,7 +218,7 @@ export async function POST(
           product: job.product,
           image_job_id: jobId,
           meta_campaign_id: mapping.meta_campaign_id,
-          meta_adset_id: copied_adset_id,
+          meta_adset_id: newAdSetId,
           objective: "OUTCOME_TRAFFIC",
           countries: [country],
           language: lang,
@@ -235,12 +230,36 @@ export async function POST(
 
       if (!campaign) throw new Error("Failed to create campaign record");
 
-      // Process each image ad
+      // Process each image ad (with early-exit on non-transient errors)
       const adRows = [];
+      let earlyExitError: string | null = null;
       for (let i = 0; i < langImages.length; i++) {
+        // Early exit: if a previous ad failed with a config/permission error,
+        // skip remaining ads to avoid burning through rate limits
+        if (earlyExitError) {
+          adRows.push({
+            campaign_id: campaign.id,
+            name: `${adSetName} - Ad ${i + 1}`,
+            image_url: langImages[i].translated_url,
+            image_url_9x16: siblings9x16.get(`${langImages[i].source_image_id}:${lang}`) || null,
+            ad_copy: translatedPrimaries.join("\n---\n"),
+            headline: translatedHeadlines.join("\n---\n") || null,
+            source_primary_text: JSON.stringify(primaryTexts),
+            source_headline: JSON.stringify(headlineTexts),
+            landing_page_url: landingUrl,
+            aspect_ratio: "1:1",
+            status: "error",
+            error_message: `Skipped: ${earlyExitError}`,
+          });
+          continue;
+        }
+
         const imgTranslation = langImages[i];
         const adName = `${adSetName} - Ad ${i + 1}`;
         const url9x16 = siblings9x16.get(`${imgTranslation.source_image_id}:${lang}`) || null;
+
+        // Small delay between ads to avoid rate limiting
+        if (i > 0) await new Promise((r) => setTimeout(r, 500));
 
         try {
           // Upload 1:1 image
@@ -269,9 +288,10 @@ export async function POST(
           // Create ad
           const metaAd = await createAd({
             name: adName,
-            adSetId: copied_adset_id,
+            adSetId: newAdSetId,
             creativeId: creative.id,
             status: "PAUSED",
+            urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
           });
 
           adRows.push({
@@ -292,6 +312,7 @@ export async function POST(
             status: "pushed",
           });
         } catch (adErr) {
+          const errMsg = adErr instanceof Error ? adErr.message : "Failed";
           adRows.push({
             campaign_id: campaign.id,
             name: adName,
@@ -304,8 +325,13 @@ export async function POST(
             landing_page_url: landingUrl,
             aspect_ratio: "1:1",
             status: "error",
-            error_message: adErr instanceof Error ? adErr.message : "Failed",
+            error_message: errMsg,
           });
+
+          // Non-transient errors: stop trying remaining ads for this market
+          if (errMsg.includes("Invalid parameter") || errMsg.includes("permission")) {
+            earlyExitError = errMsg;
+          }
         }
       }
 

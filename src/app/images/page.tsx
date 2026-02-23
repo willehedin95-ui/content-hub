@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { ImageJob, Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignStatus } from "@/types";
 import NewConceptModal from "@/components/images/NewConceptModal";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE = 20;
 
@@ -42,23 +42,40 @@ function getMarketStatus(job: ImageJob): Map<string, MetaCampaignStatus> {
   return result;
 }
 
-function getOverallStatus(job: ImageJob): { label: string; color: string } {
-  if (job.status === "draft") return { label: "Importing", color: "text-gray-500 bg-gray-100" };
+function getWizardStep(job: ImageJob): { step: number; label: string; color: string } {
+  if (job.status === "draft") return { step: 0, label: "Importing", color: "text-gray-500 bg-gray-100" };
 
-  const hasDeployments = (job.deployments?.length ?? 0) > 0;
   const hasPushed = job.deployments?.some((d) => d.status === "pushed");
+  if (hasPushed) return { step: 3, label: "Published", color: "text-emerald-700 bg-emerald-50" };
 
-  if (hasPushed) return { label: "Published", color: "text-emerald-700 bg-emerald-50" };
-  if (hasDeployments) return { label: "Pushing", color: "text-blue-700 bg-blue-50" };
+  if (job.marked_ready_at) return { step: 3, label: "Ready", color: "text-teal-700 bg-teal-50" };
 
   const completed = job.completed_translations ?? 0;
   const total = job.total_translations ?? 0;
+  const imagesComplete = total > 0 && completed === total;
 
-  if (total > 0 && completed === total) return { label: "Translated", color: "text-indigo-700 bg-indigo-50" };
-  if (completed > 0) return { label: "Translating", color: "text-amber-700 bg-amber-50" };
-  if (job.status === "ready") return { label: "Ready", color: "text-gray-600 bg-gray-100" };
+  if (!imagesComplete) {
+    if (completed > 0) return { step: 1, label: "Step 1/3 \u00B7 Images", color: "text-amber-700 bg-amber-50" };
+    if (job.status === "ready") return { step: 1, label: "Step 1/3 \u00B7 Images", color: "text-gray-600 bg-gray-100" };
+    return { step: 0, label: "New", color: "text-gray-500 bg-gray-100" };
+  }
 
-  return { label: "New", color: "text-gray-500 bg-gray-100" };
+  // Images done — check ad copy
+  const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
+  const hasLanding = !!job.landing_page_id;
+  // We don't have ad_copy_translations at list level easily, but check if concept is at step 3
+  const hasDeployments = (job.deployments?.length ?? 0) > 0;
+  if (hasDeployments) return { step: 3, label: "Step 3/3 \u00B7 Preview", color: "text-blue-700 bg-blue-50" };
+
+  if (hasPrimary && hasLanding) return { step: 3, label: "Step 3/3 \u00B7 Preview", color: "text-indigo-700 bg-indigo-50" };
+
+  return { step: 2, label: "Step 2/3 \u00B7 Ad Copy", color: "text-indigo-700 bg-indigo-50" };
+}
+
+// Backwards compat wrapper used by filters
+function getOverallStatus(job: ImageJob): { label: string; color: string } {
+  const ws = getWizardStep(job);
+  return { label: ws.label, color: ws.color };
 }
 
 function formatDate(dateStr: string): string {
@@ -80,11 +97,11 @@ type SortDir = "asc" | "desc";
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
-  { value: "Importing", label: "Importing" },
+  { value: "New", label: "New" },
+  { value: "Images", label: "Images" },
+  { value: "Ad Copy", label: "Ad Copy" },
+  { value: "Preview", label: "Preview" },
   { value: "Ready", label: "Ready" },
-  { value: "Translating", label: "Translating" },
-  { value: "Translated", label: "Translated" },
-  { value: "Pushing", label: "Pushing" },
   { value: "Published", label: "Published" },
 ] as const;
 
@@ -110,7 +127,11 @@ export default function ImagesPage() {
   // Filter and sort jobs client-side
   const filteredJobs = jobs.filter((job) => {
     if (searchQuery && !job.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (statusFilter !== "all" && getOverallStatus(job).label !== statusFilter) return false;
+    if (statusFilter !== "all") {
+      const ws = getWizardStep(job);
+      const match = statusFilter === ws.label || ws.label.includes(statusFilter);
+      if (!match) return false;
+    }
     if (productFilter !== "all" && job.product !== productFilter) return false;
     return true;
   }).sort((a, b) => {
@@ -192,13 +213,13 @@ export default function ImagesPage() {
     <div className="p-8 max-w-6xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold text-gray-900">Concepts</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Ad Concepts</h1>
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
-          New Concept
+          New Ad Concept
         </button>
       </div>
       <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
@@ -284,9 +305,9 @@ export default function ImagesPage() {
       ) : jobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <ImageIcon className="w-10 h-10 text-gray-300 mb-3" />
-          <p className="text-gray-500 text-sm">No concepts yet</p>
+          <p className="text-gray-500 text-sm">No ad concepts yet</p>
           <p className="text-gray-400 text-xs mt-1">
-            Click &quot;+ New Concept&quot; to create your first batch
+            Click &quot;+ New Ad Concept&quot; to create your first batch
           </p>
         </div>
       ) : (
@@ -319,7 +340,7 @@ export default function ImagesPage() {
           ) : filteredJobs.map((job) => {
             const langStatus = getLanguageStatus(job);
             const marketStatus = getMarketStatus(job);
-            const status = getOverallStatus(job);
+            const status = getWizardStep(job);
             const conceptNum = job.concept_number;
 
             return (

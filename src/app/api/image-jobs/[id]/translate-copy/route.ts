@@ -26,6 +26,7 @@ export async function POST(
   }
   const body = await req.json();
   const targetLang = body.language as Language | undefined;
+  const corrections = body.corrections as string | undefined;
 
   const db = createServerSupabase();
 
@@ -83,7 +84,7 @@ export async function POST(
             role: "system",
             content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
-Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}
+Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}${corrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${corrections}` : ""}
 Return a JSON object with exactly two keys:
 - "primary_texts": an array of translated primary texts (same order as input)
 - "headlines": an array of translated headlines (same order as input)
@@ -144,7 +145,8 @@ Be strict: any grammar error, meaning change, or awkward phrasing should reduce 
 - Names being properly localized to ${langLabel} equivalents
 - Cultural references adapted for the target market
 - Ad copy maintaining its persuasive power
-- Natural-sounding ${langLabel} (not "translationese")`,
+- Natural-sounding ${langLabel} (not "translationese")
+IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
           },
           {
             role: "user",

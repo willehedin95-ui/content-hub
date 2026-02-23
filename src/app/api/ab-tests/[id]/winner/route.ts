@@ -33,7 +33,7 @@ export async function POST(
   // Fetch the A/B test
   const { data: test, error: tErr } = await db
     .from("ab_tests")
-    .select(`*, pages (slug)`)
+    .select("*")
     .eq("id", id)
     .single();
 
@@ -79,24 +79,12 @@ export async function POST(
     // Deploy the winning HTML to the main slug (replaces router)
     const result = await publishPage(
       winnerTranslation.translated_html,
-      test.pages.slug,
+      test.slug,
       test.language as Language,
       undefined,
       undefined,
       analytics
     );
-
-    // Update the control translation with the published URL
-    await db
-      .from("translations")
-      .update({
-        published_url: result.url,
-        status: "published",
-        // If variant B won, copy its HTML to the control translation
-        ...(winner === "b" ? { translated_html: winnerTranslation.translated_html } : {}),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", test.control_id);
 
     // Mark test as completed
     const { data: updated, error: uErr } = await db

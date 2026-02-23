@@ -10,7 +10,6 @@ import {
   Copy,
   Check,
   AlertCircle,
-  FlaskConical,
   RefreshCw,
   ChevronDown,
   ChevronUp,
@@ -21,7 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { Translation, PageQualityAnalysis, ABTest, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
+import { Translation, PageQualityAnalysis, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
 import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
@@ -40,11 +39,6 @@ const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   error: "Error",
 };
 
-const AB_STATUS_LABELS: Record<string, string> = {
-  draft: "A/B Draft",
-  active: "A/B Active",
-  completed: "A/B Completed",
-};
 
 function scoreColor(score: number): string {
   if (score >= 85) return "text-emerald-600";
@@ -69,7 +63,6 @@ export default function TranslationRow({
   pageId,
   language,
   translation,
-  abTest,
   imagesToTranslate,
   onRegisterTranslate,
   onUnregisterTranslate,
@@ -77,7 +70,6 @@ export default function TranslationRow({
   pageId: string;
   language: (typeof LANGUAGES)[number];
   translation?: Translation;
-  abTest?: ABTest;
   imagesToTranslate?: PageImageSelection[];
   onRegisterTranslate?: (fn: () => Promise<void>) => void;
   onUnregisterTranslate?: () => void;
@@ -86,7 +78,7 @@ export default function TranslationRow({
 
   // Loading/progress states
   const [progress, setProgress] = useState<{
-    loading: "translate" | "publish" | "ab" | "analyze" | "regenerate" | "fix" | null;
+    loading: "translate" | "publish" | "analyze" | "regenerate" | "fix" | null;
     error: string;
     progressLabel: string;
     attempt: number;
@@ -170,7 +162,6 @@ export default function TranslationRow({
   const status: TranslationStatus | "none" = translation?.status ?? "none";
   const canPublish =
     status === "translated" || status === "published" || status === "error";
-  const hasActiveTest = abTest && abTest.status !== "completed";
 
   function handleCancel() {
     if (abortRef.current) abortRef.current.abort();
@@ -533,36 +524,6 @@ export default function TranslationRow({
     setShowPublishModal(true);
   }
 
-  async function handleCreateABTest() {
-    if (!translation?.id) return;
-    setProgress(prev => ({ ...prev, loading: "ab", error: "" }));
-
-    try {
-      const res = await fetch("/api/ab-tests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translation_id: translation.id }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 409 && data.id) {
-          router.push(`/pages/${pageId}/ab-test/${language.value}`);
-          return;
-        }
-        setProgress(prev => ({ ...prev, error: data.error || "Failed to create A/B test" }));
-        return;
-      }
-
-      router.push(`/pages/${pageId}/ab-test/${language.value}`);
-    } catch {
-      setProgress(prev => ({ ...prev, error: "Failed to create A/B test \u2014 check your connection" }));
-    } finally {
-      setProgress(prev => ({ ...prev, loading: null }));
-    }
-  }
-
   async function handleDelete() {
     if (!translation?.id) return;
     setProgress(prev => ({ ...prev, loading: "translate", error: "" }));
@@ -582,7 +543,7 @@ export default function TranslationRow({
   }
 
   function handleCopyUrl() {
-    const url = abTest?.router_url || translation?.published_url;
+    const url = translation?.published_url;
     if (!url) return;
     navigator.clipboard.writeText(url);
     setCopied(true);
@@ -657,7 +618,7 @@ export default function TranslationRow({
     );
   }
 
-  const displayUrl = abTest?.router_url || translation.published_url;
+  const displayUrl = translation.published_url;
   const settings = getPageQualitySettings();
 
   // Has translation — show full row
@@ -707,13 +668,6 @@ export default function TranslationRow({
                 </div>
               )}
             </div>
-          ) : hasActiveTest ? (
-            <>
-              <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-xs text-amber-600">
-                {AB_STATUS_LABELS[abTest.status] ?? abTest.status}
-              </span>
-            </>
           ) : (
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
@@ -805,15 +759,7 @@ export default function TranslationRow({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {hasActiveTest ? (
-            <Link
-              href={`/pages/${pageId}/ab-test/${language.value}`}
-              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 transition-colors"
-            >
-              <FlaskConical className="w-3.5 h-3.5" />
-              Manage Test
-            </Link>
-          ) : (
+          {(
             <>
               <Link
                 href={`/pages/${pageId}/edit/${language.value}`}
@@ -878,18 +824,6 @@ export default function TranslationRow({
                       >
                         <ImageIcon className="w-3.5 h-3.5" />
                         Translate images
-                      </button>
-                      <button
-                        onClick={() => { setShowMore(false); handleCreateABTest(); }}
-                        disabled={progress.loading !== null}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                      >
-                        {progress.loading === "ab" ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <FlaskConical className="w-3.5 h-3.5" />
-                        )}
-                        Create A/B test
                       </button>
                       <div className="border-t border-gray-100 my-1" />
                       <button

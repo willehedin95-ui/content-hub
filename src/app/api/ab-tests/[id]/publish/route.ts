@@ -22,10 +22,10 @@ export async function POST(
 
   const db = createServerSupabase();
 
-  // Fetch the A/B test with page info
+  // Fetch the A/B test
   const { data: test, error: tErr } = await db
     .from("ab_tests")
-    .select(`*, pages (slug)`)
+    .select("*")
     .eq("id", id)
     .single();
 
@@ -89,7 +89,7 @@ export async function POST(
     const result = await publishABTest(
       control.translated_html,
       variant.translated_html,
-      test.pages.slug,
+      test.slug,
       test.language as Language,
       test.split,
       id,

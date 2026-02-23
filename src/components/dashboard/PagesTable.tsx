@@ -2,10 +2,20 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2, ChevronRight, AlertCircle, X } from "lucide-react";
+import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 import StatusDot from "./StatusDot";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const PRODUCT_MAP = Object.fromEntries(PRODUCTS.map((p) => [p.value, p.label]));
 const TYPE_MAP = Object.fromEntries(PAGE_TYPES.map((t) => [t.value, t.label]));
@@ -74,82 +84,92 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
   return (
     <div>
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
-        <input
-          type="text"
-          value={filter.search}
-          onChange={(e) =>
-            setFilter((f) => ({ ...f, search: e.target.value }))
-          }
-          placeholder="Search pages..."
-          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 w-56"
-        />
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={filter.search}
+            onChange={(e) =>
+              setFilter((f) => ({ ...f, search: e.target.value }))
+            }
+            placeholder="Search pages..."
+            className="pl-9 w-56"
+          />
+        </div>
 
-        <select
-          value={filter.product}
-          onChange={(e) => setFilter((f) => ({ ...f, product: e.target.value }))}
-          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+        <Select
+          value={filter.product || "__all__"}
+          onValueChange={(v) => setFilter((f) => ({ ...f, product: v === "__all__" ? "" : v }))}
         >
-          <option value="">All Products</option>
-          {PRODUCTS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="All Products" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Products</SelectItem>
+            {PRODUCTS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <select
-          value={filter.type}
-          onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
-          className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500"
+        <Select
+          value={filter.type || "__all__"}
+          onValueChange={(v) => setFilter((f) => ({ ...f, type: v === "__all__" ? "" : v }))}
         >
-          <option value="">All Types</option>
-          {PAGE_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="All Types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Types</SelectItem>
+            {PAGE_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <span className="text-gray-400 text-sm ml-auto">
+        <span className="text-muted-foreground text-sm ml-auto tabular-nums">
           {filtered.length} page{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* Delete error */}
       {deleteError && (
-        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
+        <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3 mb-4">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span className="flex-1">{deleteError}</span>
-          <button onClick={() => setDeleteError("")} className="text-red-400 hover:text-red-600 shrink-0">
+          <button onClick={() => setDeleteError("")} className="text-destructive/60 hover:text-destructive shrink-0">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+      <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">
+            <tr className="border-b border-border bg-muted/50">
+              <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">
                 Name
               </th>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">
+              <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">
                 Product
               </th>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">
+              <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">
                 Type
               </th>
               {LANGUAGES.map((l) => (
                 <th
                   key={l.value}
-                  className="text-center px-4 py-3 text-gray-500 font-medium"
+                  className="text-center px-4 py-3 text-muted-foreground font-medium"
                 >
                   <span role="img" aria-label={l.label}>{l.flag}</span>
                 </th>
               ))}
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">
+              <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">
                 Created
               </th>
               <th className="px-4 py-3" />
@@ -160,14 +180,14 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
               <tr>
                 <td
                   colSpan={7 + LANGUAGES.length}
-                  className="px-4 py-12 text-center text-gray-400"
+                  className="px-4 py-12 text-center text-muted-foreground"
                 >
                   {pages.length === 0 ? (
                     <>
                       No pages yet.{" "}
                       <button
                         onClick={onImport}
-                        className="text-indigo-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         Import your first page &rarr;
                       </button>
@@ -179,7 +199,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                         onClick={() =>
                           setFilter({ product: "", type: "", search: "" })
                         }
-                        className="text-indigo-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         Clear filters
                       </button>
@@ -191,19 +211,19 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
             {filtered.map((page) => (
               <tr
                 key={page.id}
-                className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                 onClick={() => router.push(`/pages/${page.id}`)}
               >
                 <td className="px-4 py-3">
-                  <span className="text-gray-900 font-medium">{page.name}</span>
+                  <span className="text-foreground font-medium">{page.name}</span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-gray-500 capitalize">
+                  <span className="text-muted-foreground capitalize">
                     {PRODUCT_MAP[page.product]}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-gray-500 capitalize">
+                  <span className="text-muted-foreground capitalize">
                     {TYPE_MAP[page.page_type]}
                   </span>
                 </td>
@@ -223,7 +243,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="text-gray-400 hover:text-indigo-600"
+                            className="text-muted-foreground hover:text-primary"
                           >
                             <ExternalLink className="w-3 h-3" />
                           </a>
@@ -232,7 +252,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                     </td>
                   );
                 })}
-                <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                   {new Date(page.created_at).toLocaleDateString("en-GB", {
                     day: "numeric",
                     month: "short",
@@ -240,27 +260,29 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDelete({ id: page.id, name: page.name });
                       }}
                       disabled={deleting === page.id}
-                      className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                    </Button>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       {/* Status legend */}
-      <div className="flex items-center gap-4 mt-4 px-1">
+      <div className="flex items-center gap-4 mt-3 px-1">
         {([
           { color: "bg-gray-300", label: "Not started" },
           { color: "bg-yellow-400", label: "Translating" },
@@ -270,7 +292,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
         ] as const).map((s) => (
           <div key={s.label} className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${s.color}`} />
-            <span className="text-xs text-gray-400">{s.label}</span>
+            <span className="text-xs text-muted-foreground">{s.label}</span>
           </div>
         ))}
       </div>

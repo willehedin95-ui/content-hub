@@ -29,7 +29,8 @@ export async function analyzeTranslationQuality(
         content: `Compare an English ad image with its ${targetLanguage} translation. Return JSON:
 {"quality_score":<0-100>,"spelling_errors":[],"grammar_issues":[],"missing_text":[],"overall_assessment":"<1-2 sentences>","extracted_text":"<all visible text in translated image>"}
 
-Scoring: 90-100 perfect, 70-89 minor issues, 50-69 noticeable problems, 0-49 major errors. Be strict — one misspelled word reduces score.`,
+Scoring: 90-100 perfect, 70-89 minor issues, 50-69 noticeable problems, 0-49 major errors. Be strict — one misspelled word reduces score.
+IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
       },
       {
         role: "user",

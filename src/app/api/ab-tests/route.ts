@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const [dataResult, countResult] = await Promise.all([
     db
       .from("ab_tests")
-      .select(`*, pages (name, slug)`)
+      .select("*")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
     db.from("ab_tests").select("id", { count: "exact", head: true }),
@@ -32,96 +32,83 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { translation_id } = await req.json();
+  const { name, slug, language, control_id, variant_id, split, description } = await req.json();
 
-  if (!translation_id) {
+  if (!name || !slug || !language || !control_id || !variant_id) {
     return NextResponse.json(
-      { error: "translation_id is required" },
+      { error: "name, slug, language, control_id, and variant_id are required" },
+      { status: 400 }
+    );
+  }
+
+  if (control_id === variant_id) {
+    return NextResponse.json(
+      { error: "Variant A and Variant B must be different translations" },
       { status: 400 }
     );
   }
 
   const db = createServerSupabase();
 
-  // Fetch the control translation
-  const { data: control, error: cErr } = await db
-    .from("translations")
-    .select("*")
-    .eq("id", translation_id)
-    .single();
+  // Validate both translations exist and have HTML
+  const [{ data: controlT }, { data: variantT }] = await Promise.all([
+    db.from("translations").select("id, translated_html, language").eq("id", control_id).single(),
+    db.from("translations").select("id, translated_html, language").eq("id", variant_id).single(),
+  ]);
 
-  if (cErr || !control) {
+  if (!controlT || !variantT) {
     return NextResponse.json(
-      { error: "Translation not found" },
+      { error: "One or both translations not found" },
       { status: 404 }
     );
   }
 
-  if (!control.translated_html) {
+  if (!controlT.translated_html || !variantT.translated_html) {
     return NextResponse.json(
-      { error: "Translation has no HTML. Translate first." },
+      { error: "Both translations must have HTML content" },
       { status: 400 }
     );
   }
 
-  // Check if an A/B test already exists for this page+language
+  if (controlT.language !== language || variantT.language !== language) {
+    return NextResponse.json(
+      { error: "Both translations must match the selected language" },
+      { status: 400 }
+    );
+  }
+
+  // Check slug uniqueness for this language
   const { data: existing } = await db
     .from("ab_tests")
     .select("id")
-    .eq("page_id", control.page_id)
-    .eq("language", control.language)
+    .eq("slug", slug)
+    .eq("language", language)
     .single();
 
   if (existing) {
     return NextResponse.json(
-      { error: "An A/B test already exists for this language", id: existing.id },
+      { error: "A test with this slug already exists for this language" },
       { status: 409 }
     );
   }
 
-  // Ensure the control has variant='control'
-  await db
-    .from("translations")
-    .update({ variant: "control" })
-    .eq("id", control.id);
-
-  // Create variant B by duplicating the control translation
-  const { data: variant, error: vErr } = await db
-    .from("translations")
-    .insert({
-      page_id: control.page_id,
-      language: control.language,
-      variant: "b",
-      translated_html: control.translated_html,
-      translated_texts: control.translated_texts,
-      seo_title: control.seo_title,
-      seo_description: control.seo_description,
-      status: "translated",
-    })
-    .select()
-    .single();
-
-  if (vErr || !variant) {
-    return safeError(vErr, "Failed to create variant");
-  }
-
-  // Create the A/B test record
+  // Create the A/B test
   const { data: test, error: tErr } = await db
     .from("ab_tests")
     .insert({
-      page_id: control.page_id,
-      language: control.language,
-      control_id: control.id,
-      variant_id: variant.id,
-      split: 50,
+      name,
+      slug,
+      language,
+      description: description || null,
+      control_id,
+      variant_id,
+      split: split ?? 50,
       status: "draft",
     })
     .select()
     .single();
 
   if (tErr || !test) {
-    // Clean up the variant if test creation fails
-    await db.from("translations").delete().eq("id", variant.id);
     return safeError(tErr, "Failed to create A/B test");
   }
 

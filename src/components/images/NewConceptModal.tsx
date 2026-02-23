@@ -60,11 +60,13 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
 
     setLoadingFolders(true);
     fetch("/api/drive/list-folders")
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load folders");
         if (data.folders) setFolders(data.folders);
+        else throw new Error("No folders returned");
       })
-      .catch(() => setError("Failed to load concept folders"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load concept folders"))
       .finally(() => setLoadingFolders(false));
   }, [open, folders.length]);
 

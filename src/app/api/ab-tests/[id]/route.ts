@@ -15,7 +15,7 @@ export async function GET(
 
   const { data, error } = await db
     .from("ab_tests")
-    .select(`*, pages (name, slug)`)
+    .select("*")
     .eq("id", id)
     .single();
 
@@ -23,7 +23,17 @@ export async function GET(
     return NextResponse.json({ error: "A/B test not found" }, { status: 404 });
   }
 
-  return NextResponse.json(data);
+  // Fetch both translations with their page info
+  const [{ data: controlT }, { data: variantT }] = await Promise.all([
+    db.from("translations").select("*, pages (id, name, slug)").eq("id", data.control_id).single(),
+    db.from("translations").select("*, pages (id, name, slug)").eq("id", data.variant_id).single(),
+  ]);
+
+  return NextResponse.json({
+    ...data,
+    control_translation: controlT,
+    variant_translation: variantT,
+  });
 }
 
 export async function PUT(
@@ -34,22 +44,26 @@ export async function PUT(
   if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
-  const { split } = await req.json();
+  const body = await req.json();
   const db = createServerSupabase();
 
-  const updates: { updated_at: string; split?: number } = {
+  const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
 
-  if (split !== undefined) {
-    if (typeof split !== "number" || split < 0 || split > 100) {
+  if (body.split !== undefined) {
+    if (typeof body.split !== "number" || body.split < 0 || body.split > 100) {
       return NextResponse.json(
         { error: "split must be a number between 0 and 100" },
         { status: 400 }
       );
     }
-    updates.split = split;
+    updates.split = body.split;
   }
+
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.slug !== undefined) updates.slug = body.slug;
+  if (body.description !== undefined) updates.description = body.description || null;
 
   const { data, error } = await db
     .from("ab_tests")
@@ -75,10 +89,9 @@ export async function DELETE(
   }
   const db = createServerSupabase();
 
-  // Fetch the test to get the variant_id
   const { data: test, error: tErr } = await db
     .from("ab_tests")
-    .select("variant_id")
+    .select("id")
     .eq("id", id)
     .single();
 
@@ -86,13 +99,8 @@ export async function DELETE(
     return NextResponse.json({ error: "A/B test not found" }, { status: 404 });
   }
 
-  // Delete the A/B test record first (FK constraint)
+  // Delete the test record only — translations belong to their pages
   await db.from("ab_tests").delete().eq("id", id);
-
-  // Delete the variant B translation
-  if (test.variant_id) {
-    await db.from("translations").delete().eq("id", test.variant_id);
-  }
 
   return NextResponse.json({ ok: true });
 }

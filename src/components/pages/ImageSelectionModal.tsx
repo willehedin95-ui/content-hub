@@ -24,7 +24,7 @@ interface Props {
   translationId: string;
   language: { value: string; label: string };
   pageHtml: string;
-  onClose: (translated: boolean) => void;
+  onClose: (translated: boolean, stillTranslating?: boolean) => void;
 }
 
 function extractImagesFromHtml(html: string): PageImage[] {
@@ -126,7 +126,8 @@ export default function ImageSelectionModal({
     let successes = 0;
 
     // Process images sequentially to avoid overwhelming the API
-    for (const img of selectedImages) {
+    for (let idx = 0; idx < selectedImages.length; idx++) {
+      const img = selectedImages[idx];
       try {
         const aspectRatio = computeAspectRatio(img.width, img.height);
 
@@ -139,6 +140,8 @@ export default function ImageSelectionModal({
             imageIndex: img.index,
             language: language.value,
             aspectRatio,
+            // First call initializes batch tracking in DB
+            ...(idx === 0 && { batchInit: true, batchTotal: selectedImages.length }),
           }),
         });
 
@@ -176,9 +179,8 @@ export default function ImageSelectionModal({
             </p>
           </div>
           <button
-            onClick={() => onClose(anyTranslated)}
-            disabled={translating}
-            className="text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors"
+            onClick={() => onClose(anyTranslated, translating)}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -276,7 +278,7 @@ export default function ImageSelectionModal({
         <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200 shrink-0">
           {completed ? (
             <button
-              onClick={() => onClose(anyTranslated)}
+              onClick={() => onClose(anyTranslated, false)}
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors ml-auto"
             >
               <Check className="w-4 h-4" />
@@ -285,17 +287,19 @@ export default function ImageSelectionModal({
           ) : (
             <>
               <button
-                onClick={() => onClose(anyTranslated)}
-                disabled={translating}
-                className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 transition-colors"
+                onClick={() => onClose(anyTranslated, translating)}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
-                Skip
+                {translating ? "Close" : "Skip"}
               </button>
 
               {translating ? (
-                <div className="flex items-center gap-2 text-sm text-indigo-600">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Translating {progress.done}/{progress.total} images...
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2 text-sm text-indigo-600">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Translating {progress.done}/{progress.total} images...
+                  </div>
+                  <span className="text-xs text-gray-400">You can close this — translations continue in the background</span>
                 </div>
               ) : (
                 <button

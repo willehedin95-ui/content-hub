@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
 import TranslationPanel from "@/components/pages/TranslationPanel";
-import { Page, Translation, ABTest, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
+import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -49,12 +49,6 @@ export default async function PageDetailPage({
     }
   }
 
-  // Fetch A/B tests for this page
-  const { data: abTests } = await db
-    .from("ab_tests")
-    .select("*")
-    .eq("page_id", id);
-
   return (
     <div className="p-8 max-w-4xl">
       {/* Back */}
@@ -96,7 +90,6 @@ export default async function PageDetailPage({
         pageId={p.id}
         languages={LANGUAGES.filter((lang) => lang.domain)}
         translations={p.translations ?? []}
-        abTests={(abTests as ABTest[]) ?? []}
         imagesToTranslate={p.images_to_translate}
       />
 

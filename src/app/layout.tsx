@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
-import { ToastProvider } from "@/components/ui/Toast";
+import { Toaster } from "@/components/ui/sonner";
+import AgentationWrapper from "@/components/ui/AgentationWrapper";
 import { createAuthServerClient } from "@/lib/supabase-server";
 
 export const metadata: Metadata = {
@@ -27,7 +28,6 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="flex min-h-screen bg-gray-50">
-        <ToastProvider>
           {user ? (
             <>
               <Sidebar userEmail={user.email} />
@@ -36,7 +36,8 @@ export default async function RootLayout({
           ) : (
             <main className="flex-1">{children}</main>
           )}
-        </ToastProvider>
+        <Toaster position="top-right" />
+        <AgentationWrapper />
       </body>
     </html>
   );

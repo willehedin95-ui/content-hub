@@ -3,22 +3,21 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Loader2, AlertCircle, RefreshCw } from "lucide-react";
-import { Translation, ABTest, LANGUAGES, PageImageSelection } from "@/types";
+import { Translation, LANGUAGES, PageImageSelection } from "@/types";
 import TranslationRow from "./TranslationRow";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { getPageQualitySettings } from "@/lib/settings";
 
 interface Props {
   pageId: string;
   languages: (typeof LANGUAGES)[number][];
   translations: Translation[];
-  abTests: ABTest[];
   imagesToTranslate?: PageImageSelection[];
 }
 
 const STUCK_TIMEOUT_BASE_MS = 3 * 60 * 1000; // 3 minutes base
 
-export default function TranslationPanel({ pageId, languages, translations, abTests, imagesToTranslate }: Props) {
+export default function TranslationPanel({ pageId, languages, translations, imagesToTranslate }: Props) {
   const router = useRouter();
   const [translatingAll, setTranslatingAll] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -43,8 +42,6 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
       if (stuckTimerRef.current) clearTimeout(stuckTimerRef.current);
     };
   }, []);
-
-  const abTestMap = new Map(abTests.map((t) => [t.language, t]));
 
   const untranslatedLangs = languages.filter((lang) => {
     const t = translations.find((tr) => tr.language === lang.value && tr.variant !== "b");
@@ -202,7 +199,7 @@ export default function TranslationPanel({ pageId, languages, translations, abTe
               pageId={pageId}
               language={lang}
               translation={translation}
-              abTest={abTestMap.get(lang.value)}
+
               imagesToTranslate={imagesToTranslate}
               onRegisterTranslate={(fn) => registerTranslate(lang.value, fn)}
               onUnregisterTranslate={() => unregisterTranslate(lang.value)}
