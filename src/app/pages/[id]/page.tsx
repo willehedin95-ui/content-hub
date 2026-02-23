@@ -71,6 +71,11 @@ export default async function PageDetailPage({
             <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full capitalize">
               {PAGE_TYPES.find((t) => t.value === p.page_type)?.label}
             </span>
+            {p.source_language && p.source_language !== "en" && (
+              <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
+                Source: {LANGUAGES.find((l) => l.value === p.source_language)?.label ?? p.source_language.toUpperCase()}
+              </span>
+            )}
             <span className="text-xs font-mono text-gray-400">/{p.slug}</span>
           </div>
         </div>

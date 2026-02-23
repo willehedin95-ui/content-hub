@@ -22,6 +22,7 @@ export interface Page {
   source_url: string;
   original_html: string;
   slug: string;
+  source_language: string;
   images_to_translate: PageImageSelection[];
   created_at: string;
   translations?: Translation[];

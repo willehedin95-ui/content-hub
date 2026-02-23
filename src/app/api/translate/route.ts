@@ -79,6 +79,38 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const sourceLanguage: string = page.source_language || "en";
+
+    // Same-language shortcut: if source matches target, copy original HTML as-is
+    if (sourceLanguage === language) {
+      const { metas } = extractBlocks(page.original_html);
+
+      const { data: translation, error: saveError } = await db
+        .from("translations")
+        .upsert(
+          {
+            page_id,
+            language,
+            variant: "control",
+            translated_html: page.original_html,
+            translated_texts: null,
+            seo_title: metas.title || null,
+            seo_description: metas.description || null,
+            status: "translated",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "page_id,language,variant" }
+        )
+        .select()
+        .single();
+
+      if (saveError) {
+        throw new Error(saveError.message);
+      }
+
+      return NextResponse.json(translation);
+    }
+
     const startTime = Date.now();
 
     // Extract metas from the original HTML (for SEO title/description)
@@ -92,8 +124,8 @@ export async function POST(req: NextRequest) {
     // GPT sees the full narrative and translates all text naturally — like
     // pasting the full text into a GPT chat and asking it to translate.
     const [htmlResult, metasResult] = await Promise.all([
-      translateFullHtml(bodyHtml, language as Language, apiKey),
-      translateMetas(metas, language as Language, apiKey),
+      translateFullHtml(bodyHtml, language as Language, apiKey, sourceLanguage),
+      translateMetas(metas, language as Language, apiKey, sourceLanguage),
     ]);
 
     const translatedMetas = metasResult.result;
@@ -145,6 +177,7 @@ export async function POST(req: NextRequest) {
       cost_usd: costUsd,
       metadata: {
         language,
+        source_language: sourceLanguage,
         approach: "full-html",
         duration_ms: Date.now() - startTime,
       },

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const db = createServerSupabase();
   const body = await req.json();
 
-  const { name, product, page_type, source_url, original_html, slug, images_to_translate } = body;
+  const { name, product, page_type, source_url, original_html, slug, images_to_translate, source_language } = body;
 
   if (!name || !product || !page_type || !source_url || !original_html || !slug) {
     return NextResponse.json(
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       source_url,
       original_html,
       slug,
+      source_language: source_language || "en",
       images_to_translate: images_to_translate || [],
     })
     .select()

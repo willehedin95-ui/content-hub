@@ -5,21 +5,24 @@ import { formatLocalization } from "./localization";
 import { OPENAI_MODEL } from "./constants";
 import { withRetry, isTransientError } from "./retry";
 
-const LANGUAGE_NAMES: Record<Language, string> = {
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
   sv: "svenska",
   da: "dansk",
   no: "norsk (bokmål)",
   de: "deutsch",
 };
 
-const LANGUAGE_NAMES_EN: Record<Language, string> = {
+const LANGUAGE_NAMES_EN: Record<string, string> = {
+  en: "English",
   sv: "Swedish",
   da: "Danish",
   no: "Norwegian (Bokmål)",
   de: "German",
 };
 
-const COUNTRIES: Record<Language, string> = {
+const COUNTRIES: Record<string, string> = {
+  en: "United Kingdom",
   sv: "Sweden",
   da: "Denmark",
   no: "Norway",
@@ -40,6 +43,7 @@ export async function translateFullHtml(
   bodyHtml: string,
   language: Language,
   apiKey: string,
+  sourceLanguage: string = "en",
 ): Promise<{
   result: string;
   inputTokens: number;
@@ -49,13 +53,14 @@ export async function translateFullHtml(
   const langName = LANGUAGE_NAMES_EN[language];
   const langNameNative = LANGUAGE_NAMES[language];
   const country = COUNTRIES[language];
+  const sourceLangName = LANGUAGE_NAMES_EN[sourceLanguage] || "English";
 
   const localizationBlock = formatLocalization(language);
 
   const systemPrompt = `You are a senior native ${langName} (${langNameNative}) copywriter and translator with deep understanding of how people in ${country} think, talk and buy (target audience ~35–65). You write simply, clearly and naturally. You always prioritise CLARITY. A confused mind says no.
 
 TASK:
-You will receive the complete HTML of an English web page (an advertorial / landing page for a health/sleep product).
+You will receive the complete HTML of a ${sourceLangName} web page (an advertorial / landing page for a health/sleep product).
 Translate ALL visible text content into natural, fluent ${langName}.
 Return the COMPLETE translated HTML with the EXACT same structure — only the visible text content should change.
 The goal is for the page to read as if it was ORIGINALLY WRITTEN by a native ${langName} speaker — not like a translation.
@@ -811,7 +816,8 @@ export async function translateMetas(
     ogDescription?: string;
   },
   language: Language,
-  apiKey: string
+  apiKey: string,
+  sourceLanguage: string = "en",
 ): Promise<{
   result: typeof metas;
   inputTokens: number;
@@ -820,6 +826,7 @@ export async function translateMetas(
   const client = new OpenAI({ apiKey });
   const langName = LANGUAGE_NAMES_EN[language];
   const langNameNative = LANGUAGE_NAMES[language];
+  const sourceLangName = LANGUAGE_NAMES_EN[sourceLanguage] || "English";
 
   // Filter out undefined values
   const input = Object.fromEntries(
@@ -836,7 +843,7 @@ export async function translateMetas(
         messages: [
           {
             role: "system",
-            content: `Translate these SEO meta values from English to ${langName} (${langNameNative}).
+            content: `Translate these SEO meta values from ${sourceLangName} to ${langName} (${langNameNative}).
 Write naturally for a native ${langName} speaker. Keep brand names unchanged: ${DO_NOT_TRANSLATE}.
 Keep all person names exactly as they appear — do NOT rename them.
 

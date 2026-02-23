@@ -42,6 +42,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
   const [name, setName] = useState("");
   const [product, setProduct] = useState<Product>("happysleep");
   const [pageType, setPageType] = useState<PageType>("advertorial");
+  const [sourceLanguage, setSourceLanguage] = useState("en");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +63,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
     setName("");
     setProduct("happysleep");
     setPageType("advertorial");
+    setSourceLanguage("en");
     setSaving(false);
     setSaveError("");
     if (fetchStageTimerRef.current) clearInterval(fetchStageTimerRef.current);
@@ -212,6 +214,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
           source_url: url,
           original_html: fetchedHtml,
           slug,
+          source_language: sourceLanguage,
           images_to_translate: imagesToTranslate,
         }),
       });
@@ -470,7 +473,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label htmlFor="modal-product" className="block text-sm font-medium text-gray-700 mb-1.5">Product</label>
                     <select
@@ -495,6 +498,20 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                       {PAGE_TYPES.map((t) => (
                         <option key={t.value} value={t.value}>{t.label}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="modal-source-lang" className="block text-sm font-medium text-gray-700 mb-1.5">Source Language</label>
+                    <select
+                      id="modal-source-lang"
+                      value={sourceLanguage}
+                      onChange={(e) => setSourceLanguage(e.target.value)}
+                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="en">English</option>
+                      <option value="sv">Swedish</option>
+                      <option value="da">Danish</option>
+                      <option value="no">Norwegian</option>
                     </select>
                   </div>
                 </div>
