@@ -123,8 +123,8 @@ export default function ImagesPage() {
   const [productFilter, setProductFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const { tags: allTags } = useAllTags();
-  const [sortField, setSortField] = useState<SortField>("created_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortField, setSortField] = useState<SortField>("concept_number");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -142,7 +142,7 @@ export default function ImagesPage() {
   }).sort((a, b) => {
     const dir = sortDir === "asc" ? 1 : -1;
     switch (sortField) {
-      case "concept_number": return ((a.concept_number ?? 0) - (b.concept_number ?? 0)) * dir;
+      case "concept_number": return ((a.concept_number ?? Infinity) - (b.concept_number ?? Infinity)) * dir;
       case "name": return a.name.localeCompare(b.name) * dir;
       case "status": return getOverallStatus(a).label.localeCompare(getOverallStatus(b).label) * dir;
       case "created_at": return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
