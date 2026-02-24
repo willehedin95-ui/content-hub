@@ -81,9 +81,13 @@ type SortField = "name" | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "
 export default function AnalyticsClient({
   metaConfigured,
   shopifyConfigured,
+  ga4Configured,
+  clarityConfigured,
 }: {
   metaConfigured: boolean;
   shopifyConfigured: boolean;
+  ga4Configured: boolean;
+  clarityConfigured: boolean;
 }) {
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -523,31 +527,49 @@ export default function AnalyticsClient({
             )}
           </div>
 
-          {/* Placeholder panels for GA4 + Clarity */}
+          {/* GA4 + Clarity panels */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
-              <BarChart3 className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+            <div className={`bg-white border rounded-xl p-6 text-center ${ga4Configured ? "border-gray-200" : "border-dashed border-gray-300"}`}>
+              <BarChart3 className={`w-6 h-6 mx-auto mb-2 ${ga4Configured ? "text-emerald-500" : "text-gray-300"}`} />
               <p className="text-sm font-medium text-gray-500">Google Analytics 4</p>
-              <p className="text-xs text-gray-400 mt-1">Connect GA4 to see pageviews, sessions, and user behavior data.</p>
-              <Link
-                href="/settings"
-                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-3"
-              >
-                <Link2 className="w-3 h-3" />
-                Connect in Settings
-              </Link>
+              {ga4Configured ? (
+                <p className="inline-flex items-center gap-1 text-xs text-emerald-600 mt-2">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Connected
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-400 mt-1">Connect GA4 to see pageviews, sessions, and user behavior data.</p>
+                  <Link
+                    href="/settings"
+                    className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-3"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    Connect in Settings
+                  </Link>
+                </>
+              )}
             </div>
-            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
-              <Activity className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+            <div className={`bg-white border rounded-xl p-6 text-center ${clarityConfigured ? "border-gray-200" : "border-dashed border-gray-300"}`}>
+              <Activity className={`w-6 h-6 mx-auto mb-2 ${clarityConfigured ? "text-emerald-500" : "text-gray-300"}`} />
               <p className="text-sm font-medium text-gray-500">Microsoft Clarity</p>
-              <p className="text-xs text-gray-400 mt-1">Connect Clarity to see heatmaps, session recordings, and UX insights.</p>
-              <Link
-                href="/settings"
-                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-3"
-              >
-                <Link2 className="w-3 h-3" />
-                Connect in Settings
-              </Link>
+              {clarityConfigured ? (
+                <p className="inline-flex items-center gap-1 text-xs text-emerald-600 mt-2">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Connected
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-400 mt-1">Connect Clarity to see heatmaps, session recordings, and UX insights.</p>
+                  <Link
+                    href="/settings"
+                    className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 mt-3"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    Connect in Settings
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </>
