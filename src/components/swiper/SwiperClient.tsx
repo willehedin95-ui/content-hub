@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wand2,
@@ -41,6 +41,7 @@ export default function SwiperClient({ products }: Props) {
   const [selectedProductId, setSelectedProductId] = useState(
     products[0]?.id ?? ""
   );
+  const [selectedAngle, setSelectedAngle] = useState("auto-detect");
   const [error, setError] = useState<string | null>(null);
   const [swipeResult, setSwipeResult] = useState<SwipeResult | null>(null);
   const [imageReplacements, setImageReplacements] = useState<
@@ -50,8 +51,29 @@ export default function SwiperClient({ products }: Props) {
   const [pageSlug, setPageSlug] = useState("");
   const [showOriginal, setShowOriginal] = useState(false);
   const [savedPageId, setSavedPageId] = useState<string | null>(null);
+  const [swipeSubstep, setSwipeSubstep] = useState<"fetching" | "rewriting">("fetching");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
+
+  // Elapsed timer during swiping
+  useEffect(() => {
+    if (step === "swiping") {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [step]);
 
   async function handleSwipe() {
     if (!url.trim() || !selectedProductId) return;
@@ -60,6 +82,7 @@ export default function SwiperClient({ products }: Props) {
 
     try {
       // Step 1: Fetch the competitor page
+      setSwipeSubstep("fetching");
       const fetchRes = await fetch("/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,6 +109,7 @@ export default function SwiperClient({ products }: Props) {
       }
 
       // Step 2: Send to Claude for rewriting
+      setSwipeSubstep("rewriting");
       const swipeRes = await fetch("/api/swipe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,6 +118,7 @@ export default function SwiperClient({ products }: Props) {
           productId: selectedProductId,
           sourceUrl: url.trim(),
           sourceLanguage: "en",
+          angle: selectedAngle,
         }),
       });
 
@@ -214,6 +239,22 @@ export default function SwiperClient({ products }: Props) {
             )}
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Advertising Angle
+            </label>
+            <select
+              value={selectedAngle}
+              onChange={(e) => setSelectedAngle(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+            >
+              <option value="auto-detect">Auto-detect (match source)</option>
+              <option value="neck-pain">Neck Pain</option>
+              <option value="snoring">Snoring</option>
+              <option value="sleep-quality">Sleep Quality</option>
+            </select>
+          </div>
+
           {error && (
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
@@ -236,14 +277,62 @@ export default function SwiperClient({ products }: Props) {
 
   // Swiping step (loading)
   if (step === "swiping") {
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const secs = elapsedSeconds % 60;
+    const timeStr = minutes > 0
+      ? `${minutes}:${secs.toString().padStart(2, "0")}`
+      : `${secs}s`;
+
     return (
-      <div className="max-w-2xl mx-auto py-24 px-6 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-gray-900">Swiping page...</h2>
-        <p className="text-sm text-gray-500 mt-2">
-          Fetching page and rewriting copy with Claude. This may take 30-60
-          seconds.
-        </p>
+      <div className="max-w-md mx-auto py-20 px-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-5" />
+
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                swipeSubstep === "fetching"
+                  ? "bg-indigo-100 ring-2 ring-indigo-400"
+                  : "bg-emerald-100"
+              }`}>
+                {swipeSubstep === "fetching" ? (
+                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                )}
+              </div>
+              <span className={`text-sm ${
+                swipeSubstep === "fetching" ? "text-gray-900 font-medium" : "text-gray-400"
+              }`}>
+                Fetching competitor page
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                swipeSubstep === "rewriting"
+                  ? "bg-indigo-100 ring-2 ring-indigo-400"
+                  : "bg-gray-100"
+              }`}>
+                {swipeSubstep === "rewriting" ? (
+                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-gray-300" />
+                )}
+              </div>
+              <span className={`text-sm ${
+                swipeSubstep === "rewriting" ? "text-gray-900 font-medium" : "text-gray-400"
+              }`}>
+                Rewriting copy with Claude
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-gray-400 border-t border-gray-100 pt-3">
+            <span>Elapsed: {timeStr}</span>
+            <span>Usually takes 2-5 minutes</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -270,6 +359,7 @@ export default function SwiperClient({ products }: Props) {
               setStep("input");
               setSwipeResult(null);
               setUrl("");
+              setSelectedAngle("auto-detect");
               setPageName("");
               setPageSlug("");
               setImageReplacements({});
@@ -301,7 +391,9 @@ export default function SwiperClient({ products }: Props) {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Review Swiped Page</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {selectedProduct?.name} &middot; {url}
+            {selectedProduct?.name} &middot;{" "}
+            {selectedAngle !== "auto-detect" ? `${selectedAngle} angle` : "auto-detect"}{" "}
+            &middot; {url}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -338,6 +430,8 @@ export default function SwiperClient({ products }: Props) {
         <ImageMapper
           pageImages={swipeResult.images}
           productImages={selectedProduct.product_images}
+          productId={selectedProductId}
+          angle={selectedAngle}
           replacements={imageReplacements}
           onReplacementsChange={setImageReplacements}
         />

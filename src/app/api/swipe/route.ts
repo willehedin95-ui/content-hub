@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
-import { stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
+import { stripForTranslation, restoreAfterTranslation, compactForSwiper, decompactAfterSwiper } from "@/lib/html-parser";
 import { rewritePageForProduct } from "@/lib/claude";
+import type { SwiperAngle } from "@/lib/claude";
 import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * POST /api/swipe
@@ -15,7 +16,7 @@ export const maxDuration = 120;
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { html, productId, sourceUrl, sourceLanguage } = body;
+  const { html, productId, sourceUrl, sourceLanguage, angle } = body;
 
   if (!html || !productId) {
     return NextResponse.json(
@@ -64,22 +65,33 @@ export async function POST(req: NextRequest) {
   const guidelines = (guidelinesResult.data ?? []) as CopywritingGuideline[];
   const references = (referencesResult.data ?? []) as ReferencePage[];
 
+  // Look for the product brief in guidelines
+  const productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
+  const swiperAngle = (angle as SwiperAngle) || undefined;
+
   // Strip non-translatable elements from HTML
   const { bodyHtml, headHtml, stripped } = stripForTranslation(html);
 
+  // Compact class/style/data attributes to reduce token count
+  // (a Tailwind page can go from 200K→30K tokens with this)
+  const { compact, classMap, styleMap } = compactForSwiper(bodyHtml);
+
   try {
-    // Send to Claude for rewriting
-    const { result: rewrittenBody, inputTokens, outputTokens } =
+    // Send compacted HTML to Claude for rewriting
+    const { result: rewrittenCompact, inputTokens, outputTokens } =
       await rewritePageForProduct(
-        bodyHtml,
+        compact,
         product,
         guidelines,
         references,
         apiKey,
-        sourceLanguage || "en"
+        sourceLanguage || "en",
+        swiperAngle,
+        productBrief
       );
 
-    // Restore full HTML with rewritten body
+    // Restore compacted attributes, then restore stripped elements + head
+    const rewrittenBody = decompactAfterSwiper(rewrittenCompact, classMap, styleMap);
     const rewrittenHtml = restoreAfterTranslation(
       rewrittenBody,
       headHtml,
@@ -98,6 +110,8 @@ export async function POST(req: NextRequest) {
         product_id: productId,
         product_name: product.name,
         source_url: sourceUrl,
+        angle: swiperAngle || "none",
+        has_product_brief: !!productBrief,
         guidelines_count: guidelines.length,
         references_count: references.length,
       },

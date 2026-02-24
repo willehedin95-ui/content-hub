@@ -435,3 +435,27 @@ export interface ReferencePage {
   notes: string | null;
   created_at: string;
 }
+
+// --- Swiper Image Generation Types ---
+
+export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "auto-detect";
+
+export interface ImageAnalysis {
+  subjects: string;
+  composition: string;
+  style: string;
+  context: string;
+  product_interaction: string;
+  text_overlays: string;
+  suggested_replacement: string;
+}
+
+export interface ImageGenerationState {
+  src: string;
+  status: "idle" | "analyzing" | "prompt-ready" | "generating" | "done" | "error";
+  analysis?: ImageAnalysis;
+  prompt?: string;
+  referenceImages?: string[];
+  generatedUrl?: string;
+  error?: string;
+}

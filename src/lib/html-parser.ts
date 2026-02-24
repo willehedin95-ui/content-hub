@@ -374,6 +374,96 @@ export function restoreAfterTranslation(
 }
 
 /**
+ * Compact HTML for the swiper by replacing verbose class/style attributes
+ * with short IDs. This dramatically reduces token count for pages with
+ * utility CSS (e.g. Tailwind). Data-* attributes are removed entirely.
+ * Whitespace is normalized.
+ *
+ * Claude rewrites text content only — the compacted attrs pass through
+ * unchanged and are restored afterward via decompactAfterSwiper().
+ */
+export function compactForSwiper(bodyHtml: string): {
+  compact: string;
+  classMap: string[];
+  styleMap: string[];
+} {
+  const classMap: string[] = [];
+  const classLookup = new Map<string, number>();
+  const styleMap: string[] = [];
+  const styleLookup = new Map<string, number>();
+
+  let compact = bodyHtml;
+
+  // Compact class attributes (biggest savings — Tailwind classes are huge)
+  compact = compact.replace(/\bclass="([^"]*)"/g, (_, value: string) => {
+    let id = classLookup.get(value);
+    if (id === undefined) {
+      id = classMap.length;
+      classMap.push(value);
+      classLookup.set(value, id);
+    }
+    return `class="c${id}"`;
+  });
+
+  // Also handle single-quoted class attributes
+  compact = compact.replace(/\bclass='([^']*)'/g, (_, value: string) => {
+    let id = classLookup.get(value);
+    if (id === undefined) {
+      id = classMap.length;
+      classMap.push(value);
+      classLookup.set(value, id);
+    }
+    return `class="c${id}"`;
+  });
+
+  // Compact style attributes
+  compact = compact.replace(/\bstyle="([^"]*)"/g, (_, value: string) => {
+    let id = styleLookup.get(value);
+    if (id === undefined) {
+      id = styleMap.length;
+      styleMap.push(value);
+      styleLookup.set(value, id);
+    }
+    return `style="s${id}"`;
+  });
+
+  // Remove data-* attributes (not needed for text rewriting)
+  compact = compact.replace(/\s+data-[a-z][\w.-]*="[^"]*"/gi, "");
+  compact = compact.replace(/\s+data-[a-z][\w.-]*='[^']*'/gi, "");
+
+  // Normalize whitespace: collapse runs of whitespace between tags
+  compact = compact.replace(/>\s{2,}</g, "> <");
+  compact = compact.replace(/\n\s*\n/g, "\n");
+
+  return { compact, classMap, styleMap };
+}
+
+/**
+ * Restore compacted class/style attributes in Claude's rewritten HTML.
+ */
+export function decompactAfterSwiper(
+  html: string,
+  classMap: string[],
+  styleMap: string[]
+): string {
+  let result = html;
+
+  // Restore class attributes
+  result = result.replace(/\bclass="c(\d+)"/g, (_, idStr: string) => {
+    const original = classMap[parseInt(idStr)];
+    return original !== undefined ? `class="${original}"` : `class="c${idStr}"`;
+  });
+
+  // Restore style attributes
+  result = result.replace(/\bstyle="s(\d+)"/g, (_, idStr: string) => {
+    const original = styleMap[parseInt(idStr)];
+    return original !== undefined ? `style="${original}"` : `style="s${idStr}"`;
+  });
+
+  return result;
+}
+
+/**
  * Extract all visible text from HTML as a continuous readable string.
  * Preserves paragraph breaks for block elements so GPT-4o can evaluate
  * the full page context holistically.
