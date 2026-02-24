@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { Language, COUNTRY_MAP, LANGUAGES, ConceptCopyTranslations } from "@/types";
 import {
-  duplicateAdSet,
-  updateAdSet,
+  getAdSetConfig,
+  createAdSetFromTemplate,
   uploadImage,
   createAdCreative,
   createAd,
@@ -60,6 +60,17 @@ export async function POST(
 
   if (!job.landing_page_id) {
     return NextResponse.json({ error: "Landing page is required" }, { status: 400 });
+  }
+
+  // Prevent duplicate pushes — reject if there's already a push in progress for this concept
+  const { data: activePush } = await db
+    .from("meta_campaigns")
+    .select("id")
+    .eq("image_job_id", jobId)
+    .eq("status", "pushing")
+    .limit(1);
+  if (activePush && activePush.length > 0) {
+    return NextResponse.json({ error: "A push is already in progress for this concept" }, { status: 409 });
   }
 
   // Auto-assign concept number if not set (atomic to prevent duplicates)
@@ -153,6 +164,15 @@ export async function POST(
       )
   );
 
+  // Collect source images that skipped translation — use original for all languages
+  const skippedOriginals = (job.source_images ?? [])
+    .filter((si: { skip_translation: boolean; original_url: string }) => si.skip_translation && si.original_url)
+    .map((si: { id: string; original_url: string; processing_order: number | null }) => ({
+      source_image_id: si.id,
+      original_url: si.original_url,
+      processing_order: si.processing_order ?? 0,
+    }));
+
   // Find 9:16 siblings for each 1:1 translation
   const siblings9x16 = new Map<string, string>(); // key: "source_image_id:language" -> 9:16 url
   for (const t of completedTranslations) {
@@ -163,67 +183,46 @@ export async function POST(
 
   const results: Array<{ language: string; country: string; status: string; error?: string; campaign_id?: string; scheduled_time?: string }> = [];
 
-  // Process each target language
-  for (const lang of job.target_languages as Language[]) {
-    const country = COUNTRY_MAP[lang];
-    if (!country) {
-      results.push({ language: lang, country: "??", status: "error", error: `No country mapping for ${lang}` });
-      continue;
-    }
+  // Process all target languages in parallel
+  const langResults = await Promise.allSettled(
+    (job.target_languages as Language[]).map(async (lang) => {
+      const country = COUNTRY_MAP[lang];
+      if (!country) {
+        return { language: lang, country: "??", status: "error", error: `No country mapping for ${lang}` } as const;
+      }
 
-    // Check campaign mapping
-    const { data: mapping } = await db
-      .from("meta_campaign_mappings")
-      .select("meta_campaign_id, template_adset_id")
-      .eq("product", job.product)
-      .eq("country", country)
-      .single();
+      // Check campaign mapping + page config in parallel
+      const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
+        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("product", job.product).eq("country", country).single(),
+        db.from("meta_page_config").select("meta_page_id").eq("country", country).single(),
+      ]);
 
-    // Look up Facebook page for this country
-    const { data: pageConfig } = await db
-      .from("meta_page_config")
-      .select("meta_page_id")
-      .eq("country", country)
-      .single();
+      if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
+        return { language: lang, country, status: "error", error: `No campaign mapping for ${job.product}/${country}. Configure in Settings.` } as const;
+      }
 
-    if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
-      results.push({
-        language: lang,
-        country,
-        status: "error",
-        error: `No campaign mapping for ${job.product}/${country}. Configure in Settings.`,
-      });
-      continue;
-    }
+      const landingUrl = landingUrlByLang.get(lang);
+      if (!landingUrl) {
+        return { language: lang, country, status: "error", error: `No published landing page for ${lang}` } as const;
+      }
 
-    // Get landing page URL for this language
-    const landingUrl = landingUrlByLang.get(lang);
-    if (!landingUrl) {
-      results.push({
-        language: lang,
-        country,
-        status: "error",
-        error: `No published landing page for ${lang}`,
-      });
-      continue;
-    }
+      // Combine translated 1:1 images + skipped originals into a unified list
+      const translatedForLang = completedTranslations
+        .filter((t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === "1:1")
+        .map((t: { translated_url: string; source_image_id: string }) => ({
+          image_url: t.translated_url,
+          source_image_id: t.source_image_id,
+        }));
+      const skippedForLang = skippedOriginals.map((si: { original_url: string; source_image_id: string }) => ({
+        image_url: si.original_url,
+        source_image_id: si.source_image_id,
+      }));
+      const langImages = [...translatedForLang, ...skippedForLang];
 
-    // Get 1:1 images for this language
-    const langImages = completedTranslations.filter(
-      (t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === "1:1"
-    );
+      if (langImages.length === 0) {
+        return { language: lang, country, status: "error", error: `No completed 1:1 images for ${lang}` } as const;
+      }
 
-    if (langImages.length === 0) {
-      results.push({
-        language: lang,
-        country,
-        status: "error",
-        error: `No completed 1:1 images for ${lang}`,
-      });
-      continue;
-    }
-
-    try {
       // Use pre-translated copy if available, otherwise translate on-the-fly
       const preTranslated = (job.ad_copy_translations as ConceptCopyTranslations)?.[lang];
       let translatedPrimaries: string[];
@@ -238,18 +237,17 @@ export async function POST(
         translatedHeadlines = result.translatedHeadlines;
       }
 
-      // Generate ad set name
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
 
-      // Duplicate template ad set, rename, and schedule
-      const dupResult = await duplicateAdSet(mapping.template_adset_id);
-      const newAdSetId = dupResult.copied_adset_id;
-      await updateAdSet(newAdSetId, {
+      // Create ad set from template config
+      const templateConfig = await getAdSetConfig(mapping.template_adset_id);
+      const newAdSet = await createAdSetFromTemplate({
+        templateConfig,
         name: adSetName,
-        ...(scheduledStartTime ? { start_time: scheduledStartTime } : {}),
+        startTime: scheduledStartTime || undefined,
       });
+      const newAdSetId = newAdSet.id;
 
-      // Create meta_campaigns record
       const { data: campaign } = await db
         .from("meta_campaigns")
         .insert({
@@ -270,142 +268,174 @@ export async function POST(
 
       if (!campaign) throw new Error("Failed to create campaign record");
 
-      // Process each image ad (with early-exit on non-transient errors)
-      const adRows = [];
-      let earlyExitError: string | null = null;
-      for (let i = 0; i < langImages.length; i++) {
-        // Early exit: if a previous ad failed with a config/permission error,
-        // skip remaining ads to avoid burning through rate limits
-        if (earlyExitError) {
-          adRows.push({
-            campaign_id: campaign.id,
-            name: `${adSetName} - Ad ${i + 1}`,
-            image_url: langImages[i].translated_url,
-            image_url_9x16: siblings9x16.get(`${langImages[i].source_image_id}:${lang}`) || null,
-            ad_copy: translatedPrimaries.join("\n---\n"),
-            headline: translatedHeadlines.join("\n---\n") || null,
-            source_primary_text: JSON.stringify(primaryTexts),
-            source_headline: JSON.stringify(headlineTexts),
-            landing_page_url: landingUrl,
-            aspect_ratio: "1:1",
-            status: "error",
-            error_message: `Skipped: ${earlyExitError}`,
-          });
-          continue;
-        }
+      try {
+        // Phase 1: Upload ALL images in parallel (biggest time saver)
+        const uploadResults = await Promise.allSettled(
+          langImages.map(async (img) => {
+            const url9x16 = siblings9x16.get(`${img.source_image_id}:${lang}`) || null;
+            const [img1x1, img9x16] = await Promise.all([
+              uploadImage(img.image_url),
+              url9x16 ? uploadImage(url9x16) : Promise.resolve(null),
+            ]);
+            return { imageHash: img1x1.hash, imageHash9x16: img9x16?.hash, url9x16 };
+          })
+        );
 
-        const imgTranslation = langImages[i];
-        const adName = `${adSetName} - Ad ${i + 1}`;
-        const url9x16 = siblings9x16.get(`${imgTranslation.source_image_id}:${lang}`) || null;
+        // Phase 2: Create creatives in parallel for successful uploads
+        const creativeInputs = langImages.map((img, i: number) => {
+          const upload = uploadResults[i];
+          if (upload.status === "rejected") return null;
+          return {
+            index: i,
+            imageHash: upload.value.imageHash,
+            imageHash9x16: upload.value.imageHash9x16,
+            url9x16: upload.value.url9x16,
+            img,
+          };
+        });
 
-        // Small delay between ads to avoid rate limiting
-        if (i > 0) await new Promise((r) => setTimeout(r, 500));
+        const creativeResults = await Promise.allSettled(
+          creativeInputs.map(async (input: typeof creativeInputs[number], i: number) => {
+            if (!input) throw new Error((uploadResults[i] as PromiseRejectedResult).reason?.message ?? "Upload failed");
+            const adName = `${adSetName} - Ad ${i + 1}`;
+            const creative = await createAdCreative({
+              name: adName,
+              imageHash: input.imageHash,
+              imageHash9x16: input.imageHash9x16,
+              primaryText: translatedPrimaries[0],
+              primaryTexts: translatedPrimaries.length > 1 ? translatedPrimaries : undefined,
+              headline: translatedHeadlines[0] || undefined,
+              headlines: translatedHeadlines.length > 1 ? translatedHeadlines : undefined,
+              linkUrl: landingUrl,
+              pageId: pageConfig?.meta_page_id,
+            });
+            return { creativeId: creative.id, ...input };
+          })
+        );
 
-        try {
-          // Upload 1:1 image
-          const { hash: imageHash } = await uploadImage(imgTranslation.translated_url);
+        // Phase 3: Create ads sequentially (rate limit safety, 200ms stagger)
+        const adRows = [];
+        for (let i = 0; i < langImages.length; i++) {
+          const img = langImages[i];
+          const adName = `${adSetName} - Ad ${i + 1}`;
+          const url9x16 = siblings9x16.get(`${img.source_image_id}:${lang}`) || null;
 
-          // Upload 9:16 if available
-          let imageHash9x16: string | undefined;
-          if (url9x16) {
-            const result = await uploadImage(url9x16);
-            imageHash9x16 = result.hash;
+          const creativeResult = creativeResults[i];
+          if (creativeResult.status === "rejected") {
+            adRows.push({
+              campaign_id: campaign.id,
+              name: adName,
+              image_url: img.image_url,
+              image_url_9x16: url9x16,
+              ad_copy: translatedPrimaries.join("\n---\n"),
+              headline: translatedHeadlines.join("\n---\n") || null,
+              source_primary_text: JSON.stringify(primaryTexts),
+              source_headline: JSON.stringify(headlineTexts),
+              landing_page_url: landingUrl,
+              aspect_ratio: "1:1",
+              status: "error",
+              error_message: creativeResult.reason?.message ?? "Creative failed",
+            });
+            continue;
           }
 
-          // Create creative
-          const creative = await createAdCreative({
-            name: adName,
-            imageHash,
-            imageHash9x16,
-            primaryText: translatedPrimaries[0],
-            primaryTexts: translatedPrimaries.length > 1 ? translatedPrimaries : undefined,
-            headline: translatedHeadlines[0] || undefined,
-            headlines: translatedHeadlines.length > 1 ? translatedHeadlines : undefined,
-            linkUrl: landingUrl,
-            pageId: pageConfig?.meta_page_id,
-          });
+          if (i > 0) await new Promise((r) => setTimeout(r, 200));
 
-          // Create ad (ACTIVE so it goes live immediately)
-          const metaAd = await createAd({
-            name: adName,
-            adSetId: newAdSetId,
-            creativeId: creative.id,
-            status: "ACTIVE",
-            urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
-          });
+          try {
+            const metaAd = await createAd({
+              name: adName,
+              adSetId: newAdSetId,
+              creativeId: creativeResult.value.creativeId,
+              status: "ACTIVE",
+              urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
+            });
 
-          adRows.push({
-            campaign_id: campaign.id,
-            name: adName,
-            image_url: imgTranslation.translated_url,
-            image_url_9x16: url9x16,
-            meta_image_hash: imageHash,
-            meta_image_hash_9x16: imageHash9x16 || null,
-            ad_copy: translatedPrimaries.join("\n---\n"),
-            headline: translatedHeadlines.join("\n---\n") || null,
-            source_primary_text: JSON.stringify(primaryTexts),
-            source_headline: JSON.stringify(headlineTexts),
-            landing_page_url: landingUrl,
-            aspect_ratio: "1:1",
-            meta_creative_id: creative.id,
-            meta_ad_id: metaAd.id,
-            status: "pushed",
-          });
-        } catch (adErr) {
-          const errMsg = adErr instanceof Error ? adErr.message : "Failed";
-          adRows.push({
-            campaign_id: campaign.id,
-            name: adName,
-            image_url: imgTranslation.translated_url,
-            image_url_9x16: url9x16,
-            ad_copy: translatedPrimaries.join("\n---\n"),
-            headline: translatedHeadlines.join("\n---\n") || null,
-            source_primary_text: JSON.stringify(primaryTexts),
-            source_headline: JSON.stringify(headlineTexts),
-            landing_page_url: landingUrl,
-            aspect_ratio: "1:1",
-            status: "error",
-            error_message: errMsg,
-          });
-
-          // Non-transient errors: stop trying remaining ads for this market
-          if (errMsg.includes("Invalid parameter") || errMsg.includes("permission")) {
-            earlyExitError = errMsg;
+            adRows.push({
+              campaign_id: campaign.id,
+              name: adName,
+              image_url: img.image_url,
+              image_url_9x16: url9x16,
+              meta_image_hash: creativeResult.value.imageHash,
+              meta_image_hash_9x16: creativeResult.value.imageHash9x16 || null,
+              ad_copy: translatedPrimaries.join("\n---\n"),
+              headline: translatedHeadlines.join("\n---\n") || null,
+              source_primary_text: JSON.stringify(primaryTexts),
+              source_headline: JSON.stringify(headlineTexts),
+              landing_page_url: landingUrl,
+              aspect_ratio: "1:1",
+              meta_creative_id: creativeResult.value.creativeId,
+              meta_ad_id: metaAd.id,
+              status: "pushed",
+            });
+          } catch (adErr) {
+            adRows.push({
+              campaign_id: campaign.id,
+              name: adName,
+              image_url: img.image_url,
+              image_url_9x16: url9x16,
+              ad_copy: translatedPrimaries.join("\n---\n"),
+              headline: translatedHeadlines.join("\n---\n") || null,
+              source_primary_text: JSON.stringify(primaryTexts),
+              source_headline: JSON.stringify(headlineTexts),
+              landing_page_url: landingUrl,
+              aspect_ratio: "1:1",
+              status: "error",
+              error_message: adErr instanceof Error ? adErr.message : "Failed",
+            });
           }
         }
+
+        if (adRows.length > 0) {
+          await db.from("meta_ads").insert(adRows);
+        }
+
+        const hasSuccess = adRows.some((a) => a.status === "pushed");
+        await db
+          .from("meta_campaigns")
+          .update({
+            status: hasSuccess ? "pushed" : "error",
+            error_message: hasSuccess ? null : "All ads failed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campaign.id);
+      } catch (crashErr) {
+        // If anything crashes unexpectedly, mark the campaign as error so it doesn't stay stuck in "pushing"
+        await db
+          .from("meta_campaigns")
+          .update({
+            status: "error",
+            error_message: crashErr instanceof Error ? crashErr.message : "Push crashed unexpectedly",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campaign.id);
+        throw crashErr; // Re-throw so it's reported as a failure for this language
       }
 
-      // Insert all ad records
-      if (adRows.length > 0) {
-        await db.from("meta_ads").insert(adRows);
-      }
-
-      // Update campaign status
-      const hasSuccess = adRows.some((a) => a.status === "pushed");
-      await db
+      // Re-read campaign status (set inside the try block above)
+      const { data: finalCampaign } = await db
         .from("meta_campaigns")
-        .update({
-          status: hasSuccess ? "pushed" : "error",
-          error_message: hasSuccess ? null : "All ads failed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", campaign.id);
+        .select("status")
+        .eq("id", campaign.id)
+        .single();
+      const finalStatus = finalCampaign?.status === "pushed" ? "pushed" : "error";
 
-      results.push({
+      return {
         language: lang,
         country,
-        status: hasSuccess ? "pushed" : "error",
+        status: finalStatus,
         campaign_id: campaign.id,
         scheduled_time: scheduledStartTime || undefined,
-        error: hasSuccess ? undefined : "Some or all ads failed to push",
-      });
-    } catch (err) {
-      results.push({
-        language: lang,
-        country,
-        status: "error",
-        error: err instanceof Error ? err.message : "Push failed",
-      });
+        error: finalStatus === "pushed" ? undefined : "Some or all ads failed to push",
+      } as const;
+    })
+  );
+
+  // Collect results from all languages
+  for (const r of langResults) {
+    if (r.status === "fulfilled") {
+      results.push(r.value);
+    } else {
+      results.push({ language: "?", country: "??", status: "error", error: r.reason?.message ?? "Push failed" });
     }
   }
 

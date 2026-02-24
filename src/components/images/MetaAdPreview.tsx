@@ -22,6 +22,7 @@ import {
   ConceptCopyTranslations,
   ConceptCopyTranslation,
 } from "@/types";
+import { getSettings } from "@/lib/settings";
 
 interface Props {
   job: ImageJob;
@@ -74,26 +75,51 @@ export default function MetaAdPreview({
     setHeadlineIndex(0);
   }, [activeLang]);
 
-  // Get completed 1:1 images for active language
+  // Get all images for active language: translated 1:1 + skipped originals
   const langImages = useMemo(() => {
-    return (job.source_images ?? [])
-      .flatMap((si) =>
-        (si.image_translations ?? [])
-          .filter(
-            (t) =>
-              t.language === activeLang &&
-              t.aspect_ratio === "1:1" &&
-              t.status === "completed" &&
-              t.translated_url
-          )
-          .map((t) => ({ sourceImage: si, translation: t }))
-      )
-      .sort(
-        (a, b) =>
-          (a.sourceImage.processing_order ?? 0) -
-          (b.sourceImage.processing_order ?? 0)
-      );
+    const sourceImages = job.source_images ?? [];
+    // Translated images for this language
+    const translated = sourceImages.flatMap((si) =>
+      (si.image_translations ?? [])
+        .filter(
+          (t) =>
+            t.language === activeLang &&
+            t.aspect_ratio === "1:1" &&
+            t.status === "completed" &&
+            t.translated_url
+        )
+        .map((t) => ({
+          sourceImage: si,
+          imageUrl: t.translated_url!,
+        }))
+    );
+    // Skipped images use the original (same for all languages)
+    const skipped = sourceImages
+      .filter((si) => si.skip_translation && si.original_url)
+      .map((si) => ({
+        sourceImage: si,
+        imageUrl: si.original_url,
+      }));
+    return [...translated, ...skipped].sort(
+      (a, b) =>
+        (a.sourceImage.processing_order ?? 0) -
+        (b.sourceImage.processing_order ?? 0)
+    );
   }, [job.source_images, activeLang]);
+
+  // Compute next scheduled publish time from settings
+  const scheduledLabel = useMemo(() => {
+    const scheduleHHMM = getSettings().meta_default_schedule_time;
+    if (!scheduleHHMM) return null;
+    const [hh, mm] = scheduleHHMM.split(":").map(Number);
+    const now = new Date();
+    const scheduled = new Date(now);
+    scheduled.setHours(hh, mm, 0, 0);
+    if (scheduled <= now) scheduled.setDate(scheduled.getDate() + 1);
+    const day = scheduled.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    const time = scheduled.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return `Scheduled to go live ${day} at ${time}`;
+  }, []);
 
   // Get translated copy for active language (fall back to English)
   const ct = copyTranslations[activeLang] as ConceptCopyTranslation | undefined;
@@ -245,7 +271,7 @@ export default function MetaAdPreview({
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={currentImage.translation.translated_url!}
+                  src={currentImage.imageUrl}
                   alt={`Ad image ${imageIndex + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -367,12 +393,14 @@ export default function MetaAdPreview({
             | undefined;
           const hasImages =
             (job.source_images ?? []).some((si) =>
-              (si.image_translations ?? []).some(
-                (t) =>
-                  t.language === lang &&
-                  t.aspect_ratio === "1:1" &&
-                  t.status === "completed"
-              )
+              si.skip_translation
+                ? !!si.original_url
+                : (si.image_translations ?? []).some(
+                    (t) =>
+                      t.language === lang &&
+                      t.aspect_ratio === "1:1" &&
+                      t.status === "completed"
+                  )
             );
           const hasCopyTranslation = langCt?.status === "completed";
           const hasLandingPage = !!landingPageUrls[lang];
@@ -434,6 +462,9 @@ export default function MetaAdPreview({
             )}
           </button>
         </div>
+        {scheduledLabel && (
+          <p className="text-xs text-gray-500">{scheduledLabel}</p>
+        )}
         {!allLangsTranslated && hasCopy && (
           <p className="text-xs text-gray-400">
             Translate all ad copy before publishing to Meta
