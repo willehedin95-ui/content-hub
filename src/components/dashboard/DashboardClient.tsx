@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { PlusCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { PlusCircle, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ImportPageModal from "./ImportPageModal";
 import PagesTable from "./PagesTable";
 import { Page } from "@/types";
 
 export default function DashboardClient({ pages }: { pages: Page[] }) {
+  const router = useRouter();
   const [importOpen, setImportOpen] = useState(false);
 
   return (
@@ -21,10 +23,16 @@ export default function DashboardClient({ pages }: { pages: Page[] }) {
             Manage and translate your advertorials & listicles
           </p>
         </div>
-        <Button onClick={() => setImportOpen(true)}>
-          <PlusCircle className="w-4 h-4" />
-          Import New Page
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => router.push("/swiper")}>
+            <Wand2 className="w-4 h-4" />
+            Swipe & Rewrite
+          </Button>
+          <Button onClick={() => setImportOpen(true)}>
+            <PlusCircle className="w-4 h-4" />
+            Import New Page
+          </Button>
+        </div>
       </div>
 
       <PagesTable pages={pages} onImport={() => setImportOpen(true)} />

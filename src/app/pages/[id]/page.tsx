@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
 import TranslationPanel from "@/components/pages/TranslationPanel";
+import ImageReplacementPanel from "@/components/pages/ImageReplacementPanel";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,15 @@ export default async function PageDetailPage({
       t.status = "error";
     }
   }
+
+  // Fetch product with images for the image replacement panel
+  const { data: productData } = p.product
+    ? await db
+        .from("products")
+        .select("id, slug, name, product_images (*)")
+        .eq("slug", p.product)
+        .single()
+    : { data: null };
 
   return (
     <div className="p-8 max-w-4xl">
@@ -102,6 +112,18 @@ export default async function PageDetailPage({
         imagesToTranslate={p.images_to_translate}
         sourceLanguage={p.source_language || "en"}
       />
+
+      {/* Image replacement */}
+      {productData && (
+        <div className="mt-8">
+          <ImageReplacementPanel
+            pageId={p.id}
+            html={p.original_html}
+            productId={productData.id}
+            productImages={productData.product_images ?? []}
+          />
+        </div>
+      )}
 
       {/* Meta info */}
       <div className="mt-8 border-t border-gray-200 pt-6">

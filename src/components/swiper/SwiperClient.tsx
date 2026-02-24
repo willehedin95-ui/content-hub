@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Eye,
   RotateCcw,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import type { ProductImage } from "@/types";
 import ImageMapper from "./ImageMapper";
@@ -55,7 +57,7 @@ export default function SwiperClient({ products }: Props) {
   const [pageName, setPageName] = useState("");
   const [pageSlug, setPageSlug] = useState("");
   const [showOriginal, setShowOriginal] = useState(false);
-  const [savedPageId, setSavedPageId] = useState<string | null>(null);
+  const [showImageMapper, setShowImageMapper] = useState(false);
   const [swipeSubstep, setSwipeSubstep] = useState<"fetching" | "rewriting" | "restoring">("fetching");
   const [swipeProgress, setSwipeProgress] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -306,7 +308,10 @@ export default function SwiperClient({ products }: Props) {
     setError(null);
 
     try {
-      const finalHtml = applyImageReplacements(swipeResult.rewrittenHtml);
+      // Apply any image replacements the user made before saving
+      const finalHtml = Object.keys(imageReplacements).length > 0
+        ? applyImageReplacements(swipeResult.rewrittenHtml)
+        : swipeResult.rewrittenHtml;
 
       const res = await fetch("/api/pages", {
         method: "POST",
@@ -325,7 +330,8 @@ export default function SwiperClient({ products }: Props) {
       });
 
       const page = await safeJson<{ id: string }>(res, "Failed to save page");
-      setSavedPageId(page.id);
+      // Redirect to page detail where user can replace images at their own pace
+      router.push(`/pages/${page.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setStep("review");
@@ -529,44 +535,6 @@ export default function SwiperClient({ products }: Props) {
     );
   }
 
-  // Saving complete
-  if (step === "saving" && savedPageId) {
-    return (
-      <div className="max-w-2xl mx-auto py-24 px-6 text-center">
-        <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-gray-900">Page Saved!</h2>
-        <p className="text-sm text-gray-500 mt-2 mb-6">
-          Your swiped page is ready. You can now translate it to other languages.
-        </p>
-        <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={() => router.push(`/pages/${savedPageId}`)}
-            className="flex items-center gap-2 bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
-            Open in Editor
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              setStep("input");
-              setSwipeResult(null);
-              setUrl("");
-              setSelectedAngle("auto-detect");
-              setPageName("");
-              setPageSlug("");
-              setImageReplacements({});
-              setSavedPageId(null);
-              setActiveJobId(null);
-            }}
-            className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
-          >
-            Swipe Another
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Saving in progress
   if (step === "saving") {
     return (
@@ -618,23 +586,14 @@ export default function SwiperClient({ products }: Props) {
         />
       </div>
 
-      {/* Image Mapper */}
-      {swipeResult && swipeResult.images.length > 0 && selectedProduct && (
-        <ImageMapper
-          pageImages={swipeResult.images}
-          productImages={selectedProduct.product_images}
-          productId={selectedProductId}
-          angle={selectedAngle}
-          replacements={imageReplacements}
-          onReplacementsChange={setImageReplacements}
-        />
-      )}
-
-      {/* Save section */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mt-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+      {/* Save section — above images so user can save immediately */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">
           Save as Page
         </h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Save now and replace images later on the page detail view
+        </p>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -703,6 +662,33 @@ export default function SwiperClient({ products }: Props) {
           )}
         </div>
       </div>
+
+      {/* Optional: Image replacement before saving */}
+      {swipeResult && swipeResult.images.length > 0 && selectedProduct && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowImageMapper(!showImageMapper)}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-3 transition-colors"
+          >
+            {showImageMapper ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            Optional: Replace images before saving
+          </button>
+          {showImageMapper && (
+            <ImageMapper
+              pageImages={swipeResult.images}
+              productImages={selectedProduct.product_images}
+              productId={selectedProductId}
+              angle={selectedAngle}
+              replacements={imageReplacements}
+              onReplacementsChange={setImageReplacements}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
