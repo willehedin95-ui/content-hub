@@ -38,6 +38,7 @@ interface Settings {
   clarity_api_token: string;
   shopify_domains: string;
   meta_pixel_id: string;
+  excluded_ips: string[];
 }
 
 const TABS = [
@@ -74,6 +75,7 @@ export default function SettingsPage() {
     clarity_api_token: "",
     shopify_domains: "",
     meta_pixel_id: "",
+    excluded_ips: [],
   });
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1080,6 +1082,11 @@ export default function SettingsPage() {
                     />
                   }
                 />
+                <RowDivider />
+                <ExcludeIPRow
+                  excludedIps={settings.excluded_ips ?? []}
+                  onChange={(ips) => setSettings((s) => ({ ...s, excluded_ips: ips }))}
+                />
               </SettingsCard>
               <SaveButton saved={saved} onSave={handleSave} />
 
@@ -1325,6 +1332,83 @@ function ClarityTokenRow({
         </div>
       }
     />
+  );
+}
+
+function ExcludeIPRow({
+  excludedIps,
+  onChange,
+}: {
+  excludedIps: string[];
+  onChange: (ips: string[]) => void;
+}) {
+  const [detecting, setDetecting] = useState(false);
+  const [myIp, setMyIp] = useState<string | null>(null);
+
+  const detectAndBlock = async () => {
+    setDetecting(true);
+    try {
+      const res = await fetch("/api/my-ip");
+      const data = await res.json();
+      const ip = data.ip;
+      setMyIp(ip);
+      if (ip && ip !== "unknown" && !excludedIps.includes(ip)) {
+        onChange([...excludedIps, ip]);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const removeIp = (ip: string) => {
+    onChange(excludedIps.filter((i) => i !== ip));
+  };
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 mr-4">
+          <p className="text-sm font-medium text-gray-800">Exclude from tracking</p>
+          <p className="text-xs mt-0.5 text-gray-400">
+            Block your IP so your visits don&apos;t appear in GA4, Clarity, or Meta Pixel
+          </p>
+        </div>
+        <button
+          onClick={detectAndBlock}
+          disabled={detecting}
+          className="text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-3.5 py-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
+        >
+          {detecting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            "Block my IP"
+          )}
+        </button>
+      </div>
+      {myIp && !excludedIps.includes(myIp) && (
+        <p className="text-xs text-amber-500 mt-1">Detected: {myIp} (already blocked or unknown)</p>
+      )}
+      {excludedIps.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {excludedIps.map((ip) => (
+            <span
+              key={ip}
+              className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md"
+            >
+              {ip}
+              <button
+                onClick={() => removeIp(ip)}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

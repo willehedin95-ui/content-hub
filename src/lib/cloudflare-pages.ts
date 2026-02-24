@@ -322,6 +322,10 @@ export interface PageAnalyticsConfig {
   slug?: string;
   /** AB test context — only set for AB test variant pages */
   abTest?: { testId: string; variant: "a" | "b" };
+  /** Hub URL for IP-based tracking opt-out check */
+  hubUrl?: string;
+  /** IPs excluded from tracking (baked into page for fast check) */
+  excludedIps?: string[];
 }
 
 /** Meta Pixel — tracks page views and outbound CTA clicks for Meta ad optimization */
@@ -329,6 +333,7 @@ function injectMetaPixel(html: string, pixelId: string): string {
   if (html.includes('data-cc-fbpixel="true"')) return html;
   const script = `<!-- Meta Pixel -->
 <script data-cc-fbpixel="true">
+if(!window.__chOptout){
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
 n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
@@ -345,8 +350,8 @@ document.addEventListener('click',function(e){
     fbq('trackCustom','CtaClick',{link_url:a.href});
   }catch(err){}
 },true);
-</script>
-<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1"/></noscript>`;
+}
+</script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
 
@@ -354,10 +359,61 @@ function injectClarityScript(html: string, projectId: string): string {
   if (html.includes('data-cc-clarity="true"')) return html;
   const script = `<!-- Clarity -->
 <script data-cc-clarity="true">
+if(!window.__chOptout){
 (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
 t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
 y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
 })(window,document,"clarity","script",${JSON.stringify(projectId)});
+}
+</script>`;
+  return html.replace(/<\/head>/i, script + "</head>");
+}
+
+/**
+ * Analytics opt-out script — injected before all tracking.
+ * Checks visitor IP against excluded list (baked into page).
+ * On first visit: calls hub API to get visitor IP, checks against list, sets cookie.
+ * On subsequent visits: cookie check is instant (no API call).
+ * Manual override: ?_ch_optout=1 to force opt-out, ?_ch_optout=0 to re-enable.
+ */
+function injectOptOutScript(html: string, hubUrl?: string, excludedIps?: string[]): string {
+  if (html.includes('data-cc-optout="true"')) return html;
+  const ips = JSON.stringify(excludedIps ?? []);
+  const apiUrl = hubUrl ? JSON.stringify(hubUrl + "/api/tracking-optout") : "null";
+  const script = `<script data-cc-optout="true">
+(function(){
+  var c=document.cookie;
+  // Check existing cookie first (instant, no API call)
+  if(c.indexOf('_ch_optout=1')!==-1){window.__chOptout=true;return}
+  if(c.indexOf('_ch_optout=0')!==-1){return}
+  // Manual URL override
+  var p=new URLSearchParams(location.search);
+  if(p.get('_ch_optout')==='1'){
+    document.cookie='_ch_optout=1;path=/;max-age=31536000;SameSite=Lax';
+    window.__chOptout=true;return;
+  }else if(p.get('_ch_optout')==='0'){
+    document.cookie='_ch_optout=0;path=/;max-age=31536000;SameSite=Lax';
+    return;
+  }
+  // IP check: call hub API to verify (only on first visit, before cookie is set)
+  var ips=${ips};var api=${apiUrl};
+  if(ips.length>0&&api){
+    var x=new XMLHttpRequest();
+    x.open('GET',api,false);// synchronous to block tracking scripts
+    try{
+      x.send();
+      if(x.status===200){
+        var r=JSON.parse(x.responseText);
+        if(r.optout){
+          document.cookie='_ch_optout=1;path=/;max-age=31536000;SameSite=Lax';
+          window.__chOptout=true;return;
+        }else{
+          document.cookie='_ch_optout=0;path=/;max-age=31536000;SameSite=Lax';
+        }
+      }
+    }catch(e){}
+  }
+})();
 </script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
@@ -367,6 +423,9 @@ y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
  * Used by both publishPage() and publishABTest().
  */
 function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string {
+  // Opt-out guard (must be injected first)
+  html = injectOptOutScript(html, config.hubUrl, config.excludedIps);
+
   // GA4 (with cross-domain linking to Shopify)
   if (config.ga4MeasurementId) {
     if (config.abTest) {
@@ -510,13 +569,18 @@ function injectGA4Script(
     ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
     : "";
   const script = `<!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
 <script>
+if(!window.__chOptout){
+var _gs=document.createElement('script');_gs.async=true;
+_gs.src='https://www.googletagmanager.com/gtag/js?id=${measurementId}';
+document.head.appendChild(_gs);
 window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+window.gtag=gtag;
 gtag('js',new Date());
 gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
 gtag('event','ab_test_view',{test_id:${JSON.stringify(testId)},variant:${JSON.stringify(variant)}});
 ${GA4_ENGAGEMENT_TRACKING}
+}
 </script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
@@ -529,12 +593,17 @@ function injectGA4ScriptBasic(html: string, measurementId: string, shopifyDomain
     ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
     : "";
   const script = `<!-- GA4 -->
-<script data-cc-ga4="true" async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
-<script>
+<script data-cc-ga4="true">
+if(!window.__chOptout){
+var _gs=document.createElement('script');_gs.async=true;
+_gs.src='https://www.googletagmanager.com/gtag/js?id=${measurementId}';
+document.head.appendChild(_gs);
 window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+window.gtag=gtag;
 gtag('js',new Date());
 gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
 ${GA4_ENGAGEMENT_TRACKING}
+}
 </script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
@@ -613,6 +682,8 @@ export interface ABTestAnalyticsConfig {
   ga4MeasurementId?: string;
   clarityProjectId?: string;
   shopifyDomains?: string[];
+  hubUrl?: string;
+  excludedIps?: string[];
 }
 
 export async function publishABTest(
@@ -643,6 +714,8 @@ export async function publishABTest(
     ga4MeasurementId: analytics?.ga4MeasurementId,
     clarityProjectId: analytics?.clarityProjectId,
     shopifyDomains: analytics?.shopifyDomains,
+    hubUrl: analytics?.hubUrl,
+    excludedIps: analytics?.excludedIps,
     abTest: { testId, variant: "a" },
   };
   const variantAnalytics: PageAnalyticsConfig = {

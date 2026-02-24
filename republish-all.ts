@@ -73,10 +73,14 @@ async function republishAll() {
       html = html.replace(/ data-cc-hidden(?:="[^"]*")?/g, "");
       html = html.replace(/ contenteditable="[^"]*"/g, "");
 
-      // Strip any existing GA4 script to avoid duplicates (will be re-injected by publishPage)
-      html = html.replace(/<!-- GA4 -->[\s\S]*?<\/script>\s*<script>[\s\S]*?<\/script>/g, "");
-      // Also strip data-cc-ga4 tagged scripts
-      html = html.replace(/<script[^>]*data-cc-ga4="true"[^>]*>[\s\S]*?<\/script>\s*<script>[\s\S]*?<\/script>/g, "");
+      // Strip all tracking scripts to avoid duplicates (will be re-injected by publishPage)
+      html = html.replace(/<!-- GA4 -->[\s\S]*?<\/script>(\s*<script>[\s\S]*?<\/script>)?/g, "");
+      html = html.replace(/<script[^>]*data-cc-ga4[^>]*>[\s\S]*?<\/script>/g, "");
+      html = html.replace(/<script[^>]*data-cc-optout[^>]*>[\s\S]*?<\/script>/g, "");
+      html = html.replace(/<!-- Meta Pixel -->[\s\S]*?<\/script>/g, "");
+      html = html.replace(/<script[^>]*data-cc-fbpixel[^>]*>[\s\S]*?<\/script>/g, "");
+      html = html.replace(/<!-- Clarity -->[\s\S]*?<\/script>/g, "");
+      html = html.replace(/<script[^>]*data-cc-clarity[^>]*>[\s\S]*?<\/script>/g, "");
 
       // Optimize images
       const imageResult = await optimizeImages(html, slug, () => {});
@@ -89,6 +93,7 @@ async function republishAll() {
         body: img.buffer,
       }));
 
+      const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
       const analytics: PageAnalyticsConfig = {
         ga4MeasurementId: ga4Ids[language] || undefined,
         clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
@@ -97,6 +102,8 @@ async function republishAll() {
           .map((d: string) => d.trim())
           .filter(Boolean),
         metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
+        hubUrl: process.env.APP_URL || undefined,
+        excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
       };
 
       const result = await publishPage(html, slug, language, additionalFiles, () => {}, analytics);

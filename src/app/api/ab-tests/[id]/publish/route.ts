@@ -70,6 +70,7 @@ export async function POST(
 
   const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
   const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
+  const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
   const analytics: ABTestAnalyticsConfig = {
     ga4MeasurementId: ga4Ids[test.language] || undefined,
     clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
@@ -77,6 +78,8 @@ export async function POST(
       .split(",")
       .map((d: string) => d.trim())
       .filter(Boolean),
+    hubUrl: appUrl,
+    excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
   };
 
   // Mark test as active before deploying

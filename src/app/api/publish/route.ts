@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
           .single();
         const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
         const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
+        const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
         const analytics: PageAnalyticsConfig = {
           ga4MeasurementId: ga4Ids[language] || undefined,
           clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
@@ -133,6 +134,8 @@ export async function POST(req: NextRequest) {
             .map((d: string) => d.trim())
             .filter(Boolean),
           metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
+          hubUrl: process.env.APP_URL || undefined,
+          excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
         };
 
         send({ step: "deploy", message: "Deploying to Cloudflare Pages…" });
