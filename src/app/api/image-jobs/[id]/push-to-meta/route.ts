@@ -58,8 +58,8 @@ export async function POST(
   }
   const headlineTexts: string[] = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
 
-  if (!job.landing_page_id) {
-    return NextResponse.json({ error: "Landing page is required" }, { status: 400 });
+  if (!job.landing_page_id && !job.ab_test_id) {
+    return NextResponse.json({ error: "Landing page or AB test is required" }, { status: 400 });
   }
 
   // Prevent duplicate pushes — reject if there's already a push in progress for this concept

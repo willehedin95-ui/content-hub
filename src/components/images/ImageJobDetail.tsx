@@ -16,6 +16,7 @@ import {
   EyeOff,
   Square,
   Wrench,
+  Plus,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import { getSettings } from "@/lib/settings";
@@ -78,6 +79,9 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const processingRef = useRef(false);
   const cancelRef = useRef(false);
   const [showTranslateConfirm, setShowTranslateConfirm] = useState(false);
+  const [showAddLang, setShowAddLang] = useState(false);
+  const [addLangSelected, setAddLangSelected] = useState<Set<Language>>(new Set());
+  const [addLangLoading, setAddLangLoading] = useState(false);
 
   // Meta push states
   const [metaPush, setMetaPush] = useState<{
@@ -759,6 +763,30 @@ export default function ImageJobDetail({ initialJob }: Props) {
     await refreshJob();
   }
 
+  async function handleAddLanguages() {
+    if (addLangSelected.size === 0) return;
+    setAddLangLoading(true);
+    const res = await fetch(`/api/image-jobs/${job.id}/add-languages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ languages: Array.from(addLangSelected) }),
+    });
+    if (!res.ok) {
+      setAddLangLoading(false);
+      return;
+    }
+    setShowAddLang(false);
+    setAddLangSelected(new Set());
+    setAddLangLoading(false);
+    const updated = await refreshJob();
+    if (updated) {
+      const pending = getAllPending(updated);
+      if (pending.length > 0) {
+        startQueue(pending);
+      }
+    }
+  }
+
   async function handleTranslateAll() {
     if (selectedLanguages.size === 0) return;
     setShowTranslateConfirm(false);
@@ -1135,6 +1163,78 @@ export default function ImageJobDetail({ initialJob }: Props) {
             />
           );
         })}
+        {/* Add language button — only show if there are languages not yet added */}
+        {LANGUAGES.filter((l) => !job.target_languages.includes(l.value)).length > 0 && (
+          <div className="relative ml-1">
+            <button
+              onClick={() => { setShowAddLang((v) => !v); setAddLangSelected(new Set()); }}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              title="Add language"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            {showAddLang && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 w-64">
+                <p className="text-sm font-medium text-gray-900 mb-3">Add languages</p>
+                <div className="space-y-2 mb-4">
+                  {LANGUAGES.filter((l) => !job.target_languages.includes(l.value)).map((lang) => (
+                    <label
+                      key={lang.value}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                        addLangSelected.has(lang.value)
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={addLangSelected.has(lang.value)}
+                        onChange={() => {
+                          setAddLangSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(lang.value)) next.delete(lang.value);
+                            else next.add(lang.value);
+                            return next;
+                          });
+                        }}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span role="img" aria-label={lang.label}>{lang.flag}</span>
+                      {lang.label}
+                    </label>
+                  ))}
+                </div>
+                {addLangSelected.size > 0 && (() => {
+                  const imgCount = (job.source_images ?? []).filter((si) => !si.skip_translation).length;
+                  const newTrans = imgCount * addLangSelected.size;
+                  return (
+                    <p className="text-xs text-gray-400 mb-3">
+                      {newTrans} new translations &asymp; ${(newTrans * 0.09).toFixed(2)}
+                    </p>
+                  );
+                })()}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAddLang(false)}
+                    className="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddLanguages}
+                    disabled={addLangSelected.size === 0 || addLangLoading}
+                    className="flex-1 px-3 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {addLangLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline mr-1" />
+                    ) : null}
+                    Add & Translate
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Image grid */}

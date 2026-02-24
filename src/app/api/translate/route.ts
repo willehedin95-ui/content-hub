@@ -51,68 +51,78 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Page not found" }, { status: 404 });
   }
 
-  // Atomically claim this translation — prevents concurrent requests.
+  const sourceLanguage: string = page.source_language || "en";
+
+  // Same-language shortcut: if source matches target, copy original HTML as-is.
+  // No claim needed — this is an idempotent upsert safe for concurrent requests.
+  if (sourceLanguage === language) {
+    const { metas } = extractBlocks(page.original_html);
+
+    const { data: translation, error: saveError } = await db
+      .from("translations")
+      .upsert(
+        {
+          page_id,
+          language,
+          variant: "control",
+          translated_html: page.original_html,
+          translated_texts: null,
+          seo_title: metas.title || null,
+          seo_description: metas.description || null,
+          status: "translated",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "page_id,language,variant" }
+      )
+      .select()
+      .single();
+
+    if (saveError) {
+      return NextResponse.json({ error: saveError.message }, { status: 500 });
+    }
+
+    return NextResponse.json(translation);
+  }
+
+  // Claim this translation — prevents concurrent requests.
   // Step 1: Ensure the row exists (upsert with ignoreDuplicates — no-ops if already present)
   const now = new Date().toISOString();
-  const staleThreshold = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
 
   await db.from("translations").upsert(
     { page_id, language, variant: "control", status: "draft", updated_at: now },
     { onConflict: "page_id,language,variant", ignoreDuplicates: true }
   );
 
-  // Step 2: Atomic claim — single UPDATE that succeeds only if:
-  //   - status is NOT "translating", OR
-  //   - status IS "translating" but the claim is stale (older than 10 min)
-  const { data: claimed } = await db
+  // Step 2: Check current status and claim if available
+  const { data: current } = await db
     .from("translations")
-    .update({ status: "translating", updated_at: now })
+    .select("id,status,updated_at")
     .eq("page_id", page_id)
     .eq("language", language)
     .eq("variant", "control")
-    .or(`status.neq.translating,updated_at.lt.${staleThreshold}`)
-    .select("id")
     .single();
 
-  if (!claimed) {
+  if (!current) {
+    return NextResponse.json({ error: "Translation row not found" }, { status: 500 });
+  }
+
+  // Block if another translation is actively in progress (not stale)
+  if (
+    current.status === "translating" &&
+    new Date(current.updated_at).getTime() > Date.now() - STALE_CLAIM_MS
+  ) {
     return NextResponse.json(
       { error: "Translation already in progress" },
       { status: 409 }
     );
   }
 
+  // Claim it
+  await db.from("translations")
+    .update({ status: "translating", updated_at: now })
+    .eq("id", current.id);
+
   try {
-    const sourceLanguage: string = page.source_language || "en";
-
-    // Same-language shortcut: if source matches target, copy original HTML as-is
-    if (sourceLanguage === language) {
-      const { metas } = extractBlocks(page.original_html);
-
-      const { data: translation, error: saveError } = await db
-        .from("translations")
-        .upsert(
-          {
-            page_id,
-            language,
-            variant: "control",
-            translated_html: page.original_html,
-            translated_texts: null,
-            seo_title: metas.title || null,
-            seo_description: metas.description || null,
-            status: "translated",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "page_id,language,variant" }
-        )
-        .select()
-        .single();
-
-      if (saveError) {
-        throw new Error(saveError.message);
-      }
-
-      return NextResponse.json(translation);
-    }
 
     const startTime = Date.now();
 
