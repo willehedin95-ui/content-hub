@@ -78,7 +78,7 @@ const PERIOD_OPTIONS = [
 
 type SortField = "name" | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "orders" | "revenue" | "roas";
 
-export default function AnalyticsClient({
+export default function TrackingClient({
   metaConfigured,
   shopifyConfigured,
   ga4Configured,
@@ -121,7 +121,7 @@ export default function AnalyticsClient({
       setSummary(summaryData);
       setCampaigns(perfData.campaigns);
     } catch {
-      setError("Failed to load analytics data. Try refreshing.");
+      setError("Failed to load tracking data. Try refreshing.");
     } finally {
       setLoading(false);
     }
@@ -206,7 +206,7 @@ export default function AnalyticsClient({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <TrendingUp className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Ad Tracking</h1>
         </div>
         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
           {PERIOD_OPTIONS.map((opt) => (

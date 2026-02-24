@@ -33,7 +33,9 @@ interface Settings {
   meta_default_objective: string;
   meta_default_schedule_time: string;
   ga4_measurement_ids: Record<string, string>;
+  ga4_property_ids: Record<string, string>;
   clarity_project_id: string;
+  clarity_api_token: string;
   shopify_domains: string;
 }
 
@@ -66,7 +68,9 @@ export default function SettingsPage() {
     meta_default_objective: "OUTCOME_TRAFFIC",
     meta_default_schedule_time: "06:00",
     ga4_measurement_ids: {},
+    ga4_property_ids: {},
     clarity_project_id: "",
+    clarity_api_token: "",
     shopify_domains: "",
   });
   const [saved, setSaved] = useState(false);
@@ -980,11 +984,12 @@ export default function SettingsPage() {
                 <RowDivider />
                 {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
                   const mid = settings.ga4_measurement_ids[lang.value] || "";
+                  const pid = (settings.ga4_property_ids ?? {})[lang.value] || "";
                   return (
                     <div key={lang.value}>
                       {i > 0 && <RowDivider />}
                       <Row
-                        label={`GA4 — ${lang.label}`}
+                        label={`GA4 Measurement — ${lang.label}`}
                         description={mid || "Not configured"}
                         descriptionColor={mid ? "text-emerald-600" : undefined}
                         action={
@@ -1000,12 +1005,34 @@ export default function SettingsPage() {
                           />
                         }
                       />
+                      <Row
+                        label={`GA4 Property — ${lang.label}`}
+                        description={pid ? `Property ${pid}` : "GA4 Admin → Property Details"}
+                        descriptionColor={pid ? "text-emerald-600" : undefined}
+                        action={
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={pid}
+                              onChange={(e) => setSettings((s) => ({
+                                ...s,
+                                ga4_property_ids: { ...(s.ga4_property_ids ?? {}), [lang.value]: e.target.value },
+                              }))}
+                              placeholder="123456789"
+                              className="w-28 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                            />
+                            {pid && (
+                              <GA4TestButton propertyId={pid} />
+                            )}
+                          </div>
+                        }
+                      />
                     </div>
                   );
                 })}
                 <RowDivider />
                 <Row
-                  label="Microsoft Clarity"
+                  label="Clarity Project ID"
                   description={settings.clarity_project_id || "Not configured"}
                   descriptionColor={settings.clarity_project_id ? "text-emerald-600" : undefined}
                   action={
@@ -1017,6 +1044,11 @@ export default function SettingsPage() {
                       className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
                     />
                   }
+                />
+                <RowDivider />
+                <ClarityTokenRow
+                  token={settings.clarity_api_token ?? ""}
+                  onChange={(v) => setSettings((s) => ({ ...s, clarity_api_token: v }))}
                 />
                 <RowDivider />
                 <Row
@@ -1146,6 +1178,137 @@ function SaveButton({ saved, onSave }: { saved: boolean; onSave: () => void }) {
         {saved ? "Saved!" : "Save"}
       </button>
     </div>
+  );
+}
+
+function GA4TestButton({ propertyId }: { propertyId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function test() {
+    setState("loading");
+    try {
+      const res = await fetch("/api/ga4/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setState("ok");
+      } else {
+        setErrorMsg(data.error || "Test failed");
+        setState("error");
+      }
+    } catch {
+      setErrorMsg("Request failed");
+      setState("error");
+    }
+  }
+
+  return (
+    <button
+      onClick={test}
+      disabled={state === "loading"}
+      title={state === "error" ? errorMsg : undefined}
+      className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
+        state === "ok"
+          ? "border-emerald-200 text-emerald-600 bg-emerald-50"
+          : state === "error"
+          ? "border-red-200 text-red-500 bg-red-50"
+          : "border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+      }`}
+    >
+      {state === "loading" ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : state === "ok" ? (
+        <CheckCircle2 className="w-3 h-3" />
+      ) : (
+        "Test"
+      )}
+    </button>
+  );
+}
+
+function ClarityTokenRow({
+  token,
+  onChange,
+}: {
+  token: string;
+  onChange: (v: string) => void;
+}) {
+  const [testState, setTestState] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function test() {
+    setTestState("loading");
+    try {
+      const res = await fetch("/api/clarity/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiToken: token }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTestState("ok");
+      } else {
+        setErrorMsg(data.error || "Test failed");
+        setTestState("error");
+      }
+    } catch {
+      setErrorMsg("Request failed");
+      setTestState("error");
+    }
+  }
+
+  return (
+    <Row
+      label="Clarity API Token"
+      description={
+        testState === "error"
+          ? errorMsg
+          : token
+          ? "Data Export API token"
+          : "Clarity Settings → Data Export → Generate token"
+      }
+      descriptionColor={
+        testState === "ok" ? "text-emerald-600" :
+        testState === "error" ? "text-red-500" :
+        token ? "text-emerald-600" : undefined
+      }
+      action={
+        <div className="flex items-center gap-1.5">
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="API token"
+            className="w-32 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+          />
+          {token && (
+            <button
+              onClick={test}
+              disabled={testState === "loading"}
+              className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
+                testState === "ok"
+                  ? "border-emerald-200 text-emerald-600 bg-emerald-50"
+                  : testState === "error"
+                  ? "border-red-200 text-red-500 bg-red-50"
+                  : "border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {testState === "loading" ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : testState === "ok" ? (
+                <CheckCircle2 className="w-3 h-3" />
+              ) : (
+                "Test"
+              )}
+            </button>
+          )}
+        </div>
+      }
+    />
   );
 }
 

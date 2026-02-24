@@ -20,7 +20,9 @@ export interface Settings {
   meta_default_schedule_time?: string; // HH:mm format, e.g. "06:00"
   // Analytics (injected into all published pages)
   ga4_measurement_ids?: Record<string, string>; // per-language GA4 measurement IDs, e.g. { sv: "G-xxx", da: "G-xxx" }
+  ga4_property_ids?: Record<string, string>; // per-language GA4 property IDs (numeric), e.g. { sv: "123456789" }
   clarity_project_id?: string; // Microsoft Clarity project ID
+  clarity_api_token?: string; // Clarity Data Export API token
   shopify_domains?: string; // comma-separated store domains for UTM link tagging
 }
 

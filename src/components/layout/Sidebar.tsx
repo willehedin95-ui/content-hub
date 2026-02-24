@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, BarChart3, Image, FlaskConical, TrendingUp, LogOut, Package, Wand2 } from "lucide-react";
+import { Layers, Settings, Zap, BarChart3, Image, FlaskConical, TrendingUp, LogOut, Package, Wand2, LineChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -13,7 +13,8 @@ const nav = [
   { href: "/images", label: "Ad Concepts", icon: Image },
   { href: "/swiper", label: "Page Swiper", icon: Wand2 },
   { href: "/products", label: "Products", icon: Package },
-  { href: "/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/analytics", label: "Analytics", icon: LineChart },
+  { href: "/tracking", label: "Tracking", icon: TrendingUp },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
