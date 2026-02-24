@@ -66,7 +66,7 @@ export async function fetchClarityInsights(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Clarity API error (${res.status}): ${text}`);
+    throw new Error(`Clarity API error (${res.status}): ${text.slice(0, 200)}`);
   }
 
   const body: ClarityAPIResponse = await res.json();

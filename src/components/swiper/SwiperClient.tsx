@@ -51,7 +51,8 @@ export default function SwiperClient({ products }: Props) {
   const [pageSlug, setPageSlug] = useState("");
   const [showOriginal, setShowOriginal] = useState(false);
   const [savedPageId, setSavedPageId] = useState<string | null>(null);
-  const [swipeSubstep, setSwipeSubstep] = useState<"fetching" | "rewriting">("fetching");
+  const [swipeSubstep, setSwipeSubstep] = useState<"fetching" | "rewriting" | "restoring">("fetching");
+  const [swipeProgress, setSwipeProgress] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -75,10 +76,78 @@ export default function SwiperClient({ products }: Props) {
     };
   }, [step]);
 
+  /** Safely parse a fetch response — handles non-JSON error pages (e.g. Vercel 504) */
+  async function safeJson<T>(res: Response, fallbackMsg: string): Promise<T> {
+    const text = await res.text();
+    try {
+      const data = JSON.parse(text);
+      if (!res.ok) throw new Error(data.error || fallbackMsg);
+      return data as T;
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        // Non-JSON response — typically a Vercel timeout or crash page
+        if (res.status === 504) {
+          throw new Error(
+            "The server function timed out. This page may be too large for the current hosting plan (60s limit). Try a smaller page, or upgrade Vercel to Pro for 5-minute timeouts."
+          );
+        }
+        throw new Error(`Server error (${res.status}): ${text.slice(0, 150)}`);
+      }
+      throw err;
+    }
+  }
+
+  /** Read SSE stream from /api/swipe and return the final result */
+  async function readSwipeStream(res: Response): Promise<SwipeResult> {
+    if (!res.body) throw new Error("No response body");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: SwipeResult | null = null;
+    let streamError: string | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse complete SSE events (separated by double newline)
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop()!; // Keep incomplete event in buffer
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        const lines = part.split("\n");
+        const eventLine = lines.find((l) => l.startsWith("event: "));
+        const dataLine = lines.find((l) => l.startsWith("data: "));
+        if (!eventLine || !dataLine) continue;
+
+        const eventType = eventLine.slice(7);
+        const data = JSON.parse(dataLine.slice(6));
+
+        if (eventType === "progress") {
+          if (data.step === "restoring") setSwipeSubstep("restoring");
+          if (data.message) setSwipeProgress(data.message);
+        } else if (eventType === "done") {
+          result = data as SwipeResult;
+        } else if (eventType === "error") {
+          streamError = data.message || "Rewrite failed";
+        }
+      }
+    }
+
+    if (streamError) throw new Error(streamError);
+    if (!result) throw new Error("Stream ended without a result");
+    return result;
+  }
+
   async function handleSwipe() {
     if (!url.trim() || !selectedProductId) return;
     setError(null);
     setStep("swiping");
+    setSwipeProgress("");
 
     try {
       // Step 1: Fetch the competitor page
@@ -89,12 +158,10 @@ export default function SwiperClient({ products }: Props) {
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      if (!fetchRes.ok) {
-        const data = await fetchRes.json();
-        throw new Error(data.error || "Failed to fetch URL");
-      }
-
-      const { html, title } = await fetchRes.json();
+      const { html, title } = await safeJson<{ html: string; title: string }>(
+        fetchRes,
+        "Failed to fetch URL"
+      );
 
       // Set default page name from title
       if (title && !pageName) {
@@ -108,7 +175,7 @@ export default function SwiperClient({ products }: Props) {
         );
       }
 
-      // Step 2: Send to Claude for rewriting
+      // Step 2: Stream Claude rewrite via SSE
       setSwipeSubstep("rewriting");
       const swipeRes = await fetch("/api/swipe", {
         method: "POST",
@@ -122,12 +189,14 @@ export default function SwiperClient({ products }: Props) {
         }),
       });
 
-      if (!swipeRes.ok) {
-        const data = await swipeRes.json();
-        throw new Error(data.error || "Swipe failed");
+      // Check for non-SSE error responses (e.g. 400, 504)
+      const contentType = swipeRes.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream")) {
+        // Fallback: response is JSON (error case)
+        await safeJson<never>(swipeRes, "Swipe failed");
       }
 
-      const result: SwipeResult = await swipeRes.json();
+      const result = await readSwipeStream(swipeRes);
       setSwipeResult(result);
       setStep("review");
     } catch (err) {
@@ -169,12 +238,7 @@ export default function SwiperClient({ products }: Props) {
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to save page");
-      }
-
-      const page = await res.json();
+      const page = await safeJson<{ id: string }>(res, "Failed to save page");
       setSavedPageId(page.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -289,6 +353,7 @@ export default function SwiperClient({ products }: Props) {
           <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-5" />
 
           <div className="space-y-3 mb-6">
+            {/* Step 1: Fetch */}
             <div className="flex items-center gap-3">
               <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
                 swipeSubstep === "fetching"
@@ -308,22 +373,52 @@ export default function SwiperClient({ products }: Props) {
               </span>
             </div>
 
+            {/* Step 2: Rewrite */}
             <div className="flex items-center gap-3">
               <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
                 swipeSubstep === "rewriting"
                   ? "bg-indigo-100 ring-2 ring-indigo-400"
-                  : "bg-gray-100"
+                  : swipeSubstep === "restoring"
+                    ? "bg-emerald-100"
+                    : "bg-gray-100"
               }`}>
                 {swipeSubstep === "rewriting" ? (
+                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                ) : swipeSubstep === "restoring" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-gray-300" />
+                )}
+              </div>
+              <div className="flex flex-col">
+                <span className={`text-sm ${
+                  swipeSubstep === "rewriting" ? "text-gray-900 font-medium" : swipeSubstep === "restoring" ? "text-gray-400" : "text-gray-400"
+                }`}>
+                  Rewriting copy with Claude
+                </span>
+                {swipeSubstep === "rewriting" && swipeProgress && (
+                  <span className="text-xs text-gray-400">{swipeProgress}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Step 3: Restore */}
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                swipeSubstep === "restoring"
+                  ? "bg-indigo-100 ring-2 ring-indigo-400"
+                  : "bg-gray-100"
+              }`}>
+                {swipeSubstep === "restoring" ? (
                   <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
                 ) : (
                   <div className="w-2 h-2 rounded-full bg-gray-300" />
                 )}
               </div>
               <span className={`text-sm ${
-                swipeSubstep === "rewriting" ? "text-gray-900 font-medium" : "text-gray-400"
+                swipeSubstep === "restoring" ? "text-gray-900 font-medium" : "text-gray-400"
               }`}>
-                Rewriting copy with Claude
+                Restoring HTML structure
               </span>
             </div>
           </div>

@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb",
+      bodySizeLimit: "50mb",
     },
   },
   // Required for @sparticuz/chromium to work in Vercel serverless functions

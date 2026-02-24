@@ -196,26 +196,18 @@ export function buildSystemPrompt(
 }
 
 /**
- * Rewrite competitor HTML body for a target product using Claude.
- * Keeps the HTML structure intact — only changes text content.
+ * Build system + user prompts for a page rewrite.
+ * Extracted so the SSE route can access them without running the full rewrite.
  */
-export async function rewritePageForProduct(
+export function buildRewritePrompts(
   bodyHtml: string,
   product: ProductFull,
   guidelines: CopywritingGuideline[],
   references: ReferencePage[],
-  apiKey: string,
   sourceLanguage: string = "en",
   angle?: SwiperAngle,
   productBrief?: string
-): Promise<{
-  result: string;
-  inputTokens: number;
-  outputTokens: number;
-}> {
-  const client = new Anthropic({ apiKey });
-
-  // Use the new brief-based prompt when both angle and brief are provided
+): { systemPrompt: string; userPrompt: string } {
   const systemPrompt = productBrief && angle
     ? buildSwiperPrompt(product.name, productBrief)
     : buildSystemPrompt(product, guidelines, references);
@@ -237,25 +229,23 @@ RULES:
 COMPETITOR HTML:
 ${bodyHtml}`;
 
-  const stream = await withRetry(
-    async () =>
-      client.messages.stream({
-        model: CLAUDE_MODEL,
-        max_tokens: 64000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    { maxAttempts: 3, isRetryable: isTransientError }
-  );
+  return { systemPrompt, userPrompt };
+}
 
-  const response = await stream.finalMessage();
-
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
-
-  return {
-    result: text,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-  };
+/**
+ * Create a streaming Claude rewrite. Returns the Anthropic MessageStream
+ * so callers can listen to events and stream progress to the client.
+ */
+export function createRewriteStream(
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey: string
+) {
+  const client = new Anthropic({ apiKey });
+  return client.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 64000,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+  });
 }

@@ -55,7 +55,7 @@ async function getAccessToken(): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Shopify token exchange failed (${res.status}): ${text}`);
+    throw new Error(`Shopify token exchange failed (${res.status}): ${text.slice(0, 200)}`);
   }
 
   const data = await res.json();
@@ -86,7 +86,7 @@ export async function fetchOrdersSince(sinceISO: string): Promise<ShopifyOrder[]
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Shopify API error (${res.status}): ${text}`);
+      throw new Error(`Shopify API error (${res.status}): ${text.slice(0, 200)}`);
     }
 
     const data = await res.json();

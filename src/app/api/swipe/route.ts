@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
-import { safeError } from "@/lib/api-error";
 import { stripForTranslation, restoreAfterTranslation, compactForSwiper, decompactAfterSwiper } from "@/lib/html-parser";
-import { rewritePageForProduct } from "@/lib/claude";
+import { buildRewritePrompts, createRewriteStream } from "@/lib/claude";
 import type { SwiperAngle } from "@/lib/claude";
 import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
+import { CLAUDE_MODEL } from "@/lib/constants";
 
 export const maxDuration = 300;
 
 /**
  * POST /api/swipe
- * Orchestrates the page swipe: takes fetched HTML + product ID,
- * loads product bank data, sends to Claude for rewriting, returns result.
+ * Orchestrates the page swipe with SSE streaming:
+ *   1. Loads product data
+ *   2. Compacts HTML
+ *   3. Streams Claude rewrite (sends progress events)
+ *   4. Decompacts + restores
+ *   5. Sends final result
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -58,14 +62,16 @@ export async function POST(req: NextRequest) {
   ]);
 
   if (productResult.error || !productResult.data) {
-    return safeError(productResult.error, "Product not found", 404);
+    return NextResponse.json(
+      { error: "Product not found" },
+      { status: 404 }
+    );
   }
 
   const product = productResult.data as ProductFull;
   const guidelines = (guidelinesResult.data ?? []) as CopywritingGuideline[];
   const references = (referencesResult.data ?? []) as ReferencePage[];
 
-  // Look for the product brief in guidelines
   const productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
   const swiperAngle = (angle as SwiperAngle) || undefined;
 
@@ -73,70 +79,118 @@ export async function POST(req: NextRequest) {
   const { bodyHtml, headHtml, stripped } = stripForTranslation(html);
 
   // Compact class/style/data attributes to reduce token count
-  // (a Tailwind page can go from 200K→30K tokens with this)
   const { compact, classMap, styleMap } = compactForSwiper(bodyHtml);
 
-  try {
-    // Send compacted HTML to Claude for rewriting
-    const { result: rewrittenCompact, inputTokens, outputTokens } =
-      await rewritePageForProduct(
-        compact,
-        product,
-        guidelines,
-        references,
-        apiKey,
-        sourceLanguage || "en",
-        swiperAngle,
-        productBrief
-      );
+  // Build prompts
+  const { systemPrompt, userPrompt } = buildRewritePrompts(
+    compact,
+    product,
+    guidelines,
+    references,
+    sourceLanguage || "en",
+    swiperAngle,
+    productBrief
+  );
 
-    // Restore compacted attributes, then restore stripped elements + head
-    const rewrittenBody = decompactAfterSwiper(rewrittenCompact, classMap, styleMap);
-    const rewrittenHtml = restoreAfterTranslation(
-      rewrittenBody,
-      headHtml,
-      stripped,
-      {} // No meta translations in swipe — handled by the rewrite itself
-    );
+  // Return SSE stream
+  const encoder = new TextEncoder();
 
-    // Log usage
-    await db.from("usage_logs").insert({
-      type: "claude_rewrite",
-      model: "claude-sonnet-4-5-20250929",
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      cost_usd: (inputTokens * 3 + outputTokens * 15) / 1_000_000, // Sonnet pricing
-      metadata: {
-        product_id: productId,
-        product_name: product.name,
-        source_url: sourceUrl,
-        angle: swiperAngle || "none",
-        has_product_brief: !!productBrief,
-        guidelines_count: guidelines.length,
-        references_count: references.length,
-      },
-    });
-
-    // Extract images from the page for the image mapper
-    const imageRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
-    const images: { src: string; alt: string }[] = [];
-    let match;
-    while ((match = imageRegex.exec(rewrittenHtml)) !== null) {
-      const src = match[1];
-      if (src && !src.startsWith("data:")) {
-        images.push({ src, alt: match[2] || "" });
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(event: string, data: Record<string, unknown>) {
+        controller.enqueue(
+          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+        );
       }
-    }
 
-    return NextResponse.json({
-      rewrittenHtml,
-      originalHtml: html,
-      images,
-      usage: { inputTokens, outputTokens },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Rewrite failed";
-    console.error("[Swipe Error]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+      try {
+        send("progress", { step: "rewriting", message: "Sending to Claude..." });
+
+        // Stream Claude's response
+        const claudeStream = createRewriteStream(systemPrompt, userPrompt, apiKey);
+        let outputChars = 0;
+        let lastProgressAt = 0;
+
+        claudeStream.on("text", (text) => {
+          outputChars += text.length;
+          // Send progress every ~2000 chars to avoid flooding
+          if (outputChars - lastProgressAt >= 2000) {
+            lastProgressAt = outputChars;
+            send("progress", {
+              step: "rewriting",
+              message: `Claude writing... (${Math.round(outputChars / 1000)}k chars)`,
+              chars: outputChars,
+            });
+          }
+        });
+
+        const response = await claudeStream.finalMessage();
+        const rewrittenCompact =
+          response.content[0].type === "text" ? response.content[0].text : "";
+        const inputTokens = response.usage.input_tokens;
+        const outputTokens = response.usage.output_tokens;
+
+        send("progress", { step: "restoring", message: "Restoring HTML..." });
+
+        // Restore compacted attributes, then restore stripped elements + head
+        const rewrittenBody = decompactAfterSwiper(rewrittenCompact, classMap, styleMap);
+        const rewrittenHtml = restoreAfterTranslation(
+          rewrittenBody,
+          headHtml,
+          stripped,
+          {}
+        );
+
+        // Log usage (fire and forget)
+        db.from("usage_logs").insert({
+          type: "claude_rewrite",
+          model: CLAUDE_MODEL,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: (inputTokens * 3 + outputTokens * 15) / 1_000_000,
+          metadata: {
+            product_id: productId,
+            product_name: product.name,
+            source_url: sourceUrl,
+            angle: swiperAngle || "none",
+            has_product_brief: !!productBrief,
+            guidelines_count: guidelines.length,
+            references_count: references.length,
+          },
+        }).then(() => {});
+
+        // Extract images from the page for the image mapper
+        const imageRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
+        const images: { src: string; alt: string }[] = [];
+        let match;
+        while ((match = imageRegex.exec(rewrittenHtml)) !== null) {
+          const src = match[1];
+          if (src && !src.startsWith("data:")) {
+            images.push({ src, alt: match[2] || "" });
+          }
+        }
+
+        send("done", {
+          rewrittenHtml,
+          originalHtml: html,
+          images,
+          usage: { inputTokens, outputTokens },
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Rewrite failed";
+        console.error("[Swipe Error]", message);
+        send("error", { message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
