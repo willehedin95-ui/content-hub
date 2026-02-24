@@ -347,7 +347,7 @@ export async function POST(
               adSetId: newAdSetId,
               creativeId: creativeResult.value.creativeId,
               status: "ACTIVE",
-              urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
+              urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
             });
 
             adRows.push({

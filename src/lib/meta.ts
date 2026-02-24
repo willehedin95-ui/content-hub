@@ -327,13 +327,14 @@ interface AdSetTemplateConfig {
   attribution_spec?: Array<Record<string, unknown>>;
   bid_strategy?: string;
   daily_budget?: string;
+  lifetime_budget?: string;
 }
 
 /**
  * Fetch a template ad set's config so we can create new ad sets with the same settings.
  */
 export async function getAdSetConfig(adSetId: string): Promise<AdSetTemplateConfig> {
-  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,daily_budget`);
+  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,daily_budget,lifetime_budget`);
 }
 
 /**
@@ -345,8 +346,19 @@ export async function createAdSetFromTemplate(params: {
   templateConfig: AdSetTemplateConfig;
   name: string;
   isDynamicCreative?: boolean;
+  startTime?: string;
 }): Promise<{ id: string }> {
   const cfg = params.templateConfig;
+
+  // Only pass budget if the template has one set at ad-set level.
+  // CBO campaigns manage budget at campaign level — ad sets have no budget.
+  const budgetFields: Record<string, string> = {};
+  if (cfg.daily_budget && Number(cfg.daily_budget) > 0) {
+    budgetFields.daily_budget = cfg.daily_budget;
+  } else if (cfg.lifetime_budget && Number(cfg.lifetime_budget) > 0) {
+    budgetFields.lifetime_budget = cfg.lifetime_budget;
+  }
+
   return metaJson(`/act_${getAdAccountId()}/adsets`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -359,9 +371,10 @@ export async function createAdSetFromTemplate(params: {
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
       bid_strategy: cfg.bid_strategy,
-      daily_budget: cfg.daily_budget || "0",
+      ...budgetFields,
       is_dynamic_creative: params.isDynamicCreative || false,
-      status: "PAUSED",
+      start_time: params.startTime || new Date().toISOString(),
+      status: params.startTime ? "ACTIVE" : "PAUSED",
     }),
   });
 }

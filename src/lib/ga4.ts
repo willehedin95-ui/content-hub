@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { LANGUAGES } from "@/types";
 
 const analyticsdata = google.analyticsdata("v1beta");
 
@@ -14,6 +15,7 @@ function getAuth() {
 }
 
 export interface GA4PageMetrics {
+  hostName: string;
   pagePath: string;
   screenPageViews: number;
   sessions: number;
@@ -26,6 +28,7 @@ export interface GA4PageMetrics {
 
 /**
  * Fetch per-page metrics from a single GA4 property.
+ * Uses hostName + pagePath dimensions to distinguish markets.
  */
 export async function fetchPageMetrics(
   propertyId: string,
@@ -39,7 +42,7 @@ export async function fetchPageMetrics(
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "pagePath" }],
+      dimensions: [{ name: "hostName" }, { name: "pagePath" }],
       metrics: [
         { name: "screenPageViews" },
         { name: "sessions" },
@@ -61,7 +64,8 @@ export async function fetchPageMetrics(
     const dims = row.dimensionValues ?? [];
     const mets = row.metricValues ?? [];
     return {
-      pagePath: dims[0]?.value ?? "",
+      hostName: dims[0]?.value ?? "",
+      pagePath: dims[1]?.value ?? "",
       screenPageViews: parseInt(mets[0]?.value ?? "0", 10),
       sessions: parseInt(mets[1]?.value ?? "0", 10),
       totalUsers: parseInt(mets[2]?.value ?? "0", 10),
@@ -75,31 +79,45 @@ export async function fetchPageMetrics(
 
 /**
  * Fetch metrics from all configured GA4 properties in parallel.
+ * Deduplicates property IDs and uses hostName to map pages to markets.
  * Returns a map: `"lang:/path"` → metrics.
  */
 export async function fetchAllGA4Metrics(
-  properties: Record<string, string>, // { sv: "123456789", da: "987654321" }
-  days: number
+  properties: Record<string, string>,
+  days: number,
+  extraPropertyIds?: string[]
 ): Promise<Map<string, GA4PageMetrics>> {
   const endDate = "today";
   const startDate = `${days}daysAgo`;
 
-  const entries = Object.entries(properties).filter(([, id]) => !!id);
-  if (entries.length === 0) return new Map();
+  // Build domain→lang map from LANGUAGES
+  const domainToLang = new Map<string, string>();
+  for (const lang of LANGUAGES) {
+    if (lang.domain) domainToLang.set(lang.domain, lang.value);
+  }
+
+  // Deduplicate property IDs (e.g. all markets share one property)
+  // Include extra property IDs (e.g. legacy property with historical data)
+  const allIds = [...Object.values(properties).filter(Boolean), ...(extraPropertyIds ?? [])];
+  const uniquePropertyIds = [...new Set(allIds)];
+  if (uniquePropertyIds.length === 0) return new Map();
 
   const results = await Promise.allSettled(
-    entries.map(async ([lang, propertyId]) => {
-      const metrics = await fetchPageMetrics(propertyId, startDate, endDate);
-      return { lang, metrics };
-    })
+    uniquePropertyIds.map((propertyId) =>
+      fetchPageMetrics(propertyId, startDate, endDate)
+    )
   );
 
   const map = new Map<string, GA4PageMetrics>();
   for (const result of results) {
     if (result.status === "fulfilled") {
-      const { lang, metrics } = result.value;
-      for (const m of metrics) {
-        map.set(`${lang}:${m.pagePath}`, m);
+      for (const m of result.value) {
+        // Map hostname to market language
+        const lang = domainToLang.get(m.hostName);
+        if (lang) {
+          map.set(`${lang}:${m.pagePath}`, m);
+        }
+        // Skip unknown hostnames (e.g. localhost, preview domains)
       }
     }
   }

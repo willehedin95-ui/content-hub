@@ -37,6 +37,7 @@ interface Settings {
   clarity_project_id: string;
   clarity_api_token: string;
   shopify_domains: string;
+  meta_pixel_id: string;
 }
 
 const TABS = [
@@ -72,6 +73,7 @@ export default function SettingsPage() {
     clarity_project_id: "",
     clarity_api_token: "",
     shopify_domains: "",
+    meta_pixel_id: "",
   });
   const [saved, setSaved] = useState(false);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1060,6 +1062,20 @@ export default function SettingsPage() {
                       value={settings.shopify_domains}
                       onChange={(e) => setSettings((s) => ({ ...s, shopify_domains: e.target.value }))}
                       placeholder="store.myshopify.com"
+                      className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                  }
+                />
+                <RowDivider />
+                <Row
+                  label="Meta Pixel ID"
+                  description="Tracks page views & clicks for Meta ad optimization"
+                  action={
+                    <input
+                      type="text"
+                      value={settings.meta_pixel_id}
+                      onChange={(e) => setSettings((s) => ({ ...s, meta_pixel_id: e.target.value }))}
+                      placeholder="123456789012345"
                       className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
                     />
                   }

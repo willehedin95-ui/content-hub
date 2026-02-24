@@ -15,7 +15,7 @@ export async function POST(
 
   if (!isShopifyConfigured()) {
     return NextResponse.json(
-      { error: "Shopify not configured. Set SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN." },
+      { error: "Shopify not configured. Set SHOPIFY_STORE_URL, SHOPIFY_CLIENT_ID, and SHOPIFY_CLIENT_SECRET." },
       { status: 400 }
     );
   }

@@ -132,6 +132,7 @@ export async function POST(req: NextRequest) {
             .split(",")
             .map((d: string) => d.trim())
             .filter(Boolean),
+          metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
         };
 
         send({ step: "deploy", message: "Deploying to Cloudflare Pages…" });

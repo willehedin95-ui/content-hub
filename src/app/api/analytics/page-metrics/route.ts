@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
 
   const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
+  const legacyPropertyId = settings.ga4_legacy_property_id as string | undefined;
   const clarityToken = settings.clarity_api_token as string | undefined;
 
   const errors: Record<string, string> = {};
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   // Fetch all sources in parallel
   const [ga4Result, clarityResult, shopifyResult] = await Promise.allSettled([
     Object.keys(ga4PropertyIds).length > 0
-      ? fetchAllGA4Metrics(ga4PropertyIds, days)
+      ? fetchAllGA4Metrics(ga4PropertyIds, days, legacyPropertyId ? [legacyPropertyId] : undefined)
       : Promise.resolve(new Map()),
     clarityToken
       ? fetchClarityInsights(clarityToken, Math.min(days, 3))

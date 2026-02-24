@@ -317,10 +317,37 @@ export interface PageAnalyticsConfig {
   ga4MeasurementId?: string;
   clarityProjectId?: string;
   shopifyDomains?: string[];
+  metaPixelId?: string;
   /** Page slug — used for UTM campaign on non-AB pages */
   slug?: string;
   /** AB test context — only set for AB test variant pages */
   abTest?: { testId: string; variant: "a" | "b" };
+}
+
+/** Meta Pixel — tracks page views and outbound CTA clicks for Meta ad optimization */
+function injectMetaPixel(html: string, pixelId: string): string {
+  if (html.includes('data-cc-fbpixel="true"')) return html;
+  const script = `<!-- Meta Pixel -->
+<script data-cc-fbpixel="true">
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init',${JSON.stringify(pixelId)});
+fbq('track','PageView');
+document.addEventListener('click',function(e){
+  var a=e.target.closest('a[href]');
+  if(!a)return;
+  try{
+    var u=new URL(a.href,location.href);
+    if(u.hostname===location.hostname)return;
+    fbq('trackCustom','CtaClick',{link_url:a.href});
+  }catch(err){}
+},true);
+</script>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1"/></noscript>`;
+  return html.replace(/<\/head>/i, script + "</head>");
 }
 
 function injectClarityScript(html: string, projectId: string): string {
@@ -340,18 +367,23 @@ y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
  * Used by both publishPage() and publishABTest().
  */
 function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string {
-  // GA4
+  // GA4 (with cross-domain linking to Shopify)
   if (config.ga4MeasurementId) {
     if (config.abTest) {
-      html = injectGA4Script(html, config.ga4MeasurementId, config.abTest.testId, config.abTest.variant);
+      html = injectGA4Script(html, config.ga4MeasurementId, config.abTest.testId, config.abTest.variant, config.shopifyDomains);
     } else {
-      html = injectGA4ScriptBasic(html, config.ga4MeasurementId);
+      html = injectGA4ScriptBasic(html, config.ga4MeasurementId, config.shopifyDomains);
     }
   }
 
   // Clarity
   if (config.clarityProjectId) {
     html = injectClarityScript(html, config.clarityProjectId);
+  }
+
+  // Meta Pixel
+  if (config.metaPixelId) {
+    html = injectMetaPixel(html, config.metaPixelId);
   }
 
   // UTM link rewriting
@@ -401,15 +433,27 @@ function injectUTMRewriter(
   var t=${JSON.stringify(testId)};
   var v=${JSON.stringify(variant)};
   var d=${JSON.stringify(shopifyDomains)};
+  var p=new URLSearchParams(location.search);
+  var src=p.get('utm_source')||'';
   document.addEventListener('DOMContentLoaded',function(){
     document.querySelectorAll('a[href]').forEach(function(a){
       try{
         var u=new URL(a.href,location.href);
         if(!d.some(function(h){return u.hostname.indexOf(h)!==-1}))return;
-        u.searchParams.set('utm_source','abtest');
-        u.searchParams.set('utm_medium','landingpage');
-        u.searchParams.set('utm_campaign',t);
-        u.searchParams.set('utm_content',v);
+        if(src){
+          // Visitor came from an ad — preserve original UTMs
+          ['utm_source','utm_medium','utm_campaign','utm_content','utm_adset'].forEach(function(k){
+            var val=p.get(k);if(val)u.searchParams.set(k,val);
+          });
+          // Add AB test info as additional params
+          u.searchParams.set('utm_term',t+'_'+v);
+        }else{
+          // Direct/organic — set AB test UTMs
+          u.searchParams.set('utm_source','abtest');
+          u.searchParams.set('utm_medium','landingpage');
+          u.searchParams.set('utm_campaign',t);
+          u.searchParams.set('utm_content',v);
+        }
         a.href=u.toString();
       }catch(e){}
     });
@@ -419,37 +463,87 @@ function injectUTMRewriter(
   return html.replace(/<\/body>/i, script + "</body>");
 }
 
+/**
+ * Inline JS that tracks outbound CTA clicks and scroll depth as GA4 events.
+ * Injected into every published page alongside the basic gtag config.
+ */
+const GA4_ENGAGEMENT_TRACKING = `
+// Track outbound link clicks
+document.addEventListener('click',function(e){
+  var a=e.target.closest('a[href]');
+  if(!a)return;
+  try{
+    var u=new URL(a.href,location.href);
+    if(u.hostname===location.hostname)return;
+    gtag('event','cta_click',{
+      link_url:a.href,
+      link_text:(a.textContent||'').trim().substring(0,100),
+      outbound:true
+    });
+  }catch(err){}
+},true);
+// Track scroll milestones (25%, 50%, 75%, 100%)
+(function(){
+  var fired={};
+  function check(){
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    if(h<=0)return;
+    var pct=Math.round(window.scrollY/h*100);
+    [25,50,75,100].forEach(function(m){
+      if(pct>=m&&!fired[m]){
+        fired[m]=true;
+        gtag('event','scroll_depth',{percent:m});
+      }
+    });
+  }
+  window.addEventListener('scroll',check,{passive:true});
+})();`;
+
 function injectGA4Script(
   html: string,
   measurementId: string,
   testId: string,
-  variant: "a" | "b"
+  variant: "a" | "b",
+  shopifyDomains?: string[]
 ): string {
+  const linkerConfig = shopifyDomains?.length
+    ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
+    : "";
   const script = `<!-- GA4 -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
 <script>
 window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
 gtag('js',new Date());
-gtag('config',${JSON.stringify(measurementId)});
+gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
 gtag('event','ab_test_view',{test_id:${JSON.stringify(testId)},variant:${JSON.stringify(variant)}});
+${GA4_ENGAGEMENT_TRACKING}
 </script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
 
 /** GA4 injection for regular pages (no AB test event) */
-function injectGA4ScriptBasic(html: string, measurementId: string): string {
+function injectGA4ScriptBasic(html: string, measurementId: string, shopifyDomains?: string[]): string {
   if (html.includes('data-cc-ga4="true"')) return html;
+  // Cross-domain linker config so GA4 session continues to Shopify
+  const linkerConfig = shopifyDomains?.length
+    ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
+    : "";
   const script = `<!-- GA4 -->
 <script data-cc-ga4="true" async src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"></script>
 <script>
 window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
 gtag('js',new Date());
-gtag('config',${JSON.stringify(measurementId)});
+gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
+${GA4_ENGAGEMENT_TRACKING}
 </script>`;
   return html.replace(/<\/head>/i, script + "</head>");
 }
 
-/** UTM link rewriting for regular pages (no variant, uses slug as campaign) */
+/** UTM link rewriting for regular pages.
+ * Smart: reads incoming UTM params from the page URL (e.g. from Meta ads)
+ * and passes them through to Shopify links, adding the page slug as utm_term.
+ * If no incoming UTM params, defaults to utm_source=page, utm_campaign=<slug>.
+ */
 function injectUTMRewriterPage(
   html: string,
   slug: string,
@@ -461,14 +555,26 @@ function injectUTMRewriterPage(
 (function(){
   var s=${JSON.stringify(slug)};
   var d=${JSON.stringify(shopifyDomains)};
+  var p=new URLSearchParams(location.search);
+  var src=p.get('utm_source')||'';
   document.addEventListener('DOMContentLoaded',function(){
     document.querySelectorAll('a[href]').forEach(function(a){
       try{
         var u=new URL(a.href,location.href);
         if(!d.some(function(h){return u.hostname.indexOf(h)!==-1}))return;
-        u.searchParams.set('utm_source','page');
-        u.searchParams.set('utm_medium','landingpage');
-        u.searchParams.set('utm_campaign',s);
+        if(src){
+          // Visitor came from an ad or known source — preserve original UTMs
+          ['utm_source','utm_medium','utm_campaign','utm_content','utm_adset'].forEach(function(k){
+            var v=p.get(k);if(v)u.searchParams.set(k,v);
+          });
+          // Add page slug as utm_term for page-level attribution
+          u.searchParams.set('utm_term',s);
+        }else{
+          // Direct/organic visit — set page-level UTMs
+          u.searchParams.set('utm_source','page');
+          u.searchParams.set('utm_medium','landingpage');
+          u.searchParams.set('utm_campaign',s);
+        }
         a.href=u.toString();
       }catch(e){}
     });

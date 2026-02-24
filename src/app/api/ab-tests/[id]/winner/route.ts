@@ -73,6 +73,7 @@ export async function POST(
       .split(",")
       .map((d: string) => d.trim())
       .filter(Boolean),
+    metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
   };
 
   try {

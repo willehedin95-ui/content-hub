@@ -20,9 +20,11 @@ import {
   ArrowUpRight,
   Target,
   Eye,
+  RefreshCw,
 } from "lucide-react";
 
 interface GA4Metrics {
+  hostName: string;
   screenPageViews: number;
   sessions: number;
   totalUsers: number;
@@ -72,10 +74,14 @@ const PERIOD_OPTIONS = [
   { label: "90d", value: 90 },
 ];
 
-const LANGUAGES = ["sv", "da", "no"] as const;
-const LANG_LABELS: Record<string, string> = { sv: "Swedish", da: "Danish", no: "Norwegian" };
+const MARKETS = [
+  { id: "sv", label: "Sweden", flag: "🇸🇪", domain: "blog.halsobladet.com" },
+  { id: "da", label: "Denmark", flag: "🇩🇰", domain: "smarthelse.dk" },
+  { id: "no", label: "Norway", flag: "🇳🇴", domain: "helseguiden.com" },
+] as const;
 
-type SortField = "path" | "views" | "sessions" | "bounceRate" | "orders" | "revenue";
+type MarketId = (typeof MARKETS)[number]["id"];
+type SortField = "path" | "views" | "sessions" | "bounceRate" | "avgDuration" | "engagement" | "orders" | "revenue" | "convRate";
 
 export default function PageAnalyticsClient({
   ga4Configured,
@@ -87,6 +93,7 @@ export default function PageAnalyticsClient({
   shopifyConfigured: boolean;
 }) {
   const [days, setDays] = useState(7);
+  const [market, setMarket] = useState<MarketId>("sv");
   const [data, setData] = useState<PageMetricsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -120,11 +127,22 @@ export default function PageAnalyticsClient({
     fetchData();
   }, [fetchData]);
 
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchData, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
   useEffect(() => {
     setInsights(null);
     setInsightsCost(null);
     setInsightsError("");
   }, [days]);
+
+  // Reset expanded row when switching market
+  useEffect(() => {
+    setExpandedRow(null);
+  }, [market]);
 
   async function handleAnalyze() {
     setInsightsLoading(true);
@@ -155,8 +173,9 @@ export default function PageAnalyticsClient({
     }
   }
 
-  // Aggregate GA4 data by page path (across languages)
-  const pageRows = buildPageRows(data);
+  // Build page rows for selected market
+  const marketDomain = MARKETS.find((m) => m.id === market)?.domain ?? "";
+  const pageRows = buildPageRows(data, market, marketDomain);
   const sortedPages = [...pageRows].sort((a, b) => {
     const av = a[sortField] ?? 0;
     const bv = b[sortField] ?? 0;
@@ -168,6 +187,9 @@ export default function PageAnalyticsClient({
       : String(bv).localeCompare(String(av));
   });
 
+  // Count pages per market for tab badges
+  const marketCounts = getMarketCounts(data);
+
   const anyConfigured = ga4Configured || clarityConfigured || shopifyConfigured;
 
   return (
@@ -178,21 +200,61 @@ export default function PageAnalyticsClient({
           <LineChart className="w-6 h-6 text-indigo-600" />
           <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
         </div>
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-          {PERIOD_OPTIONS.map((opt) => (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Refresh data (auto-refreshes every 60s)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+            {PERIOD_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDays(opt.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  days === opt.value
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Market tabs */}
+      <div className="flex items-center gap-1 mb-6 bg-white border border-gray-200 rounded-lg p-1">
+        {MARKETS.map((m) => {
+          const count = marketCounts[m.id] ?? 0;
+          return (
             <button
-              key={opt.value}
-              onClick={() => setDays(opt.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                days === opt.value
+              key={m.id}
+              onClick={() => setMarket(m.id)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                market === m.id
                   ? "bg-indigo-50 text-indigo-700"
-                  : "text-gray-500 hover:text-gray-700"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
-              {opt.label}
+              <span>{m.flag}</span>
+              <span>{m.label}</span>
+              {count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                  market === m.id ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-400"
+                }`}>
+                  {count}
+                </span>
+              )}
             </button>
-          ))}
-        </div>
+          );
+        })}
+        <span className="ml-auto text-[10px] text-gray-400 pr-2">{marketDomain}</span>
       </div>
 
       {/* Connection status */}
@@ -238,35 +300,49 @@ export default function PageAnalyticsClient({
       ) : (
         <>
           {/* Summary cards */}
-          {data && (
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <SummaryCard
-                icon={<Eye className="w-4 h-4 text-blue-500" />}
-                label="Total Views"
-                value={pageRows.reduce((s, r) => s + r.views, 0).toLocaleString()}
-                sub={`${pageRows.length} pages tracked`}
-              />
-              <SummaryCard
-                icon={<Activity className="w-4 h-4 text-purple-500" />}
-                label="Avg Bounce Rate"
-                value={pageRows.length > 0
-                  ? `${(pageRows.reduce((s, r) => s + r.bounceRate, 0) / pageRows.length * 100).toFixed(1)}%`
-                  : "—"}
-              />
-              <SummaryCard
-                icon={<ShoppingCart className="w-4 h-4 text-emerald-600" />}
-                label="Total Orders"
-                value={pageRows.reduce((s, r) => s + r.orders, 0).toLocaleString()}
-                sub={shopifyConfigured ? "via utm_campaign" : "Shopify not connected"}
-              />
-              <SummaryCard
-                icon={<MousePointerClick className="w-4 h-4 text-orange-500" />}
-                label="UX Issues"
-                value={String(data.clarity.filter((c) => c.rageClickCount > 0 || c.deadClickCount > 5).length)}
-                sub={clarityConfigured ? "pages with rage/dead clicks" : "Clarity not connected"}
-              />
-            </div>
-          )}
+          {data && (() => {
+              const totalSessions = pageRows.reduce((s, r) => s + r.sessions, 0);
+              const totalOrders = pageRows.reduce((s, r) => s + r.orders, 0);
+              const overallConvRate = totalSessions > 0 ? totalOrders / totalSessions : 0;
+              return (
+                <div className="grid grid-cols-5 gap-4 mb-6">
+                  <SummaryCard
+                    icon={<Eye className="w-4 h-4 text-blue-500" />}
+                    label="Page Views"
+                    value={pageRows.reduce((s, r) => s + r.views, 0).toLocaleString()}
+                    sub={`${pageRows.length} pages`}
+                  />
+                  <SummaryCard
+                    icon={<Activity className="w-4 h-4 text-purple-500" />}
+                    label="Avg Bounce Rate"
+                    value={pageRows.length > 0
+                      ? `${(pageRows.reduce((s, r) => s + r.bounceRate, 0) / pageRows.length * 100).toFixed(1)}%`
+                      : "—"}
+                  />
+                  <SummaryCard
+                    icon={<ShoppingCart className="w-4 h-4 text-emerald-600" />}
+                    label="Orders"
+                    value={totalOrders.toLocaleString()}
+                    sub={shopifyConfigured ? "via utm_campaign" : "Shopify not connected"}
+                  />
+                  <SummaryCard
+                    icon={<Target className="w-4 h-4 text-indigo-500" />}
+                    label="Conv Rate"
+                    value={overallConvRate > 0 ? `${(overallConvRate * 100).toFixed(1)}%` : "—"}
+                    sub={totalSessions > 0 ? `${totalOrders}/${totalSessions} sessions` : undefined}
+                  />
+                  <SummaryCard
+                    icon={<MousePointerClick className="w-4 h-4 text-orange-500" />}
+                    label="UX Issues"
+                    value={String(
+                      filterClarityByMarket(data.clarity, marketDomain)
+                        .filter((c) => c.rageClickCount > 0 || c.deadClickCount > 5).length
+                    )}
+                    sub={clarityConfigured ? "pages with rage/dead clicks" : "Clarity not connected"}
+                  />
+                </div>
+              );
+            })()}
 
           {/* Page table */}
           {pageRows.length > 0 ? (
@@ -280,22 +356,20 @@ export default function PageAnalyticsClient({
                     <tr className="border-b border-gray-200 text-left">
                       <th className="px-4 py-3 w-8" />
                       <Th field="path" label="Page" onSort={handleSort} sortField={sortField} sortDir={sortDir} />
-                      {LANGUAGES.map((lang) => (
-                        <th key={lang} className="px-3 py-3 text-xs uppercase tracking-wider font-medium text-gray-400 text-center" colSpan={1}>
-                          {lang.toUpperCase()}
-                        </th>
-                      ))}
                       <Th field="views" label="Views" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="sessions" label="Sessions" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="bounceRate" label="Bounce" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="engagement" label="Engagement" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="avgDuration" label="Avg Time" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="orders" label="Orders" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="revenue" label="Revenue" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="convRate" label="Conv %" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedPages.map((row) => {
                       const isExpanded = expandedRow === row.path;
-                      const clarityData = findClarityForPage(row.path, data?.clarity ?? []);
+                      const clarityData = findClarityForPage(row.path, data?.clarity ?? [], marketDomain);
                       return (
                         <PageRow
                           key={row.path}
@@ -303,6 +377,7 @@ export default function PageAnalyticsClient({
                           isExpanded={isExpanded}
                           onToggle={() => setExpandedRow(isExpanded ? null : row.path)}
                           clarityData={clarityData}
+                          domain={marketDomain}
                         />
                       );
                     })}
@@ -314,7 +389,7 @@ export default function PageAnalyticsClient({
             !loading && anyConfigured && (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center mb-6">
                 <BarChart3 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No page data for this period.</p>
+                <p className="text-sm text-gray-500">No page data for this market and period.</p>
                 <p className="text-xs text-gray-400 mt-1">
                   Publish pages and wait for traffic data to appear in GA4.
                 </p>
@@ -322,9 +397,9 @@ export default function PageAnalyticsClient({
             )
           )}
 
-          {/* UX Quality Card */}
+          {/* UX Quality Card (filtered by market) */}
           {data && data.clarity.length > 0 && (
-            <UXQualityCard clarity={data.clarity} />
+            <UXQualityCard clarity={filterClarityByMarket(data.clarity, marketDomain)} />
           )}
 
           {/* AI Insights */}
@@ -365,7 +440,7 @@ export default function PageAnalyticsClient({
               <div className="px-4 py-6 text-center">
                 <Sparkles className="w-6 h-6 text-gray-300 mx-auto mb-2" />
                 <p className="text-xs text-gray-400">
-                  Click &quot;Analyze with AI&quot; to get conversion optimization insights from GA4, Clarity, and Shopify data.
+                  Click &quot;Analyze with AI&quot; to get conversion optimization insights across all markets.
                 </p>
               </div>
             ) : (
@@ -406,89 +481,93 @@ export default function PageAnalyticsClient({
 
 // ---- Helpers ----
 
-interface PageRow {
+const DOMAIN_TO_MARKET: Record<string, string> = Object.fromEntries(
+  MARKETS.map((m) => [m.domain, m.id])
+);
+
+interface PageRowData {
   path: string;
   views: number;
   sessions: number;
+  totalUsers: number;
   bounceRate: number;
+  engagement: number;
+  avgDuration: number;
+  conversions: number;
   orders: number;
   revenue: number;
   currency: string;
-  perLang: Record<string, { views: number; sessions: number; bounceRate: number }>;
+  convRate: number;
 }
 
-function buildPageRows(data: PageMetricsData | null): PageRow[] {
+function getMarketCounts(data: PageMetricsData | null): Record<string, number> {
+  if (!data) return {};
+  const counts: Record<string, number> = {};
+  for (const key of Object.keys(data.ga4)) {
+    const lang = key.split(":")[0];
+    counts[lang] = (counts[lang] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function buildPageRows(data: PageMetricsData | null, market: string, marketDomain: string): PageRowData[] {
   if (!data) return [];
-  const map = new Map<string, PageRow>();
+  const map = new Map<string, PageRowData>();
 
   // GA4 data: keys are "lang:/path"
   for (const [key, metrics] of Object.entries(data.ga4)) {
     const [lang, ...pathParts] = key.split(":");
+    if (lang !== market) continue;
     const path = pathParts.join(":") || "/";
 
-    if (!map.has(path)) {
-      map.set(path, {
-        path,
-        views: 0,
-        sessions: 0,
-        bounceRate: 0,
-        orders: 0,
-        revenue: 0,
-        currency: "",
-        perLang: {},
-      });
-    }
-
-    const row = map.get(path)!;
-    row.views += metrics.screenPageViews;
-    row.sessions += metrics.sessions;
-    row.perLang[lang] = {
+    map.set(path, {
+      path,
       views: metrics.screenPageViews,
       sessions: metrics.sessions,
+      totalUsers: metrics.totalUsers,
       bounceRate: metrics.bounceRate,
-    };
+      engagement: metrics.engagementRate,
+      avgDuration: metrics.averageSessionDuration,
+      conversions: metrics.conversions,
+      orders: 0,
+      revenue: 0,
+      currency: "",
+      convRate: 0,
+    });
   }
 
-  // Shopify data: keys are page slugs
+  // Shopify data: keys are page slugs — match to paths in current market
   for (const [slug, shopify] of Object.entries(data.shopify)) {
-    // Try to match slug to a path
-    const matchPath = `/${slug}` ;
-    const row = map.get(matchPath) ?? map.get(slug);
+    const matchPath = `/${slug}/`;
+    const matchPath2 = `/${slug}`;
+    const row = map.get(matchPath) ?? map.get(matchPath2);
     if (row) {
       row.orders = shopify.orders;
       row.revenue = shopify.revenue;
       row.currency = shopify.currency;
-    } else {
-      // Page from Shopify not in GA4 — still show it
-      map.set(matchPath, {
-        path: matchPath,
-        views: 0,
-        sessions: 0,
-        bounceRate: 0,
-        orders: shopify.orders,
-        revenue: shopify.revenue,
-        currency: shopify.currency,
-        perLang: {},
-      });
-    }
-  }
-
-  // Calculate average bounce rate per row
-  for (const row of map.values()) {
-    const langs = Object.values(row.perLang);
-    if (langs.length > 0) {
-      row.bounceRate = langs.reduce((s, l) => s + l.bounceRate, 0) / langs.length;
+      row.convRate = row.sessions > 0 ? shopify.orders / row.sessions : 0;
     }
   }
 
   return Array.from(map.values());
 }
 
-function findClarityForPage(path: string, clarity: ClarityEntry[]): ClarityEntry[] {
+function filterClarityByMarket(clarity: ClarityEntry[], domain: string): ClarityEntry[] {
+  return clarity.filter((c) => {
+    try {
+      return new URL(c.url).hostname === domain;
+    } catch {
+      return c.url.includes(domain);
+    }
+  });
+}
+
+function findClarityForPage(path: string, clarity: ClarityEntry[], domain: string): ClarityEntry[] {
   return clarity.filter((c) => {
     try {
       const url = new URL(c.url);
-      return url.pathname === path || url.pathname === path + "/";
+      if (url.hostname !== domain) return false;
+      return url.pathname === path || url.pathname === path.replace(/\/$/, "");
     } catch {
       return c.url.includes(path);
     }
@@ -502,11 +581,13 @@ function PageRow({
   isExpanded,
   onToggle,
   clarityData,
+  domain,
 }: {
-  row: PageRow;
+  row: PageRowData;
   isExpanded: boolean;
   onToggle: () => void;
   clarityData: ClarityEntry[];
+  domain: string;
 }) {
   return (
     <>
@@ -520,18 +601,6 @@ function PageRow({
         <td className="px-4 py-2.5">
           <div className="text-xs font-medium text-gray-800 truncate max-w-[200px]">{row.path}</div>
         </td>
-        {LANGUAGES.map((lang) => {
-          const langData = row.perLang[lang];
-          return (
-            <td key={lang} className="px-3 py-2.5 text-center">
-              {langData ? (
-                <span className="text-xs tabular-nums text-gray-500">{langData.views}</span>
-              ) : (
-                <span className="text-xs text-gray-300">—</span>
-              )}
-            </td>
-          );
-        })}
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.views.toLocaleString()}
         </td>
@@ -539,9 +608,17 @@ function PageRow({
           {row.sessions.toLocaleString()}
         </td>
         <td className="px-4 py-2.5 text-xs text-right tabular-nums">
-          <span className={row.bounceRate > 0.7 ? "text-red-500" : row.bounceRate > 0.5 ? "text-amber-500" : "text-gray-500"}>
+          <span className={row.bounceRate > 0.7 ? "text-red-500" : row.bounceRate > 0.5 ? "text-amber-500" : "text-emerald-600"}>
             {(row.bounceRate * 100).toFixed(1)}%
           </span>
+        </td>
+        <td className="px-4 py-2.5 text-xs text-right tabular-nums">
+          <span className={row.engagement > 0.5 ? "text-emerald-600" : row.engagement > 0.3 ? "text-amber-500" : "text-gray-500"}>
+            {(row.engagement * 100).toFixed(1)}%
+          </span>
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-500 text-right tabular-nums">
+          {row.avgDuration > 0 ? `${row.avgDuration.toFixed(0)}s` : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.orders > 0 ? row.orders : "—"}
@@ -549,32 +626,44 @@ function PageRow({
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.revenue > 0 ? `${row.revenue.toFixed(0)} ${row.currency}` : "—"}
         </td>
+        <td className="px-4 py-2.5 text-xs text-right tabular-nums font-medium">
+          {row.convRate > 0 ? (
+            <span className={row.convRate > 0.03 ? "text-emerald-600" : row.convRate > 0.01 ? "text-amber-500" : "text-gray-500"}>
+              {(row.convRate * 100).toFixed(1)}%
+            </span>
+          ) : "—"}
+        </td>
       </tr>
 
       {isExpanded && (
         <tr className="bg-gray-50">
           <td colSpan={10} className="px-8 py-4">
             <div className="grid grid-cols-2 gap-6">
-              {/* Per-language GA4 breakdown */}
+              {/* GA4 details */}
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Per-Language Breakdown</p>
-                <div className="space-y-1.5">
-                  {LANGUAGES.map((lang) => {
-                    const ld = row.perLang[lang];
-                    if (!ld) return (
-                      <div key={lang} className="text-xs text-gray-300">{LANG_LABELS[lang]}: No data</div>
-                    );
-                    return (
-                      <div key={lang} className="flex items-center gap-3 text-xs">
-                        <span className="text-gray-500 w-16">{LANG_LABELS[lang]}</span>
-                        <span className="tabular-nums text-gray-700">{ld.views} views</span>
-                        <span className="tabular-nums text-gray-500">{ld.sessions} sessions</span>
-                        <span className={`tabular-nums ${ld.bounceRate > 0.7 ? "text-red-500" : "text-gray-500"}`}>
-                          {(ld.bounceRate * 100).toFixed(1)}% bounce
-                        </span>
-                      </div>
-                    );
-                  })}
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">GA4 Details</p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500 w-24">Users</span>
+                    <span className="text-gray-700 tabular-nums">{row.totalUsers.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500 w-24">Conversions</span>
+                    <span className="text-gray-700 tabular-nums">{row.conversions}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500 w-24">Published URL</span>
+                    <a
+                      href={`https://${domain}${row.path}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {domain}{row.path}
+                      <ArrowUpRight className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
               </div>
 
@@ -593,6 +682,9 @@ function PageRow({
                         </span>
                         <span className="text-gray-500">
                           Active: <span className="text-gray-700 tabular-nums">{c.activeTime.toFixed(0)}s</span>
+                        </span>
+                        <span className="text-gray-500">
+                          Sessions: <span className="text-gray-700 tabular-nums">{c.totalSessionCount}</span>
                         </span>
                         {c.rageClickCount > 0 && (
                           <span className="text-red-500">
