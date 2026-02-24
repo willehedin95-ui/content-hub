@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wand2,
@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 import type { ProductImage } from "@/types";
 import ImageMapper from "./ImageMapper";
@@ -34,6 +35,10 @@ interface Props {
   products: ProductWithImages[];
 }
 
+const POLL_INTERVAL = 3000;
+const POLL_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const LOCALSTORAGE_KEY = "swiper_active_job";
+
 export default function SwiperClient({ products }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("input");
@@ -54,7 +59,9 @@ export default function SwiperClient({ products }: Props) {
   const [swipeSubstep, setSwipeSubstep] = useState<"fetching" | "rewriting" | "restoring">("fetching");
   const [swipeProgress, setSwipeProgress] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingRef = useRef(false);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
@@ -76,7 +83,7 @@ export default function SwiperClient({ products }: Props) {
     };
   }, [step]);
 
-  /** Safely parse a fetch response — handles non-JSON error pages (e.g. Vercel 504) */
+  /** Safely parse a fetch response — handles non-JSON error pages */
   async function safeJson<T>(res: Response, fallbackMsg: string): Promise<T> {
     const text = await res.text();
     try {
@@ -85,10 +92,9 @@ export default function SwiperClient({ products }: Props) {
       return data as T;
     } catch (err) {
       if (err instanceof SyntaxError) {
-        // Non-JSON response — typically a Vercel timeout or crash page
         if (res.status === 504) {
           throw new Error(
-            "The server function timed out. This page may be too large for the current hosting plan (60s limit). Try a smaller page, or upgrade Vercel to Pro for 5-minute timeouts."
+            "The server timed out. Please try again."
           );
         }
         throw new Error(`Server error (${res.status}): ${text.slice(0, 150)}`);
@@ -97,51 +103,92 @@ export default function SwiperClient({ products }: Props) {
     }
   }
 
-  /** Read SSE stream from /api/swipe and return the final result */
-  async function readSwipeStream(res: Response): Promise<SwipeResult> {
-    if (!res.body) throw new Error("No response body");
+  /** Poll GET /api/swipe/[jobId] until completed or failed */
+  const pollForResult = useCallback(async (jobId: string): Promise<SwipeResult> => {
+    pollingRef.current = true;
+    const startTime = Date.now();
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let result: SwipeResult | null = null;
-    let streamError: string | null = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Parse complete SSE events (separated by double newline)
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop()!; // Keep incomplete event in buffer
-
-      for (const part of parts) {
-        if (!part.trim()) continue;
-        const lines = part.split("\n");
-        const eventLine = lines.find((l) => l.startsWith("event: "));
-        const dataLine = lines.find((l) => l.startsWith("data: "));
-        if (!eventLine || !dataLine) continue;
-
-        const eventType = eventLine.slice(7);
-        const data = JSON.parse(dataLine.slice(6));
-
-        if (eventType === "progress") {
-          if (data.step === "restoring") setSwipeSubstep("restoring");
-          if (data.message) setSwipeProgress(data.message);
-        } else if (eventType === "done") {
-          result = data as SwipeResult;
-        } else if (eventType === "error") {
-          streamError = data.message || "Rewrite failed";
+    try {
+      while (pollingRef.current) {
+        if (Date.now() - startTime > POLL_TIMEOUT) {
+          throw new Error("Timed out waiting for rewrite (30 min limit)");
         }
-      }
-    }
 
-    if (streamError) throw new Error(streamError);
-    if (!result) throw new Error("Stream ended without a result");
-    return result;
-  }
+        const res = await fetch(`/api/swipe/${jobId}`);
+        const data = await safeJson<{
+          status: string;
+          progress?: { chars: number; message: string };
+          rewrittenHtml?: string;
+          originalHtml?: string;
+          images?: { src: string; alt: string }[];
+          usage?: { inputTokens: number; outputTokens: number };
+          error?: string;
+        }>(res, "Failed to check job status");
+
+        if (data.status === "completed" && data.rewrittenHtml) {
+          return {
+            rewrittenHtml: data.rewrittenHtml,
+            originalHtml: data.originalHtml!,
+            images: data.images || [],
+            usage: data.usage || { inputTokens: 0, outputTokens: 0 },
+          };
+        }
+
+        if (data.status === "failed") {
+          throw new Error(data.error || "Rewrite failed");
+        }
+
+        // Update progress UI
+        if (data.progress) {
+          if (data.progress.chars > 0) {
+            setSwipeSubstep("rewriting");
+          }
+          setSwipeProgress(data.progress.message);
+        }
+
+        // Wait before next poll
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+      }
+
+      throw new Error("Polling cancelled");
+    } finally {
+      pollingRef.current = false;
+    }
+  }, []);
+
+  // Resume polling on mount if there's an active job in localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(LOCALSTORAGE_KEY);
+    if (!stored) return;
+
+    try {
+      const { jobId, url: storedUrl, productId, angle } = JSON.parse(stored);
+      if (!jobId) return;
+
+      setActiveJobId(jobId);
+      setUrl(storedUrl || "");
+      setSelectedProductId(productId || products[0]?.id || "");
+      setSelectedAngle(angle || "auto-detect");
+      setStep("swiping");
+      setSwipeSubstep("rewriting");
+      setSwipeProgress("Resuming...");
+
+      pollForResult(jobId)
+        .then((result) => {
+          setSwipeResult(result);
+          setStep("review");
+          localStorage.removeItem(LOCALSTORAGE_KEY);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Something went wrong");
+          setStep("input");
+          localStorage.removeItem(LOCALSTORAGE_KEY);
+        });
+    } catch {
+      localStorage.removeItem(LOCALSTORAGE_KEY);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSwipe() {
     if (!url.trim() || !selectedProductId) return;
@@ -175,8 +222,10 @@ export default function SwiperClient({ products }: Props) {
         );
       }
 
-      // Step 2: Stream Claude rewrite via SSE
+      // Step 2: Create swipe job
       setSwipeSubstep("rewriting");
+      setSwipeProgress("Creating rewrite job...");
+
       const swipeRes = await fetch("/api/swipe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,18 +238,56 @@ export default function SwiperClient({ products }: Props) {
         }),
       });
 
-      // Check for non-SSE error responses (e.g. 400, 504)
-      const contentType = swipeRes.headers.get("content-type") || "";
-      if (!contentType.includes("text/event-stream")) {
-        // Fallback: response is JSON (error case)
-        await safeJson<never>(swipeRes, "Swipe failed");
-      }
+      const { jobId } = await safeJson<{ jobId: string }>(swipeRes, "Failed to create swipe job");
 
-      const result = await readSwipeStream(swipeRes);
+      setActiveJobId(jobId);
+
+      // Persist to localStorage for resume after navigation
+      localStorage.setItem(
+        LOCALSTORAGE_KEY,
+        JSON.stringify({
+          jobId,
+          url: url.trim(),
+          productId: selectedProductId,
+          angle: selectedAngle,
+        })
+      );
+
+      // Step 3: Poll for result
+      setSwipeProgress("Waiting for Claude...");
+      const result = await pollForResult(jobId);
+
       setSwipeResult(result);
       setStep("review");
+      localStorage.removeItem(LOCALSTORAGE_KEY);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setStep("input");
+    }
+  }
+
+  async function handleRetry() {
+    if (!activeJobId) return;
+    setError(null);
+    setStep("swiping");
+    setSwipeSubstep("rewriting");
+    setSwipeProgress("Retrying...");
+
+    try {
+      const res = await fetch("/api/swipe/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: activeJobId }),
+      });
+
+      await safeJson<{ ok: boolean }>(res, "Failed to retry");
+
+      const result = await pollForResult(activeJobId);
+      setSwipeResult(result);
+      setStep("review");
+      localStorage.removeItem(LOCALSTORAGE_KEY);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed");
       setStep("input");
     }
   }
@@ -208,7 +295,6 @@ export default function SwiperClient({ products }: Props) {
   function applyImageReplacements(html: string): string {
     let result = html;
     for (const [originalSrc, newSrc] of Object.entries(imageReplacements)) {
-      // Replace in both src="" and src='' attributes
       result = result.split(originalSrc).join(newSrc);
     }
     return result;
@@ -322,7 +408,18 @@ export default function SwiperClient({ products }: Props) {
           {error && (
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
+              <div className="flex-1">
+                <p className="text-sm text-red-700">{error}</p>
+                {activeJobId && (
+                  <button
+                    onClick={handleRetry}
+                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 mt-1 font-medium"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -425,7 +522,7 @@ export default function SwiperClient({ products }: Props) {
 
           <div className="flex items-center justify-between text-xs text-gray-400 border-t border-gray-100 pt-3">
             <span>Elapsed: {timeStr}</span>
-            <span>Usually takes 2-5 minutes</span>
+            <span>Usually takes 5-15 minutes</span>
           </div>
         </div>
       </div>
@@ -459,6 +556,7 @@ export default function SwiperClient({ products }: Props) {
               setPageSlug("");
               setImageReplacements({});
               setSavedPageId(null);
+              setActiveJobId(null);
             }}
             className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2"
           >
@@ -591,6 +689,7 @@ export default function SwiperClient({ products }: Props) {
               setStep("input");
               setSwipeResult(null);
               setError(null);
+              setActiveJobId(null);
             }}
             className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
           >

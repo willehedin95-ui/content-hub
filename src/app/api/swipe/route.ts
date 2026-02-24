@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
-import { stripForTranslation, restoreAfterTranslation, compactForSwiper, decompactAfterSwiper } from "@/lib/html-parser";
-import { buildRewritePrompts, createRewriteStream } from "@/lib/claude";
+import { stripForTranslation, compactForSwiper } from "@/lib/html-parser";
+import { buildRewritePrompts } from "@/lib/claude";
 import type { SwiperAngle } from "@/lib/claude";
 import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
-import { CLAUDE_MODEL } from "@/lib/constants";
-
-export const maxDuration = 300;
 
 /**
  * POST /api/swipe
- * Orchestrates the page swipe with SSE streaming:
- *   1. Loads product data
- *   2. Compacts HTML
- *   3. Streams Claude rewrite (sends progress events)
- *   4. Decompacts + restores
- *   5. Sends final result
+ * Creates a swipe job in Supabase and pings the Railway worker.
+ * Returns { jobId } — client polls GET /api/swipe/[jobId] for progress.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -33,14 +26,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Invalid product ID" },
       { status: 400 }
-    );
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY not configured" },
-      { status: 500 }
     );
   }
 
@@ -92,105 +77,51 @@ export async function POST(req: NextRequest) {
     productBrief
   );
 
-  // Return SSE stream
-  const encoder = new TextEncoder();
+  // Insert job into swipe_jobs
+  const { data: job, error: insertErr } = await db
+    .from("swipe_jobs")
+    .insert({
+      product_id: productId,
+      product_name: product.name,
+      source_url: sourceUrl || null,
+      angle: swiperAngle || null,
+      original_html: html,
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      head_html: headHtml,
+      stripped,
+      class_map: classMap,
+      style_map: styleMap,
+    })
+    .select("id")
+    .single();
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      function send(event: string, data: Record<string, unknown>) {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
-      }
+  if (insertErr || !job) {
+    console.error("[Swipe] Failed to create job:", insertErr?.message);
+    return NextResponse.json(
+      { error: "Failed to create swipe job" },
+      { status: 500 }
+    );
+  }
 
-      try {
-        send("progress", { step: "rewriting", message: "Sending to Claude..." });
+  // Ping the worker (fire and forget — job persists in DB even if this fails)
+  const workerUrl = process.env.SWIPE_WORKER_URL;
+  const workerSecret = process.env.SWIPE_WORKER_SECRET;
 
-        // Stream Claude's response
-        const claudeStream = createRewriteStream(systemPrompt, userPrompt, apiKey);
-        let outputChars = 0;
-        let lastProgressAt = 0;
+  if (workerUrl && workerSecret) {
+    fetch(`${workerUrl}/process`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${workerSecret}`,
+      },
+      body: JSON.stringify({ jobId: job.id }),
+    }).catch((err) => {
+      console.error("[Swipe] Failed to ping worker:", err.message);
+    });
+  } else {
+    console.warn("[Swipe] SWIPE_WORKER_URL or SWIPE_WORKER_SECRET not configured");
+  }
 
-        claudeStream.on("text", (text) => {
-          outputChars += text.length;
-          // Send progress every ~2000 chars to avoid flooding
-          if (outputChars - lastProgressAt >= 2000) {
-            lastProgressAt = outputChars;
-            send("progress", {
-              step: "rewriting",
-              message: `Claude writing... (${Math.round(outputChars / 1000)}k chars)`,
-              chars: outputChars,
-            });
-          }
-        });
-
-        const response = await claudeStream.finalMessage();
-        const rewrittenCompact =
-          response.content[0].type === "text" ? response.content[0].text : "";
-        const inputTokens = response.usage.input_tokens;
-        const outputTokens = response.usage.output_tokens;
-
-        send("progress", { step: "restoring", message: "Restoring HTML..." });
-
-        // Restore compacted attributes, then restore stripped elements + head
-        const rewrittenBody = decompactAfterSwiper(rewrittenCompact, classMap, styleMap);
-        const rewrittenHtml = restoreAfterTranslation(
-          rewrittenBody,
-          headHtml,
-          stripped,
-          {}
-        );
-
-        // Log usage (fire and forget)
-        db.from("usage_logs").insert({
-          type: "claude_rewrite",
-          model: CLAUDE_MODEL,
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          cost_usd: (inputTokens * 3 + outputTokens * 15) / 1_000_000,
-          metadata: {
-            product_id: productId,
-            product_name: product.name,
-            source_url: sourceUrl,
-            angle: swiperAngle || "none",
-            has_product_brief: !!productBrief,
-            guidelines_count: guidelines.length,
-            references_count: references.length,
-          },
-        }).then(() => {});
-
-        // Extract images from the page for the image mapper
-        const imageRegex = /<img[^>]+src=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi;
-        const images: { src: string; alt: string }[] = [];
-        let match;
-        while ((match = imageRegex.exec(rewrittenHtml)) !== null) {
-          const src = match[1];
-          if (src && !src.startsWith("data:")) {
-            images.push({ src, alt: match[2] || "" });
-          }
-        }
-
-        send("done", {
-          rewrittenHtml,
-          originalHtml: html,
-          images,
-          usage: { inputTokens, outputTokens },
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Rewrite failed";
-        console.error("[Swipe Error]", message);
-        send("error", { message });
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  return NextResponse.json({ jobId: job.id });
 }
