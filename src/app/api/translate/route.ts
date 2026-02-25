@@ -53,6 +53,41 @@ export async function POST(req: NextRequest) {
 
   const sourceLanguage: string = page.source_language || "en";
 
+  // Fetch product copywriting guidelines if page has a product
+  let copywritingGuidelines: string | undefined;
+  if (page.product) {
+    const { data: guidelines } = await db
+      .from("copywriting_guidelines")
+      .select("title, content")
+      .eq("product_id", page.product)
+      .order("created_at");
+
+    // Try by product slug if no results by ID
+    if (!guidelines || guidelines.length === 0) {
+      const { data: product } = await db
+        .from("products")
+        .select("id")
+        .eq("slug", page.product)
+        .single();
+      if (product) {
+        const { data: guidelinesBySlug } = await db
+          .from("copywriting_guidelines")
+          .select("title, content")
+          .eq("product_id", product.id)
+          .order("created_at");
+        if (guidelinesBySlug && guidelinesBySlug.length > 0) {
+          copywritingGuidelines = guidelinesBySlug
+            .map((g) => `## ${g.title}\n${g.content}`)
+            .join("\n\n");
+        }
+      }
+    } else {
+      copywritingGuidelines = guidelines
+        .map((g) => `## ${g.title}\n${g.content}`)
+        .join("\n\n");
+    }
+  }
+
   // Same-language shortcut: if source matches target, copy original HTML as-is.
   // No claim needed — this is an idempotent upsert safe for concurrent requests.
   if (sourceLanguage === language) {
@@ -140,7 +175,7 @@ export async function POST(req: NextRequest) {
       const { metas } = extractBlocks(page.original_html);
 
       const [htmlResult, metasResult] = await Promise.all([
-        translateFullHtml(bodyHtml, language as Language, apiKey, sourceLanguage),
+        translateFullHtml(bodyHtml, language as Language, apiKey, sourceLanguage, copywritingGuidelines),
         translateMetas(metas, language as Language, apiKey, sourceLanguage),
       ]);
 
@@ -155,7 +190,7 @@ export async function POST(req: NextRequest) {
       console.log(`[translate] Large page (${bodyHtml.length} chars stripped), using block-based translation`);
       const { blocks, metas, alts, modifiedHtml } = extractBlocks(page.original_html);
 
-      const translationOpts = { sourceLanguage };
+      const translationOpts = { sourceLanguage, copywritingGuidelines };
       const [blocksResult, altsResult, metasResult] = await Promise.all([
         blocks.length > 0
           ? translateBlocks(blocks, language as Language, apiKey, translationOpts)

@@ -14,31 +14,29 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  MoreHorizontal,
-  Image as ImageIcon,
   XCircle,
-  Trash2,
 } from "lucide-react";
-import Link from "next/link";
 import { Translation, PageQualityAnalysis, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
 import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import TranslationQualityPanel from "@/components/pages/TranslationQualityPanel";
+import TranslationActions from "@/components/pages/TranslationActions";
+import { InlineImageProgress, BackgroundImageProgress } from "@/components/pages/TranslationImageProgress";
 import { getPageQualitySettings } from "@/lib/settings";
 
 const MAX_FIX_ROUNDS = 3;
 
-const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
+export const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   none: "Not started",
   draft: "Draft",
-  translating: "Translating…",
+  translating: "Translating\u2026",
   translated: "Translated",
-  publishing: "Publishing…",
+  publishing: "Publishing\u2026",
   published: "Published",
   error: "Error",
 };
-
 
 function scoreColor(score: number): string {
   if (score >= 85) return "text-emerald-600";
@@ -100,7 +98,6 @@ export default function TranslationRow({
   const [showDetails, setShowDetails] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [confirmRepublish, setConfirmRepublish] = useState(false);
-  const [showMore, setShowMore] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   // For same-language direct publish: holds the translation ID after the instant copy
@@ -112,7 +109,6 @@ export default function TranslationRow({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const bgPollRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -130,18 +126,6 @@ export default function TranslationRow({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translation?.id, translation?.image_status]);
-
-  // Close "more" dropdown on outside click
-  useEffect(() => {
-    if (!showMore) return;
-    function handleClick(e: MouseEvent) {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setShowMore(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showMore]);
 
   // Sync from props when translation changes
   useEffect(() => {
@@ -435,27 +419,27 @@ export default function TranslationRow({
   }
 
   async function handleDirectPublish() {
-    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page…" }));
+    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page\u2026" }));
     try {
       const id = await ensureSameLanguageCopy();
       if (!id) return;
       setDirectPublishId(id);
       setShowDirectPublishModal(true);
     } catch {
-      setProgress(prev => ({ ...prev, error: "Failed to prepare page — check your connection" }));
+      setProgress(prev => ({ ...prev, error: "Failed to prepare page \u2014 check your connection" }));
     } finally {
       setProgress(prev => ({ ...prev, loading: null, progressLabel: "" }));
     }
   }
 
   async function handleDirectEdit() {
-    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page…" }));
+    setProgress(prev => ({ ...prev, loading: "translate", error: "", progressLabel: "Preparing page\u2026" }));
     try {
       const id = await ensureSameLanguageCopy();
       if (!id) return;
       router.push(`/pages/${pageId}/edit/${language.value}`);
     } catch {
-      setProgress(prev => ({ ...prev, error: "Failed to prepare page — check your connection" }));
+      setProgress(prev => ({ ...prev, error: "Failed to prepare page \u2014 check your connection" }));
     } finally {
       setProgress(prev => ({ ...prev, loading: null, progressLabel: "" }));
     }
@@ -584,7 +568,7 @@ export default function TranslationRow({
       }
       router.refresh();
     } catch {
-      setProgress(prev => ({ ...prev, error: "Failed to delete — check your connection" }));
+      setProgress(prev => ({ ...prev, error: "Failed to delete \u2014 check your connection" }));
     } finally {
       setProgress(prev => ({ ...prev, loading: null }));
     }
@@ -618,7 +602,7 @@ export default function TranslationRow({
                 disabled={progress.loading !== null}
                 className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
               >
-                {isProcessing && progress.progressLabel === "Preparing page…" ? (
+                {isProcessing && progress.progressLabel === "Preparing page\u2026" ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Pencil className="w-3.5 h-3.5" />
@@ -671,16 +655,11 @@ export default function TranslationRow({
               </span>
             )}
             {imageProgress && (
-              <div className="flex items-center gap-1.5">
-                {imageProgress.done < imageProgress.total ? (
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                ) : (
-                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                )}
-                <span className="text-xs text-amber-600">
-                  Images {imageProgress.done}/{imageProgress.total}
-                </span>
-              </div>
+              <InlineImageProgress
+                done={imageProgress.done}
+                total={imageProgress.total}
+                errors={[]}
+              />
             )}
           </div>
         )}
@@ -710,6 +689,7 @@ export default function TranslationRow({
 
   const displayUrl = translation.published_url;
   const settings = getPageQualitySettings();
+  const hasSuggestedCorrections = !!(quality.analysis?.suggested_corrections && quality.analysis.suggested_corrections.length > 0);
 
   // Has translation — show full row
   return (
@@ -745,17 +725,11 @@ export default function TranslationRow({
                 </button>
               </div>
               {imageProgress && (
-                <div className="flex items-center gap-1.5">
-                  {imageProgress.done < imageProgress.total ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                  ) : (
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                  )}
-                  <span className="text-xs text-amber-600">
-                    Images {imageProgress.done}/{imageProgress.total}
-                    {imageProgress.errors.length > 0 && ` (${imageProgress.errors.length} failed)`}
-                  </span>
-                </div>
+                <InlineImageProgress
+                  done={imageProgress.done}
+                  total={imageProgress.total}
+                  errors={imageProgress.errors}
+                />
               )}
             </div>
           ) : (
@@ -765,20 +739,11 @@ export default function TranslationRow({
                 <span className="text-xs text-gray-500">{STATUS_LABELS[status]}</span>
               </div>
               {bgImageProgress && (
-                <div className="flex items-center gap-1.5">
-                  {bgImageProgress.status === "translating" ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                  ) : bgImageProgress.status === "done" ? (
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                  ) : (
-                    <AlertCircle className="w-3 h-3 text-red-500" />
-                  )}
-                  <span className={`text-xs ${bgImageProgress.status === "done" ? "text-emerald-600" : bgImageProgress.status === "error" ? "text-red-600" : "text-amber-600"}`}>
-                    Images {bgImageProgress.done}/{bgImageProgress.total}
-                    {bgImageProgress.status === "done" && " — done!"}
-                    {bgImageProgress.status === "error" && " — error"}
-                  </span>
-                </div>
+                <BackgroundImageProgress
+                  done={bgImageProgress.done}
+                  total={bgImageProgress.total}
+                  status={bgImageProgress.status}
+                />
               )}
             </div>
           )}
@@ -805,7 +770,7 @@ export default function TranslationRow({
                 <ChevronDown className="w-3 h-3 text-gray-400" />
               )}
             </button>
-            {quality.analysis?.suggested_corrections && quality.analysis.suggested_corrections.length > 0 && (
+            {hasSuggestedCorrections && (
               <button
                 onClick={() => { handleFixQuality(); }}
                 disabled={progress.loading !== null}
@@ -848,136 +813,26 @@ export default function TranslationRow({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          {(
-            <>
-              <Link
-                href={`/pages/${pageId}/edit/${language.value}`}
-                className="flex items-center gap-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                Edit
-              </Link>
-              <button
-                onClick={handlePublish}
-                disabled={!canPublish || progress.loading !== null}
-                className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Publish
-              </button>
-              {/* Secondary actions menu */}
-              {canPublish && (
-                <div ref={moreRef} className="relative">
-                  <button
-                    onClick={() => setShowMore((p) => !p)}
-                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="More actions"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                  {showMore && (
-                    <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
-                      {quality.analysis?.suggested_corrections && quality.analysis.suggested_corrections.length > 0 && (
-                        <button
-                          onClick={() => { setShowMore(false); handleFixQuality(); }}
-                          disabled={progress.loading !== null}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-40 transition-colors"
-                        >
-                          {progress.loading === "fix" ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-3.5 h-3.5" />
-                          )}
-                          Fix quality issues
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setShowMore(false); handleRegenerate(); }}
-                        disabled={progress.loading !== null}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                      >
-                        {progress.loading === "regenerate" ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-3.5 h-3.5" />
-                        )}
-                        Regenerate translation
-                      </button>
-                      <button
-                        onClick={async () => {
-                          setShowMore(false);
-                          if (translation?.id) await openImageModal(translation.id);
-                        }}
-                        disabled={progress.loading !== null}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                      >
-                        <ImageIcon className="w-3.5 h-3.5" />
-                        Translate images
-                      </button>
-                      <div className="border-t border-gray-100 my-1" />
-                      <button
-                        onClick={() => { setShowMore(false); setConfirmDelete(true); }}
-                        disabled={progress.loading !== null}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete translation
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <TranslationActions
+          pageId={pageId}
+          languageValue={language.value}
+          translationId={translation.id}
+          canPublish={canPublish}
+          loading={progress.loading}
+          hasSuggestedCorrections={hasSuggestedCorrections}
+          onPublish={handlePublish}
+          onFixQuality={handleFixQuality}
+          onRegenerate={handleRegenerate}
+          onOpenImageModal={async () => {
+            if (translation?.id) await openImageModal(translation.id);
+          }}
+          onDelete={() => setConfirmDelete(true)}
+        />
       </div>
 
       {/* Quality details (expandable) */}
       {showDetails && quality.analysis && (
-        <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
-          <p className="text-xs text-gray-600">{quality.analysis.overall_assessment}</p>
-          {quality.analysis.fluency_issues.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Fluency issues</p>
-              <ul className="text-xs text-gray-500 space-y-0.5">
-                {quality.analysis.fluency_issues.map((issue, i) => (
-                  <li key={i}>- {issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {quality.analysis.grammar_issues.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Grammar issues</p>
-              <ul className="text-xs text-gray-500 space-y-0.5">
-                {quality.analysis.grammar_issues.map((issue, i) => (
-                  <li key={i}>- {issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {quality.analysis.context_errors.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Context errors</p>
-              <ul className="text-xs text-gray-500 space-y-0.5">
-                {quality.analysis.context_errors.map((issue, i) => (
-                  <li key={i}>- {issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {quality.analysis.name_localization.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Unlocalized names</p>
-              <ul className="text-xs text-gray-500 space-y-0.5">
-                {quality.analysis.name_localization.map((issue, i) => (
-                  <li key={i}>- {issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        <TranslationQualityPanel analysis={quality.analysis} />
       )}
 
       {/* Error */}

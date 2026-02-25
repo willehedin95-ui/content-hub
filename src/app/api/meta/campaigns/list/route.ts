@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { listCampaigns } from "@/lib/meta";
+import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   try {
     const campaigns = await listCampaigns();
     return NextResponse.json(campaigns);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to list campaigns" },
-      { status: 500 }
-    );
+    return safeError(err, "Failed to list campaigns");
   }
 }

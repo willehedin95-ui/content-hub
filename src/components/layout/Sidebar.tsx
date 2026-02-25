@@ -3,20 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, BarChart3, Image, FlaskConical, TrendingUp, LogOut, Package, Wand2, LineChart } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
 const nav = [
-  { href: "/", label: "Landing pages", icon: Layers },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pages", label: "Landing Pages", icon: Layers },
   { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
   { href: "/images", label: "Ad Concepts", icon: Image },
-  { href: "/swiper", label: "Page Swiper", icon: Wand2 },
   { href: "/products", label: "Products", icon: Package },
-  { href: "/analytics", label: "Analytics", icon: LineChart },
-  { href: "/tracking", label: "Tracking", icon: TrendingUp },
-  { href: "/usage", label: "Usage", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/performance", label: "Performance", icon: BarChart3 },
 ];
 
 interface Progress {
@@ -76,8 +73,8 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
         {nav.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/"
-              ? pathname === "/" || pathname.startsWith("/pages")
-              : pathname.startsWith(href);
+              ? pathname === "/"
+              : pathname === href || pathname.startsWith(href + "/");
           const showProgress =
             href === "/images" && progress?.processing && progress.total > 0;
           const pct =
@@ -117,6 +114,22 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
           );
         })}
       </nav>
+
+      {/* Settings - pinned bottom */}
+      <div className="px-3 pb-2">
+        <Link
+          href="/settings"
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+            pathname.startsWith("/settings")
+              ? "bg-accent text-accent-foreground font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          )}
+        >
+          <Settings className="w-4 h-4 shrink-0" />
+          <span>Settings</span>
+        </Link>
+      </div>
 
       {/* User footer */}
       <div className="px-4 py-3 border-t border-border">

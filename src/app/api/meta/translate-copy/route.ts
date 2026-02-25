@@ -5,6 +5,7 @@ import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
 import { getShortLocalizationNote } from "@/lib/localization";
+import { safeError } from "@/lib/api-error";
 
 export const maxDuration = 60;
 
@@ -87,9 +88,6 @@ Return a JSON object with exactly two keys: "primary_text" and "headline". No ot
       translated_headline: parsed.headline,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Translation failed" },
-      { status: 500 }
-    );
+    return safeError(error, "Translation failed");
   }
 }

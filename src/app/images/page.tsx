@@ -3,82 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { ImageJob, Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignStatus } from "@/types";
+import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List } from "lucide-react";
+import { ImageJob, LANGUAGES, PRODUCTS, COUNTRY_MAP } from "@/types";
+import { getLanguageStatus, getMarketStatus, getWizardStep, getOverallStatus, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
+import ConceptBoard from "@/components/images/ConceptBoard";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { TagBadge, getTagColor } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
 
 const PAGE_SIZE = 20;
-
-function getLanguageStatus(job: ImageJob): Map<Language, { status: "done" | "partial" | "none"; completed: number; total: number }> {
-  const langCounts = new Map<Language, { total: number; completed: number }>();
-  for (const si of job.source_images ?? []) {
-    for (const t of si.image_translations ?? []) {
-      const entry = langCounts.get(t.language) ?? { total: 0, completed: 0 };
-      entry.total++;
-      if (t.status === "completed") entry.completed++;
-      langCounts.set(t.language, entry);
-    }
-  }
-  const result = new Map<Language, { status: "done" | "partial" | "none"; completed: number; total: number }>();
-  for (const lang of job.target_languages) {
-    const counts = langCounts.get(lang);
-    if (!counts || counts.total === 0) result.set(lang, { status: "none", completed: 0, total: 0 });
-    else if (counts.completed === counts.total) result.set(lang, { status: "done", completed: counts.completed, total: counts.total });
-    else result.set(lang, { status: "partial", completed: counts.completed, total: counts.total });
-  }
-  return result;
-}
-
-function getMarketStatus(job: ImageJob): Map<string, MetaCampaignStatus> {
-  const result = new Map<string, MetaCampaignStatus>();
-  for (const d of job.deployments ?? []) {
-    // If multiple deployments for same country, prefer "pushed" > "pushing" > "error" > "draft"
-    const existing = result.get(d.country);
-    if (!existing || d.status === "pushed" || (d.status === "pushing" && existing !== "pushed")) {
-      result.set(d.country, d.status);
-    }
-  }
-  return result;
-}
-
-function getWizardStep(job: ImageJob): { step: number; label: string; color: string } {
-  if (job.status === "draft") return { step: 0, label: "Importing", color: "text-gray-500 bg-gray-100" };
-
-  const hasPushed = job.deployments?.some((d) => d.status === "pushed");
-  if (hasPushed) return { step: 3, label: "Published", color: "text-emerald-700 bg-emerald-50" };
-
-  if (job.marked_ready_at) return { step: 3, label: "Ready", color: "text-teal-700 bg-teal-50" };
-
-  const completed = job.completed_translations ?? 0;
-  const total = job.total_translations ?? 0;
-  const imagesComplete = total > 0 && completed === total;
-
-  if (!imagesComplete) {
-    if (completed > 0) return { step: 1, label: "Step 1/3 \u00B7 Images", color: "text-amber-700 bg-amber-50" };
-    if (job.status === "ready") return { step: 1, label: "Step 1/3 \u00B7 Images", color: "text-gray-600 bg-gray-100" };
-    return { step: 0, label: "New", color: "text-gray-500 bg-gray-100" };
-  }
-
-  // Images done — check ad copy
-  const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
-  const hasLanding = !!job.landing_page_id;
-  // We don't have ad_copy_translations at list level easily, but check if concept is at step 3
-  const hasDeployments = (job.deployments?.length ?? 0) > 0;
-  if (hasDeployments) return { step: 3, label: "Step 3/3 \u00B7 Preview", color: "text-blue-700 bg-blue-50" };
-
-  if (hasPrimary && hasLanding) return { step: 3, label: "Step 3/3 \u00B7 Preview", color: "text-indigo-700 bg-indigo-50" };
-
-  return { step: 2, label: "Step 2/3 \u00B7 Ad Copy", color: "text-indigo-700 bg-indigo-50" };
-}
-
-// Backwards compat wrapper used by filters
-function getOverallStatus(job: ImageJob): { label: string; color: string } {
-  const ws = getWizardStep(job);
-  return { label: ws.label, color: ws.color };
-}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -87,12 +21,6 @@ function formatDate(dateStr: string): string {
 
 // All possible countries for the Markets column
 const ALL_COUNTRIES = Object.values(COUNTRY_MAP);
-const COUNTRY_FLAGS: Record<string, string> = {
-  SE: "🇸🇪",
-  NO: "🇳🇴",
-  DK: "🇩🇰",
-  DE: "🇩🇪",
-};
 
 type SortField = "concept_number" | "name" | "status" | "created_at";
 type SortDir = "asc" | "desc";
@@ -116,6 +44,14 @@ export default function ImagesPage() {
   const [avgSeconds, setAvgSeconds] = useState(75);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // View mode
+  const [viewMode, setViewMode] = useState<"table" | "board">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("concepts-view") as "table" | "board") || "table";
+    }
+    return "table";
+  });
 
   // Filter & sort state
   const [searchQuery, setSearchQuery] = useState("");
@@ -215,17 +151,36 @@ export default function ImagesPage() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className={`p-8 ${viewMode === "board" ? "max-w-[1400px]" : "max-w-6xl"}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-gray-900">Ad Concepts</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Ad Concept
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => { setViewMode("table"); localStorage.setItem("concepts-view", "table"); }}
+              className={`p-2 transition-colors ${viewMode === "table" ? "bg-gray-100 text-gray-800" : "text-gray-400 hover:text-gray-600"}`}
+              title="Table view"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode("board"); localStorage.setItem("concepts-view", "board"); }}
+              className={`p-2 transition-colors ${viewMode === "board" ? "bg-gray-100 text-gray-800" : "text-gray-400 hover:text-gray-600"}`}
+              title="Board view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Ad Concept
+          </button>
+        </div>
       </div>
       <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
         <Clock className="w-3.5 h-3.5" />
@@ -322,7 +277,7 @@ export default function ImagesPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="animate-pulse">
@@ -346,7 +301,10 @@ export default function ImagesPage() {
             Click &quot;+ New Ad Concept&quot; to create your first batch
           </p>
         </div>
+      ) : viewMode === "board" ? (
+        <ConceptBoard jobs={filteredJobs} getWizardStep={getWizardStep} />
       ) : (
+        <>
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {/* Table header */}
           <div className="grid grid-cols-[48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -468,36 +426,37 @@ export default function ImagesPage() {
             );
           })}
         </div>
-      )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-gray-400">
-            {totalCount} concepts
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setPage((p) => p - 1); fetchJobs(page - 1); }}
-              disabled={page <= 1}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              Prev
-            </button>
-            <span className="text-xs text-gray-500 tabular-nums">
-              {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => { setPage((p) => p + 1); fetchJobs(page + 1); }}
-              disabled={page >= totalPages}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-            >
-              Next
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-xs text-gray-400">
+              {totalCount} concepts
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setPage((p) => p - 1); fetchJobs(page - 1); }}
+                disabled={page <= 1}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Prev
+              </button>
+              <span className="text-xs text-gray-500 tabular-nums">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => { setPage((p) => p + 1); fetchJobs(page + 1); }}
+                disabled={page >= totalPages}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+              >
+                Next
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+        </>
       )}
 
       <NewConceptModal

@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   RotateCcw,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations } from "@/types";
 import { getSettings } from "@/lib/settings";
@@ -868,6 +869,27 @@ export default function ImageJobDetail({ initialJob }: Props) {
           <div className="mt-2">
             <EditableTags entityId={job.id} entityType="image-job" initialTags={job.tags ?? []} />
           </div>
+          {/* Linked page / AB test */}
+          {(job.landing_page_id || job.ab_test_id) && (() => {
+            const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
+            const linkedTest = abTests.find((t) => t.id === job.ab_test_id);
+            if (!linkedPage && !linkedTest) return null;
+            return (
+              <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
+                <ExternalLink className="w-3 h-3" />
+                {linkedPage && (
+                  <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                    {linkedPage.name}
+                  </Link>
+                )}
+                {linkedTest && (
+                  <Link href={`/ab-tests/${linkedTest.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                    {linkedTest.name}
+                  </Link>
+                )}
+              </div>
+            );
+          })()}
         </div>
         <button
           onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}

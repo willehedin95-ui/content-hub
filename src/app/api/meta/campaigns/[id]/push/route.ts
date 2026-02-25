@@ -10,6 +10,7 @@ import {
   createAd,
 } from "@/lib/meta";
 import { isValidUUID } from "@/lib/validation";
+import { safeError } from "@/lib/api-error";
 
 export const maxDuration = 180;
 
@@ -229,9 +230,6 @@ export async function POST(
       })
       .eq("id", id);
 
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Push failed" },
-      { status: 500 }
-    );
+    return safeError(err, "Push failed");
   }
 }

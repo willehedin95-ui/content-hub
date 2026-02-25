@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listAdSets } from "@/lib/meta";
+import { safeError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   const campaignId = req.nextUrl.searchParams.get("campaign_id");
@@ -15,9 +16,6 @@ export async function GET(req: NextRequest) {
     const adSets = await listAdSets(campaignId);
     return NextResponse.json(adSets);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch ad sets" },
-      { status: 500 }
-    );
+    return safeError(err, "Failed to fetch ad sets");
   }
 }

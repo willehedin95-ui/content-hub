@@ -3,43 +3,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Save,
-  CheckCircle2,
-  RefreshCw,
-  Loader2,
   FileText,
   Image,
   Megaphone,
   Plug,
   X,
   Globe,
+  BarChart3,
 } from "lucide-react";
-import { Language, LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl, ASPECT_RATIOS, AspectRatio, META_OBJECTIVES } from "@/types";
-import Dropdown from "@/components/ui/dropdown";
-
-interface Settings {
-  pages_quality_enabled: boolean;
-  pages_quality_threshold: number;
-  static_ads_quality_enabled: boolean;
-  static_ads_quality_threshold: number;
-  static_ads_economy_mode: boolean;
-  static_ads_default_languages: Language[];
-  static_ads_default_ratios: AspectRatio[];
-  static_ads_max_retries: number;
-  static_ads_auto_export: boolean;
-  static_ads_notification_email: string;
-  static_ads_email_enabled: boolean;
-  meta_default_daily_budget: number;
-  meta_default_objective: string;
-  meta_default_schedule_time: string;
-  ga4_measurement_ids: Record<string, string>;
-  ga4_property_ids: Record<string, string>;
-  clarity_project_id: string;
-  clarity_api_token: string;
-  shopify_domains: string;
-  meta_pixel_id: string;
-  excluded_ips: string[];
-}
+import { MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
+import UsagePage from "@/app/usage/page";
+import { Settings } from "./components";
+import PagesTab from "./tabs/PagesTab";
+import StaticAdsTab from "./tabs/StaticAdsTab";
+import MarketsTab from "./tabs/MarketsTab";
+import MetaAdsTab from "./tabs/MetaAdsTab";
+import IntegrationsTab from "./tabs/IntegrationsTab";
 
 const TABS = [
   { id: "pages", label: "Landing Pages", icon: FileText, group: "SETTINGS" },
@@ -47,6 +26,7 @@ const TABS = [
   { id: "markets", label: "Markets", icon: Globe, group: "SETTINGS" },
   { id: "meta-ads", label: "Meta Ads", icon: Megaphone, group: "CONNECTIONS" },
   { id: "integrations", label: "Integrations", icon: Plug, group: "CONNECTIONS" },
+  { id: "usage", label: "Usage & Costs", icon: BarChart3, group: "ANALYTICS" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -78,6 +58,8 @@ export default function SettingsPage() {
     excluded_ips: [],
   });
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // KIE AI integration state
@@ -182,6 +164,8 @@ export default function SettingsPage() {
       setMappings(prev => ({ ...prev, campaignMappings, metaCampaigns }));
       setPageConfigs(prev => ({ ...prev, configs }));
       setMarketUrls(prev => ({ ...prev, urls }));
+    }).catch(() => {
+      setLoadError("Failed to load some settings data");
     }).finally(() => setMappings(prev => ({ ...prev, loading: false })));
 
     return () => {
@@ -199,16 +183,24 @@ export default function SettingsPage() {
   }, [router]);
 
   async function handleSave() {
-    // Save to DB (source of truth) and localStorage (cache)
-    localStorage.setItem("content-hub-settings", JSON.stringify(settings));
-    await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    setSaved(true);
-    if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
-    savedTimeoutRef.current = setTimeout(() => setSaved(false), 2500);
+    setSaveError(null);
+    try {
+      // Save to DB (source of truth) and localStorage (cache)
+      localStorage.setItem("content-hub-settings", JSON.stringify(settings));
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setSaved(true);
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => setSaved(false), 2500);
+    } catch {
+      setSaveError("Failed to save settings");
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => setSaveError(null), 5000);
+    }
   }
 
   async function fetchAdSetsForCampaign(metaCampaignId: string) {
@@ -446,994 +438,67 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-7 py-6">
+          {(loadError || saveError) && (
+            <div className={`flex items-center gap-2 text-sm px-4 py-2.5 rounded-lg mb-4 ${
+              saveError ? "bg-red-50 text-red-600 border border-red-200" : "bg-amber-50 text-amber-600 border border-amber-200"
+            }`}>
+              {saveError || loadError}
+            </div>
+          )}
           {activeTab === "pages" && (
-            <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-5">Landing Pages</h2>
-              <SettingsCard>
-                <Row
-                  label="Quality analysis"
-                  description="Run automatic quality checks on translated pages"
-                  action={
-                    <ToggleSwitch
-                      checked={settings.pages_quality_enabled}
-                      onChange={(v) => setSettings((s) => ({ ...s, pages_quality_enabled: v }))}
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Auto-regenerate threshold"
-                  description="Pages scoring below this will auto-regenerate (max 3 times)"
-                  action={
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={settings.pages_quality_threshold}
-                        onChange={(e) => setSettings((s) => ({ ...s, pages_quality_threshold: Number(e.target.value) }))}
-                        className="w-20 accent-indigo-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
-                        {settings.pages_quality_threshold}
-                      </span>
-                    </div>
-                  }
-                />
-              </SettingsCard>
-              <SaveButton saved={saved} onSave={handleSave} />
-            </>
+            <PagesTab settings={settings} setSettings={setSettings} saved={saved} handleSave={handleSave} />
           )}
 
           {activeTab === "static-ads" && (
-            <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-5">Static Ads</h2>
-              <SettingsCard>
-                <Row
-                  label="Quality analysis"
-                  description="Run automatic quality checks on generated images"
-                  action={
-                    <ToggleSwitch
-                      checked={settings.static_ads_quality_enabled}
-                      onChange={(v) => setSettings((s) => ({ ...s, static_ads_quality_enabled: v }))}
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Auto-regenerate threshold"
-                  description="Images scoring below this will auto-regenerate (max 5 times)"
-                  action={
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={settings.static_ads_quality_threshold}
-                        onChange={(e) => setSettings((s) => ({ ...s, static_ads_quality_threshold: Number(e.target.value) }))}
-                        className="w-20 accent-indigo-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
-                        {settings.static_ads_quality_threshold}
-                      </span>
-                    </div>
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Economy mode"
-                  description="Skip quality analysis to save costs"
-                  action={
-                    <ToggleSwitch
-                      checked={settings.static_ads_economy_mode}
-                      onChange={(v) => setSettings((s) => ({ ...s, static_ads_economy_mode: v }))}
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Default languages"
-                  description="Pre-selected when creating new concepts"
-                  action={
-                    <div className="flex gap-1.5">
-                      {LANGUAGES.map((lang) => {
-                        const selected = settings.static_ads_default_languages.includes(lang.value);
-                        return (
-                          <button
-                            key={lang.value}
-                            type="button"
-                            onClick={() =>
-                              setSettings((s) => ({
-                                ...s,
-                                static_ads_default_languages: selected
-                                  ? s.static_ads_default_languages.filter((l) => l !== lang.value)
-                                  : [...s.static_ads_default_languages, lang.value],
-                              }))
-                            }
-                            className={`w-8 h-8 rounded-lg border text-sm flex items-center justify-center transition-colors ${
-                              selected
-                                ? "bg-indigo-50 border-indigo-300"
-                                : "bg-white border-gray-200 opacity-40 hover:opacity-70"
-                            }`}
-                            title={lang.label}
-                          >
-                            <span role="img" aria-label={lang.label}>{lang.flag}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Default aspect ratios"
-                  description="Pre-selected when creating new concepts"
-                  action={
-                    <div className="flex gap-1.5">
-                      {ASPECT_RATIOS.map((ratio) => {
-                        const selected = settings.static_ads_default_ratios.includes(ratio.value);
-                        return (
-                          <button
-                            key={ratio.value}
-                            type="button"
-                            onClick={() =>
-                              setSettings((s) => ({
-                                ...s,
-                                static_ads_default_ratios: selected
-                                  ? s.static_ads_default_ratios.filter((r) => r !== ratio.value)
-                                  : [...s.static_ads_default_ratios, ratio.value],
-                              }))
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                              selected
-                                ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                                : "bg-white border-gray-200 text-gray-400 hover:text-gray-600"
-                            }`}
-                          >
-                            {ratio.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Max auto-retries"
-                  description="Times to regenerate a low-quality image"
-                  action={
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        value={settings.static_ads_max_retries}
-                        onChange={(e) => setSettings((s) => ({ ...s, static_ads_max_retries: Number(e.target.value) }))}
-                        className="w-20 accent-indigo-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
-                        {settings.static_ads_max_retries}
-                      </span>
-                    </div>
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Auto-export to Drive"
-                  description="Export translations when all images complete"
-                  action={
-                    <ToggleSwitch
-                      checked={settings.static_ads_auto_export}
-                      onChange={(v) => setSettings((s) => ({ ...s, static_ads_auto_export: v }))}
-                    />
-                  }
-                />
-              </SettingsCard>
-
-              <SectionHeader>Notifications</SectionHeader>
-              <SettingsCard>
-                <Row
-                  label="Email on completion"
-                  description="Send email when batch jobs finish"
-                  action={
-                    <ToggleSwitch
-                      checked={settings.static_ads_email_enabled}
-                      onChange={(v) => setSettings((s) => ({ ...s, static_ads_email_enabled: v }))}
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Email address"
-                  description={settings.static_ads_notification_email || "Not configured"}
-                  action={
-                    <input
-                      type="text"
-                      value={settings.static_ads_notification_email}
-                      onChange={(e) => setSettings((s) => ({ ...s, static_ads_notification_email: e.target.value }))}
-                      placeholder="email@example.com"
-                      className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  }
-                />
-              </SettingsCard>
-              <SaveButton saved={saved} onSave={handleSave} />
-            </>
+            <StaticAdsTab settings={settings} setSettings={setSettings} saved={saved} handleSave={handleSave} />
           )}
 
           {activeTab === "markets" && (
-            <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-5">Markets</h2>
-              {mappings.loading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading...
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {LANGUAGES.filter((l) => l.domain).map((lang) => {
-                    const country = COUNTRY_MAP[lang.value];
-                    return (
-                      <div key={lang.value}>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-lg" role="img" aria-label={lang.label}>{lang.flag}</span>
-                          <h3 className="text-sm font-semibold text-gray-900">{country} — {lang.label}</h3>
-                        </div>
-
-                        {/* Product URLs */}
-                        <SectionHeader>Product URLs</SectionHeader>
-                        <SettingsCard>
-                          {PRODUCTS.map((prod, i) => {
-                            const cellKey = `${prod.value}-${country}`;
-                            const existing = marketUrls.urls.find((u) => u.product === prod.value && u.country === country);
-                            const draft = marketUrls.drafts[cellKey];
-                            const value = draft !== undefined ? draft : existing?.url ?? "";
-                            const isSaving = marketUrls.saving === cellKey;
-                            return (
-                              <div key={prod.value}>
-                                {i > 0 && <RowDivider />}
-                                <div className="flex items-center justify-between py-2">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-sm font-medium text-gray-700">{prod.label}</span>
-                                    {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
-                                    {!isSaving && existing?.url && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                                  </div>
-                                  <input
-                                    type="url"
-                                    value={value}
-                                    onChange={(e) => setMarketUrls(prev => ({ ...prev, drafts: { ...prev.drafts, [cellKey]: e.target.value } }))}
-                                    onBlur={() => {
-                                      if (draft !== undefined && draft !== (existing?.url ?? "")) {
-                                        handleMarketUrlSave(prod.value, country, draft);
-                                      }
-                                      setMarketUrls(prev => {
-                                        const nextDrafts = { ...prev.drafts };
-                                        delete nextDrafts[cellKey];
-                                        return { ...prev, drafts: nextDrafts };
-                                      });
-                                    }}
-                                    placeholder="https://..."
-                                    className="w-64 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </SettingsCard>
-
-                        {/* Facebook Page */}
-                        <SectionHeader>Facebook Page</SectionHeader>
-                        <SettingsCard>
-                          {(() => {
-                            const config = pageConfigs.configs.find((c) => c.country === country);
-                            const isSaving = pageConfigs.saving === country;
-                            return (
-                              <div className="flex items-center justify-between py-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-sm font-medium text-gray-700">Page</span>
-                                  {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
-                                  {!isSaving && config?.meta_page_id && (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                  )}
-                                </div>
-                                {metaPages.pages.length === 0 && !metaPages.loading ? (
-                                  <button
-                                    onClick={fetchMetaPages}
-                                    className="text-xs text-indigo-600 hover:text-indigo-800"
-                                  >
-                                    Load pages
-                                  </button>
-                                ) : metaPages.loading ? (
-                                  <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
-                                ) : (
-                                  <Dropdown
-                                    value={config?.meta_page_id ?? ""}
-                                    onChange={(v) => handlePageConfigChange(country, v)}
-                                    options={[
-                                      { value: "", label: "Not assigned" },
-                                      ...metaPages.pages.map((p) => ({
-                                        value: p.id,
-                                        label: p.name,
-                                      })),
-                                    ]}
-                                    placeholder="Not assigned"
-                                    className="w-52"
-                                  />
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </SettingsCard>
-
-                        {/* Campaign Mappings */}
-                        <SectionHeader>Campaign Mappings</SectionHeader>
-                        {mappings.metaCampaigns.length === 0 ? (
-                          <SettingsCard>
-                            <div className="py-2 text-sm text-gray-400">
-                              No active campaigns found in Meta.
-                            </div>
-                          </SettingsCard>
-                        ) : (
-                          <SettingsCard>
-                            {PRODUCTS.map((prod, i) => {
-                              const mapping = mappings.campaignMappings.find(
-                                (m) => m.product === prod.value && m.country === country
-                              );
-                              const cellKey = `${prod.value}-${country}`;
-                              const isSaving = mappings.saving === cellKey;
-                              const campaignAdSets = mapping?.meta_campaign_id
-                                ? adSets.byCampaign[mapping.meta_campaign_id] ?? []
-                                : [];
-                              const isLoadingAdSets = adSets.loading === mapping?.meta_campaign_id;
-                              return (
-                                <div key={prod.value}>
-                                  {i > 0 && <RowDivider />}
-                                  <div className="py-1">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-sm font-medium text-gray-700">{prod.label}</span>
-                                        {isSaving && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
-                                        {!isSaving && mapping?.template_adset_id && (
-                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                        )}
-                                      </div>
-                                      <Dropdown
-                                        value={mapping?.meta_campaign_id ?? ""}
-                                        onChange={(v) => handleMappingChange(prod.value, country, v)}
-                                        options={[
-                                          { value: "", label: "Not mapped" },
-                                          ...mappings.metaCampaigns.map((c) => ({
-                                            value: c.id,
-                                            label: c.name,
-                                          })),
-                                        ]}
-                                        placeholder="Not mapped"
-                                        className="w-52"
-                                      />
-                                    </div>
-                                    {mapping?.meta_campaign_id && (
-                                      <div className="mt-1.5 flex items-center justify-between">
-                                        <span className="text-xs text-gray-400 pl-4">Template ad set</span>
-                                        {campaignAdSets.length === 0 && !isLoadingAdSets ? (
-                                          <button
-                                            onClick={() => fetchAdSetsForCampaign(mapping.meta_campaign_id)}
-                                            className="text-xs text-indigo-600 hover:text-indigo-800"
-                                          >
-                                            Load ad sets
-                                          </button>
-                                        ) : isLoadingAdSets ? (
-                                          <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
-                                        ) : (
-                                          <Dropdown
-                                            value={mapping?.template_adset_id ?? ""}
-                                            onChange={(v) => handleTemplateAdSetChange(prod.value, country, v)}
-                                            options={[
-                                              { value: "", label: "No template" },
-                                              ...campaignAdSets.map((a) => ({
-                                                value: a.id,
-                                                label: a.name,
-                                              })),
-                                            ]}
-                                            placeholder="Select template"
-                                            className="w-52"
-                                          />
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </SettingsCard>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
+            <MarketsTab
+              mappings={mappings}
+              marketUrls={marketUrls}
+              pageConfigs={pageConfigs}
+              adSets={adSets}
+              metaPages={metaPages}
+              setMarketUrls={setMarketUrls}
+              handleMarketUrlSave={handleMarketUrlSave}
+              fetchMetaPages={fetchMetaPages}
+              handlePageConfigChange={handlePageConfigChange}
+              handleMappingChange={handleMappingChange}
+              fetchAdSetsForCampaign={fetchAdSetsForCampaign}
+              handleTemplateAdSetChange={handleTemplateAdSetChange}
+            />
           )}
 
           {activeTab === "meta-ads" && (
-            <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-5">Meta Ads</h2>
-              <SettingsCard>
-                <Row
-                  label="Meta Business"
-                  description={
-                    meta.status
-                      ? meta.status.name
-                      : meta.error
-                      ? meta.error
-                      : "Configured via environment variables"
-                  }
-                  descriptionColor={meta.status ? "text-emerald-600" : meta.error ? "text-red-500" : undefined}
-                  action={
-                    <ActionButton onClick={testMetaConnection} disabled={meta.loading}>
-                      {meta.loading ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : meta.status ? (
-                        "Connected"
-                      ) : (
-                        "Test"
-                      )}
-                    </ActionButton>
-                  }
-                />
-              </SettingsCard>
+            <MetaAdsTab
+              settings={settings}
+              setSettings={setSettings}
+              saved={saved}
+              handleSave={handleSave}
+              meta={meta}
+              testMetaConnection={testMetaConnection}
+            />
+          )}
 
-              <SectionHeader>Defaults</SectionHeader>
-              <SettingsCard>
-                <Row
-                  label="Daily budget"
-                  description="Default budget for new campaigns"
-                  action={
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm text-gray-400">kr</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={10}
-                        value={settings.meta_default_daily_budget}
-                        onChange={(e) => setSettings((s) => ({ ...s, meta_default_daily_budget: Number(e.target.value) }))}
-                        className="w-20 bg-white border border-gray-200 text-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:border-indigo-500 tabular-nums"
-                      />
-                    </div>
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Default objective"
-                  description="Pre-selected for new campaigns"
-                  action={
-                    <Dropdown
-                      value={settings.meta_default_objective}
-                      onChange={(v) => setSettings((s) => ({ ...s, meta_default_objective: v }))}
-                      options={META_OBJECTIVES.map((o) => ({ value: o.value, label: o.label }))}
-                      className="w-36"
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Default schedule time"
-                  description="Start time for new campaigns"
-                  action={
-                    <input
-                      type="time"
-                      value={settings.meta_default_schedule_time}
-                      onChange={(e) => setSettings((s) => ({ ...s, meta_default_schedule_time: e.target.value }))}
-                      className="bg-white border border-gray-200 text-gray-800 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-indigo-500 tabular-nums"
-                    />
-                  }
-                />
-              </SettingsCard>
-              <SaveButton saved={saved} onSave={handleSave} />
-            </>
+          {activeTab === "usage" && (
+            <UsagePage />
           )}
 
           {activeTab === "integrations" && (
-            <>
-              <h2 className="text-lg font-semibold text-gray-900 mb-5">Integrations</h2>
-              <SettingsCard>
-                <Row
-                  label="Kie AI Credits"
-                  description="Image generation (nano-banana-pro)"
-                  action={
-                    <div className="flex items-center gap-2.5">
-                      {kie.balance !== null && (
-                        <span className="text-base font-semibold text-gray-800 tabular-nums">
-                          {kie.balance.toLocaleString()}
-                        </span>
-                      )}
-                      {kie.error && <span className="text-xs text-red-500">{kie.error}</span>}
-                      <ActionButton onClick={fetchKieCredits} disabled={kie.loading}>
-                        {kie.loading ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : kie.balance === null ? (
-                          "Check"
-                        ) : (
-                          <RefreshCw className="w-3.5 h-3.5" />
-                        )}
-                      </ActionButton>
-                    </div>
-                  }
-                />
-              </SettingsCard>
-
-              <SectionHeader>Page Analytics</SectionHeader>
-              <SettingsCard>
-                <Row
-                  label="Shopify"
-                  description={
-                    shopify.status
-                      ? shopify.status.shop
-                      : shopify.error
-                      ? shopify.error
-                      : "Configured via environment variables"
-                  }
-                  descriptionColor={shopify.status ? "text-emerald-600" : shopify.error ? "text-red-500" : undefined}
-                  action={
-                    <ActionButton onClick={testShopifyConnection} disabled={shopify.loading}>
-                      {shopify.loading ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : shopify.status ? (
-                        "Connected"
-                      ) : (
-                        "Test"
-                      )}
-                    </ActionButton>
-                  }
-                />
-                <RowDivider />
-                {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
-                  const mid = settings.ga4_measurement_ids[lang.value] || "";
-                  const pid = (settings.ga4_property_ids ?? {})[lang.value] || "";
-                  return (
-                    <div key={lang.value}>
-                      {i > 0 && <RowDivider />}
-                      <Row
-                        label={`GA4 Measurement — ${lang.label}`}
-                        description={mid || "Not configured"}
-                        descriptionColor={mid ? "text-emerald-600" : undefined}
-                        action={
-                          <input
-                            type="text"
-                            value={mid}
-                            onChange={(e) => setSettings((s) => ({
-                              ...s,
-                              ga4_measurement_ids: { ...s.ga4_measurement_ids, [lang.value]: e.target.value },
-                            }))}
-                            placeholder="G-XXXXXXXXXX"
-                            className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                          />
-                        }
-                      />
-                      <Row
-                        label={`GA4 Property — ${lang.label}`}
-                        description={pid ? `Property ${pid}` : "GA4 Admin → Property Details"}
-                        descriptionColor={pid ? "text-emerald-600" : undefined}
-                        action={
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={pid}
-                              onChange={(e) => setSettings((s) => ({
-                                ...s,
-                                ga4_property_ids: { ...(s.ga4_property_ids ?? {}), [lang.value]: e.target.value },
-                              }))}
-                              placeholder="123456789"
-                              className="w-28 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                            />
-                            {pid && (
-                              <GA4TestButton propertyId={pid} />
-                            )}
-                          </div>
-                        }
-                      />
-                    </div>
-                  );
-                })}
-                <RowDivider />
-                <Row
-                  label="Clarity Project ID"
-                  description={settings.clarity_project_id || "Not configured"}
-                  descriptionColor={settings.clarity_project_id ? "text-emerald-600" : undefined}
-                  action={
-                    <input
-                      type="text"
-                      value={settings.clarity_project_id}
-                      onChange={(e) => setSettings((s) => ({ ...s, clarity_project_id: e.target.value }))}
-                      placeholder="Project ID"
-                      className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  }
-                />
-                <RowDivider />
-                <ClarityTokenRow
-                  token={settings.clarity_api_token ?? ""}
-                  onChange={(v) => setSettings((s) => ({ ...s, clarity_api_token: v }))}
-                />
-                <RowDivider />
-                <Row
-                  label="Shopify store domains"
-                  description="Outbound links to these domains get UTM tags"
-                  action={
-                    <input
-                      type="text"
-                      value={settings.shopify_domains}
-                      onChange={(e) => setSettings((s) => ({ ...s, shopify_domains: e.target.value }))}
-                      placeholder="store.myshopify.com"
-                      className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  }
-                />
-                <RowDivider />
-                <Row
-                  label="Meta Pixel ID"
-                  description="Tracks page views & clicks for Meta ad optimization"
-                  action={
-                    <input
-                      type="text"
-                      value={settings.meta_pixel_id}
-                      onChange={(e) => setSettings((s) => ({ ...s, meta_pixel_id: e.target.value }))}
-                      placeholder="123456789012345"
-                      className="w-44 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                    />
-                  }
-                />
-                <RowDivider />
-                <ExcludeIPRow
-                  excludedIps={settings.excluded_ips ?? []}
-                  onChange={(ips) => setSettings((s) => ({ ...s, excluded_ips: ips }))}
-                />
-              </SettingsCard>
-              <SaveButton saved={saved} onSave={handleSave} />
-
-              <SectionHeader>Services</SectionHeader>
-              <p className="text-xs text-gray-400 mb-2.5">
-                All API keys configured via environment variables in Vercel.
-              </p>
-              <SettingsCard>
-                {[
-                  { name: "OpenAI", env: "OPENAI_API_KEY", desc: "GPT-4o text translation & quality analysis" },
-                  { name: "Cloudflare Pages", env: "CF_PAGES_*", desc: "Landing page hosting" },
-                  { name: "Meta Marketing", env: "META_*", desc: "Ad campaign management" },
-                  { name: "Shopify", env: "SHOPIFY_*", desc: "Order data for A/B test conversions" },
-                  { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image generation & translation" },
-                  { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },
-                  { name: "Google Drive", env: "GDRIVE_*", desc: "Image import & export" },
-                ].map((svc, i) => (
-                  <div key={svc.name}>
-                    {i > 0 && <RowDivider />}
-                    <Row
-                      label={svc.name}
-                      description={svc.desc}
-                      action={
-                        <code className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">
-                          {svc.env}
-                        </code>
-                      }
-                    />
-                  </div>
-                ))}
-              </SettingsCard>
-            </>
+            <IntegrationsTab
+              settings={settings}
+              setSettings={setSettings}
+              saved={saved}
+              handleSave={handleSave}
+              kie={kie}
+              shopify={shopify}
+              fetchKieCredits={fetchKieCredits}
+              testShopifyConnection={testShopifyConnection}
+            />
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-/* ─── Sub-components ────────────────────────────────── */
-
-function SettingsCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-      {children}
-    </div>
-  );
-}
-
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-6 mb-2">
-      {children}
-    </h3>
-  );
-}
-
-function Row({
-  label,
-  description,
-  descriptionColor,
-  action,
-}: {
-  label: string;
-  description: string;
-  descriptionColor?: string;
-  action: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <div className="min-w-0 mr-4">
-        <p className="text-sm font-medium text-gray-800">{label}</p>
-        <p className={`text-xs mt-0.5 ${descriptionColor ?? "text-gray-400"}`}>{description}</p>
-      </div>
-      <div className="shrink-0">{action}</div>
-    </div>
-  );
-}
-
-function RowDivider() {
-  return <div className="border-t border-gray-100" />;
-}
-
-function ActionButton({
-  onClick,
-  disabled,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-3.5 py-1.5 transition-colors disabled:opacity-50"
-    >
-      {children}
-    </button>
-  );
-}
-
-function SaveButton({ saved, onSave }: { saved: boolean; onSave: () => void }) {
-  return (
-    <div className="mt-4">
-      <button
-        onClick={onSave}
-        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-2 transition-colors font-medium"
-      >
-        {saved ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Save className="w-3.5 h-3.5" />}
-        {saved ? "Saved!" : "Save"}
-      </button>
-    </div>
-  );
-}
-
-function GA4TestButton({ propertyId }: { propertyId: string }) {
-  const [state, setState] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  async function test() {
-    setState("loading");
-    try {
-      const res = await fetch("/api/ga4/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyId }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setState("ok");
-      } else {
-        setErrorMsg(data.error || "Test failed");
-        setState("error");
-      }
-    } catch {
-      setErrorMsg("Request failed");
-      setState("error");
-    }
-  }
-
-  return (
-    <button
-      onClick={test}
-      disabled={state === "loading"}
-      title={state === "error" ? errorMsg : undefined}
-      className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
-        state === "ok"
-          ? "border-emerald-200 text-emerald-600 bg-emerald-50"
-          : state === "error"
-          ? "border-red-200 text-red-500 bg-red-50"
-          : "border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-      }`}
-    >
-      {state === "loading" ? (
-        <Loader2 className="w-3 h-3 animate-spin" />
-      ) : state === "ok" ? (
-        <CheckCircle2 className="w-3 h-3" />
-      ) : (
-        "Test"
-      )}
-    </button>
-  );
-}
-
-function ClarityTokenRow({
-  token,
-  onChange,
-}: {
-  token: string;
-  onChange: (v: string) => void;
-}) {
-  const [testState, setTestState] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  async function test() {
-    setTestState("loading");
-    try {
-      const res = await fetch("/api/clarity/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiToken: token }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setTestState("ok");
-      } else {
-        setErrorMsg(data.error || "Test failed");
-        setTestState("error");
-      }
-    } catch {
-      setErrorMsg("Request failed");
-      setTestState("error");
-    }
-  }
-
-  return (
-    <Row
-      label="Clarity API Token"
-      description={
-        testState === "error"
-          ? errorMsg
-          : token
-          ? "Data Export API token"
-          : "Clarity Settings → Data Export → Generate token"
-      }
-      descriptionColor={
-        testState === "ok" ? "text-emerald-600" :
-        testState === "error" ? "text-red-500" :
-        token ? "text-emerald-600" : undefined
-      }
-      action={
-        <div className="flex items-center gap-1.5">
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="API token"
-            className="w-32 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-          />
-          {token && (
-            <button
-              onClick={test}
-              disabled={testState === "loading"}
-              className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
-                testState === "ok"
-                  ? "border-emerald-200 text-emerald-600 bg-emerald-50"
-                  : testState === "error"
-                  ? "border-red-200 text-red-500 bg-red-50"
-                  : "border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {testState === "loading" ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : testState === "ok" ? (
-                <CheckCircle2 className="w-3 h-3" />
-              ) : (
-                "Test"
-              )}
-            </button>
-          )}
-        </div>
-      }
-    />
-  );
-}
-
-function ExcludeIPRow({
-  excludedIps,
-  onChange,
-}: {
-  excludedIps: string[];
-  onChange: (ips: string[]) => void;
-}) {
-  const [detecting, setDetecting] = useState(false);
-  const [myIp, setMyIp] = useState<string | null>(null);
-
-  const detectAndBlock = async () => {
-    setDetecting(true);
-    try {
-      const res = await fetch("/api/my-ip");
-      const data = await res.json();
-      const ip = data.ip;
-      setMyIp(ip);
-      if (ip && ip !== "unknown" && !excludedIps.includes(ip)) {
-        onChange([...excludedIps, ip]);
-      }
-    } catch {
-      // Ignore
-    } finally {
-      setDetecting(false);
-    }
-  };
-
-  const removeIp = (ip: string) => {
-    onChange(excludedIps.filter((i) => i !== ip));
-  };
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0 mr-4">
-          <p className="text-sm font-medium text-gray-800">Exclude from tracking</p>
-          <p className="text-xs mt-0.5 text-gray-400">
-            Block your IP so your visits don&apos;t appear in GA4, Clarity, or Meta Pixel
-          </p>
-        </div>
-        <button
-          onClick={detectAndBlock}
-          disabled={detecting}
-          className="text-sm text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-3.5 py-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
-        >
-          {detecting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            "Block my IP"
-          )}
-        </button>
-      </div>
-      {myIp && !excludedIps.includes(myIp) && (
-        <p className="text-xs text-amber-500 mt-1">Detected: {myIp} (already blocked or unknown)</p>
-      )}
-      {excludedIps.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {excludedIps.map((ip) => (
-            <span
-              key={ip}
-              className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md"
-            >
-              {ip}
-              <button
-                onClick={() => removeIp(ip)}
-                className="text-gray-400 hover:text-red-500 transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-        checked ? "bg-indigo-600" : "bg-gray-200"
-      }`}
-    >
-      <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-          checked ? "translate-x-[18px]" : "translate-x-[3px]"
-        }`}
-      />
-    </button>
   );
 }

@@ -270,8 +270,7 @@ function replaceImageSrc(html: string, oldSrc: string, newSrc: string, imageInde
 }
 
 /** Increment images_done and set image_status to 'done' or 'error' when batch is complete. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function incrementImageProgress(db: any, translationId: string, isError = false) {
+async function incrementImageProgress(db: ReturnType<typeof createServerSupabase>, translationId: string, isError = false) {
   // Read current progress
   const { data } = await db
     .from("translations")

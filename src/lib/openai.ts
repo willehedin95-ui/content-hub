@@ -44,6 +44,7 @@ export async function translateFullHtml(
   language: Language,
   apiKey: string,
   sourceLanguage: string = "en",
+  copywritingGuidelines?: string,
 ): Promise<{
   result: string;
   inputTokens: number;
@@ -83,7 +84,7 @@ HTML PRESERVATION (CRITICAL — read carefully):
 - Preserve all whitespace, line breaks, and formatting in the HTML structure.
 - Keep brand/product names EXACTLY as-is (never translate): ${DO_NOT_TRANSLATE}
 
-${localizationBlock ? `LOCALISATION:\n${localizationBlock}\n` : ""}ADDITIONAL RULES:
+${localizationBlock ? `LOCALISATION:\n${localizationBlock}\n` : ""}${copywritingGuidelines ? `PRODUCT COPYWRITING GUIDELINES (follow these when translating product-specific terms and tone):\n${copywritingGuidelines}\n\n` : ""}ADDITIONAL RULES:
 ${formatRules()}
 
 IMPORTANT: Return ONLY the translated HTML. No explanations, no markdown code fences, no comments before or after. Just the raw HTML exactly as it should be saved.`;
@@ -393,7 +394,7 @@ export async function translateBlocks(
   blocks: Array<{ id: string; tag: string; html: string }>,
   language: Language,
   apiKey: string,
-  options?: { pageContext?: string; qualityFeedback?: string; sourceLanguage?: string }
+  options?: { pageContext?: string; qualityFeedback?: string; sourceLanguage?: string; copywritingGuidelines?: string }
 ): Promise<{
   result: Record<string, string>;
   inputTokens: number;
@@ -415,6 +416,10 @@ export async function translateBlocks(
 
   if (options?.qualityFeedback) {
     systemPrompt += `\n\nQUALITY ISSUES FROM PREVIOUS ATTEMPT (fix these specific problems in your translation):\n${options.qualityFeedback}`;
+  }
+
+  if (options?.copywritingGuidelines) {
+    systemPrompt += `\n\nPRODUCT COPYWRITING GUIDELINES (follow these when translating product-specific terms and tone):\n${options.copywritingGuidelines}`;
   }
 
   // Large chunk size — most landing pages (50-150 blocks) fit in 1-2 chunks,

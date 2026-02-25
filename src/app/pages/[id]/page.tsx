@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
@@ -60,15 +60,39 @@ export default async function PageDetailPage({
         .single()
     : { data: null };
 
+  // Fetch linked concepts (image jobs pointing to this page)
+  const { data: linkedConcepts } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, status, updated_at")
+    .eq("landing_page_id", id)
+    .order("updated_at", { ascending: false });
+
+  // Fetch A/B tests using any translation of this page
+  const translationIds = (p.translations ?? []).map((t) => t.id);
+  const { data: linkedTests } =
+    translationIds.length > 0
+      ? await db
+          .from("ab_tests")
+          .select("id, name, language, status, updated_at")
+          .or(
+            `control_id.in.(${translationIds.join(",")}),variant_id.in.(${translationIds.join(",")})`
+          )
+          .order("updated_at", { ascending: false })
+      : { data: [] as never[] };
+
+  const hasRelated =
+    (linkedConcepts && linkedConcepts.length > 0) ||
+    (linkedTests && linkedTests.length > 0);
+
   return (
     <div className="p-8 max-w-4xl">
       {/* Back */}
       <Link
-        href="/"
+        href="/pages"
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Dashboard
+        Landing Pages
       </Link>
 
       {/* Page header */}
@@ -124,6 +148,86 @@ export default async function PageDetailPage({
           />
         </div>
       )}
+
+      {/* Related concepts & A/B tests */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-900">Related</h2>
+          <Link
+            href={`/ab-tests/new?pageId=${p.id}`}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            Create A/B Test
+          </Link>
+        </div>
+
+        {hasRelated ? (
+          <div className="space-y-2">
+            {(linkedConcepts ?? []).map((concept) => (
+              <Link
+                key={concept.id}
+                href={`/images/${concept.id}`}
+                className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors group"
+              >
+                <Image className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">
+                    {concept.concept_number
+                      ? `#${concept.concept_number} `
+                      : ""}
+                    {concept.name}
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    concept.status === "completed"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : concept.status === "processing"
+                        ? "bg-blue-50 text-blue-600"
+                        : concept.status === "failed"
+                          ? "bg-red-50 text-red-600"
+                          : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {concept.status}
+                </span>
+              </Link>
+            ))}
+
+            {(linkedTests ?? []).map((test) => (
+              <Link
+                key={test.id}
+                href={`/ab-tests/${test.id}`}
+                className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors group"
+              >
+                <FlaskConical className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">{test.name}</p>
+                </div>
+                <span className="text-xs text-gray-400 uppercase">
+                  {test.language}
+                </span>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    test.status === "active"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : test.status === "completed"
+                        ? "bg-blue-50 text-blue-600"
+                        : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {test.status}
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 py-2">
+            No linked concepts or A/B tests yet.
+          </p>
+        )}
+      </div>
 
       {/* Meta info */}
       <div className="mt-8 border-t border-gray-200 pt-6">
