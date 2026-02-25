@@ -129,6 +129,89 @@ export async function fetchAllGA4Metrics(
 }
 
 /**
+ * Traffic source breakdown per page (paid vs organic vs direct).
+ * Separate query because adding source dimensions to the main query
+ * would multiply rows and break page-level aggregation.
+ */
+export interface GA4TrafficSource {
+  paid: number;
+  organic: number;
+  direct: number;
+  other: number;
+}
+
+export async function fetchTrafficSourcesByPage(
+  properties: Record<string, string>,
+  days: number,
+  extraPropertyIds?: string[]
+): Promise<Map<string, GA4TrafficSource>> {
+  const endDate = "today";
+  const startDate = `${days}daysAgo`;
+  const auth = getAuth();
+
+  const domainToLang = new Map<string, string>();
+  for (const lang of LANGUAGES) {
+    if (lang.domain) domainToLang.set(lang.domain, lang.value);
+  }
+
+  const allIds = [...Object.values(properties).filter(Boolean), ...(extraPropertyIds ?? [])];
+  const uniquePropertyIds = [...new Set(allIds)];
+  if (uniquePropertyIds.length === 0) return new Map();
+
+  const results = await Promise.allSettled(
+    uniquePropertyIds.map(async (propertyId) => {
+      const res = await analyticsdata.properties.runReport({
+        auth,
+        property: `properties/${propertyId}`,
+        requestBody: {
+          dateRanges: [{ startDate, endDate }],
+          dimensions: [
+            { name: "hostName" },
+            { name: "pagePath" },
+            { name: "sessionDefaultChannelGroup" },
+          ],
+          metrics: [{ name: "sessions" }],
+          limit: "2000",
+        },
+      });
+      return res.data.rows ?? [];
+    })
+  );
+
+  const map = new Map<string, GA4TrafficSource>();
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    for (const row of result.value) {
+      const dims = row.dimensionValues ?? [];
+      const hostName = dims[0]?.value ?? "";
+      const pagePath = dims[1]?.value ?? "";
+      const channel = (dims[2]?.value ?? "").toLowerCase();
+      const sessions = parseInt(row.metricValues?.[0]?.value ?? "0", 10);
+
+      const lang = domainToLang.get(hostName);
+      if (!lang) continue;
+
+      const key = `${lang}:${pagePath}`;
+      const existing = map.get(key) ?? { paid: 0, organic: 0, direct: 0, other: 0 };
+
+      if (channel.includes("paid")) {
+        existing.paid += sessions;
+      } else if (channel.includes("organic")) {
+        existing.organic += sessions;
+      } else if (channel === "direct") {
+        existing.direct += sessions;
+      } else {
+        existing.other += sessions;
+      }
+
+      map.set(key, existing);
+    }
+  }
+
+  return map;
+}
+
+/**
  * Quick connectivity test — runs a minimal report.
  */
 export async function testGA4Connection(propertyId: string): Promise<{ ok: boolean; error?: string }> {

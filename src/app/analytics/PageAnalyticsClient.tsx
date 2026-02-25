@@ -63,8 +63,10 @@ interface PageMetricsData {
   clarity: ClarityEntry[];
   shopify: Record<string, ShopifyData>;
   meta: Record<string, MetaPageData>;
+  trafficSources?: Record<string, { paid: number; organic: number; direct: number; other: number }>;
   errors: Record<string, string>;
   days: number;
+  rates?: Record<string, number>;
 }
 
 interface PageInsights {
@@ -76,12 +78,13 @@ interface PageInsights {
   action_items: string[];
 }
 
-// Approximate exchange rates to USD for ROAS normalization (mirrors server-side rates)
-const RATES_TO_USD: Record<string, number> = {
+// Fallback exchange rates (overridden by live rates from API when available)
+const FALLBACK_RATES: Record<string, number> = {
   USD: 1, SEK: 0.095, DKK: 0.14, NOK: 0.093, EUR: 1.08,
 };
-function convertToUSD(amount: number, currency: string): number {
-  return amount * (RATES_TO_USD[currency] ?? 1);
+function convertToUSD(amount: number, currency: string, rates?: Record<string, number>): number {
+  const r = rates ?? FALLBACK_RATES;
+  return amount * (r[currency] ?? 1);
 }
 
 const PERIOD_OPTIONS = [
@@ -193,7 +196,7 @@ export default function PageAnalyticsClient({
 
   // Build page rows for selected market
   const marketDomain = MARKETS.find((m) => m.id === market)?.domain ?? "";
-  const pageRows = buildPageRows(data, market, marketDomain);
+  const pageRows = buildPageRows(data, market, marketDomain, data?.rates);
   const sortedPages = [...pageRows].sort((a, b) => {
     const av = a[sortField] ?? 0;
     const bv = b[sortField] ?? 0;
@@ -323,7 +326,7 @@ export default function PageAnalyticsClient({
               const totalOrders = pageRows.reduce((s, r) => s + r.orders, 0);
               const totalSpend = pageRows.reduce((s, r) => s + r.spend, 0);
               const totalRevenue = pageRows.reduce((s, r) => s + r.revenue, 0);
-              const totalRevenueUSD = pageRows.reduce((s, r) => s + convertToUSD(r.revenue, r.currency), 0);
+              const totalRevenueUSD = pageRows.reduce((s, r) => s + convertToUSD(r.revenue, r.currency, data?.rates), 0);
               const overallConvRate = totalSessions > 0 ? totalOrders / totalSessions : 0;
               const overallRoas = totalSpend > 0 && totalRevenueUSD > 0 ? totalRevenueUSD / totalSpend : 0;
               return (
@@ -521,6 +524,13 @@ const DOMAIN_TO_MARKET: Record<string, string> = Object.fromEntries(
   MARKETS.map((m) => [m.domain, m.id])
 );
 
+interface TrafficSourceData {
+  paid: number;
+  organic: number;
+  direct: number;
+  other: number;
+}
+
 interface PageRowData {
   path: string;
   views: number;
@@ -537,6 +547,7 @@ interface PageRowData {
   currency: string;
   roas: number;
   convRate: number;
+  trafficSources: TrafficSourceData | null;
 }
 
 function getMarketCounts(data: PageMetricsData | null): Record<string, number> {
@@ -549,7 +560,7 @@ function getMarketCounts(data: PageMetricsData | null): Record<string, number> {
   return counts;
 }
 
-function buildPageRows(data: PageMetricsData | null, market: string, marketDomain: string): PageRowData[] {
+function buildPageRows(data: PageMetricsData | null, market: string, marketDomain: string, rates?: Record<string, number>): PageRowData[] {
   if (!data) return [];
   const map = new Map<string, PageRowData>();
 
@@ -558,6 +569,10 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
     const [lang, ...pathParts] = key.split(":");
     if (lang !== market) continue;
     const path = pathParts.join(":") || "/";
+
+    // Traffic source data uses same "lang:/path" key
+    const trafficKey = key;
+    const ts = data.trafficSources?.[trafficKey] ?? null;
 
     map.set(path, {
       path,
@@ -575,6 +590,7 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
       currency: "",
       roas: 0,
       convRate: 0,
+      trafficSources: ts,
     });
   }
 
@@ -599,7 +615,7 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
     if (row) {
       row.spend = metaData.spend;
       row.clicks = metaData.clicks;
-      row.roas = metaData.spend > 0 && row.revenue > 0 ? convertToUSD(row.revenue, row.currency) / metaData.spend : 0;
+      row.roas = metaData.spend > 0 && row.revenue > 0 ? convertToUSD(row.revenue, row.currency, rates) / metaData.spend : 0;
     }
   }
 
@@ -706,7 +722,7 @@ function PageRow({
         <tr className="bg-gray-50">
           <td colSpan={13} className="px-8 py-4">
             <div className="grid grid-cols-3 gap-6">
-              {/* GA4 details */}
+              {/* GA4 details + traffic sources */}
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">GA4 Details</p>
                 <div className="space-y-1.5 text-xs">
@@ -718,6 +734,23 @@ function PageRow({
                     <span className="text-gray-500 w-24">Conversions</span>
                     <span className="text-gray-700 tabular-nums">{row.conversions}</span>
                   </div>
+                  {row.trafficSources && (() => {
+                    const ts = row.trafficSources!;
+                    const total = ts.paid + ts.organic + ts.direct + ts.other;
+                    if (total === 0) return null;
+                    const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+                    return (
+                      <div className="flex items-center gap-4">
+                        <span className="text-gray-500 w-24">Traffic</span>
+                        <div className="flex gap-2">
+                          {ts.paid > 0 && <span className="text-blue-600">{pct(ts.paid)} paid</span>}
+                          {ts.organic > 0 && <span className="text-emerald-600">{pct(ts.organic)} organic</span>}
+                          {ts.direct > 0 && <span className="text-gray-500">{pct(ts.direct)} direct</span>}
+                          {ts.other > 0 && <span className="text-gray-400">{pct(ts.other)} other</span>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center gap-4">
                     <span className="text-gray-500 w-24">Published URL</span>
                     <a

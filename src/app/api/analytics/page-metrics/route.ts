@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { fetchAllGA4Metrics } from "@/lib/ga4";
+import { fetchAllGA4Metrics, fetchTrafficSourcesByPage } from "@/lib/ga4";
 import { fetchClarityInsights } from "@/lib/clarity";
-import { getOrdersByPage } from "@/lib/shopify";
+import { getOrdersByPage, getRatesToUSD } from "@/lib/shopify";
 import { getMetaMetricsByPage } from "@/lib/analytics";
 
 export const maxDuration = 60;
@@ -24,16 +24,22 @@ export async function GET(req: NextRequest) {
 
   const errors: Record<string, string> = {};
 
+  const hasGA4 = Object.keys(ga4PropertyIds).length > 0;
+  const legacyIds = legacyPropertyId ? [legacyPropertyId] : undefined;
+
   // Fetch all sources in parallel
-  const [ga4Result, clarityResult, shopifyResult, metaResult] = await Promise.allSettled([
-    Object.keys(ga4PropertyIds).length > 0
-      ? fetchAllGA4Metrics(ga4PropertyIds, days, legacyPropertyId ? [legacyPropertyId] : undefined)
+  const [ga4Result, clarityResult, shopifyResult, metaResult, trafficResult] = await Promise.allSettled([
+    hasGA4
+      ? fetchAllGA4Metrics(ga4PropertyIds, days, legacyIds)
       : Promise.resolve(new Map()),
     clarityToken
       ? fetchClarityInsights(clarityToken, Math.min(days, 3))
       : Promise.resolve([]),
     getOrdersByPage(new Date(Date.now() - days * 86400000).toISOString()),
     getMetaMetricsByPage(days),
+    hasGA4
+      ? fetchTrafficSourcesByPage(ga4PropertyIds, days, legacyIds)
+      : Promise.resolve(new Map()),
   ]);
 
   // Process GA4
@@ -74,5 +80,16 @@ export async function GET(req: NextRequest) {
     errors.meta = metaResult.reason?.message ?? "Meta fetch failed";
   }
 
-  return NextResponse.json({ ga4, clarity, shopify, meta, errors, days });
+  // Process traffic sources
+  const trafficSources: Record<string, { paid: number; organic: number; direct: number; other: number }> = {};
+  if (trafficResult.status === "fulfilled") {
+    for (const [key, sources] of trafficResult.value) {
+      trafficSources[key] = sources;
+    }
+  }
+
+  // Include live exchange rates for client-side ROAS calculation
+  const rates = await getRatesToUSD();
+
+  return NextResponse.json({ ga4, clarity, shopify, meta, trafficSources, errors, days, rates });
 }

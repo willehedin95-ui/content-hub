@@ -1,12 +1,52 @@
 // Shopify integration — uses client_credentials OAuth for auto-refreshing tokens
 
-// Approximate exchange rates to USD for ROAS normalization
-const RATES_TO_USD: Record<string, number> = {
+// Exchange rates to USD — fetched live from ECB, cached for 6 hours
+const FALLBACK_RATES: Record<string, number> = {
   USD: 1, SEK: 0.095, DKK: 0.14, NOK: 0.093, EUR: 1.08,
 };
+let cachedRates: Record<string, number> | null = null;
+let ratesCachedAt = 0;
+const RATES_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+async function fetchLiveRates(): Promise<Record<string, number>> {
+  try {
+    const res = await fetch(
+      "https://api.frankfurter.dev/v1/latest?base=USD&symbols=SEK,DKK,NOK,EUR",
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (!res.ok) return FALLBACK_RATES;
+    const data = await res.json();
+    // API returns rates FROM USD, we need rates TO USD (inverse)
+    const rates: Record<string, number> = { USD: 1 };
+    for (const [currency, rate] of Object.entries(data.rates as Record<string, number>)) {
+      rates[currency] = 1 / rate;
+    }
+    return rates;
+  } catch {
+    return FALLBACK_RATES;
+  }
+}
+
+/** Get exchange rates (cached for 6h, falls back to hardcoded rates) */
+export async function getRatesToUSD(): Promise<Record<string, number>> {
+  if (cachedRates && Date.now() - ratesCachedAt < RATES_CACHE_MS) {
+    return cachedRates;
+  }
+  cachedRates = await fetchLiveRates();
+  ratesCachedAt = Date.now();
+  return cachedRates;
+}
+
+/** Synchronous conversion using cached or fallback rates */
 export function convertToUSD(amount: number, currency: string): number {
-  return amount * (RATES_TO_USD[currency] ?? 1);
+  const rates = cachedRates ?? FALLBACK_RATES;
+  return amount * (rates[currency] ?? 1);
+}
+
+/** Async conversion that ensures fresh rates are loaded */
+export async function convertToUSDAsync(amount: number, currency: string): Promise<number> {
+  const rates = await getRatesToUSD();
+  return amount * (rates[currency] ?? 1);
 }
 
 export interface ShopifyOrder {

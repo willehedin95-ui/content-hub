@@ -1,5 +1,5 @@
 import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
-import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD } from "./shopify";
+import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD, getRatesToUSD } from "./shopify";
 import { createServerSupabase } from "./supabase";
 
 // ---- Types ----
@@ -90,8 +90,9 @@ function attributeOrderToUrl(order: ShopifyOrder, landingUrls: Set<string>): boo
   if (!site) return false;
   try {
     const url = new URL(site, "https://placeholder.com");
-    // Check UTM source=meta
-    if (url.searchParams.get("utm_source") === "meta") return true;
+    // Check UTM source=meta or facebook (legacy)
+    const src = url.searchParams.get("utm_source");
+    if (src === "meta" || src === "facebook") return true;
     // Check if the landing page path matches any known landing URL
     const path = url.pathname.replace(/\/$/, "");
     for (const lu of landingUrls) {
@@ -110,10 +111,11 @@ export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSumm
   const { since, until, sinceISO } = getDateRange(days);
   const errors: { meta?: string; shopify?: string } = {};
 
-  // Fetch Meta + Shopify in parallel
+  // Fetch Meta + Shopify + exchange rates in parallel
   const [metaResult, shopifyResult] = await Promise.allSettled([
     isMetaConfigured() ? getAccountInsights(since, until) : Promise.reject(new Error("Not configured")),
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.reject(new Error("Not configured")),
+    getRatesToUSD(), // Warm rate cache for convertToUSD calls below
   ]);
 
   let meta: AnalyticsSummary["meta"] = null;
@@ -155,13 +157,14 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
   const { since, until, sinceISO } = getDateRange(days);
   const db = createServerSupabase();
 
-  // Fetch all three data sources in parallel
+  // Fetch all data sources + exchange rates in parallel
   const [metaResult, shopifyResult, dbResult] = await Promise.allSettled([
     isMetaConfigured() ? getCampaignInsights(since, until) : Promise.resolve([]),
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.resolve([]),
     db.from("meta_campaigns")
       .select("id, name, product, language, meta_campaign_id, meta_ads(landing_page_url)")
       .in("status", ["pushed", "pushing"]),
+    getRatesToUSD(), // Warm rate cache
   ]);
 
   const metaRows = metaResult.status === "fulfilled" ? metaResult.value : [];
@@ -192,14 +195,15 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     // Shopify attribution (deduplicated — first-match wins)
     let campaignOrders = 0;
     let campaignRevenue = 0;
-    let campaignCurrency = "SEK";
+    let campaignRevenueUSD = 0;
     for (const order of orders) {
       if (attributedOrderIds.has(order.id)) continue;
       if (attributeOrderToUrl(order, landingUrls)) {
         attributedOrderIds.add(order.id);
         campaignOrders++;
-        campaignRevenue += parseFloat(order.total_price);
-        campaignCurrency = order.currency;
+        const price = parseFloat(order.total_price);
+        campaignRevenue += price;
+        campaignRevenueUSD += convertToUSD(price, order.currency);
       }
     }
 
@@ -212,7 +216,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
       ...metrics,
       orders: campaignOrders,
       revenue: campaignRevenue,
-      roas: metrics.spend > 0 ? convertToUSD(campaignRevenue, campaignCurrency) / metrics.spend : 0,
+      roas: metrics.spend > 0 ? campaignRevenueUSD / metrics.spend : 0,
     });
   }
 
