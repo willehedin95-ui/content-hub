@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { sanitizeHtml } from "@/lib/sanitize";
 import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
   const { id } = await params;
   if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
@@ -123,8 +121,9 @@ export async function GET(
 })();
 </script>`;
 
-  const safeHtml = sanitizeHtml(translation.translated_html as string);
-  const html = safeHtml.replace(/<\/body>/i, editorScript + "</body>");
+  // HTML was already sanitized when saved — no need to re-sanitize for preview
+  const rawHtml = translation.translated_html as string;
+  const html = rawHtml.replace(/<\/body>/i, editorScript + "</body>");
 
   return new NextResponse(html, {
     headers: {
@@ -132,7 +131,4 @@ export async function GET(
       "X-Frame-Options": "SAMEORIGIN",
     },
   });
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, { status: 500 });
-  }
 }
