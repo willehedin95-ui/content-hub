@@ -35,6 +35,14 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Allow public API endpoints (called from external landing pages)
+  if (
+    request.nextUrl.pathname.startsWith("/api/pixel") ||
+    request.nextUrl.pathname.startsWith("/api/ab-track")
+  ) {
+    return supabaseResponse;
+  }
+
   // Redirect unauthenticated users to login
   if (!user) {
     const url = request.nextUrl.clone();

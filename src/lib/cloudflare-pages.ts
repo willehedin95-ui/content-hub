@@ -339,8 +339,10 @@ n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
 n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 document,'script','https://connect.facebook.net/en_US/fbevents.js');
+var _chEvtId='ch.'+Date.now()+'.'+Math.random().toString(36).substr(2,9);
+window.__chPageViewEventId=_chEvtId;
 fbq('init',${JSON.stringify(pixelId)});
-fbq('track','PageView');
+fbq('track','PageView',{},{eventID:_chEvtId});
 document.addEventListener('click',function(e){
   var a=e.target.closest('a[href]');
   if(!a)return;
@@ -495,6 +497,7 @@ if(fbcM)q+='&fbc='+encodeURIComponent(fbcM[1]);
 ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function(k){
 var v=p.get(k);if(v)q+='&'+k+'='+encodeURIComponent(v);
 });
+if(window.__chPageViewEventId)q+='&eid='+encodeURIComponent(window.__chPageViewEventId);
 var u=${JSON.stringify(hubUrl + "/api/pixel")};
 new Image().src=u+'?'+q+'&_='+Date.now();
 document.addEventListener('click',function(ev){

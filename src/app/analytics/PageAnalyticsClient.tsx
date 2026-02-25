@@ -56,6 +56,7 @@ interface MetaPageData {
   spend: number;
   clicks: number;
   impressions: number;
+  purchases: number;
 }
 
 interface PageMetricsData {
@@ -100,7 +101,7 @@ const MARKETS = [
 ] as const;
 
 type MarketId = (typeof MARKETS)[number]["id"];
-type SortField = "path" | "views" | "sessions" | "bounceRate" | "avgDuration" | "engagement" | "orders" | "revenue" | "convRate" | "spend" | "clicks" | "roas";
+type SortField = "path" | "views" | "sessions" | "bounceRate" | "avgDuration" | "engagement" | "orders" | "metaPurchases" | "revenue" | "convRate" | "spend" | "clicks" | "roas";
 
 export default function PageAnalyticsClient({
   ga4Configured,
@@ -324,6 +325,7 @@ export default function PageAnalyticsClient({
           {data && (() => {
               const totalSessions = pageRows.reduce((s, r) => s + r.sessions, 0);
               const totalOrders = pageRows.reduce((s, r) => s + r.orders, 0);
+              const totalMetaPurchases = pageRows.reduce((s, r) => s + r.metaPurchases, 0);
               const totalSpend = pageRows.reduce((s, r) => s + r.spend, 0);
               const totalRevenue = pageRows.reduce((s, r) => s + r.revenue, 0);
               const totalRevenueUSD = pageRows.reduce((s, r) => s + convertToUSD(r.revenue, r.currency, data?.rates), 0);
@@ -347,7 +349,7 @@ export default function PageAnalyticsClient({
                     icon={<ShoppingCart className="w-4 h-4 text-emerald-600" />}
                     label="Orders"
                     value={totalOrders.toLocaleString()}
-                    sub={shopifyConfigured ? "via utm tracking" : "Shopify not connected"}
+                    sub={shopifyConfigured ? (totalMetaPurchases > 0 ? `${totalMetaPurchases} via Meta pixel` : "via utm tracking") : "Shopify not connected"}
                   />
                   <SummaryCard
                     icon={<Target className="w-4 h-4 text-indigo-500" />}
@@ -394,6 +396,7 @@ export default function PageAnalyticsClient({
                       <Th field="spend" label="Spend" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="clicks" label="Clicks" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="orders" label="Orders" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="metaPurchases" label="Meta Orders" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="revenue" label="Revenue" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="roas" label="ROAS" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="convRate" label="Conv %" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
@@ -543,6 +546,7 @@ interface PageRowData {
   spend: number;
   clicks: number;
   orders: number;
+  metaPurchases: number;
   revenue: number;
   currency: string;
   roas: number;
@@ -586,6 +590,7 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
       spend: 0,
       clicks: 0,
       orders: 0,
+      metaPurchases: 0,
       revenue: 0,
       currency: "",
       roas: 0,
@@ -615,6 +620,7 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
     if (row) {
       row.spend = metaData.spend;
       row.clicks = metaData.clicks;
+      row.metaPurchases = metaData.purchases ?? 0;
       row.roas = metaData.spend > 0 && row.revenue > 0 ? convertToUSD(row.revenue, row.currency, rates) / metaData.spend : 0;
     }
   }
@@ -699,6 +705,11 @@ function PageRow({
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.orders > 0 ? row.orders : "—"}
         </td>
+        <td className="px-4 py-2.5 text-xs text-right tabular-nums font-medium">
+          {row.metaPurchases > 0 ? (
+            <span className="text-blue-600">{row.metaPurchases}</span>
+          ) : "—"}
+        </td>
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.revenue > 0 ? `${row.revenue.toFixed(0)} ${row.currency}` : "—"}
         </td>
@@ -720,7 +731,7 @@ function PageRow({
 
       {isExpanded && (
         <tr className="bg-gray-50">
-          <td colSpan={13} className="px-8 py-4">
+          <td colSpan={14} className="px-8 py-4">
             <div className="grid grid-cols-3 gap-6">
               {/* GA4 details + traffic sources */}
               <div>

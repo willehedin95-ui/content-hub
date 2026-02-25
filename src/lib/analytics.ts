@@ -281,6 +281,7 @@ export interface MetaPageMetrics {
   spend: number;
   clicks: number;
   impressions: number;
+  purchases: number;
 }
 
 export async function getMetaMetricsByPage(
@@ -307,7 +308,7 @@ export async function getMetaMetricsByPage(
     }
   }
 
-  // Aggregate spend/clicks/impressions per page slug
+  // Aggregate spend/clicks/impressions/purchases per page slug
   const map = new Map<string, MetaPageMetrics>();
   for (const insight of adInsights) {
     const url = adToUrl.get(insight.ad_id);
@@ -321,10 +322,15 @@ export async function getMetaMetricsByPage(
     }
     if (!slug) continue;
 
-    const existing = map.get(slug) ?? { spend: 0, clicks: 0, impressions: 0 };
+    const existing = map.get(slug) ?? { spend: 0, clicks: 0, impressions: 0, purchases: 0 };
     existing.spend += parseFloat(insight.spend) || 0;
     existing.clicks += parseInt(insight.clicks) || 0;
     existing.impressions += parseInt(insight.impressions) || 0;
+    // Extract purchase conversions from Meta's actions array
+    const purchaseAction = insight.actions?.find(a => a.action_type === "purchase");
+    if (purchaseAction) {
+      existing.purchases += parseInt(purchaseAction.value) || 0;
+    }
     map.set(slug, existing);
   }
 

@@ -454,10 +454,10 @@ export async function getCampaignInsights(
 export async function getAdInsights(
   since: string,
   until: string
-): Promise<Array<MetaInsightsRow & { ad_id: string }>> {
-  const fields = "impressions,clicks,spend,ad_id";
+): Promise<Array<MetaInsightsRow & { ad_id: string; actions?: Array<{ action_type: string; value: string }> }>> {
+  const fields = "impressions,clicks,spend,ad_id,actions";
   const timeRange = JSON.stringify({ since, until });
-  return metaJsonPaginated<MetaInsightsRow & { ad_id: string }>(
+  return metaJsonPaginated<MetaInsightsRow & { ad_id: string; actions?: Array<{ action_type: string; value: string }> }>(
     `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=200`
   );
 }

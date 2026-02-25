@@ -13,10 +13,13 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
 };
 
+const META_API_BASE = "https://graph.facebook.com/v22.0";
+
 function extractParams(url: URL) {
   return {
     visitorId: url.searchParams.get("vid"),
     eventType: url.searchParams.get("e") || "view",
+    eventId: url.searchParams.get("eid") || null,
     fbclid: url.searchParams.get("fbclid") || null,
     fbp: url.searchParams.get("fbp") || null,
     fbc: url.searchParams.get("fbc") || null,
@@ -33,10 +36,65 @@ function extractParams(url: URL) {
   };
 }
 
+/** Fire-and-forget: send CAPI PageView event to Meta with matching eventID for deduplication */
+function sendCAPIPageView(params: {
+  eventId: string;
+  eventSourceUrl: string | null;
+  fbp: string | null;
+  fbc: string | null;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  const token = process.env.META_SYSTEM_USER_TOKEN;
+  if (!token) return;
+
+  const db = createServerSupabase();
+  db.from("app_settings")
+    .select("settings")
+    .limit(1)
+    .single()
+    .then(({ data }) => {
+      const settings = (data?.settings ?? {}) as Record<string, unknown>;
+      const pixelId = settings.meta_pixel_id as string;
+      if (!pixelId) return;
+
+      const userData: Record<string, unknown> = {};
+      if (params.fbp) userData.fbp = params.fbp;
+      if (params.fbc) userData.fbc = params.fbc;
+      if (params.ip) userData.client_ip_address = params.ip;
+      if (params.userAgent) userData.client_user_agent = params.userAgent;
+
+      const event = {
+        event_name: "PageView",
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: params.eventId,
+        action_source: "website",
+        ...(params.eventSourceUrl
+          ? { event_source_url: params.eventSourceUrl }
+          : {}),
+        user_data: userData,
+        custom_data: {},
+      };
+
+      fetch(`${META_API_BASE}/${pixelId}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: [event], access_token: token }),
+        signal: AbortSignal.timeout(10_000),
+      }).catch((err) => {
+        console.error(
+          "CAPI PageView failed:",
+          err instanceof Error ? err.message : err
+        );
+      });
+    });
+}
+
 function logEvent(req: NextRequest) {
   const params = extractParams(req.nextUrl);
 
-  if (!params.visitorId || !["view", "click"].includes(params.eventType)) return;
+  if (!params.visitorId || !["view", "click"].includes(params.eventType))
+    return;
 
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -49,6 +107,7 @@ function logEvent(req: NextRequest) {
     req.headers.get("cf-ipcountry") ||
     null;
 
+  // Insert into pixel_events (fire-and-forget)
   const db = createServerSupabase();
   db.from("pixel_events")
     .insert({
@@ -74,6 +133,18 @@ function logEvent(req: NextRequest) {
     .then(({ error }) => {
       if (error) console.error("Failed to log pixel event:", error.message);
     });
+
+  // Forward PageView events to Meta CAPI for deduplication (fire-and-forget)
+  if (params.eventType === "view" && params.eventId) {
+    sendCAPIPageView({
+      eventId: params.eventId,
+      eventSourceUrl: params.pageUrl,
+      fbp: params.fbp,
+      fbc: params.fbc,
+      ip,
+      userAgent,
+    });
+  }
 }
 
 export async function OPTIONS() {
