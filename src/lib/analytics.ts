@@ -1,5 +1,5 @@
 import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
-import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured } from "./shopify";
+import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD } from "./shopify";
 import { createServerSupabase } from "./supabase";
 
 // ---- Types ----
@@ -138,7 +138,9 @@ export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSumm
     errors.shopify = shopifyResult.reason?.message || "Failed to fetch Shopify data";
   }
 
-  const roas = meta && shopify && meta.spend > 0 ? shopify.revenue / meta.spend : null;
+  const roas = meta && shopify && meta.spend > 0
+    ? convertToUSD(shopify.revenue, shopify.currency) / meta.spend
+    : null;
 
   return {
     meta,
@@ -175,8 +177,9 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     metaMap.set(row.campaign_id, existing);
   }
 
-  // Build results
+  // Build results — deduplicate orders so each is only attributed once
   const results: CampaignPerformance[] = [];
+  const attributedOrderIds = new Set<string>();
 
   for (const campaign of campaigns) {
     const ads = (campaign.meta_ads ?? []) as Array<{ landing_page_url: string | null }>;
@@ -186,13 +189,17 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     const insightRows = campaign.meta_campaign_id ? metaMap.get(campaign.meta_campaign_id) || [] : [];
     const metrics = parseInsightsRow(insightRows);
 
-    // Shopify attribution
+    // Shopify attribution (deduplicated — first-match wins)
     let campaignOrders = 0;
     let campaignRevenue = 0;
+    let campaignCurrency = "SEK";
     for (const order of orders) {
+      if (attributedOrderIds.has(order.id)) continue;
       if (attributeOrderToUrl(order, landingUrls)) {
+        attributedOrderIds.add(order.id);
         campaignOrders++;
         campaignRevenue += parseFloat(order.total_price);
+        campaignCurrency = order.currency;
       }
     }
 
@@ -205,7 +212,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
       ...metrics,
       orders: campaignOrders,
       revenue: campaignRevenue,
-      roas: metrics.spend > 0 ? campaignRevenue / metrics.spend : 0,
+      roas: metrics.spend > 0 ? convertToUSD(campaignRevenue, campaignCurrency) / metrics.spend : 0,
     });
   }
 

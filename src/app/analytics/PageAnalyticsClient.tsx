@@ -76,6 +76,14 @@ interface PageInsights {
   action_items: string[];
 }
 
+// Approximate exchange rates to USD for ROAS normalization (mirrors server-side rates)
+const RATES_TO_USD: Record<string, number> = {
+  USD: 1, SEK: 0.095, DKK: 0.14, NOK: 0.093, EUR: 1.08,
+};
+function convertToUSD(amount: number, currency: string): number {
+  return amount * (RATES_TO_USD[currency] ?? 1);
+}
+
 const PERIOD_OPTIONS = [
   { label: "7d", value: 7 },
   { label: "30d", value: 30 },
@@ -315,8 +323,9 @@ export default function PageAnalyticsClient({
               const totalOrders = pageRows.reduce((s, r) => s + r.orders, 0);
               const totalSpend = pageRows.reduce((s, r) => s + r.spend, 0);
               const totalRevenue = pageRows.reduce((s, r) => s + r.revenue, 0);
+              const totalRevenueUSD = pageRows.reduce((s, r) => s + convertToUSD(r.revenue, r.currency), 0);
               const overallConvRate = totalSessions > 0 ? totalOrders / totalSessions : 0;
-              const overallRoas = totalSpend > 0 && totalRevenue > 0 ? totalRevenue / totalSpend : 0;
+              const overallRoas = totalSpend > 0 && totalRevenueUSD > 0 ? totalRevenueUSD / totalSpend : 0;
               return (
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 mb-6">
                   <SummaryCard
@@ -347,7 +356,7 @@ export default function PageAnalyticsClient({
                     icon={<Activity className="w-4 h-4 text-purple-500" />}
                     label="ROAS"
                     value={overallRoas > 0 ? `${overallRoas.toFixed(2)}x` : "—"}
-                    sub={totalSpend > 0 ? `$${totalRevenue.toFixed(0)} / $${totalSpend.toFixed(0)}` : undefined}
+                    sub={totalSpend > 0 ? `$${totalRevenueUSD.toFixed(0)} / $${totalSpend.toFixed(0)}` : undefined}
                   />
                   <SummaryCard
                     icon={<MousePointerClick className="w-4 h-4 text-orange-500" />}
@@ -590,7 +599,7 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
     if (row) {
       row.spend = metaData.spend;
       row.clicks = metaData.clicks;
-      row.roas = metaData.spend > 0 && row.revenue > 0 ? row.revenue / metaData.spend : 0;
+      row.roas = metaData.spend > 0 && row.revenue > 0 ? convertToUSD(row.revenue, row.currency) / metaData.spend : 0;
     }
   }
 

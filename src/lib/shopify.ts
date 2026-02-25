@@ -1,5 +1,14 @@
 // Shopify integration — uses client_credentials OAuth for auto-refreshing tokens
 
+// Approximate exchange rates to USD for ROAS normalization
+const RATES_TO_USD: Record<string, number> = {
+  USD: 1, SEK: 0.095, DKK: 0.14, NOK: 0.093, EUR: 1.08,
+};
+
+export function convertToUSD(amount: number, currency: string): number {
+  return amount * (RATES_TO_USD[currency] ?? 1);
+}
+
 export interface ShopifyOrder {
   id: string;
   order_number: number;
@@ -134,6 +143,13 @@ export async function getOrdersByPage(
         // Direct/organic: page slug is in utm_campaign
         slug = url.searchParams.get("utm_campaign");
       }
+      if (!slug) {
+        // Fallback: extract from path for fbclid/gclid visitors (no UTM params)
+        if (url.searchParams.has("fbclid") || url.searchParams.has("gclid")) {
+          const pathSlug = url.pathname.replace(/^\/|\/$/g, "");
+          if (pathSlug) slug = pathSlug;
+        }
+      }
       if (!slug) continue;
 
       const existing = map.get(slug) ?? { orders: 0, revenue: 0, currency: order.currency };
@@ -149,9 +165,61 @@ export async function getOrdersByPage(
 }
 
 export async function getConversionsForTest(
-  _testId: string,
-  _since: string
+  testId: string,
+  since: string
 ): Promise<Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }>> {
-  // TODO: Implement Shopify order lookup for A/B test variants
-  return [];
+  const { createServerSupabase } = await import("./supabase");
+  const db = createServerSupabase();
+
+  // Get the AB test's control and variant translation IDs
+  const { data: test } = await db
+    .from("ab_tests")
+    .select("control_id, variant_id")
+    .eq("id", testId)
+    .single();
+
+  if (!test) return [];
+
+  // Get published URLs for both variants
+  const [{ data: controlT }, { data: variantT }] = await Promise.all([
+    db.from("translations").select("published_url").eq("id", test.control_id).single(),
+    db.from("translations").select("published_url").eq("id", test.variant_id).single(),
+  ]);
+
+  const controlUrl = controlT?.published_url;
+  const variantUrl = variantT?.published_url;
+  if (!controlUrl && !variantUrl) return [];
+
+  // Extract paths for matching
+  const controlPath = controlUrl ? new URL(controlUrl).pathname.replace(/\/$/, "") : null;
+  const variantPath = variantUrl ? new URL(variantUrl).pathname.replace(/\/$/, "") : null;
+
+  // Fetch orders and match to variants
+  const orders = await fetchOrdersSince(since);
+  const conversions: Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }> = [];
+
+  for (const order of orders) {
+    if (!order.landing_site) continue;
+    try {
+      const url = new URL(order.landing_site, "https://placeholder.com");
+      const orderPath = url.pathname.replace(/\/$/, "");
+
+      let variant: string | null = null;
+      if (controlPath && orderPath === controlPath) variant = "a";
+      else if (variantPath && orderPath === variantPath) variant = "b";
+
+      if (variant) {
+        conversions.push({
+          variant,
+          shopifyOrderId: order.id,
+          revenue: parseFloat(order.total_price) || 0,
+          currency: order.currency,
+        });
+      }
+    } catch {
+      // Skip malformed URLs
+    }
+  }
+
+  return conversions;
 }
