@@ -7,6 +7,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
   const { id } = await params;
   if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
@@ -131,4 +132,7 @@ export async function GET(
       "X-Frame-Options": "SAMEORIGIN",
     },
   });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, { status: 500 });
+  }
 }
