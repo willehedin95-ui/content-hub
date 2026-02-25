@@ -445,6 +445,11 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
     html = injectMetaPixel(html, config.metaPixelId);
   }
 
+  // First-party tracking pixel (after Meta Pixel so _fbp cookie is likely set)
+  if (config.hubUrl && config.slug) {
+    html = injectFirstPartyPixel(html, config.hubUrl, config.slug);
+  }
+
   // UTM link rewriting
   if (config.shopifyDomains?.length) {
     if (config.abTest) {
@@ -455,6 +460,62 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
   }
 
   return html;
+}
+
+/** First-party tracking pixel — captures visitor ID, fbclid, _fbp cookie, UTM params */
+function injectFirstPartyPixel(html: string, hubUrl: string, slug: string): string {
+  if (html.includes('data-cc-chpixel="true"')) return html;
+
+  const script = `<!-- CH Pixel -->
+<script data-cc-chpixel="true">
+if(!window.__chOptout){
+(function(){
+var vid;
+var c=document.cookie.split('; ').find(function(r){return r.startsWith('_ch_vid=')});
+if(c){vid=c.split('=')[1]}
+else{
+vid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+var r=Math.random()*16|0;return(c==='x'?r:r&0x3|0x8).toString(16)
+});
+document.cookie='_ch_vid='+vid+';path=/;max-age=31536000;SameSite=Lax';
+}
+var p=new URLSearchParams(location.search);
+var q='vid='+encodeURIComponent(vid)+'&e=view';
+q+='&slug='+encodeURIComponent(${JSON.stringify(slug)});
+q+='&url='+encodeURIComponent(location.href);
+q+='&ref='+encodeURIComponent(document.referrer||'');
+q+='&domain='+encodeURIComponent(location.hostname);
+var fbclid=p.get('fbclid');
+if(fbclid)q+='&fbclid='+encodeURIComponent(fbclid);
+var ck=document.cookie;
+var fbpM=ck.match(/(?:^|;\\s*)_fbp=([^;]+)/);
+if(fbpM)q+='&fbp='+encodeURIComponent(fbpM[1]);
+var fbcM=ck.match(/(?:^|;\\s*)_fbc=([^;]+)/);
+if(fbcM)q+='&fbc='+encodeURIComponent(fbcM[1]);
+['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function(k){
+var v=p.get(k);if(v)q+='&'+k+'='+encodeURIComponent(v);
+});
+var u=${JSON.stringify(hubUrl + "/api/pixel")};
+new Image().src=u+'?'+q+'&_='+Date.now();
+document.addEventListener('click',function(ev){
+var a=ev.target.closest('a[href]');
+if(!a)return;
+try{
+var url=new URL(a.href,location.href);
+if(url.hostname===location.hostname)return;
+var cq='vid='+encodeURIComponent(vid)+'&e=click';
+cq+='&slug='+encodeURIComponent(${JSON.stringify(slug)});
+cq+='&click='+encodeURIComponent(a.href);
+cq+='&domain='+encodeURIComponent(location.hostname);
+if(fbclid)cq+='&fbclid='+encodeURIComponent(fbclid);
+if(fbpM)cq+='&fbp='+encodeURIComponent(fbpM[1]);
+navigator.sendBeacon(u+'?'+cq);
+}catch(e){}
+},true);
+})();
+}
+</script>`;
+  return html.replace(/<\/head>/i, script + "</head>");
 }
 
 function injectTrackingScript(
@@ -716,6 +777,7 @@ export async function publishABTest(
     shopifyDomains: analytics?.shopifyDomains,
     hubUrl: analytics?.hubUrl,
     excludedIps: analytics?.excludedIps,
+    slug,
     abTest: { testId, variant: "a" },
   };
   const variantAnalytics: PageAnalyticsConfig = {

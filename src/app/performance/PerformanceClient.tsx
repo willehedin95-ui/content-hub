@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart3, TrendingUp } from "lucide-react";
+import { BarChart3, TrendingUp, Crosshair } from "lucide-react";
 import PageAnalyticsClient from "@/app/analytics/PageAnalyticsClient";
 import TrackingClient from "@/app/tracking/TrackingClient";
+import AttributionClient from "@/app/attribution/AttributionClient";
 
 const TABS = [
   { id: "pages" as const, label: "Page Analytics", icon: BarChart3 },
   { id: "campaigns" as const, label: "Campaign Tracking", icon: TrendingUp },
+  { id: "attribution" as const, label: "Attribution", icon: Crosshair },
 ];
 
 type TabId = (typeof TABS)[number]["id"];
@@ -75,6 +77,8 @@ export default function PerformanceClient({
           googleAdsConfigured={campaignTrackingConfig.googleAdsConfigured}
         />
       )}
+
+      {activeTab === "attribution" && <AttributionClient />}
     </div>
   );
 }

@@ -25,13 +25,26 @@ interface CAPIEvent {
   event_time: number;
   event_id: string;
   action_source: "website";
+  event_source_url?: string;
   user_data: Record<string, unknown>;
   custom_data: Record<string, unknown>;
 }
 
+interface PixelEnrichment {
+  fbp: string | null;
+  fbc: string | null;
+  event_source_url: string | null;
+  visitor_id: string | null;
+  pixel_event_id: string | null;
+  match_type: string;
+}
+
 // ---- Event building ----
 
-function buildEventFromOrder(order: ShopifyOrderFull): CAPIEvent {
+function buildEventFromOrder(
+  order: ShopifyOrderFull,
+  enrichment?: PixelEnrichment | null
+): CAPIEvent {
   const billing = order.billing_address;
 
   const userData: Record<string, unknown> = {};
@@ -67,6 +80,14 @@ function buildEventFromOrder(order: ShopifyOrderFull): CAPIEvent {
     } catch { /* skip */ }
   }
 
+  // Enrich with first-party pixel data (fbp is the key missing field for EMQ)
+  if (enrichment?.fbp) {
+    userData.fbp = enrichment.fbp;
+  }
+  if (enrichment?.fbc && !userData.fbc) {
+    userData.fbc = enrichment.fbc;
+  }
+
   const contentIds = order.line_items
     ?.map((li) => li.sku || String(li.product_id))
     .filter(Boolean) ?? [];
@@ -76,6 +97,7 @@ function buildEventFromOrder(order: ShopifyOrderFull): CAPIEvent {
     event_time: Math.floor(Date.parse(order.created_at) / 1000),
     event_id: `shopify_${order.id}`,
     action_source: "website",
+    ...(enrichment?.event_source_url ? { event_source_url: enrichment.event_source_url } : {}),
     user_data: userData,
     custom_data: {
       value: parseFloat(order.total_price),
@@ -84,6 +106,72 @@ function buildEventFromOrder(order: ShopifyOrderFull): CAPIEvent {
       content_type: "product",
     },
   };
+}
+
+// ---- Pixel enrichment ----
+
+type SupabaseClient = ReturnType<typeof createServerSupabase>;
+
+async function findPixelMatch(
+  order: ShopifyOrderFull,
+  db: SupabaseClient
+): Promise<PixelEnrichment | null> {
+  const orderDate = new Date(order.created_at);
+  const lookbackDate = new Date(orderDate.getTime() - 7 * 86400000).toISOString();
+
+  // Strategy 1: fbclid exact match (strongest signal)
+  if (order.landing_site) {
+    try {
+      const url = new URL(order.landing_site, "https://placeholder.com");
+      const fbclid = url.searchParams.get("fbclid");
+      if (fbclid) {
+        const { data } = await db
+          .from("pixel_events")
+          .select("id, fbp, fbc, page_url, visitor_id")
+          .eq("fbclid", fbclid)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          return {
+            fbp: data.fbp,
+            fbc: data.fbc,
+            event_source_url: data.page_url,
+            visitor_id: data.visitor_id,
+            pixel_event_id: data.id,
+            match_type: "fbclid",
+          };
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Strategy 2: IP + User Agent match within 7-day window
+  if (order.browser_ip && order.client_details?.user_agent) {
+    const { data } = await db
+      .from("pixel_events")
+      .select("id, fbp, fbc, page_url, visitor_id")
+      .eq("ip_address", order.browser_ip)
+      .eq("user_agent", order.client_details.user_agent)
+      .gte("created_at", lookbackDate)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (data) {
+      return {
+        fbp: data.fbp,
+        fbc: data.fbc,
+        event_source_url: data.page_url,
+        visitor_id: data.visitor_id,
+        pixel_event_id: data.id,
+        match_type: "ip_ua",
+      };
+    }
+  }
+
+  return null;
 }
 
 // ---- Sending ----
@@ -172,8 +260,41 @@ export async function syncOrdersToCAPI(daysSince: number): Promise<CAPISyncResul
     return { sent: 0, skipped: orders.length, errors: 0 };
   }
 
-  // Build events
-  const events = unsent.map(buildEventFromOrder);
+  // Enrich events with first-party pixel data (fbp, fbc, landing URL)
+  const enrichments = await Promise.all(
+    unsent.map((order) => findPixelMatch(order, db))
+  );
+  const events = unsent.map((order, i) =>
+    buildEventFromOrder(order, enrichments[i])
+  );
+
+  // Store visitor attributions for matched orders
+  const attributions = unsent
+    .map((order, i) => {
+      const e = enrichments[i];
+      if (!e || !e.visitor_id) return null;
+      return {
+        visitor_id: e.visitor_id,
+        shopify_order_id: String(order.id),
+        shopify_order_number: order.order_number,
+        match_type: e.match_type,
+        match_confidence: e.match_type === "fbclid" ? 1.0 : 0.7,
+        pixel_event_id: e.pixel_event_id,
+        page_slug: null as string | null,
+        landing_domain: null as string | null,
+        utm_source: null as string | null,
+        utm_campaign: null as string | null,
+        revenue: parseFloat(order.total_price),
+        currency: order.currency,
+      };
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null);
+
+  if (attributions.length > 0) {
+    await db
+      .from("visitor_attributions")
+      .upsert(attributions, { onConflict: "shopify_order_id" });
+  }
 
   // Send in batches of 100 (Meta limit is 1000, but smaller batches are safer)
   let sent = 0;
