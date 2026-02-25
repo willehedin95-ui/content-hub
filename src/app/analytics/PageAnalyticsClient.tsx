@@ -21,6 +21,7 @@ import {
   Target,
   Eye,
   RefreshCw,
+  DollarSign,
 } from "lucide-react";
 
 interface GA4Metrics {
@@ -51,10 +52,17 @@ interface ShopifyData {
   currency: string;
 }
 
+interface MetaPageData {
+  spend: number;
+  clicks: number;
+  impressions: number;
+}
+
 interface PageMetricsData {
   ga4: Record<string, GA4Metrics>;
   clarity: ClarityEntry[];
   shopify: Record<string, ShopifyData>;
+  meta: Record<string, MetaPageData>;
   errors: Record<string, string>;
   days: number;
 }
@@ -81,16 +89,18 @@ const MARKETS = [
 ] as const;
 
 type MarketId = (typeof MARKETS)[number]["id"];
-type SortField = "path" | "views" | "sessions" | "bounceRate" | "avgDuration" | "engagement" | "orders" | "revenue" | "convRate";
+type SortField = "path" | "views" | "sessions" | "bounceRate" | "avgDuration" | "engagement" | "orders" | "revenue" | "convRate" | "spend" | "clicks" | "roas";
 
 export default function PageAnalyticsClient({
   ga4Configured,
   clarityConfigured,
   shopifyConfigured,
+  metaConfigured,
 }: {
   ga4Configured: boolean;
   clarityConfigured: boolean;
   shopifyConfigured: boolean;
+  metaConfigured: boolean;
 }) {
   const [days, setDays] = useState(7);
   const [market, setMarket] = useState<MarketId>("sv");
@@ -190,7 +200,7 @@ export default function PageAnalyticsClient({
   // Count pages per market for tab badges
   const marketCounts = getMarketCounts(data);
 
-  const anyConfigured = ga4Configured || clarityConfigured || shopifyConfigured;
+  const anyConfigured = ga4Configured || clarityConfigured || shopifyConfigured || metaConfigured;
 
   return (
     <div className="max-w-7xl">
@@ -303,9 +313,12 @@ export default function PageAnalyticsClient({
           {data && (() => {
               const totalSessions = pageRows.reduce((s, r) => s + r.sessions, 0);
               const totalOrders = pageRows.reduce((s, r) => s + r.orders, 0);
+              const totalSpend = pageRows.reduce((s, r) => s + r.spend, 0);
+              const totalRevenue = pageRows.reduce((s, r) => s + r.revenue, 0);
               const overallConvRate = totalSessions > 0 ? totalOrders / totalSessions : 0;
+              const overallRoas = totalSpend > 0 && totalRevenue > 0 ? totalRevenue / totalSpend : 0;
               return (
-                <div className="grid grid-cols-5 gap-4 mb-6">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 mb-6">
                   <SummaryCard
                     icon={<Eye className="w-4 h-4 text-blue-500" />}
                     label="Page Views"
@@ -313,23 +326,28 @@ export default function PageAnalyticsClient({
                     sub={`${pageRows.length} pages`}
                   />
                   <SummaryCard
-                    icon={<Activity className="w-4 h-4 text-purple-500" />}
-                    label="Avg Bounce Rate"
-                    value={pageRows.length > 0
-                      ? `${(pageRows.reduce((s, r) => s + r.bounceRate, 0) / pageRows.length * 100).toFixed(1)}%`
-                      : "—"}
+                    icon={<DollarSign className="w-4 h-4 text-green-600" />}
+                    label="Ad Spend"
+                    value={metaConfigured && totalSpend > 0 ? `$${totalSpend.toFixed(0)}` : "—"}
+                    sub={metaConfigured ? "Meta Ads" : "Meta not connected"}
                   />
                   <SummaryCard
                     icon={<ShoppingCart className="w-4 h-4 text-emerald-600" />}
                     label="Orders"
                     value={totalOrders.toLocaleString()}
-                    sub={shopifyConfigured ? "via utm_campaign" : "Shopify not connected"}
+                    sub={shopifyConfigured ? "via utm tracking" : "Shopify not connected"}
                   />
                   <SummaryCard
                     icon={<Target className="w-4 h-4 text-indigo-500" />}
                     label="Conv Rate"
                     value={overallConvRate > 0 ? `${(overallConvRate * 100).toFixed(1)}%` : "—"}
                     sub={totalSessions > 0 ? `${totalOrders}/${totalSessions} sessions` : undefined}
+                  />
+                  <SummaryCard
+                    icon={<Activity className="w-4 h-4 text-purple-500" />}
+                    label="ROAS"
+                    value={overallRoas > 0 ? `${overallRoas.toFixed(2)}x` : "—"}
+                    sub={totalSpend > 0 ? `$${totalRevenue.toFixed(0)} / $${totalSpend.toFixed(0)}` : undefined}
                   />
                   <SummaryCard
                     icon={<MousePointerClick className="w-4 h-4 text-orange-500" />}
@@ -361,8 +379,11 @@ export default function PageAnalyticsClient({
                       <Th field="bounceRate" label="Bounce" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="engagement" label="Engagement" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="avgDuration" label="Avg Time" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="spend" label="Spend" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="clicks" label="Clicks" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="orders" label="Orders" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="revenue" label="Revenue" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <Th field="roas" label="ROAS" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="convRate" label="Conv %" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                     </tr>
                   </thead>
@@ -452,7 +473,7 @@ export default function PageAnalyticsClient({
           </div>
 
           {/* Connection status panels */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <ConnectionPanel
               icon={<BarChart3 className="w-5 h-5" />}
               name="Google Analytics 4"
@@ -460,17 +481,23 @@ export default function PageAnalyticsClient({
               description="Pageviews, sessions, bounce rate"
             />
             <ConnectionPanel
-              icon={<Activity className="w-5 h-5" />}
-              name="Microsoft Clarity"
-              configured={clarityConfigured}
-              description="Scroll depth, rage clicks, UX signals"
-              note={clarityConfigured ? "Data limited to last 3 days" : undefined}
+              icon={<DollarSign className="w-5 h-5" />}
+              name="Meta Ads"
+              configured={metaConfigured}
+              description="Ad spend, clicks per page"
             />
             <ConnectionPanel
               icon={<ShoppingCart className="w-5 h-5" />}
               name="Shopify"
               configured={shopifyConfigured}
               description="Orders, revenue per page"
+            />
+            <ConnectionPanel
+              icon={<Activity className="w-5 h-5" />}
+              name="Microsoft Clarity"
+              configured={clarityConfigured}
+              description="Scroll depth, rage clicks, UX signals"
+              note={clarityConfigured ? "Data limited to last 3 days" : undefined}
             />
           </div>
         </>
@@ -494,9 +521,12 @@ interface PageRowData {
   engagement: number;
   avgDuration: number;
   conversions: number;
+  spend: number;
+  clicks: number;
   orders: number;
   revenue: number;
   currency: string;
+  roas: number;
   convRate: number;
 }
 
@@ -529,9 +559,12 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
       engagement: metrics.engagementRate,
       avgDuration: metrics.averageSessionDuration,
       conversions: metrics.conversions,
+      spend: 0,
+      clicks: 0,
       orders: 0,
       revenue: 0,
       currency: "",
+      roas: 0,
       convRate: 0,
     });
   }
@@ -546,6 +579,18 @@ function buildPageRows(data: PageMetricsData | null, market: string, marketDomai
       row.revenue = shopify.revenue;
       row.currency = shopify.currency;
       row.convRate = row.sessions > 0 ? shopify.orders / row.sessions : 0;
+    }
+  }
+
+  // Meta ad data: keys are page slugs — match to paths in current market
+  for (const [slug, metaData] of Object.entries(data.meta ?? {})) {
+    const matchPath = `/${slug}/`;
+    const matchPath2 = `/${slug}`;
+    const row = map.get(matchPath) ?? map.get(matchPath2);
+    if (row) {
+      row.spend = metaData.spend;
+      row.clicks = metaData.clicks;
+      row.roas = metaData.spend > 0 && row.revenue > 0 ? row.revenue / metaData.spend : 0;
     }
   }
 
@@ -621,10 +666,23 @@ function PageRow({
           {row.avgDuration > 0 ? `${row.avgDuration.toFixed(0)}s` : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
+          {row.spend > 0 ? `$${row.spend.toFixed(0)}` : "—"}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-500 text-right tabular-nums">
+          {row.clicks > 0 ? row.clicks.toLocaleString() : "—"}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.orders > 0 ? row.orders : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
           {row.revenue > 0 ? `${row.revenue.toFixed(0)} ${row.currency}` : "—"}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-right tabular-nums font-medium">
+          {row.roas > 0 ? (
+            <span className={row.roas > 2 ? "text-emerald-600" : row.roas > 1 ? "text-amber-500" : "text-red-500"}>
+              {row.roas.toFixed(2)}x
+            </span>
+          ) : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-right tabular-nums font-medium">
           {row.convRate > 0 ? (
@@ -637,8 +695,8 @@ function PageRow({
 
       {isExpanded && (
         <tr className="bg-gray-50">
-          <td colSpan={10} className="px-8 py-4">
-            <div className="grid grid-cols-2 gap-6">
+          <td colSpan={13} className="px-8 py-4">
+            <div className="grid grid-cols-3 gap-6">
               {/* GA4 details */}
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">GA4 Details</p>
@@ -665,6 +723,35 @@ function PageRow({
                     </a>
                   </div>
                 </div>
+              </div>
+
+              {/* Meta Ad Performance */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Meta Ads</p>
+                {row.spend > 0 ? (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-500 w-24">Spend</span>
+                      <span className="text-gray-700 tabular-nums">${row.spend.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-500 w-24">Clicks</span>
+                      <span className="text-gray-700 tabular-nums">{row.clicks.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-500 w-24">CPC</span>
+                      <span className="text-gray-700 tabular-nums">{row.clicks > 0 ? `$${(row.spend / row.clicks).toFixed(2)}` : "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-500 w-24">ROAS</span>
+                      <span className={`tabular-nums ${row.roas > 2 ? "text-emerald-600" : row.roas > 1 ? "text-amber-500" : "text-red-500"}`}>
+                        {row.roas > 0 ? `${row.roas.toFixed(2)}x` : "—"}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-300">No Meta ad data for this page</p>
+                )}
               </div>
 
               {/* Clarity signals */}

@@ -168,12 +168,17 @@ export async function POST(
         });
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);
 
+        // Extract page slug from landing URL for Shopify order attribution via utm_term
+        const pageSlug = (() => {
+          try { return new URL(ad.landing_page_url).pathname.replace(/^\/|\/$/g, ""); }
+          catch { return ""; }
+        })();
         const metaAd = await createAd({
           name: ad.name,
           adSetId: resolvedAdSetId,
           creativeId: creative.id,
           status: "PAUSED",
-          urlTags: "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}",
+          urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(pageSlug)}`,
         });
         await db.from("meta_ads").update({ meta_ad_id: metaAd.id, status: "pushed" }).eq("id", ad.id);
       } catch (adError) {

@@ -1,4 +1,4 @@
-import { getAccountInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
+import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
 import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured } from "./shopify";
 import { createServerSupabase } from "./supabase";
 
@@ -213,4 +213,60 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
   results.sort((a, b) => b.spend - a.spend);
 
   return results;
+}
+
+// ---- Page-level Meta metrics ----
+
+export interface MetaPageMetrics {
+  spend: number;
+  clicks: number;
+  impressions: number;
+}
+
+export async function getMetaMetricsByPage(
+  days: number
+): Promise<Map<string, MetaPageMetrics>> {
+  if (!isMetaConfigured()) return new Map();
+
+  const { since, until } = getDateRange(days);
+  const db = createServerSupabase();
+
+  const [adInsights, dbResult] = await Promise.all([
+    getAdInsights(since, until),
+    db.from("meta_ads")
+      .select("meta_ad_id, landing_page_url")
+      .not("meta_ad_id", "is", null)
+      .not("landing_page_url", "is", null),
+  ]);
+
+  // Build lookup: meta_ad_id → landing_page_url
+  const adToUrl = new Map<string, string>();
+  for (const row of dbResult.data ?? []) {
+    if (row.meta_ad_id && row.landing_page_url) {
+      adToUrl.set(row.meta_ad_id, row.landing_page_url);
+    }
+  }
+
+  // Aggregate spend/clicks/impressions per page slug
+  const map = new Map<string, MetaPageMetrics>();
+  for (const insight of adInsights) {
+    const url = adToUrl.get(insight.ad_id);
+    if (!url) continue;
+
+    let slug: string;
+    try {
+      slug = new URL(url).pathname.replace(/^\/|\/$/g, "");
+    } catch {
+      continue;
+    }
+    if (!slug) continue;
+
+    const existing = map.get(slug) ?? { spend: 0, clicks: 0, impressions: 0 };
+    existing.spend += parseFloat(insight.spend) || 0;
+    existing.clicks += parseInt(insight.clicks) || 0;
+    existing.impressions += parseInt(insight.impressions) || 0;
+    map.set(slug, existing);
+  }
+
+  return map;
 }

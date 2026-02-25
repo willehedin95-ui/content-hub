@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { fetchAllGA4Metrics } from "@/lib/ga4";
 import { fetchClarityInsights } from "@/lib/clarity";
 import { getOrdersByPage } from "@/lib/shopify";
+import { getMetaMetricsByPage } from "@/lib/analytics";
 
 export const maxDuration = 60;
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
   const errors: Record<string, string> = {};
 
   // Fetch all sources in parallel
-  const [ga4Result, clarityResult, shopifyResult] = await Promise.allSettled([
+  const [ga4Result, clarityResult, shopifyResult, metaResult] = await Promise.allSettled([
     Object.keys(ga4PropertyIds).length > 0
       ? fetchAllGA4Metrics(ga4PropertyIds, days, legacyPropertyId ? [legacyPropertyId] : undefined)
       : Promise.resolve(new Map()),
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
       ? fetchClarityInsights(clarityToken, Math.min(days, 3))
       : Promise.resolve([]),
     getOrdersByPage(new Date(Date.now() - days * 86400000).toISOString()),
+    getMetaMetricsByPage(days),
   ]);
 
   // Process GA4
@@ -62,5 +64,15 @@ export async function GET(req: NextRequest) {
     errors.shopify = shopifyResult.reason?.message ?? "Shopify fetch failed";
   }
 
-  return NextResponse.json({ ga4, clarity, shopify, errors, days });
+  // Process Meta
+  const meta: Record<string, { spend: number; clicks: number; impressions: number }> = {};
+  if (metaResult.status === "fulfilled") {
+    for (const [slug, data] of metaResult.value) {
+      meta[slug] = data;
+    }
+  } else if (metaResult.reason?.message !== "Not configured") {
+    errors.meta = metaResult.reason?.message ?? "Meta fetch failed";
+  }
+
+  return NextResponse.json({ ga4, clarity, shopify, meta, errors, days });
 }

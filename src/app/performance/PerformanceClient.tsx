@@ -20,6 +20,7 @@ export default function PerformanceClient({
     ga4Configured: boolean;
     clarityConfigured: boolean;
     shopifyConfigured: boolean;
+    metaConfigured: boolean;
   };
   campaignTrackingConfig: {
     metaConfigured: boolean;
@@ -60,6 +61,7 @@ export default function PerformanceClient({
           ga4Configured={pageAnalyticsConfig.ga4Configured}
           clarityConfigured={pageAnalyticsConfig.clarityConfigured}
           shopifyConfigured={pageAnalyticsConfig.shopifyConfigured}
+          metaConfigured={pageAnalyticsConfig.metaConfigured}
         />
       )}
 

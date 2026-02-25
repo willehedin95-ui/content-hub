@@ -45,6 +45,7 @@ export default async function PerformancePage() {
           ga4Configured,
           clarityConfigured,
           shopifyConfigured,
+          metaConfigured,
         }}
         campaignTrackingConfig={{
           metaConfigured,
