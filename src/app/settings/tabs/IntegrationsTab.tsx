@@ -29,8 +29,22 @@ interface IntegrationsTabProps extends SettingsProps {
     loading: boolean;
     error: string | null;
   };
+  googleAds: {
+    status: { customerId: string; descriptiveName: string } | null;
+    loading: boolean;
+    error: string | null;
+  };
+  capi: {
+    stats: { total: number; sent: number; failed: number; pending: number } | null;
+    syncing: boolean;
+    syncResult: { sent: number; skipped: number; errors: number } | null;
+    error: string | null;
+  };
   fetchKieCredits: () => void;
   testShopifyConnection: () => void;
+  testGoogleAdsConnection: () => void;
+  syncCapi: () => void;
+  fetchCapiStats: () => void;
 }
 
 export default function IntegrationsTab({
@@ -40,8 +54,13 @@ export default function IntegrationsTab({
   handleSave,
   kie,
   shopify,
+  googleAds,
+  capi,
   fetchKieCredits,
   testShopifyConnection,
+  testGoogleAdsConnection,
+  syncCapi,
+  fetchCapiStats,
 }: IntegrationsTabProps) {
   return (
     <>
@@ -89,6 +108,29 @@ export default function IntegrationsTab({
               {shopify.loading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : shopify.status ? (
+                "Connected"
+              ) : (
+                "Test"
+              )}
+            </ActionButton>
+          }
+        />
+        <RowDivider />
+        <Row
+          label="Google Ads"
+          description={
+            googleAds.status
+              ? `${googleAds.status.descriptiveName} (${googleAds.status.customerId})`
+              : googleAds.error
+              ? googleAds.error
+              : "Configured via environment variables"
+          }
+          descriptionColor={googleAds.status ? "text-emerald-600" : googleAds.error ? "text-red-500" : undefined}
+          action={
+            <ActionButton onClick={testGoogleAdsConnection} disabled={googleAds.loading}>
+              {googleAds.loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : googleAds.status ? (
                 "Connected"
               ) : (
                 "Test"
@@ -194,6 +236,34 @@ export default function IntegrationsTab({
           }
         />
         <RowDivider />
+        <Row
+          label="Meta Conversions API"
+          description={
+            capi.error
+              ? capi.error
+              : capi.syncResult
+              ? `Last sync: ${capi.syncResult.sent} sent, ${capi.syncResult.skipped} skipped${capi.syncResult.errors ? `, ${capi.syncResult.errors} errors` : ""}`
+              : capi.stats
+              ? `${capi.stats.sent} events sent, ${capi.stats.pending} pending`
+              : "Send purchase events from Shopify to Meta"
+          }
+          descriptionColor={capi.error ? "text-red-500" : capi.stats?.sent ? "text-emerald-600" : undefined}
+          action={
+            <div className="flex items-center gap-2">
+              {capi.stats && (
+                <span className="text-xs text-gray-400 tabular-nums">{capi.stats.total} total</span>
+              )}
+              <ActionButton onClick={() => { syncCapi(); if (!capi.stats) fetchCapiStats(); }} disabled={capi.syncing}>
+                {capi.syncing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  "Sync"
+                )}
+              </ActionButton>
+            </div>
+          }
+        />
+        <RowDivider />
         <ExcludeIPRow
           excludedIps={settings.excluded_ips ?? []}
           onChange={(ips) => setSettings((s) => ({ ...s, excluded_ips: ips }))}
@@ -210,6 +280,7 @@ export default function IntegrationsTab({
           { name: "OpenAI", env: "OPENAI_API_KEY", desc: "GPT-4o text translation & quality analysis" },
           { name: "Cloudflare Pages", env: "CF_PAGES_*", desc: "Landing page hosting" },
           { name: "Meta Marketing", env: "META_*", desc: "Ad campaign management" },
+          { name: "Google Ads", env: "GOOGLE_ADS_*", desc: "Google Ads campaign data" },
           { name: "Shopify", env: "SHOPIFY_*", desc: "Order data for A/B test conversions" },
           { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image generation & translation" },
           { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },

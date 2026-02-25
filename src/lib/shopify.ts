@@ -154,6 +154,74 @@ export async function fetchOrdersSince(sinceISO: string): Promise<ShopifyOrder[]
   return allOrders;
 }
 
+// ---- Extended order data for Meta CAPI ----
+
+export interface ShopifyOrderFull extends ShopifyOrder {
+  email: string | null;
+  phone: string | null;
+  billing_address: {
+    first_name: string | null;
+    last_name: string | null;
+    city: string | null;
+    province: string | null;
+    zip: string | null;
+    country_code: string | null;
+  } | null;
+  customer: {
+    id: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  browser_ip: string | null;
+  client_details: {
+    user_agent: string | null;
+  } | null;
+  line_items: Array<{
+    sku: string | null;
+    product_id: number;
+  }>;
+}
+
+/**
+ * Fetch orders with full detail (for Meta CAPI user data hashing).
+ * Separate from fetchOrdersSince to avoid breaking existing consumers.
+ */
+export async function fetchOrdersFullSince(sinceISO: string): Promise<ShopifyOrderFull[]> {
+  if (!isShopifyConfigured()) return [];
+
+  const storeUrl = getStoreUrl();
+  const token = await getAccessToken();
+
+  const allOrders: ShopifyOrderFull[] = [];
+  let nextUrl: string | null =
+    `${storeUrl}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(sinceISO)}&fields=id,order_number,landing_site,total_price,currency,created_at,email,phone,billing_address,customer,browser_ip,client_details,line_items&limit=250`;
+
+  while (nextUrl) {
+    const fetchUrl: string = nextUrl;
+    const res: Response = await fetch(fetchUrl, {
+      headers: { "X-Shopify-Access-Token": token },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Shopify API error (${res.status}): ${text.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const orders: ShopifyOrderFull[] = data.orders ?? [];
+    allOrders.push(...orders);
+
+    const linkHeader = res.headers.get("Link");
+    nextUrl = null;
+    if (linkHeader) {
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      if (nextMatch) nextUrl = nextMatch[1];
+    }
+  }
+
+  return allOrders;
+}
+
 /**
  * Match orders to page slugs from landing_site URL.
  * Checks in order:

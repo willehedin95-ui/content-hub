@@ -33,6 +33,15 @@ interface AnalyticsSummary {
     cpc: number;
     cpm: number;
   } | null;
+  googleAds: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  } | null;
   shopify: {
     orders: number;
     revenue: number;
@@ -40,13 +49,15 @@ interface AnalyticsSummary {
     currency: string;
   } | null;
   roas: number | null;
+  totalAdSpend: number;
   dateRange: { since: string; until: string };
-  errors?: { meta?: string; shopify?: string };
+  errors?: { meta?: string; shopify?: string; googleAds?: string };
 }
 
 interface CampaignPerformance {
   name: string;
   internalId: string;
+  source: "meta" | "google";
   product: string | null;
   language: string;
   metaCampaignId: string | null;
@@ -55,6 +66,7 @@ interface CampaignPerformance {
   clicks: number;
   ctr: number;
   cpc: number;
+  conversions?: number;
   orders: number;
   revenue: number;
   roas: number;
@@ -83,11 +95,13 @@ export default function TrackingClient({
   shopifyConfigured,
   ga4Configured,
   clarityConfigured,
+  googleAdsConfigured,
 }: {
   metaConfigured: boolean;
   shopifyConfigured: boolean;
   ga4Configured: boolean;
   clarityConfigured: boolean;
+  googleAdsConfigured: boolean;
 }) {
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -265,8 +279,16 @@ export default function TrackingClient({
             <SummaryCard
               icon={<DollarSign className="w-4 h-4 text-red-500" />}
               label="Ad Spend"
-              value={summary?.meta ? formatCurrency(summary.meta.spend) : "—"}
-              sub={summary?.meta ? `${summary.meta.impressions.toLocaleString()} impressions` : undefined}
+              value={summary?.totalAdSpend ? formatCurrency(summary.totalAdSpend) : "—"}
+              sub={
+                summary?.meta && summary?.googleAds
+                  ? `Meta: ${formatCurrency(summary.meta.spend)} / Google: ${formatCurrency(summary.googleAds.spend)}`
+                  : summary?.meta
+                  ? `${summary.meta.impressions.toLocaleString()} impressions`
+                  : summary?.googleAds
+                  ? `${summary.googleAds.impressions.toLocaleString()} impressions`
+                  : undefined
+              }
             />
             <SummaryCard
               icon={<ShoppingCart className="w-4 h-4 text-emerald-600" />}
@@ -322,12 +344,19 @@ export default function TrackingClient({
                         <td className="px-4 py-2.5">
                           <div className="text-xs font-medium text-gray-800 truncate max-w-[240px]">{c.name}</div>
                           <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                              c.source === "google"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-indigo-50 text-indigo-600"
+                            }`}>
+                              {c.source === "google" ? "Google" : "Meta"}
+                            </span>
                             {c.product && (
                               <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
                                 {c.product}
                               </span>
                             )}
-                            <span className="text-[10px] text-gray-400 uppercase">{c.language}</span>
+                            {c.language && <span className="text-[10px] text-gray-400 uppercase">{c.language}</span>}
                           </div>
                         </td>
                         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums">

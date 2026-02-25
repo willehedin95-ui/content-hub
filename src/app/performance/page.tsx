@@ -1,6 +1,7 @@
 import PerformanceClient from "./PerformanceClient";
 import { createServerSupabase } from "@/lib/supabase";
 import { isShopifyConfigured } from "@/lib/shopify";
+import { isGoogleAdsConfigured } from "@/lib/google-ads";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export default async function PerformancePage() {
   const clarityConfigured = !!(settings.clarity_api_token as string);
   const clarityTrackingConfigured = !!(settings.clarity_project_id as string);
   const shopifyConfigured = isShopifyConfigured();
+  const googleAdsConfigured = isGoogleAdsConfigured();
 
   return (
     <div className="p-8">
@@ -52,6 +54,7 @@ export default async function PerformancePage() {
           shopifyConfigured: shopifyConfiguredEnv,
           ga4Configured: ga4TrackingConfigured,
           clarityConfigured: clarityTrackingConfigured,
+          googleAdsConfigured,
         }}
       />
     </div>

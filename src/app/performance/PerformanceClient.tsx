@@ -27,6 +27,7 @@ export default function PerformanceClient({
     shopifyConfigured: boolean;
     ga4Configured: boolean;
     clarityConfigured: boolean;
+    googleAdsConfigured: boolean;
   };
 }) {
   const [activeTab, setActiveTab] = useState<TabId>("pages");
@@ -71,6 +72,7 @@ export default function PerformanceClient({
           shopifyConfigured={campaignTrackingConfig.shopifyConfigured}
           ga4Configured={campaignTrackingConfig.ga4Configured}
           clarityConfigured={campaignTrackingConfig.clarityConfigured}
+          googleAdsConfigured={campaignTrackingConfig.googleAdsConfigured}
         />
       )}
     </div>

@@ -76,6 +76,21 @@ export default function SettingsPage() {
     error: string | null;
   }>({ status: null, loading: false, error: null });
 
+  // Google Ads connection state
+  const [googleAds, setGoogleAds] = useState<{
+    status: { customerId: string; descriptiveName: string } | null;
+    loading: boolean;
+    error: string | null;
+  }>({ status: null, loading: false, error: null });
+
+  // Meta CAPI state
+  const [capi, setCapi] = useState<{
+    stats: { total: number; sent: number; failed: number; pending: number } | null;
+    syncing: boolean;
+    syncResult: { sent: number; skipped: number; errors: number } | null;
+    error: string | null;
+  }>({ stats: null, syncing: false, syncResult: null, error: null });
+
   // Meta connection state
   const [meta, setMeta] = useState<{
     status: { name: string; id: string } | null;
@@ -325,6 +340,54 @@ export default function SettingsPage() {
     }
   }
 
+  async function testGoogleAdsConnection() {
+    setGoogleAds(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/google-ads/verify");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Connection failed");
+      setGoogleAds(prev => ({ ...prev, status: data, loading: false }));
+    } catch (err) {
+      setGoogleAds({
+        status: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Connection failed",
+      });
+    }
+  }
+
+  async function syncCapi() {
+    setCapi(prev => ({ ...prev, syncing: true, error: null, syncResult: null }));
+    try {
+      const res = await fetch("/api/capi/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 30 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Sync failed");
+      setCapi(prev => ({ ...prev, syncing: false, syncResult: data }));
+      // Refresh stats after sync
+      fetchCapiStats();
+    } catch (err) {
+      setCapi(prev => ({
+        ...prev,
+        syncing: false,
+        error: err instanceof Error ? err.message : "Sync failed",
+      }));
+    }
+  }
+
+  async function fetchCapiStats() {
+    try {
+      const res = await fetch("/api/capi/stats");
+      if (res.ok) {
+        const data = await res.json();
+        setCapi(prev => ({ ...prev, stats: data }));
+      }
+    } catch { /* ignore */ }
+  }
+
   async function fetchMetaPages() {
     if (metaPages.pages.length > 0) return;
     setMetaPages(prev => ({ ...prev, loading: true }));
@@ -493,8 +556,13 @@ export default function SettingsPage() {
               handleSave={handleSave}
               kie={kie}
               shopify={shopify}
+              googleAds={googleAds}
+              capi={capi}
               fetchKieCredits={fetchKieCredits}
               testShopifyConnection={testShopifyConnection}
+              testGoogleAdsConnection={testGoogleAdsConnection}
+              syncCapi={syncCapi}
+              fetchCapiStats={fetchCapiStats}
             />
           )}
         </div>

@@ -1,5 +1,6 @@
 import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
 import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD, getRatesToUSD } from "./shopify";
+import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights, GoogleAdsCampaignRow } from "./google-ads";
 import { createServerSupabase } from "./supabase";
 
 // ---- Types ----
@@ -13,6 +14,15 @@ export interface AnalyticsSummary {
     cpc: number;
     cpm: number;
   } | null;
+  googleAds: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  } | null;
   shopify: {
     orders: number;
     revenue: number;
@@ -20,13 +30,15 @@ export interface AnalyticsSummary {
     currency: string;
   } | null;
   roas: number | null;
+  totalAdSpend: number;
   dateRange: { since: string; until: string };
-  errors?: { meta?: string; shopify?: string };
+  errors?: { meta?: string; shopify?: string; googleAds?: string };
 }
 
 export interface CampaignPerformance {
   name: string;
   internalId: string;
+  source: "meta" | "google";
   product: string | null;
   language: string;
   metaCampaignId: string | null;
@@ -35,6 +47,7 @@ export interface CampaignPerformance {
   clicks: number;
   ctr: number;
   cpc: number;
+  conversions?: number;
   orders: number;
   revenue: number;
   roas: number;
@@ -109,11 +122,12 @@ function attributeOrderToUrl(order: ShopifyOrder, landingUrls: Set<string>): boo
 
 export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSummary> {
   const { since, until, sinceISO } = getDateRange(days);
-  const errors: { meta?: string; shopify?: string } = {};
+  const errors: { meta?: string; shopify?: string; googleAds?: string } = {};
 
-  // Fetch Meta + Shopify + exchange rates in parallel
-  const [metaResult, shopifyResult] = await Promise.allSettled([
+  // Fetch Meta + Google Ads + Shopify + exchange rates in parallel
+  const [metaResult, googleAdsResult, shopifyResult] = await Promise.allSettled([
     isMetaConfigured() ? getAccountInsights(since, until) : Promise.reject(new Error("Not configured")),
+    isGoogleAdsConfigured() ? getGoogleAdsAccountInsights(since, until) : Promise.reject(new Error("Not configured")),
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.reject(new Error("Not configured")),
     getRatesToUSD(), // Warm rate cache for convertToUSD calls below
   ]);
@@ -125,10 +139,16 @@ export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSumm
     errors.meta = metaResult.reason?.message || "Failed to fetch Meta data";
   }
 
+  let googleAds: AnalyticsSummary["googleAds"] = null;
+  if (googleAdsResult.status === "fulfilled") {
+    googleAds = googleAdsResult.value;
+  } else if (googleAdsResult.status === "rejected" && googleAdsResult.reason?.message !== "Not configured") {
+    errors.googleAds = googleAdsResult.reason?.message || "Failed to fetch Google Ads data";
+  }
+
   let shopify: AnalyticsSummary["shopify"] = null;
-  let orders: ShopifyOrder[] = [];
   if (shopifyResult.status === "fulfilled") {
-    orders = shopifyResult.value;
+    const orders = shopifyResult.value;
     const revenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price), 0);
     shopify = {
       orders: orders.length,
@@ -140,14 +160,18 @@ export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSumm
     errors.shopify = shopifyResult.reason?.message || "Failed to fetch Shopify data";
   }
 
-  const roas = meta && shopify && meta.spend > 0
-    ? convertToUSD(shopify.revenue, shopify.currency) / meta.spend
+  // Combined ad spend (Meta + Google Ads) for ROAS
+  const totalAdSpend = (meta?.spend ?? 0) + (googleAds?.spend ?? 0);
+  const roas = shopify && totalAdSpend > 0
+    ? convertToUSD(shopify.revenue, shopify.currency) / totalAdSpend
     : null;
 
   return {
     meta,
+    googleAds,
     shopify,
     roas,
+    totalAdSpend,
     dateRange: { since, until },
     ...(Object.keys(errors).length > 0 ? { errors } : {}),
   };
@@ -158,8 +182,9 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
   const db = createServerSupabase();
 
   // Fetch all data sources + exchange rates in parallel
-  const [metaResult, shopifyResult, dbResult] = await Promise.allSettled([
+  const [metaResult, googleAdsResult, shopifyResult, dbResult] = await Promise.allSettled([
     isMetaConfigured() ? getCampaignInsights(since, until) : Promise.resolve([]),
+    isGoogleAdsConfigured() ? getGoogleAdsCampaignInsights(since, until) : Promise.resolve([] as GoogleAdsCampaignRow[]),
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.resolve([]),
     db.from("meta_campaigns")
       .select("id, name, product, language, meta_campaign_id, meta_ads(landing_page_url)")
@@ -168,6 +193,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
   ]);
 
   const metaRows = metaResult.status === "fulfilled" ? metaResult.value : [];
+  const googleAdsRows = googleAdsResult.status === "fulfilled" ? googleAdsResult.value : [];
   const orders = shopifyResult.status === "fulfilled" ? shopifyResult.value : [];
   const campaigns = dbResult.status === "fulfilled" ? (dbResult.value.data ?? []) : [];
 
@@ -184,6 +210,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
   const results: CampaignPerformance[] = [];
   const attributedOrderIds = new Set<string>();
 
+  // Meta campaigns from DB
   for (const campaign of campaigns) {
     const ads = (campaign.meta_ads ?? []) as Array<{ landing_page_url: string | null }>;
     const landingUrls = new Set(ads.map(a => a.landing_page_url).filter(Boolean) as string[]);
@@ -210,6 +237,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     results.push({
       name: campaign.name,
       internalId: campaign.id,
+      source: "meta",
       product: campaign.product,
       language: campaign.language,
       metaCampaignId: campaign.meta_campaign_id,
@@ -217,6 +245,27 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
       orders: campaignOrders,
       revenue: campaignRevenue,
       roas: metrics.spend > 0 ? campaignRevenueUSD / metrics.spend : 0,
+    });
+  }
+
+  // Google Ads campaigns
+  for (const gaCampaign of googleAdsRows) {
+    results.push({
+      name: gaCampaign.campaignName,
+      internalId: `gads_${gaCampaign.campaignId}`,
+      source: "google",
+      product: null,
+      language: "",
+      metaCampaignId: null,
+      spend: gaCampaign.spend,
+      impressions: gaCampaign.impressions,
+      clicks: gaCampaign.clicks,
+      ctr: gaCampaign.ctr,
+      cpc: gaCampaign.cpc,
+      conversions: gaCampaign.conversions,
+      orders: 0,
+      revenue: 0,
+      roas: 0,
     });
   }
 
