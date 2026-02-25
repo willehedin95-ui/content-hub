@@ -114,10 +114,14 @@ export async function fetchAllGA4Metrics(
       for (const m of result.value) {
         // Map hostname to market language
         const lang = domainToLang.get(m.hostName);
-        if (lang) {
-          map.set(`${lang}:${m.pagePath}`, m);
+        if (!lang) continue; // Skip unknown hostnames (e.g. localhost, preview domains)
+
+        const key = `${lang}:${m.pagePath}`;
+        const existing = map.get(key);
+        // Keep the entry with more pageviews (avoids legacy property overwriting main)
+        if (!existing || m.screenPageViews > existing.screenPageViews) {
+          map.set(key, m);
         }
-        // Skip unknown hostnames (e.g. localhost, preview domains)
       }
     }
   }
