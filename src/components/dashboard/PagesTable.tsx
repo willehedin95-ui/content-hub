@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search } from "lucide-react";
+import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search, Loader2 } from "lucide-react";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 import { TagBadge } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
@@ -260,6 +260,19 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
                   </span>
                 </td>
                 {LANGUAGES.map((l) => {
+                  const isImporting = (page as Page & { status?: string }).status === "importing";
+                  if (isImporting) {
+                    return (
+                      <td key={l.value} className="px-4 py-3 text-center">
+                        {l === LANGUAGES[0] ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-indigo-600">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Importing
+                          </span>
+                        ) : null}
+                      </td>
+                    );
+                  }
                   const status = getTranslationStatus(
                     page.translations || [],
                     l.value
@@ -317,6 +330,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
       <div className="flex items-center gap-4 mt-3 px-1">
         {([
           { color: "bg-gray-300", label: "Not started" },
+          { color: "bg-indigo-500 animate-pulse", label: "Importing" },
           { color: "bg-yellow-400", label: "Translating" },
           { color: "bg-blue-500", label: "Translated" },
           { color: "bg-emerald-500", label: "Published" },

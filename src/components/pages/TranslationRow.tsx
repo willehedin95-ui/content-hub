@@ -737,7 +737,22 @@ export default function TranslationRow({
               <div className="flex items-center gap-1.5">
                 <StatusDot status={status} />
                 <span className="text-xs text-gray-500">{STATUS_LABELS[status]}</span>
+                {status === "error" && translation?.publish_error && (
+                  <button
+                    onClick={handlePublish}
+                    disabled={progress.loading !== null}
+                    className="flex items-center gap-1 text-xs font-medium text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded-full transition-colors disabled:opacity-40 ml-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
               </div>
+              {status === "error" && translation?.publish_error && (
+                <p className="text-xs text-red-500 ml-5 truncate max-w-[250px]" title={translation.publish_error}>
+                  {translation.publish_error}
+                </p>
+              )}
               {bgImageProgress && (
                 <BackgroundImageProgress
                   done={bgImageProgress.done}

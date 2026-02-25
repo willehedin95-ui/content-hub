@@ -486,7 +486,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                     <>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {totalFiles} images ({translateCount} to translate) &times; {selectedLanguages.size} languages = {totalTranslations} translations
-                        {" "}(~${(totalTranslations * translationCostPer).toFixed(2)})
+                        {" "}(~{(totalTranslations * 1).toFixed(0)} kr)
                       </p>
                       {totalTranslations > 0 && (
                         <p className="text-xs text-gray-400 mt-0.5">

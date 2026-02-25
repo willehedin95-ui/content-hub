@@ -104,6 +104,43 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Create page immediately with status='importing'
+  const pageName = body.name || sourceUrl || "Untitled Import";
+  const pageSlug = body.slug || pageName
+    .toLowerCase()
+    .replace(/https?:\/\/[^/]+\/?/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "import";
+
+  const selectedProduct = product as ProductFull;
+  const { data: page, error: pageErr } = await db
+    .from("pages")
+    .insert({
+      name: pageName,
+      product: selectedProduct.slug,
+      page_type: body.pageType || "advertorial",
+      source_url: sourceUrl || "",
+      original_html: "",
+      slug: pageSlug,
+      source_language: sourceLanguage || "en",
+      images_to_translate: [],
+      tags: ["swiped"],
+      swiped_from_url: sourceUrl || null,
+      status: "importing",
+      swipe_job_id: job.id,
+    })
+    .select("id")
+    .single();
+
+  if (pageErr || !page) {
+    console.error("[Swipe] Failed to create page:", pageErr?.message);
+    // Continue without page — job still exists
+  } else {
+    // Link swipe job back to page
+    await db.from("swipe_jobs").update({ page_id: page.id }).eq("id", job.id);
+  }
+
   // Ping the worker (fire and forget — job persists in DB even if this fails)
   const workerUrl = process.env.SWIPE_WORKER_URL;
   const workerSecret = process.env.SWIPE_WORKER_SECRET;
@@ -123,5 +160,5 @@ export async function POST(req: NextRequest) {
     console.warn("[Swipe] SWIPE_WORKER_URL or SWIPE_WORKER_SECRET not configured");
   }
 
-  return NextResponse.json({ jobId: job.id });
+  return NextResponse.json({ jobId: job.id, pageId: page?.id || null });
 }

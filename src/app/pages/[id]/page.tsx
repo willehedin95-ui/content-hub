@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus } from "lucide-react";
+import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
 import TranslationPanel from "@/components/pages/TranslationPanel";
-import ImageReplacementPanel from "@/components/pages/ImageReplacementPanel";
+import ImportProgressPanel from "@/components/pages/ImportProgressPanel";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -50,15 +50,6 @@ export default async function PageDetailPage({
       t.status = "error";
     }
   }
-
-  // Fetch product with images for the image replacement panel
-  const { data: productData } = p.product
-    ? await db
-        .from("products")
-        .select("id, slug, name, product_images (*)")
-        .eq("slug", p.product)
-        .single()
-    : { data: null };
 
   // Fetch linked concepts (image jobs pointing to this page)
   const { data: linkedConcepts } = await db
@@ -117,36 +108,49 @@ export default async function PageDetailPage({
             <EditableTags entityId={p.id} entityType="page" initialTags={p.tags ?? []} />
           </div>
         </div>
-        <a
-          href={p.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          Source page
-        </a>
+        <div className="flex items-center gap-2">
+          {p.status !== "importing" && (
+            <Link
+              href={`/pages/${p.id}/edit/source`}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit Source
+            </Link>
+          )}
+          {p.source_url && (
+            <a
+              href={p.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Source page
+            </a>
+          )}
+        </div>
       </div>
 
-      {/* Translation cards */}
-      <TranslationPanel
-        pageId={p.id}
-        languages={LANGUAGES.filter((lang) => lang.domain)}
-        translations={p.translations ?? []}
-        imagesToTranslate={p.images_to_translate}
-        sourceLanguage={p.source_language || "en"}
-      />
-
-      {/* Image replacement */}
-      {productData && (
-        <div className="mt-8">
-          <ImageReplacementPanel
+      {/* Importing state — show progress panel */}
+      {p.status === "importing" && p.swipe_job_id ? (
+        <ImportProgressPanel swipeJobId={p.swipe_job_id} pageId={p.id} />
+      ) : (
+        <>
+          {/* Translation cards */}
+          <TranslationPanel
             pageId={p.id}
-            html={p.original_html}
-            productId={productData.id}
-            productImages={productData.product_images ?? []}
+            languages={LANGUAGES.filter((lang) => lang.domain)}
+            translations={p.translations ?? []}
+            imagesToTranslate={p.images_to_translate}
+            sourceLanguage={p.source_language || "en"}
           />
-        </div>
+
+          {/* Image editing hint */}
+          <p className="text-xs text-gray-400 mt-6">
+            Click &quot;Edit Source&quot; to replace images, or edit a language version to translate images.
+          </p>
+        </>
       )}
 
       {/* Related concepts & A/B tests */}

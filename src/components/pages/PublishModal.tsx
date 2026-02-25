@@ -1,16 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { CheckCircle2, AlertCircle, ExternalLink, Loader2, Image as ImageIcon, Upload, Globe } from "lucide-react";
-
-interface StreamEvent {
-  step: "images" | "deploy" | "upload" | "done" | "error";
-  current?: number;
-  total?: number;
-  message?: string;
-  url?: string;
-  data?: unknown;
-}
+import { CheckCircle2, AlertCircle, ExternalLink, Loader2 } from "lucide-react";
 
 interface PublishModalProps {
   open: boolean;
@@ -18,115 +9,122 @@ interface PublishModalProps {
   onClose: (published: boolean) => void;
 }
 
+const POLL_INTERVAL = 2000;
+
 export default function PublishModal({ open, translationId, onClose }: PublishModalProps) {
-  const [step, setStep] = useState<StreamEvent["step"] | "starting">("starting");
-  const [current, setCurrent] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [message, setMessage] = useState("Starting publish…");
+  const [status, setStatus] = useState<"starting" | "publishing" | "published" | "error">("starting");
   const [publishedUrl, setPublishedUrl] = useState("");
   const [error, setError] = useState("");
   const didStart = useRef(false);
+  const pollingRef = useRef(false);
 
   const reset = useCallback(() => {
-    setStep("starting");
-    setCurrent(0);
-    setTotal(0);
-    setMessage("Starting publish…");
+    setStatus("starting");
     setPublishedUrl("");
     setError("");
     didStart.current = false;
+    pollingRef.current = false;
   }, []);
 
+  // Keyboard escape
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && (step === "done" || step === "error")) handleClose();
+      if (e.key === "Escape") handleClose();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, step]);
+  }, [open, status]);
 
+  // Start publish + poll
   useEffect(() => {
     if (!open || !translationId || didStart.current) return;
     didStart.current = true;
-
-    const controller = new AbortController();
+    pollingRef.current = true;
 
     (async () => {
       try {
+        // Fire publish request
         const res = await fetch("/api/publish", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ translation_id: translationId }),
-          signal: controller.signal,
         });
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError(data.error || `Publish failed (${res.status})`);
-          setStep("error");
+          setStatus("error");
           return;
         }
 
-        const reader = res.body?.getReader();
-        if (!reader) {
-          setError("No response stream");
-          setStep("error");
-          return;
-        }
+        setStatus("publishing");
 
-        const decoder = new TextDecoder();
-        let buffer = "";
+        // Poll for completion
+        while (pollingRef.current) {
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+          if (!pollingRef.current) break;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          try {
+            const pollRes = await fetch(`/api/publish/${translationId}/status`);
+            if (!pollRes.ok) continue;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+            const data = await pollRes.json();
 
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const event: StreamEvent = JSON.parse(line);
-              if (event.step) setStep(event.step);
-              if (event.current !== undefined) setCurrent(event.current);
-              if (event.total !== undefined) setTotal(event.total);
-              if (event.message) setMessage(event.message);
-              if (event.url) setPublishedUrl(event.url);
-              if (event.step === "error") setError(event.message || "Publish failed");
-            } catch {
-              // skip malformed lines
+            if (data.status === "published") {
+              setPublishedUrl(data.published_url || "");
+              setStatus("published");
+              pollingRef.current = false;
+              return;
             }
+
+            if (data.status === "error") {
+              setError(data.publish_error || "Publish failed");
+              setStatus("error");
+              pollingRef.current = false;
+              return;
+            }
+
+            // If status is no longer "publishing" (e.g. "translated" from recovery),
+            // treat as error
+            if (data.status !== "publishing") {
+              setError("Publish was interrupted");
+              setStatus("error");
+              pollingRef.current = false;
+              return;
+            }
+          } catch {
+            // Network error — keep polling
           }
         }
       } catch (err) {
-        if ((err as Error).name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Publish failed");
-        setStep("error");
+        setStatus("error");
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      pollingRef.current = false;
+    };
   }, [open, translationId]);
 
   function handleClose() {
+    pollingRef.current = false;
+    const wasPublished = status === "published";
     reset();
-    onClose(step === "done");
+    onClose(wasPublished);
   }
 
   if (!open) return null;
 
-  const isInProgress = step !== "done" && step !== "error";
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const isInProgress = status === "starting" || status === "publishing";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      {/* Backdrop — no click-to-close while in progress */}
+      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={isInProgress ? undefined : handleClose}
+        onClick={handleClose}
       />
 
       {/* Modal */}
@@ -134,11 +132,11 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
         <div className="p-6">
           {/* Header icon */}
           <div className="flex justify-center mb-4">
-            {step === "done" ? (
+            {status === "published" ? (
               <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6 text-emerald-600" />
               </div>
-            ) : step === "error" ? (
+            ) : status === "error" ? (
               <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
                 <AlertCircle className="w-6 h-6 text-red-600" />
               </div>
@@ -151,69 +149,31 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
 
           {/* Title */}
           <h3 className="text-center text-lg font-semibold text-gray-900 mb-1">
-            {step === "done"
+            {status === "published"
               ? "Published!"
-              : step === "error"
+              : status === "error"
                 ? "Publish Failed"
-                : "Publishing…"}
+                : "Publishing..."}
           </h3>
 
-          {/* Subtitle / message */}
+          {/* Message */}
           <p className="text-center text-sm text-gray-500 mb-5">
-            {step === "done"
+            {status === "published"
               ? "Your page is now live"
-              : step === "error"
+              : status === "error"
                 ? error
-                : message}
+                : "Optimizing images and deploying to Cloudflare Pages..."}
           </p>
 
-          {/* Progress section */}
+          {/* Navigation note */}
           {isInProgress && (
-            <div className="space-y-3">
-              {/* Steps indicator */}
-              <div className="flex items-center gap-2 justify-center">
-                <StepPill
-                  icon={<ImageIcon className="w-3 h-3" />}
-                  label="Compress"
-                  active={step === "images"}
-                  done={step === "deploy" || step === "upload"}
-                />
-                <ChevronRight />
-                <StepPill
-                  icon={<Upload className="w-3 h-3" />}
-                  label="Upload"
-                  active={step === "deploy" || step === "upload"}
-                  done={false}
-                />
-                <ChevronRight />
-                <StepPill
-                  icon={<Globe className="w-3 h-3" />}
-                  label="Live"
-                  active={false}
-                  done={false}
-                />
-              </div>
-
-              {/* Progress bar */}
-              {total > 0 && (
-                <div>
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                    <span>{current} / {total}</span>
-                    <span>{pct}%</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            <p className="text-center text-xs text-gray-400 mb-4">
+              You can close this and navigate away — publishing will continue in the background.
+            </p>
           )}
 
           {/* Success URL */}
-          {step === "done" && publishedUrl && (
+          {status === "published" && publishedUrl && (
             <a
               href={publishedUrl}
               target="_blank"
@@ -225,46 +185,21 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
             </a>
           )}
 
-          {/* Actions */}
-          {!isInProgress && (
-            <button
-              onClick={handleClose}
-              className={`w-full mt-2 text-sm font-medium py-2.5 rounded-lg transition-colors ${
-                step === "done"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-              }`}
-            >
-              {step === "done" ? "Done" : "Close"}
-            </button>
-          )}
+          {/* Close button */}
+          <button
+            onClick={handleClose}
+            className={`w-full mt-2 text-sm font-medium py-2.5 rounded-lg transition-colors ${
+              status === "published"
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : status === "error"
+                  ? "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  : "bg-gray-100 hover:bg-gray-200 text-gray-500"
+            }`}
+          >
+            {status === "published" ? "Done" : status === "error" ? "Close" : "Close (continues in background)"}
+          </button>
         </div>
       </div>
     </div>
-  );
-}
-
-function StepPill({ icon, label, active, done }: { icon: React.ReactNode; label: string; active: boolean; done: boolean }) {
-  return (
-    <span
-      className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
-        active
-          ? "bg-indigo-100 text-indigo-700"
-          : done
-            ? "bg-emerald-50 text-emerald-600"
-            : "bg-gray-50 text-gray-400"
-      }`}
-    >
-      {icon}
-      {label}
-    </span>
-  );
-}
-
-function ChevronRight() {
-  return (
-    <svg className="w-3 h-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
   );
 }

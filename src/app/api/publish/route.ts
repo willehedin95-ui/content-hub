@@ -55,136 +55,122 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Mark as publishing
+  // Mark as publishing + clear any previous error
   await db
     .from("translations")
-    .update({ status: "publishing", updated_at: new Date().toISOString() })
+    .update({
+      status: "publishing",
+      publish_error: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", translation_id);
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      function send(event: Record<string, unknown>) {
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
-      }
-
-      try {
-        let html = translation.translated_html as string;
-        const language = translation.language as Language;
-        const slug = translation.slug || translation.pages.slug;
-        const slugPrefix = slug;
-
-        // Fix font-display: optional → swap so web fonts always render
-        // (optional causes fallback font on first load, correct font only on refresh)
-        html = html.replace(/font-display:\s*optional/g, "font-display: swap");
-
-        // Strip editor CSS artifacts (dashed outlines, data-cc-* selectors) from
-        // legacy saves that weren't cleaned during extractHtmlFromIframe
-        html = html.replace(/<style[^>]*data-cc-exclude-mode[^>]*>[\s\S]*?<\/style>/gi, "");
-        html = html.replace(/<style[^>]*data-cc-custom[^>]*>[\s\S]*?<\/style>/gi, (match) => {
-          // Keep padding CSS but strip editor-only dashed outline rules
-          let css = match.replace(/\[data-cc-padded\](?::hover)?[^{]*\{[^}]*outline[^}]*\}/g, "");
-          css = css.replace(/\[data-cc-pad-skip\][^{]*\{[^}]*\}/g, "");
-          return css;
-        });
-        // Remove orphaned data-cc-* attributes from elements
-        html = html.replace(/ data-cc-padded(?:="[^"]*")?/g, "");
-        html = html.replace(/ data-cc-pad-skip(?:="[^"]*")?/g, "");
-        html = html.replace(/ data-cc-editable(?:="[^"]*")?/g, "");
-        html = html.replace(/ data-cc-hidden(?:="[^"]*")?/g, "");
-        html = html.replace(/ contenteditable="[^"]*"/g, "");
-
-        // Optimize images with progress
-        send({ step: "images", current: 0, total: 0, message: "Scanning for images…" });
-
-        const imageResult = await optimizeImages(html, slugPrefix, (current, total, detail) => {
-          send({ step: "images", current, total, message: `${current}/${total} compressed (${detail})` });
-        });
-
-        if (imageResult.stats.errors.length > 0) {
-          console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
-        }
-
-        // Replace image URLs in HTML with optimized deploy paths
-        if (imageResult.urlMap.size > 0) {
-          html = replaceImageUrls(html, imageResult.urlMap);
-        }
-
-        // Build additional files for deploy
-        const additionalFiles = imageResult.images.map((img) => ({
-          path: img.deployPath,
-          sha1: img.sha1,
-          body: img.buffer,
-        }));
-
-        // Load analytics settings
-        const { data: settingsRow } = await db
-          .from("app_settings")
-          .select("settings")
-          .limit(1)
-          .single();
-        const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
-        const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
-        const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
-        const analytics: PageAnalyticsConfig = {
-          ga4MeasurementId: ga4Ids[language] || undefined,
-          clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
-          shopifyDomains: ((appSettings.shopify_domains as string) || "")
-            .split(",")
-            .map((d: string) => d.trim())
-            .filter(Boolean),
-          metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
-          hubUrl: process.env.APP_URL || undefined,
-          excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
-        };
-
-        send({ step: "deploy", message: "Deploying to Cloudflare Pages…" });
-
-        const result = await publishPage(
-          html,
-          slug,
-          language,
-          additionalFiles,
-          (current, total) => {
-            send({ step: "upload", current, total, message: `Uploading ${current}/${total} files…` });
-          },
-          analytics
-        );
-
-        const { data: updated, error: updateError } = await db
-          .from("translations")
-          .update({
-            status: "published",
-            published_url: result.url.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", translation_id)
-          .select()
-          .single();
-
-        if (updateError) throw new Error(updateError.message);
-
-        send({ step: "done", url: result.url, data: updated });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Publish failed";
-
-        await db
-          .from("translations")
-          .update({ status: "translated", updated_at: new Date().toISOString() })
-          .eq("id", translation_id);
-
-        send({ step: "error", message });
-      } finally {
-        controller.close();
-      }
-    },
+  // Fire-and-forget: run the publish in the background
+  doPublish(translation_id, translation, db).catch((err) => {
+    console.error("[publish] Background publish failed:", err);
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Transfer-Encoding": "chunked",
-      "Cache-Control": "no-cache",
-    },
-  });
+  return NextResponse.json({ ok: true });
+}
+
+/** Background publish work — runs after response is sent */
+async function doPublish(
+  translationId: string,
+  translation: Record<string, unknown>,
+  db: ReturnType<typeof createServerSupabase>
+) {
+  try {
+    let html = translation.translated_html as string;
+    const language = translation.language as Language;
+    const pages = translation.pages as { slug: string; source_url: string };
+    const slug = (translation.slug as string) || pages.slug;
+    const slugPrefix = slug;
+
+    // Fix font-display: optional → swap
+    html = html.replace(/font-display:\s*optional/g, "font-display: swap");
+
+    // Strip editor CSS artifacts
+    html = html.replace(/<style[^>]*data-cc-exclude-mode[^>]*>[\s\S]*?<\/style>/gi, "");
+    html = html.replace(/<style[^>]*data-cc-custom[^>]*>[\s\S]*?<\/style>/gi, (match) => {
+      let css = match.replace(/\[data-cc-padded\](?::hover)?[^{]*\{[^}]*outline[^}]*\}/g, "");
+      css = css.replace(/\[data-cc-pad-skip\][^{]*\{[^}]*\}/g, "");
+      return css;
+    });
+    html = html.replace(/ data-cc-padded(?:="[^"]*")?/g, "");
+    html = html.replace(/ data-cc-pad-skip(?:="[^"]*")?/g, "");
+    html = html.replace(/ data-cc-editable(?:="[^"]*")?/g, "");
+    html = html.replace(/ data-cc-hidden(?:="[^"]*")?/g, "");
+    html = html.replace(/ contenteditable="[^"]*"/g, "");
+
+    // Optimize images
+    const imageResult = await optimizeImages(html, slugPrefix);
+
+    if (imageResult.stats.errors.length > 0) {
+      console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
+    }
+
+    // Replace image URLs in HTML with optimized deploy paths
+    if (imageResult.urlMap.size > 0) {
+      html = replaceImageUrls(html, imageResult.urlMap);
+    }
+
+    // Build additional files for deploy
+    const additionalFiles = imageResult.images.map((img) => ({
+      path: img.deployPath,
+      sha1: img.sha1,
+      body: img.buffer,
+    }));
+
+    // Load analytics settings
+    const { data: settingsRow } = await db
+      .from("app_settings")
+      .select("settings")
+      .limit(1)
+      .single();
+    const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+    const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
+    const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
+    const analytics: PageAnalyticsConfig = {
+      ga4MeasurementId: ga4Ids[language] || undefined,
+      clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
+      shopifyDomains: ((appSettings.shopify_domains as string) || "")
+        .split(",")
+        .map((d: string) => d.trim())
+        .filter(Boolean),
+      metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
+      hubUrl: process.env.APP_URL || undefined,
+      excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
+    };
+
+    const result = await publishPage(
+      html,
+      slug,
+      language,
+      additionalFiles,
+      undefined,
+      analytics
+    );
+
+    await db
+      .from("translations")
+      .update({
+        status: "published",
+        published_url: result.url.trim(),
+        publish_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", translationId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Publish failed";
+    console.error(`[publish] Failed for translation ${translationId}:`, message);
+
+    await db
+      .from("translations")
+      .update({
+        status: "error",
+        publish_error: message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", translationId);
+  }
 }

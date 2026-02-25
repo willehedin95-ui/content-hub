@@ -342,7 +342,7 @@ export default function PageAnalyticsClient({
                   <SummaryCard
                     icon={<DollarSign className="w-4 h-4 text-green-600" />}
                     label="Ad Spend"
-                    value={metaConfigured && totalSpend > 0 ? `$${totalSpend.toFixed(0)}` : "—"}
+                    value={metaConfigured && totalSpend > 0 ? `${totalSpend.toFixed(0)} SEK` : "—"}
                     sub={metaConfigured ? "Meta Ads" : "Meta not connected"}
                   />
                   <SummaryCard
@@ -361,7 +361,7 @@ export default function PageAnalyticsClient({
                     icon={<Activity className="w-4 h-4 text-purple-500" />}
                     label="ROAS"
                     value={overallRoas > 0 ? `${overallRoas.toFixed(2)}x` : "—"}
-                    sub={totalSpend > 0 ? `$${totalRevenueUSD.toFixed(0)} / $${totalSpend.toFixed(0)}` : undefined}
+                    sub={totalSpend > 0 ? `${totalRevenueUSD.toFixed(0)} / ${totalSpend.toFixed(0)} SEK` : undefined}
                   />
                   <SummaryCard
                     icon={<MousePointerClick className="w-4 h-4 text-orange-500" />}
@@ -697,7 +697,7 @@ function PageRow({
           {row.avgDuration > 0 ? `${row.avgDuration.toFixed(0)}s` : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-700 text-right tabular-nums font-medium">
-          {row.spend > 0 ? `$${row.spend.toFixed(0)}` : "—"}
+          {row.spend > 0 ? `${row.spend.toFixed(0)} kr` : "—"}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-500 text-right tabular-nums">
           {row.clicks > 0 ? row.clicks.toLocaleString() : "—"}
@@ -785,7 +785,7 @@ function PageRow({
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center gap-4">
                       <span className="text-gray-500 w-24">Spend</span>
-                      <span className="text-gray-700 tabular-nums">${row.spend.toFixed(2)}</span>
+                      <span className="text-gray-700 tabular-nums">{row.spend.toFixed(0)} kr</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-gray-500 w-24">Clicks</span>
@@ -793,7 +793,7 @@ function PageRow({
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-gray-500 w-24">CPC</span>
-                      <span className="text-gray-700 tabular-nums">{row.clicks > 0 ? `$${(row.spend / row.clicks).toFixed(2)}` : "—"}</span>
+                      <span className="text-gray-700 tabular-nums">{row.clicks > 0 ? `${(row.spend / row.clicks).toFixed(2)} kr` : "—"}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-gray-500 w-24">ROAS</span>

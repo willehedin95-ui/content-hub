@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List } from "lucide-react";
+import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List, Dna, Loader2 } from "lucide-react";
 import { ImageJob, LANGUAGES, PRODUCTS, COUNTRY_MAP } from "@/types";
 import { getLanguageStatus, getMarketStatus, getWizardStep, getOverallStatus, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
@@ -61,6 +61,7 @@ export default function ImagesPage() {
   const { tags: allTags } = useAllTags();
   const [sortField, setSortField] = useState<SortField>("concept_number");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [backfillLoading, setBackfillLoading] = useState(false);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -112,6 +113,20 @@ export default function ImagesPage() {
       setLoading(false);
     }
   }, [page]);
+
+  async function handleBackfillDna() {
+    setBackfillLoading(true);
+    try {
+      const res = await fetch("/api/image-jobs/backfill-dna", { method: "POST" });
+      const data = await res.json();
+      alert(`DNA backfill complete: ${data.analyzed}/${data.total} concepts analyzed`);
+      fetchJobs();
+    } catch {
+      alert("Backfill failed");
+    } finally {
+      setBackfillLoading(false);
+    }
+  }
 
   // Fetch average generation time
   useEffect(() => {
@@ -173,6 +188,15 @@ export default function ImagesPage() {
               <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
+          <button
+            onClick={handleBackfillDna}
+            disabled={backfillLoading}
+            className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 hover:text-gray-800 text-sm font-medium px-3 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+            title="Auto-analyze all concepts without DNA"
+          >
+            {backfillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dna className="w-4 h-4" />}
+            {backfillLoading ? "Analyzing..." : "Backfill DNA"}
+          </button>
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
@@ -358,6 +382,20 @@ export default function ImagesPage() {
                       ))}
                       {(job.tags ?? []).length > 2 && (
                         <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 2}</span>
+                      )}
+                    </div>
+                  )}
+                  {(job.cash_dna?.angle || job.cash_dna?.style) && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {job.cash_dna?.angle && (
+                        <span className="text-[10px] text-violet-600 bg-violet-50 px-1 py-0.5 rounded border border-violet-200">
+                          {job.cash_dna.angle}
+                        </span>
+                      )}
+                      {job.cash_dna?.style && (
+                        <span className="text-[10px] text-fuchsia-600 bg-fuchsia-50 px-1 py-0.5 rounded border border-fuchsia-200">
+                          {job.cash_dna.style}
+                        </span>
                       )}
                     </div>
                   )}

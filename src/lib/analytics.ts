@@ -2,6 +2,7 @@ import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow
 import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD, getRatesToUSD } from "./shopify";
 import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights, GoogleAdsCampaignRow } from "./google-ads";
 import { createServerSupabase } from "./supabase";
+import type { CashDna } from "@/types";
 
 // ---- Types ----
 
@@ -51,6 +52,7 @@ export interface CampaignPerformance {
   orders: number;
   revenue: number;
   roas: number;
+  cashDna?: CashDna | null;
 }
 
 export interface AIInsights {
@@ -60,6 +62,17 @@ export interface AIInsights {
   budget_recommendations: Array<{ action: string; campaign: string; reason: string }>;
   trends: string[];
   action_items: string[];
+  coaching_tips?: Array<{
+    priority: "high" | "medium" | "low";
+    category: "budget" | "creative" | "audience" | "testing";
+    tip: string;
+    reasoning: string;
+  }>;
+  dna_insights?: {
+    best_angle: string;
+    best_style: string;
+    iteration_suggestions: string[];
+  };
 }
 
 // ---- Helpers ----
@@ -187,7 +200,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     isGoogleAdsConfigured() ? getGoogleAdsCampaignInsights(since, until) : Promise.resolve([] as GoogleAdsCampaignRow[]),
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.resolve([]),
     db.from("meta_campaigns")
-      .select("id, name, product, language, meta_campaign_id, meta_ads(landing_page_url)")
+      .select("id, name, product, language, meta_campaign_id, image_job_id, meta_ads(landing_page_url)")
       .in("status", ["pushed", "pushing"]),
     getRatesToUSD(), // Warm rate cache
   ]);
@@ -204,6 +217,20 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     const existing = metaMap.get(row.campaign_id) || [];
     existing.push(row);
     metaMap.set(row.campaign_id, existing);
+  }
+
+  // Fetch CASH DNA for linked concepts
+  const jobIds = [...new Set(campaigns.filter(c => c.image_job_id).map(c => c.image_job_id as string))];
+  const dnaMap = new Map<string, CashDna>();
+  if (jobIds.length > 0) {
+    const { data: dnaRows } = await db
+      .from("image_jobs")
+      .select("id, cash_dna")
+      .in("id", jobIds)
+      .not("cash_dna", "is", null);
+    for (const row of dnaRows ?? []) {
+      if (row.cash_dna) dnaMap.set(row.id, row.cash_dna as CashDna);
+    }
   }
 
   // Build results — deduplicate orders so each is only attributed once
@@ -245,6 +272,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
       orders: campaignOrders,
       revenue: campaignRevenue,
       roas: metrics.spend > 0 ? campaignRevenueUSD / metrics.spend : 0,
+      cashDna: campaign.image_job_id ? (dnaMap.get(campaign.image_job_id) ?? null) : null,
     });
   }
 

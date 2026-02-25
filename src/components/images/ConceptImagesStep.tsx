@@ -326,7 +326,7 @@ export default function ConceptImagesStep({
                 {selectedLanguages.size > 0 && (
                   <p className="text-sm text-gray-400">
                     {sourceImages.length * selectedLanguages.size} translations
-                    {" \u2248 $"}{(sourceImages.length * selectedLanguages.size * 0.09).toFixed(2)}
+                    {" \u2248 "}{(sourceImages.length * selectedLanguages.size * 1).toFixed(0)} kr
                   </p>
                 )}
               </div>
@@ -357,7 +357,7 @@ export default function ConceptImagesStep({
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Estimated cost</span>
-                        <span className="text-gray-800 font-medium">${estCost.toFixed(2)}</span>
+                        <span className="text-gray-800 font-medium">{(estCost * 11).toFixed(0)} kr</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Estimated time</span>
@@ -523,7 +523,7 @@ export default function ConceptImagesStep({
                   const newTrans = imgCount * addLangSelected.size;
                   return (
                     <p className="text-xs text-gray-400 mb-3">
-                      {newTrans} new translations &asymp; ${(newTrans * 0.09).toFixed(2)}
+                      {newTrans} new translations &asymp; {(newTrans * 1).toFixed(0)} kr
                     </p>
                   );
                 })()}

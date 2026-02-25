@@ -17,6 +17,7 @@ import EditableTags from "@/components/pages/EditableTags";
 import ConceptImagesStep from "./ConceptImagesStep";
 import ConceptAdCopyStep from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
+import CashDnaEditor from "./CashDnaEditor";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -899,6 +900,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
         >
           <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
         </button>
+      </div>
+
+      {/* CASH DNA */}
+      <div className="mb-4">
+        <CashDnaEditor
+          jobId={job.id}
+          initialDna={job.cash_dna ?? null}
+          hasAdCopy={(job.ad_copy_primary ?? []).some((t: string) => t.trim())}
+        />
       </div>
 
       {/* Wizard stepper */}

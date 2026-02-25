@@ -310,7 +310,7 @@ export async function duplicateAdSet(adSetId: string): Promise<{ copied_adset_id
   });
 }
 
-export async function updateAdSet(adSetId: string, params: { name?: string; start_time?: string }): Promise<{ success: boolean }> {
+export async function updateAdSet(adSetId: string, params: { name?: string; start_time?: string; status?: string }): Promise<{ success: boolean }> {
   return metaJson(`/${adSetId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

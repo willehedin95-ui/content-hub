@@ -63,7 +63,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const body = await req.json();
-  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, ab_test_id, concept_number, ad_copy_doc_id, marked_ready_at, tags, ad_copy_translations } = body as {
+  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, ab_test_id, concept_number, ad_copy_doc_id, marked_ready_at, tags, ad_copy_translations, cash_dna } = body as {
     status?: string;
     target_languages?: string[];
     ad_copy_primary?: string[];
@@ -75,6 +75,7 @@ export async function PATCH(
     marked_ready_at?: string | null;
     tags?: string[];
     ad_copy_translations?: Record<string, unknown>;
+    cash_dna?: Record<string, unknown> | null;
   };
 
   const db = createServerSupabase();
@@ -92,6 +93,7 @@ export async function PATCH(
     marked_ready_at?: string | null;
     tags?: string[];
     ad_copy_translations?: Record<string, unknown>;
+    cash_dna?: Record<string, unknown> | null;
   } = { updated_at: new Date().toISOString() };
   if (status) updateData.status = status;
   if (target_languages) updateData.target_languages = target_languages;
@@ -104,6 +106,7 @@ export async function PATCH(
   if (marked_ready_at !== undefined) updateData.marked_ready_at = marked_ready_at;
   if (tags !== undefined) updateData.tags = tags;
   if (ad_copy_translations !== undefined) updateData.ad_copy_translations = ad_copy_translations;
+  if (cash_dna !== undefined) updateData.cash_dna = cash_dna;
 
   const { data, error } = await db
     .from("image_jobs")

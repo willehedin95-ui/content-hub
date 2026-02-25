@@ -22,6 +22,13 @@ import {
   CheckCircle2,
   Link2,
   BarChart3,
+  MoreHorizontal,
+  Pause,
+  ArrowUp,
+  ArrowDown,
+  GraduationCap,
+  Dna,
+  type LucideIcon,
 } from "lucide-react";
 
 interface AnalyticsSummary {
@@ -79,6 +86,131 @@ interface AIInsights {
   budget_recommendations: Array<{ action: string; campaign: string; reason: string }>;
   trends: string[];
   action_items: string[];
+  coaching_tips?: Array<{
+    priority: "high" | "medium" | "low";
+    category: "budget" | "creative" | "audience" | "testing";
+    tip: string;
+    reasoning: string;
+  }>;
+  dna_insights?: {
+    best_angle: string;
+    best_style: string;
+    iteration_suggestions: string[];
+  };
+}
+
+interface QuickTip {
+  id: string;
+  icon: LucideIcon;
+  text: string;
+  severity: "info" | "warning" | "critical";
+}
+
+function generateQuickTips(
+  campaigns: CampaignPerformance[],
+  summary: AnalyticsSummary | null
+): QuickTip[] {
+  const tips: QuickTip[] = [];
+  if (!campaigns.length || !summary) return tips;
+
+  const withSpend = campaigns.filter((c) => c.spend > 5);
+  const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0);
+  const totalRevenue = campaigns.reduce((s, c) => s + c.revenue, 0);
+
+  // 1. Underperformer ratio
+  const underperformers = withSpend.filter((c) => c.roas < 1 && c.roas > 0);
+  if (underperformers.length > 0 && withSpend.length > 2) {
+    const pct = Math.round((underperformers.length / withSpend.length) * 100);
+    const wastedSpend = underperformers.reduce((s, c) => s + c.spend, 0);
+    tips.push({
+      id: "underperformer-ratio",
+      icon: AlertTriangle,
+      text: `${underperformers.length} of ${withSpend.length} campaigns (${pct}%) have ROAS below 1x. ${wastedSpend.toFixed(0)} SEK spent with negative returns.`,
+      severity: pct > 50 ? "critical" : "warning",
+    });
+  }
+
+  // 2. Budget bleeding to losers
+  const loserSpend = underperformers.reduce((s, c) => s + c.spend, 0);
+  if (totalSpend > 0 && loserSpend / totalSpend > 0.3) {
+    tips.push({
+      id: "budget-waste",
+      icon: Wallet,
+      text: `${Math.round((loserSpend / totalSpend) * 100)}% of your ad budget (${loserSpend.toFixed(0)} SEK) is going to campaigns with negative ROAS.`,
+      severity: "critical",
+    });
+  }
+
+  // 3. Zero-order campaigns
+  const zeroOrders = campaigns.filter((c) => c.spend > 10 && c.orders === 0);
+  if (zeroOrders.length > 0) {
+    tips.push({
+      id: "zero-orders",
+      icon: ShoppingCart,
+      text: `${zeroOrders.length} campaign${zeroOrders.length > 1 ? "s" : ""} spending money (${zeroOrders.reduce((s, c) => s + c.spend, 0).toFixed(0)} SEK) with zero orders.`,
+      severity: "warning",
+    });
+  }
+
+  // 4. Revenue concentration
+  if (totalRevenue > 0 && campaigns.length > 3) {
+    const sorted = [...campaigns].sort((a, b) => b.revenue - a.revenue);
+    const topTwo = sorted.slice(0, 2).reduce((s, c) => s + c.revenue, 0);
+    if (topTwo / totalRevenue > 0.8) {
+      tips.push({
+        id: "revenue-concentration",
+        icon: Target,
+        text: `Top 2 campaigns generate ${Math.round((topTwo / totalRevenue) * 100)}% of revenue. Consider testing new creatives to diversify.`,
+        severity: "info",
+      });
+    }
+  }
+
+  // 5. CPC market gap
+  const byLang = new Map<string, { totalSpend: number; totalClicks: number }>();
+  for (const c of campaigns) {
+    if (!c.language || c.clicks === 0) continue;
+    const entry = byLang.get(c.language) ?? { totalSpend: 0, totalClicks: 0 };
+    entry.totalSpend += c.spend;
+    entry.totalClicks += c.clicks;
+    byLang.set(c.language, entry);
+  }
+  if (byLang.size >= 2) {
+    const cpcs = Array.from(byLang.entries())
+      .map(([lang, d]) => ({ lang, cpc: d.totalSpend / d.totalClicks }))
+      .sort((a, b) => a.cpc - b.cpc);
+    const cheapest = cpcs[0];
+    const most = cpcs[cpcs.length - 1];
+    if (most.cpc > cheapest.cpc * 1.5) {
+      tips.push({
+        id: "market-cpc-gap",
+        icon: TrendingUp,
+        text: `${most.lang.toUpperCase()} costs ${most.cpc.toFixed(2)} SEK/click vs ${cheapest.cpc.toFixed(2)} SEK in ${cheapest.lang.toUpperCase()}. Consider audience refinement for ${most.lang.toUpperCase()}.`,
+        severity: "info",
+      });
+    }
+  }
+
+  // 6. Overall ROAS health
+  if (summary.roas !== null && summary.roas > 0) {
+    if (summary.roas < 1) {
+      tips.push({
+        id: "roas-negative",
+        icon: AlertCircle,
+        text: `Overall ROAS is ${summary.roas.toFixed(2)}x — you're spending more on ads than you're earning. Review your worst performers.`,
+        severity: "critical",
+      });
+    } else if (summary.roas >= 3) {
+      tips.push({
+        id: "roas-strong",
+        icon: TrendingUp,
+        text: `ROAS of ${summary.roas.toFixed(2)}x is strong. Consider scaling budget on your top campaigns to capture more volume.`,
+        severity: "info",
+      });
+    }
+  }
+
+  return tips;
 }
 
 const PERIOD_OPTIONS = [
@@ -192,9 +324,8 @@ export default function TrackingClient({
       : String(bv).localeCompare(String(av));
   });
 
-  function formatCurrency(amount: number, currency = "USD") {
-    if (currency === "USD") return `$${amount.toFixed(2)}`;
-    return `${amount.toFixed(0)} ${currency}`;
+  function formatCurrency(amount: number, currency = "SEK") {
+    return `${amount.toFixed(currency === "SEK" ? 0 : 2)} ${currency}`;
   }
 
   function roasColor(roas: number): string {
@@ -317,6 +448,9 @@ export default function TrackingClient({
             />
           </div>
 
+          {/* Quick Tips — AI Coach */}
+          <QuickTipsStrip campaigns={campaigns} summary={summary} />
+
           {/* Performance table */}
           {campaigns.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm mb-6">
@@ -336,6 +470,7 @@ export default function TrackingClient({
                       <Th field="orders" label="Orders" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="revenue" label="Revenue" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
                       <Th field="roas" label="ROAS" onSort={handleSort} sortField={sortField} sortDir={sortDir} right />
+                      <th className="px-3 py-3 text-xs uppercase tracking-wider font-medium text-gray-400 text-center w-10"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -382,6 +517,9 @@ export default function TrackingClient({
                         </td>
                         <td className={`px-4 py-2.5 text-xs text-right tabular-nums font-semibold ${roasColor(c.roas)}`}>
                           {c.roas > 0 ? `${c.roas.toFixed(2)}x` : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <CampaignActionsDropdown />
                         </td>
                       </tr>
                     ))}
@@ -540,6 +678,41 @@ export default function TrackingClient({
                     </div>
                   )}
                 </div>
+
+                {/* Coaching Tips */}
+                {insights.coaching_tips && insights.coaching_tips.length > 0 && (
+                  <CoachingTipsPanel tips={insights.coaching_tips} />
+                )}
+
+                {/* DNA Insights */}
+                {insights.dna_insights && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Dna className="w-3.5 h-3.5 text-violet-500" />
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wider">
+                        Creative DNA Insights
+                      </span>
+                    </div>
+                    <div className="bg-violet-50 border border-violet-100 rounded-lg p-3 space-y-2">
+                      <p className="text-xs text-violet-800">
+                        <strong>Best angle:</strong> {insights.dna_insights.best_angle}
+                      </p>
+                      <p className="text-xs text-violet-800">
+                        <strong>Best style:</strong> {insights.dna_insights.best_style}
+                      </p>
+                      {insights.dna_insights.iteration_suggestions.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-violet-700 mb-1">Iteration suggestions:</p>
+                          <ul className="list-disc list-inside text-xs text-violet-700 space-y-0.5">
+                            {insights.dna_insights.iteration_suggestions.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : !insightsLoading ? (
               <div className="px-4 py-6 text-center">
@@ -662,5 +835,184 @@ function Th({
         sortDir === "asc" ? <ChevronUp className="w-3 h-3 inline ml-0.5" /> : <ChevronDown className="w-3 h-3 inline ml-0.5" />
       )}
     </th>
+  );
+}
+
+function QuickTipsStrip({
+  campaigns,
+  summary,
+}: {
+  campaigns: CampaignPerformance[];
+  summary: AnalyticsSummary | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const tips = generateQuickTips(campaigns, summary);
+
+  if (tips.length === 0) return null;
+
+  const visibleTips = expanded ? tips : tips.slice(0, 4);
+
+  const severityStyles: Record<string, string> = {
+    critical: "bg-red-50 border-red-200 text-red-700",
+    warning: "bg-amber-50 border-amber-200 text-amber-700",
+    info: "bg-blue-50 border-blue-200 text-blue-700",
+  };
+
+  const iconStyles: Record<string, string> = {
+    critical: "text-red-500",
+    warning: "text-amber-500",
+    info: "text-blue-500",
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <GraduationCap className="w-4 h-4 text-indigo-500" />
+        <h2 className="text-sm font-medium text-gray-700">AI Coach Tips</h2>
+        <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-medium">
+          {tips.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {visibleTips.map((tip) => {
+          const Icon = tip.icon;
+          return (
+            <div
+              key={tip.id}
+              className={`flex items-start gap-2.5 border rounded-lg p-3 ${severityStyles[tip.severity]}`}
+            >
+              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconStyles[tip.severity]}`} />
+              <p className="text-xs leading-relaxed">{tip.text}</p>
+            </div>
+          );
+        })}
+      </div>
+      {tips.length > 4 && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 mt-2 transition-colors"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="w-3 h-3" />
+              Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="w-3 h-3" />
+              Show all {tips.length} tips
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CampaignActionsDropdown() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+        title="Actions"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-44">
+            <button
+              disabled
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <Pause className="w-3 h-3" />
+              Pause ad set
+              <span className="ml-auto text-[9px] bg-gray-100 text-gray-400 px-1 rounded">Soon</span>
+            </button>
+            <button
+              disabled
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <ArrowUp className="w-3 h-3" />
+              Scale budget +20%
+              <span className="ml-auto text-[9px] bg-gray-100 text-gray-400 px-1 rounded">Soon</span>
+            </button>
+            <button
+              disabled
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <ArrowDown className="w-3 h-3" />
+              Cut budget -20%
+              <span className="ml-auto text-[9px] bg-gray-100 text-gray-400 px-1 rounded">Soon</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const PRIORITY_STYLES: Record<string, string> = {
+  high: "bg-red-100 text-red-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-blue-100 text-blue-700",
+};
+
+const CATEGORY_STYLES: Record<string, string> = {
+  budget: "bg-emerald-50 text-emerald-600",
+  creative: "bg-purple-50 text-purple-600",
+  audience: "bg-indigo-50 text-indigo-600",
+  testing: "bg-cyan-50 text-cyan-600",
+};
+
+function CoachingTipsPanel({
+  tips,
+}: {
+  tips: NonNullable<AIInsights["coaching_tips"]>;
+}) {
+  const [expandedTip, setExpandedTip] = useState<number | null>(null);
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
+        <span className="text-xs font-medium text-gray-600 uppercase tracking-wider">Coach Tips</span>
+      </div>
+      <div className="space-y-2">
+        {tips.map((tip, i) => (
+          <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_STYLES[tip.priority] || PRIORITY_STYLES.low}`}>
+                {tip.priority}
+              </span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${CATEGORY_STYLES[tip.category] || CATEGORY_STYLES.testing}`}>
+                {tip.category}
+              </span>
+              <p className="text-xs font-medium text-gray-800 flex-1">{tip.tip}</p>
+              <button
+                onClick={() => setExpandedTip(expandedTip === i ? null : i)}
+                className="text-gray-400 hover:text-gray-600 shrink-0"
+              >
+                {expandedTip === i ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+            {expandedTip === i && (
+              <p className="text-xs text-gray-500 mt-2 ml-0.5 border-t border-gray-200 pt-2">{tip.reasoning}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

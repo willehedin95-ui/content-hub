@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
-import ImageTranslatePanel from "@/components/pages/ImageTranslatePanel";
+import ImagePanel from "@/components/pages/ImagePanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import Dropdown from "@/components/ui/dropdown";
@@ -39,6 +39,7 @@ interface Props {
   translation: Translation;
   language: (typeof LANGUAGES)[number];
   variantLabel?: string;
+  isSource?: boolean;
 }
 
 export default function EditPageClient({
@@ -50,6 +51,7 @@ export default function EditPageClient({
   translation,
   language,
   variantLabel,
+  isSource,
 }: Props) {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -124,17 +126,26 @@ export default function EditPageClient({
       setAutoSaveStatus("saving");
       try {
         const html = extractHtmlFromIframe();
-        const d = autosaveDataRef.current;
-        const res = await fetch(`/api/translations/${translation.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            translated_html: html,
-            seo_title: d.seoTitle || undefined,
-            seo_description: d.seoDesc || undefined,
-            slug: d.slug || undefined,
-          }),
-        });
+        let res: Response;
+        if (isSource) {
+          res = await fetch(`/api/pages/${pageId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ original_html: html }),
+          });
+        } else {
+          const d = autosaveDataRef.current;
+          res = await fetch(`/api/translations/${translation.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              translated_html: html,
+              seo_title: d.seoTitle || undefined,
+              seo_description: d.seoDesc || undefined,
+              slug: d.slug || undefined,
+            }),
+          });
+        }
         if (res.ok) {
           setIsDirty(false);
           setAutoSaveStatus("saved");
@@ -147,7 +158,7 @@ export default function EditPageClient({
         setAutoSaveStatus("idle");
       }
     }, 3000);
-  }, [translation.id]);
+  }, [translation.id, isSource, pageId]);
 
   const markDirty = useCallback(() => {
     setIsDirty(true);
@@ -665,21 +676,37 @@ export default function EditPageClient({
     try {
       const html = extractHtmlFromIframe();
 
-      const res = await fetch(`/api/translations/${translation.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          translated_html: html,
-          seo_title: seoTitle || undefined,
-          seo_description: seoDesc || undefined,
-          slug: slug || undefined,
-        }),
-      });
+      if (isSource) {
+        // Save to page.original_html
+        const res = await fetch(`/api/pages/${pageId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ original_html: html }),
+        });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setSaveError(data.error || "Failed to save");
-        return;
+        if (!res.ok) {
+          const data = await res.json();
+          setSaveError(data.error || "Failed to save");
+          return;
+        }
+      } else {
+        // Save to translation
+        const res = await fetch(`/api/translations/${translation.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            translated_html: html,
+            seo_title: seoTitle || undefined,
+            seo_description: seoDesc || undefined,
+            slug: slug || undefined,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          setSaveError(data.error || "Failed to save");
+          return;
+        }
       }
 
       setSaved(true);
@@ -902,7 +929,11 @@ export default function EditPageClient({
           <span className="text-gray-500 text-sm truncate">{pageName}</span>
           <span className="text-gray-300 shrink-0">/</span>
           <span className="flex items-center gap-1.5 text-gray-900 text-sm font-medium shrink-0">
-            <span role="img" aria-label={language.label}>{language.flag}</span> {language.label}
+            {isSource ? (
+              <>Edit Source (English)</>
+            ) : (
+              <><span role="img" aria-label={language.label}>{language.flag}</span> {language.label}</>
+            )}
           </span>
           {/* Quality score badge */}
           {analyzing ? (
@@ -974,19 +1005,21 @@ export default function EditPageClient({
               <CheckCircle2 className="w-3.5 h-3.5" /> Saved
             </span>
           )}
-          <button
-            onClick={requestRetranslate}
-            disabled={saving || publishing || retranslating}
-            className="flex items-center gap-1.5 disabled:opacity-50 text-gray-400 hover:text-red-600 text-xs px-2 py-2 rounded-lg transition-colors"
-            title="Overwrites any manual edits"
-          >
-            {retranslating ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Globe className="w-3.5 h-3.5" />
-            )}
-            {retranslating ? "Translating…" : "Re-translate"}
-          </button>
+          {!isSource && (
+            <button
+              onClick={requestRetranslate}
+              disabled={saving || publishing || retranslating}
+              className="flex items-center gap-1.5 disabled:opacity-50 text-gray-400 hover:text-red-600 text-xs px-2 py-2 rounded-lg transition-colors"
+              title="Overwrites any manual edits"
+            >
+              {retranslating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Globe className="w-3.5 h-3.5" />
+              )}
+              {retranslating ? "Translating…" : "Re-translate"}
+            </button>
+          )}
           <div className="w-px h-6 bg-gray-200" />
           <button
             onClick={handleSave}
@@ -1000,18 +1033,20 @@ export default function EditPageClient({
             )}
             {saving ? "Saving..." : "Save"}
           </button>
-          <button
-            onClick={handlePublish}
-            disabled={saving || publishing || retranslating}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            {publishing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Upload className="w-4 h-4" />
-            )}
-            {publishing ? "Publishing..." : "Save & Publish"}
-          </button>
+          {!isSource && (
+            <button
+              onClick={handlePublish}
+              disabled={saving || publishing || retranslating}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              {publishing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              {publishing ? "Publishing..." : "Save & Publish"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1135,8 +1170,8 @@ export default function EditPageClient({
         {/* Sidebar */}
         <div className="w-72 border-l border-gray-200 shrink-0 flex flex-col overflow-y-auto bg-white">
           {clickedImage ? (
-            /* Image clicked: ImageTranslatePanel takes over the full sidebar */
-            <ImageTranslatePanel
+            /* Image clicked: ImagePanel takes over the full sidebar */
+            <ImagePanel
               iframeRef={iframeRef}
               translationId={translation.id}
               language={language}
@@ -1145,6 +1180,8 @@ export default function EditPageClient({
               onClickedImageClear={() => setClickedImage(null)}
               onImageReplaced={() => markDirty()}
               onImageTranslating={setBgImageTranslating}
+              isSource={isSource}
+              pageProduct={pageProduct}
             />
           ) : (
             /* Normal view: page settings */

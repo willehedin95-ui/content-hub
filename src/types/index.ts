@@ -14,6 +14,8 @@ export interface PageImageSelection {
   alt: string;
 }
 
+export type PageStatus = "importing" | "ready";
+
 export interface Page {
   id: string;
   name: string;
@@ -26,6 +28,8 @@ export interface Page {
   images_to_translate: PageImageSelection[];
   tags: string[];
   swiped_from_url: string | null;
+  status: PageStatus;
+  swipe_job_id: string | null;
   created_at: string;
   translations?: Translation[];
 }
@@ -47,6 +51,7 @@ export interface Translation {
   image_status: "translating" | "done" | "error" | null;
   images_done: number;
   images_total: number;
+  publish_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -138,6 +143,60 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "9:16", label: "9:16 Story/Reel" },
 ];
 
+// --- CASH DNA Types ---
+
+export type ConceptCategory = "avatar_facts" | "market_facts" | "product_facts" | "psychology_toolkit";
+
+export const CONCEPT_CATEGORIES: { value: ConceptCategory; label: string }[] = [
+  { value: "avatar_facts", label: "Avatar Facts" },
+  { value: "market_facts", label: "Market Facts" },
+  { value: "product_facts", label: "Product Facts" },
+  { value: "psychology_toolkit", label: "Psychology Toolkit" },
+];
+
+export const ANGLES = [
+  "Story", "Contrarian", "Expert Crossover", "Root Cause",
+  "Accidental Discovery", "Tribal", "Conspiracy", "Geographic",
+  "New Science", "Symptom Reframe", "Worldview", "Case Study",
+  "Before/After", "Comparison", "Social Proof", "Educational",
+  "Fear-Based", "Aspirational", "Curiosity", "Problem-Agitate",
+] as const;
+export type Angle = (typeof ANGLES)[number];
+
+export const STYLES = [
+  "Product Shot", "Lifestyle", "UGC-style", "Infographic",
+  "Before/After", "Testimonial", "Meme", "Screenshot",
+  "Text Overlay", "Collage", "Comparison",
+] as const;
+export type Style = (typeof STYLES)[number];
+
+export const AWARENESS_LEVELS = [
+  "Unaware", "Problem Aware", "Solution Aware", "Product Aware", "Most Aware",
+] as const;
+export type AwarenessLevel = (typeof AWARENESS_LEVELS)[number];
+
+export const AD_SOURCES = [
+  "Swipe (competitor)", "Swipe (adjacent)", "Template", "Organic",
+  "Research", "Matrix/Coverage", "Internal Vector", "Wildcard",
+] as const;
+export type AdSource = (typeof AD_SOURCES)[number];
+
+export const COPY_BLOCKS = [
+  "Pain", "Promise", "Proof", "Curiosity", "Constraints", "Conditions",
+] as const;
+export type CopyBlock = (typeof COPY_BLOCKS)[number];
+
+export interface CashDna {
+  concept_type: ConceptCategory | null;
+  angle: Angle | null;
+  style: Style | null;
+  hooks: string[];
+  awareness_level: AwarenessLevel | null;
+  ad_source: AdSource | null;
+  copy_blocks: CopyBlock[];
+  concept_description: string;
+}
+
 // --- Image Translation Types ---
 
 export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed";
@@ -162,6 +221,7 @@ export interface ImageJob {
   concept_number: number | null;
   marked_ready_at: string | null;
   tags: string[];
+  cash_dna?: CashDna | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
@@ -458,4 +518,71 @@ export interface ImageGenerationState {
   referenceImages?: string[];
   generatedUrl?: string;
   error?: string;
+}
+
+// --- Ad Spy Types ---
+
+export const SPY_CATEGORIES = [
+  "Health & Wellness",
+  "Beauty & Skincare",
+  "Sleep & Recovery",
+  "Food & Drink",
+  "Fashion",
+  "Home & Living",
+  "Fitness",
+  "Supplements",
+  "Other",
+] as const;
+export type SpyCategory = (typeof SPY_CATEGORIES)[number];
+
+export interface SpyBrand {
+  id: string;
+  name: string;
+  meta_page_id: string | null;
+  ad_library_url: string;
+  category: string | null;
+  logo_url: string | null;
+  notes: string | null;
+  is_active: boolean;
+  last_fetched_at: string | null;
+  ad_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpyAd {
+  id: string;
+  brand_id: string;
+  meta_ad_id: string;
+  headline: string | null;
+  body: string | null;
+  description: string | null;
+  link_url: string | null;
+  cta_type: string | null;
+  media_type: string | null;
+  media_url: string | null;
+  thumbnail_url: string | null;
+  ad_snapshot_url: string | null;
+  ad_delivery_start_time: string | null;
+  is_active: boolean;
+  publisher_platforms: string[] | null;
+  impressions_rank: number | null;
+  impressions_label: string | null;
+  raw_data: Record<string, unknown> | null;
+  cash_analysis: SpyAdCashAnalysis | null;
+  analyzed_at: string | null;
+  is_bookmarked: boolean;
+  user_notes: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  brand?: SpyBrand;
+}
+
+export interface SpyAdCashAnalysis extends CashDna {
+  offer_type: string | null;
+  asset_type: string | null;
+  estimated_production: string | null;
 }

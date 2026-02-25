@@ -100,6 +100,27 @@ export default function ConceptBoard({ jobs, getWizardStep }: ConceptBoardProps)
                       </div>
                     </div>
 
+                    {/* DNA badges */}
+                    {job.cash_dna && (job.cash_dna.angle || job.cash_dna.style || job.cash_dna.awareness_level) && (
+                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                        {job.cash_dna.angle && (
+                          <span className="text-[10px] font-medium text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full border border-violet-200">
+                            {job.cash_dna.angle}
+                          </span>
+                        )}
+                        {job.cash_dna.style && (
+                          <span className="text-[10px] font-medium text-fuchsia-600 bg-fuchsia-50 px-1.5 py-0.5 rounded-full border border-fuchsia-200">
+                            {job.cash_dna.style}
+                          </span>
+                        )}
+                        {job.cash_dna.awareness_level && (
+                          <span className="text-[10px] font-medium text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded-full border border-cyan-200">
+                            {job.cash_dna.awareness_level}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {/* Markets row (only show if any deployments) */}
                     {marketStatus.size > 0 && (
                       <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">

@@ -40,6 +40,7 @@ export async function GET(
         message: job.progress_message || (job.status === "pending" ? "Waiting for worker..." : "Processing..."),
       },
       createdAt: job.created_at,
+      pageId: job.page_id || null,
     });
   }
 
@@ -49,6 +50,7 @@ export async function GET(
       status: "failed",
       error: job.error_message || "Unknown error",
       createdAt: job.created_at,
+      pageId: job.page_id || null,
     });
   }
 
@@ -63,6 +65,7 @@ export async function GET(
         inputTokens: job.input_tokens,
         outputTokens: job.output_tokens,
       },
+      pageId: job.page_id || null,
     });
   }
 
@@ -133,5 +136,6 @@ export async function GET(
       inputTokens: job.input_tokens,
       outputTokens: job.output_tokens,
     },
+    pageId: job.page_id || null,
   });
 }
