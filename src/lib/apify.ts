@@ -1,11 +1,30 @@
-import { ApifyClient } from "apify-client";
+// Apify REST API client — uses fetch() instead of apify-client SDK
+// to avoid bundling issues with proxy-agent on Vercel serverless.
 
 const ACTOR_ID = "JJghSZmShuco4j9gJ";
+const APIFY_API_BASE = "https://api.apify.com/v2";
 
-function getClient() {
+function getToken() {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error("APIFY_TOKEN is not set");
-  return new ApifyClient({ token });
+  return token;
+}
+
+async function apifyFetch(path: string, options?: RequestInit) {
+  const token = getToken();
+  const res = await fetch(`${APIFY_API_BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options?.headers,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Apify API error ${res.status}: ${text}`);
+  }
+  return res.json();
 }
 
 /**
@@ -16,12 +35,14 @@ export async function startScrape(
   adLibraryUrl: string,
   maxAds = 100
 ): Promise<string> {
-  const client = getClient();
-  const run = await client.actor(ACTOR_ID).call({
-    startUrls: [{ url: adLibraryUrl }],
-    resultsLimit: maxAds,
+  const data = await apifyFetch(`/acts/${ACTOR_ID}/runs`, {
+    method: "POST",
+    body: JSON.stringify({
+      startUrls: [{ url: adLibraryUrl }],
+      resultsLimit: maxAds,
+    }),
   });
-  return run.defaultDatasetId;
+  return data.data.defaultDatasetId;
 }
 
 /**
@@ -32,18 +53,26 @@ export async function scrapeAndWait(
   adLibraryUrl: string,
   maxAds = 100
 ): Promise<ApifyAdItem[]> {
-  const client = getClient();
-  const run = await client.actor(ACTOR_ID).call(
+  // Start the run with waitForFinish (up to 240 seconds)
+  const data = await apifyFetch(
+    `/acts/${ACTOR_ID}/runs?waitForFinish=240`,
     {
-      startUrls: [{ url: adLibraryUrl }],
-      resultsLimit: maxAds,
-    },
-    { waitSecs: 240 }
+      method: "POST",
+      body: JSON.stringify({
+        startUrls: [{ url: adLibraryUrl }],
+        resultsLimit: maxAds,
+      }),
+    }
   );
 
-  const { items } = await client
-    .dataset(run.defaultDatasetId)
-    .listItems();
+  const datasetId = data.data.defaultDatasetId;
+
+  // Fetch dataset items
+  const datasetData = await apifyFetch(`/datasets/${datasetId}/items`);
+
+  const items: Record<string, unknown>[] = Array.isArray(datasetData)
+    ? datasetData
+    : datasetData?.items ?? datasetData?.data ?? [];
 
   // Apify now returns page-level wrapper objects with ads inside `results[]`.
   // Flatten: if items have a `results` array, extract the ads from there.
@@ -67,8 +96,8 @@ export async function scrapeAndWait(
 export async function getRunStatus(
   runId: string
 ): Promise<{ status: string; finished: boolean }> {
-  const client = getClient();
-  const run = await client.run(runId).get();
+  const data = await apifyFetch(`/actor-runs/${runId}`);
+  const run = data.data;
   if (!run) return { status: "UNKNOWN", finished: true };
   const finished = ["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"].includes(
     run.status
@@ -82,8 +111,11 @@ export async function getRunStatus(
 export async function getDatasetItems(
   datasetId: string
 ): Promise<ApifyAdItem[]> {
-  const client = getClient();
-  const { items } = await client.dataset(datasetId).listItems();
+  const datasetData = await apifyFetch(`/datasets/${datasetId}/items`);
+
+  const items: Record<string, unknown>[] = Array.isArray(datasetData)
+    ? datasetData
+    : datasetData?.items ?? datasetData?.data ?? [];
 
   // Flatten page-level wrappers (same as scrapeAndWait)
   const flatItems: ApifyAdItem[] = [];
