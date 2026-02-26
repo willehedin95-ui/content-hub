@@ -2,12 +2,7 @@
 
 ## After completing changes
 
-Always commit changes after finishing a task. **Do NOT push to `main` automatically** — the project auto-deploys to Vercel on push, and each deploy costs credits. Instead:
-
-1. Start the dev server (`npm run dev`) so the user can preview changes locally
-2. Only push to `main` when the user explicitly confirms the changes look good
-
-This saves deploy credits by catching issues locally before triggering a production build.
+Always commit changes after finishing a task and push to `main`. The project auto-deploys to Vercel on push.
 
 **When pushing to Vercel**: Always tell the user the git short hash of the pushed commit (e.g. `508b6dd`) so they can verify the deploy is live by checking the version shown in the sidebar footer.
 
