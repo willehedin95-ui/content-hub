@@ -404,12 +404,14 @@ export default function ConceptImagesStep({
                 {si.filename && <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>}
               </div>
             ))}
-            {/* Pulsing skeleton placeholders for images still loading */}
+            {/* Skeleton placeholders for images still loading */}
             {Array.from({ length: Math.max(0, 4 - sourceImages.length) }).map((_, i) => (
-              <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden animate-pulse">
-                <div className="aspect-square bg-gray-200" />
+              <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
+                </div>
                 <div className="px-2 py-1.5">
-                  <div className="h-3 bg-gray-200 rounded w-3/4" />
+                  <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse" />
                 </div>
               </div>
             ))}

@@ -20,16 +20,13 @@ import {
 import {
   ConceptProposal,
   Product,
-  Language,
   PRODUCTS,
-  LANGUAGES,
   BrainstormMode,
   ProductSegment,
 } from "@/types";
-import { getDefaultLanguages } from "@/lib/settings";
 import { BRAINSTORM_MODES } from "@/lib/brainstorm";
 
-type Phase = "configure" | "loading" | "proposals" | "confirm";
+type Phase = "configure" | "loading" | "proposals";
 
 const LOADING_MESSAGES = [
   "Mining product knowledge...",
@@ -65,17 +62,11 @@ export default function BrainstormPage() {
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
-  const [selectedProposal, setSelectedProposal] = useState<ConceptProposal | null>(null);
   const [expandedVisual, setExpandedVisual] = useState<number | null>(null);
   const [expandedCopy, setExpandedCopy] = useState<number | null>(null);
   const [existingConceptsCount, setExistingConceptsCount] = useState(0);
   const [rejectingIdx, setRejectingIdx] = useState<number | null>(null);
-
-  // Confirm state
-  const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(
-    () => new Set(getDefaultLanguages())
-  );
-  const [submitting, setSubmitting] = useState(false);
+  const [approvingIdx, setApprovingIdx] = useState<number | null>(null);
 
   // Common
   const [error, setError] = useState("");
@@ -160,9 +151,9 @@ export default function BrainstormPage() {
     }
   }
 
-  async function handleApprove() {
-    if (!selectedProposal) return;
-    setSubmitting(true);
+  async function handleApprove(proposal: ConceptProposal, idx: number) {
+    if (approvingIdx !== null) return;
+    setApprovingIdx(idx);
     setError("");
 
     try {
@@ -170,9 +161,8 @@ export default function BrainstormPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proposal: selectedProposal,
+          proposal,
           product,
-          target_languages: Array.from(selectedLanguages),
           target_ratios: ["1:1"],
         }),
       });
@@ -186,7 +176,7 @@ export default function BrainstormPage() {
       router.push(`/images/${data.job_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-      setSubmitting(false);
+      setApprovingIdx(null);
     }
   }
 
@@ -494,13 +484,15 @@ export default function BrainstormPage() {
                         )}
                       </button>
                       <button
-                        onClick={() => {
-                          setSelectedProposal(proposal);
-                          setPhase("confirm");
-                        }}
-                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                        onClick={() => handleApprove(proposal, i)}
+                        disabled={approvingIdx !== null}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
                       >
-                        <Wand2 className="w-3 h-3" />
+                        {approvingIdx === i ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-3 h-3" />
+                        )}
                         Use This
                       </button>
                     </div>
@@ -645,125 +637,6 @@ export default function BrainstormPage() {
         </div>
       )}
 
-      {/* Phase: Confirm */}
-      {phase === "confirm" && selectedProposal && (
-        <div className="space-y-6">
-          <button
-            onClick={() => {
-              setPhase("proposals");
-              setSelectedProposal(null);
-              setError("");
-            }}
-            disabled={submitting}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to proposals
-          </button>
-
-          <h2 className="text-lg font-semibold text-gray-900">
-            Approve Concept
-          </h2>
-
-          {/* Selected proposal summary */}
-          <div className="p-5 bg-indigo-50 border border-indigo-200 rounded-xl">
-            <h3 className="text-sm font-semibold text-indigo-900 mb-1">
-              {selectedProposal.concept_name}
-            </h3>
-            <p className="text-xs text-indigo-700 italic">
-              {selectedProposal.concept_description}
-            </p>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {selectedProposal.cash_dna.angle && (
-                <span className="text-[10px] font-medium text-violet-700 bg-white px-2 py-0.5 rounded border border-violet-200">
-                  {selectedProposal.cash_dna.angle}
-                </span>
-              )}
-              {selectedProposal.cash_dna.style && (
-                <span className="text-[10px] font-medium text-fuchsia-700 bg-white px-2 py-0.5 rounded border border-fuchsia-200">
-                  {selectedProposal.cash_dna.style}
-                </span>
-              )}
-              {selectedProposal.cash_dna.awareness_level && (
-                <span className="text-[10px] font-medium text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200">
-                  {selectedProposal.cash_dna.awareness_level}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Product */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Product
-            </label>
-            <span className="text-sm text-indigo-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg">
-              {PRODUCTS.find((p) => p.value === product)?.label}
-            </span>
-          </div>
-
-          {/* Languages */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Target Languages
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {LANGUAGES.map((lang) => {
-                const selected = selectedLanguages.has(lang.value);
-                return (
-                  <button
-                    key={lang.value}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLanguages((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(lang.value)) next.delete(lang.value);
-                        else next.add(lang.value);
-                        return next;
-                      });
-                    }}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      selected
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                    }`}
-                  >
-                    <span role="img" aria-label={lang.label}>
-                      {lang.flag}
-                    </span>
-                    {lang.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {error && (
-            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-2">
-              {error}
-            </p>
-          )}
-
-          {/* Create button */}
-          <button
-            onClick={handleApprove}
-            disabled={submitting || selectedLanguages.size === 0}
-            className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Creating concept...
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-4 h-4" />
-                Create Concept
-              </>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

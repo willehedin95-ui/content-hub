@@ -10,7 +10,7 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import type { ProductFull, ProductSegment } from "@/types";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 // POST /api/image-jobs/[id]/generate-static — Generate diverse static ad images
 export async function POST(
@@ -271,13 +271,21 @@ export async function POST(
         reptileTriggers: brief.reptileTriggers,
         prompt: brief.prompt,
       });
+
+      // Mark job as ready after first successful image so timeout doesn't leave it stuck in draft
+      if (results.length === 1) {
+        await db
+          .from("image_jobs")
+          .update({ status: "ready", updated_at: new Date().toISOString() })
+          .eq("id", id);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       errors.push(`${label}: ${msg}`);
     }
   }
 
-  // Update job status to ready if we generated any images
+  // Final status update (ensures updated_at reflects completion)
   if (results.length > 0) {
     await db
       .from("image_jobs")
