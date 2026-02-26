@@ -586,3 +586,25 @@ export interface SpyAdCashAnalysis extends CashDna {
   asset_type: string | null;
   estimated_production: string | null;
 }
+
+// --- Concept Generator Types ---
+
+export interface ConceptProposal {
+  concept_name: string;
+  concept_description: string;
+  cash_dna: {
+    concept_type: ConceptCategory | null;
+    angle: Angle;
+    style: Style | null;
+    hooks: string[];
+    awareness_level: AwarenessLevel;
+    ad_source: "Swipe (competitor)";
+    copy_blocks: CopyBlock[];
+    concept_description: string;
+  };
+  ad_copy_primary: string[];
+  ad_copy_headline: string[];
+  visual_direction: string;
+  differentiation_note: string;
+  suggested_tags: string[];
+}

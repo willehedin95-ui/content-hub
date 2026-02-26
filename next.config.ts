@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
     },
   },
   // Required for @sparticuz/chromium to work in Vercel serverless functions
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "sharp"],
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "sharp", "apify-client"],
 };
 
 export default nextConfig;

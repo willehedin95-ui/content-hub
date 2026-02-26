@@ -18,7 +18,7 @@ export async function startScrape(
 ): Promise<string> {
   const client = getClient();
   const run = await client.actor(ACTOR_ID).call({
-    urls: [adLibraryUrl],
+    startUrls: [{ url: adLibraryUrl }],
     resultsLimit: maxAds,
   });
   return run.defaultDatasetId;
@@ -35,7 +35,7 @@ export async function scrapeAndWait(
   const client = getClient();
   const run = await client.actor(ACTOR_ID).call(
     {
-      urls: [adLibraryUrl],
+      startUrls: [{ url: adLibraryUrl }],
       resultsLimit: maxAds,
     },
     { waitSecs: 120 }
@@ -79,12 +79,23 @@ export async function getDatasetItems(
 // We store the full raw_data and extract what we need.
 
 export interface ApifyAdItem {
-  // Common fields from Meta Ad Library scraper
+  // Current format (camelCase) fields
+  adArchiveID?: string | number;
+  adArchiveId?: string | number;
+  pageID?: string | number;
+  pageId?: string | number;
+  pageName?: string;
+  isActive?: boolean;
+  startDateFormatted?: string;
+  endDateFormatted?: string;
+  publisherPlatform?: string[];
+  impressionsWithIndex?: { impressionsText?: string; impressionsIndex?: number };
+  snapshot?: Record<string, unknown>;
+  // Legacy format (snake_case) fields
   ad_archive_id?: string;
   id?: string;
   page_id?: string;
   page_name?: string;
-  // Creative content
   ad_creative_body?: string;
   body?: string;
   ad_creative_link_title?: string;
@@ -95,7 +106,6 @@ export interface ApifyAdItem {
   link_url?: string;
   cta_text?: string;
   cta_type?: string;
-  // Media
   image_url?: string;
   video_url?: string;
   video_thumbnail_url?: string;
@@ -104,7 +114,6 @@ export interface ApifyAdItem {
   videos?: Array<{ video_url?: string; thumbnail_url?: string }>;
   snapshot_url?: string;
   ad_snapshot_url?: string;
-  // Metadata
   ad_delivery_start_time?: string;
   start_date?: string;
   is_active?: boolean;
@@ -118,7 +127,7 @@ export interface ApifyAdItem {
 
 /**
  * Normalize an Apify ad item into our database format.
- * Handles the varying field names from different Apify scraper versions.
+ * Handles both legacy (snake_case) and current (camelCase + snapshot) Apify formats.
  */
 export function normalizeApifyAd(
   item: ApifyAdItem,
@@ -141,67 +150,92 @@ export function normalizeApifyAd(
   impressions_label: string | null;
   raw_data: Record<string, unknown>;
 } {
-  // Ad ID
-  const metaAdId =
-    item.ad_archive_id?.toString() ?? item.id?.toString() ?? `unknown-${rank}`;
+  // Current format nests creative data inside a `snapshot` object
+  const snap = (item.snapshot as Record<string, unknown>) ?? {};
+  const snapBody = snap.body as { text?: string } | null;
+  const snapVideos = (snap.videos as Array<{
+    videoHdUrl?: string;
+    videoSdUrl?: string;
+    videoPreviewImageUrl?: string;
+  }>) ?? [];
+  const snapImages = (snap.images as Array<{
+    originalImageUrl?: string;
+    resizedImageUrl?: string;
+  }>) ?? [];
 
-  // Creative content
+  // Ad ID — current format uses adArchiveID (camelCase)
+  const metaAdId =
+    (item.adArchiveID ?? item.adArchiveId ?? item.ad_archive_id ?? item.id)?.toString()
+    ?? `unknown-${rank}`;
+
+  // Creative content — try snapshot fields first, fall back to legacy flat fields
   const headline =
-    item.ad_creative_link_title ?? item.title ?? item.headline ?? null;
-  const body = item.ad_creative_body ?? item.body ?? null;
-  const description = item.ad_creative_link_description ?? item.description ?? null;
-  const linkUrl = item.link_url ?? null;
-  const ctaType = item.cta_text ?? item.cta_type ?? null;
+    (snap.title as string) ?? item.ad_creative_link_title ?? item.title ?? item.headline ?? null;
+  const body =
+    snapBody?.text ?? item.ad_creative_body ?? item.body ?? null;
+  const description =
+    (snap.linkDescription as string) ?? item.ad_creative_link_description ?? item.description ?? null;
+  const linkUrl =
+    (snap.linkUrl as string) ?? item.link_url ?? null;
+  const ctaType =
+    (snap.ctaText as string) ?? (snap.ctaType as string) ?? item.cta_text ?? item.cta_type ?? null;
 
   // Media — determine type and extract URLs
   let mediaType: string | null = null;
   let mediaUrl: string | null = null;
   let thumbnailUrl: string | null = null;
 
-  // Check for video first
+  // Current format: snapshot.displayFormat tells us the type
+  const displayFormat = (snap.displayFormat as string)?.toUpperCase();
+
+  // Videos — current format uses camelCase keys inside snapshot.videos[]
   const videoUrl =
-    item.video_url ??
-    item.videos?.[0]?.video_url ??
-    null;
+    snapVideos[0]?.videoHdUrl ?? snapVideos[0]?.videoSdUrl ??
+    item.video_url ?? item.videos?.[0]?.video_url ?? null;
   const videoThumb =
-    item.video_thumbnail_url ??
-    item.videos?.[0]?.thumbnail_url ??
-    null;
+    snapVideos[0]?.videoPreviewImageUrl ??
+    item.video_thumbnail_url ?? item.videos?.[0]?.thumbnail_url ?? null;
 
-  // Check for image
+  // Images — current format uses originalImageUrl / resizedImageUrl
   const imageUrl =
-    item.image_url ??
-    item.images?.[0]?.original_image_url ??
-    item.images?.[0]?.url ??
-    item.thumbnail_url ??
-    null;
+    snapImages[0]?.originalImageUrl ?? snapImages[0]?.resizedImageUrl ??
+    item.image_url ?? item.images?.[0]?.original_image_url ?? item.images?.[0]?.url ??
+    item.thumbnail_url ?? null;
 
-  if (videoUrl) {
+  if (displayFormat === "VIDEO" || videoUrl) {
     mediaType = "video";
     mediaUrl = videoUrl;
     thumbnailUrl = videoThumb ?? imageUrl;
-  } else if (imageUrl) {
+  } else if (displayFormat === "IMAGE" || imageUrl) {
     mediaType = "image";
     mediaUrl = imageUrl;
     thumbnailUrl = imageUrl;
+  } else if (displayFormat === "DCO") {
+    mediaType = "dco";
   }
 
-  // Snapshot URL
+  // Snapshot URL (legacy format)
   const snapshotUrl = item.snapshot_url ?? item.ad_snapshot_url ?? null;
 
-  // Dates
-  const startTime = item.ad_delivery_start_time ?? item.start_date ?? null;
+  // Dates — current format uses startDateFormatted (ISO string)
+  const startTime =
+    (item.startDateFormatted as string) ?? item.ad_delivery_start_time ?? item.start_date ?? null;
 
-  // Status
+  // Status — current format uses isActive (boolean)
   const isActive =
-    item.is_active ?? (item.status === "ACTIVE" || item.status === "active") ?? true;
+    (item.isActive as boolean) ?? item.is_active ??
+    (item.status === "ACTIVE" || item.status === "active") ?? true;
 
-  // Platforms
-  const platforms = item.publisher_platforms ?? item.platforms ?? null;
+  // Platforms — current format uses publisherPlatform (camelCase)
+  const platforms =
+    (item.publisherPlatform as string[]) ?? item.publisher_platforms ?? item.platforms ?? null;
 
   // Impressions
   let impressionsLabel: string | null = null;
-  if (typeof item.impressions === "string") {
+  const impressionsData = item.impressionsWithIndex as { impressionsText?: string } | null;
+  if (impressionsData?.impressionsText) {
+    impressionsLabel = impressionsData.impressionsText;
+  } else if (typeof item.impressions === "string") {
     impressionsLabel = item.impressions;
   } else if (typeof item.impressions === "object" && item.impressions) {
     const imp = item.impressions as { lower_bound?: string; upper_bound?: string };
@@ -241,22 +275,27 @@ export function deduplicateAds(
   items: ApifyAdItem[],
   maxAds = 20
 ): ApifyAdItem[] {
-  // Pass 1: by ad_archive_id / id
+  // Pass 1: by ad_archive_id / id (handles both legacy and current formats)
   const seenIds = new Set<string>();
   const pass1: ApifyAdItem[] = [];
   for (const item of items) {
-    const id = item.ad_archive_id?.toString() ?? item.id?.toString();
+    const id = (item.adArchiveID ?? item.adArchiveId ?? item.ad_archive_id ?? item.id)?.toString();
     if (!id || !seenIds.has(id)) {
       if (id) seenIds.add(id);
       pass1.push(item);
     }
   }
 
-  // Pass 2: by media URL
+  // Pass 2: by media URL (handles both snapshot and legacy formats)
   const seenMedia = new Set<string>();
   const pass2: ApifyAdItem[] = [];
   for (const item of pass1) {
+    const snap = (item.snapshot as Record<string, unknown>) ?? {};
+    const snapVideos = (snap.videos as Array<{ videoHdUrl?: string }>) ?? [];
+    const snapImages = (snap.images as Array<{ originalImageUrl?: string }>) ?? [];
     const url =
+      snapVideos[0]?.videoHdUrl ??
+      snapImages[0]?.originalImageUrl ??
       item.video_url ??
       item.image_url ??
       item.images?.[0]?.original_image_url ??
@@ -268,12 +307,13 @@ export function deduplicateAds(
     }
   }
 
-  // Pass 3: by headline
+  // Pass 3: by headline (handles both snapshot.title and legacy fields)
   const seenHeadlines = new Set<string>();
   const pass3: ApifyAdItem[] = [];
   for (const item of pass2) {
+    const snap = (item.snapshot as Record<string, unknown>) ?? {};
     const h = (
-      item.ad_creative_link_title ?? item.title ?? item.headline ?? ""
+      (snap.title as string) ?? item.ad_creative_link_title ?? item.title ?? item.headline ?? ""
     )
       .toString()
       .trim()
