@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
-import { STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS } from "@/lib/constants";
+import { STATIC_STYLES, REPTILE_TRIGGERS } from "@/lib/constants";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components (TabButton, ElapsedTimer, ProcessingTimer, badges)  */
@@ -248,83 +248,10 @@ export default function ConceptImagesStep({
           </div>
 
           <p className="text-sm text-gray-600 mb-4 leading-relaxed">
-            {job.visual_direction!.length > 150
-              ? job.visual_direction!.slice(0, 150) + "..."
+            {job.visual_direction!.length > 200
+              ? job.visual_direction!.slice(0, 200) + "..."
               : job.visual_direction}
           </p>
-
-          {/* Hooks preview */}
-          {job.cash_dna?.hooks && job.cash_dna.hooks.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Hooks ({job.cash_dna.hooks.length} available)</p>
-              <div className="flex flex-wrap gap-1.5">
-                {job.cash_dna.hooks.slice(0, 5).map((hook, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-white border border-indigo-100 rounded-lg text-xs text-gray-700">
-                    {hook.length > 35 ? hook.slice(0, 35) + "..." : hook}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Style labels preview — awareness-filtered */}
-          {(() => {
-            const awarenessLevel = job.cash_dna?.awareness_level;
-            const count = generateState?.count ?? 3;
-            let styleIds: string[];
-            if (awarenessLevel && AWARENESS_STYLE_MAP[awarenessLevel]) {
-              const preferred = AWARENESS_STYLE_MAP[awarenessLevel];
-              const remaining = STATIC_STYLES.map(s => s.id).filter(id => !preferred.includes(id));
-              styleIds = [...preferred, ...remaining].slice(0, count);
-            } else {
-              styleIds = STATIC_STYLES.slice(0, count).map(s => s.id);
-            }
-            const styles = styleIds.map(id => STATIC_STYLES.find(s => s.id === id)!);
-            return (
-              <div className="mb-4">
-                <p className="text-xs font-medium text-gray-500 mb-1.5">
-                  Visual styles{awarenessLevel ? ` (optimized for "${awarenessLevel}")` : " (one per variation)"}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {styles.map((style) => (
-                    <span key={style.id} className="px-2.5 py-1 bg-white border border-purple-100 rounded-lg text-xs text-purple-700" title={style.description}>
-                      {style.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* V3.3: Segment selector */}
-          {generateState.segments.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs font-medium text-gray-500 mb-1.5">Target segment (optional)</p>
-              <select
-                value={generateState.segmentId ?? ""}
-                onChange={(e) => generateState.setSegmentId(e.target.value || null)}
-                disabled={generateState.generating}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-md"
-              >
-                <option value="">All audiences (general)</option>
-                {generateState.segments.map((seg) => (
-                  <option key={seg.id} value={seg.id}>
-                    {seg.name}{seg.demographics ? ` — ${seg.demographics}` : ""}
-                  </option>
-                ))}
-              </select>
-              {generateState.segmentId && (() => {
-                const seg = generateState.segments.find(s => s.id === generateState.segmentId);
-                if (!seg) return null;
-                return (
-                  <p className="text-xs text-gray-400 mt-1">
-                    {seg.core_desire && <><span className="text-gray-500 font-medium">Desire:</span> {seg.core_desire}  </>}
-                    {seg.core_constraints && <><span className="text-gray-500 font-medium">Constraints:</span> {seg.core_constraints}</>}
-                  </p>
-                );
-              })()}
-            </div>
-          )}
 
           <div className="flex items-center gap-4">
             {/* Count selector */}

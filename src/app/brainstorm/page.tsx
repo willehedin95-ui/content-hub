@@ -23,7 +23,6 @@ import {
   PRODUCTS,
   LANGUAGES,
   BrainstormMode,
-  UnawareAdType,
   ProductSegment,
 } from "@/types";
 import { getDefaultLanguages } from "@/lib/settings";
@@ -48,13 +47,6 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   Eye,
 };
 
-const UNAWARE_TYPE_OPTIONS: { value: UnawareAdType; label: string; description: string }[] = [
-  { value: "straddle", label: "Straddle", description: "Curiosity gap + broad relevance pain/promise" },
-  { value: "symptom", label: "Symptom", description: "Neutral reference reframed as a warning sign" },
-  { value: "worldview_porn", label: "Worldview Porn", description: "Tap emotional reservoirs (distrust, resentment) → redirect to product" },
-  { value: "story", label: "Story (P.I.G.)", description: "Cinematic opening: Place + Identity + Gritty detail" },
-];
-
 export default function BrainstormPage() {
   const router = useRouter();
 
@@ -69,9 +61,6 @@ export default function BrainstormPage() {
   const [researchText, setResearchText] = useState("");
   const [segments, setSegments] = useState<ProductSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
-  const [unawareTypes, setUnawareTypes] = useState<Set<UnawareAdType>>(
-    new Set(["straddle", "symptom", "worldview_porn", "story"])
-  );
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
@@ -146,9 +135,6 @@ export default function BrainstormPage() {
       if (mode === "from_organic" && organicText) body.organic_text = organicText;
       if (mode === "from_research" && researchText) body.research_text = researchText;
       if (selectedSegment) body.segment_id = selectedSegment;
-      if (mode === "unaware" && unawareTypes.size > 0) {
-        body.unaware_types = Array.from(unawareTypes);
-      }
 
       const res = await fetch("/api/brainstorm", {
         method: "POST",
@@ -322,70 +308,6 @@ export default function BrainstormPage() {
             </div>
           )}
 
-          {mode === "unaware" && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Unaware Ad Types
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {UNAWARE_TYPE_OPTIONS.map((opt) => {
-                  const selected = unawareTypes.has(opt.value);
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => {
-                        setUnawareTypes((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(opt.value)) next.delete(opt.value);
-                          else next.add(opt.value);
-                          return next;
-                        });
-                      }}
-                      className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${
-                        selected
-                          ? "bg-amber-50 border-amber-300"
-                          : "bg-white border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 mt-0.5 rounded border shrink-0 flex items-center justify-center ${
-                          selected
-                            ? "bg-amber-500 border-amber-500"
-                            : "border-gray-300"
-                        }`}
-                      >
-                        {selected && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                      <div>
-                        <p
-                          className={`text-sm font-medium ${
-                            selected ? "text-amber-900" : "text-gray-700"
-                          }`}
-                        >
-                          {opt.label}
-                        </p>
-                        <p className="text-xs text-gray-500">{opt.description}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Segment selector (for from_scratch, from_internal) */}
           {(mode === "from_scratch" || mode === "from_internal") &&
@@ -599,41 +521,32 @@ export default function BrainstormPage() {
                     </ul>
                   </div>
 
-                  {/* Headlines */}
-                  <div className="mb-3">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                      Headlines
-                    </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {proposal.ad_copy_headline.map((h, j) => (
-                        <span
-                          key={j}
-                          className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded"
-                        >
-                          {h}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Native Headlines (unaware mode) */}
-                  {proposal.native_headlines && proposal.native_headlines.length > 0 && (
-                    <div className="mb-3">
-                      <label className="text-[10px] font-medium text-amber-600 uppercase tracking-wide mb-1 block">
-                        Native/Editorial Headlines
-                      </label>
-                      <ul className="space-y-0.5">
-                        {proposal.native_headlines.map((h, j) => (
-                          <li
-                            key={j}
-                            className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 border border-amber-200"
-                          >
-                            {h}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {/* Headlines (merged with native headlines for unaware concepts) */}
+                  {(() => {
+                    const allHeadlines = [
+                      ...proposal.ad_copy_headline,
+                      ...(proposal.native_headlines ?? []).filter(
+                        (h) => !proposal.ad_copy_headline.includes(h)
+                      ),
+                    ];
+                    return allHeadlines.length > 0 ? (
+                      <div className="mb-3">
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                          Headlines
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {allHeadlines.map((h, j) => (
+                            <span
+                              key={j}
+                              className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded"
+                            >
+                              {h}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
 
                   {/* Primary text preview (expandable) */}
                   <div className="mb-3">
