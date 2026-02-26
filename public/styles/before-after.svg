@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Left half - dark/red -->
+  <rect x="0" y="0" width="100" height="200" fill="#991b1b"/>
+  <!-- Right half - green/bright -->
+  <rect x="100" y="0" width="100" height="200" fill="#15803d"/>
+  <!-- Divider line -->
+  <line x1="100" y1="0" x2="100" y2="200" stroke="#ffffff" stroke-width="2"/>
+  <!-- Sad face left -->
+  <circle cx="50" cy="80" r="20" fill="none" stroke="#fca5a5" stroke-width="2"/>
+  <circle cx="43" cy="75" r="2" fill="#fca5a5"/>
+  <circle cx="57" cy="75" r="2" fill="#fca5a5"/>
+  <path d="M40,88 Q50,82 60,88" fill="none" stroke="#fca5a5" stroke-width="2"/>
+  <!-- Happy face right -->
+  <circle cx="150" cy="80" r="20" fill="none" stroke="#bbf7d0" stroke-width="2"/>
+  <circle cx="143" cy="75" r="2" fill="#bbf7d0"/>
+  <circle cx="157" cy="75" r="2" fill="#bbf7d0"/>
+  <path d="M140,85 Q150,94 160,85" fill="none" stroke="#bbf7d0" stroke-width="2"/>
+  <!-- Arrow -->
+  <polygon points="90,125 110,125 100,140" fill="#ffffff"/>
+  <rect x="97" y="110" width="6" height="15" fill="#ffffff"/>
+  <!-- Labels -->
+  <text x="50" y="168" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#fca5a5">BEFORE</text>
+  <text x="150" y="168" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#bbf7d0">AFTER</text>
+</svg>

@@ -31,7 +31,7 @@ function getApiKey(): string {
  * Resolve which styles to offer based on awareness level (V3.1).
  * Returns style IDs ordered by relevance, padded to `count` if needed.
  */
-function getStylesForAwareness(awarenessLevel: string | null | undefined, count: number): StaticStyleId[] {
+export function getStylesForAwareness(awarenessLevel: string | null | undefined, count: number): StaticStyleId[] {
   if (awarenessLevel && AWARENESS_STYLE_MAP[awarenessLevel]) {
     const preferred = AWARENESS_STYLE_MAP[awarenessLevel];
     if (preferred.length >= count) return preferred.slice(0, count);
@@ -54,6 +54,8 @@ export async function generateImageBriefs(options: {
   segment?: ProductSegment | null;
   iterationContext?: Record<string, unknown> | null;
   count: number;
+  styles?: StaticStyleId[];
+  previousPrompts?: string[];
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
   const { job, product, spyAd, segment, iterationContext, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
@@ -64,8 +66,10 @@ export async function generateImageBriefs(options: {
     throw new Error("No hooks available — cannot generate briefs");
   }
 
-  // V3.1: Filter styles based on awareness level
-  const styleIds = getStylesForAwareness(cashDna?.awareness_level, count);
+  // V3.1: Use explicit styles if provided, otherwise filter by awareness level
+  const styleIds = options.styles?.length
+    ? options.styles
+    : getStylesForAwareness(cashDna?.awareness_level, count);
 
   const systemPrompt = buildBriefSystemPrompt();
   const userPrompt = buildBriefUserPrompt({
@@ -84,6 +88,7 @@ export async function generateImageBriefs(options: {
     productImageCategories: [...new Set(options.productImages.map((pi) => pi.category))],
     segment: segment ?? null,
     iterationContext: iterationContext ?? null,
+    previousPrompts: options.previousPrompts ?? [],
   });
 
   const client = new Anthropic({ apiKey: getApiKey() });
@@ -281,6 +286,7 @@ function buildBriefUserPrompt(opts: {
   productImageCategories: string[];
   segment: ProductSegment | null;
   iterationContext: Record<string, unknown> | null;
+  previousPrompts: string[];
 }): string {
   const lines: string[] = [];
 
@@ -386,6 +392,12 @@ function buildBriefUserPrompt(opts: {
     lines.push(`- Images must pass the "Is this an ad?" test — if it looks like an ad, it fails`);
     lines.push(`- referenceStrategy MUST be "none" for all native-* styles`);
     lines.push(`- Think WebMD articles, medical textbooks, someone's messy bathroom photo — NOT polished advertising`);
+  }
+
+  // Diversity: avoid repeating previously generated prompts
+  if (opts.previousPrompts.length > 0) {
+    lines.push(`\nPREVIOUSLY GENERATED PROMPTS (do NOT repeat similar visual approaches — create something genuinely different):`);
+    opts.previousPrompts.forEach((p, i) => lines.push(`${i + 1}. ${p}`));
   }
 
   lines.push(`\nRemember: each brief must produce a GENUINELY DIFFERENT looking ad. Vary the composition, color palette, text placement, and visual approach. Follow the prompt engineering rules strictly. Each brief MUST include 1-2 reptile triggers woven into the visual prompt.`);

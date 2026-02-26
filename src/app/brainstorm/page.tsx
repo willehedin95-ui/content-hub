@@ -15,6 +15,7 @@ import {
   Eye,
   Lightbulb,
   ArrowLeft,
+  ThumbsDown,
 } from "lucide-react";
 import {
   ConceptProposal,
@@ -68,6 +69,7 @@ export default function BrainstormPage() {
   const [expandedVisual, setExpandedVisual] = useState<number | null>(null);
   const [expandedCopy, setExpandedCopy] = useState<number | null>(null);
   const [existingConceptsCount, setExistingConceptsCount] = useState(0);
+  const [rejectingIdx, setRejectingIdx] = useState<number | null>(null);
 
   // Confirm state
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(
@@ -462,16 +464,46 @@ export default function BrainstormPage() {
                         {proposal.concept_description}
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSelectedProposal(proposal);
-                        setPhase("confirm");
-                      }}
-                      className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
-                    >
-                      <Wand2 className="w-3 h-3" />
-                      Use This
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={async () => {
+                          setRejectingIdx(i);
+                          try {
+                            await fetch("/api/brainstorm/reject", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                product,
+                                angle: proposal.cash_dna.angle ?? null,
+                                awareness_level: proposal.cash_dna.awareness_level ?? null,
+                                concept_description: proposal.concept_description ?? null,
+                              }),
+                            });
+                            setProposals((prev) => prev.filter((_, idx) => idx !== i));
+                          } catch {}
+                          setRejectingIdx(null);
+                        }}
+                        disabled={rejectingIdx === i}
+                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Reject — avoid similar concepts in future"
+                      >
+                        {rejectingIdx === i ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedProposal(proposal);
+                          setPhase("confirm");
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Use This
+                      </button>
+                    </div>
                   </div>
 
                   {/* CASH badges */}

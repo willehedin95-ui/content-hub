@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, RotateCcw, ChevronLeft, ChevronRight, Columns2, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { X, RotateCcw, ChevronLeft, ChevronRight, Columns2, ZoomIn, ZoomOut, Maximize2, Loader2 } from "lucide-react";
 import { SourceImage, Version, LANGUAGES } from "@/types";
 import QualityDetails from "./QualityDetails";
 
@@ -11,6 +11,8 @@ interface Props {
   onChangeLang: (lang: string | null) => void;
   onClose: () => void;
   onRetry: (translationId: string) => void;
+  onReroll?: (sourceImageId: string) => void;
+  rerollingId?: string | null;
   onPrev?: () => void;
   onNext?: () => void;
   currentIndex?: number;
@@ -23,6 +25,8 @@ export default function ImagePreviewModal({
   onChangeLang,
   onClose,
   onRetry,
+  onReroll,
+  rerollingId,
   onPrev,
   onNext,
   currentIndex,
@@ -162,6 +166,22 @@ export default function ImagePreviewModal({
                 <Maximize2 className="w-4 h-4" />
               </button>
             )}
+            {/* Re-roll button (only for AI-generated originals) */}
+            {isOriginal && onReroll && sourceImage.generation_style && (
+              <button
+                onClick={() => onReroll(sourceImage.id)}
+                disabled={rerollingId === sourceImage.id}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 ml-1"
+                title="Re-roll this image"
+              >
+                {rerollingId === sourceImage.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-3.5 h-3.5" />
+                )}
+                Re-roll
+              </button>
+            )}
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors ml-1">
               <X className="w-5 h-5" />
             </button>
@@ -251,6 +271,26 @@ export default function ImagePreviewModal({
         {/* Quality analysis for active version */}
         {activeVersion?.quality_score != null && (
           <QualityDetails version={activeVersion} />
+        )}
+
+        {/* Generation prompt (for AI-generated source images) */}
+        {isOriginal && sourceImage.generation_prompt && (
+          <div className="px-5 py-2 border-t border-gray-100 shrink-0">
+            <details className="group">
+              <summary className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+                <span className="group-open:hidden">Show generation prompt</span>
+                <span className="hidden group-open:inline">Hide generation prompt</span>
+                {sourceImage.generation_style && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-medium">
+                    {sourceImage.generation_style}
+                  </span>
+                )}
+              </summary>
+              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed whitespace-pre-wrap">
+                {sourceImage.generation_prompt}
+              </p>
+            </details>
+          </div>
         )}
 
         {/* Image — fixed container so layout doesn't shift between tabs */}

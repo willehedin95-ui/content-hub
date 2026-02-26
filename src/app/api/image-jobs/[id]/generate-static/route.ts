@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase";
 import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
+import type { StaticStyleId } from "@/lib/constants";
 import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
@@ -22,7 +23,13 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const count = Math.min(Math.max(body.count ?? 3, 1), STATIC_STYLES.length);
+  const validStyleIds = new Set<string>(STATIC_STYLES.map((s) => s.id));
+  const requestedStyles: StaticStyleId[] | undefined = Array.isArray(body.styles)
+    ? body.styles.filter((s: string) => validStyleIds.has(s)) as StaticStyleId[]
+    : undefined;
+  const count = requestedStyles?.length
+    ? Math.min(requestedStyles.length, STATIC_STYLES.length)
+    : Math.min(Math.max(body.count ?? 3, 1), STATIC_STYLES.length);
 
   const db = createServerSupabase();
 
@@ -96,6 +103,17 @@ export async function POST(
     if (seg) segment = seg as ProductSegment;
   }
 
+  // Fetch existing prompts for diversity (avoid repeating similar approaches on re-generate)
+  const { data: existingImages } = await db
+    .from("source_images")
+    .select("generation_prompt")
+    .eq("job_id", id)
+    .not("generation_prompt", "is", null);
+
+  const previousPrompts = (existingImages ?? [])
+    .map((i) => i.generation_prompt as string)
+    .filter(Boolean);
+
   // Step 1: Claude generates distinct image briefs
   let briefs;
   try {
@@ -107,6 +125,8 @@ export async function POST(
       segment,
       iterationContext: job.iteration_context ?? null,
       count,
+      styles: requestedStyles,
+      previousPrompts,
     });
   } catch (err) {
     return safeError(err, "Failed to generate image briefs");
@@ -148,6 +168,7 @@ export async function POST(
     label: string;
     style: string;
     reptileTriggers?: string[];
+    prompt: string;
   }> = [];
   const errors: string[] = [];
   let totalCost = claudeCost;
@@ -207,6 +228,8 @@ export async function POST(
           filename: `${brief.style}-${fileId.slice(0, 8)}.png`,
           processing_order: results.length,
           skip_translation: false,
+          generation_prompt: brief.prompt,
+          generation_style: brief.style,
         })
         .select()
         .single();
@@ -246,6 +269,7 @@ export async function POST(
         label,
         style: brief.style,
         reptileTriggers: brief.reptileTriggers,
+        prompt: brief.prompt,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";

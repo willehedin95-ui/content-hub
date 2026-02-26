@@ -139,6 +139,25 @@ function TranslationStatusBadge({ status }: { status: string }) {
   }
 }
 
+function ExpandablePrompt({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="px-1.5 py-1 border-t border-gray-100">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors w-full text-left"
+      >
+        {open ? "Hide prompt" : "Show prompt"}
+      </button>
+      {open && (
+        <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed whitespace-pre-wrap">
+          {prompt}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
@@ -188,15 +207,20 @@ export interface ConceptImagesStepProps {
   generateState?: {
     generating: boolean;
     count: number;
+    selectedStyles: string[];
     setCount: (n: number) => void;
+    setSelectedStyles: (styles: string[]) => void;
     segmentId: string | null;
     setSegmentId: (id: string | null) => void;
     segments: ProductSegment[];
     progress: string | null;
     error: string | null;
-    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
+    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[]; prompt?: string }> | null;
   };
   handleGenerateStatic?: () => void;
+  // Re-roll
+  onReroll?: (sourceImageId: string) => void;
+  rerollingId?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,6 +257,8 @@ export default function ConceptImagesStep({
   handleRetrySingle,
   generateState,
   handleGenerateStatic,
+  onReroll,
+  rerollingId,
 }: ConceptImagesStepProps) {
   // Show generate section when job has visual_direction and no source images yet
   const showGenerateSection = !!job.visual_direction && sourceImages.length === 0 && job.status !== "processing" && handleGenerateStatic;
@@ -247,52 +273,67 @@ export default function ConceptImagesStep({
             <h3 className="text-base font-semibold text-gray-900">Generate Static Ads</h3>
           </div>
 
-          <p className="text-sm text-gray-600 mb-4 leading-relaxed">
-            {job.visual_direction!.length > 200
-              ? job.visual_direction!.slice(0, 200) + "..."
-              : job.visual_direction}
-          </p>
-
-          <div className="flex items-center gap-4">
-            {/* Count selector */}
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Variations:</label>
-              <select
-                value={generateState.count}
-                onChange={(e) => generateState.setCount(Number(e.target.value))}
-                disabled={generateState.generating}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+          {/* Style picker */}
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+              Styles to generate
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {STATIC_STYLES.map((style) => {
+                const selected = generateState.selectedStyles.includes(style.id);
+                const isNative = style.id.startsWith("native-");
+                return (
+                  <button
+                    key={style.id}
+                    onClick={() => {
+                      const next = selected
+                        ? generateState.selectedStyles.filter((s) => s !== style.id)
+                        : [...generateState.selectedStyles, style.id];
+                      generateState.setSelectedStyles(next);
+                    }}
+                    disabled={generateState.generating}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                      selected
+                        ? isNative
+                          ? "bg-amber-50 border-amber-300 text-amber-700"
+                          : "bg-indigo-50 border-indigo-300 text-indigo-700"
+                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"
+                    } disabled:opacity-50`}
+                    title={style.description}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/styles/${style.id}.svg`} alt="" className="w-6 h-6 rounded object-cover" />
+                    {style.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {/* Cost estimate (Claude briefs ~$0.04 + Kie images) */}
-            <span className="text-sm text-gray-400">
-              ~${(0.04 + generateState.count * KIE_IMAGE_COST).toFixed(2)}
-            </span>
-
-            {/* Generate button */}
-            <button
-              onClick={handleGenerateStatic}
-              disabled={generateState.generating}
-              className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
-            >
-              {generateState.generating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Generate Static Ads
-                </>
+            <p className="text-xs text-gray-400 mt-1.5">
+              {generateState.selectedStyles.length} selected
+              {generateState.selectedStyles.length > 0 && (
+                <> &middot; ~${(0.04 + generateState.selectedStyles.length * KIE_IMAGE_COST).toFixed(2)}</>
               )}
-            </button>
+            </p>
           </div>
+
+          {/* Generate button */}
+          <button
+            onClick={handleGenerateStatic}
+            disabled={generateState.generating || generateState.selectedStyles.length === 0}
+            className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+          >
+            {generateState.generating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate {generateState.selectedStyles.length} Static Ad{generateState.selectedStyles.length !== 1 ? "s" : ""}
+              </>
+            )}
+          </button>
 
           {/* Progress */}
           {generateState.progress && (
@@ -331,6 +372,7 @@ export default function ConceptImagesStep({
                           {triggers.map(t => t!.label).join(" + ")}
                         </p>
                       )}
+                      {r.prompt && <ExpandablePrompt prompt={r.prompt} />}
                     </div>
                   );
                 })}
@@ -344,9 +386,9 @@ export default function ConceptImagesStep({
         <div className="space-y-4">
           <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Importing from Drive...
+            {job.visual_direction ? "Generating images..." : "Importing from Drive..."}
             {sourceImages.length > 0 && (
-              <span className="text-gray-500 ml-1">{sourceImages.length} imported</span>
+              <span className="text-gray-500 ml-1">{sourceImages.length} generated</span>
             )}
             <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
           </div>
@@ -378,8 +420,13 @@ export default function ConceptImagesStep({
           {/* Source images preview */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
-              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden relative group">
                 <div className="aspect-square bg-gray-50">
+                  {rerollingId === si.id && (
+                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                    </div>
+                  )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={si.original_url}
@@ -387,9 +434,20 @@ export default function ConceptImagesStep({
                     className="w-full h-full object-cover"
                   />
                 </div>
-                {si.filename && (
-                  <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>
-                )}
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  {si.filename && (
+                    <p className="text-xs text-gray-400 truncate flex-1">{si.filename}</p>
+                  )}
+                  {onReroll && si.generation_style && !rerollingId && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
+                      className="text-gray-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0"
+                      title="Re-roll this image"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

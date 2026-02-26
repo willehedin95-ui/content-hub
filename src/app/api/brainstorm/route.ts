@@ -103,6 +103,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Fetch rejected concepts for diversity
+  const { data: rejectedData } = await db
+    .from("rejected_concepts")
+    .select("angle, awareness_level, concept_description")
+    .eq("product", productSlug);
+
+  const rejectedConcepts = (rejectedData ?? []) as Array<{
+    angle: string | null;
+    awareness_level: string | null;
+    concept_description: string | null;
+  }>;
+
   // Build prompts
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
@@ -115,7 +127,8 @@ export async function POST(req: NextRequest) {
   const userPrompt = buildBrainstormUserPrompt(
     { ...body, count },
     segments,
-    existingConcepts
+    existingConcepts,
+    rejectedConcepts
   );
 
   try {

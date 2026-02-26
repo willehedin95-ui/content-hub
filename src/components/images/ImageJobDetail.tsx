@@ -11,6 +11,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
+import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 import ConceptStepper, { StepDef } from "./ConceptStepper";
@@ -105,15 +106,29 @@ export default function ImageJobDetail({ initialJob }: Props) {
     pageConfigs: MetaPageConfig[];
   } | null>(null);
 
+  // Re-roll state
+  const [rerollingId, setRerollingId] = useState<string | null>(null);
+
   // Static ad generation states
   const [genState, setGenState] = useState<{
     generating: boolean;
     count: number;
+    selectedStyles: string[];
     segmentId: string | null;
     progress: string | null;
     error: string | null;
-    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
-  }>({ generating: false, count: 3, segmentId: null, progress: null, error: null, results: null });
+    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[]; prompt?: string }> | null;
+  }>({ generating: false, count: 3, selectedStyles: [], segmentId: null, progress: null, error: null, results: null });
+
+  // Initialize selectedStyles from awareness level
+  useEffect(() => {
+    const level = (job.cash_dna as Record<string, unknown> | null)?.awareness_level as string | undefined;
+    if (level && AWARENESS_STYLE_MAP[level]) {
+      setGenState(prev => ({ ...prev, selectedStyles: [...AWARENESS_STYLE_MAP[level]] }));
+    } else {
+      setGenState(prev => ({ ...prev, selectedStyles: STATIC_STYLES.slice(0, 3).map(s => s.id) }));
+    }
+  }, [job.cash_dna]);
 
   // V3.3: Product segments for targeting
   const [productSegments, setProductSegments] = useState<ProductSegment[]>([]);
@@ -882,7 +897,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       const res = await fetch(`/api/image-jobs/${job.id}/generate-static`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: genState.count, segment_id: genState.segmentId }),
+        body: JSON.stringify({ styles: genState.selectedStyles, segment_id: genState.segmentId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -905,6 +920,30 @@ export default function ImageJobDetail({ initialJob }: Props) {
         progress: null,
         error: err instanceof Error ? err.message : "Generation failed",
       }));
+    }
+  }
+
+  // Re-roll a single source image
+  async function handleReroll(sourceImageId: string) {
+    if (rerollingId) return;
+    setRerollingId(sourceImageId);
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/re-roll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_image_id: sourceImageId }),
+      });
+      if (res.ok) {
+        await refreshJob();
+        // Close preview modal if the re-rolled image was being viewed
+        if (previewImage?.id === sourceImageId) {
+          setPreviewImage(null);
+        }
+      }
+    } catch (err) {
+      console.error("Re-roll failed:", err);
+    } finally {
+      setRerollingId(null);
     }
   }
 
@@ -1102,10 +1141,13 @@ export default function ImageJobDetail({ initialJob }: Props) {
           generateState={{
             ...genState,
             setCount: (n: number) => setGenState(prev => ({ ...prev, count: n })),
+            setSelectedStyles: (styles: string[]) => setGenState(prev => ({ ...prev, selectedStyles: styles })),
             setSegmentId: (id: string | null) => setGenState(prev => ({ ...prev, segmentId: id })),
             segments: productSegments,
           }}
           handleGenerateStatic={handleGenerateStatic}
+          onReroll={handleReroll}
+          rerollingId={rerollingId}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep
@@ -1167,6 +1209,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
             onChangeLang={setPreviewLang}
             onClose={() => setPreviewImage(null)}
             onRetry={(id) => { handleRetrySingle(id); }}
+            onReroll={previewImage.generation_style ? handleReroll : undefined}
+            rerollingId={rerollingId}
             onPrev={currentIdx > 0 ? () => { setPreviewImage(allImages[currentIdx - 1]); setPreviewLang(null); } : undefined}
             onNext={currentIdx < allImages.length - 1 ? () => { setPreviewImage(allImages[currentIdx + 1]); setPreviewLang(null); } : undefined}
             currentIndex={currentIdx}

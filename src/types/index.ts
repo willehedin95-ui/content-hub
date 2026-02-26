@@ -248,6 +248,8 @@ export interface SourceImage {
   processing_order: number | null;
   thumbnail_url: string | null;
   skip_translation: boolean;
+  generation_prompt: string | null;
+  generation_style: string | null;
   created_at: string;
   image_translations?: ImageTranslation[];
 }

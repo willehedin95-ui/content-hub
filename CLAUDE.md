@@ -86,6 +86,25 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **Page Swiper** (`/swiper`): Paste a competitor URL → Puppeteer fetches it → Claude (Anthropic) rewrites all copy for a selected product using product bank context → manual image replacement from product bank → save as new page in hub. Code: `src/lib/claude.ts` wraps Anthropic API with dynamic system prompt built from product bank data. Env var: `ANTHROPIC_API_KEY`.
 - **Settings**: Configurable quality threshold, default languages, economy mode, notification email, Kie AI credit balance, Meta Ads connection test
 
+## Hard constraints (NEVER do these)
+
+- **NEVER push to main without user confirmation** — The project auto-deploys to Vercel. An accidental push deploys broken code instantly.
+- **NEVER run `git add -A` or `git add .`** — Stage specific files only. This project has `.env` files, credentials, and large binaries that must never be committed.
+- **NEVER run multiple dev servers** — Always check `lsof -i :3000` before starting. Multiple servers cause system-wide slowdowns.
+- **NEVER guess API endpoints or parameters** — Read the actual code in `src/lib/` before making API calls. Meta, Supabase, Cloudflare, and Kie all have non-obvious behaviors.
+- **NEVER use the Supabase service role key for DDL** — It only supports PostgREST (data operations). Schema changes MUST go through the Management API.
+- **NEVER set `is_dynamic_creative` on an existing Meta ad set** — It can only be set at creation time. Meta silently ignores the update.
+- **NEVER skip `npm run build`** — Always verify the build passes before committing. TypeScript errors caught here prevent broken deploys.
+- **NEVER create files at the project root unless they're config files** — Components go in `src/components/`, utilities in `src/lib/`, types in `src/types/`.
+- **NEVER hardcode API tokens in source files** — All tokens live in `.env.local`. Reference via `process.env.VARIABLE_NAME`.
+- **NEVER modify the Supabase service role key or project URL** — These are shared infrastructure. If they look wrong, ask before changing.
+
+## Session continuity
+
+At the start of a session, check `.claude/journal/LATEST.md` and `.claude/tasks/backlog.md` for context from previous sessions. This prevents wasting time re-establishing what was already done.
+
+At the end of a session, run `/wrap-up` to commit code, journal what happened, and update memory.
+
 ## Product context
 
 The owner is a solopreneur running an ecommerce store (HappySleep, Hydro13 brands) selling to Norway and Denmark. A freelancer (Ron) creates English landing pages, static image ads, and ad copy. This hub is the internal tool for:

@@ -505,7 +505,8 @@ export function buildBrainstormSystemPrompt(
 export function buildBrainstormUserPrompt(
   request: BrainstormRequest,
   segments: ProductSegment[],
-  existingConcepts?: Array<{ name: string; angle: string; awareness: string }>
+  existingConcepts?: Array<{ name: string; angle: string; awareness: string }>,
+  rejectedConcepts?: Array<{ angle: string | null; awareness_level: string | null; concept_description: string | null }>
 ): string {
   const parts: string[] = [];
   const { mode, count } = request;
@@ -613,6 +614,20 @@ export function buildBrainstormUserPrompt(
   }
   if (request.focus_awareness) {
     parts.push(`**Target awareness level:** ${request.focus_awareness}`);
+  }
+
+  // Rejected concepts — avoid similar ideas
+  if (rejectedConcepts && rejectedConcepts.length > 0) {
+    parts.push(`\n### REJECTED CONCEPTS (avoid similar ideas — the user explicitly disliked these)`);
+    for (const rc of rejectedConcepts) {
+      const desc = [
+        rc.angle ? `Angle: ${rc.angle}` : null,
+        rc.awareness_level ? `Awareness: ${rc.awareness_level}` : null,
+        rc.concept_description ? `"${rc.concept_description}"` : null,
+      ].filter(Boolean).join(", ");
+      parts.push(`- ${desc}`);
+    }
+    parts.push("Do NOT generate concepts with similar angles, themes, or approaches to the rejected ones above.");
   }
 
   parts.push(
