@@ -33,8 +33,14 @@ export async function POST(
   const maxAds = body.max_ads ?? 20;
 
   try {
+    // Force image-only filter — videos can't be analyzed by AI
+    const scrapeUrl = brand.ad_library_url.replace(
+      /media_type=[^&]*/,
+      "media_type=image"
+    );
+
     // Run Apify scrape (blocking — waits for results)
-    const rawItems = await scrapeAndWait(brand.ad_library_url, maxAds);
+    const rawItems = await scrapeAndWait(scrapeUrl, maxAds);
 
     // Deduplicate
     const uniqueItems = deduplicateAds(rawItems, maxAds);
@@ -87,7 +93,7 @@ export async function POST(
 
     // Remove old non-bookmarked ads that weren't seen in this scrape
     const scrapedIds = uniqueItems.map((item) =>
-      (item.ad_archive_id?.toString() ?? item.id?.toString() ?? "")
+      (item.adArchiveID ?? item.adArchiveId ?? item.ad_archive_id ?? item.id)?.toString() ?? ""
     ).filter(Boolean);
 
     if (scrapedIds.length > 0) {

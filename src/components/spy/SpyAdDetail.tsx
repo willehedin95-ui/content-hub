@@ -4,8 +4,9 @@ import { useState } from "react";
 import { SpyAd } from "@/types";
 import {
   X, Bookmark, ExternalLink, Sparkles, Loader2,
-  Play, Globe, Calendar, Tag, MessageSquare, FileText
+  Play, Globe, Calendar, Tag, MessageSquare, FileText, Wand2
 } from "lucide-react";
+import ConceptGeneratorModal from "./ConceptGeneratorModal";
 
 interface Props {
   ad: SpyAd;
@@ -19,6 +20,7 @@ export default function SpyAdDetail({ ad, onClose, onBookmark, onNotesChange, on
   const [analyzing, setAnalyzing] = useState(false);
   const [notes, setNotes] = useState(ad.user_notes ?? "");
   const [notesTimeout, setNotesTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [showGenerator, setShowGenerator] = useState(false);
 
   const isVideo = ad.media_type === "video";
   const mediaSrc = ad.media_url || ad.thumbnail_url;
@@ -309,6 +311,17 @@ export default function SpyAdDetail({ ad, onClose, onBookmark, onNotesChange, on
             )}
           </div>
 
+          {/* Create Concept — only visible when CASH analysis exists */}
+          {analysis && (
+            <button
+              onClick={() => setShowGenerator(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors"
+            >
+              <Wand2 className="w-4 h-4" />
+              Create Concept from This Ad
+            </button>
+          )}
+
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Notes</label>
@@ -322,6 +335,12 @@ export default function SpyAdDetail({ ad, onClose, onBookmark, onNotesChange, on
           </div>
         </div>
       </div>
+
+      <ConceptGeneratorModal
+        open={showGenerator}
+        onClose={() => setShowGenerator(false)}
+        ad={ad}
+      />
     </div>
   );
 }
