@@ -96,7 +96,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
     pushResults: null,
   }));
 
-  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[] }>>([]);
+  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }>>([]);
   const [abTests, setAbTests] = useState<Array<{ id: string; name: string; slug: string; language: string; router_url: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
@@ -174,15 +174,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
       .then((results) => {
         // Deduplicate pages across languages
         const seenPages = new Set<string>();
-        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[] }> = [];
+        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }> = [];
         const seenTests = new Set<string>();
         const tests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }> = [];
         for (const data of results) {
           for (const t of data.pages ?? []) {
-            const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[] }).id;
+            const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }).id;
             if (!seenPages.has(pageId)) {
               seenPages.add(pageId);
-              pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[] });
+              pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string });
             }
           }
           for (const ab of data.abTests ?? []) {

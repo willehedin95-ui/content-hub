@@ -653,6 +653,7 @@ export interface ConceptProposal {
   };
   ad_copy_primary: string[];
   ad_copy_headline: string[];
+  native_headlines?: string[];
   visual_direction: string;
   differentiation_note: string;
   suggested_tags: string[];

@@ -616,6 +616,25 @@ export default function BrainstormPage() {
                     </div>
                   </div>
 
+                  {/* Native Headlines (unaware mode) */}
+                  {proposal.native_headlines && proposal.native_headlines.length > 0 && (
+                    <div className="mb-3">
+                      <label className="text-[10px] font-medium text-amber-600 uppercase tracking-wide mb-1 block">
+                        Native/Editorial Headlines
+                      </label>
+                      <ul className="space-y-0.5">
+                        {proposal.native_headlines.map((h, j) => (
+                          <li
+                            key={j}
+                            className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 border border-amber-200"
+                          >
+                            {h}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Primary text preview (expandable) */}
                   <div className="mb-3">
                     <button

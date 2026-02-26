@@ -45,6 +45,13 @@ export async function POST(req: NextRequest) {
       "brainstorm-generated",
     ];
 
+    // Merge native headlines into ad_copy_headline for unaware/native concepts
+    const regularHeadlines: string[] = proposal.ad_copy_headline ?? [];
+    const nativeHeadlines: string[] = proposal.native_headlines ?? [];
+    const allHeadlines = [...regularHeadlines, ...nativeHeadlines.filter(
+      (h: string) => !regularHeadlines.includes(h)
+    )];
+
     // Create the image_job
     const { data: job, error: jobErr } = await db
       .from("image_jobs")
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest) {
         tags,
         cash_dna: proposal.cash_dna,
         ad_copy_primary: proposal.ad_copy_primary,
-        ad_copy_headline: proposal.ad_copy_headline ?? [],
+        ad_copy_headline: allHeadlines,
         visual_direction: proposal.visual_direction ?? null,
         source_spy_ad_id: null,
       })

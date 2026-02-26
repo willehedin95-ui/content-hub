@@ -58,7 +58,7 @@ export interface ConceptAdCopyStepProps {
     matchedTab: string | null;
   };
   // Landing pages and AB tests
-  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[] }>;
+  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }>;
   abTests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }>;
   // Handlers
   handlePrimaryChange: (index: number, value: string) => void;
@@ -227,58 +227,79 @@ export default function ConceptAdCopyStep({
           <Globe className="w-4 h-4" />
           Website URL
         </label>
-        {landingPages.length > 0 || abTests.length > 0 ? (
-          <>
-            <select
-              value={metaPush.abTestId ? `abtest:${metaPush.abTestId}` : metaPush.landingPageId}
-              onChange={(e) => handleWebsiteUrlChange(e.target.value)}
-              className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">Select a destination...</option>
-              {landingPages.length > 0 && (
-                <optgroup label="Landing Pages">
-                  {[...landingPages]
-                    .sort((a, b) => {
-                      const conceptTags = new Set(job.tags ?? []);
-                      if (conceptTags.size === 0) return 0;
-                      const aOverlap = (a.tags ?? []).filter((t) => conceptTags.has(t)).length;
-                      const bOverlap = (b.tags ?? []).filter((t) => conceptTags.has(t)).length;
-                      return bOverlap - aOverlap;
-                    })
-                    .map((page) => {
-                      const overlap = (job.tags ?? []).filter((t) => (page.tags ?? []).includes(t));
-                      return (
-                        <option key={page.id} value={page.id}>
-                          {page.name}{overlap.length > 0 ? ` (${overlap.join(", ")})` : ""}
-                        </option>
-                      );
-                    })}
-                </optgroup>
-              )}
-              {abTests.length > 0 && (
-                <optgroup label="A/B Tests">
-                  {abTests.map((test) => (
-                    <option key={test.id} value={`abtest:${test.id}`}>
-                      {test.name} ({test.language.toUpperCase()})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            {metaPush.abTestId && (() => {
-              const selectedTest = abTests.find((t) => t.id === metaPush.abTestId);
-              return selectedTest ? (
-                <p className="text-xs text-gray-500 mt-1">
-                  AB test URL for {selectedTest.language.toUpperCase()}, regular page for other languages
+        {(() => {
+          const isNative = (job.cash_dna as { awareness_level?: string } | null)?.awareness_level === "Unaware" ||
+            (job.tags ?? []).some((t) => t === "unaware" || t === "native");
+          const hasAdvertorials = landingPages.some((p) => p.page_type === "advertorial");
+
+          return landingPages.length > 0 || abTests.length > 0 ? (
+            <>
+              {isNative && (
+                <p className="text-xs text-amber-600 mb-1.5">
+                  {hasAdvertorials
+                    ? "Advertorial pages are recommended for native/unaware ads — they convert 3-4x better than direct product pages."
+                    : "Tip: Native ads convert best with advertorial landing pages. Consider creating one for this product."}
                 </p>
-              ) : null;
-            })()}
-          </>
-        ) : (
-          <p className="text-sm text-gray-400">
-            No published pages or active A/B tests found
-          </p>
-        )}
+              )}
+              <select
+                value={metaPush.abTestId ? `abtest:${metaPush.abTestId}` : metaPush.landingPageId}
+                onChange={(e) => handleWebsiteUrlChange(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">Select a destination...</option>
+                {landingPages.length > 0 && (
+                  <optgroup label={isNative && hasAdvertorials ? "Landing Pages (advertorials first)" : "Landing Pages"}>
+                    {[...landingPages]
+                      .sort((a, b) => {
+                        // For native/unaware concepts, sort advertorials first
+                        if (isNative) {
+                          const aIsAdv = a.page_type === "advertorial" ? 1 : 0;
+                          const bIsAdv = b.page_type === "advertorial" ? 1 : 0;
+                          if (bIsAdv !== aIsAdv) return bIsAdv - aIsAdv;
+                        }
+                        // Then sort by tag overlap
+                        const conceptTags = new Set(job.tags ?? []);
+                        if (conceptTags.size === 0) return 0;
+                        const aOverlap = (a.tags ?? []).filter((t) => conceptTags.has(t)).length;
+                        const bOverlap = (b.tags ?? []).filter((t) => conceptTags.has(t)).length;
+                        return bOverlap - aOverlap;
+                      })
+                      .map((page) => {
+                        const overlap = (job.tags ?? []).filter((t) => (page.tags ?? []).includes(t));
+                        const advLabel = isNative && page.page_type === "advertorial" ? " ★" : "";
+                        return (
+                          <option key={page.id} value={page.id}>
+                            {page.name}{advLabel}{overlap.length > 0 ? ` (${overlap.join(", ")})` : ""}
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                )}
+                {abTests.length > 0 && (
+                  <optgroup label="A/B Tests">
+                    {abTests.map((test) => (
+                      <option key={test.id} value={`abtest:${test.id}`}>
+                        {test.name} ({test.language.toUpperCase()})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {metaPush.abTestId && (() => {
+                const selectedTest = abTests.find((t) => t.id === metaPush.abTestId);
+                return selectedTest ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    AB test URL for {selectedTest.language.toUpperCase()}, regular page for other languages
+                  </p>
+                ) : null;
+              })()}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              No published pages or active A/B tests found
+            </p>
+          );
+        })()}
       </div>
 
       {/* Translate Copy section */}

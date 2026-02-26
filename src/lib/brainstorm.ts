@@ -428,16 +428,40 @@ For unaware ads, visual direction should prioritize NATIVE-LOOKING imagery:
 - AVOID polished product shots, lifestyle glamour, anything that "looks like an ad"
 - Images should create a curiosity gap and trigger involuntary attention
 
+Visual direction MUST specify which of the 3 native image types to use:
+1. native-medical — anatomical diagrams, medical illustrations, cellular close-ups
+2. native-closeup — raw skin textures, swollen joints, uncomfortable body close-ups
+3. native-messy — cluttered medicine cabinets, messy bedside tables, real-life bathroom shelves
+
+## NATIVE HEADLINE FORMULAS
+
+Generate editorial-style headlines that read like news articles, not ads. Use these proven formulas:
+- "The [unexpected] reason [common symptom] gets worse after [age]"
+- "The forgotten [noun] that [surprising benefit/discovery]"
+- "[Authority/Study] finally admits what [outsider group] knew all along"
+- "If you [common behavior], your [body part/system] is already [alarming state]"
+- "The concerning reason [symptom] is [consequence] (not what your doctor says)"
+
+Examples:
+- "The concerning reason joint pain gets worse for mums after 40"
+- "The forgotten reason falling asleep gets harder after 50"
+- "Doctors are finally admitting what chiropractors knew all along"
+- "If you need coffee to wake up, your mitochondria are already failing"
+
 ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replace(
   '"awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware"',
   '"awareness_level": "Unaware"'
+).replace(
+  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],',
+  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like news article titles, NOT ad headlines"],'
 )}
 
 ADDITIONAL RULES FOR UNAWARE CONCEPTS:
 - Each proposal must specify which unaware ad type it uses (Straddle, Symptom, Worldview Porn, or Story)
 - Include the unaware type in suggested_tags (e.g., ["unaware", "straddle", "native"])
 - Hooks must NOT mention the product name — lead with curiosity or emotional energy
-- Visual direction should describe native/editorial-style imagery, not polished ad creative
+- Visual direction should describe native/editorial-style imagery and specify which native image type (native-medical, native-closeup, or native-messy) fits best
+- native_headlines MUST use the editorial formulas above — they will be overlaid on native-style images
 - Destination should be implied as advertorial/educational content, not direct product page`;
 }
 

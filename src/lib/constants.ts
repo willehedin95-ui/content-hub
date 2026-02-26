@@ -26,7 +26,9 @@ export const STATIC_STYLES = [
   { id: "bold-statement", label: "Bold Statement", description: "Large bold typography dominates, one powerful claim, minimal background visual" },
   { id: "before-after", label: "Before/After", description: "Split composition showing transformation contrast — pain state vs dream state" },
   { id: "social-proof", label: "Social Proof", description: "Product or lifestyle image with testimonial overlay boxes and review quotes" },
-  { id: "ugly-ad", label: "Ugly Ad", description: "Raw text on plain background, intentionally undesigned, looks like organic content not an ad" },
+  { id: "native-medical", label: "Medical Illustration", description: "Anatomical cross-sections, medical diagrams, microscope close-ups — looks like it belongs next to a WebMD article" },
+  { id: "native-closeup", label: "Uncomfortable Close-up", description: "Raw skin textures, swollen joints, body close-ups that trigger involuntary attention — mild disgust stops the scroll" },
+  { id: "native-messy", label: "Messy Real-Life", description: "Cluttered medicine cabinet, messy bedside table with supplements, kitchen counter with health products — relatable, not aspirational" },
   { id: "comparison", label: "Comparison", description: "Side-by-side showing your product vs generic alternative, with clear advantage callouts" },
 ] as const;
 
@@ -34,8 +36,8 @@ export type StaticStyleId = (typeof STATIC_STYLES)[number]["id"];
 
 // V3.1: Awareness level → preferred styles (ordered by relevance)
 export const AWARENESS_STYLE_MAP: Record<string, StaticStyleId[]> = {
-  "Unaware":        ["ugly-ad", "bold-statement", "before-after"],
-  "Problem Aware":  ["before-after", "bold-statement", "ugly-ad", "social-proof"],
+  "Unaware":        ["native-medical", "native-closeup", "native-messy", "bold-statement"],
+  "Problem Aware":  ["before-after", "bold-statement", "native-messy", "social-proof"],
   "Solution Aware": ["comparison", "before-after", "social-proof", "product-hero"],
   "Product Aware":  ["social-proof", "product-hero", "comparison"],
   "Most Aware":     ["product-hero", "social-proof"],

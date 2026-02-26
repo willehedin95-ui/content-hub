@@ -162,8 +162,10 @@ function getPreferredCategories(style: StaticStyleId): string[] {
       return ["before-after", "hero"];
     case "social-proof":
       return ["lifestyle", "hero"];
-    case "ugly-ad":
-      return [];
+    case "native-medical":
+    case "native-closeup":
+    case "native-messy":
+      return []; // Native styles should NOT reference product images
     case "comparison":
       return ["hero", "detail"];
     default:
@@ -183,17 +185,29 @@ Your job is to create distinct IMAGE BRIEFS that will be fed into an AI image ge
 - bold-statement: Large bold typography dominates the frame. One powerful claim. Minimal background visual — the text IS the ad. Dark or contrasting backgrounds.
 - before-after: Split composition showing transformation contrast. Left side: pain state (dark, frustrating). Right side: dream state (bright, aspirational). Clear visual divider.
 - social-proof: Product or lifestyle background with overlaid testimonial boxes that look like real reviews or social media comments. Names, ages, specific results.
-- ugly-ad: Raw text on plain background (white, light gray, or yellow). Intentionally undesigned — looks like a text post or note, not an ad. No product images. Just compelling copy that stops the scroll.
+- native-medical: Medical/anatomical illustration style. Cross-section diagrams, cellular close-ups, anatomical overlays, microscope-style imagery. Must look EDITORIAL — like an image from a health article on WebMD or Mayo Clinic, not an ad. Text overlay should use clean serif or sans-serif font, styled as an article headline. NO product, NO branding. The image should feel educational and slightly clinical.
+- native-closeup: Uncomfortable, raw close-up photography. Skin textures (dry, cracked, inflamed), joint details, body parts showing wear. Shot like documentary or medical photography with harsh clinical lighting, no flattering angles. The image should trigger involuntary attention — mild disgust is a powerful scroll-stopper. NO product, NO branding. Think "this makes me look twice even though I don't want to."
+- native-messy: Real-life messy environment photography. Cluttered medicine cabinet, bedside table covered in supplement bottles, kitchen counter with health products mixed with daily life. Shot candid — like someone snapped a photo of their own mess. Warm, natural lighting, slightly cluttered composition. Must feel relatable and authentic, not staged. NO product, NO branding.
 - comparison: Side-by-side split showing "their product" (generic, dull) vs "our product" (premium, effective). Clear visual hierarchy favoring our product.
 
 ## Awareness Level → Style Rules:
 If an awareness level is specified in the CASH DNA, you MUST prioritize styles from the preferred list for that level:
-- Unaware: ugly-ad, bold-statement (pattern interrupt — must NOT look like an ad)
-- Problem Aware: before-after, bold-statement, ugly-ad (show the pain → dream transformation)
+- Unaware: native-medical, native-closeup, native-messy, bold-statement (pattern interrupt — must NOT look like an ad, must look like editorial/native content)
+- Problem Aware: before-after, bold-statement, native-messy (show the pain → dream transformation)
 - Solution Aware: comparison, before-after, social-proof (differentiate the product)
 - Product Aware: social-proof, product-hero (build trust, close the deal)
 - Most Aware: product-hero, social-proof (they just need a reason to buy now)
 Use ONLY the styles listed in "STYLES TO USE" — they are already filtered for the awareness level.
+
+## NATIVE STYLE RULES (for native-medical, native-closeup, native-messy):
+- referenceStrategy MUST be "none" — native ads are generated purely from the prompt, never from product images
+- Hook text should read like an editorial headline, NOT an ad headline. Use formulas like:
+  "The [unexpected] reason [symptom] gets worse after [age]"
+  "The forgotten [noun] that [surprising benefit]"
+  "[Authority] finally admits what [outsider group] knew all along"
+  "If you [common behavior], your [body part] is already [alarming state]"
+- The image should pass the "Is this an ad?" test — if it looks like an ad, it's wrong
+- Composition should feel like it was pulled from a news article, medical journal, or someone's camera roll
 
 ## Reptile Triggers (scroll-stopping visual psychology):
 For EACH brief, assign 1-2 reptile triggers that hijack the primitive brain and stop the scroll. Weave the trigger INTO the prompt as concrete visual detail — don't just label it.
@@ -218,7 +232,9 @@ Natural pairings (suggestions, not rules):
 - bold-statement pairs well with: primal-fear, odd-contrast
 - before-after pairs well with: suffering, time-warp, victory-lap
 - social-proof pairs well with: selfie, inside-joke, victory-lap
-- ugly-ad pairs well with: inside-joke, voyeur
+- native-medical pairs well with: ultra-real, gorey, bizarre
+- native-closeup pairs well with: suffering, gorey, voyeur
+- native-messy pairs well with: voyeur, inside-joke
 - comparison pairs well with: odd-contrast, ultra-real
 
 ## Prompt Engineering Rules (CRITICAL — follow exactly):
@@ -234,7 +250,7 @@ For each brief, specify a referenceStrategy:
 - "product" — use product images as reference (for product-hero, comparison styles)
 - "spy-ad" — use the competitor's ad image as style reference (to adapt their visual approach)
 - "both" — combine product and competitor references
-- "none" — generate purely from text description (for ugly-ad, bold-statement styles)
+- "none" — generate purely from text description (REQUIRED for native-medical, native-closeup, native-messy; also for bold-statement)
 
 ## Output Format:
 Return ONLY a JSON array of briefs. No markdown, no explanation, no preamble:
@@ -359,6 +375,18 @@ function buildBriefUserPrompt(opts: {
   if (opts.hasSpyAdImage) lines.push(`- Competitor ad image (for style reference)`);
   if (opts.hasProductImages) lines.push(`- Product images (categories: ${opts.productImageCategories.join(", ")})`);
   if (!opts.hasSpyAdImage && !opts.hasProductImages) lines.push(`- None available`);
+
+  // Native ad special instructions for Unaware concepts
+  const isNativeConcept = opts.cashDna?.awareness_level === "Unaware" ||
+    opts.styles.some((s) => s.startsWith("native-"));
+  if (isNativeConcept) {
+    lines.push(`\nNATIVE AD INSTRUCTIONS (this is an Unaware/native concept):`);
+    lines.push(`- For native-* styles, the hook text MUST read like an editorial headline, NOT an ad headline`);
+    lines.push(`- Use headline formulas: "The [unexpected] reason [symptom] gets worse after [age]", "The forgotten [noun] that [benefit]", "[Authority] finally admits what [group] knew all along"`);
+    lines.push(`- Images must pass the "Is this an ad?" test — if it looks like an ad, it fails`);
+    lines.push(`- referenceStrategy MUST be "none" for all native-* styles`);
+    lines.push(`- Think WebMD articles, medical textbooks, someone's messy bathroom photo — NOT polished advertising`);
+  }
 
   lines.push(`\nRemember: each brief must produce a GENUINELY DIFFERENT looking ad. Vary the composition, color palette, text placement, and visual approach. Follow the prompt engineering rules strictly. Each brief MUST include 1-2 reptile triggers woven into the visual prompt.`);
 
