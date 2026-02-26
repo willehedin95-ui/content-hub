@@ -96,19 +96,35 @@ Be specific and decisive — pick the BEST matching value.`;
     { role: "system", content: systemPrompt },
   ];
 
-  // For image ads, include the image via vision
+  // For image ads, download and send as base64 (Facebook CDN URLs aren't accessible to OpenAI)
   if (ad.media_type === "image" && (ad.media_url || ad.thumbnail_url)) {
     const imageUrl = ad.media_url || ad.thumbnail_url;
-    messages.push({
-      role: "user",
-      content: [
-        { type: "text", text: parts.join("\n") },
-        {
-          type: "image_url",
-          image_url: { url: imageUrl, detail: "low" },
-        },
-      ],
-    });
+    let imageDataUrl: string | null = null;
+    try {
+      const imgRes = await fetch(imageUrl);
+      if (imgRes.ok) {
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+        imageDataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
+      }
+    } catch {
+      // Fall back to text-only analysis if image download fails
+    }
+
+    if (imageDataUrl) {
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: parts.join("\n") },
+          {
+            type: "image_url",
+            image_url: { url: imageDataUrl, detail: "low" },
+          },
+        ],
+      });
+    } else {
+      messages.push({ role: "user", content: parts.join("\n") });
+    }
   } else {
     messages.push({ role: "user", content: parts.join("\n") });
   }

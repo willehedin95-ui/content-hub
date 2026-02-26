@@ -30,7 +30,7 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const maxAds = body.max_ads ?? 20;
+  const maxAds = body.max_ads ?? 50;
 
   try {
     // Force image-only filter — videos can't be analyzed by AI

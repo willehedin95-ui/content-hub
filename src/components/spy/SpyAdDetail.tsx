@@ -213,7 +213,7 @@ export default function SpyAdDetail({ ad, onClose, onBookmark, onNotesChange, on
                 <Sparkles className="w-4 h-4 text-violet-600" />
                 <span className="text-sm font-semibold text-gray-800">CASH Analysis</span>
               </div>
-              {!analysis && (
+              {!analysis && ad.media_type === "image" && (
                 <button
                   onClick={handleAnalyze}
                   disabled={analyzing}
@@ -306,7 +306,11 @@ export default function SpyAdDetail({ ad, onClose, onBookmark, onNotesChange, on
               </div>
             ) : (
               <div className="px-4 py-6 text-center text-sm text-gray-400">
-                {analyzing ? "Running AI analysis..." : "Not analyzed yet. Click \"Analyze\" to run CASH analysis."}
+                {analyzing
+                  ? "Running AI analysis..."
+                  : ad.media_type !== "image"
+                    ? "AI analysis is only available for image ads."
+                    : "Not analyzed yet. Click \"Analyze\" to run CASH analysis."}
               </div>
             )}
           </div>

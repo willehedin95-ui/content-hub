@@ -45,7 +45,20 @@ export async function scrapeAndWait(
     .dataset(run.defaultDatasetId)
     .listItems();
 
-  return items as unknown as ApifyAdItem[];
+  // Apify now returns page-level wrapper objects with ads inside `results[]`.
+  // Flatten: if items have a `results` array, extract the ads from there.
+  const flatItems: ApifyAdItem[] = [];
+  for (const item of items) {
+    const raw = item as Record<string, unknown>;
+    if (Array.isArray(raw.results) && raw.results.length > 0) {
+      flatItems.push(...(raw.results as ApifyAdItem[]));
+    } else if (raw.adArchiveID || raw.adArchiveId || raw.ad_archive_id || raw.snapshot) {
+      // Already a flat ad item (legacy format)
+      flatItems.push(raw as unknown as ApifyAdItem);
+    }
+  }
+
+  return flatItems;
 }
 
 /**
@@ -71,7 +84,19 @@ export async function getDatasetItems(
 ): Promise<ApifyAdItem[]> {
   const client = getClient();
   const { items } = await client.dataset(datasetId).listItems();
-  return items as unknown as ApifyAdItem[];
+
+  // Flatten page-level wrappers (same as scrapeAndWait)
+  const flatItems: ApifyAdItem[] = [];
+  for (const item of items) {
+    const raw = item as Record<string, unknown>;
+    if (Array.isArray(raw.results) && raw.results.length > 0) {
+      flatItems.push(...(raw.results as ApifyAdItem[]));
+    } else if (raw.adArchiveID || raw.adArchiveId || raw.ad_archive_id || raw.snapshot) {
+      flatItems.push(raw as unknown as ApifyAdItem);
+    }
+  }
+
+  return flatItems;
 }
 
 // --- Types for Apify response ---
@@ -163,22 +188,56 @@ export function normalizeApifyAd(
     resizedImageUrl?: string;
   }>) ?? [];
 
+  // DCO/carousel ads store actual creatives in snapshot.cards[]
+  const snapCards = (snap.cards as Array<{
+    body?: string;
+    title?: string;
+    ctaText?: string;
+    ctaType?: string;
+    linkUrl?: string;
+    linkDescription?: string;
+    originalImageUrl?: string;
+    resizedImageUrl?: string;
+    videoHdUrl?: string;
+    videoSdUrl?: string;
+    videoPreviewImageUrl?: string;
+  }>) ?? [];
+  const firstCard = snapCards[0] ?? null;
+
   // Ad ID — current format uses adArchiveID (camelCase)
   const metaAdId =
     (item.adArchiveID ?? item.adArchiveId ?? item.ad_archive_id ?? item.id)?.toString()
     ?? `unknown-${rank}`;
 
-  // Creative content — try snapshot fields first, fall back to legacy flat fields
+  // Helper: detect template placeholders like {{product.name}}
+  const isTemplate = (s: string | null | undefined) => s != null && /\{\{.*\}\}/.test(s);
+
+  // Creative content — try snapshot fields first, fall back to cards, then legacy
+  const rawTitle = snap.title as string | undefined;
   const headline =
-    (snap.title as string) ?? item.ad_creative_link_title ?? item.title ?? item.headline ?? null;
+    (!isTemplate(rawTitle) ? rawTitle : null)
+    ?? firstCard?.title
+    ?? item.ad_creative_link_title ?? item.title ?? item.headline ?? null;
+
+  const rawBody = snapBody?.text;
   const body =
-    snapBody?.text ?? item.ad_creative_body ?? item.body ?? null;
+    (!isTemplate(rawBody) ? rawBody : null)
+    ?? firstCard?.body
+    ?? item.ad_creative_body ?? item.body ?? null;
+
+  const rawDesc = snap.linkDescription as string | undefined;
   const description =
-    (snap.linkDescription as string) ?? item.ad_creative_link_description ?? item.description ?? null;
+    (!isTemplate(rawDesc) ? rawDesc : null)
+    ?? firstCard?.linkDescription
+    ?? item.ad_creative_link_description ?? item.description ?? null;
+
   const linkUrl =
-    (snap.linkUrl as string) ?? item.link_url ?? null;
+    (snap.linkUrl as string) ?? firstCard?.linkUrl ?? item.link_url ?? null;
+
   const ctaType =
-    (snap.ctaText as string) ?? (snap.ctaType as string) ?? item.cta_text ?? item.cta_type ?? null;
+    (snap.ctaText as string) ?? (snap.ctaType as string)
+    ?? firstCard?.ctaText ?? firstCard?.ctaType
+    ?? item.cta_text ?? item.cta_type ?? null;
 
   // Media — determine type and extract URLs
   let mediaType: string | null = null;
@@ -188,17 +247,20 @@ export function normalizeApifyAd(
   // Current format: snapshot.displayFormat tells us the type
   const displayFormat = (snap.displayFormat as string)?.toUpperCase();
 
-  // Videos — current format uses camelCase keys inside snapshot.videos[]
+  // Videos — current format uses camelCase keys inside snapshot.videos[] or cards[]
   const videoUrl =
     snapVideos[0]?.videoHdUrl ?? snapVideos[0]?.videoSdUrl ??
+    firstCard?.videoHdUrl ?? firstCard?.videoSdUrl ??
     item.video_url ?? item.videos?.[0]?.video_url ?? null;
   const videoThumb =
     snapVideos[0]?.videoPreviewImageUrl ??
+    firstCard?.videoPreviewImageUrl ??
     item.video_thumbnail_url ?? item.videos?.[0]?.thumbnail_url ?? null;
 
-  // Images — current format uses originalImageUrl / resizedImageUrl
+  // Images — current format uses originalImageUrl / resizedImageUrl or cards[]
   const imageUrl =
     snapImages[0]?.originalImageUrl ?? snapImages[0]?.resizedImageUrl ??
+    firstCard?.originalImageUrl ?? firstCard?.resizedImageUrl ??
     item.image_url ?? item.images?.[0]?.original_image_url ?? item.images?.[0]?.url ??
     item.thumbnail_url ?? null;
 
@@ -206,12 +268,15 @@ export function normalizeApifyAd(
     mediaType = "video";
     mediaUrl = videoUrl;
     thumbnailUrl = videoThumb ?? imageUrl;
-  } else if (displayFormat === "IMAGE" || imageUrl) {
+  } else if (imageUrl) {
+    // If we have an image URL, it's an image ad (even if displayFormat says DCO)
     mediaType = "image";
     mediaUrl = imageUrl;
     thumbnailUrl = imageUrl;
   } else if (displayFormat === "DCO") {
     mediaType = "dco";
+  } else if (displayFormat === "IMAGE") {
+    mediaType = "image";
   }
 
   // Snapshot URL (legacy format)
@@ -265,10 +330,9 @@ export function normalizeApifyAd(
 }
 
 /**
- * 3-pass deduplication of Apify results.
+ * 2-pass deduplication of Apify results.
  * 1. Dedupe by meta_ad_id (exact duplicates)
  * 2. Dedupe by media_url (same creative, different ad ID)
- * 3. Dedupe by headline (A/B test variations)
  * Returns top `maxAds` unique ads.
  */
 export function deduplicateAds(
@@ -286,16 +350,18 @@ export function deduplicateAds(
     }
   }
 
-  // Pass 2: by media URL (handles both snapshot and legacy formats)
+  // Pass 2: by media URL (handles snapshot, cards, and legacy formats)
   const seenMedia = new Set<string>();
   const pass2: ApifyAdItem[] = [];
   for (const item of pass1) {
     const snap = (item.snapshot as Record<string, unknown>) ?? {};
     const snapVideos = (snap.videos as Array<{ videoHdUrl?: string }>) ?? [];
     const snapImages = (snap.images as Array<{ originalImageUrl?: string }>) ?? [];
+    const snapCards = (snap.cards as Array<{ originalImageUrl?: string; videoHdUrl?: string }>) ?? [];
     const url =
       snapVideos[0]?.videoHdUrl ??
       snapImages[0]?.originalImageUrl ??
+      snapCards[0]?.originalImageUrl ?? snapCards[0]?.videoHdUrl ??
       item.video_url ??
       item.image_url ??
       item.images?.[0]?.original_image_url ??
@@ -307,22 +373,5 @@ export function deduplicateAds(
     }
   }
 
-  // Pass 3: by headline (handles both snapshot.title and legacy fields)
-  const seenHeadlines = new Set<string>();
-  const pass3: ApifyAdItem[] = [];
-  for (const item of pass2) {
-    const snap = (item.snapshot as Record<string, unknown>) ?? {};
-    const h = (
-      (snap.title as string) ?? item.ad_creative_link_title ?? item.title ?? item.headline ?? ""
-    )
-      .toString()
-      .trim()
-      .toLowerCase();
-    if (!h || !seenHeadlines.has(h)) {
-      if (h) seenHeadlines.add(h);
-      pass3.push(item);
-    }
-  }
-
-  return pass3.slice(0, maxAds);
+  return pass2.slice(0, maxAds);
 }
