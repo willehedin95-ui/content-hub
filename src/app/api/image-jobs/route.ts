@@ -8,6 +8,18 @@ import { safeError } from "@/lib/api-error";
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
   const url = new URL(req.url);
+  // V3.4: If iteration_of filter provided, return lightweight child list
+  const iterationOf = url.searchParams.get("iteration_of");
+  if (iterationOf) {
+    const { data, error: iterErr } = await db
+      .from("image_jobs")
+      .select("id, name, iteration_type, iteration_of, created_at")
+      .eq("iteration_of", iterationOf)
+      .order("created_at", { ascending: true });
+    if (iterErr) return safeError(iterErr, "Failed to fetch iterations");
+    return NextResponse.json(data ?? []);
+  }
+
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "20", 10)));
   const offset = (page - 1) * limit;

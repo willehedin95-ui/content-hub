@@ -105,6 +105,7 @@ export async function POST(
       productImages: allProductImages,
       spyAd,
       segment,
+      iterationContext: job.iteration_context ?? null,
       count,
     });
   } catch (err) {

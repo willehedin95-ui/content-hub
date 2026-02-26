@@ -201,6 +201,7 @@ export interface CashDna {
 
 export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed";
 export type ImageTranslationStatus = "pending" | "processing" | "completed" | "failed";
+export type IterationType = "segment_swap" | "mechanism_swap" | "cash_swap";
 
 export interface ImageJob {
   id: string;
@@ -224,6 +225,9 @@ export interface ImageJob {
   cash_dna?: CashDna | null;
   visual_direction?: string | null;
   source_spy_ad_id?: string | null;
+  iteration_of?: string | null;
+  iteration_type?: IterationType | null;
+  iteration_context?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];

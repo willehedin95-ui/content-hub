@@ -8,6 +8,7 @@ import {
   RotateCcw,
   RefreshCw,
   ExternalLink,
+  GitBranch,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { getSettings } from "@/lib/settings";
@@ -18,6 +19,7 @@ import ConceptImagesStep from "./ConceptImagesStep";
 import ConceptAdCopyStep from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
 import CashDnaEditor from "./CashDnaEditor";
+import IterationDialog from "./IterationDialog";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -116,6 +118,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
   // V3.3: Product segments for targeting
   const [productSegments, setProductSegments] = useState<ProductSegment[]>([]);
 
+  // V3.4: Iteration dialog + lineage
+  const [showIterateDialog, setShowIterateDialog] = useState(false);
+  const [parentJob, setParentJob] = useState<{ id: string; name: string } | null>(null);
+  const [childJobs, setChildJobs] = useState<Array<{ id: string; name: string; iteration_type: string }>>([]);
+
   // Doc fetch states
   const [doc, setDoc] = useState<{
     fetching: boolean;
@@ -207,6 +214,33 @@ export default function ImageJobDetail({ initialJob }: Props) {
       })
       .catch(() => {});
   }, [initialJob.product]);
+
+  // V3.4: Fetch parent job if this is an iteration
+  useEffect(() => {
+    if (!initialJob.iteration_of) return;
+    fetch(`/api/image-jobs/${initialJob.iteration_of}?compact=true`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.id && data?.name) setParentJob({ id: data.id, name: data.name });
+      })
+      .catch(() => {});
+  }, [initialJob.iteration_of]);
+
+  // V3.4: Fetch child iterations of this job
+  useEffect(() => {
+    fetch(`/api/image-jobs?iteration_of=${initialJob.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setChildJobs(data.map((j: { id: string; name: string; iteration_type: string }) => ({
+            id: j.id,
+            name: j.name,
+            iteration_type: j.iteration_type,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, [initialJob.id]);
 
   // Fetch existing deployments for this concept
   const fetchDeployments = useCallback(async () => {
@@ -934,6 +968,39 @@ export default function ImageJobDetail({ initialJob }: Props) {
           <div className="mt-2">
             <EditableTags entityId={job.id} entityType="image-job" initialTags={job.tags ?? []} />
           </div>
+          {/* V3.4: Lineage — parent link */}
+          {parentJob && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
+              <GitBranch className="w-3 h-3" />
+              <span>Iteration of</span>
+              <Link href={`/images/${parentJob.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
+                {parentJob.name}
+              </Link>
+              {job.iteration_type && (
+                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium">
+                  {job.iteration_type.replace("_", " ")}
+                </span>
+              )}
+            </div>
+          )}
+          {/* V3.4: Lineage — child iterations */}
+          {childJobs.length > 0 && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
+              <GitBranch className="w-3 h-3" />
+              <span>Iterations:</span>
+              {childJobs.map((child, i) => (
+                <span key={child.id}>
+                  <Link href={`/images/${child.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                    {child.name}
+                  </Link>
+                  <span className="px-1 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium ml-0.5">
+                    {child.iteration_type.replace("_", " ")}
+                  </span>
+                  {i < childJobs.length - 1 && <span className="mx-1">&middot;</span>}
+                </span>
+              ))}
+            </div>
+          )}
           {/* Linked page / AB test */}
           {(job.landing_page_id || job.ab_test_id) && (() => {
             const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
@@ -956,14 +1023,27 @@ export default function ImageJobDetail({ initialJob }: Props) {
             );
           })()}
         </div>
-        <button
-          onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}
-          disabled={proc.refreshing}
-          className="text-gray-400 hover:text-gray-700 p-2 transition-colors disabled:opacity-50"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1">
+          {/* V3.4: Iterate button — show when concept has source images */}
+          {sourceImages.length > 0 && (
+            <button
+              onClick={() => setShowIterateDialog(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+              title="Create iteration of this concept"
+            >
+              <GitBranch className="w-3.5 h-3.5" />
+              Iterate
+            </button>
+          )}
+          <button
+            onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}
+            disabled={proc.refreshing}
+            className="text-gray-400 hover:text-gray-700 p-2 transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* CASH DNA */}
@@ -1064,6 +1144,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
             });
             setJob(prev => ({ ...prev, marked_ready_at: now }));
           }}
+        />
+      )}
+
+      {/* V3.4: Iteration dialog */}
+      {showIterateDialog && (
+        <IterationDialog
+          job={job}
+          segments={productSegments}
+          onClose={() => setShowIterateDialog(false)}
         />
       )}
 

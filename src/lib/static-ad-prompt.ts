@@ -52,9 +52,10 @@ export async function generateImageBriefs(options: {
   productImages: Array<{ url: string; category: string }>;
   spyAd?: { media_url?: string; cash_analysis?: unknown } | null;
   segment?: ProductSegment | null;
+  iterationContext?: Record<string, unknown> | null;
   count: number;
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
-  const { job, product, spyAd, segment, count } = options;
+  const { job, product, spyAd, segment, iterationContext, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
   const hooks = cashDna?.hooks ?? [];
   const headlines = job.ad_copy_headline ?? [];
@@ -82,6 +83,7 @@ export async function generateImageBriefs(options: {
     hasProductImages: options.productImages.length > 0,
     productImageCategories: [...new Set(options.productImages.map((pi) => pi.category))],
     segment: segment ?? null,
+    iterationContext: iterationContext ?? null,
   });
 
   const client = new Anthropic({ apiKey: getApiKey() });
@@ -262,6 +264,7 @@ function buildBriefUserPrompt(opts: {
   hasProductImages: boolean;
   productImageCategories: string[];
   segment: ProductSegment | null;
+  iterationContext: Record<string, unknown> | null;
 }): string {
   const lines: string[] = [];
 
@@ -299,6 +302,42 @@ function buildBriefUserPrompt(opts: {
     if (opts.segment.core_constraints) lines.push(`Core constraints: ${opts.segment.core_constraints}`);
     if (opts.segment.demographics) lines.push(`Demographics: ${opts.segment.demographics}`);
     lines.push(`\nTailor ALL hooks, headlines, and visual prompts to THIS specific person. The imagery should feel like it was made for someone who matches this description.`);
+  }
+
+  // V3.4: Iteration context — tells Claude what changed from the parent concept
+  if (opts.iterationContext) {
+    const ic = opts.iterationContext;
+    const iterationType = String(ic.iteration_type ?? "");
+    lines.push(`\nITERATION CONTEXT:`);
+    lines.push(`This is an ITERATION of a winning ad concept. The original concept performed well and we're testing a specific variation.`);
+
+    if (iterationType === "segment_swap") {
+      lines.push(`Type: SEGMENT SWAP — same concept, different target audience.`);
+      if (ic.segment_name) lines.push(`New segment: ${ic.segment_name}`);
+      if (ic.segment_description) lines.push(`Description: ${ic.segment_description}`);
+      if (ic.segment_core_desire) lines.push(`Their core desire: ${ic.segment_core_desire}`);
+      if (ic.segment_core_constraints) lines.push(`Their constraints: ${ic.segment_core_constraints}`);
+      lines.push(`Keep the same angle and hooks, but adapt ALL visuals, mood, imagery, and emotional tone to deeply resonate with this new audience. The ad should feel like it was made specifically for them.`);
+    } else if (iterationType === "mechanism_swap") {
+      lines.push(`Type: MECHANISM SWAP — same emotional trigger, different "how it works".`);
+      if (ic.original_angle) lines.push(`Original angle/mechanism: ${ic.original_angle}`);
+      if (ic.new_mechanism) lines.push(`New mechanism: ${ic.new_mechanism}`);
+      lines.push(`Keep the same emotional triggers and visual energy, but shift the angle to feature this new mechanism. The "what it does for you" stays the same — the "how" changes.`);
+    } else if (iterationType === "cash_swap") {
+      const element = String(ic.swap_element ?? "");
+      lines.push(`Type: C.A.S.H. SWAP — one element changed.`);
+      lines.push(`Element changed: ${element.toUpperCase()}`);
+      if (ic.original_value) lines.push(`Original ${element}: ${ic.original_value}`);
+      if (ic.new_value) lines.push(`New ${element}: ${ic.new_value}`);
+      if (element === "hook") {
+        lines.push(`Create visuals that set up and pay off this new hook. The hook drives the creative direction.`);
+      } else if (element === "style") {
+        lines.push(`Shift the overall visual style to match this new ad style. Same angle and hooks, different visual presentation.`);
+      } else if (element === "angle") {
+        lines.push(`Shift the angle of attack. Same product benefits, but framed through this new lens. The visual metaphors and imagery should reflect the new angle.`);
+      }
+    }
+    lines.push("");
   }
 
   lines.push(`\nAVAILABLE HOOKS (use one per brief, in order):`);
