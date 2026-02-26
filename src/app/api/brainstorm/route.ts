@@ -140,11 +140,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const proposals = parseConceptProposals(content);
+    let proposals;
+    try {
+      proposals = parseConceptProposals(content);
+    } catch (parseErr) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      console.error("[brainstorm] Parse error:", msg, "\nRaw:", content.slice(0, 500));
+      return NextResponse.json(
+        { error: `Failed to parse AI response: ${msg}` },
+        { status: 500 }
+      );
+    }
 
     if (proposals.length === 0) {
       return NextResponse.json(
-        { error: "AI returned no valid proposals" },
+        { error: "AI returned no valid proposals. Raw response: " + content.slice(0, 200) },
         { status: 500 }
       );
     }
@@ -180,6 +190,11 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    return safeError(err, "Brainstorm generation failed");
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[brainstorm] Generation error:", detail);
+    return NextResponse.json(
+      { error: `Brainstorm generation failed: ${detail}` },
+      { status: 500 }
+    );
   }
 }
