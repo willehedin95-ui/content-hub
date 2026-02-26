@@ -554,6 +554,18 @@ export const SPY_CATEGORIES = [
 ] as const;
 export type SpyCategory = (typeof SPY_CATEGORIES)[number];
 
+export const SPY_COUNTRIES = [
+  { code: "US", label: "United States" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "AU", label: "Australia" },
+  { code: "CA", label: "Canada" },
+  { code: "SE", label: "Sweden" },
+  { code: "NO", label: "Norway" },
+  { code: "DK", label: "Denmark" },
+  { code: "DE", label: "Germany" },
+  { code: "ALL", label: "All Countries" },
+] as const;
+
 export interface SpyBrand {
   id: string;
   name: string;
@@ -565,6 +577,7 @@ export interface SpyBrand {
   is_active: boolean;
   last_fetched_at: string | null;
   ad_count: number;
+  scrape_countries: string[];
   created_at: string;
   updated_at: string;
 }

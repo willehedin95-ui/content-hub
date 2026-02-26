@@ -17,7 +17,7 @@ export async function GET() {
 // POST /api/spy/brands — add a new brand
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, ad_library_url, category, notes } = body;
+  const { name, ad_library_url, category, notes, scrape_countries } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
       meta_page_id: metaPageId,
       category: category || null,
       notes: notes || null,
+      scrape_countries: Array.isArray(scrape_countries) && scrape_countries.length > 0
+        ? scrape_countries
+        : ["US"],
     })
     .select()
     .single();

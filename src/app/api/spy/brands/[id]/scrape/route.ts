@@ -4,7 +4,7 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { scrapeAndWait, deduplicateAds, normalizeApifyAd } from "@/lib/apify";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 // POST /api/spy/brands/[id]/scrape — trigger Apify scrape
 export async function POST(
@@ -30,34 +30,41 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const maxAds = body.max_ads ?? 50;
+  const maxAdsPerCountry = body.max_ads ?? 100;
+
+  // Countries to scrape — from brand config, default to US
+  const countries: string[] = brand.scrape_countries?.length
+    ? brand.scrape_countries
+    : ["US"];
 
   try {
-    // Force image-only filter — videos can't be analyzed by AI
-    const scrapeUrl = brand.ad_library_url.replace(
+    // Base URL with image-only filter
+    const baseUrl = brand.ad_library_url.replace(
       /media_type=[^&]*/,
       "media_type=image"
     );
 
-    // Run Apify scrape (blocking — waits for results)
-    const rawItems = await scrapeAndWait(scrapeUrl, maxAds);
+    // Scrape each country separately and merge results
+    const allRawItems: Awaited<ReturnType<typeof scrapeAndWait>> = [];
 
-    // Deduplicate
-    const uniqueItems = deduplicateAds(rawItems, maxAds);
+    for (const country of countries) {
+      // Replace country param in the URL
+      const countryUrl = baseUrl.replace(
+        /country=[^&]*/,
+        `country=${country}`
+      );
+
+      const rawItems = await scrapeAndWait(countryUrl, maxAdsPerCountry);
+      allRawItems.push(...rawItems);
+    }
+
+    // Deduplicate across all countries (same ad running in multiple countries)
+    const maxTotal = maxAdsPerCountry * countries.length;
+    const uniqueItems = deduplicateAds(allRawItems, maxTotal);
 
     // Normalize and upsert
     let newCount = 0;
     let updatedCount = 0;
-
-    // Get existing bookmarked ads so we never delete them
-    const { data: bookmarked } = await db
-      .from("spy_ads")
-      .select("meta_ad_id")
-      .eq("brand_id", brandId)
-      .eq("is_bookmarked", true);
-    const bookmarkedIds = new Set(
-      (bookmarked ?? []).map((a: { meta_ad_id: string }) => a.meta_ad_id)
-    );
 
     for (let i = 0; i < uniqueItems.length; i++) {
       const normalized = normalizeApifyAd(uniqueItems[i], i);
@@ -91,24 +98,8 @@ export async function POST(
       }
     }
 
-    // Remove old non-bookmarked ads that weren't seen in this scrape
-    const scrapedIds = uniqueItems.map((item) =>
-      (item.adArchiveID ?? item.adArchiveId ?? item.ad_archive_id ?? item.id)?.toString() ?? ""
-    ).filter(Boolean);
-
-    if (scrapedIds.length > 0) {
-      // Get all current ads for this brand
-      const { data: allAds } = await db
-        .from("spy_ads")
-        .select("id, meta_ad_id, is_bookmarked")
-        .eq("brand_id", brandId);
-
-      for (const ad of allAds ?? []) {
-        if (!scrapedIds.includes(ad.meta_ad_id) && !ad.is_bookmarked) {
-          await db.from("spy_ads").delete().eq("id", ad.id);
-        }
-      }
-    }
+    // Don't delete old ads — accumulate over time.
+    // Old ads that are no longer active will have is_active=false after update.
 
     // Update brand stats
     const { count } = await db
@@ -126,8 +117,9 @@ export async function POST(
       .eq("id", brandId);
 
     return NextResponse.json({
-      fetched: rawItems.length,
+      fetched: allRawItems.length,
       unique: uniqueItems.length,
+      countries_scraped: countries,
       new: newCount,
       updated: updatedCount,
       total: count ?? 0,

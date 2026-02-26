@@ -14,7 +14,7 @@ function getClient() {
  */
 export async function startScrape(
   adLibraryUrl: string,
-  maxAds = 20
+  maxAds = 100
 ): Promise<string> {
   const client = getClient();
   const run = await client.actor(ACTOR_ID).call({
@@ -30,7 +30,7 @@ export async function startScrape(
  */
 export async function scrapeAndWait(
   adLibraryUrl: string,
-  maxAds = 20
+  maxAds = 100
 ): Promise<ApifyAdItem[]> {
   const client = getClient();
   const run = await client.actor(ACTOR_ID).call(
@@ -38,7 +38,7 @@ export async function scrapeAndWait(
       startUrls: [{ url: adLibraryUrl }],
       resultsLimit: maxAds,
     },
-    { waitSecs: 120 }
+    { waitSecs: 240 }
   );
 
   const { items } = await client
@@ -337,7 +337,7 @@ export function normalizeApifyAd(
  */
 export function deduplicateAds(
   items: ApifyAdItem[],
-  maxAds = 20
+  maxAds = 100
 ): ApifyAdItem[] {
   // Pass 1: by ad_archive_id / id (handles both legacy and current formats)
   const seenIds = new Set<string>();

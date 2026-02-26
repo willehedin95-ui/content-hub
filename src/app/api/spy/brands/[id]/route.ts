@@ -35,7 +35,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const allowed = ["name", "ad_library_url", "category", "notes", "is_active"];
+  const allowed = ["name", "ad_library_url", "category", "notes", "is_active", "scrape_countries"];
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of allowed) {
     if (key in body) updates[key] = body[key];

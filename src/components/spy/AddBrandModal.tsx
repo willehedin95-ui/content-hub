@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X, Loader2, Link as LinkIcon } from "lucide-react";
-import { SPY_CATEGORIES, SpyBrand } from "@/types";
+import { SPY_CATEGORIES, SPY_COUNTRIES, SpyBrand } from "@/types";
 
 interface Props {
   open: boolean;
@@ -16,6 +16,7 @@ export default function AddBrandModal({ open, onClose, onCreated, editBrand }: P
   const [adLibraryUrl, setAdLibraryUrl] = useState("");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [countries, setCountries] = useState<string[]>(["US"]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,11 +28,13 @@ export default function AddBrandModal({ open, onClose, onCreated, editBrand }: P
       setAdLibraryUrl(editBrand.ad_library_url);
       setCategory(editBrand.category ?? "");
       setNotes(editBrand.notes ?? "");
+      setCountries(editBrand.scrape_countries?.length ? editBrand.scrape_countries : ["US"]);
     } else {
       setName("");
       setAdLibraryUrl("");
       setCategory("");
       setNotes("");
+      setCountries(["US"]);
     }
     setError("");
   }, [editBrand, open]);
@@ -74,6 +77,7 @@ export default function AddBrandModal({ open, onClose, onCreated, editBrand }: P
           ad_library_url: adLibraryUrl.trim(),
           category: category || null,
           notes: notes.trim() || null,
+          scrape_countries: countries.length > 0 ? countries : ["US"],
         }),
       });
 
@@ -153,6 +157,44 @@ export default function AddBrandModal({ open, onClose, onCreated, editBrand }: P
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+          </div>
+
+          {/* Scrape Countries */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Scrape Countries</label>
+            <div className="flex flex-wrap gap-1.5">
+              {SPY_COUNTRIES.map((c) => {
+                const selected = countries.includes(c.code);
+                return (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => {
+                      if (c.code === "ALL") {
+                        setCountries(selected ? ["US"] : ["ALL"]);
+                      } else {
+                        setCountries((prev) => {
+                          const without = prev.filter((x) => x !== "ALL");
+                          return selected
+                            ? without.filter((x) => x !== c.code)
+                            : [...without, c.code];
+                        });
+                      }
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-lg border font-medium transition-colors ${
+                      selected
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                        : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {c.code === "ALL" ? "All" : c.code}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Select US/GB for English ads. Each country = separate scrape.
+            </p>
           </div>
 
           {/* Notes */}
