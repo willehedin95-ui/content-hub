@@ -125,6 +125,11 @@ export async function POST(
       total: count ?? 0,
     });
   } catch (err) {
-    return safeError(err, "Scrape failed");
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[spy] Scrape failed:", detail, err instanceof Error ? err.stack : "");
+    return NextResponse.json(
+      { error: "Scrape failed", detail },
+      { status: 500 }
+    );
   }
 }
