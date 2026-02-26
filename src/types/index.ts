@@ -619,6 +619,23 @@ export interface SpyAdCashAnalysis extends CashDna {
   estimated_production: string | null;
 }
 
+// --- Brainstorm Types ---
+
+export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware";
+export type UnawareAdType = "straddle" | "symptom" | "worldview_porn" | "story";
+
+export interface BrainstormRequest {
+  mode: BrainstormMode;
+  product: Product;
+  count: number;
+  organic_text?: string;
+  research_text?: string;
+  segment_id?: string;
+  unaware_types?: UnawareAdType[];
+  focus_angles?: Angle[];
+  focus_awareness?: AwarenessLevel;
+}
+
 // --- Concept Generator Types ---
 
 export interface ConceptProposal {
@@ -630,7 +647,7 @@ export interface ConceptProposal {
     style: Style | null;
     hooks: string[];
     awareness_level: AwarenessLevel;
-    ad_source: "Swipe (competitor)";
+    ad_source: AdSource;
     copy_blocks: CopyBlock[];
     concept_description: string;
   };
