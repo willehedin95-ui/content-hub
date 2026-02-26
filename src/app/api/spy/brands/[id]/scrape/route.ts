@@ -125,8 +125,6 @@ export async function POST(
       total: count ?? 0,
     });
   } catch (err) {
-    const detail = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
-    console.error("[spy] Scrape error:", detail);
-    return NextResponse.json({ error: "Scrape failed", detail }, { status: 500 });
+    return safeError(err, "Scrape failed");
   }
 }
