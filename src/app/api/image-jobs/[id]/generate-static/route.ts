@@ -7,7 +7,7 @@ import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
-import type { ProductFull } from "@/types";
+import type { ProductFull, ProductSegment } from "@/types";
 
 export const maxDuration = 180;
 
@@ -85,6 +85,17 @@ export async function POST(
     if (sa) spyAd = sa;
   }
 
+  // V3.3: Fetch target segment (if specified)
+  let segment: ProductSegment | null = null;
+  if (body.segment_id && isValidUUID(body.segment_id)) {
+    const { data: seg } = await db
+      .from("product_segments")
+      .select("*")
+      .eq("id", body.segment_id)
+      .single();
+    if (seg) segment = seg as ProductSegment;
+  }
+
   // Step 1: Claude generates distinct image briefs
   let briefs;
   try {
@@ -93,6 +104,7 @@ export async function POST(
       product: product as ProductFull,
       productImages: allProductImages,
       spyAd,
+      segment,
       count,
     });
   } catch (err) {
@@ -122,6 +134,8 @@ export async function POST(
       briefs_count: briefs.briefs.length,
       styles: briefs.briefs.map((b) => b.style),
       reptile_triggers: briefs.briefs.map((b) => b.reptileTriggers ?? []),
+      segment_id: segment?.id ?? null,
+      segment_name: segment?.name ?? null,
     },
   });
 

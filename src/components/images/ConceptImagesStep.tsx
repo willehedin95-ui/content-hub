@@ -11,7 +11,7 @@ import {
   Plus,
   Sparkles,
 } from "lucide-react";
-import { ImageJob, SourceImage, Language, LANGUAGES } from "@/types";
+import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS } from "@/lib/constants";
 
@@ -189,6 +189,9 @@ export interface ConceptImagesStepProps {
     generating: boolean;
     count: number;
     setCount: (n: number) => void;
+    segmentId: string | null;
+    setSegmentId: (id: string | null) => void;
+    segments: ProductSegment[];
     progress: string | null;
     error: string | null;
     results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
@@ -292,6 +295,36 @@ export default function ConceptImagesStep({
               </div>
             );
           })()}
+
+          {/* V3.3: Segment selector */}
+          {generateState.segments.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Target segment (optional)</p>
+              <select
+                value={generateState.segmentId ?? ""}
+                onChange={(e) => generateState.setSegmentId(e.target.value || null)}
+                disabled={generateState.generating}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-md"
+              >
+                <option value="">All audiences (general)</option>
+                {generateState.segments.map((seg) => (
+                  <option key={seg.id} value={seg.id}>
+                    {seg.name}{seg.demographics ? ` — ${seg.demographics}` : ""}
+                  </option>
+                ))}
+              </select>
+              {generateState.segmentId && (() => {
+                const seg = generateState.segments.find(s => s.id === generateState.segmentId);
+                if (!seg) return null;
+                return (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {seg.core_desire && <><span className="text-gray-500 font-medium">Desire:</span> {seg.core_desire}  </>}
+                    {seg.core_constraints && <><span className="text-gray-500 font-medium">Constraints:</span> {seg.core_constraints}</>}
+                  </p>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             {/* Count selector */}

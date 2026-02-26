@@ -16,7 +16,7 @@ export async function GET(
   const { data, error } = await db
     .from("products")
     .select(
-      "*, product_images(*), copywriting_guidelines(*), reference_pages(*)"
+      "*, product_images(*), copywriting_guidelines(*), reference_pages(*), product_segments(*)"
     )
     .eq("id", id)
     .single();

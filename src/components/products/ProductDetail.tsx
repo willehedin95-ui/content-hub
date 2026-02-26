@@ -2,21 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileText, Image, BookOpen, FileSearch } from "lucide-react";
+import { ArrowLeft, FileText, Image, BookOpen, FileSearch, Users } from "lucide-react";
 import type {
   ProductFull,
   ProductImage,
   CopywritingGuideline,
   ReferencePage,
+  ProductSegment,
 } from "@/types";
 import ProductInfoTab from "./ProductInfoTab";
 import ProductImageManager from "./ProductImageManager";
 import GuidelinesEditor from "./GuidelinesEditor";
 import ReferencePagesManager from "./ReferencePagesManager";
+import SegmentEditor from "./SegmentEditor";
 
 const TABS = [
   { id: "info", label: "Info", icon: FileText },
   { id: "images", label: "Images", icon: Image },
+  { id: "segments", label: "Segments", icon: Users },
   { id: "guidelines", label: "Guidelines", icon: BookOpen },
   { id: "references", label: "Reference Pages", icon: FileSearch },
 ] as const;
@@ -28,6 +31,7 @@ interface Props {
     product_images: ProductImage[];
     copywriting_guidelines: CopywritingGuideline[];
     reference_pages: ReferencePage[];
+    product_segments: ProductSegment[];
   };
 }
 
@@ -92,6 +96,16 @@ export default function ProductDetail({ initialProduct }: Props) {
           images={product.product_images}
           onImagesChange={(images) =>
             setProduct((prev) => ({ ...prev, product_images: images }))
+          }
+        />
+      )}
+
+      {activeTab === "segments" && (
+        <SegmentEditor
+          productId={product.id}
+          segments={product.product_segments ?? []}
+          onSegmentsChange={(segments) =>
+            setProduct((prev) => ({ ...prev, product_segments: segments }))
           }
         />
       )}

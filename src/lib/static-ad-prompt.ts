@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { withRetry, isTransientError } from "./retry";
 import { CLAUDE_MODEL, STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS } from "./constants";
 import type { StaticStyleId, ReptileTriggerId } from "./constants";
-import type { ImageJob, CashDna, ProductFull } from "@/types";
+import type { ImageJob, CashDna, ProductFull, ProductSegment } from "@/types";
 
 export { STATIC_STYLES };
 export type { StaticStyleId };
@@ -51,9 +51,10 @@ export async function generateImageBriefs(options: {
   product: ProductFull;
   productImages: Array<{ url: string; category: string }>;
   spyAd?: { media_url?: string; cash_analysis?: unknown } | null;
+  segment?: ProductSegment | null;
   count: number;
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
-  const { job, product, spyAd, count } = options;
+  const { job, product, spyAd, segment, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
   const hooks = cashDna?.hooks ?? [];
   const headlines = job.ad_copy_headline ?? [];
@@ -80,6 +81,7 @@ export async function generateImageBriefs(options: {
     hasSpyAdImage: !!spyAd?.media_url,
     hasProductImages: options.productImages.length > 0,
     productImageCategories: [...new Set(options.productImages.map((pi) => pi.category))],
+    segment: segment ?? null,
   });
 
   const client = new Anthropic({ apiKey: getApiKey() });
@@ -259,6 +261,7 @@ function buildBriefUserPrompt(opts: {
   hasSpyAdImage: boolean;
   hasProductImages: boolean;
   productImageCategories: string[];
+  segment: ProductSegment | null;
 }): string {
   const lines: string[] = [];
 
@@ -285,6 +288,17 @@ function buildBriefUserPrompt(opts: {
 
   if (opts.spyAdContext) {
     lines.push(`\nCompetitor ad analysis:\n${opts.spyAdContext}`);
+  }
+
+  // V3.3: Segment context
+  if (opts.segment) {
+    lines.push(`\nTARGET SEGMENT:`);
+    lines.push(`Name: ${opts.segment.name}`);
+    if (opts.segment.description) lines.push(`Description: ${opts.segment.description}`);
+    if (opts.segment.core_desire) lines.push(`Core desire: ${opts.segment.core_desire}`);
+    if (opts.segment.core_constraints) lines.push(`Core constraints: ${opts.segment.core_constraints}`);
+    if (opts.segment.demographics) lines.push(`Demographics: ${opts.segment.demographics}`);
+    lines.push(`\nTailor ALL hooks, headlines, and visual prompts to THIS specific person. The imagery should feel like it was made for someone who matches this description.`);
   }
 
   lines.push(`\nAVAILABLE HOOKS (use one per brief, in order):`);

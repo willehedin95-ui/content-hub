@@ -9,7 +9,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from "lucide-react";
-import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations } from "@/types";
+import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 import ConceptStepper, { StepDef } from "./ConceptStepper";
@@ -107,10 +107,14 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [genState, setGenState] = useState<{
     generating: boolean;
     count: number;
+    segmentId: string | null;
     progress: string | null;
     error: string | null;
     results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
-  }>({ generating: false, count: 3, progress: null, error: null, results: null });
+  }>({ generating: false, count: 3, segmentId: null, progress: null, error: null, results: null });
+
+  // V3.3: Product segments for targeting
+  const [productSegments, setProductSegments] = useState<ProductSegment[]>([]);
 
   // Doc fetch states
   const [doc, setDoc] = useState<{
@@ -186,6 +190,23 @@ export default function ImageJobDetail({ initialJob }: Props) {
       })
       .catch(() => {});
   }, [initialJob.product, initialJob.target_languages]);
+
+  // V3.3: Fetch product segments for targeting
+  useEffect(() => {
+    if (!initialJob.product) return;
+    // Need to look up product ID from slug, then fetch segments
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((products: Array<{ id: string; slug: string }>) => {
+        const match = products.find((p) => p.slug === initialJob.product);
+        if (!match) return;
+        return fetch(`/api/products/${match.id}/segments`).then((r) => r.json());
+      })
+      .then((segments) => {
+        if (Array.isArray(segments)) setProductSegments(segments);
+      })
+      .catch(() => {});
+  }, [initialJob.product]);
 
   // Fetch existing deployments for this concept
   const fetchDeployments = useCallback(async () => {
@@ -827,7 +848,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
       const res = await fetch(`/api/image-jobs/${job.id}/generate-static`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: genState.count }),
+        body: JSON.stringify({ count: genState.count, segment_id: genState.segmentId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1001,6 +1022,8 @@ export default function ImageJobDetail({ initialJob }: Props) {
           generateState={{
             ...genState,
             setCount: (n: number) => setGenState(prev => ({ ...prev, count: n })),
+            setSegmentId: (id: string | null) => setGenState(prev => ({ ...prev, segmentId: id })),
+            segments: productSegments,
           }}
           handleGenerateStatic={handleGenerateStatic}
         />

@@ -465,6 +465,7 @@ export interface ProductFull {
   product_images?: ProductImage[];
   copywriting_guidelines?: CopywritingGuideline[];
   reference_pages?: ReferencePage[];
+  product_segments?: ProductSegment[];
 }
 
 export interface ProductImage {
@@ -495,6 +496,18 @@ export interface ReferencePage {
   url: string | null;
   content: string;
   notes: string | null;
+  created_at: string;
+}
+
+export interface ProductSegment {
+  id: string;
+  product_id: string;
+  name: string;
+  description: string | null;
+  core_desire: string | null;
+  core_constraints: string | null;
+  demographics: string | null;
+  sort_order: number;
   created_at: string;
 }
 
