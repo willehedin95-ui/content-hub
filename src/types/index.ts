@@ -222,6 +222,8 @@ export interface ImageJob {
   marked_ready_at: string | null;
   tags: string[];
   cash_dna?: CashDna | null;
+  visual_direction?: string | null;
+  source_spy_ad_id?: string | null;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];

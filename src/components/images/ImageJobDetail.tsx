@@ -103,6 +103,15 @@ export default function ImageJobDetail({ initialJob }: Props) {
     pageConfigs: MetaPageConfig[];
   } | null>(null);
 
+  // Static ad generation states
+  const [genState, setGenState] = useState<{
+    generating: boolean;
+    count: number;
+    progress: string | null;
+    error: string | null;
+    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
+  }>({ generating: false, count: 3, progress: null, error: null, results: null });
+
   // Doc fetch states
   const [doc, setDoc] = useState<{
     fetching: boolean;
@@ -810,6 +819,40 @@ export default function ImageJobDetail({ initialJob }: Props) {
   }
 
 
+  // Generate static ads via Nano Banana
+  async function handleGenerateStatic() {
+    if (genState.generating) return;
+    setGenState(prev => ({ ...prev, generating: true, progress: "Starting generation...", error: null, results: null }));
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/generate-static`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: genState.count }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGenState(prev => ({ ...prev, generating: false, progress: null, error: data.error || "Generation failed" }));
+        return;
+      }
+      setGenState(prev => ({
+        ...prev,
+        generating: false,
+        progress: null,
+        error: data.errors?.length ? `${data.failed} failed: ${data.errors[0]}` : null,
+        results: data.source_images ?? [],
+      }));
+      // Refresh job to show generated images
+      await refreshJob();
+    } catch (err) {
+      setGenState(prev => ({
+        ...prev,
+        generating: false,
+        progress: null,
+        error: err instanceof Error ? err.message : "Generation failed",
+      }));
+    }
+  }
+
   // Filter images based on active tab
   const filteredImages = (job.source_images ?? []).map((si) => ({
     ...si,
@@ -955,6 +998,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
           handleCancel={handleCancel}
           handleRetryAll={handleRetryAll}
           handleRetrySingle={handleRetrySingle}
+          generateState={{
+            ...genState,
+            setCount: (n: number) => setGenState(prev => ({ ...prev, count: n })),
+          }}
+          handleGenerateStatic={handleGenerateStatic}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep

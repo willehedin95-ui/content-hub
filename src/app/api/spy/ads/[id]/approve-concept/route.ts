@@ -79,6 +79,8 @@ export async function POST(
         cash_dna: proposal.cash_dna,
         ad_copy_primary: proposal.ad_copy_primary,
         ad_copy_headline: proposal.ad_copy_headline ?? [],
+        visual_direction: proposal.visual_direction ?? null,
+        source_spy_ad_id: id,
       })
       .select()
       .single();

@@ -9,8 +9,11 @@ import {
   Square,
   EyeOff,
   Plus,
+  Sparkles,
 } from "lucide-react";
 import { ImageJob, SourceImage, Language, LANGUAGES } from "@/types";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
+import { STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS } from "@/lib/constants";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components (TabButton, ElapsedTimer, ProcessingTimer, badges)  */
@@ -181,6 +184,16 @@ export interface ConceptImagesStepProps {
   handleCancel: () => void;
   handleRetryAll: () => void;
   handleRetrySingle: (translationId: string) => void;
+  // Static ad generation
+  generateState?: {
+    generating: boolean;
+    count: number;
+    setCount: (n: number) => void;
+    progress: string | null;
+    error: string | null;
+    results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[] }> | null;
+  };
+  handleGenerateStatic?: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,10 +228,159 @@ export default function ConceptImagesStep({
   handleCancel,
   handleRetryAll,
   handleRetrySingle,
+  generateState,
+  handleGenerateStatic,
 }: ConceptImagesStepProps) {
+  // Show generate section when job has visual_direction and no source images yet
+  const showGenerateSection = !!job.visual_direction && sourceImages.length === 0 && job.status !== "processing" && handleGenerateStatic;
+
   return (
     <>
-      {job.status === "draft" ? (
+      {/* Generate Static Ads section */}
+      {showGenerateSection && generateState && (
+        <div className="mb-6 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-base font-semibold text-gray-900">Generate Static Ads</h3>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+            {job.visual_direction!.length > 150
+              ? job.visual_direction!.slice(0, 150) + "..."
+              : job.visual_direction}
+          </p>
+
+          {/* Hooks preview */}
+          {job.cash_dna?.hooks && job.cash_dna.hooks.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Hooks ({job.cash_dna.hooks.length} available)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {job.cash_dna.hooks.slice(0, 5).map((hook, i) => (
+                  <span key={i} className="px-2.5 py-1 bg-white border border-indigo-100 rounded-lg text-xs text-gray-700">
+                    {hook.length > 35 ? hook.slice(0, 35) + "..." : hook}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Style labels preview — awareness-filtered */}
+          {(() => {
+            const awarenessLevel = job.cash_dna?.awareness_level;
+            const count = generateState?.count ?? 3;
+            let styleIds: string[];
+            if (awarenessLevel && AWARENESS_STYLE_MAP[awarenessLevel]) {
+              const preferred = AWARENESS_STYLE_MAP[awarenessLevel];
+              const remaining = STATIC_STYLES.map(s => s.id).filter(id => !preferred.includes(id));
+              styleIds = [...preferred, ...remaining].slice(0, count);
+            } else {
+              styleIds = STATIC_STYLES.slice(0, count).map(s => s.id);
+            }
+            const styles = styleIds.map(id => STATIC_STYLES.find(s => s.id === id)!);
+            return (
+              <div className="mb-4">
+                <p className="text-xs font-medium text-gray-500 mb-1.5">
+                  Visual styles{awarenessLevel ? ` (optimized for "${awarenessLevel}")` : " (one per variation)"}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {styles.map((style) => (
+                    <span key={style.id} className="px-2.5 py-1 bg-white border border-purple-100 rounded-lg text-xs text-purple-700" title={style.description}>
+                      {style.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center gap-4">
+            {/* Count selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Variations:</label>
+              <select
+                value={generateState.count}
+                onChange={(e) => generateState.setCount(Number(e.target.value))}
+                disabled={generateState.generating}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cost estimate (Claude briefs ~$0.04 + Kie images) */}
+            <span className="text-sm text-gray-400">
+              ~${(0.04 + generateState.count * KIE_IMAGE_COST).toFixed(2)}
+            </span>
+
+            {/* Generate button */}
+            <button
+              onClick={handleGenerateStatic}
+              disabled={generateState.generating}
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+            >
+              {generateState.generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Generate Static Ads
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Progress */}
+          {generateState.progress && (
+            <p className="mt-3 text-sm text-indigo-600">{generateState.progress}</p>
+          )}
+
+          {/* Error */}
+          {generateState.error && (
+            <p className="mt-3 text-sm text-red-600">{generateState.error}</p>
+          )}
+
+          {/* Results preview */}
+          {generateState.results && generateState.results.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-emerald-700 mb-2">
+                <CheckCircle2 className="w-4 h-4 inline mr-1" />
+                {generateState.results.length} images generated
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {generateState.results.map((r, i) => {
+                  const styleInfo = STATIC_STYLES.find(s => s.id === r.style);
+                  const triggers = (r.reptileTriggers ?? []).map(
+                    tid => REPTILE_TRIGGERS.find(t => t.id === tid)
+                  ).filter(Boolean);
+                  return (
+                    <div key={i} className="rounded-lg overflow-hidden border border-gray-200">
+                      <div className="aspect-square">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={r.original_url} alt={r.label} className="w-full h-full object-cover" />
+                      </div>
+                      {styleInfo && (
+                        <p className="text-[10px] text-center text-purple-600 bg-purple-50 py-0.5 font-medium">{styleInfo.label}</p>
+                      )}
+                      {triggers.length > 0 && (
+                        <p className="text-[9px] text-center text-amber-600 bg-amber-50 py-0.5 truncate" title={triggers.map(t => t!.label).join(", ")}>
+                          {triggers.map(t => t!.label).join(" + ")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {job.status === "draft" && !showGenerateSection ? (
         <div className="space-y-4">
           <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
