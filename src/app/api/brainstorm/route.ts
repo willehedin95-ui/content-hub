@@ -11,7 +11,7 @@ import {
 } from "@/lib/brainstorm";
 import type { ProductFull, CopywritingGuideline, ProductSegment, BrainstormMode } from "@/types";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const VALID_MODES: BrainstormMode[] = [
   "from_scratch",
