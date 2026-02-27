@@ -35,10 +35,11 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Allow public API endpoints (called from external landing pages)
+  // Allow public API endpoints (called from external sources)
   if (
     request.nextUrl.pathname.startsWith("/api/pixel") ||
-    request.nextUrl.pathname.startsWith("/api/ab-track")
+    request.nextUrl.pathname.startsWith("/api/ab-track") ||
+    request.nextUrl.pathname.startsWith("/api/telegram/webhook")
   ) {
     return supabaseResponse;
   }
