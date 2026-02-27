@@ -221,6 +221,8 @@ export interface ConceptImagesStepProps {
   // Re-roll
   onReroll?: (sourceImageId: string) => void;
   rerollingId?: string | null;
+  // Skip translation toggle
+  onToggleSkip?: (sourceImageId: string, skip: boolean) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +261,7 @@ export default function ConceptImagesStep({
   handleGenerateStatic,
   onReroll,
   rerollingId,
+  onToggleSkip,
 }: ConceptImagesStepProps) {
   // Show generate section when job has visual_direction and no source images yet
   const showGenerateSection = !!job.visual_direction && sourceImages.length === 0 && job.status !== "processing" && handleGenerateStatic;
@@ -338,6 +341,35 @@ export default function ConceptImagesStep({
           {/* Progress */}
           {generateState.progress && (
             <p className="mt-3 text-sm text-indigo-600">{generateState.progress}</p>
+          )}
+
+          {/* Skeleton placeholders while generating */}
+          {generateState.generating && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 text-sm text-indigo-600 mb-3">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating {generateState.selectedStyles.length} image{generateState.selectedStyles.length !== 1 ? "s" : ""}...
+                <span className="text-gray-400 text-xs"><ElapsedTimer /></span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {generateState.selectedStyles.map((styleId, i) => {
+                  const styleInfo = STATIC_STYLES.find(s => s.id === styleId);
+                  return (
+                    <div key={styleId} className="rounded-lg overflow-hidden border border-gray-200">
+                      <div className="aspect-square bg-gray-100 flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
+                          <div className="h-2 w-16 bg-gray-200 rounded animate-pulse" />
+                        </div>
+                      </div>
+                      {styleInfo && (
+                        <p className="text-[10px] text-center text-gray-400 bg-gray-50 py-0.5 font-medium">{styleInfo.label}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Error */}
@@ -422,8 +454,8 @@ export default function ConceptImagesStep({
           {/* Source images preview */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
-              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden relative group">
-                <div className="aspect-square bg-gray-50">
+              <div key={si.id} className={`bg-white border rounded-lg overflow-hidden relative group transition-colors ${si.skip_translation ? "border-gray-300 opacity-60" : "border-gray-200"}`}>
+                <div className="aspect-square bg-gray-50 relative">
                   {rerollingId === si.id && (
                     <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                       <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -435,9 +467,25 @@ export default function ConceptImagesStep({
                     alt={si.filename ?? "Original"}
                     className="w-full h-full object-cover"
                   />
+                  {si.skip_translation && (
+                    <div className="absolute inset-0 bg-white/40 flex items-center justify-center">
+                      <span className="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">No text</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-between px-2 py-1.5">
-                  {si.filename && (
+                  {onToggleSkip && (
+                    <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={!si.skip_translation}
+                        onChange={() => onToggleSkip(si.id, !si.skip_translation)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                      />
+                      <span className="text-xs text-gray-400 truncate">{si.skip_translation ? "Skip" : "Translate"}</span>
+                    </label>
+                  )}
+                  {!onToggleSkip && si.filename && (
                     <p className="text-xs text-gray-400 truncate flex-1">{si.filename}</p>
                   )}
                   {onReroll && si.generation_style && !rerollingId && (

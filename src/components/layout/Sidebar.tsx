@@ -3,19 +3,33 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
-const nav = [
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavGroup = { label: string; icon: React.ComponentType<{ className?: string }>; children: NavItem[] };
+type NavEntry = NavItem | NavGroup;
+
+function isGroup(entry: NavEntry): entry is NavGroup {
+  return "children" in entry;
+}
+
+const nav: NavEntry[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/pages", label: "Landing Pages", icon: Layers },
   { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
-  { href: "/images", label: "Ad Concepts", icon: Image },
+  {
+    label: "Ads",
+    icon: Megaphone,
+    children: [
+      { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
+      { href: "/images", label: "Ad Concepts", icon: Image },
+      { href: "/spy", label: "Ad Spy", icon: Eye },
+    ],
+  },
   { href: "/products", label: "Products", icon: Package },
   { href: "/performance", label: "Performance", icon: BarChart3 },
-  { href: "/spy", label: "Ad Spy", icon: Eye },
-  { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
 ];
 
 interface Progress {
@@ -28,6 +42,30 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
+
+  // Auto-open groups that contain the active route
+  const groupOpenByDefault = (group: NavGroup) =>
+    group.children.some(
+      (c) => pathname === c.href || pathname.startsWith(c.href + "/")
+    );
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  // Initialize open state based on current route (once on mount + route changes)
+  useEffect(() => {
+    const newOpen: Record<string, boolean> = {};
+    for (const entry of nav) {
+      if (isGroup(entry) && groupOpenByDefault(entry)) {
+        newOpen[entry.label] = true;
+      }
+    }
+    setOpenGroups((prev) => ({ ...prev, ...newOpen }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
 
   const fetchProgress = useCallback(async () => {
     try {
@@ -53,6 +91,89 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     router.refresh();
   }
 
+  function isActive(href: string) {
+    return href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(href + "/");
+  }
+
+  function renderNavItem(item: NavItem, indent = false) {
+    const active = isActive(item.href);
+    const Icon = item.icon;
+    const showProgress =
+      item.href === "/images" && progress?.processing && progress.total > 0;
+    const pct =
+      showProgress && progress
+        ? Math.round((progress.completed / progress.total) * 100)
+        : 0;
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={cn(
+          "flex flex-col gap-0.5 px-3 py-2 rounded-md text-sm transition-colors",
+          indent && "pl-10",
+          active
+            ? "bg-accent text-accent-foreground font-medium"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent"
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <Icon className="w-4 h-4 shrink-0" />
+          <span className="flex-1">{item.label}</span>
+          {showProgress && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {progress!.completed}/{progress!.total}
+            </span>
+          )}
+        </div>
+        {showProgress && (
+          <div className="ml-7 h-1.5 rounded-full bg-accent overflow-hidden">
+            <div
+              className="h-full rounded-full bg-foreground/30 transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+      </Link>
+    );
+  }
+
+  function renderGroup(group: NavGroup) {
+    const open = openGroups[group.label] ?? false;
+    const Icon = group.icon;
+    const hasActiveChild = group.children.some((c) => isActive(c.href));
+
+    return (
+      <div key={group.label}>
+        <button
+          onClick={() => toggleGroup(group.label)}
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+            hasActiveChild
+              ? "text-accent-foreground font-medium"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          )}
+        >
+          <Icon className="w-4 h-4 shrink-0" />
+          <span className="flex-1 text-left">{group.label}</span>
+          <ChevronDown
+            className={cn(
+              "w-4 h-4 shrink-0 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+          />
+        </button>
+        {open && (
+          <div className="mt-0.5 space-y-0.5">
+            {group.children.map((child) => renderNavItem(child, true))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <aside className="w-56 h-screen bg-background border-r border-border flex flex-col shrink-0 sticky top-0">
       {/* Logo */}
@@ -72,49 +193,9 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/"
-              ? pathname === "/"
-              : pathname === href || pathname.startsWith(href + "/");
-          const showProgress =
-            href === "/images" && progress?.processing && progress.total > 0;
-          const pct =
-            showProgress && progress
-              ? Math.round((progress.completed / progress.total) * 100)
-              : 0;
-
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex flex-col gap-0.5 px-3 py-2 rounded-md text-sm transition-colors",
-                active
-                  ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="flex-1">{label}</span>
-                {showProgress && (
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {progress!.completed}/{progress!.total}
-                  </span>
-                )}
-              </div>
-              {showProgress && (
-                <div className="ml-7 h-1.5 rounded-full bg-accent overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-foreground/30 transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              )}
-            </Link>
-          );
-        })}
+        {nav.map((entry) =>
+          isGroup(entry) ? renderGroup(entry) : renderNavItem(entry)
+        )}
       </nav>
 
       {/* Settings - pinned bottom */}

@@ -120,8 +120,11 @@ export default function ImageJobDetail({ initialJob }: Props) {
     results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[]; prompt?: string }> | null;
   }>({ generating: false, count: 3, selectedStyles: [], segmentId: null, progress: null, error: null, results: null });
 
-  // Initialize selectedStyles from awareness level
+  // Initialize selectedStyles from awareness level (once on mount)
+  const stylesInitialized = useRef(false);
   useEffect(() => {
+    if (stylesInitialized.current) return;
+    stylesInitialized.current = true;
     const level = (job.cash_dna as Record<string, unknown> | null)?.awareness_level as string | undefined;
     if (level && AWARENESS_STYLE_MAP[level]) {
       setGenState(prev => ({ ...prev, selectedStyles: [...AWARENESS_STYLE_MAP[level]] }));
@@ -947,6 +950,33 @@ export default function ImageJobDetail({ initialJob }: Props) {
     }
   }
 
+  // Toggle skip_translation on a source image
+  async function handleToggleSkip(sourceImageId: string, skip: boolean) {
+    // Optimistic update
+    setJob((prev) => ({
+      ...prev,
+      source_images: (prev.source_images ?? []).map((si) =>
+        si.id === sourceImageId ? { ...si, skip_translation: skip } : si
+      ),
+    }));
+    try {
+      await fetch(`/api/source-images/${sourceImageId}/skip`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skip }),
+      });
+    } catch (err) {
+      console.error("Toggle skip failed:", err);
+      // Revert on error
+      setJob((prev) => ({
+        ...prev,
+        source_images: (prev.source_images ?? []).map((si) =>
+          si.id === sourceImageId ? { ...si, skip_translation: !skip } : si
+        ),
+      }));
+    }
+  }
+
   // Filter images based on active tab
   const filteredImages = (job.source_images ?? []).map((si) => ({
     ...si,
@@ -1148,6 +1178,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
           handleGenerateStatic={handleGenerateStatic}
           onReroll={handleReroll}
           rerollingId={rerollingId}
+          onToggleSkip={handleToggleSkip}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep

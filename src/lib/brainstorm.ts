@@ -251,7 +251,8 @@ CRITICAL RULES:
 - Hooks should be scroll-stopping — curiosity, pattern interrupts, or strong emotional triggers
 - Primary text should be ready-to-use ad copy, not placeholder text
 - Visual direction should be specific enough to brief a designer
-- Return ONLY valid JSON, no markdown fences, no explanation text`;
+- Return ONLY valid JSON, no markdown fences, no explanation text
+- ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.`;
 
 // ---------------------------------------------------------------------------
 // System prompts per mode
@@ -455,6 +456,12 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replac
   '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],',
   '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like news article titles, NOT ad headlines"],'
 )}
+
+CRITICAL — ORIGINALITY RULES:
+- NEVER reuse or closely adapt any example from this prompt. The examples above (Rockefeller, Okinawans, chiropractors, "3am", "mitochondria", dog eating grass, etc.) are TEACHING EXAMPLES ONLY — they show the PATTERN, not the content. You MUST create completely original concepts using different references, facts, and cultural touchpoints.
+- Each concept must use a reference or hook that is SPECIFIC TO THE PRODUCT and its domain — not a generic health/wellness trope.
+- If you catch yourself writing about Rockefeller, Okinawa, "3am", or any example from the framework above, STOP and think of something original.
+- Draw from the product brief and audience segments for inspiration — what are THEIR specific pains, beliefs, and cultural context?
 
 ADDITIONAL RULES FOR UNAWARE CONCEPTS:
 - Each proposal must specify which unaware ad type it uses (Straddle, Symptom, Worldview Porn, or Story)

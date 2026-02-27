@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       model: CLAUDE_MODEL,
       max_tokens: 8000,
       temperature: 0.8,
-      system: systemPrompt,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: userPrompt }],
     });
 
@@ -175,7 +175,9 @@ export async function POST(req: NextRequest) {
     // Log usage
     const inputTokens = response.usage.input_tokens;
     const outputTokens = response.usage.output_tokens;
-    const costUsd = calcClaudeCost(inputTokens, outputTokens);
+    const cacheCreation = (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
+    const cacheRead = (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
+    const costUsd = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
 
     await db.from("usage_logs").insert({
       type: "claude_rewrite",
