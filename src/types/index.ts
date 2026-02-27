@@ -683,3 +683,97 @@ export interface ConceptProposal {
   differentiation_note: string;
   suggested_tags: string[];
 }
+
+// ── Pipeline Dashboard ──────────────────────────────────────
+
+export type PipelineStage = "draft" | "testing" | "review" | "active" | "killed";
+
+export interface PipelineSetting {
+  id: string;
+  product: string;
+  country: string;
+  target_cpa: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConceptMetrics {
+  id: string;
+  image_job_id: string;
+  date: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  frequency: number;
+  conversions: number;
+  cpa: number;
+  roas: number | null;
+  synced_at: string;
+}
+
+export interface ConceptLifecycle {
+  id: string;
+  image_job_id: string;
+  stage: PipelineStage;
+  entered_at: string;
+  exited_at: string | null;
+  signal: string | null;
+  notes: string | null;
+}
+
+export interface PipelineSignal {
+  type: "kill" | "scale" | "fatigue" | "no_spend" | "review_ready";
+  reason: string;
+}
+
+export interface PipelineAlert {
+  type: "publish_more" | "review_needed" | "budget_imbalance" | "all_fatiguing";
+  message: string;
+  priority: "high" | "medium" | "low";
+}
+
+export interface PipelineConcept {
+  id: string;
+  name: string;
+  conceptNumber: number | null;
+  product: string | null;
+  thumbnailUrl: string | null;
+  stage: PipelineStage;
+  stageEnteredAt: string;
+  daysInStage: number;
+  languages: string[];
+  metrics: {
+    totalSpend: number;
+    cpa: number;
+    ctr: number;
+    frequency: number;
+    conversions: number;
+    impressions: number;
+    roas: number | null;
+  } | null;
+  signals: PipelineSignal[];
+  targetCpa: number | null;
+  currency: string | null;
+  cashDna: CashDna | null;
+}
+
+export interface PipelineSummary {
+  draftsReady: number;
+  inTesting: number;
+  needsReview: number;
+  activeScaling: number;
+  killed: number;
+  avgCreativeAge: number;
+  testingBudgetPct: number;
+}
+
+export interface PipelineData {
+  concepts: PipelineConcept[];
+  summary: PipelineSummary;
+  alerts: PipelineAlert[];
+  lastSyncedAt: string | null;
+}
