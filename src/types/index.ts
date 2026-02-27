@@ -693,6 +693,7 @@ export interface PipelineSetting {
   product: string;
   country: string;
   target_cpa: number;
+  target_roas: number | null;
   currency: string;
   created_at: string;
   updated_at: string;
@@ -712,6 +713,7 @@ export interface ConceptMetrics {
   conversions: number;
   cpa: number;
   roas: number | null;
+  revenue: number;
   synced_at: string;
 }
 
@@ -757,9 +759,11 @@ export interface PipelineConcept {
     impressions: number;
     clicks: number;
     roas: number | null;
+    revenue: number;
   } | null;
   signals: PipelineSignal[];
   targetCpa: number | null;
+  targetRoas: number | null;
   currency: string | null;
   cashDna: CashDna | null;
 }
@@ -774,9 +778,18 @@ export interface PipelineSummary {
   testingBudgetPct: number;
 }
 
+export interface CampaignBudget {
+  campaignId: string;
+  name: string;
+  dailyBudget: number;
+  currency: string;
+  countries: string[];
+}
+
 export interface PipelineData {
   concepts: PipelineConcept[];
   summary: PipelineSummary;
   alerts: PipelineAlert[];
   lastSyncedAt: string | null;
+  campaignBudgets?: CampaignBudget[];
 }

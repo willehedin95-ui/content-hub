@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { getPipelineData } from "@/lib/pipeline";
+import { getPipelineData, getCampaignBudgets } from "@/lib/pipeline";
 
 export async function GET() {
   try {
-    const data = await getPipelineData();
-    return NextResponse.json(data);
+    const [data, campaignBudgets] = await Promise.all([
+      getPipelineData(),
+      getCampaignBudgets().catch(() => []),
+    ]);
+    return NextResponse.json({ ...data, campaignBudgets });
   } catch (err) {
     console.error("[Pipeline] Error:", err);
     return NextResponse.json(

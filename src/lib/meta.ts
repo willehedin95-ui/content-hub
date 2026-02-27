@@ -454,10 +454,14 @@ export async function getCampaignInsights(
 export async function getAdInsights(
   since: string,
   until: string
-): Promise<Array<MetaInsightsRow & { ad_id: string; frequency?: string; actions?: Array<{ action_type: string; value: string }> }>> {
-  const fields = "impressions,clicks,spend,ctr,cpc,cpm,frequency,ad_id,actions";
+): Promise<Array<MetaInsightsRow & { ad_id: string; frequency?: string; actions?: Array<{ action_type: string; value: string }>; action_values?: Array<{ action_type: string; value: string }> }>> {
+  const fields = "impressions,clicks,spend,ctr,cpc,cpm,frequency,ad_id,actions,action_values";
   const timeRange = JSON.stringify({ since, until });
-  return metaJsonPaginated<MetaInsightsRow & { ad_id: string; frequency?: string; actions?: Array<{ action_type: string; value: string }> }>(
+  return metaJsonPaginated<MetaInsightsRow & { ad_id: string; frequency?: string; actions?: Array<{ action_type: string; value: string }>; action_values?: Array<{ action_type: string; value: string }> }>(
     `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=200`
   );
+}
+
+export async function getCampaignBudget(campaignId: string): Promise<{ daily_budget: string; name: string }> {
+  return metaJson(`/${campaignId}?fields=daily_budget,name`);
 }

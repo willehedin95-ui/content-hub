@@ -1,4 +1,4 @@
-import { getAdInsights } from "./meta";
+import { getAdInsights, getCampaignBudget } from "./meta";
 import { createServerSupabase } from "./supabase";
 import type {
   PipelineStage,
@@ -11,6 +11,7 @@ import type {
   ConceptMetrics,
   ConceptLifecycle,
   CashDna,
+  CampaignBudget,
 } from "@/types";
 
 // ── Constants ────────────────────────────────────────────────
@@ -390,6 +391,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
       impressions: number;
       clicks: number;
       conversions: number;
+      revenue: number;
       frequencySum: number;
       frequencyCount: number;
     }
@@ -409,6 +411,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
       impressions: 0,
       clicks: 0,
       conversions: 0,
+      revenue: 0,
       frequencySum: 0,
       frequencyCount: 0,
     };
@@ -422,6 +425,15 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
       for (const action of row.actions) {
         if (action.action_type === "purchase" || action.action_type === "omni_purchase") {
           existing.conversions += parseInt(action.value) || 0;
+        }
+      }
+    }
+
+    // Extract purchase revenue from the action_values array
+    if (row.action_values) {
+      for (const av of row.action_values) {
+        if (av.action_type === "purchase" || av.action_type === "omni_purchase") {
+          existing.revenue += parseFloat(av.value) || 0;
         }
       }
     }
@@ -444,6 +456,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     const cpc = agg.clicks > 0 ? agg.spend / agg.clicks : 0;
     const cpm = agg.impressions > 0 ? (agg.spend / agg.impressions) * 1000 : 0;
     const cpa = agg.conversions > 0 ? agg.spend / agg.conversions : 0;
+    const roas = agg.spend > 0 ? agg.revenue / agg.spend : null;
 
     const { error } = await db.from("concept_metrics").upsert(
       {
@@ -458,7 +471,8 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
         frequency,
         conversions: agg.conversions,
         cpa,
-        roas: null,
+        roas,
+        revenue: agg.revenue,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "image_job_id,date" }
@@ -493,7 +507,7 @@ export async function getPipelineData(): Promise<PipelineData> {
     await Promise.all([
       db
         .from("image_jobs")
-        .select("id, name, product, concept_number, status, cash_dna, created_at, source_images(thumbnail_url)")
+        .select("id, name, product, concept_number, status, cash_dna, created_at, source_images(thumbnail_url, original_url)")
         .in("status", ["completed", "reviewing", "ready"]),
       db.from("concept_lifecycle").select("*").is("exited_at", null),
       db
@@ -585,6 +599,7 @@ export async function getPipelineData(): Promise<PipelineData> {
       const totalImpressions = dailyMetrics.reduce((s, m) => s + m.impressions, 0);
       const totalClicks = dailyMetrics.reduce((s, m) => s + m.clicks, 0);
       const totalConversions = dailyMetrics.reduce((s, m) => s + m.conversions, 0);
+      const totalRevenue = dailyMetrics.reduce((s, m) => s + (m.revenue || 0), 0);
       const avgFrequency =
         dailyMetrics.length > 0
           ? dailyMetrics.reduce((s, m) => s + m.frequency, 0) / dailyMetrics.length
@@ -600,7 +615,8 @@ export async function getPipelineData(): Promise<PipelineData> {
         conversions: totalConversions,
         impressions: totalImpressions,
         clicks: totalClicks,
-        roas: null,
+        roas: totalSpend > 0 ? totalRevenue / totalSpend : null,
+        revenue: totalRevenue,
       };
 
       // Track latest sync
@@ -611,8 +627,9 @@ export async function getPipelineData(): Promise<PipelineData> {
       }
     }
 
-    // Target CPA lookup
+    // Target CPA + ROAS lookup
     let targetCpa: number | null = null;
+    let targetRoas: number | null = null;
     let currency: string | null = null;
     if (pushInfo) {
       for (const country of pushInfo.countries) {
@@ -620,6 +637,7 @@ export async function getPipelineData(): Promise<PipelineData> {
         const setting = settingsLookup.get(key);
         if (setting) {
           targetCpa = setting.target_cpa;
+          targetRoas = setting.target_roas ?? null;
           currency = setting.currency;
           break;
         }
@@ -644,8 +662,8 @@ export async function getPipelineData(): Promise<PipelineData> {
       : [];
 
     // Get thumbnail
-    const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null }>;
-    const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? null;
+    const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null; original_url: string | null }>;
+    const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? sourceImages[0]?.original_url ?? null;
 
     concepts.push({
       id: job.id,
@@ -660,6 +678,7 @@ export async function getPipelineData(): Promise<PipelineData> {
       metrics: metricsAgg,
       signals,
       targetCpa,
+      targetRoas,
       currency,
       cashDna: (job.cash_dna as CashDna | null) ?? null,
     });
@@ -774,4 +793,53 @@ export async function killConcept(
     signal: "manual_kill",
     notes: notes ?? null,
   });
+}
+
+// ── Campaign budgets ──────────────────────────────────────────
+
+export async function getCampaignBudgets(): Promise<CampaignBudget[]> {
+  const db = createServerSupabase();
+
+  // Get distinct meta_campaign_id values with their countries and product
+  const { data: mappings } = await db
+    .from("meta_campaign_mappings")
+    .select("meta_campaign_id, country, product");
+
+  if (!mappings || mappings.length === 0) return [];
+
+  // Group countries by campaign ID
+  const campaignInfoMap = new Map<string, { countries: Set<string>; product: string | null }>();
+  for (const m of mappings) {
+    if (!m.meta_campaign_id) continue;
+    const existing = campaignInfoMap.get(m.meta_campaign_id);
+    if (existing) {
+      existing.countries.add(m.country);
+    } else {
+      campaignInfoMap.set(m.meta_campaign_id, {
+        countries: new Set([m.country]),
+        product: m.product ?? null,
+      });
+    }
+  }
+
+  // Fetch budget from Meta API for each campaign
+  const budgets: CampaignBudget[] = [];
+  for (const [campaignId, info] of campaignInfoMap) {
+    try {
+      const data = await getCampaignBudget(campaignId);
+      // Meta returns daily_budget in cents (integer string)
+      const dailyBudgetCents = parseInt(data.daily_budget || "0", 10);
+      budgets.push({
+        campaignId,
+        name: data.name || campaignId,
+        dailyBudget: dailyBudgetCents / 100,
+        currency: "USD", // Meta returns in account currency, we default to USD
+        countries: [...info.countries],
+      });
+    } catch {
+      // Skip campaigns that fail (deleted, etc.)
+    }
+  }
+
+  return budgets;
 }

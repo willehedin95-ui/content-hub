@@ -24,6 +24,7 @@ import type {
   PipelineSetting,
   PipelineStage,
   PipelineSignal,
+  CampaignBudget,
 } from "@/types";
 
 // ── Constants ────────────────────────────────────────────────
@@ -117,6 +118,14 @@ function cpaColorClass(
   return "text-red-600";
 }
 
+function roasColorClass(roas: number | null, targetRoas: number | null): string {
+  if (roas === null || roas === 0) return "text-gray-400";
+  if (!targetRoas) return "text-gray-600";
+  if (roas >= targetRoas) return "text-green-600";
+  if (roas >= targetRoas * 0.7) return "text-yellow-600";
+  return "text-red-600";
+}
+
 // ── Main Component ───────────────────────────────────────────
 
 export default function PipelineClient() {
@@ -134,12 +143,14 @@ export default function PipelineClient() {
   const [newProduct, setNewProduct] = useState("happysleep");
   const [newCountry, setNewCountry] = useState("NO");
   const [newTargetCpa, setNewTargetCpa] = useState("");
+  const [newTargetRoas, setNewTargetRoas] = useState("");
   const [newCurrency, setNewCurrency] = useState("NOK");
   const [savingNewSetting, setSavingNewSetting] = useState(false);
 
   // Inline editing for existing settings
   const [editingSettingId, setEditingSettingId] = useState<string | null>(null);
   const [editCpa, setEditCpa] = useState("");
+  const [editRoas, setEditRoas] = useState("");
   const [editCurrency, setEditCurrency] = useState("");
   const [savingSettingId, setSavingSettingId] = useState<string | null>(null);
 
@@ -220,11 +231,11 @@ export default function PipelineClient() {
 
   // ── Settings CRUD ────────────────────────────────────────
 
-  async function handleSaveSetting(product: string, country: string, targetCpa: number, currency: string) {
+  async function handleSaveSetting(product: string, country: string, targetCpa: number, targetRoas: number | null, currency: string) {
     const res = await fetch("/api/pipeline/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product, country, target_cpa: targetCpa, currency }),
+      body: JSON.stringify({ product, country, target_cpa: targetCpa, target_roas: targetRoas, currency }),
     });
     if (!res.ok) throw new Error("Failed to save setting");
     await fetchSettings();
@@ -235,8 +246,15 @@ export default function PipelineClient() {
     if (!newTargetCpa) return;
     setSavingNewSetting(true);
     try {
-      await handleSaveSetting(newProduct, newCountry, parseFloat(newTargetCpa), newCurrency);
+      await handleSaveSetting(
+        newProduct,
+        newCountry,
+        parseFloat(newTargetCpa),
+        newTargetRoas ? parseFloat(newTargetRoas) : null,
+        newCurrency
+      );
       setNewTargetCpa("");
+      setNewTargetRoas("");
     } catch (err) {
       console.error("Add setting error:", err);
     } finally {
@@ -248,7 +266,13 @@ export default function PipelineClient() {
     if (!editCpa) return;
     setSavingSettingId(setting.id);
     try {
-      await handleSaveSetting(setting.product, setting.country, parseFloat(editCpa), editCurrency);
+      await handleSaveSetting(
+        setting.product,
+        setting.country,
+        parseFloat(editCpa),
+        editRoas ? parseFloat(editRoas) : null,
+        editCurrency
+      );
       setEditingSettingId(null);
     } catch (err) {
       console.error("Update setting error:", err);
@@ -270,6 +294,7 @@ export default function PipelineClient() {
   const summary = pipelineData?.summary;
   const alerts = pipelineData?.alerts ?? [];
   const concepts = pipelineData?.concepts ?? [];
+  const campaignBudgets = pipelineData?.campaignBudgets ?? [];
 
   // Group concepts by stage, sorted by daysInStage desc
   const conceptsByStage: Record<PipelineStage, PipelineConcept[]> = {
@@ -375,6 +400,11 @@ export default function PipelineClient() {
         </div>
       )}
 
+      {/* Campaign Budgets */}
+      {campaignBudgets.length > 0 && (
+        <CampaignBudgetSection budgets={campaignBudgets} concepts={concepts} />
+      )}
+
       {/* Empty state */}
       {concepts.length === 0 && !loading && (
         <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl mb-8">
@@ -449,7 +479,7 @@ export default function PipelineClient() {
         >
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium text-gray-700">Target CPA Settings</span>
+            <span className="text-sm font-medium text-gray-700">Pipeline Settings</span>
           </div>
           {settingsOpen ? (
             <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -471,6 +501,9 @@ export default function PipelineClient() {
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
                     Target CPA
+                  </th>
+                  <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
+                    BE-ROAS
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
                     Currency
@@ -496,6 +529,22 @@ export default function PipelineClient() {
                         />
                       ) : (
                         <span className="tabular-nums">{s.target_cpa.toFixed(2)}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      {editingSettingId === s.id ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editRoas}
+                          onChange={(e) => setEditRoas(e.target.value)}
+                          className="w-20 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
+                          placeholder="e.g. 1.61"
+                        />
+                      ) : (
+                        <span className="tabular-nums">
+                          {s.target_roas !== null ? `${s.target_roas.toFixed(2)}x` : "--"}
+                        </span>
                       )}
                     </td>
                     <td className="px-2 py-2">
@@ -537,6 +586,7 @@ export default function PipelineClient() {
                           onClick={() => {
                             setEditingSettingId(s.id);
                             setEditCpa(s.target_cpa.toString());
+                            setEditRoas(s.target_roas?.toString() ?? "");
                             setEditCurrency(s.currency);
                           }}
                           className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
@@ -579,6 +629,16 @@ export default function PipelineClient() {
                       value={newTargetCpa}
                       onChange={(e) => setNewTargetCpa(e.target.value)}
                       className="w-24 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 1.61"
+                      value={newTargetRoas}
+                      onChange={(e) => setNewTargetRoas(e.target.value)}
+                      className="w-20 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -717,20 +777,23 @@ function ConceptCard({
           )}
         </div>
 
-        {/* Row 3: Age badge + CPA indicator */}
+        {/* Row 3: Age badge + ROAS indicator */}
         <div className="flex items-center gap-1.5 mb-1">
           <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
             {concept.daysInStage}d
           </span>
           {m && (
             <span
-              className={`text-xs font-medium tabular-nums ${cpaColorClass(
-                m.cpa,
-                m.conversions,
-                concept.targetCpa
+              className={`text-xs font-medium tabular-nums ${roasColorClass(
+                m.roas,
+                concept.targetRoas
               )}`}
             >
-              {m.conversions === 0 ? "No conversions" : `CPA: ${m.cpa.toFixed(2)}`}
+              {m.roas !== null && m.roas > 0
+                ? `ROAS: ${m.roas.toFixed(2)}x`
+                : m.conversions === 0
+                ? "No conversions"
+                : "No revenue"}
             </span>
           )}
         </div>
@@ -761,6 +824,12 @@ function ConceptCard({
           {m && (
             <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mb-3">
               <MetricRow label="Spend" value={formatCurrency(m.totalSpend, concept.currency)} />
+              <MetricRow label="Revenue" value={formatCurrency(m.revenue, concept.currency)} />
+              <MetricRow
+                label="ROAS"
+                value={m.roas !== null && m.roas > 0 ? `${m.roas.toFixed(2)}x` : "--"}
+                valueClass={roasColorClass(m.roas, concept.targetRoas)}
+              />
               <MetricRow label="Impressions" value={m.impressions.toLocaleString()} />
               <MetricRow label="Clicks" value={m.clicks.toLocaleString()} />
               <MetricRow label="CTR" value={`${m.ctr.toFixed(2)}%`} />
@@ -842,6 +911,75 @@ function MetricRow({
       <span className={`text-xs font-medium tabular-nums ${valueClass || "text-gray-700"}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function CampaignBudgetSection({
+  budgets,
+  concepts,
+}: {
+  budgets: CampaignBudget[];
+  concepts: PipelineConcept[];
+}) {
+  // Count active (non-draft, non-killed) concepts per campaign
+  // We can approximate by counting concepts that are pushed (have languages)
+  const activeConcepts = concepts.filter(
+    (c) => c.stage !== "draft" && c.stage !== "killed" && c.languages.length > 0
+  );
+  const totalActiveConcepts = activeConcepts.length;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 mb-6">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+        Campaign Budgets
+      </h3>
+      <div className="space-y-2">
+        {budgets.map((b) => {
+          // Estimate concepts per campaign based on country overlap
+          const conceptsInCampaign = activeConcepts.filter((c) =>
+            c.languages.length > 0 && b.countries.some((country) => {
+              // Map country code to language for matching
+              const langMap: Record<string, string> = { SE: "sv", DK: "da", NO: "no", DE: "de" };
+              return c.languages.includes(langMap[country] || country.toLowerCase());
+            })
+          ).length;
+          const budgetPerConcept = conceptsInCampaign > 0 ? b.dailyBudget / conceptsInCampaign : b.dailyBudget;
+          const isLow = conceptsInCampaign > 0 && budgetPerConcept < 20;
+
+          return (
+            <div
+              key={b.campaignId}
+              className={`flex items-center justify-between p-2.5 rounded-lg border ${
+                isLow ? "border-amber-200 bg-amber-50" : "border-gray-100 bg-gray-50"
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-gray-800 truncate">{b.name}</p>
+                <p className="text-xs text-gray-400">
+                  {b.countries.join(", ")} &middot; {conceptsInCampaign} concept{conceptsInCampaign !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="text-right shrink-0 ml-3">
+                <p className="text-xs font-semibold tabular-nums text-gray-700">
+                  {b.dailyBudget.toFixed(0)} {b.currency}/day
+                </p>
+                {conceptsInCampaign > 0 && (
+                  <p className={`text-xs tabular-nums ${isLow ? "text-amber-600 font-medium" : "text-gray-400"}`}>
+                    ~{budgetPerConcept.toFixed(0)}/concept
+                    {isLow && " (low)"}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {budgets.length > 0 && totalActiveConcepts > 0 && (
+        <p className="text-xs text-gray-400 mt-2">
+          Total daily: {budgets.reduce((s, b) => s + b.dailyBudget, 0).toFixed(0)} {budgets[0]?.currency || "USD"} across {totalActiveConcepts} active concepts
+        </p>
+      )}
     </div>
   );
 }

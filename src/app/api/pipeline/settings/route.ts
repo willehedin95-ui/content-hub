@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const { product, country, target_cpa, currency } = await req.json();
+  const { product, country, target_cpa, target_roas, currency } = await req.json();
   if (!product || !country || target_cpa == null) {
     return NextResponse.json(
       { error: "product, country, and target_cpa are required" },
@@ -31,16 +31,31 @@ export async function PUT(req: NextRequest) {
     .eq("country", country)
     .single();
 
+  const updateFields: Record<string, unknown> = {
+    target_cpa,
+    currency,
+    updated_at: new Date().toISOString(),
+  };
+  if (target_roas !== undefined) {
+    updateFields.target_roas = target_roas;
+  }
+
   if (existing) {
     const { error } = await db
       .from("pipeline_settings")
-      .update({ target_cpa, currency, updated_at: new Date().toISOString() })
+      .update(updateFields)
       .eq("id", existing.id);
     if (error) return safeError(error, "Failed to update pipeline setting");
   } else {
     const { error } = await db
       .from("pipeline_settings")
-      .insert({ product, country, target_cpa, currency: currency || "USD" });
+      .insert({
+        product,
+        country,
+        target_cpa,
+        target_roas: target_roas ?? null,
+        currency: currency || "USD",
+      });
     if (error) return safeError(error, "Failed to create pipeline setting");
   }
 
