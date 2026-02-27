@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
   const hubBaseUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://content-hub.vercel.app";
+    process.env.APP_URL || "https://content-hub-nine-theta.vercel.app";
 
   try {
     // --- Screenshot path: message has photo ---
