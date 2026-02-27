@@ -966,7 +966,7 @@ function CampaignBudgetSection({
                 </p>
                 {conceptsInCampaign > 0 && (
                   <p className={`text-xs tabular-nums ${isLow ? "text-amber-600 font-medium" : "text-gray-400"}`}>
-                    ~{budgetPerConcept.toFixed(0)}/concept
+                    ~{budgetPerConcept.toFixed(0)} {b.currency}/day per concept
                     {isLow && " (low)"}
                   </p>
                 )}

@@ -727,7 +727,9 @@ export async function getPipelineData(): Promise<PipelineData> {
   if (activeScaling < PUBLISH_MORE_THRESHOLD) {
     alerts.push({
       type: "publish_more",
-      message: `Only ${activeScaling} active concepts (target: ${PUBLISH_MORE_THRESHOLD}+). Push more concepts to testing.`,
+      message: activeScaling === 0
+        ? "No proven winners yet. Keep testing — concepts graduate to Active after 5 days of profitable ROAS."
+        : `Only ${activeScaling} proven winner${activeScaling > 1 ? "s" : ""} (goal: ${PUBLISH_MORE_THRESHOLD}+). Keep pushing new concepts to build your pipeline.`,
       priority: activeScaling === 0 ? "high" : "medium",
     });
   }
@@ -735,7 +737,7 @@ export async function getPipelineData(): Promise<PipelineData> {
   if (needsReview > 0) {
     alerts.push({
       type: "review_needed",
-      message: `${needsReview} concept${needsReview > 1 ? "s" : ""} waiting for review.`,
+      message: `${needsReview} concept${needsReview > 1 ? "s have" : " has"} finished testing — check ${needsReview > 1 ? "their" : "its"} ROAS and decide: scale or kill?`,
       priority: needsReview >= 3 ? "high" : "medium",
     });
   }
@@ -743,7 +745,7 @@ export async function getPipelineData(): Promise<PipelineData> {
   if (testingBudgetPct > 50 && totalSpend > 0) {
     alerts.push({
       type: "budget_imbalance",
-      message: `${testingBudgetPct.toFixed(0)}% of budget is going to testing. Consider killing underperformers.`,
+      message: `${testingBudgetPct.toFixed(0)}% of your ad spend is on unproven concepts. Kill the losers so budget flows to winners.`,
       priority: "medium",
     });
   }
@@ -822,18 +824,31 @@ export async function getCampaignBudgets(): Promise<CampaignBudget[]> {
     }
   }
 
+  // Get currency from pipeline_settings (per country)
+  const { data: settingsData } = await db
+    .from("pipeline_settings")
+    .select("country, currency")
+    .limit(10);
+  const currencyMap = new Map<string, string>();
+  for (const s of settingsData ?? []) {
+    currencyMap.set(s.country, s.currency);
+  }
+
   // Fetch budget from Meta API for each campaign
   const budgets: CampaignBudget[] = [];
   for (const [campaignId, info] of campaignInfoMap) {
     try {
       const data = await getCampaignBudget(campaignId);
-      // Meta returns daily_budget in cents (integer string)
+      // Meta returns daily_budget in cents (integer string) in account currency
       const dailyBudgetCents = parseInt(data.daily_budget || "0", 10);
+      // Determine currency from the campaign's country settings
+      const firstCountry = [...info.countries][0];
+      const currency = currencyMap.get(firstCountry) || "SEK";
       budgets.push({
         campaignId,
         name: data.name || campaignId,
         dailyBudget: dailyBudgetCents / 100,
-        currency: "USD", // Meta returns in account currency, we default to USD
+        currency,
         countries: [...info.countries],
       });
     } catch {
