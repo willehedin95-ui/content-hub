@@ -6,9 +6,7 @@ import {
   validateWebhookSecret,
   extractUrls,
   detectPlatform,
-  formatCashSummary,
 } from "@/lib/telegram";
-import { runCashAnalysis } from "./cash-analysis";
 import { scrapePost } from "./scrape";
 
 export const maxDuration = 120;
@@ -36,8 +34,6 @@ export async function POST(req: NextRequest) {
   try {
     // --- Screenshot path: message has photo ---
     if (message.photo && message.photo.length > 0) {
-      await sendMessage(chatId, "Got it! Analyzing screenshot...");
-
       // Get largest photo (last in array)
       const photo = message.photo[message.photo.length - 1];
       const { buffer, mimeType } = await downloadFile(photo.file_id);
@@ -81,25 +77,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Run CASH analysis
-      const analysis = await runCashAnalysis(
-        db,
-        savedAd.id,
-        mediaUrl,
-        null,
-        userNotes
-      );
-
-      if (analysis) {
-        const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
-        await sendMessage(chatId, formatCashSummary(analysis, hubUrl));
-      } else {
-        await sendMessage(
-          chatId,
-          `Saved! Analysis failed — you can re-analyze from the Hub.\n\n${hubBaseUrl}/saved-ads?id=${savedAd.id}`
-        );
-      }
-
+      const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
+      await sendMessage(chatId, `Saved!\n\nView in Hub: ${hubUrl}`);
       return NextResponse.json({ ok: true });
     }
 
@@ -119,7 +98,7 @@ export async function POST(req: NextRequest) {
       // Scrape the post
       const scraped = await scrapePost(url, platform);
 
-      // Upload media to Supabase Storage if we got a media URL
+      // Upload media to Supabase Storage if we got an image URL
       let storedMediaUrl = scraped.media_url;
       if (scraped.media_url && scraped.media_type === "image") {
         try {
@@ -174,37 +153,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Run CASH analysis (only for images)
-      if (scraped.media_type === "image" && storedMediaUrl) {
-        const analysis = await runCashAnalysis(
-          db,
-          savedAd.id,
-          storedMediaUrl,
-          {
-            headline: scraped.headline,
-            body: scraped.body,
-            brand: scraped.brand_name,
-          },
-          userNotes
-        );
-
-        if (analysis) {
-          const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
-          await sendMessage(chatId, formatCashSummary(analysis, hubUrl));
-        } else {
-          await sendMessage(
-            chatId,
-            `Saved! Analysis failed — you can re-analyze from the Hub.\n\n${hubBaseUrl}/saved-ads?id=${savedAd.id}`
-          );
-        }
-      } else {
-        const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
-        await sendMessage(
-          chatId,
-          `Saved!${scraped.media_type === "video" ? " Video ads can't be auto-analyzed yet." : ""}\n\nView in Hub: ${hubUrl}`
-        );
-      }
-
+      const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
+      const brandPart = scraped.brand_name ? ` from ${scraped.brand_name}` : "";
+      await sendMessage(chatId, `Saved${brandPart}!\n\nView in Hub: ${hubUrl}`);
       return NextResponse.json({ ok: true });
     }
 

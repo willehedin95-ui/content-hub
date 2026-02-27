@@ -3,7 +3,7 @@
 const APIFY_API_BASE = "https://api.apify.com/v2";
 
 // Apify actor IDs for single-post scraping
-const INSTAGRAM_POST_ACTOR = "apify/instagram-post-scraper";
+const INSTAGRAM_ACTOR = "apify/instagram-scraper";
 const FACEBOOK_POST_ACTOR = "apify/facebook-posts-scraper";
 
 export interface ScrapedPost {
@@ -64,8 +64,12 @@ export async function scrapePost(
 
 async function scrapeInstagramPost(url: string): Promise<ScrapedPost> {
   const token = getApifyToken();
+
+  // Clean URL: remove tracking params like igsh
+  const cleanUrl = url.split("?")[0];
+
   const res = await fetch(
-    `${APIFY_API_BASE}/acts/${INSTAGRAM_POST_ACTOR}/runs?waitForFinish=120`,
+    `${APIFY_API_BASE}/acts/${INSTAGRAM_ACTOR}/runs?waitForFinish=120`,
     {
       method: "POST",
       headers: {
@@ -73,7 +77,8 @@ async function scrapeInstagramPost(url: string): Promise<ScrapedPost> {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        directUrls: [url],
+        directUrls: [cleanUrl],
+        resultsType: "posts",
         resultsLimit: 1,
       }),
     }
@@ -102,14 +107,18 @@ async function scrapeInstagramPost(url: string): Promise<ScrapedPost> {
   // Normalize Instagram post data
   const isVideo = post.type === "Video" || post.videoUrl != null;
 
+  // Instagram often blocks media URLs — displayUrl may be a placeholder
+  const displayUrl = post.displayUrl || null;
+  const isPlaceholder =
+    !displayUrl || displayUrl.includes("null.jpg") || displayUrl.includes("rsrc.php");
+  const imageUrl = isPlaceholder ? null : displayUrl;
+
   return {
-    media_url: isVideo
-      ? post.videoUrl || null
-      : post.displayUrl || post.imageUrl || null,
-    media_type: isVideo ? "video" : "image",
-    thumbnail_url: post.displayUrl || post.imageUrl || null,
-    headline: null, // Instagram posts don't have headlines
-    body: post.caption || post.text || null,
+    media_url: isVideo ? post.videoUrl || null : imageUrl,
+    media_type: isVideo ? "video" : post.type === "Image" ? "image" : null,
+    thumbnail_url: imageUrl,
+    headline: null,
+    body: post.caption || post.alt || null,
     destination_url: post.url || url,
     brand_name: post.ownerUsername || post.ownerFullName || null,
     raw_data: post,
