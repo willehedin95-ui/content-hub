@@ -16,7 +16,9 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}));
 
   // Only allow updating these fields
-  const updates: Record<string, unknown> = {};
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
   if ("is_bookmarked" in body) updates.is_bookmarked = body.is_bookmarked;
   if ("user_notes" in body) updates.user_notes = body.user_notes;
   if ("brand_name" in body) updates.brand_name = body.brand_name;
