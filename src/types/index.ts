@@ -621,6 +621,29 @@ export interface SpyAdCashAnalysis extends CashDna {
   estimated_production: string | null;
 }
 
+// --- Saved Ads Types (Telegram capture) ---
+
+export interface SavedAd {
+  id: string;
+  source_url: string | null;
+  source_platform: "instagram" | "facebook" | "unknown";
+  media_url: string | null;
+  media_type: string | null;
+  thumbnail_url: string | null;
+  headline: string | null;
+  body: string | null;
+  destination_url: string | null;
+  brand_name: string | null;
+  cash_analysis: SpyAdCashAnalysis | null;
+  analyzed_at: string | null;
+  user_notes: string | null;
+  is_bookmarked: boolean;
+  telegram_message_id: string | null;
+  raw_scrape_data: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Brainstorm Types ---
 
 export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware";
