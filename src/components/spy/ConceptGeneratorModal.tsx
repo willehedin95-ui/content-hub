@@ -21,9 +21,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
   ad: SpyAd;
+  /** API path prefix, e.g. "/api/spy/ads" or "/api/saved-ads". Defaults to "/api/spy/ads". */
+  apiBasePath?: string;
+  /** Override brand name display (used by SavedAd which has brand_name instead of brand.name) */
+  brandName?: string;
 }
 
-export default function ConceptGeneratorModal({ open, onClose, ad }: Props) {
+export default function ConceptGeneratorModal({ open, onClose, ad, apiBasePath = "/api/spy/ads", brandName }: Props) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("select");
   const [product, setProduct] = useState<Product>("happysleep");
@@ -84,7 +88,7 @@ export default function ConceptGeneratorModal({ open, onClose, ad }: Props) {
     setLoadingMsg(0);
 
     try {
-      const res = await fetch(`/api/spy/ads/${ad.id}/generate-concepts`, {
+      const res = await fetch(`${apiBasePath}/${ad.id}/generate-concepts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product, count: 4 }),
@@ -111,7 +115,7 @@ export default function ConceptGeneratorModal({ open, onClose, ad }: Props) {
     setError("");
 
     try {
-      const res = await fetch(`/api/spy/ads/${ad.id}/approve-concept`, {
+      const res = await fetch(`${apiBasePath}/${ad.id}/approve-concept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -153,7 +157,7 @@ export default function ConceptGeneratorModal({ open, onClose, ad }: Props) {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Create Concept</h2>
               <p className="text-xs text-gray-500">
-                Inspired by {ad.brand?.name ?? "competitor"} ad
+                Inspired by {brandName ?? ad.brand?.name ?? "competitor"} ad
               </p>
             </div>
           </div>
@@ -181,7 +185,7 @@ export default function ConceptGeneratorModal({ open, onClose, ad }: Props) {
                 )}
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-indigo-600 uppercase tracking-wide">
-                    {ad.brand?.name ?? "Unknown brand"}
+                    {brandName ?? ad.brand?.name ?? "Unknown brand"}
                   </p>
                   <p className="text-sm font-medium text-gray-800 line-clamp-2 mt-0.5">
                     {ad.headline || ad.body?.slice(0, 100) || "No copy"}
