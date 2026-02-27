@@ -2,7 +2,7 @@
 Updated: 2026-02-27
 
 ## P1 — Do Next
-- [ ] Stream generate-static API to show images as they complete (SSE/streaming) — currently waits for all before responding (added 2026-02-26)
+- (empty — all P1 items completed)
 
 ## P2 — Important
 - [ ] Ad Spy — monitor competitors, AI suggests new concepts (added 2025-02-25)
@@ -13,8 +13,10 @@ Updated: 2026-02-27
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
 - [ ] Daily performance brief — morning summary with AI insights (added 2025-02-25)
 - [ ] Google Ads integration (added 2025-02-25)
+- [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
 
 ## Done (recent)
+- [x] Poll-based streaming — images appear in grid as they complete (done 2026-02-27)
 - [x] Switch to nano-banana-2 at 1K resolution for faster/cheaper generation (done 2026-02-27)
 - [x] Parallel image generation via Promise.allSettled (done 2026-02-27)
 - [x] Error feedback — show full summary when images fail (done 2026-02-27)
