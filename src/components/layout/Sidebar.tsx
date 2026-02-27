@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -23,6 +23,7 @@ const nav: NavEntry[] = [
     label: "Ads",
     icon: Megaphone,
     children: [
+      { href: "/pipeline", label: "Pipeline", icon: Workflow },
       { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
       { href: "/images", label: "Ad Concepts", icon: Image },
       { href: "/spy", label: "Ad Spy", icon: Eye },
