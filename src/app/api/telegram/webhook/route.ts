@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import sharp from "sharp";
 import {
   sendMessage,
   downloadFile,
@@ -7,9 +8,83 @@ import {
   extractUrls,
   detectPlatform,
 } from "@/lib/telegram";
-import { scrapePost } from "./scrape";
 
 export const maxDuration = 120;
+
+/**
+ * Use OpenAI vision to detect the ad image area in a screenshot,
+ * then crop it with sharp. Returns the cropped buffer, or the
+ * original buffer if detection fails.
+ */
+async function autoCropAdImage(buffer: Buffer): Promise<Buffer> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return buffer;
+
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    if (!width || !height) return buffer;
+
+    const base64 = buffer.toString("base64");
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `This is a screenshot of a social media ad from Instagram or Facebook. I need to crop just the ad creative image/visual — remove the app UI (status bar, navigation, username header, like/comment buttons, caption text, etc.). Return ONLY a JSON object with the crop coordinates as percentages of the image dimensions: {"top": number, "left": number, "width": number, "height": number} where all values are 0-100 representing percentages. For example {"top": 15, "left": 0, "width": 100, "height": 50} means start at 15% from top, 0% from left, spanning 100% width and 50% height. Focus on the main visual/creative content of the ad only.`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${base64}` },
+              },
+            ],
+          },
+        ],
+        max_tokens: 100,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("[AutoCrop] OpenAI API error:", res.status);
+      return buffer;
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return buffer;
+
+    const coords = JSON.parse(content);
+    const cropTop = Math.round((coords.top / 100) * height);
+    const cropLeft = Math.round((coords.left / 100) * width);
+    const cropWidth = Math.round((coords.width / 100) * width);
+    const cropHeight = Math.round((coords.height / 100) * height);
+
+    // Sanity check
+    if (cropWidth < 50 || cropHeight < 50) return buffer;
+    if (cropLeft + cropWidth > width) return buffer;
+    if (cropTop + cropHeight > height) return buffer;
+
+    return await sharp(buffer)
+      .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+  } catch (err) {
+    console.error("[AutoCrop] Failed:", err);
+    return buffer;
+  }
+}
 
 export async function POST(req: NextRequest) {
   // Validate webhook secret
@@ -38,11 +113,17 @@ export async function POST(req: NextRequest) {
       const photo = message.photo[message.photo.length - 1];
       const { buffer, mimeType } = await downloadFile(photo.file_id);
 
-      // Upload to Supabase Storage
+      // Auto-crop to extract just the ad creative
+      const croppedBuffer = await autoCropAdImage(buffer);
+
+      // Upload cropped image to Supabase Storage
       const filename = `saved-ads/${Date.now()}-${photo.file_id}.jpg`;
       const { error: uploadErr } = await db.storage
         .from("translated-images")
-        .upload(filename, buffer, { contentType: mimeType, upsert: true });
+        .upload(filename, croppedBuffer, {
+          contentType: "image/jpeg",
+          upsert: true,
+        });
 
       if (uploadErr) {
         console.error("[Telegram] Storage upload failed:", uploadErr);
@@ -55,13 +136,22 @@ export async function POST(req: NextRequest) {
         .getPublicUrl(filename);
 
       const mediaUrl = publicUrl.publicUrl;
-      const userNotes = message.caption || null;
+
+      // Check caption for URLs (user might include the ad URL)
+      const caption = message.caption || "";
+      const captionUrls = extractUrls(caption);
+      const sourceUrl = captionUrls[0] || null;
+      const platform = sourceUrl ? detectPlatform(sourceUrl) : "unknown";
+      const userNotes = sourceUrl
+        ? caption.replace(sourceUrl, "").trim() || null
+        : caption || null;
 
       // Insert saved ad
       const { data: savedAd, error: insertErr } = await db
         .from("saved_ads")
         .insert({
-          source_platform: "unknown",
+          source_url: sourceUrl,
+          source_platform: platform,
           media_url: mediaUrl,
           media_type: "image",
           thumbnail_url: mediaUrl,
@@ -82,87 +172,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // --- URL path: message has URL in text ---
+    // --- URL-only path: save URL without scraping ---
     const text = message.text || message.caption || "";
     const urls = extractUrls(text);
 
     if (urls.length > 0) {
-      const url = urls[0]; // Take the first URL
+      const url = urls[0];
       const platform = detectPlatform(url);
-
-      await sendMessage(
-        chatId,
-        `Got it! Scraping ${platform !== "unknown" ? platform : "post"}...`
-      );
-
-      // Scrape the post
-      const scraped = await scrapePost(url, platform);
-
-      // Upload media to Supabase Storage if we got an image URL
-      let storedMediaUrl = scraped.media_url;
-      if (scraped.media_url && scraped.media_type === "image") {
-        try {
-          const imgRes = await fetch(scraped.media_url);
-          if (imgRes.ok) {
-            const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-            const ext = scraped.media_url.includes(".png") ? "png" : "jpg";
-            const filename = `saved-ads/${Date.now()}-scraped.${ext}`;
-            await db.storage
-              .from("translated-images")
-              .upload(filename, imgBuffer, {
-                contentType: `image/${ext === "png" ? "png" : "jpeg"}`,
-                upsert: true,
-              });
-            const { data: pub } = db.storage
-              .from("translated-images")
-              .getPublicUrl(filename);
-            storedMediaUrl = pub.publicUrl;
-          }
-        } catch (e) {
-          console.error("[Telegram] Image re-upload failed:", e);
-          // Keep original URL as fallback
-        }
-      }
-
-      // Extract user notes (text minus the URL)
       const userNotes = text.replace(url, "").trim() || null;
 
-      // Insert saved ad
       const { data: savedAd, error: insertErr } = await db
         .from("saved_ads")
         .insert({
           source_url: url,
           source_platform: platform,
-          media_url: storedMediaUrl,
-          media_type: scraped.media_type,
-          thumbnail_url: scraped.thumbnail_url || storedMediaUrl,
-          headline: scraped.headline,
-          body: scraped.body,
-          destination_url: scraped.destination_url,
-          brand_name: scraped.brand_name,
           user_notes: userNotes,
           telegram_message_id: messageId,
-          raw_scrape_data: scraped.raw_data,
         })
         .select()
         .single();
 
       if (insertErr || !savedAd) {
         console.error("[Telegram] Insert failed:", insertErr);
-        await sendMessage(chatId, "Failed to save ad. Please try again.");
+        await sendMessage(chatId, "Failed to save. Please try again.");
         return NextResponse.json({ ok: true });
       }
 
       const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
-      const brandPart = scraped.brand_name ? ` from ${scraped.brand_name}` : "";
-      await sendMessage(chatId, `Saved${brandPart}!\n\nView in Hub: ${hubUrl}`);
+      await sendMessage(
+        chatId,
+        `URL saved! For the best result, send a screenshot of the ad too.\n\nView in Hub: ${hubUrl}`
+      );
       return NextResponse.json({ ok: true });
     }
 
-    // --- No URL and no photo — just text ---
+    // --- No URL and no photo ---
     await sendMessage(
       chatId,
-      "Send me an ad URL (Instagram or Facebook) or a screenshot to save it."
+      "Send me a screenshot of an ad to save it. You can add the URL as a caption."
     );
     return NextResponse.json({ ok: true });
   } catch (err) {
