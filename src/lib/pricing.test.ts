@@ -43,7 +43,7 @@ describe("pricing constants", () => {
     expect(GPT4O_OUTPUT_COST).toBe(8.0);
   });
 
-  it("Kie.ai image cost is $0.09 per image", () => {
-    expect(KIE_IMAGE_COST).toBe(0.09);
+  it("Kie.ai image cost is $0.045 per image", () => {
+    expect(KIE_IMAGE_COST).toBe(0.045);
   });
 });
