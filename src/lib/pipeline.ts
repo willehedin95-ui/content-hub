@@ -322,11 +322,14 @@ async function detectStageTransitions(): Promise<void> {
           .eq("id", currentLifecycle.id);
       }
 
-      // Create new lifecycle record
+      // Create new lifecycle record — for the initial "testing" stage,
+      // use the actual push date so daysInStage is accurate
+      const enteredAt =
+        !currentLifecycle && newStage === "testing" ? info.earliestPush : now;
       await db.from("concept_lifecycle").insert({
         image_job_id: conceptId,
         stage: newStage,
-        entered_at: now,
+        entered_at: enteredAt,
         signal,
       });
     }
