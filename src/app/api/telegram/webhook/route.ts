@@ -11,20 +11,36 @@ import {
 
 export const maxDuration = 120;
 
+interface AnalyzeResult {
+  croppedBuffer: Buffer;
+  brandName: string | null;
+  platform: "instagram" | "facebook" | "unknown";
+  adText: string | null;
+}
+
 /**
- * Use OpenAI vision to detect the ad image area in a screenshot,
- * then crop it with sharp. Returns the cropped buffer, or the
- * original buffer if detection fails.
+ * Use OpenAI vision to analyze a screenshot:
+ * 1. Detect the ad creative area and crop it
+ * 2. Extract the brand/account name
+ * 3. Detect the platform (Instagram/Facebook)
+ * 4. Extract any visible ad text/headline
  */
-async function autoCropAdImage(buffer: Buffer): Promise<Buffer> {
+async function analyzeAndCropScreenshot(buffer: Buffer): Promise<AnalyzeResult> {
+  const fallback: AnalyzeResult = {
+    croppedBuffer: buffer,
+    brandName: null,
+    platform: "unknown",
+    adText: null,
+  };
+
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return buffer;
+  if (!apiKey) return fallback;
 
   try {
     const metadata = await sharp(buffer).metadata();
     const width = metadata.width ?? 0;
     const height = metadata.height ?? 0;
-    if (!width || !height) return buffer;
+    if (!width || !height) return fallback;
 
     const base64 = buffer.toString("base64");
 
@@ -42,7 +58,17 @@ async function autoCropAdImage(buffer: Buffer): Promise<Buffer> {
             content: [
               {
                 type: "text",
-                text: `This is a screenshot of a social media ad from Instagram or Facebook. I need to crop just the ad creative image/visual — remove the app UI (status bar, navigation, username header, like/comment buttons, caption text, etc.). Return ONLY a JSON object with the crop coordinates as percentages of the image dimensions: {"top": number, "left": number, "width": number, "height": number} where all values are 0-100 representing percentages. For example {"top": 15, "left": 0, "width": 100, "height": 50} means start at 15% from top, 0% from left, spanning 100% width and 50% height. Focus on the main visual/creative content of the ad only.`,
+                text: `This is a screenshot of a social media ad. Analyze it and return a JSON object with:
+
+1. "crop" — coordinates to crop ONLY the ad creative image/visual (remove app UI: status bar, navigation, username header, like/comment buttons, caption text). Use percentages (0-100) of image dimensions: {"top": number, "left": number, "width": number, "height": number}
+
+2. "brand_name" — the account/brand name visible in the post header (e.g. "Nike", "Travel lover"). Return null if not visible.
+
+3. "platform" — "instagram" or "facebook" based on the app UI. Return "unknown" if unclear.
+
+4. "ad_text" — the main ad copy/caption text visible in the screenshot. Return null if not visible or too small to read.
+
+Example: {"crop": {"top": 12, "left": 0, "width": 100, "height": 55}, "brand_name": "Nike", "platform": "instagram", "ad_text": "Just Do It. Shop now."}`,
               },
               {
                 type: "image_url",
@@ -51,38 +77,55 @@ async function autoCropAdImage(buffer: Buffer): Promise<Buffer> {
             ],
           },
         ],
-        max_tokens: 100,
+        max_tokens: 300,
         response_format: { type: "json_object" },
       }),
     });
 
     if (!res.ok) {
-      console.error("[AutoCrop] OpenAI API error:", res.status);
-      return buffer;
+      console.error("[Analyze] OpenAI API error:", res.status);
+      return fallback;
     }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content;
-    if (!content) return buffer;
+    if (!content) return fallback;
 
-    const coords = JSON.parse(content);
-    const cropTop = Math.round((coords.top / 100) * height);
-    const cropLeft = Math.round((coords.left / 100) * width);
-    const cropWidth = Math.round((coords.width / 100) * width);
-    const cropHeight = Math.round((coords.height / 100) * height);
+    const result = JSON.parse(content);
 
-    // Sanity check
-    if (cropWidth < 50 || cropHeight < 50) return buffer;
-    if (cropLeft + cropWidth > width) return buffer;
-    if (cropTop + cropHeight > height) return buffer;
+    // Crop the image
+    let croppedBuffer = buffer;
+    const crop = result.crop;
+    if (crop) {
+      const cropTop = Math.round((crop.top / 100) * height);
+      const cropLeft = Math.round((crop.left / 100) * width);
+      const cropWidth = Math.round((crop.width / 100) * width);
+      const cropHeight = Math.round((crop.height / 100) * height);
 
-    return await sharp(buffer)
-      .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
-      .jpeg({ quality: 90 })
-      .toBuffer();
+      if (
+        cropWidth >= 50 &&
+        cropHeight >= 50 &&
+        cropLeft + cropWidth <= width &&
+        cropTop + cropHeight <= height
+      ) {
+        croppedBuffer = await sharp(buffer)
+          .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
+          .jpeg({ quality: 90 })
+          .toBuffer();
+      }
+    }
+
+    return {
+      croppedBuffer,
+      brandName: result.brand_name || null,
+      platform: result.platform === "instagram" || result.platform === "facebook"
+        ? result.platform
+        : "unknown",
+      adText: result.ad_text || null,
+    };
   } catch (err) {
-    console.error("[AutoCrop] Failed:", err);
-    return buffer;
+    console.error("[Analyze] Failed:", err);
+    return fallback;
   }
 }
 
@@ -111,10 +154,11 @@ export async function POST(req: NextRequest) {
     if (message.photo && message.photo.length > 0) {
       // Get largest photo (last in array)
       const photo = message.photo[message.photo.length - 1];
-      const { buffer, mimeType } = await downloadFile(photo.file_id);
+      const { buffer } = await downloadFile(photo.file_id);
 
-      // Auto-crop to extract just the ad creative
-      const croppedBuffer = await autoCropAdImage(buffer);
+      // Analyze screenshot: auto-crop + extract brand name, platform, ad text
+      const { croppedBuffer, brandName, platform: detectedPlatform, adText } =
+        await analyzeAndCropScreenshot(buffer);
 
       // Upload cropped image to Supabase Storage
       const filename = `saved-ads/${Date.now()}-${photo.file_id}.jpg`;
@@ -141,12 +185,14 @@ export async function POST(req: NextRequest) {
       const caption = message.caption || "";
       const captionUrls = extractUrls(caption);
       const sourceUrl = captionUrls[0] || null;
-      const platform = sourceUrl ? detectPlatform(sourceUrl) : "unknown";
+      const captionPlatform = sourceUrl ? detectPlatform(sourceUrl) : null;
+      // Prefer platform from URL detection, fall back to vision detection
+      const platform = captionPlatform || detectedPlatform;
       const userNotes = sourceUrl
         ? caption.replace(sourceUrl, "").trim() || null
         : caption || null;
 
-      // Insert saved ad
+      // Insert saved ad with extracted metadata
       const { data: savedAd, error: insertErr } = await db
         .from("saved_ads")
         .insert({
@@ -155,6 +201,8 @@ export async function POST(req: NextRequest) {
           media_url: mediaUrl,
           media_type: "image",
           thumbnail_url: mediaUrl,
+          brand_name: brandName,
+          body: adText,
           user_notes: userNotes,
           telegram_message_id: messageId,
         })
@@ -168,7 +216,8 @@ export async function POST(req: NextRequest) {
       }
 
       const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
-      await sendMessage(chatId, `Saved!\n\nView in Hub: ${hubUrl}`);
+      const brandLabel = brandName ? ` (${brandName})` : "";
+      await sendMessage(chatId, `Saved${brandLabel}!\n\nView in Hub: ${hubUrl}`);
       return NextResponse.json({ ok: true });
     }
 
