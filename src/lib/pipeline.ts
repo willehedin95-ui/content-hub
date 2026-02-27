@@ -591,9 +591,12 @@ export async function getPipelineData(): Promise<PipelineData> {
         totalSpend,
         cpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
         ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+        cpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
+        cpm: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
         frequency: avgFrequency,
         conversions: totalConversions,
         impressions: totalImpressions,
+        clicks: totalClicks,
         roas: null,
       };
 

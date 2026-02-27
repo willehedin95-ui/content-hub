@@ -750,9 +750,12 @@ export interface PipelineConcept {
     totalSpend: number;
     cpa: number;
     ctr: number;
+    cpc: number;
+    cpm: number;
     frequency: number;
     conversions: number;
     impressions: number;
+    clicks: number;
     roas: number | null;
   } | null;
   signals: PipelineSignal[];

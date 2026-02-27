@@ -101,11 +101,6 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-function formatNum(n: number, decimals = 2): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return n.toFixed(decimals);
-}
-
 function formatCurrency(n: number, currency?: string | null): string {
   const cur = currency || "USD";
   return `${n.toFixed(2)} ${cur}`;
@@ -129,6 +124,7 @@ export default function PipelineClient() {
   const [settings, setSettings] = useState<PipelineSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [killingId, setKillingId] = useState<string | null>(null);
   const [killNotes, setKillNotes] = useState("");
@@ -155,8 +151,10 @@ export default function PipelineClient() {
       if (!res.ok) throw new Error("Failed to fetch pipeline data");
       const data: PipelineData = await res.json();
       setPipelineData(data);
+      setError(null);
     } catch (err) {
       console.error("Pipeline fetch error:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch pipeline data");
     }
   }, []);
 
@@ -178,8 +176,10 @@ export default function PipelineClient() {
       if (!res.ok) throw new Error("Sync failed");
       const data: PipelineData = await res.json();
       setPipelineData(data);
+      setError(null);
     } catch (err) {
       console.error("Pipeline sync error:", err);
+      setError(err instanceof Error ? err.message : "Pipeline sync failed");
     } finally {
       setSyncing(false);
     }
@@ -210,9 +210,11 @@ export default function PipelineClient() {
       setKillingId(null);
       setKillNotes("");
       setExpandedId(null);
+      setError(null);
       await fetchPipeline();
     } catch (err) {
       console.error("Kill error:", err);
+      setError(err instanceof Error ? err.message : "Failed to kill concept");
     }
   }
 
@@ -226,6 +228,7 @@ export default function PipelineClient() {
     });
     if (!res.ok) throw new Error("Failed to save setting");
     await fetchSettings();
+    await fetchPipeline();
   }
 
   async function handleAddSetting() {
@@ -308,9 +311,19 @@ export default function PipelineClient() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 mb-4 text-sm">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-5 gap-4 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
           <SummaryCard
             icon={<FileText className="w-4 h-4 text-blue-500" />}
             label="Drafts Ready"
@@ -362,58 +375,71 @@ export default function PipelineClient() {
         </div>
       )}
 
-      {/* Pipeline Columns (Kanban) */}
-      <div className="flex gap-4 overflow-x-auto pb-4 mb-8">
-        {STAGES.map((stage) => {
-          const config = STAGE_CONFIG[stage];
-          const stageConcepts = conceptsByStage[stage];
-          return (
-            <div key={stage} className="flex-1 min-w-[240px]">
-              {/* Column header */}
-              <div
-                className={`flex items-center justify-between px-3 py-2 rounded-t-lg border ${config.headerBg} ${config.borderColor}`}
-              >
-                <span className={`text-xs font-semibold uppercase tracking-wider ${config.headerText}`}>
-                  {config.label}
-                </span>
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${config.headerBg} ${config.headerText}`}
-                >
-                  {stageConcepts.length}
-                </span>
-              </div>
+      {/* Empty state */}
+      {concepts.length === 0 && !loading && (
+        <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl mb-8">
+          <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <h3 className="text-sm font-medium text-gray-600 mb-1">No concepts in the pipeline yet</h3>
+          <p className="text-xs text-gray-400 max-w-sm mx-auto">
+            Create concepts in Ad Concepts, push them to Meta, then they&apos;ll appear here automatically.
+          </p>
+        </div>
+      )}
 
-              {/* Column body */}
-              <div
-                className={`border border-t-0 ${config.borderColor} rounded-b-lg bg-gray-50 p-2 min-h-[200px] space-y-2`}
-              >
-                {stageConcepts.length === 0 && (
-                  <p className="text-[10px] text-gray-400 text-center py-6">No concepts</p>
-                )}
-                {stageConcepts.map((concept) => (
-                  <ConceptCard
-                    key={concept.id}
-                    concept={concept}
-                    expanded={expandedId === concept.id}
-                    onToggle={() =>
-                      setExpandedId(expandedId === concept.id ? null : concept.id)
-                    }
-                    killingId={killingId}
-                    killNotes={killNotes}
-                    onStartKill={() => setKillingId(concept.id)}
-                    onCancelKill={() => {
-                      setKillingId(null);
-                      setKillNotes("");
-                    }}
-                    onKillNotesChange={setKillNotes}
-                    onConfirmKill={() => handleKill(concept.id)}
-                  />
-                ))}
+      {/* Pipeline Columns (Kanban) */}
+      {concepts.length > 0 && (
+        <div className="flex gap-4 overflow-x-auto pb-4 mb-8">
+          {STAGES.map((stage) => {
+            const config = STAGE_CONFIG[stage];
+            const stageConcepts = conceptsByStage[stage];
+            return (
+              <div key={stage} className="flex-1 min-w-[240px]">
+                {/* Column header */}
+                <div
+                  className={`flex items-center justify-between px-3 py-2 rounded-t-lg border ${config.headerBg} ${config.borderColor}`}
+                >
+                  <span className={`text-xs font-semibold uppercase tracking-wider ${config.headerText}`}>
+                    {config.label}
+                  </span>
+                  <span
+                    className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${config.headerBg} ${config.headerText}`}
+                  >
+                    {stageConcepts.length}
+                  </span>
+                </div>
+
+                {/* Column body */}
+                <div
+                  className={`border border-t-0 ${config.borderColor} rounded-b-lg bg-gray-50 p-2 min-h-[200px] space-y-2`}
+                >
+                  {stageConcepts.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-6">No concepts</p>
+                  )}
+                  {stageConcepts.map((concept) => (
+                    <ConceptCard
+                      key={concept.id}
+                      concept={concept}
+                      expanded={expandedId === concept.id}
+                      onToggle={() =>
+                        setExpandedId(expandedId === concept.id ? null : concept.id)
+                      }
+                      killingId={killingId}
+                      killNotes={killNotes}
+                      onStartKill={() => setKillingId(concept.id)}
+                      onCancelKill={() => {
+                        setKillingId(null);
+                        setKillNotes("");
+                      }}
+                      onKillNotesChange={setKillNotes}
+                      onConfirmKill={() => handleKill(concept.id)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Settings Panel */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
@@ -668,7 +694,7 @@ function ConceptCard({
               {concept.name}
             </p>
             {concept.conceptNumber !== null && (
-              <span className="text-[10px] text-gray-400">#{concept.conceptNumber}</span>
+              <span className="text-xs text-gray-400">#{concept.conceptNumber}</span>
             )}
           </div>
         </div>
@@ -677,7 +703,7 @@ function ConceptCard({
         <div className="flex items-center gap-1.5 mb-1.5">
           {concept.product && (
             <span
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+              className={`text-xs font-medium px-1.5 py-0.5 rounded ${
                 PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"
               }`}
             >
@@ -685,7 +711,7 @@ function ConceptCard({
             </span>
           )}
           {concept.languages.length > 0 && (
-            <span className="text-[10px] text-gray-400 uppercase">
+            <span className="text-xs text-gray-400 uppercase">
               {concept.languages.join(", ")}
             </span>
           )}
@@ -693,12 +719,12 @@ function ConceptCard({
 
         {/* Row 3: Age badge + CPA indicator */}
         <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
+          <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
             {concept.daysInStage}d
           </span>
           {m && (
             <span
-              className={`text-[10px] font-medium tabular-nums ${cpaColorClass(
+              className={`text-xs font-medium tabular-nums ${cpaColorClass(
                 m.cpa,
                 m.conversions,
                 concept.targetCpa
@@ -717,7 +743,7 @@ function ConceptCard({
               return (
                 <span
                   key={i}
-                  className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}
+                  className={`text-xs font-medium px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}
                   title={signal.reason}
                 >
                   {style.label}
@@ -736,24 +762,10 @@ function ConceptCard({
             <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mb-3">
               <MetricRow label="Spend" value={formatCurrency(m.totalSpend, concept.currency)} />
               <MetricRow label="Impressions" value={m.impressions.toLocaleString()} />
-              <MetricRow label="Clicks" value={(m.impressions > 0 ? Math.round(m.ctr * m.impressions / 100) : 0).toLocaleString()} />
+              <MetricRow label="Clicks" value={m.clicks.toLocaleString()} />
               <MetricRow label="CTR" value={`${m.ctr.toFixed(2)}%`} />
-              <MetricRow
-                label="CPC"
-                value={
-                  m.impressions > 0 && m.ctr > 0
-                    ? formatCurrency(m.totalSpend / (m.ctr * m.impressions / 100), concept.currency)
-                    : "--"
-                }
-              />
-              <MetricRow
-                label="CPM"
-                value={
-                  m.impressions > 0
-                    ? formatCurrency((m.totalSpend / m.impressions) * 1000, concept.currency)
-                    : "--"
-                }
-              />
+              <MetricRow label="CPC" value={formatCurrency(m.cpc, concept.currency)} />
+              <MetricRow label="CPM" value={formatCurrency(m.cpm, concept.currency)} />
               <MetricRow label="Frequency" value={m.frequency.toFixed(2)} />
               <MetricRow label="Conversions" value={String(m.conversions)} />
               <MetricRow
@@ -765,7 +777,7 @@ function ConceptCard({
           )}
 
           {!m && (
-            <p className="text-[10px] text-gray-400 mb-3">No metrics data yet.</p>
+            <p className="text-xs text-gray-400 mb-3">No metrics data yet.</p>
           )}
 
           {/* Kill button (only for review/active) */}
@@ -826,8 +838,8 @@ function MetricRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[10px] text-gray-400">{label}</span>
-      <span className={`text-[10px] font-medium tabular-nums ${valueClass || "text-gray-700"}`}>
+      <span className="text-xs text-gray-400">{label}</span>
+      <span className={`text-xs font-medium tabular-nums ${valueClass || "text-gray-700"}`}>
         {value}
       </span>
     </div>
