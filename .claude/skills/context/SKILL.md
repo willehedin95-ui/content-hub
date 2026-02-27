@@ -28,7 +28,7 @@ Ad Spy → AI generates concept ideas → owner approves → static ads generate
 ### Static Ad Generation Pipeline
 1. **Brainstorm** (`/api/brainstorm`) — Claude generates concept proposals using CASH framework
 2. **Approve concept** — User picks proposals, creates image jobs with CASH DNA (angle, hook, awareness level)
-3. **Generate static ads** (`/api/image-jobs/[id]/generate-static`) — Claude writes image briefs per style → Kie AI (nano-banana-pro) generates images
+3. **Generate static ads** (`/api/image-jobs/[id]/generate-static`) — Claude writes image briefs per style → Kie AI (nano-banana-2) generates images
 4. **Translate** — Kie AI translates text in images to target languages with quality analysis
 5. **Push to Meta** (`/api/image-jobs/[id]/push-to-meta`) — Duplicates template ad sets, uploads images, creates ads
 
@@ -46,7 +46,7 @@ Ad Spy → AI generates concept ideas → owner approves → static ads generate
 | Vercel | App hosting | Auto-deploy on push to main |
 | Cloudflare Pages | Landing page hosting | API token, direct upload |
 | Meta Marketing API | Ad campaigns | System User token |
-| Kie AI | Image generation/translation | API key, nano-banana-pro model |
+| Kie AI | Image generation/translation | API key, nano-banana-2 model |
 | Anthropic Claude | Copywriting, brainstorming, briefs | API key, claude-sonnet-4-5 |
 | OpenAI | Text translation, quality analysis | API key, gpt-5.2 |
 | Google Drive | Import/export images | Service account |

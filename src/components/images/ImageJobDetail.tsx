@@ -896,6 +896,10 @@ export default function ImageJobDetail({ initialJob }: Props) {
   async function handleGenerateStatic() {
     if (genState.generating) return;
     setGenState(prev => ({ ...prev, generating: true, progress: "Starting generation...", error: null, results: null }));
+
+    // Poll for new images while the API request runs — images appear in the grid as they complete
+    const pollInterval = setInterval(() => refreshJob(), 3000);
+
     try {
       const res = await fetch(`/api/image-jobs/${job.id}/generate-static`, {
         method: "POST",
@@ -903,26 +907,34 @@ export default function ImageJobDetail({ initialJob }: Props) {
         body: JSON.stringify({ styles: genState.selectedStyles, segment_id: genState.segmentId }),
       });
       const data = await res.json();
+      clearInterval(pollInterval);
+
       if (!res.ok) {
         setGenState(prev => ({ ...prev, generating: false, progress: null, error: data.error || "Generation failed" }));
+        await refreshJob();
         return;
       }
+      const summary = data.failed > 0
+        ? `Generated ${data.generated} of ${data.generated + data.failed} images. ${data.failed} failed: ${data.errors?.join("; ") ?? "unknown"}`
+        : null;
       setGenState(prev => ({
         ...prev,
         generating: false,
         progress: null,
-        error: data.errors?.length ? `${data.failed} failed: ${data.errors[0]}` : null,
+        error: summary,
         results: data.source_images ?? [],
       }));
-      // Refresh job to show generated images
+      // Final refresh to ensure everything is in sync
       await refreshJob();
     } catch (err) {
+      clearInterval(pollInterval);
       setGenState(prev => ({
         ...prev,
         generating: false,
         progress: null,
         error: err instanceof Error ? err.message : "Generation failed",
       }));
+      await refreshJob();
     }
   }
 

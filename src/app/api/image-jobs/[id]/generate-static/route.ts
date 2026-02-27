@@ -160,8 +160,8 @@ export async function POST(
     },
   });
 
-  // Step 2: Generate images from briefs
-  const results: Array<{
+  // Step 2: Generate images from briefs (in parallel)
+  type ImageResult = {
     source_image_id: string;
     original_url: string;
     filename: string;
@@ -169,15 +169,19 @@ export async function POST(
     style: string;
     reptileTriggers?: string[];
     prompt: string;
-  }> = [];
-  const errors: string[] = [];
-  let totalCost = claudeCost;
+  };
 
-  for (const brief of briefs.briefs) {
-    const styleLabel = STATIC_STYLES.find((s) => s.id === brief.style)?.label ?? brief.style;
-    const label = `${styleLabel}: ${brief.hookText.length > 35 ? brief.hookText.slice(0, 35) + "..." : brief.hookText}`;
+  // Mark job as ready immediately so the client sees progress via polling
+  await db
+    .from("image_jobs")
+    .update({ status: "ready", updated_at: new Date().toISOString() })
+    .eq("id", id);
 
-    try {
+  const settled = await Promise.allSettled(
+    briefs.briefs.map(async (brief, index): Promise<ImageResult> => {
+      const styleLabel = STATIC_STYLES.find((s) => s.id === brief.style)?.label ?? brief.style;
+      const label = `${styleLabel}: ${brief.hookText.length > 35 ? brief.hookText.slice(0, 35) + "..." : brief.hookText}`;
+
       // Resolve reference images based on brief's strategy
       const referenceUrls = resolveReferenceImages(
         brief,
@@ -193,15 +197,13 @@ export async function POST(
       );
 
       if (!resultUrls?.length) {
-        errors.push(`${label}: No image generated`);
-        continue;
+        throw new Error(`${label}: No image generated`);
       }
 
       // Download from Kie CDN
       const resultRes = await fetch(resultUrls[0]);
       if (!resultRes.ok) {
-        errors.push(`${label}: Failed to download generated image`);
-        continue;
+        throw new Error(`${label}: Failed to download generated image`);
       }
       const buffer = Buffer.from(await resultRes.arrayBuffer());
 
@@ -213,8 +215,7 @@ export async function POST(
         .upload(filePath, buffer, { contentType: "image/png", upsert: false });
 
       if (uploadError) {
-        errors.push(`${label}: Upload failed — ${uploadError.message}`);
-        continue;
+        throw new Error(`${label}: Upload failed — ${uploadError.message}`);
       }
 
       const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
@@ -226,7 +227,7 @@ export async function POST(
           job_id: id,
           original_url: urlData.publicUrl,
           filename: `${brief.style}-${fileId.slice(0, 8)}.png`,
-          processing_order: results.length,
+          processing_order: index,
           skip_translation: false,
           generation_prompt: brief.prompt,
           generation_style: brief.style,
@@ -235,8 +236,7 @@ export async function POST(
         .single();
 
       if (siErr || !sourceImage) {
-        errors.push(`${label}: DB insert failed`);
-        continue;
+        throw new Error(`${label}: DB insert failed`);
       }
 
       // Log Kie usage
@@ -261,8 +261,7 @@ export async function POST(
         },
       });
 
-      totalCost += KIE_IMAGE_COST;
-      results.push({
+      return {
         source_image_id: sourceImage.id,
         original_url: urlData.publicUrl,
         filename: sourceImage.filename,
@@ -270,28 +269,28 @@ export async function POST(
         style: brief.style,
         reptileTriggers: brief.reptileTriggers,
         prompt: brief.prompt,
-      });
+      };
+    })
+  );
 
-      // Mark job as ready after first successful image so timeout doesn't leave it stuck in draft
-      if (results.length === 1) {
-        await db
-          .from("image_jobs")
-          .update({ status: "ready", updated_at: new Date().toISOString() })
-          .eq("id", id);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      errors.push(`${label}: ${msg}`);
+  const results: ImageResult[] = [];
+  const errors: string[] = [];
+  let totalCost = claudeCost;
+
+  for (const outcome of settled) {
+    if (outcome.status === "fulfilled") {
+      results.push(outcome.value);
+      totalCost += KIE_IMAGE_COST;
+    } else {
+      errors.push(outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason));
     }
   }
 
-  // Final status update (ensures updated_at reflects completion)
-  if (results.length > 0) {
-    await db
-      .from("image_jobs")
-      .update({ status: "ready", updated_at: new Date().toISOString() })
-      .eq("id", id);
-  }
+  // Update job timestamp
+  await db
+    .from("image_jobs")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", id);
 
   return NextResponse.json({
     generated: results.length,

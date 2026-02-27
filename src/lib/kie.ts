@@ -39,8 +39,7 @@ export async function createImageTask(
   prompt: string,
   imageUrls: string[],
   aspectRatio: string = "2:3",
-  resolution: string = "2K",
-  seed?: number
+  resolution: string = "1K"
 ): Promise<string> {
   const input: Record<string, unknown> = {
     prompt,
@@ -49,10 +48,6 @@ export async function createImageTask(
     resolution,
     output_format: "png",
   };
-
-  if (seed !== undefined) {
-    input.seed = seed;
-  }
 
   return withRetry(
     async () => {
@@ -149,9 +144,8 @@ export async function getCredits(): Promise<{ balance: number }> {
 export async function generateImage(
   prompt: string,
   imageUrls: string[],
-  aspectRatio: string = "2:3",
-  seed?: number
+  aspectRatio: string = "2:3"
 ): Promise<{ urls: string[]; costTimeMs: number | null }> {
-  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, "2K", seed);
+  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, "1K");
   return pollTaskResult(taskId);
 }

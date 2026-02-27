@@ -8,8 +8,8 @@ export const CLAUDE_OUTPUT_COST = 15.0; // $/1M output tokens
 export const CLAUDE_CACHE_WRITE_COST = 3.75; // $/1M tokens (cache write)
 export const CLAUDE_CACHE_READ_COST = 0.30; // $/1M tokens (cache hit — 90% cheaper)
 
-// Kie.ai nano-banana-pro (per image generation at 2K resolution)
-export const KIE_IMAGE_COST = 0.09; // $0.09 per image (18 credits at 2K)
+// Kie.ai nano-banana-2 (per image generation at 1K resolution)
+export const KIE_IMAGE_COST = 0.045; // $0.045 per image (~9 credits at 1K, $0.005/credit)
 
 export function calcOpenAICost(
   inputTokens: number,

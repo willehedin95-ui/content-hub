@@ -68,7 +68,7 @@ export default function IntegrationsTab({
       <SettingsCard>
         <Row
           label="Kie AI Credits"
-          description="Image generation (nano-banana-pro)"
+          description="Image generation (nano-banana-2)"
           action={
             <div className="flex items-center gap-2.5">
               {kie.balance !== null && (

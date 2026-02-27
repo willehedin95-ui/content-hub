@@ -263,158 +263,182 @@ export default function ConceptImagesStep({
   rerollingId,
   onToggleSkip,
 }: ConceptImagesStepProps) {
-  // Show generate section when job has visual_direction and no source images yet
-  const showGenerateSection = !!job.visual_direction && sourceImages.length === 0 && job.status !== "processing" && handleGenerateStatic;
+  // Show generate section when job has visual_direction and isn't processing
+  const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
+  const hasExistingImages = sourceImages.length > 0;
 
-  return (
-    <>
-      {/* Generate Static Ads section */}
-      {showGenerateSection && generateState && (
-        <div className="mb-6 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-base font-semibold text-gray-900">Generate Static Ads</h3>
+  // Existing styles that have already been generated
+  const existingStyles = new Set(sourceImages.map(si => si.generation_style).filter(Boolean));
+
+  const renderGenerateSection = () => {
+    if (!showGenerateSection || !generateState) return null;
+    return (
+      <div className={`bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6 ${hasExistingImages ? "mt-4" : "mb-6"}`}>
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">
+            {hasExistingImages ? "Generate More Styles" : "Generate Static Ads"}
+          </h3>
+        </div>
+
+        {/* Style picker */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+            Styles to generate
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {STATIC_STYLES.map((style) => {
+              const selected = generateState.selectedStyles.includes(style.id);
+              const alreadyGenerated = existingStyles.has(style.id);
+              const isNative = style.id.startsWith("native-");
+              return (
+                <button
+                  key={style.id}
+                  onClick={() => {
+                    const next = selected
+                      ? generateState.selectedStyles.filter((s) => s !== style.id)
+                      : [...generateState.selectedStyles, style.id];
+                    generateState.setSelectedStyles(next);
+                  }}
+                  disabled={generateState.generating}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                    selected
+                      ? isNative
+                        ? "bg-amber-50 border-amber-300 text-amber-700"
+                        : "bg-indigo-50 border-indigo-300 text-indigo-700"
+                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"
+                  } disabled:opacity-50`}
+                  title={`${style.description}${alreadyGenerated ? " (already generated)" : ""}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/styles/${style.id}.svg`} alt="" className="w-6 h-6 rounded object-cover" />
+                  {style.label}
+                  {alreadyGenerated && <span className="text-emerald-500 text-[10px]">&#10003;</span>}
+                </button>
+              );
+            })}
           </div>
-
-          {/* Style picker */}
-          <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-              Styles to generate
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {STATIC_STYLES.map((style) => {
-                const selected = generateState.selectedStyles.includes(style.id);
-                const isNative = style.id.startsWith("native-");
-                return (
-                  <button
-                    key={style.id}
-                    onClick={() => {
-                      const next = selected
-                        ? generateState.selectedStyles.filter((s) => s !== style.id)
-                        : [...generateState.selectedStyles, style.id];
-                      generateState.setSelectedStyles(next);
-                    }}
-                    disabled={generateState.generating}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                      selected
-                        ? isNative
-                          ? "bg-amber-50 border-amber-300 text-amber-700"
-                          : "bg-indigo-50 border-indigo-300 text-indigo-700"
-                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"
-                    } disabled:opacity-50`}
-                    title={style.description}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/styles/${style.id}.svg`} alt="" className="w-6 h-6 rounded object-cover" />
-                    {style.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-gray-400 mt-1.5">
-              {generateState.selectedStyles.length} selected
-              {generateState.selectedStyles.length > 0 && (
-                <> &middot; ~${(0.04 + generateState.selectedStyles.length * KIE_IMAGE_COST).toFixed(2)}</>
-              )}
-            </p>
-          </div>
-
-          {/* Generate button */}
-          <button
-            onClick={handleGenerateStatic}
-            disabled={generateState.generating || generateState.selectedStyles.length === 0}
-            className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
-          >
-            {generateState.generating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Generate {generateState.selectedStyles.length} Static Ad{generateState.selectedStyles.length !== 1 ? "s" : ""}
-              </>
+          <p className="text-xs text-gray-400 mt-1.5">
+            {generateState.selectedStyles.length} selected
+            {generateState.selectedStyles.length > 0 && (
+              <> &middot; ~${(0.04 + generateState.selectedStyles.length * KIE_IMAGE_COST).toFixed(2)}</>
             )}
-          </button>
+          </p>
+        </div>
 
-          {/* Progress */}
-          {generateState.progress && (
-            <p className="mt-3 text-sm text-indigo-600">{generateState.progress}</p>
+        {/* Generate button */}
+        <button
+          onClick={handleGenerateStatic}
+          disabled={generateState.generating || generateState.selectedStyles.length === 0}
+          className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+        >
+          {generateState.generating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Generate {generateState.selectedStyles.length} Static Ad{generateState.selectedStyles.length !== 1 ? "s" : ""}
+            </>
           )}
+        </button>
 
-          {/* Skeleton placeholders while generating */}
-          {generateState.generating && (
+        {/* Progress */}
+        {generateState.progress && (
+          <p className="mt-3 text-sm text-indigo-600">{generateState.progress}</p>
+        )}
+
+        {/* Skeleton placeholders while generating — disappear as images arrive in the grid */}
+        {generateState.generating && (() => {
+          const pendingStyles = generateState.selectedStyles.filter(
+            styleId => !existingStyles.has(styleId)
+          );
+          const doneCount = generateState.selectedStyles.length - pendingStyles.length;
+          return (
             <div className="mt-4">
               <div className="flex items-center gap-2 text-sm text-indigo-600 mb-3">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Generating {generateState.selectedStyles.length} image{generateState.selectedStyles.length !== 1 ? "s" : ""}...
+                {doneCount > 0
+                  ? <>{doneCount} of {generateState.selectedStyles.length} done...</>
+                  : <>Generating {generateState.selectedStyles.length} image{generateState.selectedStyles.length !== 1 ? "s" : ""}...</>
+                }
                 <span className="text-gray-400 text-xs"><ElapsedTimer /></span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {generateState.selectedStyles.map((styleId, i) => {
-                  const styleInfo = STATIC_STYLES.find(s => s.id === styleId);
-                  return (
-                    <div key={styleId} className="rounded-lg overflow-hidden border border-gray-200">
-                      <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
-                          <div className="h-2 w-16 bg-gray-200 rounded animate-pulse" />
+              {pendingStyles.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {pendingStyles.map((styleId) => {
+                    const styleInfo = STATIC_STYLES.find(s => s.id === styleId);
+                    return (
+                      <div key={styleId} className="rounded-lg overflow-hidden border border-gray-200">
+                        <div className="aspect-square bg-gray-100 flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />
+                            <div className="h-2 w-16 bg-gray-200 rounded animate-pulse" />
+                          </div>
                         </div>
+                        {styleInfo && (
+                          <p className="text-[10px] text-center text-gray-400 bg-gray-50 py-0.5 font-medium">{styleInfo.label}</p>
+                        )}
                       </div>
-                      {styleInfo && (
-                        <p className="text-[10px] text-center text-gray-400 bg-gray-50 py-0.5 font-medium">{styleInfo.label}</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          );
+        })()}
 
-          {/* Error */}
-          {generateState.error && (
-            <p className="mt-3 text-sm text-red-600">{generateState.error}</p>
-          )}
+        {/* Error */}
+        {generateState.error && (
+          <p className="mt-3 text-sm text-red-600">{generateState.error}</p>
+        )}
 
-          {/* Results preview */}
-          {generateState.results && generateState.results.length > 0 && (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-emerald-700 mb-2">
-                <CheckCircle2 className="w-4 h-4 inline mr-1" />
-                {generateState.results.length} images generated
-              </p>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {generateState.results.map((r, i) => {
-                  const styleInfo = STATIC_STYLES.find(s => s.id === r.style);
-                  const triggers = (r.reptileTriggers ?? []).map(
-                    tid => REPTILE_TRIGGERS.find(t => t.id === tid)
-                  ).filter(Boolean);
-                  return (
-                    <div key={i} className="rounded-lg overflow-hidden border border-gray-200">
-                      <div className="aspect-square">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={r.original_url} alt={r.label} className="w-full h-full object-cover" />
-                      </div>
-                      {styleInfo && (
-                        <p className="text-[10px] text-center text-purple-600 bg-purple-50 py-0.5 font-medium">{styleInfo.label}</p>
-                      )}
-                      {triggers.length > 0 && (
-                        <p className="text-[9px] text-center text-amber-600 bg-amber-50 py-0.5 truncate" title={triggers.map(t => t!.label).join(", ")}>
-                          {triggers.map(t => t!.label).join(" + ")}
-                        </p>
-                      )}
-                      {r.prompt && <ExpandablePrompt prompt={r.prompt} />}
+        {/* Results preview */}
+        {generateState.results && generateState.results.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm font-medium text-emerald-700 mb-2">
+              <CheckCircle2 className="w-4 h-4 inline mr-1" />
+              {generateState.results.length} images generated
+            </p>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {generateState.results.map((r, i) => {
+                const styleInfo = STATIC_STYLES.find(s => s.id === r.style);
+                const triggers = (r.reptileTriggers ?? []).map(
+                  tid => REPTILE_TRIGGERS.find(t => t.id === tid)
+                ).filter(Boolean);
+                return (
+                  <div key={i} className="rounded-lg overflow-hidden border border-gray-200">
+                    <div className="aspect-square">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={r.original_url} alt={r.label} className="w-full h-full object-cover" />
                     </div>
-                  );
-                })}
-              </div>
+                    {styleInfo && (
+                      <p className="text-[10px] text-center text-purple-600 bg-purple-50 py-0.5 font-medium">{styleInfo.label}</p>
+                    )}
+                    {triggers.length > 0 && (
+                      <p className="text-[9px] text-center text-amber-600 bg-amber-50 py-0.5 truncate" title={triggers.map(t => t!.label).join(", ")}>
+                        {triggers.map(t => t!.label).join(" + ")}
+                      </p>
+                    )}
+                    {r.prompt && <ExpandablePrompt prompt={r.prompt} />}
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
-      {job.status === "draft" && !showGenerateSection ? (
+  return (
+    <>
+      {/* Generate section first when no images exist */}
+      {!hasExistingImages && renderGenerateSection()}
+
+      {job.status === "draft" && !(showGenerateSection && !hasExistingImages) ? (
         <div className="space-y-4">
           <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -501,6 +525,9 @@ export default function ConceptImagesStep({
               </div>
             ))}
           </div>
+
+          {/* Generate more styles (shown below existing images) */}
+          {hasExistingImages && renderGenerateSection()}
 
           {/* Language selection + Translate All */}
           <div className="space-y-4">

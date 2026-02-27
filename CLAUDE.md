@@ -22,7 +22,7 @@ Multiple concurrent dev servers have caused system performance issues in the pas
 - **Styling**: Tailwind CSS, light theme (`bg-gray-50` base, `bg-white` cards, `border-gray-200` borders, indigo-600 primary)
 - **Database**: Supabase (PostgreSQL) — server-side uses `createServerSupabase()` with service role key
 - **Storage**: Supabase Storage `translated-images` bucket for all uploaded/generated images
-- **APIs**: OpenAI GPT-4o (text translation + quality analysis), Kie AI nano-banana-pro (image translation), Anthropic Claude (page swiper copywriting), Cloudflare Pages (publishing via direct upload API), Google Drive (service account import/export), Resend (email notifications), Meta Marketing API v22.0 (ad campaign management)
+- **APIs**: OpenAI GPT-4o (text translation + quality analysis), Kie AI nano-banana-2 (image translation), Anthropic Claude (page swiper copywriting), Cloudflare Pages (publishing via direct upload API), Google Drive (service account import/export), Resend (email notifications), Meta Marketing API v22.0 (ad campaign management)
 - **Icons**: lucide-react
 - **Build**: `npm run build` — always verify build passes before committing
 
