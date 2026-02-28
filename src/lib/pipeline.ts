@@ -685,15 +685,20 @@ export async function getPipelineData(): Promise<PipelineData> {
   }
 
   // Compute summary
-  const draftsReady = concepts.filter((c) => c.stage === "draft").length;
+  const queued = concepts.filter((c) => c.stage === "queued").length;
   const inTesting = concepts.filter((c) => c.stage === "testing").length;
   const needsReview = concepts.filter((c) => c.stage === "review").length;
   const activeScaling = concepts.filter((c) => c.stage === "active").length;
   const killed = concepts.filter((c) => c.stage === "killed").length;
 
-  // Avg creative age (days since push for non-draft, non-killed)
+  // Testing slots: get max from settings (per-product, take first found)
+  const testingSlots = settingsRows.length > 0
+    ? Math.max(...settingsRows.map((s) => s.testing_slots ?? 5))
+    : 5;
+
+  // Avg creative age (days since push for non-draft, non-queued, non-killed)
   const activeConcepts = concepts.filter(
-    (c) => c.stage !== "draft" && c.stage !== "killed"
+    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed"
   );
   const avgCreativeAge =
     activeConcepts.length > 0
@@ -712,8 +717,9 @@ export async function getPipelineData(): Promise<PipelineData> {
     totalSpend > 0 ? (testingSpend / totalSpend) * 100 : 0;
 
   const summary: PipelineSummary = {
-    draftsReady,
+    queued,
     inTesting,
+    testingSlotsUsed: `${inTesting}/${testingSlots}`,
     needsReview,
     activeScaling,
     killed,
@@ -769,6 +775,141 @@ export async function getPipelineData(): Promise<PipelineData> {
     alerts,
     lastSyncedAt,
   };
+}
+
+// ── Queue helpers ────────────────────────────────────────────
+
+/** Get queued concepts ordered by entered_at (FIFO), optionally filtered by product */
+export async function getQueuedConcepts(product?: string): Promise<
+  Array<{ imageJobId: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>
+> {
+  const db = createServerSupabase();
+
+  // Get all queued lifecycle records
+  const { data: queued } = await db
+    .from("concept_lifecycle")
+    .select("image_job_id, entered_at")
+    .eq("stage", "queued")
+    .is("exited_at", null)
+    .order("entered_at", { ascending: true });
+
+  if (!queued || queued.length === 0) return [];
+
+  const ids = queued.map((q) => q.image_job_id);
+  const { data: jobs } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, product")
+    .in("id", ids);
+
+  const jobMap = new Map(
+    (jobs ?? []).map((j) => [j.id, j])
+  );
+
+  return queued
+    .map((q) => {
+      const job = jobMap.get(q.image_job_id);
+      if (!job) return null;
+      if (product && job.product !== product) return null;
+      return {
+        imageJobId: q.image_job_id,
+        name: job.name,
+        conceptNumber: job.concept_number ?? null,
+        product: job.product ?? null,
+        queuedAt: q.entered_at,
+      };
+    })
+    .filter(Boolean) as Array<{ imageJobId: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>;
+}
+
+/** Count concepts currently in testing stage, optionally by product */
+export async function getTestingCount(product?: string): Promise<number> {
+  const db = createServerSupabase();
+
+  if (product) {
+    const { data: testingRows } = await db
+      .from("concept_lifecycle")
+      .select("image_job_id")
+      .eq("stage", "testing")
+      .is("exited_at", null);
+
+    if (!testingRows || testingRows.length === 0) return 0;
+
+    const { count } = await db
+      .from("image_jobs")
+      .select("id", { count: "exact", head: true })
+      .in("id", testingRows.map((r) => r.image_job_id))
+      .eq("product", product);
+
+    return count ?? 0;
+  }
+
+  const { count } = await db
+    .from("concept_lifecycle")
+    .select("image_job_id", { count: "exact", head: true })
+    .eq("stage", "testing")
+    .is("exited_at", null);
+
+  return count ?? 0;
+}
+
+/** Get testing_slots setting for a product (takes max across all countries for that product) */
+export async function getTestingSlots(product: string): Promise<number> {
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("pipeline_settings")
+    .select("testing_slots")
+    .eq("product", product);
+
+  if (!data || data.length === 0) return 5; // default
+  return Math.max(...data.map((r) => r.testing_slots ?? 5));
+}
+
+// ── Queue concept ────────────────────────────────────────────
+
+export async function queueConcept(imageJobId: string): Promise<{ position: number }> {
+  const db = createServerSupabase();
+  const now = new Date().toISOString();
+
+  // Check if already queued or in pipeline
+  const { data: existing } = await db
+    .from("concept_lifecycle")
+    .select("stage")
+    .eq("image_job_id", imageJobId)
+    .is("exited_at", null)
+    .single();
+
+  if (existing) {
+    throw new Error(`Concept is already in stage: ${existing.stage}`);
+  }
+
+  // Create lifecycle record with stage "queued"
+  await db.from("concept_lifecycle").insert({
+    image_job_id: imageJobId,
+    stage: "queued",
+    entered_at: now,
+    signal: "user_queued",
+  });
+
+  // Calculate queue position
+  const { count } = await db
+    .from("concept_lifecycle")
+    .select("*", { count: "exact", head: true })
+    .eq("stage", "queued")
+    .is("exited_at", null);
+
+  return { position: count ?? 1 };
+}
+
+export async function unqueueConcept(imageJobId: string): Promise<void> {
+  const db = createServerSupabase();
+
+  // Delete the queued lifecycle record
+  await db
+    .from("concept_lifecycle")
+    .delete()
+    .eq("image_job_id", imageJobId)
+    .eq("stage", "queued")
+    .is("exited_at", null);
 }
 
 // ── Kill concept ─────────────────────────────────────────────

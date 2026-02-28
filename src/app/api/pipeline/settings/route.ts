@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const { product, country, target_cpa, target_roas, currency } = await req.json();
+  const { product, country, target_cpa, target_roas, currency, testing_slots } = await req.json();
   if (!product || !country || target_cpa == null) {
     return NextResponse.json(
       { error: "product, country, and target_cpa are required" },
@@ -39,6 +39,9 @@ export async function PUT(req: NextRequest) {
   if (target_roas !== undefined) {
     updateFields.target_roas = target_roas;
   }
+  if (testing_slots !== undefined) {
+    updateFields.testing_slots = testing_slots;
+  }
 
   if (existing) {
     const { error } = await db
@@ -55,6 +58,7 @@ export async function PUT(req: NextRequest) {
         target_cpa,
         target_roas: target_roas ?? null,
         currency: currency || "USD",
+        testing_slots: testing_slots ?? 5,
       });
     if (error) return safeError(error, "Failed to create pipeline setting");
   }

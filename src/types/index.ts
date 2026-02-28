@@ -686,7 +686,7 @@ export interface ConceptProposal {
 
 // ── Pipeline Dashboard ──────────────────────────────────────
 
-export type PipelineStage = "draft" | "testing" | "review" | "active" | "killed";
+export type PipelineStage = "draft" | "queued" | "testing" | "review" | "active" | "killed";
 
 export interface PipelineSetting {
   id: string;
@@ -695,6 +695,7 @@ export interface PipelineSetting {
   target_cpa: number;
   target_roas: number | null;
   currency: string;
+  testing_slots: number;
   created_at: string;
   updated_at: string;
 }
@@ -769,8 +770,9 @@ export interface PipelineConcept {
 }
 
 export interface PipelineSummary {
-  draftsReady: number;
+  queued: number;
   inTesting: number;
+  testingSlotsUsed: string;
   needsReview: number;
   activeScaling: number;
   killed: number;

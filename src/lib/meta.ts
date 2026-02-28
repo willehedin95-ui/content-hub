@@ -88,7 +88,17 @@ async function metaJsonPaginated<T>(path: string, maxPages = 10): Promise<T[]> {
     results.push(...resp.data);
     // Meta returns full URLs for pagination — strip the base to use with metaJson
     const nextUrl = resp.paging?.next;
-    url = nextUrl ? nextUrl.replace(META_API_BASE, "") : null;
+    if (!nextUrl) break;
+    // Handle both exact match and URL-encoded variants
+    if (nextUrl.startsWith(META_API_BASE)) {
+      url = nextUrl.slice(META_API_BASE.length);
+    } else if (nextUrl.startsWith("https://graph.facebook.com")) {
+      // Different version or format — extract path after the domain+version
+      const parsed = new URL(nextUrl);
+      url = parsed.pathname.replace(/^\/v[\d.]+/, "") + parsed.search;
+    } else {
+      url = nextUrl;
+    }
   }
 
   return results;
@@ -382,10 +392,17 @@ export async function createAdSetFromTemplate(params: {
 export async function listAdSets(campaignId: string): Promise<
   Array<{ id: string; name: string; status: string }>
 > {
-  const data = await metaJson<{
-    data: Array<{ id: string; name: string; status: string }>;
-  }>(`/${campaignId}/adsets?fields=id,name,status&limit=50`);
-  return data.data;
+  return metaJsonPaginated<{ id: string; name: string; status: string }>(
+    `/${campaignId}/adsets?fields=id,name,status&limit=50`
+  );
+}
+
+export async function listAdsInAdSet(adSetId: string): Promise<
+  Array<{ id: string; name: string; status: string }>
+> {
+  return metaJsonPaginated<{ id: string; name: string; status: string }>(
+    `/${adSetId}/ads?fields=id,name,status&limit=50`
+  );
 }
 
 export async function createAd(params: {

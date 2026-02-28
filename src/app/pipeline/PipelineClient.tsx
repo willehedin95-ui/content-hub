@@ -9,6 +9,7 @@ import {
   AlertCircle,
   TrendingUp,
   XCircle,
+  X,
   Loader2,
   ChevronDown,
   ChevronUp,
@@ -17,6 +18,8 @@ import {
   Settings,
   Plus,
   Save,
+  ListOrdered,
+  Check,
 } from "lucide-react";
 import type {
   PipelineData,
@@ -29,7 +32,7 @@ import type {
 
 // ── Constants ────────────────────────────────────────────────
 
-const STAGES: PipelineStage[] = ["draft", "testing", "review", "active", "killed"];
+const STAGES: PipelineStage[] = ["queued", "testing", "review", "active", "killed"];
 
 const STAGE_CONFIG: Record<
   PipelineStage,
@@ -40,6 +43,12 @@ const STAGE_CONFIG: Record<
     headerBg: "bg-blue-50",
     headerText: "text-blue-700",
     borderColor: "border-blue-200",
+  },
+  queued: {
+    label: "Queued",
+    headerBg: "bg-violet-50",
+    headerText: "text-violet-700",
+    borderColor: "border-violet-200",
   },
   testing: {
     label: "Testing",
@@ -88,6 +97,15 @@ const ALERT_STYLES: Record<string, string> = {
   medium: "bg-amber-50 border-amber-200 text-amber-700",
   low: "bg-blue-50 border-blue-200 text-blue-700",
 };
+
+const LANG_TO_COUNTRY: Record<string, string> = {
+  sv: "SE",
+  da: "DK",
+  no: "NO",
+  de: "DE",
+};
+
+const COUNTRY_TABS = ["SE", "DK", "NO"] as const;
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -138,6 +156,10 @@ export default function PipelineClient() {
   const [killingId, setKillingId] = useState<string | null>(null);
   const [killNotes, setKillNotes] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [countryFilter, setCountryFilter] = useState<string | null>(null);
+  const [queuePickerOpen, setQueuePickerOpen] = useState(false);
+  const [queueSelectedIds, setQueueSelectedIds] = useState<Set<string>>(new Set());
+  const [queueing, setQueueing] = useState(false);
 
   // New setting form
   const [newProduct, setNewProduct] = useState("happysleep");
@@ -145,6 +167,7 @@ export default function PipelineClient() {
   const [newTargetCpa, setNewTargetCpa] = useState("");
   const [newTargetRoas, setNewTargetRoas] = useState("");
   const [newCurrency, setNewCurrency] = useState("NOK");
+  const [newTestingSlots, setNewTestingSlots] = useState("5");
   const [savingNewSetting, setSavingNewSetting] = useState(false);
 
   // Inline editing for existing settings
@@ -152,6 +175,7 @@ export default function PipelineClient() {
   const [editCpa, setEditCpa] = useState("");
   const [editRoas, setEditRoas] = useState("");
   const [editCurrency, setEditCurrency] = useState("");
+  const [editTestingSlots, setEditTestingSlots] = useState("");
   const [savingSettingId, setSavingSettingId] = useState<string | null>(null);
 
   // ── Data fetching ────────────────────────────────────────
@@ -231,11 +255,11 @@ export default function PipelineClient() {
 
   // ── Settings CRUD ────────────────────────────────────────
 
-  async function handleSaveSetting(product: string, country: string, targetCpa: number, targetRoas: number | null, currency: string) {
+  async function handleSaveSetting(product: string, country: string, targetCpa: number, targetRoas: number | null, currency: string, testingSlots?: number) {
     const res = await fetch("/api/pipeline/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product, country, target_cpa: targetCpa, target_roas: targetRoas, currency }),
+      body: JSON.stringify({ product, country, target_cpa: targetCpa, target_roas: targetRoas, currency, testing_slots: testingSlots }),
     });
     if (!res.ok) throw new Error("Failed to save setting");
     await fetchSettings();
@@ -251,10 +275,12 @@ export default function PipelineClient() {
         newCountry,
         parseFloat(newTargetCpa),
         newTargetRoas ? parseFloat(newTargetRoas) : null,
-        newCurrency
+        newCurrency,
+        newTestingSlots ? parseInt(newTestingSlots) : 5
       );
       setNewTargetCpa("");
       setNewTargetRoas("");
+      setNewTestingSlots("5");
     } catch (err) {
       console.error("Add setting error:", err);
     } finally {
@@ -271,13 +297,57 @@ export default function PipelineClient() {
         setting.country,
         parseFloat(editCpa),
         editRoas ? parseFloat(editRoas) : null,
-        editCurrency
+        editCurrency,
+        editTestingSlots ? parseInt(editTestingSlots) : undefined
       );
       setEditingSettingId(null);
     } catch (err) {
       console.error("Update setting error:", err);
     } finally {
       setSavingSettingId(null);
+    }
+  }
+
+  // ── Queue management ────────────────────────────────────
+
+  async function handleAddToQueue() {
+    if (queueSelectedIds.size === 0) return;
+    setQueueing(true);
+    try {
+      for (const id of queueSelectedIds) {
+        const res = await fetch("/api/pipeline/queue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageJobId: id }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to queue concept");
+        }
+      }
+      setQueueSelectedIds(new Set());
+      setQueuePickerOpen(false);
+      await fetchPipeline();
+    } catch (err) {
+      console.error("Queue error:", err);
+      setError(err instanceof Error ? err.message : "Failed to queue concepts");
+    } finally {
+      setQueueing(false);
+    }
+  }
+
+  async function handleRemoveFromQueue(imageJobId: string) {
+    try {
+      const res = await fetch("/api/pipeline/queue", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageJobId }),
+      });
+      if (!res.ok) throw new Error("Failed to remove from queue");
+      await fetchPipeline();
+    } catch (err) {
+      console.error("Unqueue error:", err);
+      setError(err instanceof Error ? err.message : "Failed to remove from queue");
     }
   }
 
@@ -291,14 +361,54 @@ export default function PipelineClient() {
     );
   }
 
-  const summary = pipelineData?.summary;
-  const alerts = pipelineData?.alerts ?? [];
-  const concepts = pipelineData?.concepts ?? [];
-  const campaignBudgets = pipelineData?.campaignBudgets ?? [];
+  const allConcepts = pipelineData?.concepts ?? [];
+  const allCampaignBudgets = pipelineData?.campaignBudgets ?? [];
+  const allAlerts = pipelineData?.alerts ?? [];
+
+  // Filter by country
+  function conceptMatchesCountry(c: PipelineConcept, country: string): boolean {
+    const lang = country === "SE" ? "sv" : country === "DK" ? "da" : country === "NO" ? "no" : "";
+    // Drafts (no languages) — show in All only
+    if (c.languages.length === 0) return false;
+    return c.languages.includes(lang);
+  }
+
+  const concepts = countryFilter
+    ? allConcepts.filter((c) => conceptMatchesCountry(c, countryFilter))
+    : allConcepts;
+
+  const campaignBudgets = countryFilter
+    ? allCampaignBudgets.filter((b) => b.countries.includes(countryFilter))
+    : allCampaignBudgets;
+
+  // Recompute summary from filtered concepts
+  const summary = countryFilter
+    ? {
+        queued: 0, // queued have no country, hidden when filtering
+        inTesting: concepts.filter((c) => c.stage === "testing").length,
+        testingSlotsUsed: pipelineData?.summary?.testingSlotsUsed ?? "0/5",
+        needsReview: concepts.filter((c) => c.stage === "review").length,
+        activeScaling: concepts.filter((c) => c.stage === "active").length,
+        killed: concepts.filter((c) => c.stage === "killed").length,
+        avgCreativeAge: pipelineData?.summary?.avgCreativeAge ?? 0,
+        testingBudgetPct: pipelineData?.summary?.testingBudgetPct ?? 0,
+      }
+    : pipelineData?.summary ?? null;
+
+  const alerts = countryFilter ? [] : allAlerts; // alerts are global, only show on All
+
+  // Count per country for tab badges
+  const countPerCountry: Record<string, number> = {};
+  for (const country of COUNTRY_TABS) {
+    countPerCountry[country] = allConcepts.filter(
+      (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed" && conceptMatchesCountry(c, country)
+    ).length;
+  }
 
   // Group concepts by stage, sorted by daysInStage desc
   const conceptsByStage: Record<PipelineStage, PipelineConcept[]> = {
     draft: [],
+    queued: [],
     testing: [],
     review: [],
     active: [],
@@ -308,8 +418,25 @@ export default function PipelineClient() {
     conceptsByStage[c.stage].push(c);
   }
   for (const stage of STAGES) {
-    conceptsByStage[stage].sort((a, b) => b.daysInStage - a.daysInStage);
+    if (stage === "queued") {
+      // FIFO: earliest queued first (position 1 = pushed next)
+      conceptsByStage[stage].sort((a, b) =>
+        new Date(a.stageEnteredAt).getTime() - new Date(b.stageEnteredAt).getTime()
+      );
+    } else {
+      conceptsByStage[stage].sort((a, b) => b.daysInStage - a.daysInStage);
+    }
   }
+
+  // When filtering by country, hide queued column (queued have no country) and show core stages
+  const visibleStages = countryFilter
+    ? (["testing", "review", "active", "killed"] as PipelineStage[]).filter(
+        (s) => conceptsByStage[s].length > 0 || s === "testing" || s === "review" || s === "active"
+      )
+    : STAGES;
+
+  // Draft concepts (for queue picker) — concepts with stage "draft"
+  const draftConcepts = allConcepts.filter((c) => c.stage === "draft");
 
   return (
     <div className="max-w-[1400px]">
@@ -325,6 +452,18 @@ export default function PipelineClient() {
               Last synced: {timeAgo(pipelineData.lastSyncedAt)}
             </span>
           )}
+          {draftConcepts.length > 0 && (
+            <button
+              onClick={() => { setQueuePickerOpen(true); setQueueSelectedIds(new Set()); }}
+              className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add to Queue
+              <span className="bg-violet-200 text-violet-800 text-xs px-1.5 py-0.5 rounded-full ml-0.5 tabular-nums">
+                {draftConcepts.length}
+              </span>
+            </button>
+          )}
           <button
             onClick={syncPipeline}
             disabled={syncing}
@@ -334,6 +473,35 @@ export default function PipelineClient() {
             {syncing ? "Syncing..." : "Sync"}
           </button>
         </div>
+      </div>
+
+      {/* Country filter tabs */}
+      <div className="flex items-center gap-1 mb-4">
+        <button
+          onClick={() => setCountryFilter(null)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            countryFilter === null
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+          }`}
+        >
+          All
+          <span className="ml-1.5 tabular-nums">{allConcepts.filter((c) => c.stage !== "draft").length}</span>
+        </button>
+        {COUNTRY_TABS.map((country) => (
+          <button
+            key={country}
+            onClick={() => setCountryFilter(country)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              countryFilter === country
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {country}
+            <span className="ml-1.5 tabular-nums">{countPerCountry[country]}</span>
+          </button>
+        ))}
       </div>
 
       {/* Error banner */}
@@ -350,16 +518,16 @@ export default function PipelineClient() {
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
           <SummaryCard
-            icon={<FileText className="w-4 h-4 text-blue-500" />}
-            label="Drafts Ready"
-            value={summary.draftsReady}
-            color="blue"
+            icon={<ListOrdered className="w-4 h-4 text-violet-500" />}
+            label="Queued"
+            value={summary.queued}
+            color="violet"
           />
           <SummaryCard
             icon={<FlaskConical className="w-4 h-4 text-slate-500" />}
             label="Testing"
             value={summary.inTesting}
-            sub="hands off"
+            sub={`slots: ${summary.testingSlotsUsed}`}
             color="slate"
           />
           <SummaryCard
@@ -419,7 +587,7 @@ export default function PipelineClient() {
       {/* Pipeline Columns (Kanban) */}
       {concepts.length > 0 && (
         <div className="flex gap-4 overflow-x-auto pb-4 mb-8">
-          {STAGES.map((stage) => {
+          {visibleStages.map((stage) => {
             const config = STAGE_CONFIG[stage];
             const stageConcepts = conceptsByStage[stage];
             return (
@@ -445,29 +613,143 @@ export default function PipelineClient() {
                   {stageConcepts.length === 0 && (
                     <p className="text-xs text-gray-400 text-center py-6">No concepts</p>
                   )}
-                  {stageConcepts.map((concept) => (
+                  {stageConcepts.map((concept, idx) => (
                     <ConceptCard
                       key={concept.id}
                       concept={concept}
-                      expanded={expandedId === concept.id}
-                      onToggle={() =>
-                        setExpandedId(expandedId === concept.id ? null : concept.id)
-                      }
-                      killingId={killingId}
-                      killNotes={killNotes}
-                      onStartKill={() => setKillingId(concept.id)}
-                      onCancelKill={() => {
-                        setKillingId(null);
-                        setKillNotes("");
-                      }}
-                      onKillNotesChange={setKillNotes}
-                      onConfirmKill={() => handleKill(concept.id)}
+                      queuePosition={stage === "queued" ? idx + 1 : undefined}
+                      onClick={() => setExpandedId(concept.id)}
                     />
                   ))}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Concept Detail Modal */}
+      {expandedId && (() => {
+        const concept = concepts.find((c) => c.id === expandedId);
+        if (!concept) return null;
+        return (
+          <ConceptModal
+            concept={concept}
+            onClose={() => {
+              setExpandedId(null);
+              setKillingId(null);
+              setKillNotes("");
+            }}
+            killingId={killingId}
+            killNotes={killNotes}
+            onStartKill={() => setKillingId(concept.id)}
+            onCancelKill={() => {
+              setKillingId(null);
+              setKillNotes("");
+            }}
+            onKillNotesChange={setKillNotes}
+            onConfirmKill={() => handleKill(concept.id)}
+            onRemoveFromQueue={concept.stage === "queued" ? async () => {
+              await handleRemoveFromQueue(concept.id);
+              setExpandedId(null);
+            } : undefined}
+          />
+        );
+      })()}
+
+      {/* Queue Picker Modal */}
+      {queuePickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setQueuePickerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[70vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">Add to Queue</h2>
+              <button onClick={() => setQueuePickerOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+              {draftConcepts.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-8">No draft concepts available</p>
+              ) : (
+                draftConcepts
+                  .sort((a, b) => (a.conceptNumber ?? 999) - (b.conceptNumber ?? 999))
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        const next = new Set(queueSelectedIds);
+                        if (next.has(c.id)) next.delete(c.id);
+                        else next.add(c.id);
+                        setQueueSelectedIds(next);
+                      }}
+                      className={`w-full flex items-center gap-2.5 p-2.5 rounded-lg border transition-colors text-left ${
+                        queueSelectedIds.has(c.id)
+                          ? "border-violet-400 bg-violet-50"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
+                        queueSelectedIds.has(c.id)
+                          ? "bg-violet-600 border-violet-600"
+                          : "border-gray-300"
+                      }`}>
+                        {queueSelectedIds.has(c.id) && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      {c.thumbnailUrl ? (
+                        <Image src={c.thumbnailUrl} alt="" width={36} height={36} className="w-9 h-9 rounded object-cover shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded bg-gray-100 flex items-center justify-center shrink-0">
+                          <ImageIcon className="w-3.5 h-3.5 text-gray-300" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate">{c.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {c.conceptNumber !== null && (
+                            <span className="text-xs text-gray-400">#{c.conceptNumber}</span>
+                          )}
+                          {!c.product && (
+                            <span className="text-xs font-medium px-1 py-0.5 rounded bg-red-100 text-red-600">
+                              No product
+                            </span>
+                          )}
+                          {c.product && (
+                            <span className={`text-xs font-medium px-1 py-0.5 rounded ${PRODUCT_COLORS[c.product] || "bg-gray-100 text-gray-500"}`}>
+                              {c.product}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+              )}
+            </div>
+            {draftConcepts.length > 0 && (
+              <div className="p-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-400">
+                  {queueSelectedIds.size} selected
+                </span>
+                <button
+                  onClick={handleAddToQueue}
+                  disabled={queueSelectedIds.size === 0 || queueing}
+                  className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+                >
+                  {queueing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
+                  {queueing ? "Adding..." : `Add ${queueSelectedIds.size} to Queue`}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -507,6 +789,9 @@ export default function PipelineClient() {
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
                     Currency
+                  </th>
+                  <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
+                    Slots
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
                     Actions
@@ -561,6 +846,20 @@ export default function PipelineClient() {
                     </td>
                     <td className="px-2 py-2">
                       {editingSettingId === s.id ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={editTestingSlots}
+                          onChange={(e) => setEditTestingSlots(e.target.value)}
+                          className="w-14 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
+                        />
+                      ) : (
+                        <span className="tabular-nums">{s.testing_slots ?? 5}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      {editingSettingId === s.id ? (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleUpdateSetting(s)}
@@ -588,6 +887,7 @@ export default function PipelineClient() {
                             setEditCpa(s.target_cpa.toString());
                             setEditRoas(s.target_roas?.toString() ?? "");
                             setEditCurrency(s.currency);
+                            setEditTestingSlots(String(s.testing_slots ?? 5));
                           }}
                           className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                         >
@@ -650,6 +950,16 @@ export default function PipelineClient() {
                     />
                   </td>
                   <td className="px-2 py-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={newTestingSlots}
+                      onChange={(e) => setNewTestingSlots(e.target.value)}
+                      className="w-14 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
+                    />
+                  </td>
+                  <td className="px-2 py-2">
                     <button
                       onClick={handleAddSetting}
                       disabled={!newTargetCpa || savingNewSetting}
@@ -701,197 +1011,339 @@ function SummaryCard({
 
 function ConceptCard({
   concept,
-  expanded,
-  onToggle,
+  queuePosition,
+  onClick,
+}: {
+  concept: PipelineConcept;
+  queuePosition?: number;
+  onClick: () => void;
+}) {
+  const m = concept.metrics;
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-white border border-gray-200 rounded-lg p-2.5 hover:shadow-sm transition-shadow"
+    >
+      {/* Row 1: Thumbnail + Name + Number */}
+      <div className="flex items-center gap-2 mb-1.5">
+        {queuePosition !== undefined ? (
+          <div className="w-10 h-10 rounded bg-violet-100 flex items-center justify-center shrink-0">
+            <span className="text-sm font-bold text-violet-600 tabular-nums">{queuePosition}</span>
+          </div>
+        ) : concept.thumbnailUrl ? (
+          <Image
+            src={concept.thumbnailUrl}
+            alt=""
+            width={40}
+            height={40}
+            className="w-10 h-10 rounded object-cover shrink-0"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
+            <ImageIcon className="w-4 h-4 text-gray-300" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-800 truncate">
+            {concept.name}
+          </p>
+          {concept.conceptNumber !== null && (
+            <span className="text-xs text-gray-400">#{concept.conceptNumber}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: Product badge + Country flags */}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        {concept.product && (
+          <span
+            className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+              PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"
+            }`}
+          >
+            {concept.product}
+          </span>
+        )}
+        {concept.languages.length > 0 && (
+          <span className="text-xs text-gray-400 uppercase">
+            {concept.languages.join(", ")}
+          </span>
+        )}
+      </div>
+
+      {/* Row 3: Age badge + ROAS indicator */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
+          {concept.daysInStage}d
+        </span>
+        {m && (
+          <span
+            className={`text-xs font-medium tabular-nums ${roasColorClass(
+              m.roas,
+              concept.targetRoas
+            )}`}
+          >
+            {m.roas !== null && m.roas > 0
+              ? `ROAS: ${m.roas.toFixed(2)}x`
+              : m.conversions === 0
+              ? "No conversions"
+              : "No revenue"}
+          </span>
+        )}
+      </div>
+
+      {/* Row 4: Signal badges */}
+      {concept.signals.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {concept.signals.map((signal, i) => {
+            const style = SIGNAL_STYLES[signal.type];
+            return (
+              <span
+                key={i}
+                className={`text-xs font-medium px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}
+                title={signal.reason}
+              >
+                {style.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ConceptModal({
+  concept,
+  onClose,
   killingId,
   killNotes,
   onStartKill,
   onCancelKill,
   onKillNotesChange,
   onConfirmKill,
+  onRemoveFromQueue,
 }: {
   concept: PipelineConcept;
-  expanded: boolean;
-  onToggle: () => void;
+  onClose: () => void;
   killingId: string | null;
   killNotes: string;
   onStartKill: () => void;
   onCancelKill: () => void;
   onKillNotesChange: (v: string) => void;
   onConfirmKill: () => void;
+  onRemoveFromQueue?: () => void;
 }) {
   const isKilling = killingId === concept.id;
   const m = concept.metrics;
+  const stageConfig = STAGE_CONFIG[concept.stage];
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   return (
     <div
-      className={`bg-white border border-gray-200 rounded-lg transition-shadow ${
-        expanded ? "shadow-md" : "hover:shadow-sm"
-      }`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
     >
-      {/* Collapsed view */}
-      <button
-        onClick={onToggle}
-        className="w-full text-left p-2.5"
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Row 1: Thumbnail + Name + Number */}
-        <div className="flex items-center gap-2 mb-1.5">
+        {/* Modal header */}
+        <div className="flex items-start gap-3 p-5 border-b border-gray-100">
           {concept.thumbnailUrl ? (
             <Image
               src={concept.thumbnailUrl}
               alt=""
-              width={40}
-              height={40}
-              className="w-10 h-10 rounded object-cover shrink-0"
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-lg object-cover shrink-0"
             />
           ) : (
-            <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center shrink-0">
-              <ImageIcon className="w-4 h-4 text-gray-300" />
+            <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+              <ImageIcon className="w-6 h-6 text-gray-300" />
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-800 truncate">
+            <h2 className="text-sm font-semibold text-gray-900 truncate">
               {concept.name}
-            </p>
-            {concept.conceptNumber !== null && (
-              <span className="text-xs text-gray-400">#{concept.conceptNumber}</span>
-            )}
+            </h2>
+            <div className="flex items-center gap-2 mt-1">
+              {concept.conceptNumber !== null && (
+                <span className="text-xs text-gray-400">#{concept.conceptNumber}</span>
+              )}
+              {concept.product && (
+                <span
+                  className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                    PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {concept.product}
+                </span>
+              )}
+              <span
+                className={`text-xs font-medium px-1.5 py-0.5 rounded ${stageConfig.headerBg} ${stageConfig.headerText}`}
+              >
+                {stageConfig.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              {concept.languages.length > 0 && (
+                <span className="text-xs text-gray-400 uppercase">
+                  {concept.languages.join(", ")}
+                </span>
+              )}
+              <span className="text-xs text-gray-400 tabular-nums">
+                {concept.daysInStage}d in stage
+              </span>
+            </div>
           </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1 -m-1"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Row 2: Product badge + Country flags */}
-        <div className="flex items-center gap-1.5 mb-1.5">
-          {concept.product && (
-            <span
-              className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"
-              }`}
-            >
-              {concept.product}
-            </span>
-          )}
-          {concept.languages.length > 0 && (
-            <span className="text-xs text-gray-400 uppercase">
-              {concept.languages.join(", ")}
-            </span>
-          )}
-        </div>
-
-        {/* Row 3: Age badge + ROAS indicator */}
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
-            {concept.daysInStage}d
-          </span>
-          {m && (
-            <span
-              className={`text-xs font-medium tabular-nums ${roasColorClass(
-                m.roas,
-                concept.targetRoas
-              )}`}
-            >
-              {m.roas !== null && m.roas > 0
-                ? `ROAS: ${m.roas.toFixed(2)}x`
-                : m.conversions === 0
-                ? "No conversions"
-                : "No revenue"}
-            </span>
-          )}
-        </div>
-
-        {/* Row 4: Signal badges */}
+        {/* Signal badges */}
         {concept.signals.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+          <div className="px-5 pt-3 flex flex-wrap gap-1.5">
             {concept.signals.map((signal, i) => {
               const style = SIGNAL_STYLES[signal.type];
               return (
                 <span
                   key={i}
-                  className={`text-xs font-medium px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}
+                  className={`text-xs font-medium px-2 py-1 rounded ${style.bg} ${style.text}`}
                   title={signal.reason}
                 >
-                  {style.label}
+                  {style.label}: {signal.reason}
                 </span>
               );
             })}
           </div>
         )}
-      </button>
 
-      {/* Expanded view */}
-      {expanded && (
-        <div className="border-t border-gray-100 px-2.5 pb-2.5 pt-2">
-          {/* Metrics grid */}
-          {m && (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mb-3">
-              <MetricRow label="Spend" value={formatCurrency(m.totalSpend, concept.currency)} />
-              <MetricRow label="Revenue" value={formatCurrency(m.revenue, concept.currency)} />
-              <MetricRow
-                label="ROAS"
-                value={m.roas !== null && m.roas > 0 ? `${m.roas.toFixed(2)}x` : "--"}
-                valueClass={roasColorClass(m.roas, concept.targetRoas)}
-              />
-              <MetricRow label="Impressions" value={m.impressions.toLocaleString()} />
-              <MetricRow label="Clicks" value={m.clicks.toLocaleString()} />
-              <MetricRow label="CTR" value={`${m.ctr.toFixed(2)}%`} />
-              <MetricRow label="CPC" value={formatCurrency(m.cpc, concept.currency)} />
-              <MetricRow label="CPM" value={formatCurrency(m.cpm, concept.currency)} />
-              <MetricRow label="Frequency" value={m.frequency.toFixed(2)} />
-              <MetricRow label="Conversions" value={String(m.conversions)} />
-              <MetricRow
-                label="CPA"
-                value={m.conversions > 0 ? formatCurrency(m.cpa, concept.currency) : "--"}
-                valueClass={cpaColorClass(m.cpa, m.conversions, concept.targetCpa)}
-              />
-            </div>
-          )}
-
-          {!m && (
-            <p className="text-xs text-gray-400 mb-3">No metrics data yet.</p>
-          )}
-
-          {/* Kill button (only for review/active) */}
-          {(concept.stage === "review" || concept.stage === "active") && !isKilling && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartKill();
-              }}
-              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
-            >
-              <Trash2 className="w-3 h-3" />
-              Kill Concept
-            </button>
-          )}
-
-          {/* Kill form */}
-          {isKilling && (
-            <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-              <textarea
-                value={killNotes}
-                onChange={(e) => onKillNotesChange(e.target.value)}
-                placeholder="What did you learn from this concept?"
-                rows={3}
-                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onConfirmKill}
-                  className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Kill & Save Learnings
-                </button>
-                <button
-                  onClick={onCancelKill}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Cancel
-                </button>
+        {/* Metrics */}
+        <div className="p-5">
+          {m ? (
+            <>
+              {/* Primary metrics row */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-400 mb-0.5">Spend</p>
+                  <p className="text-sm font-semibold text-gray-800 tabular-nums">
+                    {formatCurrency(m.totalSpend, concept.currency)}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-400 mb-0.5">Revenue</p>
+                  <p className="text-sm font-semibold text-gray-800 tabular-nums">
+                    {formatCurrency(m.revenue, concept.currency)}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-400 mb-0.5">ROAS</p>
+                  <p
+                    className={`text-sm font-semibold tabular-nums ${roasColorClass(
+                      m.roas,
+                      concept.targetRoas
+                    )}`}
+                  >
+                    {m.roas !== null && m.roas > 0 ? `${m.roas.toFixed(2)}x` : "--"}
+                  </p>
+                  {concept.targetRoas && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      target: {concept.targetRoas.toFixed(2)}x
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+
+              {/* Detailed metrics */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <MetricRow label="Impressions" value={m.impressions.toLocaleString()} />
+                <MetricRow label="Clicks" value={m.clicks.toLocaleString()} />
+                <MetricRow label="CTR" value={`${m.ctr.toFixed(2)}%`} />
+                <MetricRow label="CPC" value={formatCurrency(m.cpc, concept.currency)} />
+                <MetricRow label="CPM" value={formatCurrency(m.cpm, concept.currency)} />
+                <MetricRow label="Frequency" value={m.frequency.toFixed(2)} />
+                <MetricRow label="Conversions" value={String(m.conversions)} />
+                <MetricRow
+                  label="CPA"
+                  value={m.conversions > 0 ? formatCurrency(m.cpa, concept.currency) : "--"}
+                  valueClass={cpaColorClass(m.cpa, m.conversions, concept.targetCpa)}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">No metrics data yet.</p>
           )}
         </div>
-      )}
+
+        {/* Remove from queue action */}
+        {onRemoveFromQueue && (
+          <div className="border-t border-gray-100 p-5">
+            <button
+              onClick={onRemoveFromQueue}
+              className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-700 font-medium"
+            >
+              <X className="w-4 h-4" />
+              Remove from Queue
+            </button>
+          </div>
+        )}
+
+        {/* Actions */}
+        {(concept.stage === "review" || concept.stage === "active" || concept.stage === "testing") && (
+          <div className="border-t border-gray-100 p-5">
+            {!isKilling ? (
+              <button
+                onClick={onStartKill}
+                className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
+              >
+                <Trash2 className="w-4 h-4" />
+                Kill Concept
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <label className="text-xs font-medium text-gray-600">
+                  What did you learn from this concept?
+                </label>
+                <textarea
+                  value={killNotes}
+                  onChange={(e) => onKillNotesChange(e.target.value)}
+                  placeholder="Record learnings before killing..."
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={onConfirmKill}
+                    className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Kill & Save Learnings
+                  </button>
+                  <button
+                    onClick={onCancelKill}
+                    className="text-sm text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -925,7 +1377,7 @@ function CampaignBudgetSection({
   // Count active (non-draft, non-killed) concepts per campaign
   // We can approximate by counting concepts that are pushed (have languages)
   const activeConcepts = concepts.filter(
-    (c) => c.stage !== "draft" && c.stage !== "killed" && c.languages.length > 0
+    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed" && c.languages.length > 0
   );
   const totalActiveConcepts = activeConcepts.length;
 

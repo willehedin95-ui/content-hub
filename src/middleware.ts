@@ -39,7 +39,8 @@ export async function middleware(request: NextRequest) {
   if (
     request.nextUrl.pathname.startsWith("/api/pixel") ||
     request.nextUrl.pathname.startsWith("/api/ab-track") ||
-    request.nextUrl.pathname.startsWith("/api/telegram/webhook")
+    request.nextUrl.pathname.startsWith("/api/telegram/webhook") ||
+    request.nextUrl.pathname.startsWith("/api/cron")
   ) {
     return supabaseResponse;
   }
