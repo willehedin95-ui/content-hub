@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { getQueuedConcepts, getTestingCount, getTestingSlots } from "@/lib/pipeline";
+import { getQueuedConcepts, getTestingCount, getTestingSlots, syncPipelineMetrics } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
-import { notifyPushSuccess, notifyPushFailure, notifyPushSummary } from "@/lib/telegram-notify";
+import { notifyPushSuccess, notifyPushFailure, notifyPushSummary, notifyStageTransitions } from "@/lib/telegram-notify";
 
 export const maxDuration = 300;
 
 /**
- * Auto-push queued concepts to Meta when testing slots are available.
- * Called by Vercel Cron daily at 03:00 UTC.
+ * Daily pipeline cron (03:00 UTC):
+ * 1. Sync metrics from Meta → detect stage transitions (auto-kill, promote to review/active)
+ * 2. Push queued concepts to Meta when testing slots are available
  */
 export async function GET(req: NextRequest) {
   // Verify CRON_SECRET
@@ -22,10 +23,29 @@ export async function GET(req: NextRequest) {
   const results: Array<{ concept: string; status: "pushed" | "failed"; error?: string }> = [];
 
   try {
-    // Get all queued concepts
+    // Step 1: Sync metrics and detect stage transitions
+    // This auto-kills underperformers and promotes winners, freeing up testing slots
+    console.log("[Pipeline Cron] Syncing metrics and detecting stage transitions...");
+    const syncResult = await syncPipelineMetrics();
+    console.log(`[Pipeline Cron] Synced ${syncResult.synced} metrics, ${syncResult.transitions.length} stage transitions`);
+
+    if (syncResult.transitions.length > 0) {
+      await notifyStageTransitions(syncResult.transitions);
+    }
+
+    if (syncResult.errors.length > 0) {
+      console.warn("[Pipeline Cron] Sync errors:", syncResult.errors);
+    }
+
+    // Step 2: Push queued concepts to available testing slots
     const queued = await getQueuedConcepts();
     if (queued.length === 0) {
-      return NextResponse.json({ message: "No concepts in queue", pushed: 0 });
+      return NextResponse.json({
+        message: "Sync complete, no concepts in queue",
+        syncedMetrics: syncResult.synced,
+        stageTransitions: syncResult.transitions.length,
+        pushed: 0,
+      });
     }
 
     // Group queued concepts by product
@@ -117,7 +137,6 @@ export async function GET(req: NextRequest) {
     if (pushed > 0 || failed > 0) {
       const remainingQueued = await getQueuedConcepts();
       const testingCount = await getTestingCount();
-      // Get a representative testing slots value
       const firstProduct = queued[0]?.product ?? "happysleep";
       const slots = await getTestingSlots(firstProduct);
 
@@ -130,15 +149,16 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
+      syncedMetrics: syncResult.synced,
+      stageTransitions: syncResult.transitions.length,
       results,
-      pushed,
-      failed,
-      message: `Pushed ${pushed}, failed ${failed}`,
+      pushed: results.filter((r) => r.status === "pushed").length,
+      failed: results.filter((r) => r.status === "failed").length,
     });
   } catch (err) {
-    console.error("[Pipeline Push] Error:", err);
+    console.error("[Pipeline Cron] Error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Pipeline push failed" },
+      { error: err instanceof Error ? err.message : "Pipeline cron failed" },
       { status: 500 }
     );
   }

@@ -54,3 +54,30 @@ export async function notifyPushSummary(results: {
 
   await sendMessage(chatId, lines.join("\n"));
 }
+
+/** Notify about automatic stage transitions */
+export async function notifyStageTransitions(transitions: Array<{
+  conceptNumber: number | null;
+  name: string;
+  from: string;
+  to: string;
+  signal: string;
+}>): Promise<void> {
+  const chatId = getChatId();
+  if (!chatId || transitions.length === 0) return;
+
+  const icons: Record<string, string> = {
+    review: "🔍",
+    active: "🚀",
+    killed: "💀",
+  };
+
+  const lines = [`📋 Pipeline stage changes:`];
+  for (const t of transitions) {
+    const num = t.conceptNumber ? `#${t.conceptNumber}` : "";
+    const icon = icons[t.to] || "➡️";
+    lines.push(`  ${icon} ${num} ${t.name}: ${t.from} → ${t.to} (${t.signal})`);
+  }
+
+  await sendMessage(chatId, lines.join("\n"));
+}

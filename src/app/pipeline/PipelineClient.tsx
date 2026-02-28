@@ -383,16 +383,23 @@ export default function PipelineClient() {
 
   // Recompute summary from filtered concepts
   const summary = countryFilter
-    ? {
-        queued: 0, // queued have no country, hidden when filtering
-        inTesting: concepts.filter((c) => c.stage === "testing").length,
-        testingSlotsUsed: pipelineData?.summary?.testingSlotsUsed ?? "0/5",
-        needsReview: concepts.filter((c) => c.stage === "review").length,
-        activeScaling: concepts.filter((c) => c.stage === "active").length,
-        killed: concepts.filter((c) => c.stage === "killed").length,
-        avgCreativeAge: pipelineData?.summary?.avgCreativeAge ?? 0,
-        testingBudgetPct: pipelineData?.summary?.testingBudgetPct ?? 0,
-      }
+    ? (() => {
+        const filteredTesting = concepts.filter((c) => c.stage === "testing").length;
+        const countrySettings = settings.filter((s) => s.country === countryFilter);
+        const countrySlots = countrySettings.length > 0
+          ? Math.max(...countrySettings.map((s) => s.testing_slots ?? 5))
+          : 5;
+        return {
+          queued: 0, // queued have no country, hidden when filtering
+          inTesting: filteredTesting,
+          testingSlotsUsed: `${filteredTesting}/${countrySlots}`,
+          needsReview: concepts.filter((c) => c.stage === "review").length,
+          activeScaling: concepts.filter((c) => c.stage === "active").length,
+          killed: concepts.filter((c) => c.stage === "killed").length,
+          avgCreativeAge: pipelineData?.summary?.avgCreativeAge ?? 0,
+          testingBudgetPct: pipelineData?.summary?.testingBudgetPct ?? 0,
+        };
+      })()
     : pipelineData?.summary ?? null;
 
   const alerts = countryFilter ? [] : allAlerts; // alerts are global, only show on All

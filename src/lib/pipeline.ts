@@ -1,4 +1,4 @@
-import { getAdInsights, getCampaignBudget } from "./meta";
+import { getAdInsights, getCampaignBudget, updateAdSet } from "./meta";
 import { createServerSupabase } from "./supabase";
 import type {
   PipelineStage,
@@ -157,7 +157,17 @@ function computeSignals(opts: {
 
 // ── Stage transition detection ───────────────────────────────
 
-async function detectStageTransitions(): Promise<void> {
+export interface StageTransition {
+  conceptId: string;
+  conceptNumber: number | null;
+  name: string;
+  from: string;
+  to: string;
+  signal: string;
+}
+
+export async function detectStageTransitions(): Promise<StageTransition[]> {
+  const transitions: StageTransition[] = [];
   const db = createServerSupabase();
   const now = new Date().toISOString();
 
@@ -169,7 +179,7 @@ async function detectStageTransitions(): Promise<void> {
     .not("image_job_id", "is", null)
     .order("created_at", { ascending: true });
 
-  if (!pushData || pushData.length === 0) return;
+  if (!pushData || pushData.length === 0) return transitions;
 
   // Build map: image_job_id → { earliestPush, countries, product }
   const conceptInfoMap = new Map<
@@ -216,15 +226,17 @@ async function detectStageTransitions(): Promise<void> {
     settingsMap.set(`${s.product}:${s.country}`, s);
   }
 
-  // Get concept products from image_jobs
+  // Get concept info from image_jobs
   const { data: jobData } = await db
     .from("image_jobs")
-    .select("id, product")
+    .select("id, product, name, concept_number")
     .in("id", conceptIds);
 
   const jobProductMap = new Map<string, string | null>();
+  const jobInfoMap = new Map<string, { name: string; conceptNumber: number | null }>();
   for (const j of jobData ?? []) {
     jobProductMap.set(j.id, j.product ?? null);
+    jobInfoMap.set(j.id, { name: j.name ?? "Unknown", conceptNumber: j.concept_number ?? null });
   }
 
   // Get aggregated metrics from concept_metrics
@@ -333,13 +345,42 @@ async function detectStageTransitions(): Promise<void> {
         entered_at: enteredAt,
         signal,
       });
+
+      // Pause Meta ad sets when auto-killed
+      if (newStage === "killed") {
+        const { data: campaigns } = await db
+          .from("meta_campaigns")
+          .select("meta_adset_id")
+          .eq("image_job_id", conceptId)
+          .in("status", ["pushed", "pushing"]);
+
+        if (campaigns && campaigns.length > 0) {
+          const adSetIds = campaigns.map((c) => c.meta_adset_id).filter(Boolean) as string[];
+          await Promise.allSettled(
+            adSetIds.map((id) => updateAdSet(id, { status: "PAUSED" }))
+          );
+        }
+      }
+
+      // Record transition for notifications
+      const jobInfo = jobInfoMap.get(conceptId);
+      transitions.push({
+        conceptId,
+        conceptNumber: jobInfo?.conceptNumber ?? null,
+        name: jobInfo?.name ?? "Unknown",
+        from: currentStage ?? "none",
+        to: newStage,
+        signal: signal ?? "auto",
+      });
     }
   }
+
+  return transitions;
 }
 
 // ── Sync pipeline metrics ────────────────────────────────────
 
-export async function syncPipelineMetrics(): Promise<{ synced: number; errors: string[] }> {
+export async function syncPipelineMetrics(): Promise<{ synced: number; errors: string[]; transitions: StageTransition[] }> {
   const db = createServerSupabase();
   const errors: string[] = [];
 
@@ -351,7 +392,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     .not("image_job_id", "is", null);
 
   if (!campaigns || campaigns.length === 0) {
-    return { synced: 0, errors: [] };
+    return { synced: 0, errors: [], transitions: [] };
   }
 
   // Build map: meta_ad_id → image_job_id
@@ -367,7 +408,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
   }
 
   if (adToConceptMap.size === 0) {
-    return { synced: 0, errors: [] };
+    return { synced: 0, errors: [], transitions: [] };
   }
 
   // Get ad insights for the last 30 days
@@ -377,7 +418,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     insights = await getAdInsights(since, until);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { synced: 0, errors: [`Failed to fetch Meta insights: ${msg}`] };
+    return { synced: 0, errors: [`Failed to fetch Meta insights: ${msg}`], transitions: [] };
   }
 
   // Aggregate metrics per concept per day
@@ -486,14 +527,15 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
   }
 
   // Detect stage transitions after metrics are synced
+  let transitions: StageTransition[] = [];
   try {
-    await detectStageTransitions();
+    transitions = await detectStageTransitions();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     errors.push(`Stage transition detection failed: ${msg}`);
   }
 
-  return { synced: syncedCount, errors };
+  return { synced: syncedCount, errors, transitions };
 }
 
 // ── Get pipeline data ────────────────────────────────────────
@@ -920,6 +962,29 @@ export async function killConcept(
 ): Promise<void> {
   const db = createServerSupabase();
   const now = new Date().toISOString();
+
+  // Pause all Meta ad sets linked to this concept
+  const { data: campaigns } = await db
+    .from("meta_campaigns")
+    .select("meta_adset_id")
+    .eq("image_job_id", imageJobId)
+    .in("status", ["pushed", "pushing"]);
+
+  if (campaigns && campaigns.length > 0) {
+    const adSetIds = campaigns
+      .map((c) => c.meta_adset_id)
+      .filter(Boolean) as string[];
+
+    const pauseResults = await Promise.allSettled(
+      adSetIds.map((id) => updateAdSet(id, { status: "PAUSED" }))
+    );
+
+    for (let i = 0; i < pauseResults.length; i++) {
+      if (pauseResults[i].status === "rejected") {
+        console.error(`[Kill] Failed to pause ad set ${adSetIds[i]}:`, (pauseResults[i] as PromiseRejectedResult).reason);
+      }
+    }
+  }
 
   // Close current lifecycle stage
   await db
