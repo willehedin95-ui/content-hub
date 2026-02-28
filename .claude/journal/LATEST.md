@@ -1,33 +1,42 @@
-# Session: 2026-02-27 ~09:00
+# Session: 2026-02-28
 
 ## What was done
-- Migrated from nano-banana-pro to nano-banana-2 (Kie.ai model upgrade)
-- Switched from 2K to 1K resolution for faster generation (user prefers speed over marginal quality)
-- Parallelized image generation: sequential for loop → Promise.allSettled (all briefs generate simultaneously)
-- Added poll-based streaming: client polls refreshJob() every 3s during generation, images appear in grid as they're inserted into DB
-- Smart skeletons: disappear one-by-one as images arrive, counter shows "X of Y done"
-- Error feedback: full summary when images fail ("Generated X of Y. Z failed: [details]") instead of silent failures
-- "Generate More Styles" section persists after generation — can add missing styles after partial runs
-- Checkmarks on already-generated styles in the style picker
-- Updated pricing to 1K costs ($0.045/image estimated)
-- Cleaned up backlog — most items were already implemented (re-roll, thumbnails, brainstorm originality)
-- Full flow review via browser: brainstorm → concepts → image generation, identified and fixed 6 issues
+
+### Copy Blocks Deep Framework — research synthesis
+- Read all 4 source materials for ad copywriting frameworks:
+  - `meta ads long form copy research.txt` — Anthony's 3 videos on native mini sales letters, hooks, 8-section structure, gradualization
+  - `Copy blocks/DESIGN_Copy_Blocks_(22) - V2 (1).pdf` — Core P3C2 system (28 pages)
+  - `Copy blocks/Copy Blocks Presentation V.2.pptx (1).pdf` — Expanded training (255 pages)
+  - `Copy blocks/Copy_Blocks_Training_Directors-Cut (1).vtt` — Live training transcript (30K words)
+- Explored existing knowledge base (`copywriting-foundations.md`, `ad-writing-process.md`, `brainstorm.ts`)
+- Proposed 3 approaches for synthesis, user approved Approach C (reference doc + prompt-injectable sections)
+- Wrote comprehensive `knowledge-base/copy-blocks-deep.md` (880 lines, 10 sections)
+
+### What the document covers
+1. Overview — Copy Blocks Equation, Copy Velocity, 3 principles
+2. Pain Block — Pain Chain (5 levels), Pain Matrix (10 dimensions), Core Wound
+3. Promise Block — Promise Ladder (5 levels)
+4. Proof Block — 22 types across 5 categories, Proof Braid, Balance Scale
+5. Constraints Block — Big Three, Resonance Hierarchy, A.W.E. Framework
+6. Curiosity Block — Quadrant, S.E.E.N., Epiphany Threshold, Characterizations (4 tools)
+7. Conditions Block — 5 types
+8. Universal Tools — C.R.A.V.E.S. formula, Power Words
+9. Long-Form Ad Copy Structure — 8-section framework, Gradualization
+10. 14 Ad Templates — quick-reference + structural breakdowns
+
+Each major block includes a "Prompt-Injectable" condensed section ready for `brainstorm.ts` integration.
 
 ## Decisions made
-- **Poll-based streaming over SSE**: Since each image is already inserted into the DB as it completes, simple client-side polling (3s interval) achieves the same UX as SSE with zero API changes. The DB is the source of truth.
-- **1K over 2K resolution**: User explicitly prefers speed. Quality difference minimal for Meta ads at feed size.
-- **Promise.allSettled over sequential**: All briefs fire in parallel. One failure doesn't block others. Total time drops from ~4 min to ~1.5 min for 4 images.
+- Approach C chosen: standalone reference doc + prompt-injectable sections (vs just reference or just prompt updates)
+- Document goes in `copywriting/knowledge-base/` alongside existing framework files
+- Not wiring into `brainstorm.ts` yet — that's a follow-up task
 
 ## Current state
-- Everything builds and works end-to-end
-- 2 commits ahead of origin/main (previous session + this session), not pushed
-- 10 images generated on test concept "The 8-Hour Chiropractor" across all styles
-- Bold Statement style now correctly generates text-overlay ads (was flagged as potential bug, seems resolved)
-
-## Blockers / Open questions
-- Exact nano-banana-2 credit cost at 1K unknown — using estimate of 9 credits ($0.045). Will verify from usage logs after more generations.
-- Pre-existing build warning: ENOENT on `/api/ab-tests` page data collection (not related to our changes)
+- `copy-blocks-deep.md` committed to copywriting repo (first commit)
+- No changes to content-hub codebase this session
 
 ## Next up
-- P2 vision features: Ad Spy, Landing Page Recommender, WhatsApp notifications
-- User opened Creative Strategist workshop transcription — may want to extract insights for copywriting prompts
+- Wire prompt-injectable sections into `brainstorm.ts` (upgrade Copy Blocks in AI prompts)
+- Consider adding a "long-form copy" brainstorm mode using the 8-section structure
+- Consider adding 14 ad templates as a template-based brainstorm mode
+- Landing page recommendation (from previous backlog)

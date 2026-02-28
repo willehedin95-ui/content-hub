@@ -37,13 +37,13 @@ AWARENESS LEVELS:
 - Product Aware: Knows your product, needs final push
 - Most Aware: Ready to buy, just needs an offer/reminder
 
-COPY BLOCKS (building blocks of the ad copy):
-- Pain: Surface → Specific → Cinematic → Emotional → Core Wound
-- Promise: General → Specific → Cinematic → Emotional → Core Desire
-- Proof: Social proof, authority, statistics, testimonials, case studies
-- Curiosity: Open loops, unexpected claims, pattern interrupts
-- Constraints: Address identity, values, belief, experience, resource objections
-- Conditions: Urgency, scarcity, risk reversal, offer framing
+COPY BLOCKS (P3C2 — see COPY BLOCKS DEEP FRAMEWORK below for full system):
+- Pain (5 levels: General → Specific → Cinematic → Emotional → Core Wound)
+- Promise (5 levels: General → Specific → Cinematic → Emotional → Core Transformation)
+- Proof (22 types across 5 categories — use Proof Braid to pair with claims)
+- Curiosity (the MOST important block — use S.E.E.N. + Epiphany Threshold + Characterizations)
+- Constraints (Big Three: Money, Time, Effort — use A.W.E. to dissolve deeper objections)
+- Conditions (urgency, scarcity, risk reversal, qualifications)
 
 KEY PRINCIPLE: The same product can have hundreds of unique ad concepts by varying Concept × Angle × Style × Hook. Each proposal MUST use a DIFFERENT angle to maximize creative coverage.`;
 
@@ -71,6 +71,99 @@ SCROLL-STOPPING PATTERNS:
 - Magic Words: Specific charged words (free, secret, hidden, forgotten, banned, leaked)
 - Weird Methods: Unusual approaches that create curiosity (the "banana trick", "pillow hack")
 - Loopholes: Perceived shortcuts that bypass expected effort`;
+
+const COPY_BLOCKS_DEEP = `## COPY BLOCKS DEEP FRAMEWORK
+
+The 6 building blocks of persuasive copy. Use these to write stronger hooks, ad copy, and characterizations.
+
+### PAIN BLOCK — 5 levels of emotional depth
+
+Pain Chain (build general → devastating):
+1. General Pain: Surface problem statement
+2. Specific Pain (x2-3): Concrete, measurable details
+3. Cinematic Pain: Movie-scene description of the pain in their daily life
+4. Emotional Pain: The feeling underneath the surface
+5. Core Wound: The existential fear (use sparingly, indirectly)
+
+Pain Matrix dimensions that shape which pain blocks work:
+- Psychological markets → stories that evoke past pain
+- High-stigma markets → remove shame before addressing pain
+- Measurable markets → concrete numbers and specifics
+
+The goal: make the prospect feel UNDERSTOOD, not lectured.
+
+### PROMISE BLOCK — 5 levels (stack them, hard to overdo)
+
+Promise Ladder:
+1. General Promise: Big-picture outcome
+2. Specific Promise: Concrete, measurable result with timeline
+3. Cinematic Promise: Movie-scene of life after the transformation
+4. Emotional Promise: How it FEELS to have the outcome
+5. Core Transformation: The ONE thing they want if they could snap their fingers
+
+Key rules:
+- Most copy has too FEW promises, not too many
+- Core Transformation = the single outcome everything ladders up to
+- Show the transformation through daily life scenes, not abstract claims
+
+### PROOF BLOCK — Creates the FEELING of trust, not a legal argument
+
+Proof Braid: Pair every promise/claim with proof immediately (like Siamese twins).
+Proof Balance Scale: Big promises need big proof. Small promises need small proof.
+
+22 Proof Types across 5 categories:
+1. PSYCHOLOGICAL (most underutilized): Technical Jargon, Candid Communication, Explanatory Reasoning, Logical Arguments, Guarantees
+2. EXPERIENTIAL (most convincing): Testable Proof, Demonstration, Trials/Samples, Challenges, Comparisons, Before/After
+3. EMPIRICAL: Studies/Research, Stats/Evidence, Infographics
+4. CREDIBLE: 3rd Party Certs, Track Record, Expert Endorsements, Media Coverage, Awards
+5. SOCIAL: Testimonials/Reviews, Case Studies, Social Media Metrics
+
+Rules: Harder to fake = stronger. Match proof weight to claim weight. Experiential > all.
+
+### CONSTRAINTS BLOCK — What holds them back from buying
+
+Big Three (always address): Money, Time, Effort.
+Address in hooks/headlines: "Without expensive X, complicated Y, or hours of Z"
+
+Resonance Hierarchy (Experiences → Beliefs → Values → Identity):
+- Things CRYSTALLIZE going up — identity hardest to change
+- Work AROUND identity/value constraints (don't challenge directly)
+- DISSOLVE belief/experience constraints with counterexamples
+
+A.W.E. Framework (for dissolving constraints):
+A = Acknowledge: Validate their belief to lower resistance
+W = Wedge: Use counterexamples to open new possibilities (BOTH/AND, not EITHER/OR)
+E = Elaborate: Expand the new reality the wedge created
+
+### CURIOSITY BLOCK — The MOST important block. Bridges the gap between Pain and Promise.
+
+Two parts: IDEA (what you're saying) + FRAME (how you present it).
+
+Curiosity Quadrant (4 things to talk about):
+- External Problem (market's view of what causes the problem)
+- Internal Problem (YOUR view of what causes the problem)
+- External Solution (market's view of what fixes it)
+- Internal Solution (YOUR product's unique approach)
+
+S.E.E.N. Framework (4 qualities of insightful ideas):
+S = Simple (easy to understand), E = Easy (simple to do), E = Explanatory (explains their reality better — the "aha moment"), N = Novel (something new — familiar = tuned out). Last two matter MOST.
+
+Epiphany Threshold: Sliding scale 0-10. Sweet spot = 6-8. Too obvious (1-3) = boring. Too extreme (9-10) = unbelievable.
+
+Characterization tools (for naming mechanisms):
+1. Evocative Naming: Reveal just enough (not too obvious, not too blind). Strong: "Hidden Constipation" / "Joint Drought". Weak: "3-Step Success System".
+2. Intuition Pumps: Relate to something familiar (natural metaphors, mechanical metaphors, body-feel of the problem)
+3. Anti-Constraints: Dissolve objections IN the name itself ("Lunchbreak Millionaire Protocol", "Copy-Paste Traffic System")
+4. Idea Caricatures: Exaggerate sexy/taboo/easy aspects of the core idea to create compelling characterizations
+
+### COPY QUALITY TOOLS
+
+C.R.A.V.E.S. — Make any copy block stronger:
+C = Clear (understandable above all), R = Relevant (something they care about), A = Accurate (their actual language), V = Visual (they can picture it like a movie), E = Expressive (emotionally charged power words), S = Specific (concrete details, not vague)
+
+Copy Velocity: More copy blocks in fewer words = stronger copy. Cut filler ruthlessly.
+
+Copy Blocks Equation: (Promise × (Proof × Curiosity)) / Constraints × Conditions = Value`;
 
 const UNAWARE_AD_TYPES = `## 4 Types of Unaware Ads
 
@@ -232,7 +325,7 @@ Generate concept proposals as a JSON object with a "proposals" array. Each propo
         "hooks": ["3-5 hook line variations — the opening line the viewer sees first"],
         "awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware",
         "ad_source": "<will be specified per mode>",
-        "copy_blocks": ["array of blocks used: Pain, Promise, Proof, Curiosity, Constraints, Conditions"],
+        "copy_blocks": ["array of blocks used: Pain, Promise, Proof, Curiosity, Constraints, Conditions — specify depth level where relevant (e.g. 'Pain: Cinematic + Core Wound', 'Proof: Experiential + Social', 'Curiosity: Characterization')"],
         "concept_description": "same as outer concept_description"
       },
       "ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each)"],
@@ -249,7 +342,7 @@ CRITICAL RULES:
 - Write ad copy in ENGLISH (it will be translated later)
 - NEVER invent medical claims — only use claims from the product brief
 - Hooks should be scroll-stopping — curiosity, pattern interrupts, or strong emotional triggers
-- Primary text should be ready-to-use ad copy, not placeholder text
+- Primary text should be ready-to-use ad copy, not placeholder text. Apply Copy Blocks techniques: use Pain Chain levels, Proof Braid (pair claims with proof), strong Curiosity characterizations, and C.R.A.V.E.S. to strengthen every block
 - Visual direction should be specific enough to brief a designer
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.`;
@@ -271,6 +364,8 @@ function buildFromScratchSystem(
 You understand the psychology of health-conscious Scandinavian consumers — Jantelagen (never brag or overclaim), peer social proof matters more than celebrity endorsement, and understatement beats hype.
 
 ${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
 
 ${STORMING_SOURCES}
 
@@ -300,6 +395,8 @@ function buildFromOrganicSystem(
 The key insight: Organic creators are often better at hooks than most paid copywriters. The feedback loop is so sharp and fast that only the best hooks survive. Your job is to identify what makes the organic content work and adapt that energy into ad concepts.
 
 ${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
 
 ---
 
@@ -333,6 +430,8 @@ function buildFromResearchSystem(
 Where there's friction, there's attention. Research, studies, and comments are goldmines for ad concepts because they contain real-world validation of pains, desires, and beliefs.
 
 ${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
 
 ---
 
@@ -368,6 +467,8 @@ function buildFromInternalSystem(
 The Matrix/Coverage approach: instead of the sniper approach where you pick your best ideas, you carpet bomb. Systematically go through every angle, every concept type, every awareness level and find what's MISSING.
 
 ${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
 
 ---
 
@@ -407,6 +508,8 @@ These ads read like content, not ads. They are aggressive with their disguise an
 IMPORTANT: All concepts you generate MUST target the "Unaware" awareness level.
 
 ${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
 
 ${UNAWARE_AD_TYPES}
 
