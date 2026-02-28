@@ -283,58 +283,84 @@ export async function pushConceptToMeta(
           })
         );
 
-        // Phase 2: Create creatives in parallel for successful uploads
-        const creativeInputs = langImages.map((img, i: number) => {
-          const upload = uploadResults[i];
-          if (upload.status === "rejected") return null;
-          return {
-            index: i,
-            imageHash: upload.value.imageHash,
-            imageHash9x16: upload.value.imageHash9x16,
-            url9x16: upload.value.url9x16,
-            img,
-          };
-        });
+        // Build aligned text variations: variation[i] = primaries[i] + headlines[i] (or last headline)
+        const variations = translatedPrimaries.map((primary, i) => ({
+          primary,
+          headline: translatedHeadlines[Math.min(i, translatedHeadlines.length - 1)] || "",
+          index: i,
+        }));
+        const multiVariation = variations.length > 1;
+
+        // Phase 2: Build flat (image × variation) combos and create creatives in parallel
+        const creativeInputs: Array<{
+          imgIndex: number;
+          varIndex: number;
+          imageHash: string;
+          imageHash9x16: string | null;
+          url9x16: string | null;
+          img: typeof langImages[number];
+          primary: string;
+          headline: string;
+        }> = [];
+
+        for (let imgIdx = 0; imgIdx < langImages.length; imgIdx++) {
+          const upload = uploadResults[imgIdx];
+          if (upload.status === "rejected") continue;
+          for (const variation of variations) {
+            creativeInputs.push({
+              imgIndex: imgIdx,
+              varIndex: variation.index,
+              imageHash: upload.value.imageHash,
+              imageHash9x16: upload.value.imageHash9x16 ?? null,
+              url9x16: upload.value.url9x16,
+              img: langImages[imgIdx],
+              primary: variation.primary,
+              headline: variation.headline,
+            });
+          }
+        }
 
         const creativeResults = await Promise.allSettled(
-          creativeInputs.map(async (input: typeof creativeInputs[number], i: number) => {
-            if (!input) throw new Error((uploadResults[i] as PromiseRejectedResult).reason?.message ?? "Upload failed");
-            const adName = `${adSetName} - Ad ${i + 1}`;
+          creativeInputs.map(async (input) => {
+            const adName = multiVariation
+              ? `${adSetName} - V${input.varIndex + 1} Ad ${input.imgIndex + 1}`
+              : `${adSetName} - Ad ${input.imgIndex + 1}`;
             const creative = await createAdCreative({
               name: adName,
               imageHash: input.imageHash,
-              imageHash9x16: input.imageHash9x16,
-              primaryText: translatedPrimaries[0],
-              primaryTexts: translatedPrimaries.length > 1 ? translatedPrimaries : undefined,
-              headline: translatedHeadlines[0] || undefined,
-              headlines: translatedHeadlines.length > 1 ? translatedHeadlines : undefined,
+              imageHash9x16: input.imageHash9x16 ?? undefined,
+              primaryText: input.primary,
+              headline: input.headline || undefined,
               linkUrl: landingUrl,
               pageId: pageConfig?.meta_page_id,
             });
-            return { creativeId: creative.id, ...input };
+            return { creativeId: creative.id, adName };
           })
         );
 
         // Phase 3: Create ads sequentially (rate limit safety, 200ms stagger)
         const adRows = [];
-        for (let i = 0; i < langImages.length; i++) {
-          const img = langImages[i];
-          const adName = `${adSetName} - Ad ${i + 1}`;
-          const url9x16 = siblings9x16.get(`${img.source_image_id}:${lang}`) || null;
+        for (let i = 0; i < creativeInputs.length; i++) {
+          const input = creativeInputs[i];
+          const adName = multiVariation
+            ? `${adSetName} - V${input.varIndex + 1} Ad ${input.imgIndex + 1}`
+            : `${adSetName} - Ad ${input.imgIndex + 1}`;
+          const url9x16 = input.url9x16;
 
           const creativeResult = creativeResults[i];
           if (creativeResult.status === "rejected") {
             adRows.push({
               campaign_id: campaign.id,
               name: adName,
-              image_url: img.image_url,
+              image_url: input.img.image_url,
               image_url_9x16: url9x16,
-              ad_copy: translatedPrimaries.join("\n---\n"),
-              headline: translatedHeadlines.join("\n---\n") || null,
+              ad_copy: input.primary,
+              headline: input.headline || null,
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
               aspect_ratio: "1:1",
+              variation_index: input.varIndex,
               status: "error",
               error_message: creativeResult.reason?.message ?? "Creative failed",
             });
@@ -355,16 +381,17 @@ export async function pushConceptToMeta(
             adRows.push({
               campaign_id: campaign.id,
               name: adName,
-              image_url: img.image_url,
+              image_url: input.img.image_url,
               image_url_9x16: url9x16,
-              meta_image_hash: creativeResult.value.imageHash,
-              meta_image_hash_9x16: creativeResult.value.imageHash9x16 || null,
-              ad_copy: translatedPrimaries.join("\n---\n"),
-              headline: translatedHeadlines.join("\n---\n") || null,
+              meta_image_hash: input.imageHash,
+              meta_image_hash_9x16: input.imageHash9x16 || null,
+              ad_copy: input.primary,
+              headline: input.headline || null,
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
               aspect_ratio: "1:1",
+              variation_index: input.varIndex,
               meta_creative_id: creativeResult.value.creativeId,
               meta_ad_id: metaAd.id,
               status: "pushed",
@@ -373,14 +400,15 @@ export async function pushConceptToMeta(
             adRows.push({
               campaign_id: campaign.id,
               name: adName,
-              image_url: img.image_url,
+              image_url: input.img.image_url,
               image_url_9x16: url9x16,
-              ad_copy: translatedPrimaries.join("\n---\n"),
-              headline: translatedHeadlines.join("\n---\n") || null,
+              ad_copy: input.primary,
+              headline: input.headline || null,
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
               aspect_ratio: "1:1",
+              variation_index: input.varIndex,
               status: "error",
               error_message: adErr instanceof Error ? adErr.message : "Failed",
             });

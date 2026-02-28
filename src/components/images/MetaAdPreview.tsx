@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Globe,
   BookmarkCheck,
+  BarChart3,
 } from "lucide-react";
 import {
   ImageJob,
@@ -68,6 +69,24 @@ export default function MetaAdPreview({
   const [imageIndex, setImageIndex] = useState(0);
   const [primaryTextIndex, setPrimaryTextIndex] = useState(0);
   const [headlineIndex, setHeadlineIndex] = useState(0);
+
+  // Variation performance tracking
+  const [variationInsights, setVariationInsights] = useState<Array<{
+    variation_index: number;
+    ad_copy: string;
+    headline: string;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    revenue: number;
+    ad_count: number;
+    ctr: number;
+    cpc: number;
+    cpa: number;
+    roas: number | null;
+  }> | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   // Reset navigation indices when language changes
   useEffect(() => {
@@ -525,7 +544,13 @@ export default function MetaAdPreview({
       {deployments.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-gray-700">Deployments</h3>
-          {deployments.map((d) => (
+          {deployments.map((d) => {
+            const variationCount = new Set(
+              (d.meta_ads ?? [])
+                .map((a) => (a as unknown as { variation_index: number | null }).variation_index)
+                .filter((v) => v !== null && v !== undefined)
+            ).size;
+            return (
             <div
               key={d.id}
               className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3"
@@ -533,7 +558,7 @@ export default function MetaAdPreview({
               <div>
                 <p className="text-sm font-medium text-gray-800">{d.name}</p>
                 <p className="text-xs text-gray-400">
-                  {d.meta_ads?.length ?? 0} ads &middot;{" "}
+                  {d.meta_ads?.length ?? 0} ads{variationCount > 1 ? ` (${variationCount} text variations)` : ""} &middot;{" "}
                   {d.status === "pushed" ? (
                     d.start_time && new Date(d.start_time) > new Date() ? (
                       <span className="text-amber-600">Scheduled</span>
@@ -587,7 +612,109 @@ export default function MetaAdPreview({
                 </a>
               )}
             </div>
-          ))}
+            );
+          })}
+        </div>
+      )}
+
+      {/* Variation Performance Comparison */}
+      {deployments.some((d) => d.status === "pushed") && (metaPush.primaryTexts.length > 1) && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <BarChart3 className="w-4 h-4" />
+              Text Variation Performance
+            </h3>
+            <button
+              onClick={async () => {
+                setInsightsLoading(true);
+                try {
+                  const res = await fetch(`/api/image-jobs/${job.id}/variation-insights`);
+                  const data = await res.json();
+                  setVariationInsights(data.variations ?? []);
+                } catch {
+                  setVariationInsights([]);
+                } finally {
+                  setInsightsLoading(false);
+                }
+              }}
+              disabled={insightsLoading}
+              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50"
+            >
+              {insightsLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : null}
+              {variationInsights ? "Refresh" : "Load Performance"}
+            </button>
+          </div>
+
+          {variationInsights && variationInsights.length > 0 && (
+            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-400 bg-gray-50">
+                    <th className="py-2 px-3 font-medium">Variation</th>
+                    <th className="py-2 px-3 font-medium text-right">Spend</th>
+                    <th className="py-2 px-3 font-medium text-right">Impr.</th>
+                    <th className="py-2 px-3 font-medium text-right">Clicks</th>
+                    <th className="py-2 px-3 font-medium text-right">CTR</th>
+                    <th className="py-2 px-3 font-medium text-right">CPC</th>
+                    <th className="py-2 px-3 font-medium text-right">Conv.</th>
+                    <th className="py-2 px-3 font-medium text-right">CPA</th>
+                    <th className="py-2 px-3 font-medium text-right">ROAS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variationInsights.map((v) => {
+                    const bestCpa = Math.min(
+                      ...variationInsights.filter((x) => x.conversions > 0).map((x) => x.cpa)
+                    );
+                    const isBest = v.conversions > 0 && v.cpa === bestCpa && variationInsights.length > 1;
+                    return (
+                      <tr
+                        key={v.variation_index}
+                        className={`border-t border-gray-100 ${isBest ? "bg-emerald-50" : ""}`}
+                      >
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`font-semibold ${isBest ? "text-emerald-700" : "text-gray-700"}`}>
+                              V{v.variation_index + 1}
+                            </span>
+                            {isBest && (
+                              <span className="text-[9px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
+                                BEST
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-gray-400 truncate max-w-[200px] mt-0.5" title={v.ad_copy}>
+                            {v.ad_copy.slice(0, 60)}{v.ad_copy.length > 60 ? "..." : ""}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.spend.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.impressions.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.clicks.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.ctr.toFixed(2)}%</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.cpc.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{v.conversions}</td>
+                        <td className={`py-2.5 px-3 text-right font-medium ${isBest ? "text-emerald-700" : "text-gray-700"}`}>
+                          {v.conversions > 0 ? v.cpa.toFixed(2) : "-"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">
+                          {v.roas !== null ? v.roas.toFixed(2) + "x" : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {variationInsights && variationInsights.length === 0 && (
+            <p className="text-xs text-gray-400 italic">
+              No performance data yet. Ads need time to deliver impressions.
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -216,9 +216,7 @@ export async function createAdCreative(params: {
   imageHash: string;
   imageHash9x16?: string;
   primaryText: string;
-  primaryTexts?: string[];
   headline?: string;
-  headlines?: string[];
   linkUrl: string;
   callToAction?: string;
   pageId?: string;
@@ -477,6 +475,44 @@ export async function getAdInsights(
   return metaJsonPaginated<MetaInsightsRow & { ad_id: string; frequency?: string; actions?: Array<{ action_type: string; value: string }>; action_values?: Array<{ action_type: string; value: string }> }>(
     `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=200`
   );
+}
+
+export type AdInsightRow = MetaInsightsRow & {
+  ad_id: string;
+  frequency?: string;
+  actions?: Array<{ action_type: string; value: string }>;
+  action_values?: Array<{ action_type: string; value: string }>;
+};
+
+/**
+ * Fetch ad-level insights for specific Meta ad IDs (batched, max 50 per request).
+ */
+export async function getAdInsightsForIds(
+  adIds: string[],
+  since: string,
+  until: string
+): Promise<AdInsightRow[]> {
+  if (adIds.length === 0) return [];
+
+  const timeRange = JSON.stringify({ since, until });
+  const fields = "impressions,clicks,spend,ctr,cpc,cpm,frequency,ad_id,actions,action_values";
+  const results: AdInsightRow[] = [];
+
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < adIds.length; i += BATCH_SIZE) {
+    const batch = adIds.slice(i, i + BATCH_SIZE);
+    const filtering = JSON.stringify([{
+      field: "ad.id",
+      operator: "IN",
+      value: batch,
+    }]);
+    const data = await metaJsonPaginated<AdInsightRow>(
+      `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=ad&filtering=${encodeURIComponent(filtering)}&limit=200`
+    );
+    results.push(...data);
+  }
+
+  return results;
 }
 
 export async function getCampaignBudget(campaignId: string): Promise<{ daily_budget: string; name: string }> {

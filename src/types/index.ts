@@ -406,6 +406,7 @@ export interface MetaAd {
   source_headline: string | null;
   landing_page_url: string | null;
   aspect_ratio: string | null;
+  variation_index: number | null;
   status: MetaAdStatus;
   error_message: string | null;
   created_at: string;
