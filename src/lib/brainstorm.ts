@@ -4,6 +4,7 @@ import type {
   ProductSegment,
   BrainstormMode,
   BrainstormRequest,
+  AdTemplate,
   Angle,
   AwarenessLevel,
 } from "@/types";
@@ -257,6 +258,121 @@ HEADLINE FORMULA: "The [unexpected] reason [common symptom] gets worse after [ag
 DESTINATION: Always send to advertorial/educational content, NOT product page. Informed buyers convert 3-4x better.
 
 RULE: If it makes your designer uncomfortable, it probably converts.`;
+
+const AD_TEMPLATES = `## 14 AD TEMPLATES (Copy Blocks System — 3-part structures)
+
+Each template is a proven ad structure with an Opening → Middle → Close flow. Follow the template's structure when writing ad_copy_primary.
+
+### 1. BEFORE & AFTER (Transformation Contrast Hook)
+Opening: Dramatic contrast between struggle and success — specific timeframes
+Middle: Vivid pain state → transformation moment → specific proof of results
+Close: Bold promise + CTA reinforcing the transformation
+
+### 2. INSIDER REVEAL (Exclusivity Curiosity Hook)
+Opening: Tease exclusive/hidden information most people don't know
+Middle: Reveal insider knowledge piece by piece + proof it works
+Close: How to access this secret + CTA
+
+### 3. FRAMEWORK INTRODUCTION (Complexity Contrast Hook)
+Opening: Acknowledge the overwhelming complexity of their problem
+Middle: Introduce a named system/framework that simplifies everything
+Close: Show predictable results + CTA
+
+### 4. QUICK WIN (Speed-Result Contrast Hook)
+Opening: Promise fast, tangible result with minimal effort
+Middle: Walk through simple steps producing the quick win
+Close: Bridge from quick win to bigger transformation + CTA
+
+### 5. INDUSTRY AUTHORITY (Recognition Gap Hook)
+Opening: Contrast between unknown beginners and recognized experts
+Middle: Reveal what authorities do differently (the mechanism)
+Close: Path to authority status + CTA
+
+### 6. HIDDEN COST (Invisible Pain Hook)
+Opening: Reveal an invisible cost they didn't know they were paying
+Middle: Quantify the damage, show why it's been invisible
+Close: How to stop the hidden bleeding + CTA
+
+### 7. IDENTITY SHIFT (Identity Crisis Hook)
+Opening: Challenge their self-image as the source of struggles
+Middle: Show how identity (not tactics) determines results
+Close: The new identity + how your product enables it + CTA
+
+### 8. PATTERN INTERRUPT QUESTION (Perspective-Shattering Question)
+Opening: Ask a question that shatters their current perspective
+Middle: Explore why the conventional answer is wrong
+Close: Paradigm-shifting answer + your solution + CTA
+
+### 9. OVERLOOKED FACTOR (Missing Element Hook)
+Opening: "Everyone focuses on X, but the REAL reason is Y"
+Middle: Build the case for the overlooked factor with proof
+Close: How addressing this one factor changes everything + CTA
+
+### 10. BOTTLENECK BREAKTHROUGH (Bottleneck Revelation Hook)
+Opening: Identify the single constraint preventing all results
+Middle: Explain why removing this one bottleneck unlocks everything
+Close: How your solution removes the bottleneck + CTA
+
+### B1. EFFORTLESS PIVOT (Tiny-Change-Big-Result Hook)
+Opening: Tiny change producing disproportionate results
+Middle: Why small adjustments work better than big overhauls
+Close: The specific small change + how to make it + CTA
+
+### B2. FUTURE SELF REGRET MINIMIZER (Future Reflection Hook)
+Opening: Paint a picture of future regret for not acting
+Middle: Show widening gap between acting now vs later
+Close: Remove risk of action, amplify risk of inaction + CTA
+
+### B3. INSIDER-OUTSIDER CONTRAST (Elite Practice Contrast Hook)
+Opening: Contrast what elite practitioners do vs everyone else
+Middle: Reveal practices that separate insiders from outsiders
+Close: How to gain insider access + CTA
+
+### B4. RESOURCE MAXIMIZER (Resource Constraint Hook)
+Opening: Challenge "more resources = more results" assumption
+Middle: Show how constraints produce better outcomes
+Close: Maximize results with what you already have + CTA`;
+
+/** Template metadata for UI display */
+export const AD_TEMPLATE_META: {
+  id: AdTemplate;
+  name: string;
+  hookType: string;
+  bestFor: string;
+}[] = [
+  { id: "before_after", name: "Before & After", hookType: "Transformation Contrast", bestFor: "Showing dramatic change with proof" },
+  { id: "insider_reveal", name: "Insider Reveal", hookType: "Exclusivity Curiosity", bestFor: "Hidden knowledge people don't know" },
+  { id: "framework_intro", name: "Framework Introduction", hookType: "Complexity Contrast", bestFor: "Simplifying an overwhelming problem" },
+  { id: "quick_win", name: "Quick Win", hookType: "Speed-Result Contrast", bestFor: "Fast results with minimal effort" },
+  { id: "industry_authority", name: "Industry Authority", hookType: "Recognition Gap", bestFor: "Expert vs beginner contrast" },
+  { id: "hidden_cost", name: "Hidden Cost", hookType: "Invisible Pain", bestFor: "Costs they didn't know they're paying" },
+  { id: "identity_shift", name: "Identity Shift", hookType: "Identity Crisis", bestFor: "Challenging who they think they are" },
+  { id: "pattern_interrupt", name: "Pattern Interrupt", hookType: "Perspective-Shattering", bestFor: "Questions that break assumptions" },
+  { id: "overlooked_factor", name: "Overlooked Factor", hookType: "Missing Element", bestFor: "The one thing everyone misses" },
+  { id: "bottleneck_breakthrough", name: "Bottleneck Breakthrough", hookType: "Bottleneck Revelation", bestFor: "Single constraint blocking all results" },
+  { id: "effortless_pivot", name: "Effortless Pivot", hookType: "Tiny-Change-Big-Result", bestFor: "Small change, disproportionate impact" },
+  { id: "future_regret", name: "Future Regret", hookType: "Future Reflection", bestFor: "Cost of not acting now" },
+  { id: "insider_outsider", name: "Insider-Outsider", hookType: "Elite Practice Contrast", bestFor: "What the best do differently" },
+  { id: "resource_maximizer", name: "Resource Maximizer", hookType: "Resource Constraint", bestFor: "Do more with less" },
+];
+
+/** Map template ID → display name for prompts */
+const TEMPLATE_NAMES: Record<AdTemplate, string> = {
+  before_after: "Before & After",
+  insider_reveal: "Insider Reveal",
+  framework_intro: "Framework Introduction",
+  quick_win: "Quick Win",
+  industry_authority: "Industry Authority",
+  hidden_cost: "Hidden Cost",
+  identity_shift: "Identity Shift",
+  pattern_interrupt: "Pattern Interrupt Question",
+  overlooked_factor: "Overlooked Factor",
+  bottleneck_breakthrough: "Bottleneck Breakthrough",
+  effortless_pivot: "Effortless Pivot",
+  future_regret: "Future Self Regret Minimizer",
+  insider_outsider: "Insider-Outsider Contrast",
+  resource_maximizer: "Resource Maximizer",
+};
 
 // ---------------------------------------------------------------------------
 // Prompt builders
@@ -575,6 +691,43 @@ ADDITIONAL RULES FOR UNAWARE CONCEPTS:
 - Destination should be implied as advertorial/educational content, not direct product page`;
 }
 
+function buildFromTemplateSystem(
+  product: ProductFull,
+  productBrief: string | undefined,
+  guidelines: CopywritingGuideline[],
+  segments: ProductSegment[]
+): string {
+  const productContext = buildProductContext(product, productBrief, guidelines, segments);
+
+  return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in template-based ad creation — using proven 3-part ad structures (Opening → Middle → Close) to generate high-converting ad concepts.
+
+Each template has a specific hook type and psychological flow that has been battle-tested across thousands of ads. Your job is to follow the template structure faithfully while making the content original and specific to the product.
+
+${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
+
+${AD_TEMPLATES}
+
+---
+
+## PRODUCT KNOWLEDGE
+
+${productContext}
+
+---
+
+## TEMPLATE-BASED GENERATION RULES
+
+1. Each ad_copy_primary MUST follow the selected template's 3-part structure (Opening → Middle → Close)
+2. The template name MUST appear in suggested_tags (e.g. ["template:before_after", ...])
+3. The hook type from the template should inform the hooks — but make them original and product-specific
+4. Apply Copy Blocks techniques within the template structure: Pain Chain, Promise Ladder, Proof Braid, Curiosity characterizations
+5. Visual direction should complement the template's emotional arc
+
+${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -593,6 +746,7 @@ const SYSTEM_BUILDERS: Record<
   from_research: buildFromResearchSystem,
   from_internal: buildFromInternalSystem,
   unaware: buildUnawareSystem,
+  from_template: buildFromTemplateSystem,
 };
 
 /**
@@ -716,6 +870,42 @@ export function buildBrainstormUserPrompt(
       }
       break;
     }
+
+    case "from_template": {
+      parts.push("## BRAINSTORM: FROM TEMPLATE");
+      if (request.template_ids && request.template_ids.length > 0) {
+        const names = request.template_ids.map((id) => TEMPLATE_NAMES[id]).join(", ");
+        parts.push(
+          `Use these specific ad templates: **${names}**`
+        );
+        if (request.template_ids.length > 1) {
+          parts.push(
+            `Generate one concept per template (up to ${count} total). Each ad_copy_primary MUST follow that template's 3-part structure.`
+          );
+        } else {
+          parts.push(
+            `Generate ${count} different concept variations using the ${TEMPLATE_NAMES[request.template_ids[0]]} template. Same structure, different angles and product insights.`
+          );
+        }
+      } else {
+        parts.push(
+          `Choose the ${count} most effective templates for this product and generate one concept per template. Each ad_copy_primary MUST follow the chosen template's 3-part structure.`
+        );
+      }
+      parts.push(
+        `\nInclude the template name in suggested_tags as "template:<template_id>" (e.g. "template:before_after").`
+      );
+      if (request.segment_id) {
+        const segment = segments.find((s) => s.id === request.segment_id);
+        if (segment) {
+          parts.push(`\n**Focus segment:** ${segment.name}`);
+          if (segment.description) parts.push(`Description: ${segment.description}`);
+          if (segment.core_desire) parts.push(`Core desire: ${segment.core_desire}`);
+          if (segment.core_constraints) parts.push(`Core constraints: ${segment.core_constraints}`);
+        }
+      }
+      break;
+    }
   }
 
   // Optional focus parameters
@@ -786,5 +976,11 @@ export const BRAINSTORM_MODES: {
     label: "Unaware Ads",
     description: "Create native-style ads that don't look like ads — for advertorial traffic",
     icon: "Eye",
+  },
+  {
+    value: "from_template",
+    label: "From Template",
+    description: "Use proven 3-part ad structures from the Copy Blocks system",
+    icon: "LayoutTemplate",
   },
 ];

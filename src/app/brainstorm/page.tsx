@@ -13,6 +13,7 @@ import {
   BookOpen,
   Grid3X3,
   Eye,
+  LayoutTemplate,
   Lightbulb,
   ArrowLeft,
   ThumbsDown,
@@ -22,9 +23,10 @@ import {
   Product,
   PRODUCTS,
   BrainstormMode,
+  AdTemplate,
   ProductSegment,
 } from "@/types";
-import { BRAINSTORM_MODES } from "@/lib/brainstorm";
+import { BRAINSTORM_MODES, AD_TEMPLATE_META } from "@/lib/brainstorm";
 
 type Phase = "configure" | "loading" | "proposals";
 
@@ -43,6 +45,7 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   BookOpen,
   Grid3X3,
   Eye,
+  LayoutTemplate,
 };
 
 export default function BrainstormPage() {
@@ -59,6 +62,7 @@ export default function BrainstormPage() {
   const [researchText, setResearchText] = useState("");
   const [segments, setSegments] = useState<ProductSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
+  const [selectedTemplates, setSelectedTemplates] = useState<AdTemplate[]>([]);
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
@@ -127,6 +131,7 @@ export default function BrainstormPage() {
 
       if (mode === "from_organic" && organicText) body.organic_text = organicText;
       if (mode === "from_research" && researchText) body.research_text = researchText;
+      if (mode === "from_template" && selectedTemplates.length > 0) body.template_ids = selectedTemplates;
       if (selectedSegment) body.segment_id = selectedSegment;
 
       const res = await fetch("/api/brainstorm", {
@@ -301,8 +306,72 @@ export default function BrainstormPage() {
           )}
 
 
-          {/* Segment selector (for from_scratch, from_internal) */}
-          {(mode === "from_scratch" || mode === "from_internal") &&
+          {/* Template selector (for from_template) */}
+          {mode === "from_template" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ad Templates
+                <span className="font-normal text-gray-400 ml-1">
+                  (select specific templates or leave empty for AI to choose)
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {AD_TEMPLATE_META.map((t) => {
+                  const selected = selectedTemplates.includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() =>
+                        setSelectedTemplates((prev) =>
+                          selected
+                            ? prev.filter((id) => id !== t.id)
+                            : [...prev, t.id]
+                        )
+                      }
+                      className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                        selected
+                          ? "bg-amber-50 border-amber-300 ring-1 ring-amber-200"
+                          : "bg-white border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                          selected
+                            ? "bg-amber-500 border-amber-500 text-white"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        {selected && (
+                          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${selected ? "text-amber-900" : "text-gray-900"}`}>
+                            {t.name}
+                          </span>
+                          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                            {t.hookType}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">{t.bestFor}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedTemplates.length > 0 && (
+                <p className="text-xs text-amber-600 mt-2">
+                  {selectedTemplates.length} template{selectedTemplates.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Segment selector (for from_scratch, from_internal, from_template) */}
+          {(mode === "from_scratch" || mode === "from_internal" || mode === "from_template") &&
             segments.length > 0 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -19,6 +19,7 @@ const VALID_MODES: BrainstormMode[] = [
   "from_research",
   "from_internal",
   "unaware",
+  "from_template",
 ];
 
 // POST /api/brainstorm — generate concept proposals from brainstorm modes

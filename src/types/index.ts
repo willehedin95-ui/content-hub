@@ -646,8 +646,23 @@ export interface SavedAd {
 
 // --- Brainstorm Types ---
 
-export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware";
+export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template";
 export type UnawareAdType = "straddle" | "symptom" | "worldview_porn" | "story";
+export type AdTemplate =
+  | "before_after"
+  | "insider_reveal"
+  | "framework_intro"
+  | "quick_win"
+  | "industry_authority"
+  | "hidden_cost"
+  | "identity_shift"
+  | "pattern_interrupt"
+  | "overlooked_factor"
+  | "bottleneck_breakthrough"
+  | "effortless_pivot"
+  | "future_regret"
+  | "insider_outsider"
+  | "resource_maximizer";
 
 export interface BrainstormRequest {
   mode: BrainstormMode;
@@ -657,6 +672,7 @@ export interface BrainstormRequest {
   research_text?: string;
   segment_id?: string;
   unaware_types?: UnawareAdType[];
+  template_ids?: AdTemplate[];
   focus_angles?: Angle[];
   focus_awareness?: AwarenessLevel;
 }
