@@ -10,7 +10,7 @@ export default function PulsePage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Business Pulse</h1>
         <p className="text-sm text-gray-500 mt-1">
-          30-sekunders halsokoll — Growth, Delivery, Support
+          30-sekunders hälsokoll — Growth, Delivery, Support
         </p>
       </div>
       <GrowthEngine />

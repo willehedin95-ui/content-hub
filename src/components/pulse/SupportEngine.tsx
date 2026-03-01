@@ -14,7 +14,7 @@ function formatResponseTime(hours: number | null): string {
 
 function trendLabel(trend: "up" | "down" | "stable" | null): string {
   switch (trend) {
-    case "up": return "Langsammare";
+    case "up": return "Långsammare";
     case "down": return "Snabbare";
     case "stable": return "Stabilt";
     default: return "";
@@ -111,7 +111,7 @@ export default function SupportEngine() {
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-start gap-2">
           <Info className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
           <p className="text-sm text-gray-500">
-            Freshdesk inte konfigurerat. Konfigurera Freshdesk-anslutning i Settings for att se supportdata.
+            Freshdesk inte konfigurerat. Konfigurera Freshdesk-anslutning i Settings för att se supportdata.
           </p>
         </div>
       )}
@@ -122,9 +122,9 @@ export default function SupportEngine() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Open tickets */}
             <MetricCard
-              label="Oppna arenden"
+              label="Öppna ärenden"
               value={String(data.openTickets.total)}
-              subtitle={prioritySubtitle || "Inga oppna arenden"}
+              subtitle={prioritySubtitle || "Inga öppna ärenden"}
             />
 
             {/* Response time */}
@@ -139,8 +139,8 @@ export default function SupportEngine() {
             {/* This week */}
             <MetricCard
               label="Denna vecka"
-              value={`${data.weekSummary.resolved} losta`}
-              subtitle={`${data.weekSummary.created} nya arenden`}
+              value={`${data.weekSummary.resolved} lösta`}
+              subtitle={`${data.weekSummary.created} nya ärenden`}
             />
           </div>
 
