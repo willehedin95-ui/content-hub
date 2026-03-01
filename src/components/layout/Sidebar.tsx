@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -17,6 +17,7 @@ function isGroup(entry: NavEntry): entry is NavGroup {
 
 const nav: NavEntry[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pulse", label: "Business Pulse", icon: Activity },
   { href: "/pages", label: "Landing Pages", icon: Layers },
   { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
   {
