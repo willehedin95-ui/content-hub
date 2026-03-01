@@ -331,3 +331,52 @@ export async function getConversionsForTest(
 
   return conversions;
 }
+
+// ---- Inventory ----
+
+export interface ShopifyProduct {
+  id: number;
+  title: string;
+  variants: Array<{
+    id: number;
+    title: string;
+    inventory_item_id: number;
+    inventory_quantity: number;
+    sku: string | null;
+  }>;
+}
+
+export async function fetchProductsWithInventory(): Promise<ShopifyProduct[]> {
+  if (!isShopifyConfigured()) return [];
+
+  const storeUrl = getStoreUrl();
+  const token = await getAccessToken();
+
+  const allProducts: ShopifyProduct[] = [];
+  let nextUrl: string | null =
+    `${storeUrl}/admin/api/2024-01/products.json?fields=id,title,variants&limit=250`;
+
+  while (nextUrl) {
+    const fetchUrl: string = nextUrl;
+    const res: Response = await fetch(fetchUrl, {
+      headers: { "X-Shopify-Access-Token": token },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Shopify API error (${res.status}): ${text.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    allProducts.push(...(data.products ?? []));
+
+    const linkHeader = res.headers.get("Link");
+    nextUrl = null;
+    if (linkHeader) {
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      if (nextMatch) nextUrl = nextMatch[1];
+    }
+  }
+
+  return allProducts;
+}
