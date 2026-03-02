@@ -179,6 +179,7 @@ export interface ShopifyOrderFull extends ShopifyOrder {
   line_items: Array<{
     sku: string | null;
     product_id: number;
+    quantity: number;
   }>;
 }
 
