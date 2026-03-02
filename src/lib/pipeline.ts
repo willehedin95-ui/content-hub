@@ -171,49 +171,48 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
   const db = createServerSupabase();
   const now = new Date().toISOString();
 
-  // Get all pushed concepts and their earliest push date
-  const { data: pushData } = await db
-    .from("meta_campaigns")
-    .select("image_job_id, created_at, countries, product")
-    .in("status", ["pushed", "pushing"])
-    .not("image_job_id", "is", null)
+  // Get all pushed image_job_markets
+  const { data: marketData } = await db
+    .from("image_job_markets")
+    .select("id, image_job_id, market, meta_campaign_id, created_at")
+    .not("meta_campaign_id", "is", null)
     .order("created_at", { ascending: true });
 
-  if (!pushData || pushData.length === 0) return transitions;
+  if (!marketData || marketData.length === 0) return transitions;
 
-  // Build map: image_job_id → { earliestPush, countries, product }
-  const conceptInfoMap = new Map<
-    string,
-    { earliestPush: string; countries: string[]; product: string | null }
-  >();
-  for (const row of pushData) {
-    const id = row.image_job_id as string;
-    const existing = conceptInfoMap.get(id);
-    if (!existing || new Date(row.created_at) < new Date(existing.earliestPush)) {
-      conceptInfoMap.set(id, {
-        earliestPush: row.created_at,
-        countries: row.countries ?? [],
-        product: row.product ?? null,
-      });
-    } else {
-      // Merge countries
-      const allCountries = new Set([...existing.countries, ...(row.countries ?? [])]);
-      existing.countries = [...allCountries];
-    }
-  }
+  // Get associated meta_campaigns to check status
+  const campaignIds = marketData
+    .map((m) => m.meta_campaign_id)
+    .filter(Boolean) as string[];
+  const { data: campaigns } = await db
+    .from("meta_campaigns")
+    .select("id, status, product")
+    .in("id", campaignIds)
+    .in("status", ["pushed", "pushing"]);
 
-  const conceptIds = [...conceptInfoMap.keys()];
+  const campaignMap = new Map(
+    (campaigns ?? []).map((c) => [c.id, c])
+  );
+
+  // Filter to only active markets
+  const activeMarkets = marketData.filter((m) =>
+    m.meta_campaign_id && campaignMap.has(m.meta_campaign_id)
+  );
+
+  if (activeMarkets.length === 0) return transitions;
+
+  const marketIds = activeMarkets.map((m) => m.id);
 
   // Get current lifecycle stage (where exited_at IS NULL)
   const { data: lifecycleData } = await db
     .from("concept_lifecycle")
     .select("*")
-    .in("image_job_id", conceptIds)
+    .in("image_job_market_id", marketIds)
     .is("exited_at", null);
 
   const currentStageMap = new Map<string, ConceptLifecycle>();
   for (const row of (lifecycleData ?? []) as ConceptLifecycle[]) {
-    currentStageMap.set(row.image_job_id, row);
+    currentStageMap.set(row.image_job_market_id, row);
   }
 
   // Get pipeline_settings for target CPA lookup
@@ -227,56 +226,63 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
   }
 
   // Get concept info from image_jobs
+  const imageJobIds = [...new Set(activeMarkets.map((m) => m.image_job_id))];
   const { data: jobData } = await db
     .from("image_jobs")
     .select("id, product, name, concept_number")
-    .in("id", conceptIds);
+    .in("id", imageJobIds);
 
-  const jobProductMap = new Map<string, string | null>();
-  const jobInfoMap = new Map<string, { name: string; conceptNumber: number | null }>();
+  const jobInfoMap = new Map<string, { product: string | null; name: string; conceptNumber: number | null }>();
   for (const j of jobData ?? []) {
-    jobProductMap.set(j.id, j.product ?? null);
-    jobInfoMap.set(j.id, { name: j.name ?? "Unknown", conceptNumber: j.concept_number ?? null });
+    jobInfoMap.set(j.id, {
+      product: j.product ?? null,
+      name: j.name ?? "Unknown",
+      conceptNumber: j.concept_number ?? null,
+    });
   }
 
   // Get aggregated metrics from concept_metrics
   const { data: metricsData } = await db
     .from("concept_metrics")
     .select("*")
-    .in("image_job_id", conceptIds);
+    .in("image_job_market_id", marketIds);
 
-  // Group metrics by concept
+  // Group metrics by image_job_market_id
   const metricsMap = new Map<string, ConceptMetrics[]>();
   for (const m of (metricsData ?? []) as ConceptMetrics[]) {
-    const existing = metricsMap.get(m.image_job_id) ?? [];
+    const existing = metricsMap.get(m.image_job_market_id) ?? [];
     existing.push(m);
-    metricsMap.set(m.image_job_id, existing);
+    metricsMap.set(m.image_job_market_id, existing);
   }
 
-  // Determine transitions
-  for (const conceptId of conceptIds) {
-    const info = conceptInfoMap.get(conceptId)!;
-    const currentLifecycle = currentStageMap.get(conceptId);
+  // Determine transitions for each market
+  for (const market of activeMarkets) {
+    const marketId = market.id;
+    const currentLifecycle = currentStageMap.get(marketId);
     const currentStage = currentLifecycle?.stage ?? null;
 
     // If already killed, skip
     if (currentStage === "killed") continue;
 
-    const dailyMetrics = metricsMap.get(conceptId) ?? [];
-    const daysSincePush = daysBetween(info.earliestPush, now);
+    const jobInfo = jobInfoMap.get(market.image_job_id);
+    if (!jobInfo) continue;
+
+    const campaign = market.meta_campaign_id ? campaignMap.get(market.meta_campaign_id) : null;
+    const product = jobInfo.product ?? campaign?.product ?? null;
+
+    const dailyMetrics = metricsMap.get(marketId) ?? [];
+    const daysSincePush = daysBetween(market.created_at, now);
     const totalSpend = dailyMetrics.reduce((s, m) => s + m.spend, 0);
     const totalConversions = dailyMetrics.reduce((s, m) => s + m.conversions, 0);
     const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
-    // Look up target CPA — use first matching product:country
-    const product = jobProductMap.get(conceptId) ?? info.product;
+    // Look up target CPA for this market
     let targetCpa: number | null = null;
-    for (const country of info.countries) {
-      const key = `${product}:${country}`;
+    if (product) {
+      const key = `${product}:${market.market}`;
       const setting = settingsMap.get(key);
       if (setting) {
         targetCpa = setting.target_cpa;
-        break;
       }
     }
 
@@ -338,36 +344,39 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
       // Create new lifecycle record — for the initial "testing" stage,
       // use the actual push date so daysInStage is accurate
       const enteredAt =
-        !currentLifecycle && newStage === "testing" ? info.earliestPush : now;
+        !currentLifecycle && newStage === "testing" ? market.created_at : now;
       await db.from("concept_lifecycle").insert({
-        image_job_id: conceptId,
+        image_job_market_id: marketId,
         stage: newStage,
         entered_at: enteredAt,
         signal,
       });
 
-      // Pause Meta ad sets when auto-killed
-      if (newStage === "killed") {
-        const { data: campaigns } = await db
-          .from("meta_campaigns")
-          .select("meta_adset_id")
-          .eq("image_job_id", conceptId)
-          .in("status", ["pushed", "pushing"]);
+      // Pause Meta ad set when auto-killed (only for this specific market)
+      if (newStage === "killed" && market.meta_campaign_id) {
+        const campaign = campaignMap.get(market.meta_campaign_id);
+        if (campaign) {
+          const { data: campaignDetail } = await db
+            .from("meta_campaigns")
+            .select("meta_adset_id")
+            .eq("id", market.meta_campaign_id)
+            .single();
 
-        if (campaigns && campaigns.length > 0) {
-          const adSetIds = campaigns.map((c) => c.meta_adset_id).filter(Boolean) as string[];
-          await Promise.allSettled(
-            adSetIds.map((id) => updateAdSet(id, { status: "PAUSED" }))
-          );
+          if (campaignDetail?.meta_adset_id) {
+            try {
+              await updateAdSet(campaignDetail.meta_adset_id, { status: "PAUSED" });
+            } catch (err) {
+              console.error(`[Kill] Failed to pause ad set ${campaignDetail.meta_adset_id}:`, err);
+            }
+          }
         }
       }
 
       // Record transition for notifications
-      const jobInfo = jobInfoMap.get(conceptId);
       transitions.push({
-        conceptId,
-        conceptNumber: jobInfo?.conceptNumber ?? null,
-        name: jobInfo?.name ?? "Unknown",
+        conceptId: market.image_job_id,
+        conceptNumber: jobInfo.conceptNumber,
+        name: jobInfo.name,
         from: currentStage ?? "none",
         to: newStage,
         signal: signal ?? "auto",
@@ -384,30 +393,52 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
   const db = createServerSupabase();
   const errors: string[] = [];
 
-  // Fetch all concepts with pushed Meta campaigns
+  // Fetch all image_job_markets with pushed Meta campaigns
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .select("id, meta_campaign_id")
+    .not("meta_campaign_id", "is", null);
+
+  if (!markets || markets.length === 0) {
+    return { synced: 0, errors: [], transitions: [] };
+  }
+
+  const campaignIds = markets.map((m) => m.meta_campaign_id).filter(Boolean) as string[];
+
+  // Get campaigns and their ads
   const { data: campaigns } = await db
     .from("meta_campaigns")
-    .select("id, image_job_id, meta_ads(meta_ad_id)")
-    .in("status", ["pushed", "pushing"])
-    .not("image_job_id", "is", null);
+    .select("id, meta_ads(meta_ad_id)")
+    .in("id", campaignIds)
+    .in("status", ["pushed", "pushing"]);
 
   if (!campaigns || campaigns.length === 0) {
     return { synced: 0, errors: [], transitions: [] };
   }
 
-  // Build map: meta_ad_id → image_job_id
-  const adToConceptMap = new Map<string, string>();
+  // Build map: meta_ad_id → image_job_market_id
+  const adToMarketMap = new Map<string, string>();
+  const campaignToMarketMap = new Map<string, string>();
+
+  for (const market of markets) {
+    if (market.meta_campaign_id) {
+      campaignToMarketMap.set(market.meta_campaign_id, market.id);
+    }
+  }
+
   for (const campaign of campaigns) {
-    const jobId = campaign.image_job_id as string;
+    const marketId = campaignToMarketMap.get(campaign.id);
+    if (!marketId) continue;
+
     const ads = (campaign.meta_ads ?? []) as Array<{ meta_ad_id: string | null }>;
     for (const ad of ads) {
       if (ad.meta_ad_id) {
-        adToConceptMap.set(ad.meta_ad_id, jobId);
+        adToMarketMap.set(ad.meta_ad_id, marketId);
       }
     }
   }
 
-  if (adToConceptMap.size === 0) {
+  if (adToMarketMap.size === 0) {
     return { synced: 0, errors: [], transitions: [] };
   }
 
@@ -421,12 +452,12 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     return { synced: 0, errors: [`Failed to fetch Meta insights: ${msg}`], transitions: [] };
   }
 
-  // Aggregate metrics per concept per day
-  // Key: `${image_job_id}:${date}`
+  // Aggregate metrics per market per day
+  // Key: `${image_job_market_id}:${date}`
   const aggregated = new Map<
     string,
     {
-      image_job_id: string;
+      image_job_market_id: string;
       date: string;
       spend: number;
       impressions: number;
@@ -439,14 +470,14 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
   >();
 
   for (const row of insights) {
-    const conceptId = adToConceptMap.get(row.ad_id);
-    if (!conceptId) continue;
+    const marketId = adToMarketMap.get(row.ad_id);
+    if (!marketId) continue;
 
     const date = row.date_start; // Meta returns YYYY-MM-DD
-    const key = `${conceptId}:${date}`;
+    const key = `${marketId}:${date}`;
 
     const existing = aggregated.get(key) ?? {
-      image_job_id: conceptId,
+      image_job_market_id: marketId,
       date,
       spend: 0,
       impressions: 0,
@@ -501,7 +532,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
 
     const { error } = await db.from("concept_metrics").upsert(
       {
-        image_job_id: agg.image_job_id,
+        image_job_market_id: agg.image_job_market_id,
         date: agg.date,
         spend: agg.spend,
         impressions: agg.impressions,
@@ -516,11 +547,11 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
         revenue: agg.revenue,
         synced_at: new Date().toISOString(),
       },
-      { onConflict: "image_job_id,date" }
+      { onConflict: "image_job_market_id,date" }
     );
 
     if (error) {
-      errors.push(`Failed to upsert metrics for ${agg.image_job_id} on ${agg.date}: ${error.message}`);
+      errors.push(`Failed to upsert metrics for ${agg.image_job_market_id} on ${agg.date}: ${error.message}`);
     } else {
       syncedCount++;
     }
@@ -545,42 +576,41 @@ export async function getPipelineData(): Promise<PipelineData> {
   const { since } = getDateRange(30);
 
   // Fetch everything in parallel
-  const [jobsResult, lifecycleResult, metricsResult, settingsResult, campaignsResult] =
+  const [jobsResult, marketsResult, lifecycleResult, metricsResult, settingsResult] =
     await Promise.all([
       db
         .from("image_jobs")
         .select("id, name, product, concept_number, status, cash_dna, created_at, source_images(thumbnail_url, original_url)")
         .in("status", ["completed", "reviewing", "ready"]),
+      db
+        .from("image_job_markets")
+        .select("id, image_job_id, market, created_at")
+        .not("meta_campaign_id", "is", null),
       db.from("concept_lifecycle").select("*").is("exited_at", null),
       db
         .from("concept_metrics")
         .select("*")
         .gte("date", since),
       db.from("pipeline_settings").select("*"),
-      db
-        .from("meta_campaigns")
-        .select("image_job_id, created_at, countries, language, status")
-        .in("status", ["pushed", "pushing"])
-        .not("image_job_id", "is", null),
     ]);
 
   const jobs = jobsResult.data ?? [];
+  const markets = marketsResult.data ?? [];
   const lifecycleRows = (lifecycleResult.data ?? []) as ConceptLifecycle[];
   const metricsRows = (metricsResult.data ?? []) as ConceptMetrics[];
   const settingsRows = (settingsResult.data ?? []) as PipelineSetting[];
-  const campaignRows = campaignsResult.data ?? [];
 
   // Build lookup maps
   const stageMap = new Map<string, ConceptLifecycle>();
   for (const lc of lifecycleRows) {
-    stageMap.set(lc.image_job_id, lc);
+    stageMap.set(lc.image_job_market_id, lc);
   }
 
   const metricsMap = new Map<string, ConceptMetrics[]>();
   for (const m of metricsRows) {
-    const existing = metricsMap.get(m.image_job_id) ?? [];
+    const existing = metricsMap.get(m.image_job_market_id) ?? [];
     existing.push(m);
-    metricsMap.set(m.image_job_id, existing);
+    metricsMap.set(m.image_job_market_id, existing);
   }
 
   const settingsLookup = new Map<string, PipelineSetting>();
@@ -588,37 +618,41 @@ export async function getPipelineData(): Promise<PipelineData> {
     settingsLookup.set(`${s.product}:${s.country}`, s);
   }
 
-  // Build pushed concept info: image_job_id → { earliestPush, languages, countries }
-  const pushedMap = new Map<
-    string,
-    { earliestPush: string; languages: Set<string>; countries: Set<string> }
-  >();
-  for (const row of campaignRows) {
-    const id = row.image_job_id as string;
-    const existing = pushedMap.get(id);
-    if (!existing) {
-      pushedMap.set(id, {
-        earliestPush: row.created_at,
-        languages: new Set(row.language ? [row.language] : []),
-        countries: new Set(row.countries ?? []),
-      });
-    } else {
-      if (new Date(row.created_at) < new Date(existing.earliestPush)) {
-        existing.earliestPush = row.created_at;
-      }
-      if (row.language) existing.languages.add(row.language);
-      for (const c of row.countries ?? []) existing.countries.add(c);
-    }
+  // Build job info map
+  const jobInfoMap = new Map<string, {
+    name: string;
+    product: string | null;
+    conceptNumber: number | null;
+    status: string;
+    cashDna: unknown;
+    createdAt: string;
+    thumbnailUrl: string | null;
+  }>();
+  for (const job of jobs) {
+    const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null; original_url: string | null }>;
+    const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? sourceImages[0]?.original_url ?? null;
+
+    jobInfoMap.set(job.id, {
+      name: job.name,
+      product: job.product ?? null,
+      conceptNumber: job.concept_number ?? null,
+      status: job.status,
+      cashDna: job.cash_dna,
+      createdAt: job.created_at,
+      thumbnailUrl,
+    });
   }
 
-  // Build concepts
+  // Build concepts from markets
   const concepts: PipelineConcept[] = [];
   let lastSyncedAt: string | null = null;
 
-  for (const job of jobs) {
-    const lifecycle = stageMap.get(job.id);
-    const pushInfo = pushedMap.get(job.id);
-    const dailyMetrics = metricsMap.get(job.id) ?? [];
+  for (const market of markets) {
+    const jobInfo = jobInfoMap.get(market.image_job_id);
+    if (!jobInfo) continue;
+
+    const lifecycle = stageMap.get(market.id);
+    const dailyMetrics = metricsMap.get(market.id) ?? [];
 
     // Determine stage
     let stage: PipelineStage;
@@ -626,12 +660,9 @@ export async function getPipelineData(): Promise<PipelineData> {
     if (lifecycle) {
       stage = lifecycle.stage;
       stageEnteredAt = lifecycle.entered_at;
-    } else if (pushInfo) {
-      stage = "testing";
-      stageEnteredAt = pushInfo.earliestPush;
     } else {
-      stage = "draft";
-      stageEnteredAt = job.created_at;
+      stage = "testing";
+      stageEnteredAt = market.created_at;
     }
 
     // Aggregate metrics
@@ -673,56 +704,46 @@ export async function getPipelineData(): Promise<PipelineData> {
     let targetCpa: number | null = null;
     let targetRoas: number | null = null;
     let currency: string | null = null;
-    if (pushInfo) {
-      for (const country of pushInfo.countries) {
-        const key = `${job.product}:${country}`;
-        const setting = settingsLookup.get(key);
-        if (setting) {
-          targetCpa = setting.target_cpa;
-          targetRoas = setting.target_roas ?? null;
-          currency = setting.currency;
-          break;
-        }
+    if (jobInfo.product) {
+      const key = `${jobInfo.product}:${market.market}`;
+      const setting = settingsLookup.get(key);
+      if (setting) {
+        targetCpa = setting.target_cpa;
+        targetRoas = setting.target_roas ?? null;
+        currency = setting.currency;
       }
     }
 
     // Compute signals
-    const daysSincePush = pushInfo
-      ? daysBetween(pushInfo.earliestPush, new Date())
-      : 0;
-    const signals = pushInfo
-      ? computeSignals({
-          stage,
-          daysSincePush,
-          totalSpend: metricsAgg?.totalSpend ?? 0,
-          totalConversions: metricsAgg?.conversions ?? 0,
-          cpa: metricsAgg?.cpa ?? 0,
-          targetCpa,
-          frequency: metricsAgg?.frequency ?? 0,
-          dailyMetrics,
-        })
-      : [];
-
-    // Get thumbnail
-    const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null; original_url: string | null }>;
-    const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? sourceImages[0]?.original_url ?? null;
+    const daysSincePush = daysBetween(market.created_at, new Date());
+    const signals = computeSignals({
+      stage,
+      daysSincePush,
+      totalSpend: metricsAgg?.totalSpend ?? 0,
+      totalConversions: metricsAgg?.conversions ?? 0,
+      cpa: metricsAgg?.cpa ?? 0,
+      targetCpa,
+      frequency: metricsAgg?.frequency ?? 0,
+      dailyMetrics,
+    });
 
     concepts.push({
-      id: job.id,
-      name: job.name,
-      conceptNumber: job.concept_number ?? null,
-      product: job.product ?? null,
-      thumbnailUrl,
+      id: market.id, // image_job_market.id
+      imageJobId: market.image_job_id,
+      market: market.market,
+      name: jobInfo.name,
+      conceptNumber: jobInfo.conceptNumber,
+      product: jobInfo.product,
+      thumbnailUrl: jobInfo.thumbnailUrl,
       stage,
       stageEnteredAt,
       daysInStage: daysBetween(stageEnteredAt, new Date()),
-      languages: pushInfo ? [...pushInfo.languages] : [],
       metrics: metricsAgg,
       signals,
       targetCpa,
       targetRoas,
       currency,
-      cashDna: (job.cash_dna as CashDna | null) ?? null,
+      cashDna: (jobInfo.cashDna as CashDna | null) ?? null,
     });
   }
 
@@ -821,65 +842,90 @@ export async function getPipelineData(): Promise<PipelineData> {
 
 // ── Queue helpers ────────────────────────────────────────────
 
-/** Get queued concepts ordered by entered_at (FIFO), optionally filtered by product */
+/** Get queued markets ordered by entered_at (FIFO), optionally filtered by product */
 export async function getQueuedConcepts(product?: string): Promise<
-  Array<{ imageJobId: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>
+  Array<{ imageJobMarketId: string; imageJobId: string; market: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>
 > {
   const db = createServerSupabase();
 
   // Get all queued lifecycle records
   const { data: queued } = await db
     .from("concept_lifecycle")
-    .select("image_job_id, entered_at")
+    .select("image_job_market_id, entered_at")
     .eq("stage", "queued")
     .is("exited_at", null)
     .order("entered_at", { ascending: true });
 
   if (!queued || queued.length === 0) return [];
 
-  const ids = queued.map((q) => q.image_job_id);
+  const marketIds = queued.map((q) => q.image_job_market_id);
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .select("id, image_job_id, market")
+    .in("id", marketIds);
+
+  if (!markets || markets.length === 0) return [];
+
+  const imageJobIds = [...new Set(markets.map((m) => m.image_job_id))];
   const { data: jobs } = await db
     .from("image_jobs")
     .select("id, name, concept_number, product")
-    .in("id", ids);
+    .in("id", imageJobIds);
 
   const jobMap = new Map(
     (jobs ?? []).map((j) => [j.id, j])
   );
 
+  const marketMap = new Map(
+    markets.map((m) => [m.id, m])
+  );
+
   return queued
     .map((q) => {
-      const job = jobMap.get(q.image_job_id);
+      const market = marketMap.get(q.image_job_market_id);
+      if (!market) return null;
+      const job = jobMap.get(market.image_job_id);
       if (!job) return null;
       if (product && job.product !== product) return null;
       return {
-        imageJobId: q.image_job_id,
+        imageJobMarketId: q.image_job_market_id,
+        imageJobId: market.image_job_id,
+        market: market.market,
         name: job.name,
         conceptNumber: job.concept_number ?? null,
         product: job.product ?? null,
         queuedAt: q.entered_at,
       };
     })
-    .filter(Boolean) as Array<{ imageJobId: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>;
+    .filter(Boolean) as Array<{ imageJobMarketId: string; imageJobId: string; market: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>;
 }
 
-/** Count concepts currently in testing stage, optionally by product */
+/** Count markets currently in testing stage, optionally by product */
 export async function getTestingCount(product?: string): Promise<number> {
   const db = createServerSupabase();
 
   if (product) {
     const { data: testingRows } = await db
       .from("concept_lifecycle")
-      .select("image_job_id")
+      .select("image_job_market_id")
       .eq("stage", "testing")
       .is("exited_at", null);
 
     if (!testingRows || testingRows.length === 0) return 0;
 
+    const marketIds = testingRows.map((r) => r.image_job_market_id);
+    const { data: markets } = await db
+      .from("image_job_markets")
+      .select("image_job_id")
+      .in("id", marketIds);
+
+    if (!markets || markets.length === 0) return 0;
+
+    const imageJobIds = [...new Set(markets.map((m) => m.image_job_id))];
     const { count } = await db
       .from("image_jobs")
       .select("id", { count: "exact", head: true })
-      .in("id", testingRows.map((r) => r.image_job_id))
+      .in("id", imageJobIds)
       .eq("product", product);
 
     return count ?? 0;
@@ -887,7 +933,7 @@ export async function getTestingCount(product?: string): Promise<number> {
 
   const { count } = await db
     .from("concept_lifecycle")
-    .select("image_job_id", { count: "exact", head: true })
+    .select("image_job_market_id", { count: "exact", head: true })
     .eq("stage", "testing")
     .is("exited_at", null);
 
@@ -908,7 +954,7 @@ export async function getTestingSlots(product: string): Promise<number> {
 
 // ── Queue concept ────────────────────────────────────────────
 
-export async function queueConcept(imageJobId: string): Promise<{ position: number }> {
+export async function queueConcept(imageJobMarketId: string): Promise<{ position: number }> {
   const db = createServerSupabase();
   const now = new Date().toISOString();
 
@@ -916,17 +962,17 @@ export async function queueConcept(imageJobId: string): Promise<{ position: numb
   const { data: existing } = await db
     .from("concept_lifecycle")
     .select("stage")
-    .eq("image_job_id", imageJobId)
+    .eq("image_job_market_id", imageJobMarketId)
     .is("exited_at", null)
     .single();
 
   if (existing) {
-    throw new Error(`Concept is already in stage: ${existing.stage}`);
+    throw new Error(`Market is already in stage: ${existing.stage}`);
   }
 
   // Create lifecycle record with stage "queued"
   await db.from("concept_lifecycle").insert({
-    image_job_id: imageJobId,
+    image_job_market_id: imageJobMarketId,
     stage: "queued",
     entered_at: now,
     signal: "user_queued",
@@ -942,14 +988,14 @@ export async function queueConcept(imageJobId: string): Promise<{ position: numb
   return { position: count ?? 1 };
 }
 
-export async function unqueueConcept(imageJobId: string): Promise<void> {
+export async function unqueueConcept(imageJobMarketId: string): Promise<void> {
   const db = createServerSupabase();
 
   // Delete the queued lifecycle record
   await db
     .from("concept_lifecycle")
     .delete()
-    .eq("image_job_id", imageJobId)
+    .eq("image_job_market_id", imageJobMarketId)
     .eq("stage", "queued")
     .is("exited_at", null);
 }
@@ -957,31 +1003,36 @@ export async function unqueueConcept(imageJobId: string): Promise<void> {
 // ── Kill concept ─────────────────────────────────────────────
 
 export async function killConcept(
-  imageJobId: string,
+  imageJobMarketId: string,
   notes?: string
 ): Promise<void> {
   const db = createServerSupabase();
   const now = new Date().toISOString();
 
-  // Pause all Meta ad sets linked to this concept
-  const { data: campaigns } = await db
-    .from("meta_campaigns")
-    .select("meta_adset_id")
-    .eq("image_job_id", imageJobId)
-    .in("status", ["pushed", "pushing"]);
+  // Get the market and its campaign
+  const { data: market } = await db
+    .from("image_job_markets")
+    .select("meta_campaign_id")
+    .eq("id", imageJobMarketId)
+    .single();
 
-  if (campaigns && campaigns.length > 0) {
-    const adSetIds = campaigns
-      .map((c) => c.meta_adset_id)
-      .filter(Boolean) as string[];
+  if (!market) {
+    throw new Error(`Market ${imageJobMarketId} not found`);
+  }
 
-    const pauseResults = await Promise.allSettled(
-      adSetIds.map((id) => updateAdSet(id, { status: "PAUSED" }))
-    );
+  // Pause the Meta ad set for this specific market (if campaign exists)
+  if (market.meta_campaign_id) {
+    const { data: campaign } = await db
+      .from("meta_campaigns")
+      .select("meta_adset_id")
+      .eq("id", market.meta_campaign_id)
+      .single();
 
-    for (let i = 0; i < pauseResults.length; i++) {
-      if (pauseResults[i].status === "rejected") {
-        console.error(`[Kill] Failed to pause ad set ${adSetIds[i]}:`, (pauseResults[i] as PromiseRejectedResult).reason);
+    if (campaign?.meta_adset_id) {
+      try {
+        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+      } catch (err) {
+        console.error(`[Kill] Failed to pause ad set ${campaign.meta_adset_id}:`, err);
       }
     }
   }
@@ -990,12 +1041,12 @@ export async function killConcept(
   await db
     .from("concept_lifecycle")
     .update({ exited_at: now })
-    .eq("image_job_id", imageJobId)
+    .eq("image_job_market_id", imageJobMarketId)
     .is("exited_at", null);
 
   // Create new lifecycle row with stage = "killed"
   await db.from("concept_lifecycle").insert({
-    image_job_id: imageJobId,
+    image_job_market_id: imageJobMarketId,
     stage: "killed",
     entered_at: now,
     signal: "manual_kill",

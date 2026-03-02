@@ -365,12 +365,9 @@ export default function PipelineClient() {
   const allCampaignBudgets = pipelineData?.campaignBudgets ?? [];
   const allAlerts = pipelineData?.alerts ?? [];
 
-  // Filter by country
+  // Filter by country/market
   function conceptMatchesCountry(c: PipelineConcept, country: string): boolean {
-    const lang = country === "SE" ? "sv" : country === "DK" ? "da" : country === "NO" ? "no" : "";
-    // Drafts (no languages) — show in All only
-    if (c.languages.length === 0) return false;
-    return c.languages.includes(lang);
+    return c.market === country;
   }
 
   const concepts = countryFilter
@@ -1072,11 +1069,9 @@ function ConceptCard({
             {concept.product}
           </span>
         )}
-        {concept.languages.length > 0 && (
-          <span className="text-xs text-gray-400 uppercase">
-            {concept.languages.join(", ")}
-          </span>
-        )}
+        <span className="text-xs text-gray-400 uppercase">
+          {concept.market}
+        </span>
       </div>
 
       {/* Row 3: Age badge + ROAS indicator */}
@@ -1202,11 +1197,9 @@ function ConceptModal({
               </span>
             </div>
             <div className="flex items-center gap-2 mt-1.5">
-              {concept.languages.length > 0 && (
-                <span className="text-xs text-gray-400 uppercase">
-                  {concept.languages.join(", ")}
-                </span>
-              )}
+              <span className="text-xs text-gray-400 uppercase">
+                {concept.market}
+              </span>
               <span className="text-xs text-gray-400 tabular-nums">
                 {concept.daysInStage}d in stage
               </span>
@@ -1382,9 +1375,8 @@ function CampaignBudgetSection({
   concepts: PipelineConcept[];
 }) {
   // Count active (non-draft, non-killed) concepts per campaign
-  // We can approximate by counting concepts that are pushed (have languages)
   const activeConcepts = concepts.filter(
-    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed" && c.languages.length > 0
+    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed"
   );
   const totalActiveConcepts = activeConcepts.length;
 
@@ -1395,13 +1387,9 @@ function CampaignBudgetSection({
       </h3>
       <div className="space-y-2">
         {budgets.map((b) => {
-          // Estimate concepts per campaign based on country overlap
+          // Estimate concepts per campaign based on market/country overlap
           const conceptsInCampaign = activeConcepts.filter((c) =>
-            c.languages.length > 0 && b.countries.some((country) => {
-              // Map country code to language for matching
-              const langMap: Record<string, string> = { SE: "sv", DK: "da", NO: "no", DE: "de" };
-              return c.languages.includes(langMap[country] || country.toLowerCase());
-            })
+            b.countries.includes(c.market)
           ).length;
           const budgetPerConcept = conceptsInCampaign > 0 ? b.dailyBudget / conceptsInCampaign : b.dailyBudget;
           const isLow = conceptsInCampaign > 0 && budgetPerConcept < 20;
