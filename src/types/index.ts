@@ -721,7 +721,7 @@ export interface PipelineSetting {
 
 export interface ConceptMetrics {
   id: string;
-  image_job_id: string;
+  image_job_market_id: string;
   date: string;
   spend: number;
   impressions: number;
@@ -739,7 +739,7 @@ export interface ConceptMetrics {
 
 export interface ConceptLifecycle {
   id: string;
-  image_job_id: string;
+  image_job_market_id: string;
   stage: PipelineStage;
   entered_at: string;
   exited_at: string | null;
@@ -759,7 +759,9 @@ export interface PipelineAlert {
 }
 
 export interface PipelineConcept {
-  id: string;
+  id: string; // image_job_market.id (not image_job.id!)
+  imageJobId: string; // for linking back to source concept
+  market: string; // "SE", "DK", "NO", or "DE"
   name: string;
   conceptNumber: number | null;
   product: string | null;
@@ -767,7 +769,6 @@ export interface PipelineConcept {
   stage: PipelineStage;
   stageEnteredAt: string;
   daysInStage: number;
-  languages: string[];
   metrics: {
     totalSpend: number;
     cpa: number;
