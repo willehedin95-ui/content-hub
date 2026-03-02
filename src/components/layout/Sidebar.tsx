@@ -2,38 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 type NavGroup = { label: string; icon: React.ComponentType<{ className?: string }>; children: NavItem[] };
 type NavEntry = NavItem | NavGroup;
 
 function isGroup(entry: NavEntry): entry is NavGroup {
   return "children" in entry;
 }
-
-const nav: NavEntry[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/pulse", label: "Business Pulse", icon: Activity },
-  { href: "/pages", label: "Landing Pages", icon: Layers },
-  { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
-  {
-    label: "Ads",
-    icon: Megaphone,
-    children: [
-      { href: "/pipeline", label: "Pipeline", icon: Workflow },
-      { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
-      { href: "/images", label: "Ad Concepts", icon: Image },
-      { href: "/spy", label: "Ad Spy", icon: Eye },
-      { href: "/saved-ads", label: "Saved Ads", icon: Bookmark },
-    ],
-  },
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/performance", label: "Performance", icon: BarChart3 },
-];
 
 interface Progress {
   processing: boolean;
@@ -45,6 +25,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [pipelineBadgeCount, setPipelineBadgeCount] = useState(0);
 
   // Auto-open groups that contain the active route
   const groupOpenByDefault = (group: NavGroup) =>
@@ -53,6 +34,26 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     );
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const nav: NavEntry[] = useMemo(() => [
+    { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/pulse", label: "Business Pulse", icon: Activity },
+    { href: "/pages", label: "Landing Pages", icon: Layers },
+    { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
+    {
+      label: "Ads",
+      icon: Megaphone,
+      children: [
+        { href: "/pipeline", label: "Pipeline", icon: Workflow, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
+        { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
+        { href: "/images", label: "Ad Concepts", icon: Image },
+        { href: "/spy", label: "Ad Spy", icon: Eye },
+        { href: "/saved-ads", label: "Saved Ads", icon: Bookmark },
+      ],
+    },
+    { href: "/products", label: "Products", icon: Package },
+    { href: "/performance", label: "Performance", icon: BarChart3 },
+  ], [pipelineBadgeCount]);
 
   // Initialize open state based on current route (once on mount + route changes)
   useEffect(() => {
@@ -86,6 +87,25 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     const interval = setInterval(fetchProgress, ms);
     return () => clearInterval(interval);
   }, [fetchProgress, progress?.processing]);
+
+  // Poll pipeline badge count every 30s
+  useEffect(() => {
+    const fetchPipelineBadge = async () => {
+      try {
+        const res = await fetch("/api/pipeline/badge-count");
+        if (res.ok) {
+          const data = await res.json();
+          setPipelineBadgeCount(data.count || 0);
+        }
+      } catch {
+        // silently ignore
+      }
+    };
+
+    fetchPipelineBadge();
+    const interval = setInterval(fetchPipelineBadge, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   async function handleSignOut() {
     const supabase = createBrowserSupabase();
@@ -125,6 +145,11 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
         <div className="flex items-center gap-3">
           <Icon className="w-4 h-4 shrink-0" />
           <span className="flex-1">{item.label}</span>
+          {item.badge !== undefined && (
+            <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-xs font-medium tabular-nums">
+              {item.badge}
+            </span>
+          )}
           {showProgress && (
             <span className="text-xs tabular-nums text-muted-foreground">
               {progress!.completed}/{progress!.total}
