@@ -111,14 +111,14 @@ export async function GET(
 
     if (row.actions) {
       for (const action of row.actions) {
-        if (action.action_type === "purchase" || action.action_type === "omni_purchase") {
+        if (action.action_type === "purchase") {
           agg.conversions += parseInt(action.value) || 0;
         }
       }
     }
     if (row.action_values) {
       for (const av of row.action_values) {
-        if (av.action_type === "purchase" || av.action_type === "omni_purchase") {
+        if (av.action_type === "purchase") {
           agg.revenue += parseFloat(av.value) || 0;
         }
       }

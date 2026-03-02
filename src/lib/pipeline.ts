@@ -587,7 +587,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     // Extract purchase conversions from the actions array
     if (row.actions) {
       for (const action of row.actions) {
-        if (action.action_type === "purchase" || action.action_type === "omni_purchase") {
+        if (action.action_type === "purchase") {
           existing.conversions += parseInt(action.value) || 0;
         }
       }
@@ -596,7 +596,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     // Extract purchase revenue from the action_values array
     if (row.action_values) {
       for (const av of row.action_values) {
-        if (av.action_type === "purchase" || av.action_type === "omni_purchase") {
+        if (av.action_type === "purchase") {
           existing.revenue += parseFloat(av.value) || 0;
         }
       }
