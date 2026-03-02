@@ -11,7 +11,7 @@ interface KpiCardProps {
   changePercent?: number | null;
   sparklineData?: Array<{ date: string; value: number }>;
   subtitle?: string;
-  status?: "healthy" | "warning" | "critical";
+  status?: "healthy" | "warning" | "critical" | "unknown";
 }
 
 export default function KpiCard({
