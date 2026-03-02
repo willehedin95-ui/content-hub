@@ -3,9 +3,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAnalyticsSummary } from "@/lib/analytics";
 import { fetchKlaviyoRevenue } from "@/lib/klaviyo";
-import { fetchProductsWithInventory, fetchOrdersSince, fetchOrdersFullSince } from "@/lib/shopify";
+import { fetchOrdersSince, fetchOrdersFullSince } from "@/lib/shopify";
 import { createServerSupabase } from "@/lib/supabase";
 import { getCached, setCache } from "@/lib/pulse-cache";
+import { fetchHydro13Stock } from "@/lib/shelfless";
 
 export interface TimeseriesPoint {
   date: string;
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
       klaviyoData,
       klaviyoPrevious,
       hydro13ProductResult,
-      shopifyProducts,
+      hydro13StockResult,
       recentOrdersForStock,
     ] = await Promise.allSettled([
       fetchAnalyticsSummary(days),
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
         .select("slug, lead_time_days, reorder_threshold_days")
         .eq("slug", "hydro13")
         .single(),
-      fetchProductsWithInventory(),
+      fetchHydro13Stock(), // Shelfless API
       fetchOrdersFullSince(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
 
@@ -213,24 +214,15 @@ export async function GET(request: NextRequest) {
       ? hydro13ProductResult.value.data
       : null;
 
-    // Extract Shopify products
-    const products = shopifyProducts.status === "fulfilled" ? shopifyProducts.value : [];
-    const hydro13Shopify = products.find((p) =>
-      p.title.toLowerCase().includes("hydro13")
-    );
-
-    const totalStock = hydro13Shopify
-      ? hydro13Shopify.variants.reduce((sum, v) => sum + (v.inventory_quantity ?? 0), 0)
+    // Extract Hydro13 stock from Shelfless
+    const totalStock = hydro13StockResult.status === "fulfilled"
+      ? hydro13StockResult.value
       : 0;
 
     // Calculate sell rate from last 30 days - only count Hydro13 orders
     const recentOrders = recentOrdersForStock.status === "fulfilled" ? recentOrdersForStock.value : [];
-    const hydro13ProductId = hydro13Shopify?.id;
     const hydro13Orders = recentOrders.filter(order =>
-      order.line_items.some(item =>
-        item.sku?.toLowerCase().includes("hydro13") ||
-        (hydro13ProductId && item.product_id === hydro13ProductId)
-      )
+      order.line_items.some(item => item.sku?.toLowerCase().includes("hydro13"))
     );
     const dailySellRate = hydro13Orders.length / 30;
     const daysRemaining = dailySellRate > 0 ? totalStock / dailySellRate : 999;
