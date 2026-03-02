@@ -270,6 +270,13 @@ export async function pushConceptToMeta(
 
       if (!campaign) throw new Error("Failed to create campaign record");
 
+      // Create image_job_markets entry for pipeline tracking
+      await db.from("image_job_markets").insert({
+        image_job_id: jobId,
+        market: country,
+        meta_campaign_id: campaign.id,
+      });
+
       try {
         // Phase 1: Upload ALL images in parallel (biggest time saver)
         const uploadResults = await Promise.allSettled(

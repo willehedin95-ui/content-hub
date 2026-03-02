@@ -4,12 +4,12 @@ import { queueConcept, unqueueConcept } from "@/lib/pipeline";
 /** Add a concept to the queue */
 export async function POST(req: NextRequest) {
   try {
-    const { imageJobId } = await req.json();
-    if (!imageJobId) {
-      return NextResponse.json({ error: "imageJobId is required" }, { status: 400 });
+    const { imageJobMarketId } = await req.json();
+    if (!imageJobMarketId) {
+      return NextResponse.json({ error: "imageJobMarketId is required" }, { status: 400 });
     }
 
-    const result = await queueConcept(imageJobId);
+    const result = await queueConcept(imageJobMarketId);
     return NextResponse.json(result);
   } catch (err) {
     console.error("Queue error:", err);
@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
 /** Remove a concept from the queue */
 export async function DELETE(req: NextRequest) {
   try {
-    const { imageJobId } = await req.json();
-    if (!imageJobId) {
-      return NextResponse.json({ error: "imageJobId is required" }, { status: 400 });
+    const { imageJobMarketId } = await req.json();
+    if (!imageJobMarketId) {
+      return NextResponse.json({ error: "imageJobMarketId is required" }, { status: 400 });
     }
 
-    await unqueueConcept(imageJobId);
+    await unqueueConcept(imageJobMarketId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Unqueue error:", err);

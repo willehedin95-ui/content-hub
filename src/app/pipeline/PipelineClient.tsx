@@ -120,9 +120,8 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-function formatCurrency(n: number, currency?: string | null): string {
-  const cur = currency || "USD";
-  return `${n.toFixed(2)} ${cur}`;
+function formatCurrency(n: number, _currency?: string | null): string {
+  return `${n.toFixed(0)} SEK`;
 }
 
 function cpaColorClass(
@@ -234,12 +233,12 @@ export default function PipelineClient() {
 
   // ── Kill concept ─────────────────────────────────────────
 
-  async function handleKill(imageJobId: string) {
+  async function handleKill(imageJobMarketId: string) {
     try {
       const res = await fetch("/api/pipeline/kill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageJobId, notes: killNotes }),
+        body: JSON.stringify({ imageJobMarketId, notes: killNotes }),
       });
       if (!res.ok) throw new Error("Kill failed");
       setKillingId(null);
@@ -318,7 +317,7 @@ export default function PipelineClient() {
         const res = await fetch("/api/pipeline/queue", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageJobId: id }),
+          body: JSON.stringify({ imageJobMarketId: id }),
         });
         if (!res.ok) {
           const data = await res.json();
@@ -336,12 +335,12 @@ export default function PipelineClient() {
     }
   }
 
-  async function handleRemoveFromQueue(imageJobId: string) {
+  async function handleRemoveFromQueue(imageJobMarketId: string) {
     try {
       const res = await fetch("/api/pipeline/queue", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageJobId }),
+        body: JSON.stringify({ imageJobMarketId }),
       });
       if (!res.ok) throw new Error("Failed to remove from queue");
       await fetchPipeline();
@@ -443,7 +442,7 @@ export default function PipelineClient() {
   const draftConcepts = allConcepts.filter((c) => c.stage === "draft");
 
   return (
-    <div className="max-w-[1400px]">
+    <div className="max-w-[1400px] pl-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -1380,11 +1379,41 @@ function CampaignBudgetSection({
   );
   const totalActiveConcepts = activeConcepts.length;
 
+  // Calculate testing concepts count and check for budget guidance alerts
+  const testingConcepts = concepts.filter((c) => c.stage === "testing").length;
+  const showLowTestingAlert = testingConcepts < 3;
+
+  // Check if any budget per concept is below 15 SEK
+  const hasLowBudgetAlert = budgets.some((b) => {
+    const conceptsInCampaign = activeConcepts.filter((c) => b.countries.includes(c.market)).length;
+    const budgetPerConcept = conceptsInCampaign > 0 ? b.dailyBudget / conceptsInCampaign : b.dailyBudget;
+    return conceptsInCampaign > 0 && budgetPerConcept < 15;
+  });
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 mb-6">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
         Campaign Budgets
       </h3>
+
+      {/* Budget guidance alerts */}
+      {(showLowTestingAlert || hasLowBudgetAlert) && (
+        <div className="space-y-2 mb-3">
+          {showLowTestingAlert && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Consider adding more testing concepts (currently {testingConcepts}, recommended: 3+)</span>
+            </div>
+          )}
+          {hasLowBudgetAlert && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Budget may be too low for effective testing (some concepts have less than 15 SEK/day)</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
         {budgets.map((b) => {
           // Estimate concepts per campaign based on market/country overlap

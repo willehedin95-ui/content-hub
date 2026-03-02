@@ -3,11 +3,11 @@ import { killConcept } from "@/lib/pipeline";
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageJobId, notes } = await req.json();
-    if (!imageJobId) {
-      return NextResponse.json({ error: "imageJobId is required" }, { status: 400 });
+    const { imageJobMarketId, notes } = await req.json();
+    if (!imageJobMarketId) {
+      return NextResponse.json({ error: "imageJobMarketId is required" }, { status: 400 });
     }
-    await killConcept(imageJobId, notes);
+    await killConcept(imageJobMarketId, notes);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[Pipeline Kill] Error:", err);
