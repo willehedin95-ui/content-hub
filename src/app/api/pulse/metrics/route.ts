@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
     // Fetch all data in parallel
     const [
       currentAnalytics,
-      previousAnalytics,
+      previousShopifyOrders,
       klaviyoData,
       klaviyoPrevious,
       hydro13ProductResult,
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
       recentOrdersForStock,
     ] = await Promise.allSettled([
       fetchAnalyticsSummary(days),
-      fetchAnalyticsSummary(days), // Will fetch for previous period dates
+      fetchOrdersSince(previousStart.toISOString()), // Fetch previous period Shopify orders
       fetchKlaviyoRevenue(start.toISOString(), end.toISOString()),
       fetchKlaviyoRevenue(previousStart.toISOString(), previousEnd.toISOString()),
       createServerSupabase()
@@ -186,16 +186,23 @@ export async function GET(request: NextRequest) {
       ? currentAnalytics.value
       : { meta: null, googleAds: null, shopify: null, roas: null, totalAdSpend: 0, dateRange: { since: "", until: "" } };
 
-    // Extract previous analytics
-    // Note: fetchAnalyticsSummary uses the current date internally to calculate the date range,
-    // so for a proper comparison we need to fetch with the same number of days
-    // The function will calculate backwards from "now", which means:
-    // - Current period: now - days to now
-    // - Previous period: (now - days) - days to (now - days)
-    // This matches our previousStart/previousEnd calculation
-    const prevAnalytics = previousAnalytics.status === "fulfilled"
-      ? previousAnalytics.value
-      : { meta: null, googleAds: null, shopify: null, roas: null, totalAdSpend: 0, dateRange: { since: "", until: "" } };
+    // Calculate previous period Shopify metrics from orders
+    const prevOrders = previousShopifyOrders.status === "fulfilled" ? previousShopifyOrders.value : [];
+    const prevOrdersFiltered = prevOrders.filter(order => {
+      // Filter orders that fall within the previous period date range
+      const orderDate = new Date(order.created_at);
+      return orderDate >= previousStart && orderDate < previousEnd;
+    });
+    const prevRevenue = prevOrdersFiltered.reduce((sum, o) => sum + parseFloat(o.total_price), 0);
+    const prevOrderCount = prevOrdersFiltered.length;
+    const prevAov = prevOrderCount > 0 ? prevRevenue / prevOrderCount : 0;
+
+    // Note: V1 limitation - we don't have historical ad spend data for the previous period
+    // Meta/Google Ad APIs don't provide easy historical comparison, so we use 0 for now
+    // TODO V2: Add proper ad spend tracking or fetch from ad platform historical data
+    const prevMetaSpend = 0;
+    const prevGoogleSpend = 0;
+    const prevBlendedRoas = 0;
 
     // Extract Klaviyo data
     const klaviyo = klaviyoData.status === "fulfilled" ? klaviyoData.value : { total: 0, timeseries: [] };
@@ -218,10 +225,11 @@ export async function GET(request: NextRequest) {
 
     // Calculate sell rate from last 30 days - only count Hydro13 orders
     const recentOrders = recentOrdersForStock.status === "fulfilled" ? recentOrdersForStock.value : [];
+    const hydro13ProductId = hydro13Shopify?.id;
     const hydro13Orders = recentOrders.filter(order =>
       order.line_items.some(item =>
         item.sku?.toLowerCase().includes("hydro13") ||
-        item.product_id.toString().includes("hydro13")
+        (hydro13ProductId && item.product_id === hydro13ProductId)
       )
     );
     const dailySellRate = hydro13Orders.length / 30;
@@ -248,13 +256,7 @@ export async function GET(request: NextRequest) {
     const currentMetaSpend = analytics.meta?.spend ?? 0;
     const currentGoogleSpend = analytics.googleAds?.spend ?? 0;
 
-    // Extract previous period data
-    const prevRevenue = prevAnalytics.shopify?.revenue ?? 0;
-    const prevOrders = prevAnalytics.shopify?.orders ?? 0;
-    const prevAov = prevAnalytics.shopify?.avgOrderValue ?? 0;
-    const prevBlendedRoas = prevAnalytics.roas ?? 0;
-    const prevMetaSpend = prevAnalytics.meta?.spend ?? 0;
-    const prevGoogleSpend = prevAnalytics.googleAds?.spend ?? 0;
+    // Previous period data already calculated above from Shopify orders
 
     // Calculate Meta-specific ROAS (Meta spend vs Shopify revenue)
     const currentMetaRoas = currentMetaSpend > 0
@@ -282,13 +284,13 @@ export async function GET(request: NextRequest) {
           current: currentRevenue,
           previous: prevRevenue,
           changePercent: calculateChangePercent(currentRevenue, prevRevenue),
-          timeseries: [], // TODO: Generate daily breakdown
+          timeseries: [], // TODO V2: Generate daily breakdown
         },
         blendedRoas: {
           current: currentBlendedRoas,
           previous: prevBlendedRoas,
           changePercent: calculateChangePercent(currentBlendedRoas, prevBlendedRoas),
-          timeseries: [],
+          timeseries: [], // TODO V2: Add historical ad spend tracking for proper comparison
         },
         klaviyoRevenue: {
           current: klaviyo.total,
@@ -301,32 +303,32 @@ export async function GET(request: NextRequest) {
           units: totalStock,
           sellRate: dailySellRate,
           status: stockStatus,
-          timeseries: [], // TODO: Historical stock levels
+          timeseries: [], // TODO V2: Historical stock levels
         },
         orders: {
           current: currentOrders,
-          previous: prevOrders,
-          changePercent: calculateChangePercent(currentOrders, prevOrders),
-          timeseries: [],
+          previous: prevOrderCount,
+          changePercent: calculateChangePercent(currentOrders, prevOrderCount),
+          timeseries: [], // TODO V2: Daily order breakdown
         },
         aov: {
           current: currentAov,
           previous: prevAov,
           changePercent: calculateChangePercent(currentAov, prevAov),
-          timeseries: [],
+          timeseries: [], // TODO V2: Daily AOV breakdown
         },
         metaAds: {
           spend: {
             current: currentMetaSpend,
             previous: prevMetaSpend,
             changePercent: calculateChangePercent(currentMetaSpend, prevMetaSpend),
-            timeseries: [],
+            timeseries: [], // TODO V2: Daily spend breakdown
           },
           roas: {
             current: currentMetaRoas,
             previous: prevMetaRoas,
             changePercent: calculateChangePercent(currentMetaRoas, prevMetaRoas),
-            timeseries: [],
+            timeseries: [], // TODO V2: Daily ROAS breakdown
           },
         },
         googleAds: {
@@ -334,13 +336,13 @@ export async function GET(request: NextRequest) {
             current: currentGoogleSpend,
             previous: prevGoogleSpend,
             changePercent: calculateChangePercent(currentGoogleSpend, prevGoogleSpend),
-            timeseries: [],
+            timeseries: [], // TODO V2: Daily spend breakdown
           },
           roas: {
             current: currentGoogleRoas,
             previous: prevGoogleRoas,
             changePercent: calculateChangePercent(currentGoogleRoas, prevGoogleRoas),
-            timeseries: [],
+            timeseries: [], // TODO V2: Daily ROAS breakdown
           },
         },
       },
