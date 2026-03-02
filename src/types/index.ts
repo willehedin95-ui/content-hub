@@ -700,6 +700,7 @@ export interface ConceptProposal {
   visual_direction: string;
   differentiation_note: string;
   suggested_tags: string[];
+  hypothesis?: string;
 }
 
 // ── Pipeline Dashboard ──────────────────────────────────────

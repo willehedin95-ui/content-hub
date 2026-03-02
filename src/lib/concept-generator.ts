@@ -179,8 +179,24 @@ export function parseConceptProposals(raw: string): ConceptProposal[] {
     throw new Error("Expected proposals array");
   }
 
-  // Validate each proposal has required fields
-  return proposals.filter((p) => {
+  // Map proposals to extract hypothesis if not already present
+  return proposals.map((p) => {
+    // If hypothesis is already in the JSON structure, use it
+    if (p.hypothesis) {
+      return p;
+    }
+
+    // Otherwise, try to extract from concept_description or differentiation_note
+    // (Fallback for responses that don't include hypothesis as a top-level field)
+    const hypothesisMatch = (p.concept_description || p.differentiation_note || "")
+      .match(/hypothesis:?\s*(.+?)(?=\n\n|\n[A-Z]|$)/i);
+
+    return {
+      ...p,
+      hypothesis: hypothesisMatch ? hypothesisMatch[1].trim() : undefined,
+    };
+  }).filter((p) => {
+    // Validate each proposal has required fields
     return (
       p.concept_name &&
       p.concept_description &&
