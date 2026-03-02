@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, LayoutDashboard, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -36,8 +36,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const nav: NavEntry[] = useMemo(() => [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/pulse", label: "Business Pulse", icon: Activity },
+    { href: "/", label: "Business Pulse", icon: Activity },
     { href: "/pages", label: "Landing Pages", icon: Layers },
     { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
     {
