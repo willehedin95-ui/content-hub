@@ -44,7 +44,8 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
       label: "Ads",
       icon: Megaphone,
       children: [
-        { href: "/pipeline", label: "Pipeline", icon: Workflow, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
+        { href: "/pipeline", label: "Creative Pipeline", icon: Workflow },
+        { href: "/concept-generator", label: "AI Concepts", icon: Zap, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
         { href: "/images", label: "Ad Concepts", icon: Image },
         { href: "/spy", label: "Ad Spy", icon: Eye },
