@@ -58,6 +58,11 @@ export default function PipelinePage() {
     );
   }
 
+  const hasAnyConcepts =
+    pendingConcepts.length > 0 ||
+    approvedConcepts.length > 0 ||
+    rejectedConcepts.length > 0;
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -70,6 +75,23 @@ export default function PipelinePage() {
           generation
         </p>
       </div>
+
+      {/* Getting Started - Show when no concepts exist */}
+      {!loading && !hasAnyConcepts && (
+        <div className="mb-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-blue-900 mb-2">
+            🚀 Getting Started with Pipeline
+          </h3>
+          <p className="text-sm text-blue-700 mb-4">
+            Your pipeline is empty. Generate your first batch of AI concepts to get started!
+          </p>
+          <div className="space-y-2 text-sm text-blue-600">
+            <p><strong>Step 1:</strong> Click a coverage gap below to generate concepts for a specific product/market/awareness combination</p>
+            <p><strong>Step 2:</strong> Review generated concepts in "Pending Review"</p>
+            <p><strong>Step 3:</strong> Approve concepts to create static ads automatically</p>
+          </div>
+        </div>
+      )}
 
       {/* Coverage Matrix */}
       <div className="mb-8">

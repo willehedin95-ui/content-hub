@@ -1,8 +1,9 @@
 # Content Hub — Task Backlog
-Updated: 2026-02-27
+Updated: 2026-02-28
 
 ## P1 — Do Next
-- (empty — all P1 items completed)
+- [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
+- [ ] V3.4 Iteration System on Winners — segment swap, mechanism swap, C.A.S.H. swap (added 2026-02-28)
 
 ## P2 — Important
 - [ ] Ad Spy — monitor competitors, AI suggests new concepts (added 2025-02-25)
@@ -14,8 +15,12 @@ Updated: 2026-02-27
 - [ ] Daily performance brief — morning summary with AI insights (added 2025-02-25)
 - [ ] Google Ads integration (added 2025-02-25)
 - [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
+- [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] Template-based brainstorm mode — 14 ad templates from Copy Blocks (done 2026-02-28)
+- [x] Wire deep Copy Blocks framework into brainstorm prompts (done 2026-02-28)
+- [x] Write copy-blocks-deep.md — unified framework document (done 2026-02-28)
 - [x] Poll-based streaming — images appear in grid as they complete (done 2026-02-27)
 - [x] Switch to nano-banana-2 at 1K resolution for faster/cheaper generation (done 2026-02-27)
 - [x] Parallel image generation via Promise.allSettled (done 2026-02-27)

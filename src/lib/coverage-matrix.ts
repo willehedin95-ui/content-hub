@@ -1,6 +1,6 @@
 import type { AutoPipelineConcept, AutoCoverageMatrixCell, AutoCoverageGap, Product } from "@/types";
 
-const AWARENESS_LEVELS = ["unaware", "problem_aware", "solution_aware", "product_aware", "most_aware"];
+const AWARENESS_LEVELS = ["unaware", "problem_aware", "solution_aware"];
 
 /**
  * Calculate coverage matrix from existing concepts

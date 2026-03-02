@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const product = (searchParams.get("product") || "happysleep") as Product;
-    const markets = ["NO", "DK"]; // HappySleep markets
+    const markets = ["SE", "DK", "NO"]; // All markets
 
     const supabase = createServerSupabase();
 

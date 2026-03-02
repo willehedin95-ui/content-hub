@@ -27,8 +27,8 @@ export default function CoverageMatrix({ onGapClick }: CoverageMatrixProps) {
       const res = await fetch("/api/pipeline/coverage");
       if (!res.ok) throw new Error("Failed to fetch coverage");
       const data = await res.json();
-      setMatrix(data.matrix);
-      setGaps(data.gaps);
+      setMatrix(data.cells || []);  // API returns 'cells', not 'matrix'
+      setGaps(data.gaps || []);
     } catch (error) {
       console.error("Error fetching coverage:", error);
     } finally {
