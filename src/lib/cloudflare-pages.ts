@@ -745,6 +745,7 @@ function buildRouterHtml(slug: string, split: number): string {
 export interface ABTestAnalyticsConfig {
   ga4MeasurementId?: string;
   clarityProjectId?: string;
+  metaPixelId?: string;
   shopifyDomains?: string[];
   hubUrl?: string;
   excludedIps?: string[];
@@ -777,6 +778,7 @@ export async function publishABTest(
   const controlAnalytics: PageAnalyticsConfig = {
     ga4MeasurementId: analytics?.ga4MeasurementId,
     clarityProjectId: analytics?.clarityProjectId,
+    metaPixelId: analytics?.metaPixelId,
     shopifyDomains: analytics?.shopifyDomains,
     hubUrl: analytics?.hubUrl,
     excludedIps: analytics?.excludedIps,
