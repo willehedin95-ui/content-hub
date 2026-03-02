@@ -120,8 +120,8 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-function formatCurrency(n: number, _currency?: string | null): string {
-  return `${n.toFixed(0)} SEK`;
+function formatCurrency(n: number, currency?: string | null): string {
+  return `${n.toFixed(0)} ${currency || "SEK"}`;
 }
 
 function cpaColorClass(
@@ -398,7 +398,44 @@ export default function PipelineClient() {
       })()
     : pipelineData?.summary ?? null;
 
-  const alerts = countryFilter ? [] : allAlerts; // alerts are global, only show on All
+  // Compute alerts — when filtering by country, derive from filtered concepts
+  const alerts = countryFilter
+    ? (() => {
+        const filtered: typeof allAlerts = [];
+        const activeCount = concepts.filter((c) => c.stage === "active").length;
+        const reviewCount = concepts.filter((c) => c.stage === "review").length;
+        const totalSpend = concepts.reduce((s, c) => s + (c.metrics?.totalSpend ?? 0), 0);
+        const testingSpend = concepts
+          .filter((c) => c.stage === "testing")
+          .reduce((s, c) => s + (c.metrics?.totalSpend ?? 0), 0);
+        const testingBudgetPct = totalSpend > 0 ? (testingSpend / totalSpend) * 100 : 0;
+
+        if (activeCount < 5) {
+          filtered.push({
+            type: "publish_more",
+            message: activeCount === 0
+              ? `No proven winners in ${countryFilter} yet. Keep testing — concepts graduate to Active after 5 days of profitable ROAS.`
+              : `Only ${activeCount} proven winner${activeCount > 1 ? "s" : ""} in ${countryFilter} (goal: 5+). Keep pushing new concepts.`,
+            priority: activeCount === 0 ? "high" : "medium",
+          });
+        }
+        if (reviewCount > 0) {
+          filtered.push({
+            type: "review_needed",
+            message: `${reviewCount} concept${reviewCount > 1 ? "s have" : " has"} finished testing in ${countryFilter} — check ROAS and decide: scale or kill?`,
+            priority: reviewCount >= 3 ? "high" : "medium",
+          });
+        }
+        if (testingBudgetPct > 50 && totalSpend > 0) {
+          filtered.push({
+            type: "budget_imbalance",
+            message: `${testingBudgetPct.toFixed(0)}% of ${countryFilter} ad spend is on unproven concepts. Kill the losers so budget flows to winners.`,
+            priority: "medium",
+          });
+        }
+        return filtered;
+      })()
+    : allAlerts;
 
   // Count per country for tab badges
   const countPerCountry: Record<string, number> = {};
@@ -427,7 +464,7 @@ export default function PipelineClient() {
         new Date(a.stageEnteredAt).getTime() - new Date(b.stageEnteredAt).getTime()
       );
     } else {
-      conceptsByStage[stage].sort((a, b) => b.daysInStage - a.daysInStage);
+      conceptsByStage[stage].sort((a, b) => b.daysSincePush - a.daysSincePush);
     }
   }
 
@@ -1076,7 +1113,7 @@ function ConceptCard({
       {/* Row 3: Age badge + ROAS indicator */}
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded tabular-nums">
-          {concept.daysInStage}d
+          {concept.daysSincePush}d
         </span>
         {m && (
           <span
@@ -1200,7 +1237,7 @@ function ConceptModal({
                 {concept.market}
               </span>
               <span className="text-xs text-gray-400 tabular-nums">
-                {concept.daysInStage}d in stage
+                {concept.daysSincePush}d total{concept.daysInStage !== concept.daysSincePush ? ` · ${concept.daysInStage}d in ${STAGE_CONFIG[concept.stage].label}` : ""}
               </span>
             </div>
           </div>
@@ -1228,6 +1265,11 @@ function ConceptModal({
               );
             })}
           </div>
+        )}
+
+        {/* Review Recommendation */}
+        {concept.stage === "review" && (
+          <ReviewRecommendation concept={concept} />
         )}
 
         {/* Metrics */}
@@ -1286,6 +1328,26 @@ function ConceptModal({
             <p className="text-sm text-gray-400 text-center py-4">No metrics data yet.</p>
           )}
         </div>
+
+        {/* Kill hypothesis & notes for killed concepts */}
+        {concept.stage === "killed" && (concept.killHypothesis || concept.killNotes) && (
+          <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+            {concept.killHypothesis && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">AI Hypothesis</p>
+                <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 rounded-lg p-3">
+                  {concept.killHypothesis}
+                </p>
+              </div>
+            )}
+            {concept.killNotes && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Your Notes</p>
+                <p className="text-xs text-gray-600 leading-relaxed">{concept.killNotes}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Remove from queue action */}
         {onRemoveFromQueue && (
@@ -1366,6 +1428,54 @@ function MetricRow({
   );
 }
 
+function ReviewRecommendation({ concept }: { concept: PipelineConcept }) {
+  const m = concept.metrics;
+  const targetCpa = concept.targetCpa;
+  const targetRoas = concept.targetRoas;
+
+  let verdict: "kill" | "keep" | "scale";
+  let reason: string;
+
+  if (!m || m.totalSpend === 0) {
+    verdict = "keep";
+    reason = "Not enough data yet — wait for metrics to come in.";
+  } else if (m.conversions === 0) {
+    verdict = "kill";
+    reason = `Spent ${formatCurrency(m.totalSpend, concept.currency)} with zero conversions. The concept isn't resonating.`;
+  } else if (targetCpa !== null && m.cpa > targetCpa * 2) {
+    verdict = "kill";
+    reason = `CPA (${formatCurrency(m.cpa, concept.currency)}) is more than 2x your target (${formatCurrency(targetCpa, concept.currency)}). Unlikely to improve.`;
+  } else if (targetRoas !== null && m.roas !== null && m.roas < targetRoas * 0.5) {
+    verdict = "kill";
+    reason = `ROAS (${m.roas.toFixed(2)}x) is far below break-even (${targetRoas.toFixed(2)}x). Not profitable.`;
+  } else if (targetCpa !== null && m.cpa <= targetCpa && m.conversions >= 3) {
+    verdict = "scale";
+    reason = `CPA (${formatCurrency(m.cpa, concept.currency)}) is below target with ${m.conversions} conversions. Strong candidate for scaling.`;
+  } else if (targetRoas !== null && m.roas !== null && m.roas >= targetRoas) {
+    verdict = "scale";
+    reason = `ROAS (${m.roas.toFixed(2)}x) meets your target (${targetRoas.toFixed(2)}x). Consider scaling.`;
+  } else {
+    verdict = "keep";
+    reason = targetCpa !== null
+      ? `CPA (${formatCurrency(m.cpa, concept.currency)}) is above target (${formatCurrency(targetCpa, concept.currency)}) but could improve. Give it a few more days.`
+      : "Performance is mixed. Keep monitoring for a clearer trend.";
+  }
+
+  const styles = {
+    kill: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", label: "Recommendation: Kill" },
+    keep: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", label: "Recommendation: Keep monitoring" },
+    scale: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", label: "Recommendation: Scale" },
+  };
+  const s = styles[verdict];
+
+  return (
+    <div className={`mx-5 mt-3 p-3 rounded-lg border ${s.bg} ${s.border}`}>
+      <p className={`text-xs font-semibold ${s.text} mb-1`}>{s.label}</p>
+      <p className={`text-xs ${s.text}`}>{reason}</p>
+    </div>
+  );
+}
+
 function CampaignBudgetSection({
   budgets,
   concepts,
@@ -1408,7 +1518,7 @@ function CampaignBudgetSection({
           {hasLowBudgetAlert && (
             <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Budget may be too low for effective testing (some concepts have less than 15 SEK/day)</span>
+              <span>Budget may be too low for effective testing (some concepts have less than 15/day per concept)</span>
             </div>
           )}
         </div>
@@ -1453,7 +1563,7 @@ function CampaignBudgetSection({
       </div>
       {budgets.length > 0 && totalActiveConcepts > 0 && (
         <p className="text-xs text-gray-400 mt-2">
-          Total daily: {budgets.reduce((s, b) => s + b.dailyBudget, 0).toFixed(0)} {budgets[0]?.currency || "USD"} across {totalActiveConcepts} active concepts
+          Total daily: {budgets.reduce((s, b) => s + b.dailyBudget, 0).toFixed(0)} {budgets[0]?.currency || "SEK"} across {totalActiveConcepts} active concepts
         </p>
       )}
     </div>

@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { getAdInsights, getCampaignBudget, updateAdSet } from "./meta";
 import { createServerSupabase } from "./supabase";
 import type {
@@ -345,11 +346,50 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
       // use the actual push date so daysInStage is accurate
       const enteredAt =
         !currentLifecycle && newStage === "testing" ? market.created_at : now;
+
+      // Generate AI hypothesis for auto-killed concepts
+      let hypothesis: string | null = null;
+      if (newStage === "killed") {
+        try {
+          const totalSpend = dailyMetrics.reduce((s, m) => s + m.spend, 0);
+          const totalImpressions = dailyMetrics.reduce((s, m) => s + m.impressions, 0);
+          const totalClicks = dailyMetrics.reduce((s, m) => s + m.clicks, 0);
+          const totalRevenue = dailyMetrics.reduce((s, m) => s + (m.revenue || 0), 0);
+          const totalConvs = dailyMetrics.reduce((s, m) => s + m.conversions, 0);
+
+          const settingKey = product ? `${product}:${market.market}` : null;
+          const setting = settingKey ? settingsMap.get(settingKey) : null;
+
+          hypothesis = await generateKillHypothesis({
+            name: jobInfo.name,
+            conceptNumber: jobInfo.conceptNumber,
+            product,
+            market: market.market,
+            daysTested: daysSincePush,
+            totalSpend,
+            impressions: totalImpressions,
+            clicks: totalClicks,
+            ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+            conversions: totalConvs,
+            cpa,
+            roas: totalSpend > 0 ? totalRevenue / totalSpend : null,
+            revenue: totalRevenue,
+            targetCpa,
+            targetRoas: setting?.target_roas ?? null,
+            currency: setting?.currency ?? "SEK",
+            killSignal: signal ?? "auto",
+          });
+        } catch (err) {
+          console.error("[AutoKill] Hypothesis generation failed:", err);
+        }
+      }
+
       await db.from("concept_lifecycle").insert({
         image_job_market_id: marketId,
         stage: newStage,
         entered_at: enteredAt,
         signal,
+        hypothesis,
       });
 
       // Pause Meta ad set when auto-killed (only for this specific market)
@@ -385,6 +425,58 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
   }
 
   return transitions;
+}
+
+// ── Ensure killed ad sets are paused ─────────────────────────
+
+async function ensureKilledAdSetsPaused(): Promise<string[]> {
+  const db = createServerSupabase();
+  const paused: string[] = [];
+
+  // Get all killed lifecycle records (current stage = killed)
+  const { data: killedRows } = await db
+    .from("concept_lifecycle")
+    .select("image_job_market_id")
+    .eq("stage", "killed")
+    .is("exited_at", null);
+
+  if (!killedRows || killedRows.length === 0) return paused;
+
+  const marketIds = killedRows.map((r) => r.image_job_market_id);
+
+  // Get their meta_campaign_ids
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .select("id, meta_campaign_id")
+    .in("id", marketIds)
+    .not("meta_campaign_id", "is", null);
+
+  if (!markets || markets.length === 0) return paused;
+
+  const campaignIds = markets.map((m) => m.meta_campaign_id).filter(Boolean) as string[];
+
+  // Get ad set IDs for these campaigns
+  const { data: campaigns } = await db
+    .from("meta_campaigns")
+    .select("id, meta_adset_id")
+    .in("id", campaignIds)
+    .not("meta_adset_id", "is", null);
+
+  if (!campaigns || campaigns.length === 0) return paused;
+
+  // Pause each ad set (updateAdSet is idempotent — pausing an already paused set is fine)
+  for (const campaign of campaigns) {
+    if (campaign.meta_adset_id) {
+      try {
+        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+        paused.push(campaign.meta_adset_id);
+      } catch (err) {
+        console.error(`[EnsureKilled] Failed to pause ad set ${campaign.meta_adset_id}:`, err);
+      }
+    }
+  }
+
+  return paused;
 }
 
 // ── Sync pipeline metrics ────────────────────────────────────
@@ -566,6 +658,14 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     errors.push(`Stage transition detection failed: ${msg}`);
   }
 
+  // Ensure all killed concepts have their ad sets paused (catches any missed pauses)
+  try {
+    await ensureKilledAdSetsPaused();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`Ensure killed ad sets paused failed: ${msg}`);
+  }
+
   return { synced: syncedCount, errors, transitions };
 }
 
@@ -738,12 +838,16 @@ export async function getPipelineData(): Promise<PipelineData> {
       stage,
       stageEnteredAt,
       daysInStage: daysBetween(stageEnteredAt, new Date()),
+      pushedAt: market.created_at,
+      daysSincePush: daysBetween(market.created_at, new Date()),
       metrics: metricsAgg,
       signals,
       targetCpa,
       targetRoas,
       currency,
       cashDna: (jobInfo.cashDna as CashDna | null) ?? null,
+      killHypothesis: lifecycle?.hypothesis ?? null,
+      killNotes: lifecycle?.notes ?? null,
     });
   }
 
@@ -1000,6 +1104,63 @@ export async function unqueueConcept(imageJobMarketId: string): Promise<void> {
     .is("exited_at", null);
 }
 
+// ── AI hypothesis for killed concepts ────────────────────────
+
+async function generateKillHypothesis(opts: {
+  name: string;
+  conceptNumber: number | null;
+  product: string | null;
+  market: string;
+  daysTested: number;
+  totalSpend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  conversions: number;
+  cpa: number;
+  roas: number | null;
+  revenue: number;
+  targetCpa: number | null;
+  targetRoas: number | null;
+  currency: string;
+  killSignal: string;
+}): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return "AI hypothesis unavailable (no API key configured).";
+
+  const client = new Anthropic({ apiKey });
+  const prompt = `You are a performance marketing analyst. A Meta ad concept was killed after testing.
+
+Concept: "${opts.name}"${opts.conceptNumber ? ` (#${opts.conceptNumber})` : ""}
+Product: ${opts.product || "unknown"}
+Market: ${opts.market}
+Days tested: ${opts.daysTested}
+Total spend: ${opts.totalSpend.toFixed(0)} ${opts.currency}
+Impressions: ${opts.impressions.toLocaleString()}
+Clicks: ${opts.clicks.toLocaleString()}
+CTR: ${opts.ctr.toFixed(2)}%
+Conversions: ${opts.conversions}
+CPA: ${opts.conversions > 0 ? `${opts.cpa.toFixed(0)} ${opts.currency}` : "N/A (no conversions)"}${opts.targetCpa ? ` (target: ${opts.targetCpa.toFixed(0)} ${opts.currency})` : ""}
+ROAS: ${opts.roas !== null ? `${opts.roas.toFixed(2)}x` : "N/A"}${opts.targetRoas ? ` (target: ${opts.targetRoas.toFixed(2)}x)` : ""}
+Revenue: ${opts.revenue.toFixed(0)} ${opts.currency}
+Kill reason: ${opts.killSignal}
+
+In 2-3 sentences, hypothesize why this concept underperformed. Consider: weak hook, audience mismatch, poor offer framing, creative fatigue, low relevance, or competitive pressure. Be specific and actionable — suggest what to try differently next time.`;
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const textBlock = response.content.find((b) => b.type === "text");
+    return textBlock?.text ?? "No hypothesis generated.";
+  } catch (err) {
+    console.error("[Hypothesis] Claude API error:", err);
+    return "AI hypothesis failed to generate.";
+  }
+}
+
 // ── Kill concept ─────────────────────────────────────────────
 
 export async function killConcept(
@@ -1012,7 +1173,7 @@ export async function killConcept(
   // Get the market and its campaign
   const { data: market } = await db
     .from("image_job_markets")
-    .select("meta_campaign_id")
+    .select("id, image_job_id, market, meta_campaign_id, created_at")
     .eq("id", imageJobMarketId)
     .single();
 
@@ -1037,6 +1198,72 @@ export async function killConcept(
     }
   }
 
+  // Generate AI hypothesis from metrics
+  let hypothesis: string | null = null;
+  try {
+    // Gather concept info and metrics for hypothesis
+    const { data: jobInfo } = await db
+      .from("image_jobs")
+      .select("name, product, concept_number")
+      .eq("id", market.image_job_id)
+      .single();
+
+    const { data: metricsRows } = await db
+      .from("concept_metrics")
+      .select("*")
+      .eq("image_job_market_id", imageJobMarketId);
+
+    const dailyMetrics = (metricsRows ?? []) as ConceptMetrics[];
+    const totalSpend = dailyMetrics.reduce((s, m) => s + m.spend, 0);
+    const totalImpressions = dailyMetrics.reduce((s, m) => s + m.impressions, 0);
+    const totalClicks = dailyMetrics.reduce((s, m) => s + m.clicks, 0);
+    const totalConversions = dailyMetrics.reduce((s, m) => s + m.conversions, 0);
+    const totalRevenue = dailyMetrics.reduce((s, m) => s + (m.revenue || 0), 0);
+    const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
+    const roas = totalSpend > 0 ? totalRevenue / totalSpend : null;
+
+    // Get target CPA/ROAS and currency from settings
+    let targetCpa: number | null = null;
+    let targetRoas: number | null = null;
+    let currency = "SEK";
+    if (jobInfo?.product) {
+      const { data: setting } = await db
+        .from("pipeline_settings")
+        .select("target_cpa, target_roas, currency")
+        .eq("product", jobInfo.product)
+        .eq("country", market.market)
+        .single();
+      if (setting) {
+        targetCpa = setting.target_cpa;
+        targetRoas = setting.target_roas;
+        currency = setting.currency;
+      }
+    }
+
+    hypothesis = await generateKillHypothesis({
+      name: jobInfo?.name ?? "Unknown",
+      conceptNumber: jobInfo?.concept_number ?? null,
+      product: jobInfo?.product ?? null,
+      market: market.market,
+      daysTested: daysBetween(market.created_at, now),
+      totalSpend,
+      impressions: totalImpressions,
+      clicks: totalClicks,
+      ctr,
+      conversions: totalConversions,
+      cpa,
+      roas,
+      revenue: totalRevenue,
+      targetCpa,
+      targetRoas,
+      currency,
+      killSignal: "manual_kill",
+    });
+  } catch (err) {
+    console.error("[Kill] Hypothesis generation failed:", err);
+  }
+
   // Close current lifecycle stage
   await db
     .from("concept_lifecycle")
@@ -1051,6 +1278,7 @@ export async function killConcept(
     entered_at: now,
     signal: "manual_kill",
     notes: notes ?? null,
+    hypothesis,
   });
 }
 

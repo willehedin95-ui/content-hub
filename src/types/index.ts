@@ -745,6 +745,7 @@ export interface ConceptLifecycle {
   exited_at: string | null;
   signal: string | null;
   notes: string | null;
+  hypothesis: string | null;
 }
 
 export interface PipelineSignal {
@@ -769,6 +770,8 @@ export interface PipelineConcept {
   stage: PipelineStage;
   stageEnteredAt: string;
   daysInStage: number;
+  pushedAt: string;
+  daysSincePush: number;
   metrics: {
     totalSpend: number;
     cpa: number;
@@ -787,6 +790,8 @@ export interface PipelineConcept {
   targetRoas: number | null;
   currency: string | null;
   cashDna: CashDna | null;
+  killHypothesis: string | null;
+  killNotes: string | null;
 }
 
 export interface PipelineSummary {
