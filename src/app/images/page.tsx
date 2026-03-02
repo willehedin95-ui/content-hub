@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List, Dna, Loader2 } from "lucide-react";
+import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List, Dna, Loader2, CheckSquare, Square, MinusSquare } from "lucide-react";
 import { ImageJob, LANGUAGES, PRODUCTS, COUNTRY_MAP } from "@/types";
+import { cn } from "@/lib/utils";
 import { getLanguageStatus, getMarketStatus, getWizardStep, getOverallStatus, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
 import ConceptBoard from "@/components/images/ConceptBoard";
@@ -62,6 +63,9 @@ export default function ImagesPage() {
   const [sortField, setSortField] = useState<SortField>("concept_number");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -158,6 +162,36 @@ export default function ImagesPage() {
       setJobs((prev) => prev.filter((j) => j.id !== jobId));
       setTotalCount((n) => Math.max(0, n - 1));
     }
+  }
+
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === filteredJobs.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredJobs.map((j) => j.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    setConfirmBulkDelete(false);
+    setBulkDeleting(true);
+    const ids = [...selected];
+    await Promise.all(ids.map((id) => fetch(`/api/image-jobs/${id}`, { method: "DELETE" })));
+    setJobs((prev) => prev.filter((j) => !selected.has(j.id)));
+    setTotalCount((n) => Math.max(0, n - ids.length));
+    setSelected(new Set());
+    setBulkDeleting(false);
   }
 
   function handleCreated(jobId: string) {
@@ -301,6 +335,29 @@ export default function ImagesPage() {
         </div>
       )}
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm font-medium text-indigo-700">
+            {selected.size} selected
+          </span>
+          <button
+            onClick={() => setConfirmBulkDelete(true)}
+            disabled={bulkDeleting}
+            className="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-white border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {bulkDeleting ? "Deleting..." : "Delete"}
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-sm text-gray-500 hover:text-gray-700 ml-auto transition-colors"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -331,7 +388,17 @@ export default function ImagesPage() {
         <>
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <div className="grid grid-cols-[32px_48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {selected.size === filteredJobs.length && filteredJobs.length > 0
+                ? <CheckSquare className="w-4 h-4 text-indigo-600" />
+                : selected.size > 0
+                ? <MinusSquare className="w-4 h-4 text-indigo-600" />
+                : <Square className="w-4 h-4" />}
+            </button>
             <button onClick={() => toggleSort("concept_number")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
               # <SortIcon field="concept_number" />
             </button>
@@ -365,8 +432,21 @@ export default function ImagesPage() {
               <Link
                 key={job.id}
                 href={`/images/${job.id}`}
-                className="grid grid-cols-[48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group"
+                className={cn(
+                  "grid grid-cols-[32px_48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group",
+                  selected.has(job.id) && "bg-indigo-50/50"
+                )}
               >
+                {/* Checkbox */}
+                <button
+                  onClick={(e) => toggleSelect(job.id, e)}
+                  className="flex items-center justify-center text-gray-300 hover:text-indigo-600 transition-colors"
+                >
+                  {selected.has(job.id)
+                    ? <CheckSquare className="w-4 h-4 text-indigo-600" />
+                    : <Square className="w-4 h-4" />}
+                </button>
+
                 {/* # */}
                 <span className="text-xs font-mono text-gray-400">
                   {conceptNum ? String(conceptNum).padStart(3, "0") : "—"}
@@ -512,6 +592,16 @@ export default function ImagesPage() {
         variant="danger"
         onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
         onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title={`Delete ${selected.size} concepts`}
+        message={`This will permanently delete ${selected.size} concept${selected.size === 1 ? "" : "s"} and all their translations. This cannot be undone.`}
+        confirmLabel={`Delete ${selected.size}`}
+        variant="danger"
+        onConfirm={handleBulkDelete}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
     </div>
   );
