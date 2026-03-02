@@ -24,7 +24,7 @@ export function calculateCoverageMatrix(
       const liveAds = conceptsInCell.filter((c) => c.status === "live");
 
       const lastTested = conceptsInCell.length > 0
-        ? conceptsInCell.sort((a, b) =>
+        ? [...conceptsInCell].sort((a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )[0].created_at
         : null;
@@ -48,9 +48,7 @@ export function calculateCoverageMatrix(
  * Identify coverage gaps and generate suggestions
  */
 export function identifyCoverageGaps(
-  cells: AutoCoverageMatrixCell[],
-  product: Product,
-  markets: string[]
+  cells: AutoCoverageMatrixCell[]
 ): AutoCoverageGap[] {
   const gaps: AutoCoverageGap[] = [];
 
