@@ -211,6 +211,7 @@ export interface ImageJob {
   target_languages: Language[];
   target_ratios: AspectRatio[];
   source_folder_id: string | null;
+  pipeline_concept_id?: string | null;
   auto_export: boolean;
   exported_at: string | null;
   notified_at: string | null;
