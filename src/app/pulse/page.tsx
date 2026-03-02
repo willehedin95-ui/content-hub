@@ -14,22 +14,23 @@ export default function PulsePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchMetrics() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/pulse/metrics?period=${period}`);
-        if (!res.ok) throw new Error("Failed to fetch metrics");
-        const json = await res.json();
-        if (json.error) throw new Error(json.error);
-        setData(json);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setLoading(false);
-      }
+  const fetchMetrics = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pulse/metrics?period=${period}`);
+      if (!res.ok) throw new Error("Failed to fetch metrics");
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchMetrics();
   }, [period]);
 
@@ -55,8 +56,14 @@ export default function PulsePage() {
 
       {/* Error state */}
       {error && !loading && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 mb-6">
-          {error}
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <p className="text-sm text-red-700 mb-2">{error}</p>
+          <button
+            onClick={fetchMetrics}
+            className="text-sm text-red-700 font-medium underline hover:no-underline"
+          >
+            Försök igen
+          </button>
         </div>
       )}
 
@@ -75,7 +82,7 @@ export default function PulsePage() {
       )}
 
       {/* KPI Cards */}
-      {data && !loading && (
+      {data?.metrics && !loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Revenue */}
           <KpiCard
