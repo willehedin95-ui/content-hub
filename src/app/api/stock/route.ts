@@ -20,9 +20,18 @@ interface SellRates {
   dailyTimeseries: Array<{ date: string; units: number }>;
 }
 
+export interface SubscriptionData {
+  activeSubscribers: number;
+  unitsPerSubscriber: number;
+  subscriptionCycleDays: number;
+  monthlyUnits: number;
+  subscribersUpdatedAt: string | null;
+}
+
 export interface StockResponse {
   stock: StockData;
   sellRates: SellRates;
+  subscriptions: SubscriptionData;
   daysRemaining: number | null;
   reorderByDate: string | null;
   suggestedOrderQty: number | null;
@@ -95,7 +104,7 @@ export async function GET() {
       fetchStock(),
       db
         .from("products")
-        .select("lead_time_days, reorder_threshold_days")
+        .select("lead_time_days, reorder_threshold_days, active_subscribers, units_per_subscriber, subscription_cycle_days, subscribers_updated_at")
         .eq("slug", "hydro13")
         .single(),
       fetchOrdersFullSince(ninetyDaysAgo),
@@ -104,6 +113,14 @@ export async function GET() {
     const leadTimeDays = productResult.data?.lead_time_days ?? 30;
     const reorderThresholdDays =
       productResult.data?.reorder_threshold_days ?? 14;
+
+    // Subscription data
+    const activeSubscribers = productResult.data?.active_subscribers ?? 0;
+    const unitsPerSubscriber = productResult.data?.units_per_subscriber ?? 1;
+    const subscriptionCycleDays = productResult.data?.subscription_cycle_days ?? 30;
+    const subscribersUpdatedAt = productResult.data?.subscribers_updated_at ?? null;
+    const subscriptionMonthlyUnits = activeSubscribers * unitsPerSubscriber * (30 / subscriptionCycleDays);
+    const subscriptionDailyRate = subscriptionMonthlyUnits / 30;
 
     // Calculate sell rates per SKU from line items
     const units7d = countUnitsSold(orders, 7);
@@ -114,8 +131,11 @@ export async function GET() {
     const daily30d = units30d / 30;
     const daily90d = units90d / 90;
 
-    // Use 30-day average as primary rate for forecasting
-    const primaryRate = daily30d;
+    // Total demand = ad/organic sell rate + guaranteed subscription demand
+    // Note: subscription orders are already included in Shopify order data,
+    // so we use the higher of (actual sell rate) or (sell rate with subscription floor)
+    // This ensures subscriptions don't double-count but do set a minimum demand floor
+    const primaryRate = Math.max(daily30d, subscriptionDailyRate);
 
     // Days remaining
     const daysRemaining =
@@ -152,9 +172,18 @@ export async function GET() {
 
     const dailyTimeseries = buildDailyTimeseries(orders);
 
+    const subscriptions: SubscriptionData = {
+      activeSubscribers,
+      unitsPerSubscriber,
+      subscriptionCycleDays,
+      monthlyUnits: Math.round(subscriptionMonthlyUnits),
+      subscribersUpdatedAt,
+    };
+
     const result: StockResponse = {
       stock,
       sellRates: { daily7d, daily30d, daily90d, dailyTimeseries },
+      subscriptions,
       daysRemaining,
       reorderByDate,
       suggestedOrderQty,

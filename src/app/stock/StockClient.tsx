@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Warehouse, RefreshCw, Package, TrendingUp, ShieldAlert } from "lucide-react";
+import { Warehouse, RefreshCw, Package, TrendingUp, ShieldAlert, Repeat, Pencil, Check, X } from "lucide-react";
 import type { StockResponse } from "@/app/api/stock/route";
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -374,10 +374,185 @@ function ReorderIntelligenceCard({ data }: { data: StockResponse }) {
 
       {/* Calculation breakdown */}
       {dailyRate > 0 && (
-        <p className="text-xs text-gray-400">
-          Based on {dailyRate.toFixed(1)}/day &times; ({data.leadTimeDays} +{" "}
-          30 days) &minus; {data.stock.disposable} current stock
-        </p>
+        <div className="text-xs text-gray-400 space-y-0.5">
+          <p>
+            Based on {dailyRate.toFixed(1)}/day &times; ({data.leadTimeDays} +{" "}
+            30 days) &minus; {data.stock.disposable} current stock
+          </p>
+          {data.subscriptions.activeSubscribers > 0 && (
+            <p>
+              Includes {data.subscriptions.monthlyUnits} units/month guaranteed from {data.subscriptions.activeSubscribers} subscribers
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions Card (editable)
+// ---------------------------------------------------------------------------
+function SubscriptionsCard({
+  data,
+  onSaved,
+}: {
+  data: StockResponse;
+  onSaved: () => void;
+}) {
+  const sub = data.subscriptions;
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    activeSubscribers: sub.activeSubscribers,
+    unitsPerSubscriber: sub.unitsPerSubscriber,
+    subscriptionCycleDays: sub.subscriptionCycleDays,
+  });
+
+  // Sync form when data changes externally
+  useEffect(() => {
+    if (!editing) {
+      setForm({
+        activeSubscribers: sub.activeSubscribers,
+        unitsPerSubscriber: sub.unitsPerSubscriber,
+        subscriptionCycleDays: sub.subscriptionCycleDays,
+      });
+    }
+  }, [sub, editing]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/stock/subscriptions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setEditing(false);
+      onSaved();
+    } catch {
+      // stay in edit mode
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setForm({
+      activeSubscribers: sub.activeSubscribers,
+      unitsPerSubscriber: sub.unitsPerSubscriber,
+      subscriptionCycleDays: sub.subscriptionCycleDays,
+    });
+    setEditing(false);
+  };
+
+  const previewMonthly = form.activeSubscribers * form.unitsPerSubscriber * (30 / form.subscriptionCycleDays);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Repeat className="w-4 h-4 text-gray-400" />
+          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+            Subscriptions
+          </h2>
+        </div>
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <Pencil className="w-3 h-3" />
+            Edit
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              <Check className="w-3 h-3" />
+              Save
+            </button>
+            <button
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Active subscribers</label>
+            <input
+              type="number"
+              min={0}
+              value={form.activeSubscribers}
+              onChange={(e) => setForm({ ...form, activeSubscribers: parseInt(e.target.value) || 0 })}
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none tabular-nums"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Units per subscriber</label>
+              <input
+                type="number"
+                min={1}
+                value={form.unitsPerSubscriber}
+                onChange={(e) => setForm({ ...form, unitsPerSubscriber: parseInt(e.target.value) || 1 })}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none tabular-nums"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Cycle (days)</label>
+              <input
+                type="number"
+                min={1}
+                value={form.subscriptionCycleDays}
+                onChange={(e) => setForm({ ...form, subscriptionCycleDays: parseInt(e.target.value) || 30 })}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none tabular-nums"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">
+            Preview: ~{Math.round(previewMonthly)} units/month from subscriptions
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-3 mb-1">
+            <span className="text-3xl font-bold tabular-nums text-gray-900">
+              {sub.activeSubscribers}
+            </span>
+            <span className="text-lg text-gray-500">subscribers</span>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-4">
+            Guaranteed demand:{" "}
+            <strong className="text-gray-900">~{sub.monthlyUnits} units/month</strong>
+          </p>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+            <span>
+              Units/subscriber: <strong className="text-gray-700">{sub.unitsPerSubscriber}</strong>
+            </span>
+            <span>
+              Cycle: <strong className="text-gray-700">{sub.subscriptionCycleDays} days</strong>
+            </span>
+          </div>
+
+          {sub.subscribersUpdatedAt && (
+            <p className="text-xs text-gray-400 mt-3">
+              Last updated {formatDate(sub.subscribersUpdatedAt)}
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -481,8 +656,11 @@ export default function StockClient() {
             <SalesVelocityCard data={data} />
           </div>
 
-          {/* Bottom row: Reorder Intelligence */}
-          <ReorderIntelligenceCard data={data} />
+          {/* Middle row: Subscriptions + Reorder Intelligence */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SubscriptionsCard data={data} onSaved={() => fetchData(true)} />
+            <ReorderIntelligenceCard data={data} />
+          </div>
         </div>
       )}
     </div>
