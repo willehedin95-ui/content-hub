@@ -813,3 +813,123 @@ export interface PipelineData {
   lastSyncedAt: string | null;
   campaignBudgets?: CampaignBudget[];
 }
+
+// --- Automated Pipeline Types ---
+
+export type AutoPipelineConceptStatus =
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "generating_images"
+  | "images_complete"
+  | "scheduled"
+  | "live";
+
+export type AutoPipelineGenerationMode =
+  | "matrix"
+  | "from_template"
+  | "from_research"
+  | "from_scratch";
+
+export interface AutoPipelineConcept {
+  id: string;
+  concept_number: number;
+  name: string;
+  product: Product;
+
+  cash_dna: CashDna | null;
+
+  headline: string;
+  primary_copy: string[];
+  ad_copy_headline: string[];
+  hypothesis: string;
+
+  generation_mode: AutoPipelineGenerationMode | null;
+  generation_batch_id: string | null;
+  template_id: string | null;
+
+  status: AutoPipelineConceptStatus;
+
+  image_job_id: string | null;
+  rejected_reason: string | null;
+
+  target_languages: Language[];
+  target_markets: string[] | null;
+
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  rejected_at: string | null;
+  images_completed_at: string | null;
+  scheduled_at: string | null;
+}
+
+export interface AutoPipelineNotification {
+  id: string;
+  concept_id: string;
+  notification_type: "concepts_ready" | "images_complete" | "performance_alert";
+  channel: "telegram" | "in_app" | "email";
+  sent_at: string;
+  telegram_message_id: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface AutoCoverageMatrixCell {
+  product: Product;
+  market: string;
+  awareness_level: string;
+  concept_count: number;
+  live_ad_count: number;
+  last_tested_at: string | null;
+  performance_summary: Record<string, unknown> | null;
+}
+
+export interface AutoCoverageGap {
+  priority: "high" | "medium" | "low";
+  message: string;
+  product: Product;
+  market: string;
+  awareness_level: string;
+}
+
+export interface AutoPipelineGenerateRequest {
+  count: number;
+  mode: AutoPipelineGenerationMode;
+  product: Product;
+  target_markets: string[];
+  target_languages: Language[];
+}
+
+export interface AutoPipelineGenerateResponse {
+  success: boolean;
+  batch_id: string;
+  concepts_generated: number;
+  concepts: AutoPipelineConcept[];
+}
+
+export interface AutoPipelineBadgeCount {
+  count: number;
+  breakdown: {
+    to_review: number;
+    images_complete: number;
+    performance_alerts: number;
+  };
+}
+
+export interface AutoConceptPerformance {
+  market: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpa: number | null;
+  status: string;
+  flag: "learning" | "good" | "neutral" | "warning" | "critical";
+}
+
+export interface AutoLiveTestingConcept extends AutoPipelineConcept {
+  performance: Record<string, AutoConceptPerformance>;
+  suggestion: string | null;
+  suggestion_action: "kill" | "scale" | null;
+  suggestion_markets: string[] | null;
+}
