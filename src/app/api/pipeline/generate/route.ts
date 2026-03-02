@@ -5,6 +5,11 @@ import {
   buildBrainstormSystemPrompt,
   parseConceptProposals,
 } from "@/lib/brainstorm";
+import {
+  calculateCoverageMatrix,
+  identifyCoverageGaps,
+  generateSuggestions,
+} from "@/lib/coverage-matrix";
 import type {
   AutoPipelineGenerateRequest,
   AutoPipelineGenerateResponse,
@@ -56,17 +61,21 @@ export async function POST(request: Request) {
     let coverageGaps: string[] = [];
     if (mode === "matrix") {
       try {
-        const coverageRes = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL}/api/pipeline/coverage?product=${product}`
-        );
-        if (coverageRes.ok) {
-          const coverageData = await coverageRes.json();
-          coverageGaps = (coverageData.gaps || [])
-            .slice(0, 3)
-            .map((g: { message: string }) => g.message);
+        // Fetch concepts directly instead of HTTP call
+        const { data: existingConcepts } = await supabase
+          .from("pipeline_concepts")
+          .select("*")
+          .eq("product", product);
+
+        if (existingConcepts) {
+          const markets = target_markets || ["NO", "DK"];
+          const cells = calculateCoverageMatrix(existingConcepts, product, markets);
+          const gaps = identifyCoverageGaps(cells);
+          const suggestions = generateSuggestions(gaps);
+          coverageGaps = suggestions;
         }
       } catch (error) {
-        console.error("[generate] Coverage fetch error:", error);
+        console.error("[generate] Coverage analysis error:", error);
         // Continue without coverage gaps
       }
     }
@@ -136,34 +145,48 @@ Make each concept DIFFERENT from the others. Vary angles, awareness levels, and 
 
     // Save to database
     const batchId = crypto.randomUUID();
-    const concepts = [];
 
-    for (const proposal of proposals) {
-      const { data: concept, error } = await supabase
-        .from("pipeline_concepts")
-        .insert({
-          name: proposal.concept_name,
-          product,
-          headline: proposal.cash_dna?.hooks?.[0] || proposal.ad_copy_headline[0] || "Concept",
-          primary_copy: proposal.ad_copy_primary,
-          ad_copy_headline: proposal.ad_copy_headline,
-          hypothesis: proposal.hypothesis || "No hypothesis provided.",
-          cash_dna: proposal.cash_dna || null,
-          generation_mode: mode,
-          generation_batch_id: batchId,
-          status: "pending_review",
-          target_languages,
-          target_markets,
-        })
-        .select()
-        .single();
+    const insertResults = await Promise.allSettled(
+      proposals.map(proposal =>
+        supabase
+          .from("pipeline_concepts")
+          .insert({
+            name: proposal.concept_name,
+            product,
+            headline: proposal.cash_dna?.hooks?.[0] || proposal.ad_copy_headline[0] || "Concept",
+            primary_copy: proposal.ad_copy_primary,
+            ad_copy_headline: proposal.ad_copy_headline,
+            hypothesis: proposal.hypothesis || "No hypothesis provided.",
+            cash_dna: proposal.cash_dna || null,
+            generation_mode: mode,
+            generation_batch_id: batchId,
+            status: "pending_review",
+            target_languages,
+            target_markets,
+          })
+          .select()
+          .single()
+      )
+    );
 
-      if (error) {
-        console.error("[generate] Insert error:", error);
-        continue;
+    const concepts = insertResults
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && !r.value.error)
+      .map(r => r.value.data);
+
+    // Log any errors
+    insertResults.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`[generate] Insert error for concept ${idx}:`, result.reason);
+      } else if (result.value?.error) {
+        console.error(`[generate] Insert error for concept ${idx}:`, result.value.error);
       }
+    });
 
-      concepts.push(concept);
+    // Check if all inserts failed
+    if (concepts.length === 0 && proposals.length > 0) {
+      return NextResponse.json({
+        error: "Failed to save concepts to database"
+      }, { status: 500 });
     }
 
     // TODO: Send notifications (Task 13)
