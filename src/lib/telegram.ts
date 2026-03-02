@@ -117,3 +117,87 @@ export function formatCashSummary(
 
   return parts.join("\n");
 }
+
+// ============================================================================
+// PIPELINE NOTIFICATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Send Telegram notification (pipeline-specific)
+ */
+export async function sendTelegramNotification(
+  chatId: string,
+  message: string,
+  parseMode: "Markdown" | "HTML" = "Markdown"
+): Promise<{ success: boolean; message_id?: number }> {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      console.warn("[telegram] TELEGRAM_BOT_TOKEN not set, skipping notification");
+      return { success: false };
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: parseMode,
+        disable_web_page_preview: true,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("[telegram] Send error:", data);
+      return { success: false };
+    }
+
+    return { success: true, message_id: data.result.message_id };
+  } catch (error) {
+    console.error("[telegram] Error:", error);
+    return { success: false };
+  }
+}
+
+/**
+ * Format "concepts ready" notification
+ */
+export function formatConceptsReadyMessage(
+  batchId: string,
+  count: number,
+  product: string,
+  markets: string[]
+): string {
+  return `
+✅ ${count} new concepts ready for review!
+
+${product} • ${markets.join(" + ")} markets
+
+👉 Review now: ${process.env.NEXT_PUBLIC_APP_URL}/pipeline
+  `.trim();
+}
+
+/**
+ * Format "images complete" notification
+ */
+export function formatImagesCompleteMessage(
+  conceptNumber: number,
+  conceptName: string,
+  imageCount: number
+): string {
+  return `
+🎨 Concept #${conceptNumber} images ready!
+
+"${conceptName}"
+✅ ${imageCount} images generated
+
+Next steps:
+• Assign landing page
+• Add to Meta queue
+
+👉 Review: ${process.env.NEXT_PUBLIC_APP_URL}/pipeline
+  `.trim();
+}

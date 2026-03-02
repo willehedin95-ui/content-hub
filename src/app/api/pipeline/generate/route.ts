@@ -189,7 +189,29 @@ Make each concept DIFFERENT from the others. Vary angles, awareness levels, and 
       }, { status: 500 });
     }
 
-    // TODO: Send notifications (Task 13)
+    // Send Telegram notification
+    const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+    if (telegramChatId) {
+      const { sendTelegramNotification, formatConceptsReadyMessage } = await import("@/lib/telegram");
+      const message = formatConceptsReadyMessage(
+        batchId,
+        concepts.length,
+        productData.name,
+        target_markets
+      );
+      const { success, message_id } = await sendTelegramNotification(telegramChatId, message);
+
+      if (success && message_id) {
+        // Log notification
+        await supabase.from("pipeline_notifications").insert({
+          concept_id: concepts[0]?.id || null,
+          notification_type: "concepts_ready",
+          channel: "telegram",
+          telegram_message_id: message_id.toString(),
+          metadata: { batch_id: batchId, count: concepts.length },
+        });
+      }
+    }
 
     const result: AutoPipelineGenerateResponse = {
       success: true,
