@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { invalidateCache } from "@/lib/pulse-cache";
 
 export async function PUT(req: NextRequest) {
   try {
@@ -24,6 +25,9 @@ export async function PUT(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Bust the stock cache so the next fetch returns fresh data
+    await invalidateCache("stock:collagen");
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -16,6 +16,11 @@ export async function getCached<T>(key: string): Promise<T | null> {
   return data.data as T;
 }
 
+export async function invalidateCache(key: string): Promise<void> {
+  const db = createServerSupabase();
+  await db.from("pulse_cache").delete().eq("cache_key", key);
+}
+
 export async function setCache(key: string, data: unknown, ttlMinutes: number): Promise<void> {
   const db = createServerSupabase();
   const expires_at = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
