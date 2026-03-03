@@ -326,6 +326,14 @@ export async function updateAdSet(adSetId: string, params: { name?: string; star
   });
 }
 
+export async function updateAd(adId: string, params: { status?: string; name?: string }): Promise<{ success: boolean }> {
+  return metaJson(`/${adId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
 interface AdSetTemplateConfig {
   campaign_id: string;
   billing_event: string;

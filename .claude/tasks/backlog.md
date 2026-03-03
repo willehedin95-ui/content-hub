@@ -14,16 +14,16 @@ Updated: 2026-03-03
 Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot (OpenClaw)
 
 ### Phase 1: Data Foundation (start here)
-- [ ] Performance data sync — cron job pulling Meta Insights (spend, CPA, CTR, ROAS, frequency, CPC, impressions) into `meta_ad_performance` table daily (added 2026-03-03)
-- [ ] 5 Daily Questions API — endpoint that answers: on-track spend? what's running? performance trends? winners/losers? fatigue signals? (added 2026-03-03)
-- [ ] Morning brief page in Hub — dashboard view of the 5 daily questions (added 2026-03-03)
+- [x] Performance data sync — cron job pulling Meta Insights into `meta_ad_performance` table twice daily (done 2026-03-03)
+- [x] 5 Daily Questions API — endpoint that answers: on-track spend? what's running? performance trends? winners/losers? fatigue signals? (done 2026-03-03)
+- [x] Morning brief page in Hub — dashboard view of the 5 daily questions (done 2026-03-03)
 
 ### Phase 2: Signal Engine
-- [ ] Fatigue detection — CTR dropping 3+ days (>20% from peak = Critical), frequency > 3.5 (Warning), CPC rising 3+ days >15% (Warning), impressions declining (Monitor) (added 2026-03-03)
-- [ ] Bleeder detection — ads with high spend + low CTR + CPA > 2.5x target for 48h+ (added 2026-03-03)
-- [ ] Winner detection — ads at/below target CPA for 5-7 days, ROAS above breakeven, CTR > 1% (added 2026-03-03)
-- [ ] LP vs creative fatigue distinction — if CTR stable but CPA rising, flag as landing page issue, not creative (added 2026-03-03)
-- [ ] Efficiency scoring per campaign — CTR/CPC ratio for ranking and budget shift recommendations (added 2026-03-03)
+- [x] Fatigue detection — CTR dropping 3+ days (>20% from peak = Critical), frequency > 3.5 (Warning), CPC rising 3+ days >15% (Warning), impressions declining (Monitor) (done 2026-03-03)
+- [x] Bleeder detection — ads with high spend + low CTR + CPA > 2.5x target for 48h+ (done 2026-03-03)
+- [x] Winner detection — ads at/below target CPA for 5-7 days, ROAS above breakeven, CTR > 1% (done 2026-03-03)
+- [x] LP vs creative fatigue distinction — if CTR stable but CPA rising, flag as landing page issue, not creative (done 2026-03-03)
+- [x] Efficiency scoring per campaign — CTR/CPC ratio for ranking and budget shift recommendations (done 2026-03-03)
 
 ### Phase 3: Notifications & Actions
 - [ ] Morning brief via Telegram — send 5-question summary + action recommendations each morning (added 2026-03-03)

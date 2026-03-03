@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/ad-performance-sync",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/morning-brief-telegram",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/auto-pause-bleeders",
+      "schedule": "30 6 * * *"
     }
   ]
 }

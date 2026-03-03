@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 
 export const maxDuration = 30;
@@ -24,7 +24,39 @@ interface AdRow {
   cpa: number;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Auth: accept CRON_SECRET bearer token (cron callers) or valid Supabase session (browser)
+  const authHeader = req.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (authHeader) {
+    // Cron/API caller — verify bearer token
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  } else {
+    // Browser caller — verify session (route is middleware-exempted)
+    const { createServerClient } = await import("@supabase/ssr");
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll();
+          },
+          setAll() {
+            // no-op — read-only check
+          },
+        },
+      }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   const db = createServerSupabase();
 
   // Get the latest date with data
