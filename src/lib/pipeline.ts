@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getAdInsights, getCampaignBudget, updateAdSet } from "./meta";
+import { getAdInsightsDaily, getCampaignBudget, updateAdSet } from "./meta";
 import { createServerSupabase } from "./supabase";
 import type {
   PipelineStage,
@@ -568,11 +568,11 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     return { synced: 0, errors: [], transitions: [] };
   }
 
-  // Get ad insights for the last 30 days
-  const { since, until } = getDateRange(30);
+  // Get ad insights for the last 60 days (daily breakdown)
+  const { since, until } = getDateRange(60);
   let insights;
   try {
-    insights = await getAdInsights(since, until);
+    insights = await getAdInsightsDaily(since, until);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { synced: 0, errors: [`Failed to fetch Meta insights: ${msg}`], transitions: [] };
