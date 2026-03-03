@@ -262,6 +262,7 @@ export interface ImageJob {
   deployments?: Array<{ country: string; language: Language; status: MetaCampaignStatus }>;
   // Per-language translated ad copy with quality scores (stored as JSON in DB)
   ad_copy_translations?: ConceptCopyTranslations;
+  compliance_result?: ComplianceResult | null;
 }
 
 export interface SourceImage {
@@ -315,6 +316,34 @@ export interface QualityAnalysis {
   missing_text: string[];
   overall_assessment: string;
   extracted_text: string;
+}
+
+// Meta compliance check types
+export interface ComplianceIssue {
+  rule: string;
+  detail: string;
+  suggestion?: string;
+}
+
+export interface ComplianceTextResult {
+  text: string;
+  type: "primary" | "headline";
+  verdict: "PASS" | "WARNING" | "REJECT";
+  issues: ComplianceIssue[];
+}
+
+export interface ComplianceImageResult {
+  image_url: string;
+  verdict: "PASS" | "WARNING";
+  issues: ComplianceIssue[];
+}
+
+export interface ComplianceResult {
+  overall_verdict: "PASS" | "WARNING" | "REJECT";
+  text_results: ComplianceTextResult[];
+  image_results: ComplianceImageResult[];
+  summary: string;
+  checked_at: string;
 }
 
 export interface DriveFile {
