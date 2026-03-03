@@ -453,20 +453,16 @@ export default function ImagesPage() {
                 </span>
 
                 {/* Name + Tags */}
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium text-gray-800 truncate">{job.name}</span>
-                  {(job.tags ?? []).length > 0 && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {(job.tags ?? []).slice(0, 2).map((tag) => (
+                <div className="min-w-0">
+                  <span className="text-sm font-medium text-gray-800 truncate block">{job.name}</span>
+                  {((job.tags ?? []).length > 0 || job.cash_dna?.angle || job.cash_dna?.style) && (
+                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                      {(job.tags ?? []).slice(0, 3).map((tag) => (
                         <TagBadge key={tag} tag={tag} />
                       ))}
-                      {(job.tags ?? []).length > 2 && (
-                        <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 2}</span>
+                      {(job.tags ?? []).length > 3 && (
+                        <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 3}</span>
                       )}
-                    </div>
-                  )}
-                  {(job.cash_dna?.angle || job.cash_dna?.style) && (
-                    <div className="flex items-center gap-1 shrink-0">
                       {job.cash_dna?.angle && (
                         <span className="text-[10px] text-violet-600 bg-violet-50 px-1 py-0.5 rounded border border-violet-200">
                           {job.cash_dna.angle}
