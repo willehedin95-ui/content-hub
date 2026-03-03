@@ -11,6 +11,9 @@ import {
   Globe,
   BookmarkCheck,
   BarChart3,
+  ListPlus,
+  X,
+  Clock,
 } from "lucide-react";
 import {
   ImageJob,
@@ -92,6 +95,63 @@ export default function MetaAdPreview({
     roas: number | null;
   }> | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // Queue state
+  const [queueStatus, setQueueStatus] = useState<Array<{ market: string; status: string | null; position?: number }>>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueChecked, setQueueChecked] = useState<Set<string>>(new Set());
+
+  // Fetch queue status
+  useEffect(() => {
+    fetch(`/api/image-jobs/${job.id}/queue`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.markets) setQueueStatus(data.markets);
+      })
+      .catch(() => {});
+  }, [job.id]);
+
+  async function handleAddToQueue() {
+    const markets = Array.from(queueChecked);
+    if (markets.length === 0) return;
+    setQueueLoading(true);
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markets }),
+      });
+      if (res.ok) {
+        // Refresh queue status
+        const statusRes = await fetch(`/api/image-jobs/${job.id}/queue`);
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          setQueueStatus(data.markets);
+        }
+        setQueueChecked(new Set());
+      }
+    } catch {}
+    setQueueLoading(false);
+  }
+
+  async function handleRemoveFromQueue(market: string) {
+    setQueueLoading(true);
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/queue`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markets: [market] }),
+      });
+      if (res.ok) {
+        const statusRes = await fetch(`/api/image-jobs/${job.id}/queue`);
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          setQueueStatus(data.markets);
+        }
+      }
+    } catch {}
+    setQueueLoading(false);
+  }
 
   // Reset navigation indices when language changes
   useEffect(() => {
@@ -462,6 +522,104 @@ export default function MetaAdPreview({
           </div>
         )}
       </div>
+
+      {/* Queue for Meta */}
+      {!deployments.some((d) => d.status === "pushed") && canPush && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ListPlus className="w-4 h-4 text-indigo-600" />
+            <h3 className="text-sm font-semibold text-gray-800">Queue for Meta</h3>
+            <span className="text-xs text-gray-400">Auto-pushes when testing slots open</span>
+          </div>
+
+          <div className="space-y-2">
+            {job.target_languages.map((lang) => {
+              const c = COUNTRY_MAP[lang as Language];
+              const langInfo = LANGUAGES.find((l) => l.value === lang);
+              const qs = queueStatus.find((q) => q.market === c);
+              const isQueued = qs?.status === "queued";
+              const isInPipeline = qs?.status && qs.status !== "queued";
+
+              return (
+                <div
+                  key={lang}
+                  className="flex items-center justify-between py-1.5"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isQueued ? (
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                        <span>{langInfo?.flag} {c}</span>
+                        <span className="text-xs text-amber-600 font-medium">
+                          Queued #{qs.position}
+                        </span>
+                      </div>
+                    ) : isInPipeline ? (
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>{langInfo?.flag} {c}</span>
+                        <span className="text-xs text-emerald-600 font-medium capitalize">
+                          {qs.status}
+                        </span>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={queueChecked.has(c)}
+                          onChange={(e) => {
+                            setQueueChecked((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(c);
+                              else next.delete(c);
+                              return next;
+                            });
+                          }}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>{langInfo?.flag} {c}</span>
+                      </label>
+                    )}
+                  </div>
+                  {isQueued && (
+                    <button
+                      onClick={() => handleRemoveFromQueue(c)}
+                      disabled={queueLoading}
+                      className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {queueChecked.size > 0 && (
+            <button
+              onClick={handleAddToQueue}
+              disabled={queueLoading}
+              className="flex items-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
+            >
+              {queueLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ListPlus className="w-3.5 h-3.5" />
+              )}
+              Add to Queue ({queueChecked.size})
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* — or publish directly — */}
+      {!deployments.some((d) => d.status === "pushed") && canPush && queueStatus.some((q) => q.status === "queued") && (
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          <div className="flex-1 border-t border-gray-200" />
+          <span>or publish directly</span>
+          <div className="flex-1 border-t border-gray-200" />
+        </div>
+      )}
 
       {/* Push button */}
       <div className="space-y-2">

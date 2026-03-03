@@ -431,6 +431,25 @@ export async function GET(req: NextRequest) {
 
   winnerAds.sort((a, b) => b.avg_roas - a.avg_roas);
 
+  // Enrich winners with image_job_id for iteration links
+  const winnerAdsetIds = winnerAds.map((w) => w.adset_id).filter(Boolean) as string[];
+  const adsetToImageJob = new Map<string, string>();
+  if (winnerAdsetIds.length > 0) {
+    const { data: campaigns } = await db
+      .from("meta_campaigns")
+      .select("meta_adset_id, image_job_id")
+      .in("meta_adset_id", winnerAdsetIds);
+    for (const c of campaigns ?? []) {
+      if (c.meta_adset_id && c.image_job_id) {
+        adsetToImageJob.set(c.meta_adset_id, c.image_job_id);
+      }
+    }
+  }
+  const enrichedWinners = winnerAds.map((w) => ({
+    ...w,
+    image_job_id: (w.adset_id && adsetToImageJob.get(w.adset_id)) || null,
+  }));
+
   // ── Q8: LP vs Creative Fatigue ──
   // If CTR is stable/rising but CPA is rising → landing page problem, not creative
   const lpFatigueSignals: Array<{
@@ -561,7 +580,7 @@ export async function GET(req: NextRequest) {
     },
     signals: {
       bleeders,
-      consistent_winners: winnerAds,
+      consistent_winners: enrichedWinners,
       lp_vs_creative_fatigue: lpFatigueSignals,
       efficiency_scoring: efficiencyWithRecommendation,
     },

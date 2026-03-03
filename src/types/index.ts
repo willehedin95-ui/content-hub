@@ -767,6 +767,7 @@ export interface PipelineSetting {
   target_roas: number | null;
   currency: string;
   testing_slots: number;
+  min_budget_per_concept: number;
   created_at: string;
   updated_at: string;
 }

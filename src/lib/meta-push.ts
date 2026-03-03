@@ -35,7 +35,8 @@ export interface PushResult {
  * Returns array of per-language results + scheduled time.
  */
 export async function pushConceptToMeta(
-  jobId: string
+  jobId: string,
+  opts?: { languages?: string[] }
 ): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
   const db = createServerSupabase();
 
@@ -185,9 +186,14 @@ export async function pushConceptToMeta(
 
   const results: PushResult[] = [];
 
+  // Filter languages if specified (for per-market queue pushing)
+  const targetLangs = opts?.languages
+    ? (job.target_languages as Language[]).filter((l) => opts.languages!.includes(l))
+    : (job.target_languages as Language[]);
+
   // Process all target languages in parallel
   const langResults = await Promise.allSettled(
-    (job.target_languages as Language[]).map(async (lang) => {
+    targetLangs.map(async (lang) => {
       const country = COUNTRY_MAP[lang];
       if (!country) {
         return { language: lang, country: "??", status: "error", error: `No country mapping for ${lang}` } as const;
@@ -219,7 +225,7 @@ export async function pushConceptToMeta(
         image_url: si.original_url,
         source_image_id: si.source_image_id,
       }));
-      const langImages = [...translatedForLang, ...skippedForLang];
+      const langImages = [...translatedForLang, ...skippedForLang].slice(0, 5);
 
       if (langImages.length === 0) {
         return { language: lang, country, status: "error", error: `No completed 1:1 images for ${lang}` } as const;
@@ -270,12 +276,13 @@ export async function pushConceptToMeta(
 
       if (!campaign) throw new Error("Failed to create campaign record");
 
-      // Create image_job_markets entry for pipeline tracking
-      await db.from("image_job_markets").insert({
+      // Upsert image_job_markets entry for pipeline tracking
+      // (may already exist from queue — just update meta_campaign_id)
+      await db.from("image_job_markets").upsert({
         image_job_id: jobId,
         market: country,
         meta_campaign_id: campaign.id,
-      });
+      }, { onConflict: "image_job_id,market" });
 
       try {
         // Phase 1: Upload ALL images in parallel (biggest time saver)

@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Lightbulb,
   Workflow,
+  GitBranch,
 } from "lucide-react";
 import type {
   PipelineData,
@@ -1263,13 +1264,25 @@ function ConceptModal({
               </span>
             </div>
             {concept.imageJobId && (
-              <Link
-                href={`/images/${concept.imageJobId}`}
-                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 mt-1"
-                target="_blank"
-              >
-                View in Static Ads <ExternalLink className="w-3 h-3" />
-              </Link>
+              <div className="flex items-center gap-3 mt-1">
+                <Link
+                  href={`/images/${concept.imageJobId}`}
+                  className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700"
+                  target="_blank"
+                >
+                  View in Static Ads <ExternalLink className="w-3 h-3" />
+                </Link>
+                {(concept.stage === "active" || concept.stage === "review") && (
+                  <Link
+                    href={`/images/${concept.imageJobId}`}
+                    className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-700"
+                    title="Create iteration of this winner"
+                  >
+                    <GitBranch className="w-3 h-3" />
+                    Iterate
+                  </Link>
+                )}
+              </div>
             )}
           </div>
           <button

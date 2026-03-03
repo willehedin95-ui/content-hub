@@ -297,7 +297,9 @@ export default function ConceptImagesStep({
                   onClick={() => {
                     const next = selected
                       ? generateState.selectedStyles.filter((s) => s !== style.id)
-                      : [...generateState.selectedStyles, style.id];
+                      : generateState.selectedStyles.length >= 5
+                        ? generateState.selectedStyles
+                        : [...generateState.selectedStyles, style.id];
                     generateState.setSelectedStyles(next);
                   }}
                   disabled={generateState.generating}
@@ -319,7 +321,7 @@ export default function ConceptImagesStep({
             })}
           </div>
           <p className="text-xs text-gray-400 mt-1.5">
-            {generateState.selectedStyles.length} selected
+            {generateState.selectedStyles.length}/5 selected
             {generateState.selectedStyles.length > 0 && (
               <> &middot; ~${(0.04 + generateState.selectedStyles.length * KIE_IMAGE_COST).toFixed(2)}</>
             )}

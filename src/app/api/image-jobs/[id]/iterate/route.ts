@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
-import type { IterationType, CashDna, ProductSegment, Angle, Style } from "@/types";
+import { generateIterationCopy } from "@/lib/brainstorm";
+import type { IterationType, CashDna, ProductSegment, ProductFull, CopywritingGuideline, Angle, Style } from "@/types";
+
+export const maxDuration = 120;
 
 // POST /api/image-jobs/[id]/iterate — Create an iteration of a winning concept
 export async function POST(
@@ -129,7 +132,54 @@ export async function POST(
     }
   }
 
-  // Create child job — copy most fields from parent
+  // Get next concept number
+  const { data: lastJob } = await db
+    .from("image_jobs")
+    .select("concept_number")
+    .not("concept_number", "is", null)
+    .order("concept_number", { ascending: false })
+    .limit(1)
+    .single();
+  const nextNumber = (lastJob?.concept_number ?? 0) + 1;
+
+  // Rewrite ad copy via Claude (use parent copy as fallback if Claude fails)
+  let adCopyPrimary: string[] = parent.ad_copy_primary ?? [];
+  let adCopyHeadline: string[] = parent.ad_copy_headline ?? [];
+
+  if (parentDna && parent.product) {
+    try {
+      // Fetch product + guidelines for Claude context
+      const [{ data: product }, { data: guidelines }, { data: segments }] = await Promise.all([
+        db.from("products").select("*").eq("slug", parent.product).single(),
+        db.from("copywriting_guidelines").select("*").or(`product_id.is.null,product_id.eq.${parent.product}`),
+        db.from("product_segments").select("*").eq("product_id", parent.product),
+      ]);
+
+      if (product) {
+        const rewritten = await generateIterationCopy({
+          parentName: parent.name,
+          parentCopy: {
+            primary: parent.ad_copy_primary ?? [],
+            headlines: parent.ad_copy_headline ?? [],
+          },
+          parentDna,
+          iterationType,
+          iterationContext,
+          product: product as ProductFull,
+          guidelines: (guidelines ?? []) as CopywritingGuideline[],
+          segments: (segments ?? []) as ProductSegment[],
+        });
+
+        adCopyPrimary = rewritten.primary;
+        adCopyHeadline = rewritten.headlines.length > 0 ? rewritten.headlines : adCopyHeadline;
+      }
+    } catch (err) {
+      console.warn("[iterate] Claude copy rewrite failed, using parent copy:", err instanceof Error ? err.message : err);
+      // Fallback: keep parent copy
+    }
+  }
+
+  // Create child job
   const { data: childJob, error: childErr } = await db
     .from("image_jobs")
     .insert({
@@ -138,9 +188,10 @@ export async function POST(
       status: "ready",
       target_languages: parent.target_languages,
       target_ratios: parent.target_ratios,
+      concept_number: nextNumber,
       auto_export: parent.auto_export,
-      ad_copy_primary: parent.ad_copy_primary,
-      ad_copy_headline: parent.ad_copy_headline,
+      ad_copy_primary: adCopyPrimary,
+      ad_copy_headline: adCopyHeadline,
       ad_copy_doc_id: parent.ad_copy_doc_id,
       landing_page_id: parent.landing_page_id,
       ab_test_id: parent.ab_test_id,
@@ -162,7 +213,9 @@ export async function POST(
   return NextResponse.json({
     id: childJob.id,
     name: childJob.name,
+    concept_number: nextNumber,
     iteration_type: iterationType,
     iteration_of: id,
+    copy_rewritten: adCopyPrimary !== (parent.ad_copy_primary ?? []),
   }, { status: 201 });
 }

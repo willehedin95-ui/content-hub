@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   TrendingUp,
   TrendingDown,
@@ -22,6 +23,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ExternalLink,
+  Loader2,
+  Pause,
+  Rocket,
+  CheckCircle2,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -126,6 +132,7 @@ interface ConsistentWinner {
   avg_roas: number;
   avg_cpa: number;
   avg_ctr: number;
+  image_job_id: string | null;
 }
 
 interface LpVsCreativeFatigue {
@@ -255,6 +262,174 @@ export default function MorningBriefClient() {
       setLoading(false);
     }
   };
+
+  // Action state
+  const [actionState, setActionState] = useState<{
+    loading: string | null; // action key currently loading
+    results: Record<string, { ok: boolean; message: string }>;
+  }>({ loading: null, results: {} });
+
+  async function handlePauseBleeders(bleedersToStop: Bleeder[]) {
+    setActionState((s) => ({ ...s, loading: "pause_bleeders" }));
+    try {
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "pause_bleeders",
+          bleeders: bleedersToStop.map((b) => ({
+            ad_id: b.ad_id,
+            ad_name: b.ad_name,
+            campaign_name: b.campaign_name,
+            days_bleeding: b.days_bleeding,
+            total_spend: b.total_spend,
+            avg_ctr: b.avg_ctr,
+            avg_cpa: b.avg_cpa,
+          })),
+        }),
+      });
+      const data = await res.json();
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: {
+          ...s.results,
+          pause_bleeders: {
+            ok: data.ok,
+            message: `Paused ${data.paused} ad${data.paused !== 1 ? "s" : ""}${data.failed ? `, ${data.failed} failed` : ""}`,
+          },
+        },
+      }));
+    } catch {
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: { ...s.results, pause_bleeders: { ok: false, message: "Action failed" } },
+      }));
+    }
+  }
+
+  async function handlePauseAd(adId: string, adName?: string | null, campaignName?: string | null) {
+    const key = `pause_${adId}`;
+    setActionState((s) => ({ ...s, loading: key }));
+    try {
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "pause_ad",
+          ad_id: adId,
+          ad_name: adName,
+          campaign_name: campaignName,
+          reason: "Paused from Morning Brief",
+        }),
+      });
+      const data = await res.json();
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: { ...s.results, [key]: { ok: data.ok, message: data.ok ? "Paused" : "Failed" } },
+      }));
+    } catch {
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: { ...s.results, [key]: { ok: false, message: "Failed" } },
+      }));
+    }
+  }
+
+  async function handleScaleWinner(w: ConsistentWinner) {
+    const key = `scale_${w.ad_id}`;
+    setActionState((s) => ({ ...s, loading: key }));
+    try {
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "scale_winner",
+          ad_id: w.ad_id,
+          adset_id: w.adset_id,
+          campaign_id: w.campaign_id,
+          ad_name: w.ad_name,
+          campaign_name: w.campaign_name,
+        }),
+      });
+      const data = await res.json();
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: {
+          ...s.results,
+          [key]: {
+            ok: data.ok,
+            message: data.ok
+              ? `${data.level === "adset" ? "Ad set" : "Campaign"} budget: $${data.old_budget} → $${data.new_budget}/day`
+              : "Failed",
+          },
+        },
+      }));
+    } catch {
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: { ...s.results, [key]: { ok: false, message: "Failed" } },
+      }));
+    }
+  }
+
+  async function handleScaleAllWinners(winners: ConsistentWinner[]) {
+    setActionState((s) => ({ ...s, loading: "scale_all" }));
+    for (const w of winners) {
+      await handleScaleWinner(w);
+    }
+    setActionState((s) => ({
+      ...s,
+      loading: null,
+      results: {
+        ...s.results,
+        scale_all: { ok: true, message: `Scaled ${winners.length} winner${winners.length !== 1 ? "s" : ""} +20%` },
+      },
+    }));
+  }
+
+  async function handleApplyBudgetShifts(scores: EfficiencyScore[]) {
+    setActionState((s) => ({ ...s, loading: "budget_shifts" }));
+    try {
+      const shifts = scores
+        .filter((s) => s.recommendation !== "maintain" && s.campaign_id)
+        .map((s) => ({
+          campaign_id: s.campaign_id!,
+          campaign_name: s.campaign_name,
+          efficiency_score: s.efficiency_score,
+          recommended_budget_share: s.recommended_budget_share,
+          recommendation: s.recommendation,
+        }));
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "apply_budget_shifts", shifts }),
+      });
+      const data = await res.json();
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: {
+          ...s.results,
+          budget_shifts: {
+            ok: data.ok,
+            message: data.ok ? `Updated ${data.updated} campaign budget${data.updated !== 1 ? "s" : ""}` : "Failed",
+          },
+        },
+      }));
+    } catch {
+      setActionState((s) => ({
+        ...s,
+        loading: null,
+        results: { ...s.results, budget_shifts: { ok: false, message: "Failed" } },
+      }));
+    }
+  }
 
   useEffect(() => {
     fetchBrief();
@@ -410,7 +585,19 @@ export default function MorningBriefClient() {
         ) : (
           <div className="space-y-3">
             {fatigue_signals.critical.length > 0 && (
-              <FatigueGroup level="critical" signals={fatigue_signals.critical} />
+              <>
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+                  <p className="text-sm text-red-800">
+                    <span className="font-semibold">Recommendation:</span> Pause critical fatigue ads and brainstorm fresh creatives.
+                  </p>
+                </div>
+                <FatigueGroup
+                  level="critical"
+                  signals={fatigue_signals.critical}
+                  onPauseAd={handlePauseAd}
+                  actionState={actionState}
+                />
+              </>
             )}
             {fatigue_signals.warning.length > 0 && (
               <FatigueGroup level="warning" signals={fatigue_signals.warning} />
@@ -444,36 +631,82 @@ export default function MorningBriefClient() {
             <p className="text-green-800 text-sm font-medium">No bleeders detected</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-red-500 overflow-hidden divide-y divide-gray-100">
-            {bleeders.map((b) => (
-              <div key={b.ad_id} className="px-5 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
-                        <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
-                        {b.ad_name || "Unnamed"}
-                      </p>
-                      <a href={metaAdUrl(b.ad_id)} target="_blank" rel="noopener noreferrer"
-                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+          <>
+            {/* Recommendation */}
+            <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-3">
+              <p className="text-sm text-red-800">
+                <span className="font-semibold">Recommendation:</span> Pause these ads — they&apos;re spending without converting.
+              </p>
+              {actionState.results.pause_bleeders ? (
+                <span className={cn("text-xs font-medium px-3 py-1.5 rounded-lg", actionState.results.pause_bleeders.ok ? "text-green-700 bg-green-100" : "text-red-700 bg-red-100")}>
+                  <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
+                  {actionState.results.pause_bleeders.message}
+                </span>
+              ) : (
+                <button
+                  onClick={() => handlePauseBleeders(bleeders)}
+                  disabled={actionState.loading === "pause_bleeders"}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                >
+                  {actionState.loading === "pause_bleeders" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Pause className="w-3.5 h-3.5" />
+                  )}
+                  Pause All Bleeders ({bleeders.length})
+                </button>
+              )}
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-red-500 overflow-hidden divide-y divide-gray-100">
+              {bleeders.map((b) => {
+                const pauseKey = `pause_${b.ad_id}`;
+                const pauseResult = actionState.results[pauseKey] || actionState.results.pause_bleeders;
+                return (
+                  <div key={b.ad_id} className="px-5 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
+                            <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
+                            {b.ad_name || "Unnamed"}
+                          </p>
+                          <a href={metaAdUrl(b.ad_id)} target="_blank" rel="noopener noreferrer"
+                             className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                        <p className="text-xs text-gray-500">{b.campaign_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                          {b.days_bleeding}d bleeding
+                        </span>
+                        {!pauseResult && (
+                          <button
+                            onClick={() => handlePauseAd(b.ad_id, b.ad_name, b.campaign_name)}
+                            disabled={!!actionState.loading}
+                            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                          >
+                            {actionState.loading === pauseKey ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              "Pause"
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500">{b.campaign_name}</p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                      <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(b.total_spend)}</span></span>
+                      <span>Purchases: <span className="font-medium text-gray-700">{b.purchases}</span></span>
+                      <span>CTR: <span className="font-medium text-red-600">{b.avg_ctr}%</span></span>
+                      <span>Campaign avg CPA: <span className="font-medium text-gray-700">${b.campaign_avg_cpa}</span></span>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded shrink-0">
-                    {b.days_bleeding}d bleeding
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(b.total_spend)}</span></span>
-                  <span>Purchases: <span className="font-medium text-gray-700">{b.purchases}</span></span>
-                  <span>CTR: <span className="font-medium text-red-600">{b.avg_ctr}%</span></span>
-                  <span>Campaign avg CPA: <span className="font-medium text-gray-700">${b.campaign_avg_cpa}</span></span>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
 
@@ -499,37 +732,97 @@ export default function MorningBriefClient() {
             <p className="text-gray-600 text-sm">No ads have sustained 5+ winning days yet</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-green-500 overflow-hidden divide-y divide-gray-100">
-            {consistent_winners.map((w) => (
-              <div key={w.ad_id} className="px-5 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
-                        <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
-                        {w.ad_name || "Unnamed"}
-                      </p>
-                      <a href={metaAdUrl(w.ad_id)} target="_blank" rel="noopener noreferrer"
-                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+          <>
+            {/* Recommendation */}
+            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-3">
+              <p className="text-sm text-green-800">
+                <span className="font-semibold">Recommendation:</span> Scale budget for these proven performers.
+              </p>
+              {actionState.results.scale_all ? (
+                <span className="text-xs font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-lg">
+                  <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
+                  {actionState.results.scale_all.message}
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleScaleAllWinners(consistent_winners)}
+                  disabled={actionState.loading === "scale_all"}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                >
+                  {actionState.loading === "scale_all" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Rocket className="w-3.5 h-3.5" />
+                  )}
+                  Scale All +20%
+                </button>
+              )}
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-green-500 overflow-hidden divide-y divide-gray-100">
+              {consistent_winners.map((w) => {
+                const scaleKey = `scale_${w.ad_id}`;
+                const scaleResult = actionState.results[scaleKey];
+                return (
+                  <div key={w.ad_id} className="px-5 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
+                            <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
+                            {w.ad_name || "Unnamed"}
+                          </p>
+                          <a href={metaAdUrl(w.ad_id)} target="_blank" rel="noopener noreferrer"
+                             className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                        <p className="text-xs text-gray-500">{w.campaign_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                          {w.consistent_days}d winning
+                        </span>
+                        {w.image_job_id && (
+                          <Link
+                            href={`/images/${w.image_job_id}`}
+                            className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                            title="Create iteration of this winner"
+                          >
+                            <GitBranch className="w-3.5 h-3.5" />
+                            Iterate
+                          </Link>
+                        )}
+                        {scaleResult ? (
+                          <span className={cn("text-xs", scaleResult.ok ? "text-green-600" : "text-red-600")}>
+                            {scaleResult.message}
+                          </span>
+                        ) : !actionState.results.scale_all && (
+                          <button
+                            onClick={() => handleScaleWinner(w)}
+                            disabled={!!actionState.loading}
+                            className="text-xs font-medium text-green-600 hover:text-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {actionState.loading === scaleKey ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              "+20%"
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500">{w.campaign_name}</p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                      <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(w.total_spend)}</span></span>
+                      <span>Purchases: <span className="font-medium text-gray-700">{w.total_purchases}</span></span>
+                      <span>ROAS: <span className="font-medium text-green-700">{formatRoas(w.avg_roas)}</span></span>
+                      <span>CPA: <span className="font-medium text-gray-700">${w.avg_cpa}</span></span>
+                      <span>CTR: <span className="font-medium text-gray-700">{w.avg_ctr}%</span></span>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded shrink-0">
-                    {w.consistent_days}d winning
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(w.total_spend)}</span></span>
-                  <span>Purchases: <span className="font-medium text-gray-700">{w.total_purchases}</span></span>
-                  <span>ROAS: <span className="font-medium text-green-700">{formatRoas(w.avg_roas)}</span></span>
-                  <span>CPA: <span className="font-medium text-gray-700">${w.avg_cpa}</span></span>
-                  <span>CTR: <span className="font-medium text-gray-700">{w.avg_ctr}%</span></span>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
 
@@ -594,6 +887,32 @@ export default function MorningBriefClient() {
         <p className="text-sm text-gray-500 -mt-3 mb-4">
           CTR/CPC efficiency ratio with budget allocation recommendations (30% max shift)
         </p>
+        {efficiency_scoring.some((s) => s.recommendation !== "maintain") && (
+          <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 mb-3">
+            <p className="text-sm text-indigo-800">
+              <span className="font-semibold">Recommendation:</span> Rebalance budgets based on performance.
+            </p>
+            {actionState.results.budget_shifts ? (
+              <span className={cn("text-xs font-medium px-3 py-1.5 rounded-lg", actionState.results.budget_shifts.ok ? "text-green-700 bg-green-100" : "text-red-700 bg-red-100")}>
+                <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
+                {actionState.results.budget_shifts.message}
+              </span>
+            ) : (
+              <button
+                onClick={() => handleApplyBudgetShifts(efficiency_scoring)}
+                disabled={actionState.loading === "budget_shifts"}
+                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+              >
+                {actionState.loading === "budget_shifts" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Gauge className="w-3.5 h-3.5" />
+                )}
+                Apply Recommended Shifts
+              </button>
+            )}
+          </div>
+        )}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -872,9 +1191,13 @@ function AdTable({
 function FatigueGroup({
   level,
   signals,
+  onPauseAd,
+  actionState,
 }: {
   level: "critical" | "warning" | "monitor";
   signals: FatigueSignal[];
+  onPauseAd?: (adId: string, adName?: string | null, campaignName?: string | null) => void;
+  actionState?: { loading: string | null; results: Record<string, { ok: boolean; message: string }> };
 }) {
   const borderColor = {
     critical: "border-l-red-500",
@@ -891,28 +1214,52 @@ function FatigueGroup({
         </span>
       </div>
       <div className="divide-y divide-gray-100">
-        {signals.map((s, i) => (
-          <div key={`${s.ad_id}-${i}`} className="px-5 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-medium text-gray-900 truncate" title={s.ad_name ?? ""}>
-                    {s.ad_name || "Unnamed"}
-                  </p>
-                  <a href={metaAdUrl(s.ad_id)} target="_blank" rel="noopener noreferrer"
-                     className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+        {signals.map((s, i) => {
+          const pauseKey = `pause_${s.ad_id}`;
+          const pauseResult = actionState?.results[pauseKey];
+          return (
+            <div key={`${s.ad_id}-${i}`} className="px-5 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-gray-900 truncate" title={s.ad_name ?? ""}>
+                      {s.ad_name || "Unnamed"}
+                    </p>
+                    <a href={metaAdUrl(s.ad_id)} target="_blank" rel="noopener noreferrer"
+                       className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <p className="text-xs text-gray-500">{s.campaign_name}</p>
                 </div>
-                <p className="text-xs text-gray-500">{s.campaign_name}</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                    {s.signal}
+                  </span>
+                  {onPauseAd && !pauseResult && (
+                    <button
+                      onClick={() => onPauseAd(s.ad_id, s.ad_name, s.campaign_name)}
+                      disabled={actionState?.loading === pauseKey}
+                      className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                    >
+                      {actionState?.loading === pauseKey ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        "Pause"
+                      )}
+                    </button>
+                  )}
+                  {pauseResult && (
+                    <span className={cn("text-xs", pauseResult.ok ? "text-green-600" : "text-red-600")}>
+                      {pauseResult.message}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded shrink-0">
-                {s.signal}
-              </span>
+              <p className="text-xs text-gray-500 mt-1">{s.detail}</p>
             </div>
-            <p className="text-xs text-gray-500 mt-1">{s.detail}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import type {
   ProductFull,
   CopywritingGuideline,
@@ -7,7 +8,10 @@ import type {
   AdTemplate,
   Angle,
   AwarenessLevel,
+  IterationType,
+  CashDna,
 } from "@/types";
+import { CLAUDE_MODEL } from "./constants";
 import { parseConceptProposals } from "./concept-generator";
 
 // Re-export for convenience
@@ -1085,3 +1089,187 @@ export const BRAINSTORM_MODES: {
     icon: "LayoutTemplate",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// V3.4: Claude-powered iteration copy rewrite
+// ---------------------------------------------------------------------------
+
+interface IterationCopyOpts {
+  parentName: string;
+  parentCopy: { primary: string[]; headlines: string[] };
+  parentDna: CashDna;
+  iterationType: IterationType;
+  iterationContext: Record<string, unknown>;
+  productContext: string; // Pre-built via buildProductContext()
+}
+
+function buildIterationPrompt(opts: IterationCopyOpts): { system: string; user: string } {
+  const { parentName, parentCopy, parentDna, iterationType, iterationContext } = opts;
+
+  const system = `You are a senior direct-response copywriter specializing in ad iteration. You take WINNING ad copy and create strategic variations by changing one dimension while keeping the proven core intact.
+
+${opts.productContext}
+
+## Your Task
+Rewrite the winning ad copy below based on the iteration instructions. Produce:
+- 2-3 primary text variations (English, 100-200 words each)
+- 2-3 headline variations (English, max 40 chars each)
+
+## Rules
+- Keep what works: The parent concept PROVED itself — preserve the emotional core
+- Change only what the iteration type specifies
+- Write in English (translations happen later)
+- NEVER invent medical claims
+- Apply Copy Blocks techniques: Pain Chain, Proof Braid, Curiosity characterizations, C.R.A.V.E.S.
+- Return ONLY valid JSON, no markdown fences`;
+
+  let iterationInstructions = "";
+
+  switch (iterationType) {
+    case "segment_swap": {
+      const segName = iterationContext.segment_name ?? "unknown";
+      const segDesc = iterationContext.segment_description ?? "";
+      const segDesire = iterationContext.segment_core_desire ?? "";
+      const segConstraints = iterationContext.segment_core_constraints ?? "";
+      const segDemographics = iterationContext.segment_demographics ?? "";
+      iterationInstructions = `## SEGMENT SWAP
+Rewrite for a new audience segment: **${segName}**
+${segDesc ? `Description: ${segDesc}` : ""}
+${segDesire ? `Core desire: ${segDesire}` : ""}
+${segConstraints ? `Core constraints: ${segConstraints}` : ""}
+${segDemographics ? `Demographics: ${segDemographics}` : ""}
+
+Keep the same angle (${parentDna.angle}) and hook structure. Adapt language, examples, emotional triggers, and pain points to resonate specifically with this audience. The ad should feel like it was written FOR them.`;
+      break;
+    }
+    case "mechanism_swap": {
+      const newMechanism = iterationContext.new_mechanism ?? "";
+      iterationInstructions = `## MECHANISM SWAP
+Same emotional triggers and promise, but explain the product differently.
+Original angle/mechanism: ${parentDna.angle}
+New mechanism: **${newMechanism}**
+
+Keep the same pain points and desired outcomes. Change HOW the product solves the problem — the "what it does for you" stays the same, the "how" changes.`;
+      break;
+    }
+    case "cash_swap": {
+      const element = String(iterationContext.swap_element ?? "");
+      const originalValue = String(iterationContext.original_value ?? "");
+      const newValue = String(iterationContext.new_value ?? "");
+
+      if (element === "hook") {
+        iterationInstructions = `## HOOK SWAP
+Original hook: "${originalValue}"
+New hook: **"${newValue}"**
+
+The hook sets up the rest of the ad. Rewrite the body copy to pay off the new hook's promise. The opening line changes everything — adapt the flow, examples, and build-up to match.`;
+      } else if (element === "angle") {
+        iterationInstructions = `## ANGLE SWAP
+Original angle: ${originalValue}
+New angle: **${newValue}**
+
+Same product benefits, framed through a completely different lens. The emotional triggers, proof points, and narrative structure should reflect the new angle.`;
+      } else if (element === "style") {
+        iterationInstructions = `## STYLE SWAP
+Original style: ${originalValue}
+New style: **${newValue}**
+
+Adjust tone, pacing, formatting, and language register to match the new style. A "native-medical" style reads like a health article. A "bold-statement" style is punchy and declarative. Match the voice.`;
+      }
+      break;
+    }
+  }
+
+  const parentCopyText = parentCopy.primary
+    .map((p, i) => `### Primary Text ${i + 1}\n${p}`)
+    .join("\n\n");
+  const parentHeadlinesText = parentCopy.headlines
+    .map((h, i) => `${i + 1}. ${h}`)
+    .join("\n");
+
+  const user = `## WINNING PARENT CONCEPT: "${parentName}"
+
+### CASH DNA
+- Angle: ${parentDna.angle ?? "unknown"}
+- Awareness: ${parentDna.awareness_level ?? "unknown"}
+- Style: ${parentDna.style ?? "unknown"}
+- Concept type: ${parentDna.concept_type ?? "unknown"}
+- Hooks: ${(parentDna.hooks ?? []).join(" | ")}
+
+### Current Ad Copy (PROVEN WINNER)
+${parentCopyText}
+
+### Current Headlines
+${parentHeadlinesText}
+
+---
+
+${iterationInstructions}
+
+---
+
+Return JSON:
+{
+  "ad_copy_primary": ["variation 1...", "variation 2..."],
+  "ad_copy_headline": ["headline 1...", "headline 2..."]
+}`;
+
+  return { system, user };
+}
+
+export async function generateIterationCopy(opts: {
+  parentName: string;
+  parentCopy: { primary: string[]; headlines: string[] };
+  parentDna: CashDna;
+  iterationType: IterationType;
+  iterationContext: Record<string, unknown>;
+  product: ProductFull;
+  guidelines: CopywritingGuideline[];
+  segments: ProductSegment[];
+}): Promise<{ primary: string[]; headlines: string[] }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+
+  const productBrief = opts.guidelines.find((g) => g.name === "Product Brief")?.content;
+  const productContext = buildProductContext(opts.product, productBrief, opts.guidelines, opts.segments);
+
+  const { system, user } = buildIterationPrompt({
+    parentName: opts.parentName,
+    parentCopy: opts.parentCopy,
+    parentDna: opts.parentDna,
+    iterationType: opts.iterationType,
+    iterationContext: opts.iterationContext,
+    productContext,
+  });
+
+  const client = new Anthropic({ apiKey });
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 4000,
+    temperature: 0.7,
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: user }],
+  });
+
+  const content =
+    response.content[0]?.type === "text"
+      ? response.content[0].text.trim()
+      : "";
+
+  if (!content) throw new Error("No response from AI");
+
+  // Parse JSON — strip markdown fences if present
+  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const parsed = JSON.parse(cleaned);
+
+  const primary: string[] = Array.isArray(parsed.ad_copy_primary)
+    ? parsed.ad_copy_primary.filter((s: unknown) => typeof s === "string" && s.length > 0)
+    : [];
+  const headlines: string[] = Array.isArray(parsed.ad_copy_headline)
+    ? parsed.ad_copy_headline.filter((s: unknown) => typeof s === "string" && s.length > 0)
+    : [];
+
+  if (primary.length === 0) throw new Error("AI returned no primary text variations");
+
+  return { primary, headlines };
+}

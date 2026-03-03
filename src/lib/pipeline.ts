@@ -510,7 +510,7 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
           }));
 
         if (rows.length > 0) {
-          await db.from("image_job_markets").upsert(rows, { onConflict: "image_job_id,market,meta_campaign_id", ignoreDuplicates: true });
+          await db.from("image_job_markets").upsert(rows, { onConflict: "image_job_id,market" });
           console.log(`[Pipeline] Auto-linked ${rows.length} orphaned meta_campaigns`);
         }
       }
@@ -718,8 +718,7 @@ export async function getPipelineData(): Promise<PipelineData> {
         .in("status", ["completed", "reviewing", "ready"]),
       db
         .from("image_job_markets")
-        .select("id, image_job_id, market, created_at")
-        .not("meta_campaign_id", "is", null),
+        .select("id, image_job_id, market, created_at"),
       db.from("concept_lifecycle").select("*").is("exited_at", null),
       db
         .from("concept_metrics")
@@ -889,26 +888,25 @@ export async function getPipelineData(): Promise<PipelineData> {
   // Language → market mapping
   const langToMarket: Record<string, string> = { da: "DK", no: "NO", sv: "SE", de: "DE" };
 
-  // Collect image_job IDs that already have market entries
-  const jobsWithMarkets = new Set(markets.map((m) => m.image_job_id));
+  // Collect (image_job_id, market) pairs that already have market entries
+  const existingMarketKeys = new Set(markets.map((m) => `${m.image_job_id}:${m.market}`));
 
-  // Fetch completed/ready jobs that have NO markets yet
+  // Fetch completed/ready jobs — create draft entries for markets without image_job_markets records
   const { data: draftJobs } = await db
     .from("image_jobs")
     .select("id, name, product, concept_number, status, cash_dna, created_at, target_languages, source_images(thumbnail_url, original_url)")
     .in("status", ["completed", "reviewing", "ready"]);
 
   for (const job of draftJobs ?? []) {
-    if (jobsWithMarkets.has(job.id)) continue; // already in pipeline via markets
-
     const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null; original_url: string | null }>;
     const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? sourceImages[0]?.original_url ?? null;
     const targetLangs = (job.target_languages ?? []) as string[];
 
-    // Create one draft entry per target market
+    // Create one draft entry per target market that doesn't have a market record yet
     for (const lang of targetLangs) {
       const market = langToMarket[lang];
       if (!market) continue;
+      if (existingMarketKeys.has(`${job.id}:${market}`)) continue; // already in pipeline
 
       concepts.push({
         id: `draft-${job.id}-${market}`, // synthetic ID for drafts
@@ -1088,20 +1086,22 @@ export async function getQueuedConcepts(product?: string): Promise<
     .filter(Boolean) as Array<{ imageJobMarketId: string; imageJobId: string; market: string; name: string; conceptNumber: number | null; product: string | null; queuedAt: string }>;
 }
 
-/** Count markets currently in testing stage, optionally by product */
-export async function getTestingCount(product?: string): Promise<number> {
+/** Count markets currently live (testing + review + active), optionally by product.
+ *  These all consume campaign budget, so they reduce available testing slots. */
+export async function getLiveConceptCount(product?: string): Promise<number> {
   const db = createServerSupabase();
+  const liveStages = ["testing", "review", "active"];
 
   if (product) {
-    const { data: testingRows } = await db
+    const { data: liveRows } = await db
       .from("concept_lifecycle")
       .select("image_job_market_id")
-      .eq("stage", "testing")
+      .in("stage", liveStages)
       .is("exited_at", null);
 
-    if (!testingRows || testingRows.length === 0) return 0;
+    if (!liveRows || liveRows.length === 0) return 0;
 
-    const marketIds = testingRows.map((r) => r.image_job_market_id);
+    const marketIds = liveRows.map((r) => r.image_job_market_id);
     const { data: markets } = await db
       .from("image_job_markets")
       .select("image_job_id")
@@ -1122,22 +1122,62 @@ export async function getTestingCount(product?: string): Promise<number> {
   const { count } = await db
     .from("concept_lifecycle")
     .select("image_job_market_id", { count: "exact", head: true })
-    .eq("stage", "testing")
+    .in("stage", liveStages)
     .is("exited_at", null);
 
   return count ?? 0;
 }
 
-/** Get testing_slots setting for a product (takes max across all countries for that product) */
+/**
+ * Auto-calculate testing slots based on Meta campaign budgets.
+ * Formula: floor(total_daily_budget / min_budget_per_concept)
+ * Falls back to static testing_slots from pipeline_settings if Meta API fails.
+ */
 export async function getTestingSlots(product: string): Promise<number> {
   const db = createServerSupabase();
-  const { data } = await db
+
+  // Get pipeline settings for fallback + min_budget_per_concept
+  const { data: settings } = await db
     .from("pipeline_settings")
-    .select("testing_slots")
+    .select("testing_slots, min_budget_per_concept, country")
     .eq("product", product);
 
-  if (!data || data.length === 0) return 5; // default
-  return Math.max(...data.map((r) => r.testing_slots ?? 5));
+  const staticSlots = settings && settings.length > 0
+    ? Math.max(...settings.map((r) => r.testing_slots ?? 5))
+    : 5;
+  const minBudgetPerConcept = settings?.[0]?.min_budget_per_concept ?? 100;
+
+  try {
+    // Get campaigns for this product
+    const { data: mappings } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id")
+      .eq("product", product);
+
+    if (!mappings || mappings.length === 0) return staticSlots;
+
+    const uniqueCampaignIds = [...new Set(mappings.map((m) => m.meta_campaign_id).filter(Boolean))];
+    if (uniqueCampaignIds.length === 0) return staticSlots;
+
+    // Fetch budgets from Meta API
+    let totalDailyBudget = 0;
+    for (const campaignId of uniqueCampaignIds) {
+      try {
+        const data = await getCampaignBudget(campaignId);
+        const dailyBudgetCents = parseInt(data.daily_budget || "0", 10);
+        totalDailyBudget += dailyBudgetCents / 100; // Convert cents to currency units
+      } catch {
+        // Skip campaigns that fail
+      }
+    }
+
+    if (totalDailyBudget <= 0) return staticSlots;
+
+    const calculatedSlots = Math.floor(totalDailyBudget / minBudgetPerConcept);
+    return Math.max(1, calculatedSlots); // At least 1 slot
+  } catch {
+    return staticSlots;
+  }
 }
 
 // ── Queue concept ────────────────────────────────────────────

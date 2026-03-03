@@ -27,9 +27,10 @@ export async function POST(
   const requestedStyles: StaticStyleId[] | undefined = Array.isArray(body.styles)
     ? body.styles.filter((s: string) => validStyleIds.has(s)) as StaticStyleId[]
     : undefined;
+  const MAX_IMAGES_PER_CONCEPT = 5;
   const count = requestedStyles?.length
-    ? Math.min(requestedStyles.length, STATIC_STYLES.length)
-    : Math.min(Math.max(body.count ?? 3, 1), STATIC_STYLES.length);
+    ? Math.min(requestedStyles.length, MAX_IMAGES_PER_CONCEPT)
+    : Math.min(Math.max(body.count ?? 3, 1), MAX_IMAGES_PER_CONCEPT);
 
   const db = createServerSupabase();
 

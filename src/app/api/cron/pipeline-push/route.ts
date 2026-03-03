@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { getQueuedConcepts, getTestingCount, getTestingSlots, syncPipelineMetrics } from "@/lib/pipeline";
+import { getQueuedConcepts, getLiveConceptCount, getTestingSlots, syncPipelineMetrics } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { notifyPushSuccess, notifyPushFailure, notifyPushSummary, notifyStageTransitions } from "@/lib/telegram-notify";
 import { getConversionsForTest, isShopifyConfigured } from "@/lib/shopify";
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
 
     // Process each product
     for (const [product, productQueue] of queuedByProduct) {
-      const testingCount = await getTestingCount(product);
+      const testingCount = await getLiveConceptCount(product);
       const testingSlots = await getTestingSlots(product);
       const availableSlots = Math.max(0, testingSlots - testingCount);
 
@@ -101,63 +101,83 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Push concepts up to available slots
+      // Push concepts up to available slots (each slot = one market)
       const toPush = productQueue.slice(0, availableSlots);
 
+      // Group by imageJobId (pushConceptToMeta works per image job)
+      const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
+      const groupedByJob = new Map<string, typeof toPush>();
       for (const concept of toPush) {
+        const list = groupedByJob.get(concept.imageJobId) ?? [];
+        list.push(concept);
+        groupedByJob.set(concept.imageJobId, list);
+      }
+
+      for (const [imageJobId, marketConcepts] of groupedByJob) {
+        const firstConcept = marketConcepts[0];
         try {
-          console.log(`[Pipeline Push] Pushing ${concept.name} (#${concept.conceptNumber}) to Meta...`);
+          const languages = marketConcepts
+            .map((c) => MARKET_TO_LANG[c.market])
+            .filter(Boolean);
 
-          // Push to Meta
-          const pushResult = await pushConceptToMeta(concept.imageJobId);
+          console.log(`[Pipeline Push] Pushing ${firstConcept.name} (#${firstConcept.conceptNumber}) markets [${marketConcepts.map((c) => c.market).join(", ")}] to Meta...`);
 
-          // Check if any language succeeded
-          const anySuccess = pushResult.results.some((r) => r.status === "pushed");
-          const countries = pushResult.results
-            .filter((r) => r.status === "pushed")
-            .map((r) => r.country);
+          // Push only the queued languages to Meta
+          const pushResult = await pushConceptToMeta(imageJobId, { languages });
 
-          if (anySuccess) {
-            // Transition from "queued" to "testing"
-            const now = new Date().toISOString();
-            await db
-              .from("concept_lifecycle")
-              .update({ exited_at: now })
-              .eq("image_job_id", concept.imageJobId)
-              .eq("stage", "queued")
-              .is("exited_at", null);
+          // Transition lifecycle per-market
+          const now = new Date().toISOString();
+          const pushedCountries: string[] = [];
 
-            await db.from("concept_lifecycle").insert({
-              image_job_id: concept.imageJobId,
-              stage: "testing",
-              entered_at: now,
-              signal: "auto_pushed",
-            });
+          for (const mc of marketConcepts) {
+            const lang = MARKET_TO_LANG[mc.market];
+            const langResult = pushResult.results.find((r) => r.language === lang);
 
-            results.push({ concept: concept.name, status: "pushed" });
+            if (langResult?.status === "pushed") {
+              // Close queued lifecycle
+              await db
+                .from("concept_lifecycle")
+                .update({ exited_at: now })
+                .eq("image_job_market_id", mc.imageJobMarketId)
+                .eq("stage", "queued")
+                .is("exited_at", null);
+
+              // Create testing lifecycle
+              await db.from("concept_lifecycle").insert({
+                image_job_market_id: mc.imageJobMarketId,
+                stage: "testing",
+                entered_at: now,
+                signal: "auto_pushed",
+              });
+
+              pushedCountries.push(mc.market);
+            }
+          }
+
+          if (pushedCountries.length > 0) {
+            results.push({ concept: firstConcept.name, status: "pushed" });
             await notifyPushSuccess({
-              number: concept.conceptNumber,
-              name: concept.name,
-              countries,
+              number: firstConcept.conceptNumber,
+              name: firstConcept.name,
+              countries: pushedCountries,
             });
           } else {
-            // All languages failed
             const errors = pushResult.results
               .filter((r) => r.error)
               .map((r) => r.error)
               .join("; ");
-            results.push({ concept: concept.name, status: "failed", error: errors });
+            results.push({ concept: firstConcept.name, status: "failed", error: errors });
             await notifyPushFailure(
-              { number: concept.conceptNumber, name: concept.name },
+              { number: firstConcept.conceptNumber, name: firstConcept.name },
               errors || "All languages failed"
             );
           }
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          console.error(`[Pipeline Push] Failed to push ${concept.name}:`, err);
-          results.push({ concept: concept.name, status: "failed", error: errorMsg });
+          console.error(`[Pipeline Push] Failed to push ${firstConcept.name}:`, err);
+          results.push({ concept: firstConcept.name, status: "failed", error: errorMsg });
           await notifyPushFailure(
-            { number: concept.conceptNumber, name: concept.name },
+            { number: firstConcept.conceptNumber, name: firstConcept.name },
             errorMsg
           );
         }
@@ -169,7 +189,7 @@ export async function GET(req: NextRequest) {
     const failed = results.filter((r) => r.status === "failed").length;
     if (pushed > 0 || failed > 0) {
       const remainingQueued = await getQueuedConcepts();
-      const testingCount = await getTestingCount();
+      const testingCount = await getLiveConceptCount();
       const firstProduct = queued[0]?.product ?? "happysleep";
       const slots = await getTestingSlots(firstProduct);
 
