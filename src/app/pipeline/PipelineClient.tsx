@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   RefreshCw,
   FileText,
@@ -20,6 +21,9 @@ import {
   Save,
   ListOrdered,
   Check,
+  ExternalLink,
+  Lightbulb,
+  Workflow,
 } from "lucide-react";
 import type {
   PipelineData,
@@ -36,40 +40,46 @@ const STAGES: PipelineStage[] = ["draft", "queued", "testing", "review", "active
 
 const STAGE_CONFIG: Record<
   PipelineStage,
-  { label: string; headerBg: string; headerText: string; borderColor: string }
+  { label: string; description: string; headerBg: string; headerText: string; borderColor: string }
 > = {
   draft: {
     label: "Draft",
+    description: "Pushed to Meta, waiting to go live",
     headerBg: "bg-blue-50",
     headerText: "text-blue-700",
     borderColor: "border-blue-200",
   },
   queued: {
     label: "Queued",
+    description: "In line to start testing",
     headerBg: "bg-violet-50",
     headerText: "text-violet-700",
     borderColor: "border-violet-200",
   },
   testing: {
     label: "Testing",
+    description: "Running \u2014 collecting data (2\u20133 days)",
     headerBg: "bg-slate-100",
     headerText: "text-slate-700",
     borderColor: "border-slate-200",
   },
   review: {
     label: "Review",
+    description: "Enough data to decide: scale or kill",
     headerBg: "bg-amber-50",
     headerText: "text-amber-700",
     borderColor: "border-amber-200",
   },
   active: {
     label: "Active",
+    description: "Performing well, running at full budget",
     headerBg: "bg-emerald-50",
     headerText: "text-emerald-700",
     borderColor: "border-emerald-200",
   },
   killed: {
     label: "Killed",
+    description: "Stopped \u2014 learnings saved",
     headerBg: "bg-gray-100",
     headerText: "text-gray-500",
     borderColor: "border-gray-200",
@@ -483,8 +493,8 @@ export default function PipelineClient() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Creative Pipeline</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track concepts from draft to scale</p>
+          <h1 className="text-2xl font-bold text-gray-900">Ad Tracker</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Track your ads from launch to scale</p>
         </div>
         <div className="flex items-center gap-3">
           {pipelineData?.lastSyncedAt && (
@@ -616,11 +626,20 @@ export default function PipelineClient() {
       {/* Empty state */}
       {concepts.length === 0 && !loading && (
         <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl mb-8">
-          <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-sm font-medium text-gray-600 mb-1">No concepts in the pipeline yet</h3>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            Create concepts in Ad Concepts, push them to Meta, then they&apos;ll appear here automatically.
-          </p>
+          <Workflow className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <h3 className="text-sm font-medium text-gray-600 mb-3">No ads being tracked yet</h3>
+          <div className="text-xs text-gray-400 max-w-md mx-auto space-y-1.5 mb-4">
+            <p><span className="font-medium text-gray-500">1.</span> Go to <strong className="text-gray-600">Brainstorm</strong> to generate ad concepts</p>
+            <p><span className="font-medium text-gray-500">2.</span> Open <strong className="text-gray-600">Static Ads</strong> to design images and write copy</p>
+            <p><span className="font-medium text-gray-500">3.</span> Push to Meta &mdash; ads appear here automatically</p>
+          </div>
+          <Link
+            href="/brainstorm"
+            className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Lightbulb className="w-4 h-4" />
+            Start Brainstorming
+          </Link>
         </div>
       )}
 
@@ -634,16 +653,19 @@ export default function PipelineClient() {
               <div key={stage} className="flex-1 min-w-[240px]">
                 {/* Column header */}
                 <div
-                  className={`flex items-center justify-between px-3 py-2 rounded-t-lg border ${config.headerBg} ${config.borderColor}`}
+                  className={`px-3 py-2 rounded-t-lg border ${config.headerBg} ${config.borderColor}`}
                 >
-                  <span className={`text-xs font-semibold uppercase tracking-wider ${config.headerText}`}>
-                    {config.label}
-                  </span>
-                  <span
-                    className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${config.headerBg} ${config.headerText}`}
-                  >
-                    {stageConcepts.length}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${config.headerText}`}>
+                      {config.label}
+                    </span>
+                    <span
+                      className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${config.headerBg} ${config.headerText}`}
+                    >
+                      {stageConcepts.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 font-normal mt-0.5">{config.description}</p>
                 </div>
 
                 {/* Column body */}
@@ -1240,6 +1262,15 @@ function ConceptModal({
                 {concept.daysSincePush}d total{concept.daysInStage !== concept.daysSincePush ? ` · ${concept.daysInStage}d in ${STAGE_CONFIG[concept.stage].label}` : ""}
               </span>
             </div>
+            {concept.imageJobId && (
+              <Link
+                href={`/images/${concept.imageJobId}`}
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 mt-1"
+                target="_blank"
+              >
+                View in Static Ads <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
           </div>
           <button
             onClick={onClose}

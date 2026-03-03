@@ -14,7 +14,7 @@ type Tab = "ads" | "brands";
 
 const PAGE_SIZE = 50;
 
-export default function SpyDashboard() {
+export default function SpyDashboard({ hideHeader }: { hideHeader?: boolean } = {}) {
   const [tab, setTab] = useState<Tab>("ads");
 
   // Brands
@@ -200,35 +200,37 @@ export default function SpyDashboard() {
   return (
     <div className="p-8 max-w-[1400px]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Ad Spy</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Monitor competitor ads from Meta Ad Library
-          </p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Ad Spy</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Monitor competitor ads from Meta Ad Library
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {tab === "brands" && (
+              <>
+                <button
+                  onClick={handleScrapeAll}
+                  disabled={scrapeAllRunning || brands.length === 0}
+                  className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 hover:text-gray-800 text-sm font-medium px-3 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {scrapeAllRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  {scrapeAllRunning ? "Scraping..." : "Scrape All"}
+                </button>
+                <button
+                  onClick={() => { setEditBrand(null); setShowAddBrand(true); }}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Brand
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {tab === "brands" && (
-            <>
-              <button
-                onClick={handleScrapeAll}
-                disabled={scrapeAllRunning || brands.length === 0}
-                className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 hover:text-gray-800 text-sm font-medium px-3 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {scrapeAllRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                {scrapeAllRunning ? "Scraping..." : "Scrape All"}
-              </button>
-              <button
-                onClick={() => { setEditBrand(null); setShowAddBrand(true); }}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Brand
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-5 border-b border-gray-200">

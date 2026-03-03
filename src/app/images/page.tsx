@@ -203,7 +203,7 @@ export default function ImagesPage() {
     <div className={`p-8 ${viewMode === "board" ? "max-w-[1400px]" : "max-w-6xl"}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold text-gray-900">Ad Concepts</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Static Ads</h1>
         <div className="flex items-center gap-2">
           {/* View toggle */}
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">

@@ -533,7 +533,7 @@ export default function TrackingClient({
             <div className="bg-white border border-gray-200 rounded-xl p-8 text-center mb-6">
               <BarChart3 className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-sm text-gray-500">No campaign data for this period.</p>
-              <p className="text-xs text-gray-400 mt-1">Push ads to Meta from the Ad Concepts page to see performance data here.</p>
+              <p className="text-xs text-gray-400 mt-1">Push ads to Meta from the Static Ads page to see performance data here.</p>
             </div>
           )}
 

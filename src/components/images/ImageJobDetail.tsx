@@ -1015,7 +1015,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Ad Concepts
+        Static Ads
       </Link>
 
       {/* Stall detection banner */}

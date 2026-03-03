@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import SpyDashboard from "@/components/spy/SpyDashboard";
-
-export default function SpyPage() {
-  return <SpyDashboard />;
+export default function SpyRedirect() {
+  redirect("/ad-library?tab=scraped");
 }

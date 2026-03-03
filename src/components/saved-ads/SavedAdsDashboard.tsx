@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 const PAGE_SIZE = 50;
 
-export default function SavedAdsDashboard() {
+export default function SavedAdsDashboard({ hideHeader, deepLinkId }: { hideHeader?: boolean; deepLinkId?: string | null } = {}) {
   const searchParams = useSearchParams();
 
   const [ads, setAds] = useState<SavedAd[]>([]);
@@ -56,14 +56,14 @@ export default function SavedAdsDashboard() {
     fetchAds(1, false);
   }, [fetchAds]);
 
-  // Deep link support: ?id=xxx from Telegram bot
+  // Deep link support: ?id=xxx from Telegram bot (prop or URL param)
   useEffect(() => {
-    const deepLinkId = searchParams.get("id");
-    if (deepLinkId && ads.length > 0) {
-      const found = ads.find((a) => a.id === deepLinkId);
+    const linkId = deepLinkId || searchParams.get("id");
+    if (linkId && ads.length > 0) {
+      const found = ads.find((a) => a.id === linkId);
       if (found) setSelectedAd(found);
     }
-  }, [searchParams, ads]);
+  }, [deepLinkId, searchParams, ads]);
 
   async function handleBookmark(id: string, bookmarked: boolean) {
     const res = await fetch(`/api/saved-ads/${id}`, {
@@ -113,14 +113,16 @@ export default function SavedAdsDashboard() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Saved Ads</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Ads captured via Telegram bot &middot; {total} total
-          </p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Saved Ads</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Ads captured via Telegram bot &middot; {total} total
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-5">

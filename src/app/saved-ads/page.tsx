@@ -1,10 +1,14 @@
-import { Suspense } from "react";
-import SavedAdsDashboard from "@/components/saved-ads/SavedAdsDashboard";
+import { redirect } from "next/navigation";
 
-export default function SavedAdsPage() {
-  return (
-    <Suspense>
-      <SavedAdsDashboard />
-    </Suspense>
+export default async function SavedAdsRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const params = await searchParams;
+  redirect(
+    params.id
+      ? `/ad-library?tab=saved&id=${params.id}`
+      : "/ad-library?tab=saved"
   );
 }

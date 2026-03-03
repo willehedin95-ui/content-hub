@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse, Sun, Library } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Sun, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -43,12 +43,10 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
       label: "Ads",
       icon: Megaphone,
       children: [
-        { href: "/pipeline", label: "Creative Pipeline", icon: Workflow },
-        { href: "/concept-generator", label: "AI Concepts", icon: Zap, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
-        { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb },
-        { href: "/images", label: "Ad Concepts", icon: Image },
-        { href: "/spy", label: "Ad Spy", icon: Eye },
-        { href: "/saved-ads", label: "Saved Ads", icon: Bookmark },
+        { href: "/pipeline", label: "Ad Tracker", icon: Workflow },
+        { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
+        { href: "/images", label: "Static Ads", icon: Image },
+        { href: "/ad-library", label: "Ad Library", icon: Eye },
         { href: "/hooks", label: "Hook Bank", icon: Library },
       ],
     },

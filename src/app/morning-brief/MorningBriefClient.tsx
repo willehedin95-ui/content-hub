@@ -21,8 +21,15 @@ import {
   Gauge,
   ArrowUpRight,
   ArrowDownRight,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const META_AD_ACCOUNT_ID = process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID || "";
+
+function metaAdUrl(adId: string) {
+  return `https://business.facebook.com/adsmanager/manage/ads?act=${META_AD_ACCOUNT_ID}&selected_ad_ids=${adId}`;
+}
 
 // ── Types ──
 
@@ -442,10 +449,16 @@ export default function MorningBriefClient() {
               <div key={b.ad_id} className="px-5 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
-                      <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
-                      {b.ad_name || "Unnamed"}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
+                        <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
+                        {b.ad_name || "Unnamed"}
+                      </p>
+                      <a href={metaAdUrl(b.ad_id)} target="_blank" rel="noopener noreferrer"
+                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                     <p className="text-xs text-gray-500">{b.campaign_name}</p>
                   </div>
                   <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded shrink-0">
@@ -491,10 +504,16 @@ export default function MorningBriefClient() {
               <div key={w.ad_id} className="px-5 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
-                      <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
-                      {w.ad_name || "Unnamed"}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
+                        <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
+                        {w.ad_name || "Unnamed"}
+                      </p>
+                      <a href={metaAdUrl(w.ad_id)} target="_blank" rel="noopener noreferrer"
+                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                     <p className="text-xs text-gray-500">{w.campaign_name}</p>
                   </div>
                   <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded shrink-0">
@@ -537,10 +556,16 @@ export default function MorningBriefClient() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate" title={f.ad_name ?? ""}>
-                      <Stethoscope className="w-3.5 h-3.5 text-purple-600 inline mr-1.5" />
-                      {f.ad_name || "Unnamed"}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-900 truncate" title={f.ad_name ?? ""}>
+                        <Stethoscope className="w-3.5 h-3.5 text-purple-600 inline mr-1.5" />
+                        {f.ad_name || "Unnamed"}
+                      </p>
+                      <a href={metaAdUrl(f.ad_id)} target="_blank" rel="noopener noreferrer"
+                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                     <p className="text-xs text-gray-500">{f.campaign_name}</p>
                   </div>
                   <span
@@ -807,9 +832,15 @@ function AdTable({
               {i + 1}
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate" title={ad.ad_name ?? ""}>
-                {ad.ad_name || "Unnamed"}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-gray-900 truncate" title={ad.ad_name ?? ""}>
+                  {ad.ad_name || "Unnamed"}
+                </p>
+                <a href={metaAdUrl(ad.ad_id)} target="_blank" rel="noopener noreferrer"
+                   className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
               <p className="text-xs text-gray-500 truncate">{ad.campaign_name}</p>
               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                 <span>Spend: {formatCurrency(ad.spend)}</span>
@@ -864,9 +895,15 @@ function FatigueGroup({
           <div key={`${s.ad_id}-${i}`} className="px-5 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate" title={s.ad_name ?? ""}>
-                  {s.ad_name || "Unnamed"}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-gray-900 truncate" title={s.ad_name ?? ""}>
+                    {s.ad_name || "Unnamed"}
+                  </p>
+                  <a href={metaAdUrl(s.ad_id)} target="_blank" rel="noopener noreferrer"
+                     className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
                 <p className="text-xs text-gray-500">{s.campaign_name}</p>
               </div>
               <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded shrink-0">
