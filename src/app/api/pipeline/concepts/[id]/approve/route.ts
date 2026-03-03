@@ -87,7 +87,7 @@ export async function POST(
       })),
       ...conceptHeadlines.map((h: string) => ({
         hook_text: h.trim(),
-        hook_type: "headline",
+        hook_type: "hook",
         product: typedConcept.product,
         awareness_level: cashDna?.awareness_level || null,
         angle: cashDna?.angle || null,

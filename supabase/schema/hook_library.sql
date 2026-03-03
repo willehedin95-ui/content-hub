@@ -2,8 +2,7 @@
 CREATE TABLE hook_library (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   hook_text TEXT NOT NULL,
-  hook_type TEXT NOT NULL DEFAULT 'hook'
-    CHECK (hook_type IN ('hook', 'headline', 'native_headline')),
+  hook_type TEXT NOT NULL DEFAULT 'hook',
   product TEXT CHECK (product IS NULL OR product IN ('happysleep', 'hydro13')),
   awareness_level TEXT,
   angle TEXT,

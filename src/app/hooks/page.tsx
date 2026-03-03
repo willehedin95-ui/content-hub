@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Library, Plus, Loader2, Check, Archive, RotateCcw, Trash2, Pencil, X } from "lucide-react";
-import { HookLibraryEntry, HookType, HookStatus, HookSource } from "@/types";
+import { HookLibraryEntry, HookStatus, HookSource } from "@/types";
 import { toast } from "sonner";
 
 /* ── Filter option types ──────────────────────────── */
 
 type ProductFilter = "all" | "happysleep" | "hydro13" | "universal";
-type TypeFilter = "all" | HookType;
 type StatusFilter = "all" | HookStatus;
 type SourceFilter = "all" | "manual" | "telegram" | "concept_auto" | "spy_ad";
 
@@ -17,13 +16,6 @@ const PRODUCT_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "happysleep", label: "HappySleep" },
   { value: "hydro13", label: "Hydro13" },
   { value: "universal", label: "Universal" },
-];
-
-const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "hook", label: "Hook" },
-  { value: "headline", label: "Headline" },
-  { value: "native_headline", label: "Native Headline" },
 ];
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
@@ -55,11 +47,6 @@ function productLabel(product: string | null) {
   return "Universal";
 }
 
-function typeLabel(t: HookType) {
-  if (t === "native_headline") return "Native Headline";
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
 function sourceLabel(s: HookSource) {
   const map: Record<HookSource, string> = {
     manual: "Manual",
@@ -86,12 +73,10 @@ export default function HooksPage() {
   // Quick-add form
   const [newText, setNewText] = useState("");
   const [newProduct, setNewProduct] = useState<ProductFilter>("all");
-  const [newType, setNewType] = useState<HookType>("hook");
   const [adding, setAdding] = useState(false);
 
   // Filters
   const [filterProduct, setFilterProduct] = useState<ProductFilter>("all");
-  const [filterType, setFilterType] = useState<TypeFilter>("all");
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("all");
   const [filterSource, setFilterSource] = useState<SourceFilter>("all");
 
@@ -109,7 +94,6 @@ export default function HooksPage() {
     try {
       const params = new URLSearchParams();
       if (filterProduct !== "all") params.set("product", filterProduct);
-      if (filterType !== "all") params.set("hook_type", filterType);
       if (filterStatus !== "all") params.set("status", filterStatus);
       if (filterSource !== "all") params.set("source", filterSource);
 
@@ -121,7 +105,7 @@ export default function HooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterProduct, filterType, filterStatus, filterSource]);
+  }, [filterProduct, filterStatus, filterSource]);
 
   useEffect(() => {
     fetchHooks();
@@ -130,7 +114,7 @@ export default function HooksPage() {
   // Clear selection when filters change
   useEffect(() => {
     setSelected(new Set());
-  }, [filterProduct, filterType, filterStatus, filterSource]);
+  }, [filterProduct, filterStatus, filterSource]);
 
   /* ── Quick-add ──────────────────────────────────── */
 
@@ -140,7 +124,6 @@ export default function HooksPage() {
     try {
       const body: Record<string, unknown> = {
         hook_text: newText.trim(),
-        hook_type: newType,
         source: "manual",
       };
       if (newProduct !== "all" && newProduct !== "universal") {
@@ -311,15 +294,6 @@ export default function HooksPage() {
               </option>
             ))}
           </select>
-          <select
-            value={newType}
-            onChange={(e) => setNewType(e.target.value as HookType)}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          >
-            <option value="hook">Hook</option>
-            <option value="headline">Headline</option>
-            <option value="native_headline">Native Headline</option>
-          </select>
           <button
             onClick={handleAdd}
             disabled={!newText.trim() || adding}
@@ -344,19 +318,6 @@ export default function HooksPage() {
               key={o.value}
               active={filterProduct === o.value}
               onClick={() => setFilterProduct(o.value)}
-            >
-              {o.label}
-            </FilterChip>
-          ))}
-        </FilterRow>
-
-        {/* Type */}
-        <FilterRow label="Type">
-          {TYPE_OPTIONS.map((o) => (
-            <FilterChip
-              key={o.value}
-              active={filterType === o.value}
-              onClick={() => setFilterType(o.value)}
             >
               {o.label}
             </FilterChip>
@@ -492,11 +453,6 @@ export default function HooksPage() {
                       )}`}
                     >
                       {productLabel(hook.product)}
-                    </span>
-
-                    {/* Type */}
-                    <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200">
-                      {typeLabel(hook.hook_type)}
                     </span>
 
                     {/* Source */}

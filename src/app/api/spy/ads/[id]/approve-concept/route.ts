@@ -98,7 +98,7 @@ export async function POST(
     const conceptHeadlines = proposal.ad_copy_headline || [];
     const hookRows = [
       ...conceptHooks.map((h: string) => ({ hook_text: h.trim(), hook_type: "hook", product, awareness_level: cashDna?.awareness_level || null, angle: cashDna?.angle || null, source: "spy_ad", status: "unreviewed" })),
-      ...conceptHeadlines.map((h: string) => ({ hook_text: h.trim(), hook_type: "headline", product, awareness_level: cashDna?.awareness_level || null, angle: cashDna?.angle || null, source: "spy_ad", status: "unreviewed" })),
+      ...conceptHeadlines.map((h: string) => ({ hook_text: h.trim(), hook_type: "hook", product, awareness_level: cashDna?.awareness_level || null, angle: cashDna?.angle || null, source: "spy_ad", status: "unreviewed" })),
     ];
     if (hookRows.length > 0) {
       await db.from("hook_library").upsert(hookRows, { ignoreDuplicates: true });

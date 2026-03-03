@@ -384,7 +384,7 @@ export async function buildHookInspiration(product: string): Promise<string> {
 
   const { data: hooks } = await db
     .from("hook_library")
-    .select("hook_text, hook_type, awareness_level, angle")
+    .select("hook_text, awareness_level, angle")
     .eq("status", "approved")
     .or(`product.eq.${product},product.is.null`)
     .order("created_at", { ascending: false })
@@ -392,31 +392,18 @@ export async function buildHookInspiration(product: string): Promise<string> {
 
   if (!hooks || hooks.length === 0) return "";
 
-  const hookItems = hooks.filter((h) => h.hook_type === "hook");
-  const headlineItems = hooks.filter((h) => h.hook_type === "headline");
-
   const lines: string[] = [
     "\n---\n",
     "## PROVEN HOOKS — USE AS INSPIRATION (DO NOT COPY)",
-    "These hooks and headlines have been curated from winning concepts. Study the TONE, PATTERN, and EMOTIONAL TRIGGERS — then create ORIGINAL hooks that are equally compelling but completely different in content.\n",
+    "These hooks have been curated from winning concepts. Study the TONE, PATTERN, and EMOTIONAL TRIGGERS — then create ORIGINAL hooks that are equally compelling but completely different in content.\n",
+    "### Curated hooks:",
   ];
 
-  if (hookItems.length > 0) {
-    lines.push("### Hooks (scroll-stopping openers):");
-    hookItems.slice(0, 15).forEach((h) => {
-      const meta = [h.awareness_level, h.angle].filter(Boolean).join(" / ");
-      lines.push(`- "${h.hook_text}"${meta ? ` (${meta})` : ""}`);
-    });
-    lines.push("");
-  }
-
-  if (headlineItems.length > 0) {
-    lines.push("### Headlines (short, benefit-focused):");
-    headlineItems.slice(0, 10).forEach((h) => {
-      lines.push(`- "${h.hook_text}"`);
-    });
-    lines.push("");
-  }
+  hooks.slice(0, 25).forEach((h) => {
+    const meta = [h.awareness_level, h.angle].filter(Boolean).join(" / ");
+    lines.push(`- "${h.hook_text}"${meta ? ` (${meta})` : ""}`);
+  });
+  lines.push("");
 
   return lines.join("\n");
 }

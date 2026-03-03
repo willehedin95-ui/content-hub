@@ -199,7 +199,7 @@ export interface CashDna {
 
 // --- Hook Library Types ---
 
-export type HookType = "hook" | "headline" | "native_headline";
+export type HookType = "hook";
 export type HookSource = "manual" | "telegram" | "concept_auto" | "spy_ad";
 export type HookStatus = "unreviewed" | "approved" | "archived";
 
