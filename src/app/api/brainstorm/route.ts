@@ -7,6 +7,7 @@ import { safeError } from "@/lib/api-error";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
+  buildHookInspiration,
   parseConceptProposals,
 } from "@/lib/brainstorm";
 import type { ProductFull, CopywritingGuideline, ProductSegment, BrainstormMode } from "@/types";
@@ -116,13 +117,17 @@ export async function POST(req: NextRequest) {
     concept_description: string | null;
   }>;
 
+  // Fetch approved hooks for inspiration
+  const hookInspiration = await buildHookInspiration(productSlug);
+
   // Build prompts
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
     productBrief,
     guidelines,
     segments,
-    mode
+    mode,
+    hookInspiration
   );
 
   const userPrompt = buildBrainstormUserPrompt(

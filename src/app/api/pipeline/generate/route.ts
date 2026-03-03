@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   buildBrainstormSystemPrompt,
+  buildHookInspiration,
   parseConceptProposals,
 } from "@/lib/brainstorm";
 import {
@@ -84,6 +85,9 @@ export async function POST(request: Request) {
     const guidelines = (productData.copywriting_guidelines || []) as CopywritingGuideline[];
     const productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
 
+    // Fetch approved hooks for inspiration
+    const hookInspiration = await buildHookInspiration(product);
+
     // Build prompts
     const brainstormMode = mapModeToBrainstormMode(mode);
     const systemPrompt = buildBrainstormSystemPrompt(
@@ -91,7 +95,8 @@ export async function POST(request: Request) {
       productBrief,
       guidelines,
       (productData.segments || []) as ProductSegment[],
-      brainstormMode
+      brainstormMode,
+      hookInspiration
     );
 
     // Enhanced user prompt with coverage gaps + hypothesis requirement
