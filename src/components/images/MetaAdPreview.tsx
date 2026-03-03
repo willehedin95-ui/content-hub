@@ -22,7 +22,9 @@ import {
   MetaPageConfig,
   ConceptCopyTranslations,
   ConceptCopyTranslation,
+  ComplianceResult,
 } from "@/types";
+import ComplianceCheck from "./ComplianceCheck";
 import { getSettings } from "@/lib/settings";
 
 interface Props {
@@ -69,6 +71,9 @@ export default function MetaAdPreview({
   const [imageIndex, setImageIndex] = useState(0);
   const [primaryTextIndex, setPrimaryTextIndex] = useState(0);
   const [headlineIndex, setHeadlineIndex] = useState(0);
+  const [complianceResult, setComplianceResult] = useState<ComplianceResult | null>(
+    job.compliance_result ?? null
+  );
 
   // Variation performance tracking
   const [variationInsights, setVariationInsights] = useState<Array<{
@@ -400,6 +405,13 @@ export default function MetaAdPreview({
         </div>
       </div>
 
+      {/* Compliance Check */}
+      <ComplianceCheck
+        jobId={job.id}
+        complianceResult={complianceResult}
+        onResultUpdate={setComplianceResult}
+      />
+
       {/* Readiness checklist */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-2">
         <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
@@ -437,6 +449,18 @@ export default function MetaAdPreview({
             </div>
           );
         })}
+        {complianceResult && complianceResult.overall_verdict === "REJECT" && (
+          <div className="flex items-center gap-2 text-xs text-red-600 mt-2">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Compliance issues detected — review before publishing</span>
+          </div>
+        )}
+        {complianceResult && complianceResult.overall_verdict === "WARNING" && (
+          <div className="flex items-center gap-2 text-xs text-amber-600 mt-2">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Compliance warnings — review recommended</span>
+          </div>
+        )}
       </div>
 
       {/* Push button */}
