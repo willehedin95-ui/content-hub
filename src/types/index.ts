@@ -197,6 +197,29 @@ export interface CashDna {
   concept_description: string;
 }
 
+// --- Hook Library Types ---
+
+export type HookType = "hook" | "headline" | "native_headline";
+export type HookSource = "manual" | "telegram" | "concept_auto" | "spy_ad";
+export type HookStatus = "unreviewed" | "approved" | "archived";
+
+export interface HookLibraryEntry {
+  id: string;
+  hook_text: string;
+  hook_type: HookType;
+  product: Product | null;
+  awareness_level: AwarenessLevel | null;
+  angle: Angle | null;
+  tags: string[];
+  source: HookSource;
+  source_concept_id: string | null;
+  source_url: string | null;
+  status: HookStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Image Translation Types ---
 
 export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed";
