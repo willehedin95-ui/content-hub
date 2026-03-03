@@ -33,10 +33,10 @@ export async function POST(
     return NextResponse.json({ error: "A/B test not found" }, { status: 404 });
   }
 
-  // Fetch both translations
+  // Fetch both translations (control needs slug to deploy at same URL)
   const { data: control } = await db
     .from("translations")
-    .select("translated_html")
+    .select("translated_html, slug")
     .eq("id", test.control_id)
     .single();
 
@@ -52,6 +52,10 @@ export async function POST(
       { status: 400 }
     );
   }
+
+  // Use the control translation's slug so the A/B router replaces
+  // the existing page — no need to change URLs in Meta ads
+  const deploySlug = control.slug || test.slug;
 
   const appUrl = process.env.APP_URL;
   if (!appUrl) {
@@ -96,7 +100,7 @@ export async function POST(
     const result = await publishABTest(
       control.translated_html,
       variant.translated_html,
-      test.slug,
+      deploySlug,
       test.language as Language,
       test.split,
       id,

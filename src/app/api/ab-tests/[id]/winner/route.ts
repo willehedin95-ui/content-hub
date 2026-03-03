@@ -51,6 +51,15 @@ export async function POST(
     .eq("id", winningTranslationId)
     .single();
 
+  // Fetch control translation's slug so we deploy at the same URL
+  const { data: controlTranslation } = await db
+    .from("translations")
+    .select("slug")
+    .eq("id", test.control_id)
+    .single();
+
+  const deploySlug = controlTranslation?.slug || test.slug;
+
   if (!winnerTranslation?.translated_html) {
     return NextResponse.json(
       { error: "Winning translation has no HTML" },
@@ -80,10 +89,10 @@ export async function POST(
   };
 
   try {
-    // Deploy the winning HTML to the main slug (replaces router)
+    // Deploy the winning HTML to the control's slug (replaces router)
     const result = await publishPage(
       winnerTranslation.translated_html,
-      test.slug,
+      deploySlug,
       test.language as Language,
       undefined,
       undefined,

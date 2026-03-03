@@ -251,13 +251,76 @@ WHY "UGLY" BEATS "BEAUTIFUL":
 2. Uncomfortable close-ups — Skin conditions, swollen joints, bruised food. Triggers hard scroll-stop.
 3. Messy real-life scenes — Cluttered kitchen counter, medicine cabinet, bedside table with supplements. Relatable, not aspirational.
 
-HEADLINE FORMULA: "The [unexpected] reason [common symptom] gets worse after [age]"
-- "The concerning reason joint pain gets worse for mums after 40 (not what your doctor says)"
-- "The forgotten reason falling asleep gets harder after 50"
-
 DESTINATION: Always send to advertorial/educational content, NOT product page. Informed buyers convert 3-4x better.
 
 RULE: If it makes your designer uncomfortable, it probably converts.`;
+
+export const HEADLINE_FORMULAS = `## PROVEN HEADLINE FORMULAS (From Scaled Native Ads)
+
+These structural formulas come from headlines that have actually scaled on native ad platforms. Adapt the brackets to your product. Keep the structure. NEVER use the examples verbatim — they show the PATTERN only.
+
+### BY PSYCHOLOGICAL MECHANISM
+
+**Authority Reveal** — Borrows credibility from a trusted figure
+1. "[Authority] reveals: [surprising claim about symptom]"
+2. "[Authority figure] exposed the [industry] secret about [symptom]"
+3. "[Authority]: [imperative action] if you have [condition]"
+
+**Unexpected Cause** — Reframes what they think is causing the problem
+4. "The [unexpected] reason [symptom] gets worse after [age]"
+5. "[Problem] has nothing to do with [expected cause]. Stop doing [this common thing]"
+6. "A new study found the real reason [problem] happens. It's not [common belief]."
+
+**Time-Locked Trick** — Specificity creates believability
+7. "[X]-second [method] [eliminates/fixes] [problem]"
+8. "The [timeframe] pattern that [percentage] of adults over [age] experience"
+
+**Geographic/Cultural Secret** — Exotic origin = curiosity + authority
+9. "People in [country] have done this since [year]. [Your country] just caught on."
+10. "Why [age]-year-old [nationality] never get [condition]"
+11. "How a long-forgotten [cultural] tradition [result]"
+
+**Social Proof Scale** — Specific numbers beat vague claims
+12. "Why [X,XXX+] [demographic] swear by this [method/product]"
+13. "[Specific person] [achieved result] in [timeframe]. [Authority] asked how."
+
+**Food/Substance Trigger** — Everyone eats, universal relevance
+14. "[Food/drink] [does something alarming] to your [body part]"
+15. "Cut out this 1 [food] and watch your [symptom] [dramatic improvement]"
+
+**Named Mechanism** — Giving the method a name makes it memorable and shareable
+16. "The '[evocative name]' [epidemic/method/trick] [consequence]"
+17. "'[Metaphor name]' [action verb] [result] in [timeframe]"
+
+**Nighttime/Morning Ritual** — Time-of-day specificity + routine = easy action
+18. "The nighttime habit that's [negative consequence] (it's not [obvious thing])"
+19. "Do this [duration] [time of day] trick for [benefit] every [time period]"
+
+**Warning/Contrarian** — Pattern interrupt through alarm
+20. "Why [common solution] stops working after [timeframe] (and what to do instead)"
+21. "The #1 mistake people make when trying to fix [problem]"
+
+**Symptom Reframe** — Takes something neutral/normal and reveals it as a warning sign (from Copy Blocks)
+22. "If you [common behavior], your [body part/system] is already [alarming state]"
+23. "[Normal habit] is actually a sign of [hidden condition]"
+
+**WMTD (What Makes The Difference)** — Compares two similar things with different outcomes to create curiosity gap (from Copy Blocks)
+24. "These two [subjects] are the same [shared traits] — yet one [good outcome] and the other [bad outcome]. What makes the difference?"
+
+**Taboo Solution** — Presents the solution as something they "shouldn't" be doing (from Copy Blocks Idea Caricatures)
+25. "Eat this '[forbidden food type]' before bed to [desired result]"
+26. "[Do forbidden thing] to [achieve desired outcome] (yes, really)"
+
+**Anti-Constraint** — Dissolves the main objection IN the headline itself (from Copy Blocks)
+27. "[Indulgent method] [achieves result] without [expected sacrifice]"
+
+### STRUCTURAL MODIFIERS (combine with any formula above)
+
+- **Specificity anchors**: Use exact numbers (32,684 not "thousands"), ages (after 40, not "middle-aged"), timeframes (7 seconds, not "quickly")
+- **Parenthetical twist**: Add a surprise or negation in parentheses — "(not what your doctor says)", "(it's not [obvious thing])", "(and it's not what you think)"
+- **Lowercase casual**: For social feeds, lowercase + casual tone outperforms formal
+- **Question reframe**: Turn any statement into a question for higher engagement on some placements
+- **Quiz format**: "[QUIZ] Which [thing] should you [action] to [result]?" — interactive feel`;
 
 const AD_TEMPLATES = `## 14 AD TEMPLATES (Copy Blocks System — 3-part structures)
 
@@ -527,6 +590,8 @@ ${STORMING_SOURCES}
 
 ${AVATAR_FACTS_FRAMEWORK}
 
+${HEADLINE_FORMULAS}
+
 ---
 
 ## PRODUCT KNOWLEDGE
@@ -697,20 +762,9 @@ Visual direction MUST specify which of the 3 native image types to use:
 2. native-closeup — raw skin textures, swollen joints, uncomfortable body close-ups
 3. native-messy — cluttered medicine cabinets, messy bedside tables, real-life bathroom shelves
 
-## NATIVE HEADLINE FORMULAS
+${HEADLINE_FORMULAS}
 
-Generate editorial-style headlines that read like news articles, not ads. Use these proven formulas:
-- "The [unexpected] reason [common symptom] gets worse after [age]"
-- "The forgotten [noun] that [surprising benefit/discovery]"
-- "[Authority/Study] finally admits what [outsider group] knew all along"
-- "If you [common behavior], your [body part/system] is already [alarming state]"
-- "The concerning reason [symptom] is [consequence] (not what your doctor says)"
-
-Examples:
-- "The concerning reason joint pain gets worse for mums after 40"
-- "The forgotten reason falling asleep gets harder after 50"
-- "Doctors are finally admitting what chiropractors knew all along"
-- "If you need coffee to wake up, your mitochondria are already failing"
+Generate editorial-style native_headlines using these formulas. They should read like news article titles, NOT ad headlines.
 
 ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replace(
   '"awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware"',

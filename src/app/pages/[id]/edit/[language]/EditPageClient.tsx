@@ -23,6 +23,7 @@ import {
   Settings,
   X,
   Sparkles,
+  Lightbulb,
 } from "lucide-react";
 
 import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
@@ -100,6 +101,11 @@ export default function EditPageClient({
   // Generate variation
   const [generatingVariation, setGeneratingVariation] = useState(false);
   const [showVariationMenu, setShowVariationMenu] = useState(false);
+
+  // Headline suggestions
+  const [headlineSuggestions, setHeadlineSuggestions] = useState<{ headline: string; mechanism: string }[]>([]);
+  const [loadingHeadlines, setLoadingHeadlines] = useState(false);
+  const [showHeadlinePanel, setShowHeadlinePanel] = useState(false);
 
   // Quality analysis
   const [qualityScore, setQualityScore] = useState<number | null>(translation.quality_score ?? null);
@@ -339,6 +345,45 @@ export default function EditPageClient({
     } finally {
       setGeneratingVariation(false);
     }
+  }
+
+  async function handleSuggestHeadlines() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const originalText = el.textContent?.trim();
+    if (!originalText) return;
+
+    setLoadingHeadlines(true);
+    setShowHeadlinePanel(true);
+    setHeadlineSuggestions([]);
+    try {
+      const res = await fetch("/api/headlines/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: originalText,
+          language: isSource ? "en" : language.value,
+          product: pageProduct || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.suggestions) {
+        setHeadlineSuggestions(data.suggestions);
+      }
+    } catch (err) {
+      console.error("Headline suggestion failed:", err);
+    } finally {
+      setLoadingHeadlines(false);
+    }
+  }
+
+  function applyHeadlineSuggestion(headline: string) {
+    const el = selectedElRef.current;
+    if (!el) return;
+    el.textContent = headline;
+    markDirty();
+    setShowHeadlinePanel(false);
+    setHeadlineSuggestions([]);
   }
 
   function handleHideElement() {
@@ -582,6 +627,8 @@ export default function EditPageClient({
       });
       setElSpacingMode("hv");
       setHasSelectedEl(true);
+      setShowHeadlinePanel(false);
+      setHeadlineSuggestions([]);
     }, false);
   }
 
@@ -1345,6 +1392,61 @@ export default function EditPageClient({
                         </div>
                       )}
                     </div>
+                    {/* Suggest Headlines — only for h1/h2/h3 */}
+                    {selectedElRef.current && ["H1", "H2", "H3"].includes(selectedElRef.current.tagName) && (
+                      <div>
+                        <button
+                          onClick={handleSuggestHeadlines}
+                          disabled={loadingHeadlines}
+                          className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                        >
+                          {loadingHeadlines ? (
+                            <><Loader2 className="w-3 h-3 animate-spin" /> Generating headlines…</>
+                          ) : (
+                            <><Lightbulb className="w-3 h-3" /> Suggest Headlines</>
+                          )}
+                        </button>
+                        {showHeadlinePanel && (
+                          <div className="mt-2 border border-amber-200 rounded-lg bg-amber-50/50 overflow-hidden">
+                            <div className="px-3 py-1.5 border-b border-amber-200 flex items-center justify-between">
+                              <span className="text-xs font-semibold text-amber-800">Headline Ideas</span>
+                              <button
+                                onClick={() => { setShowHeadlinePanel(false); setHeadlineSuggestions([]); }}
+                                className="text-amber-400 hover:text-amber-600 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {loadingHeadlines ? (
+                              <div className="px-3 py-4 flex items-center justify-center gap-2 text-xs text-amber-600">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Generating 6 variations…
+                              </div>
+                            ) : (
+                              <div className="divide-y divide-amber-100">
+                                {headlineSuggestions.map((s, i) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => applyHeadlineSuggestion(s.headline)}
+                                    className="w-full text-left px-3 py-2 hover:bg-amber-100/70 transition-colors group"
+                                  >
+                                    <p className="text-xs text-gray-900 leading-snug group-hover:text-amber-900">{s.headline}</p>
+                                    <span className="inline-block mt-1 text-[10px] font-medium text-amber-600 bg-amber-100 rounded px-1.5 py-0.5">
+                                      {s.mechanism}
+                                    </span>
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={handleSuggestHeadlines}
+                                  className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs text-amber-600 hover:bg-amber-100/70 transition-colors font-medium"
+                                >
+                                  <RefreshCw className="w-3 h-3" /> More suggestions
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Generate Variation */}
                     <div className="relative">
                       <button
