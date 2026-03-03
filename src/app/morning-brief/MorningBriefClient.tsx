@@ -109,6 +109,7 @@ interface Bleeder {
 interface ConsistentWinner {
   ad_id: string;
   adset_id: string | null;
+  campaign_id: string;
   ad_name: string | null;
   adset_name: string | null;
   campaign_name: string | null;

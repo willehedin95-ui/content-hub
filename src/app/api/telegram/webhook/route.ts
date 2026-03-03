@@ -435,6 +435,7 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
   const winners: Array<{
     ad_id: string;
     adset_id: string | null;
+    campaign_id: string;
     ad_name: string | null;
     campaign_name: string | null;
     consistent_days: number;
@@ -446,39 +447,69 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
     return;
   }
 
-  // For each winner, increase its ad set's daily budget by 20%
   const results: string[] = [];
-  const seenAdSets = new Set<string>();
+  const graduatedCampaigns = new Set<string>();
+  const graduatedAdSets = new Set<string>();
 
   for (const w of winners) {
-    if (!w.adset_id || seenAdSets.has(w.adset_id)) continue;
-    seenAdSets.add(w.adset_id);
-
     try {
-      // Fetch current ad set budget
-      const adsetInfo = await metaFetchAdSetBudget(w.adset_id);
-      if (!adsetInfo.daily_budget || Number(adsetInfo.daily_budget) === 0) {
-        results.push(`  ℹ️ ${w.ad_name || "Unnamed"}: ad set has no daily budget (CBO campaign)`);
+      // First try ad set budget (ABO campaigns)
+      if (w.adset_id && !graduatedAdSets.has(w.adset_id)) {
+        const adsetInfo = await metaFetchAdSetBudget(w.adset_id);
+        const adsetBudget = Number(adsetInfo.daily_budget || 0);
+
+        if (adsetBudget > 0) {
+          // ABO: ad set has its own budget — increase it
+          graduatedAdSets.add(w.adset_id);
+          const newBudget = Math.round(adsetBudget * 1.2);
+          await updateAdSetBudget(w.adset_id, newBudget);
+
+          const oldUsd = (adsetBudget / 100).toFixed(0);
+          const newUsd = (newBudget / 100).toFixed(0);
+          results.push(`  🚀 ${w.ad_name || "Unnamed"} (ad set): $${oldUsd}/d → $${newUsd}/d (+20%)`);
+
+          const db = createServerSupabase();
+          await db.from("ad_learnings").insert({
+            meta_ad_id: w.ad_id,
+            ad_name: w.ad_name,
+            campaign_name: w.campaign_name,
+            event_type: "graduated_winner",
+            detail: `Ad set budget +20% ($${oldUsd}/d → $${newUsd}/d) after ${w.consistent_days}d streak, ${w.avg_roas.toFixed(1)}x ROAS`,
+            metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: adsetBudget, new_budget: newBudget, level: "adset" },
+          });
+
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+      }
+
+      // CBO: ad set has no budget — increase the campaign budget instead
+      if (!w.campaign_id || graduatedCampaigns.has(w.campaign_id)) continue;
+      graduatedCampaigns.add(w.campaign_id);
+
+      const campInfo = await getCampaignBudget(w.campaign_id);
+      const campBudget = Number(campInfo.daily_budget || 0);
+
+      if (campBudget === 0) {
+        results.push(`  ℹ️ ${w.campaign_name || "Unnamed"}: no daily budget found (lifetime budget?)`);
         continue;
       }
 
-      const currentBudget = Number(adsetInfo.daily_budget);
-      const newBudget = Math.round(currentBudget * 1.2); // +20%
-      await updateAdSetBudget(w.adset_id, newBudget);
+      const newBudget = Math.round(campBudget * 1.2);
+      await updateCampaign(w.campaign_id, { daily_budget: String(newBudget) });
 
-      const oldUsd = (currentBudget / 100).toFixed(0);
+      const oldUsd = (campBudget / 100).toFixed(0);
       const newUsd = (newBudget / 100).toFixed(0);
-      results.push(`  🚀 ${w.ad_name || "Unnamed"}: $${oldUsd}/d → $${newUsd}/d (+20%)`);
+      results.push(`  🚀 ${w.campaign_name || "Unnamed"} (campaign): $${oldUsd}/d → $${newUsd}/d (+20%)`);
 
-      // Record learning
       const db = createServerSupabase();
       await db.from("ad_learnings").insert({
-        meta_ad_id: w.ad_id,
+        meta_ad_id: w.campaign_id,
         ad_name: w.ad_name,
         campaign_name: w.campaign_name,
         event_type: "graduated_winner",
-        detail: `Budget increased 20% ($${oldUsd}/d → $${newUsd}/d) after ${w.consistent_days}d winning streak, ${w.avg_roas.toFixed(1)}x ROAS`,
-        metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: currentBudget, new_budget: newBudget },
+        detail: `Campaign budget +20% ($${oldUsd}/d → $${newUsd}/d) — CBO campaign with winning ad (${w.consistent_days}d streak, ${w.avg_roas.toFixed(1)}x ROAS)`,
+        metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: campBudget, new_budget: newBudget, level: "campaign" },
       });
 
       await new Promise((r) => setTimeout(r, 500));
@@ -488,7 +519,7 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
   }
 
   if (results.length === 0) {
-    await editMessageText(chatId, messageId, "⭐ Winner graduation — no ad set budgets to adjust.");
+    await editMessageText(chatId, messageId, "⭐ Winner graduation — no budgets to adjust.");
     return;
   }
 

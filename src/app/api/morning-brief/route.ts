@@ -363,6 +363,7 @@ export async function GET(req: NextRequest) {
   const winnerAds: Array<{
     ad_id: string;
     adset_id: string | null;
+    campaign_id: string;
     ad_name: string | null;
     adset_name: string | null;
     campaign_name: string | null;
@@ -414,6 +415,7 @@ export async function GET(req: NextRequest) {
       winnerAds.push({
         ad_id: adId,
         adset_id: adsetId,
+        campaign_id: campId,
         ad_name: adName,
         adset_name: adsetName,
         campaign_name: campaignName,
