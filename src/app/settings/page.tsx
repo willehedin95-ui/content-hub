@@ -52,6 +52,7 @@ export default function SettingsPage() {
     ga4_measurement_ids: {},
     ga4_property_ids: {},
     clarity_project_id: "",
+    clarity_project_ids: {},
     clarity_api_token: "",
     shopify_domains: "",
     meta_pixel_id: "",

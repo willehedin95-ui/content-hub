@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
   const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
   const legacyPropertyId = settings.ga4_legacy_property_id as string | undefined;
   const clarityToken = settings.clarity_api_token as string | undefined;
+  const clarityProjectIds = (settings.clarity_project_ids ?? {}) as Record<string, string>;
+  const hasClarity = clarityToken && Object.values(clarityProjectIds).some((v) => !!v);
 
   const errors: Record<string, string> = {};
 
@@ -32,8 +34,8 @@ export async function GET(req: NextRequest) {
     hasGA4
       ? fetchAllGA4Metrics(ga4PropertyIds, days, legacyIds)
       : Promise.resolve(new Map()),
-    clarityToken
-      ? fetchClarityInsights(clarityToken, Math.min(days, 3))
+    hasClarity
+      ? fetchClarityInsights(clarityToken, clarityProjectIds, Math.min(days, 3))
       : Promise.resolve([]),
     getOrdersByPage(new Date(Date.now() - days * 86400000).toISOString()),
     getMetaMetricsByPage(days),

@@ -28,14 +28,16 @@ export async function POST(req: NextRequest) {
 
     const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
     const clarityToken = settings.clarity_api_token as string | undefined;
+    const clarityProjectIds = (settings.clarity_project_ids ?? {}) as Record<string, string>;
+    const hasClarity = clarityToken && Object.values(clarityProjectIds).some((v) => !!v);
 
     // Fetch all data in parallel
     const [ga4Map, clarityInsights, shopifyMap] = await Promise.all([
       Object.keys(ga4PropertyIds).length > 0
         ? fetchAllGA4Metrics(ga4PropertyIds, days)
         : Promise.resolve(new Map()),
-      clarityToken
-        ? fetchClarityInsights(clarityToken, Math.min(days, 3))
+      hasClarity
+        ? fetchClarityInsights(clarityToken, clarityProjectIds, Math.min(days, 3))
         : Promise.resolve([]),
       getOrdersByPage(new Date(Date.now() - days * 86400000).toISOString()),
     ]);

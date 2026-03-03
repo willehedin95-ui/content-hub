@@ -188,20 +188,31 @@ export default function IntegrationsTab({
           );
         })}
         <RowDivider />
-        <Row
-          label="Clarity Project ID"
-          description={settings.clarity_project_id || "Not configured"}
-          descriptionColor={settings.clarity_project_id ? "text-emerald-600" : undefined}
-          action={
-            <input
-              type="text"
-              value={settings.clarity_project_id}
-              onChange={(e) => setSettings((s) => ({ ...s, clarity_project_id: e.target.value }))}
-              placeholder="Project ID"
-              className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-            />
-          }
-        />
+        {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
+          const cid = settings.clarity_project_ids?.[lang.value] || "";
+          return (
+            <div key={`clarity-${lang.value}`}>
+              {i > 0 && <RowDivider />}
+              <Row
+                label={`Clarity Project — ${lang.label}`}
+                description={cid || "Not configured"}
+                descriptionColor={cid ? "text-emerald-600" : undefined}
+                action={
+                  <input
+                    type="text"
+                    value={cid}
+                    onChange={(e) => setSettings((s) => ({
+                      ...s,
+                      clarity_project_ids: { ...(s.clarity_project_ids ?? {}), [lang.value]: e.target.value },
+                    }))}
+                    placeholder="Project ID"
+                    className="w-36 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                }
+              />
+            </div>
+          );
+        })}
         <RowDivider />
         <ClarityTokenRow
           token={settings.clarity_api_token ?? ""}

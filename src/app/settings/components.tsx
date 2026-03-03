@@ -29,6 +29,7 @@ export interface Settings {
   ga4_measurement_ids: Record<string, string>;
   ga4_property_ids: Record<string, string>;
   clarity_project_id: string;
+  clarity_project_ids: Record<string, string>;
   clarity_api_token: string;
   shopify_domains: string;
   meta_pixel_id: string;

@@ -132,7 +132,10 @@ async function doPublish(
     const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
     const analytics: PageAnalyticsConfig = {
       ga4MeasurementId: ga4Ids[language] || undefined,
-      clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
+      clarityProjectId:
+        (appSettings.clarity_project_ids as Record<string, string>)?.[language] ||
+        (appSettings.clarity_project_id as string) ||
+        undefined,
       shopifyDomains: ((appSettings.shopify_domains as string) || "")
         .split(",")
         .map((d: string) => d.trim())

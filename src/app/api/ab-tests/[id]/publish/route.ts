@@ -73,7 +73,10 @@ export async function POST(
   const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
   const analytics: ABTestAnalyticsConfig = {
     ga4MeasurementId: ga4Ids[test.language] || undefined,
-    clarityProjectId: (appSettings.clarity_project_id as string) || undefined,
+    clarityProjectId:
+      (appSettings.clarity_project_ids as Record<string, string>)?.[test.language] ||
+      (appSettings.clarity_project_id as string) ||
+      undefined,
     metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
     shopifyDomains: ((appSettings.shopify_domains as string) || "")
       .split(",")

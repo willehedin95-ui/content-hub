@@ -36,7 +36,8 @@ export default async function PerformancePage() {
   );
 
   const clarityConfigured = !!(settings.clarity_api_token as string);
-  const clarityTrackingConfigured = !!(settings.clarity_project_id as string);
+  const clarityProjectIds = (settings.clarity_project_ids ?? {}) as Record<string, string>;
+  const clarityTrackingConfigured = Object.values(clarityProjectIds).some((v) => !!v) || !!(settings.clarity_project_id as string);
   const shopifyConfigured = isShopifyConfigured();
   const googleAdsConfigured = isGoogleAdsConfigured();
 
