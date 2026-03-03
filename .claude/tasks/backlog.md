@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-02-28
+Updated: 2026-03-03
 
 ## P1 — Do Next
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
@@ -8,11 +8,36 @@ Updated: 2026-02-28
 ## P2 — Important
 - [ ] Ad Spy — monitor competitors, AI suggests new concepts (added 2025-02-25)
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
-- [ ] WhatsApp notifications — Hub messages when concepts ready for review (added 2025-02-25)
+- [ ] Telegram notifications — Hub messages when concepts ready for review (added 2025-02-25)
+
+## P2.5 — Meta Ads Automation (new initiative, 2026-03-03)
+Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot (OpenClaw)
+
+### Phase 1: Data Foundation (start here)
+- [ ] Performance data sync — cron job pulling Meta Insights (spend, CPA, CTR, ROAS, frequency, CPC, impressions) into `meta_ad_performance` table daily (added 2026-03-03)
+- [ ] 5 Daily Questions API — endpoint that answers: on-track spend? what's running? performance trends? winners/losers? fatigue signals? (added 2026-03-03)
+- [ ] Morning brief page in Hub — dashboard view of the 5 daily questions (added 2026-03-03)
+
+### Phase 2: Signal Engine
+- [ ] Fatigue detection — CTR dropping 3+ days (>20% from peak = Critical), frequency > 3.5 (Warning), CPC rising 3+ days >15% (Warning), impressions declining (Monitor) (added 2026-03-03)
+- [ ] Bleeder detection — ads with high spend + low CTR + CPA > 2.5x target for 48h+ (added 2026-03-03)
+- [ ] Winner detection — ads at/below target CPA for 5-7 days, ROAS above breakeven, CTR > 1% (added 2026-03-03)
+- [ ] LP vs creative fatigue distinction — if CTR stable but CPA rising, flag as landing page issue, not creative (added 2026-03-03)
+- [ ] Efficiency scoring per campaign — CTR/CPC ratio for ranking and budget shift recommendations (added 2026-03-03)
+
+### Phase 3: Notifications & Actions
+- [ ] Morning brief via Telegram — send 5-question summary + action recommendations each morning (added 2026-03-03)
+- [ ] Auto-pause bleeders — auto-pause ads at 2.5x CPA for 48h+ (no approval needed) (added 2026-03-03)
+- [ ] Approval-based budget shifts — recommend shifts with 30% max cap, require approval via Telegram (added 2026-03-03)
+- [ ] Winner graduation workflow — easy post ID migration from testing → scaling campaign (added 2026-03-03)
+
+### Phase 4: Close the Loop
+- [ ] Auto-suggest creative refresh — when fatigue detected, prompt to generate fresh creative from static ad generator (added 2026-03-03)
+- [ ] Budget consolidation — redistribute budget to top performers (35/25/15/10/5% tiers based on efficiency) (added 2026-03-03)
+- [ ] Learning documentation — record what went right/wrong per test, feed back into brainstorm (added 2026-03-03)
 
 ## P3 — Backlog
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
-- [ ] Daily performance brief — morning summary with AI insights (added 2025-02-25)
 - [ ] Google Ads integration (added 2025-02-25)
 - [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
