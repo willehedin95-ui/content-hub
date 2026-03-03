@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import sharp from "sharp";
 import {
   sendMessage,
+  sendMessageWithInlineKeyboard,
   downloadFile,
   validateWebhookSecret,
   extractUrls,
@@ -264,10 +265,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // --- No URL and no photo ---
+    // --- Plain text (no URL, no photo) → Save as hook ---
+    const plainText = (message.text || "").trim();
+    if (plainText.length > 0 && plainText.length <= 500) {
+      const { data: hook, error: hookErr } = await db
+        .from("hook_library")
+        .insert({
+          hook_text: plainText,
+          hook_type: "hook",
+          source: "telegram",
+          status: "approved",
+        })
+        .select()
+        .single();
+
+      if (hookErr) {
+        if (hookErr.code === "23505") {
+          await sendMessage(chatId, "This hook is already in your bank!");
+          return NextResponse.json({ ok: true });
+        }
+        console.error("[Telegram] Hook insert failed:", hookErr);
+        await sendMessage(chatId, "Failed to save hook. Try again.");
+        return NextResponse.json({ ok: true });
+      }
+
+      await sendMessageWithInlineKeyboard(
+        chatId,
+        `💡 Saved to hook bank!\n\n"${plainText.slice(0, 100)}${plainText.length > 100 ? "…" : ""}"\n\nWhich product?`,
+        [[
+          { text: "🛏 HappySleep", callback_data: `hook_product:${hook.id}:happysleep` },
+          { text: "💧 Hydro13", callback_data: `hook_product:${hook.id}:hydro13` },
+          { text: "🌐 Universal", callback_data: `hook_product:${hook.id}:universal` },
+        ]]
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    // --- Truly empty or too long ---
     await sendMessage(
       chatId,
-      "Send me a screenshot of an ad to save it. You can add the URL as a caption."
+      "Send me a screenshot of an ad, a URL, or a hook/headline to save."
     );
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -310,6 +347,16 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
     } else if (data === "graduate_skip") {
       await answerCallbackQuery(query.id, "Winner graduation skipped");
       await editMessageText(chatId, messageId, "⭐ Winner graduation — skipped.");
+    } else if (data.startsWith("hook_product:")) {
+      const parts = data.split(":");
+      const hookId = parts[1];
+      const productValue = parts[2] === "universal" ? null : parts[2];
+      await answerCallbackQuery(query.id, "Product set!");
+      const db = createServerSupabase();
+      await db.from("hook_library").update({ product: productValue }).eq("id", hookId);
+      const productLabel = parts[2] === "universal" ? "Universal" : parts[2] === "happysleep" ? "HappySleep" : "Hydro13";
+      const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+      await editMessageText(chatId, messageId, `💡 Hook saved → ${productLabel}\n\nView: ${hubBase}/hooks`);
     } else {
       await answerCallbackQuery(query.id);
     }
