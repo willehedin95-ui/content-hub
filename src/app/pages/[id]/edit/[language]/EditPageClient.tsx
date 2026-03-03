@@ -22,6 +22,7 @@ import {
   Undo2,
   Settings,
   X,
+  Sparkles,
 } from "lucide-react";
 
 import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
@@ -95,6 +96,10 @@ export default function EditPageClient({
   const [hiddenCount, setHiddenCount] = useState(0);
   const [revealHidden, setRevealHidden] = useState(false);
   const excludeModeRef = useRef(false);
+
+  // Generate variation
+  const [generatingVariation, setGeneratingVariation] = useState(false);
+  const [showVariationMenu, setShowVariationMenu] = useState(false);
 
   // Quality analysis
   const [qualityScore, setQualityScore] = useState<number | null>(translation.quality_score ?? null);
@@ -303,6 +308,37 @@ export default function EditPageClient({
       el.style.marginBottom = value !== "" ? `${value}px` : "";
     }
     markDirty();
+  }
+
+  async function handleGenerateVariation(mode: "rewrite" | "hook_inspired") {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const originalText = el.textContent?.trim();
+    if (!originalText) return;
+
+    setGeneratingVariation(true);
+    setShowVariationMenu(false);
+    try {
+      const res = await fetch("/api/hooks/generate-variation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: originalText,
+          language: isSource ? "en" : language.value,
+          product: pageProduct || null,
+          mode,
+        }),
+      });
+      const data = await res.json();
+      if (data.variation && el) {
+        el.textContent = data.variation;
+        markDirty();
+      }
+    } catch (err) {
+      console.error("Variation generation failed:", err);
+    } finally {
+      setGeneratingVariation(false);
+    }
   }
 
   function handleHideElement() {
@@ -1320,6 +1356,39 @@ export default function EditPageClient({
                               />
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                    {/* Generate Variation */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowVariationMenu(!showVariationMenu); }}
+                        disabled={generatingVariation}
+                        className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+                      >
+                        {generatingVariation ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Generating…</>
+                        ) : (
+                          <><Sparkles className="w-3 h-3" /> Generate Variation</>
+                        )}
+                      </button>
+                      {showVariationMenu && !generatingVariation && (
+                        <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                          <button
+                            onClick={() => handleGenerateVariation("rewrite")}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="font-medium text-gray-900">Rewrite</span>
+                            <p className="text-gray-500 mt-0.5">Same meaning, different words</p>
+                          </button>
+                          <div className="border-t border-gray-100" />
+                          <button
+                            onClick={() => handleGenerateVariation("hook_inspired")}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="font-medium text-gray-900">Hook bank inspired</span>
+                            <p className="text-gray-500 mt-0.5">Different angle from proven hooks</p>
+                          </button>
                         </div>
                       )}
                     </div>
