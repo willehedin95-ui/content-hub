@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -54,6 +54,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     { href: "/products", label: "Products", icon: Package },
     { href: "/stock", label: "Inventory", icon: Warehouse },
     { href: "/performance", label: "Performance", icon: BarChart3 },
+    { href: "/morning-brief", label: "Morning Brief", icon: Sun },
   ], [pipelineBadgeCount]);
 
   // Initialize open state based on current route (once on mount + route changes)
