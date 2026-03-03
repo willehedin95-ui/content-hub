@@ -280,30 +280,19 @@ export async function getConversionsForTest(
   const { createServerSupabase } = await import("./supabase");
   const db = createServerSupabase();
 
-  // Get the AB test's control and variant translation IDs
+  // Get the AB test slug — paths are always /{slug}/a/ and /{slug}/b/
   const { data: test } = await db
     .from("ab_tests")
-    .select("control_id, variant_id")
+    .select("slug")
     .eq("id", testId)
     .single();
 
-  if (!test) return [];
+  if (!test?.slug) return [];
 
-  // Get published URLs for both variants
-  const [{ data: controlT }, { data: variantT }] = await Promise.all([
-    db.from("translations").select("published_url").eq("id", test.control_id).single(),
-    db.from("translations").select("published_url").eq("id", test.variant_id).single(),
-  ]);
+  const controlPath = `/${test.slug}/a`;
+  const variantPath = `/${test.slug}/b`;
 
-  const controlUrl = controlT?.published_url;
-  const variantUrl = variantT?.published_url;
-  if (!controlUrl && !variantUrl) return [];
-
-  // Extract paths for matching
-  const controlPath = controlUrl ? new URL(controlUrl).pathname.replace(/\/$/, "") : null;
-  const variantPath = variantUrl ? new URL(variantUrl).pathname.replace(/\/$/, "") : null;
-
-  // Fetch orders and match to variants
+  // Fetch orders and match landing_site path to variant
   const orders = await fetchOrdersSince(since);
   const conversions: Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }> = [];
 
@@ -314,8 +303,17 @@ export async function getConversionsForTest(
       const orderPath = url.pathname.replace(/\/$/, "");
 
       let variant: string | null = null;
-      if (controlPath && orderPath === controlPath) variant = "a";
-      else if (variantPath && orderPath === variantPath) variant = "b";
+      if (orderPath === controlPath) variant = "a";
+      else if (orderPath === variantPath) variant = "b";
+
+      // Also check UTM params as fallback (utm_campaign=testId, utm_content=a|b)
+      if (!variant) {
+        const utmCampaign = url.searchParams.get("utm_campaign");
+        const utmContent = url.searchParams.get("utm_content");
+        if (utmCampaign === testId && (utmContent === "a" || utmContent === "b")) {
+          variant = utmContent;
+        }
+      }
 
       if (variant) {
         conversions.push({
