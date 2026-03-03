@@ -25,33 +25,9 @@ export default function QualityDetails({ version }: { version: Version }) {
       </button>
 
       {expanded && analysis && (
-        <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs space-y-2">
+        <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs">
           {analysis.overall_assessment && (
             <p className="text-gray-700">{analysis.overall_assessment}</p>
-          )}
-          {analysis.spelling_errors?.length > 0 && (
-            <div>
-              <span className="text-red-600 font-medium">Spelling errors: </span>
-              <span className="text-gray-600">{analysis.spelling_errors.join(", ")}</span>
-            </div>
-          )}
-          {analysis.grammar_issues?.length > 0 && (
-            <div>
-              <span className="text-yellow-600 font-medium">Grammar issues: </span>
-              <span className="text-gray-600">{analysis.grammar_issues.join(", ")}</span>
-            </div>
-          )}
-          {analysis.missing_text?.length > 0 && (
-            <div>
-              <span className="text-orange-600 font-medium">Missing text: </span>
-              <span className="text-gray-600">{analysis.missing_text.join(", ")}</span>
-            </div>
-          )}
-          {analysis.extracted_text && (
-            <div>
-              <span className="text-gray-500 font-medium">Extracted text: </span>
-              <span className="text-gray-600">{analysis.extracted_text}</span>
-            </div>
           )}
         </div>
       )}

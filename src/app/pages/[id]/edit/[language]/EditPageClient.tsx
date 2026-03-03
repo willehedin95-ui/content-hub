@@ -1096,23 +1096,9 @@ export default function EditPageClient({
       {/* Quality analysis details panel */}
       {showQualityDetails && qualityAnalysis && (
         <div className="bg-gray-50 border-b border-gray-200 px-6 py-3 shrink-0">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1.5 text-xs max-w-3xl">
-              <p className="text-gray-600">{qualityAnalysis.overall_assessment}</p>
-              {qualityAnalysis.fluency_issues?.length > 0 && (
-                <p className="text-amber-600">Fluency: {qualityAnalysis.fluency_issues.join("; ")}</p>
-              )}
-              {qualityAnalysis.grammar_issues?.length > 0 && (
-                <p className="text-red-600">Grammar: {qualityAnalysis.grammar_issues.join("; ")}</p>
-              )}
-              {qualityAnalysis.context_errors?.length > 0 && (
-                <p className="text-orange-600">Context: {qualityAnalysis.context_errors.join("; ")}</p>
-              )}
-              {qualityAnalysis.name_localization?.length > 0 && (
-                <p className="text-blue-600">Names: {qualityAnalysis.name_localization.join("; ")}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 ml-4 shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-600 max-w-3xl">{qualityAnalysis.overall_assessment}</p>
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={handleFixQuality}
                 disabled={fixingQuality || retranslating || saving}

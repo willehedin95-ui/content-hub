@@ -406,19 +406,10 @@ export default function ConceptAdCopyStep({
                         </div>
                       )}
 
-                      {/* Quality analysis details */}
+                      {/* Quality analysis summary */}
                       {ct.quality_analysis && (
-                        <div className="border-t border-gray-100 pt-2">
-                          <p className="text-xs text-gray-500 mb-1">{ct.quality_analysis.overall_assessment}</p>
-                          {ct.quality_analysis.fluency_issues?.length > 0 && (
-                            <p className="text-xs text-amber-600">Fluency: {ct.quality_analysis.fluency_issues.join("; ")}</p>
-                          )}
-                          {ct.quality_analysis.grammar_issues?.length > 0 && (
-                            <p className="text-xs text-red-600">Grammar: {ct.quality_analysis.grammar_issues.join("; ")}</p>
-                          )}
-                          {ct.quality_analysis.context_errors?.length > 0 && (
-                            <p className="text-xs text-orange-600">Context: {ct.quality_analysis.context_errors.join("; ")}</p>
-                          )}
+                        <div className="border-t border-gray-100 pt-2 flex items-start justify-between gap-2">
+                          <p className="text-xs text-gray-500">{ct.quality_analysis.overall_assessment}</p>
                           {(ct.quality_analysis.fluency_issues?.length > 0 ||
                             ct.quality_analysis.grammar_issues?.length > 0 ||
                             ct.quality_analysis.context_errors?.length > 0) && (
@@ -434,7 +425,7 @@ export default function ConceptAdCopyStep({
                                 handleTranslateCopy(lang as Language, issues.join("\n"));
                               }}
                               disabled={copyState.translatingLang === lang || copyState.translating}
-                              className="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors shrink-0"
                             >
                               {copyState.translatingLang === lang ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
