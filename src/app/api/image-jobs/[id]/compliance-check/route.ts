@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { runComplianceCheck } from "@/lib/meta-compliance";
-import { calcClaudeCost, calcOpenAICost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { CLAUDE_MODEL, OPENAI_MODEL } from "@/lib/constants";
 
@@ -23,7 +22,7 @@ export async function POST(
     const { data: job, error: jobError } = await db
       .from("image_jobs")
       .select(
-        "id, ad_copy_primary, ad_copy_headline, source_images(id, image_translations(translated_url, aspect_ratio, status, skip_translation, original_url))"
+        "id, ad_copy_primary, ad_copy_headline, source_images(id, original_url, skip_translation, image_translations(translated_url, aspect_ratio, status))"
       )
       .eq("id", jobId)
       .single();
@@ -38,12 +37,14 @@ export async function POST(
     // Collect completed 1:1 image URLs (deduplicated)
     const imageUrls: string[] = [];
     for (const src of job.source_images || []) {
-      for (const trans of src.image_translations || []) {
-        if (trans.aspect_ratio !== "1:1") continue;
-        if (trans.skip_translation) {
-          if (trans.original_url) imageUrls.push(trans.original_url);
-        } else if (trans.status === "completed" && trans.translated_url) {
-          imageUrls.push(trans.translated_url);
+      if (src.skip_translation) {
+        if (src.original_url) imageUrls.push(src.original_url);
+      } else {
+        for (const trans of src.image_translations || []) {
+          if (trans.aspect_ratio !== "1:1") continue;
+          if (trans.status === "completed" && trans.translated_url) {
+            imageUrls.push(trans.translated_url);
+          }
         }
       }
     }

@@ -121,12 +121,10 @@ function TextResultCard({ result }: { result: ComplianceTextResult }) {
 }
 
 function ImageResultCard({ result }: { result: ComplianceImageResult }) {
-  const isWarning = result.verdict === "WARNING";
-  const bgClass = isWarning
-    ? "bg-amber-50 border-amber-200"
-    : "bg-red-50 border-red-200";
-  const iconClass = isWarning ? "text-amber-600" : "text-red-600";
-  const Icon = isWarning ? AlertTriangle : XCircle;
+  // Images can only be PASS or WARNING (never REJECT)
+  const bgClass = "bg-amber-50 border-amber-200";
+  const iconClass = "text-amber-600";
+  const Icon = AlertTriangle;
 
   return (
     <div className={`border rounded-lg p-3 ${bgClass}`}>
@@ -172,8 +170,8 @@ export default function ComplianceCheck({
       }
       const data = await res.json();
       onResultUpdate(data.result);
-      if (data.cost != null) {
-        setCost(data.cost);
+      if (data.cost?.totalCost != null) {
+        setCost(data.cost.totalCost);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Compliance check failed");
