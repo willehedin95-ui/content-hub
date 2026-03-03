@@ -7,7 +7,10 @@ import {
   validateWebhookSecret,
   extractUrls,
   detectPlatform,
+  answerCallbackQuery,
+  editMessageText,
 } from "@/lib/telegram";
+import { getCampaignBudget, updateCampaign, listCampaigns } from "@/lib/meta";
 
 export const maxDuration = 120;
 
@@ -137,6 +140,12 @@ export async function POST(req: NextRequest) {
   }
 
   const update = await req.json().catch(() => null);
+
+  // --- Callback query handler (inline keyboard button presses) ---
+  if (update?.callback_query) {
+    return handleCallbackQuery(update.callback_query);
+  }
+
   if (!update?.message) {
     return NextResponse.json({ ok: true });
   }
@@ -267,5 +276,223 @@ export async function POST(req: NextRequest) {
       () => {}
     );
     return NextResponse.json({ ok: true });
+  }
+}
+
+// --- Callback query handler for inline keyboard buttons ---
+interface CallbackQuery {
+  id: string;
+  from: { id: number };
+  message?: { chat: { id: number }; message_id: number; text?: string };
+  data?: string;
+}
+
+async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> {
+  const chatId = query.message?.chat.id;
+  const messageId = query.message?.message_id;
+  const data = query.data;
+
+  if (!chatId || !messageId || !data) {
+    await answerCallbackQuery(query.id);
+    return NextResponse.json({ ok: true });
+  }
+
+  try {
+    if (data === "budget_apply_all") {
+      await answerCallbackQuery(query.id, "Applying budget shifts...");
+      await applyBudgetShifts(chatId, messageId);
+    } else if (data === "budget_skip") {
+      await answerCallbackQuery(query.id, "Budget shifts skipped");
+      await editMessageText(chatId, messageId, "⚡ Budget shifts — skipped.");
+    } else if (data === "graduate_all") {
+      await answerCallbackQuery(query.id, "Graduating winners...");
+      await graduateWinners(chatId, messageId);
+    } else if (data === "graduate_skip") {
+      await answerCallbackQuery(query.id, "Winner graduation skipped");
+      await editMessageText(chatId, messageId, "⭐ Winner graduation — skipped.");
+    } else {
+      await answerCallbackQuery(query.id);
+    }
+  } catch (err) {
+    console.error("[Telegram] Callback query error:", err);
+    await answerCallbackQuery(query.id, "Something went wrong");
+    await sendMessage(chatId, `Error applying budget shifts: ${err instanceof Error ? err.message : "Unknown error"}`);
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+async function applyBudgetShifts(chatId: number, messageId: number): Promise<void> {
+  // Fetch current efficiency recommendations
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+  const cronSecret = process.env.CRON_SECRET;
+  const briefRes = await fetch(`${baseUrl}/api/morning-brief`, {
+    headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
+  });
+
+  if (!briefRes.ok) {
+    await editMessageText(chatId, messageId, "⚡ Budget shifts — failed to fetch data.");
+    return;
+  }
+
+  const briefData = await briefRes.json();
+  const scoring: Array<{
+    campaign_id: string;
+    campaign_name: string;
+    current_budget_share: number;
+    recommended_budget_share: number;
+    recommendation: string;
+  }> = briefData.signals?.efficiency_scoring ?? [];
+
+  const shifts = scoring.filter((s) => s.recommendation !== "maintain");
+  if (shifts.length === 0) {
+    await editMessageText(chatId, messageId, "⚡ No budget shifts needed — all campaigns are balanced.");
+    return;
+  }
+
+  // Get current campaign budgets from Meta
+  const campaigns = await listCampaigns();
+  const budgetsBefore: Map<string, { name: string; daily_budget: number }> = new Map();
+  for (const c of campaigns) {
+    try {
+      const info = await getCampaignBudget(c.id);
+      // Meta returns daily_budget in cents
+      budgetsBefore.set(c.id, { name: info.name, daily_budget: Number(info.daily_budget) });
+    } catch {
+      // Campaign might not have a daily budget (lifetime budget or CBO)
+    }
+  }
+
+  if (budgetsBefore.size === 0) {
+    await editMessageText(chatId, messageId, "⚡ Budget shifts — no campaign budgets found (might be CBO at ad set level).");
+    return;
+  }
+
+  // Calculate total daily budget
+  const totalBudget = Array.from(budgetsBefore.values()).reduce((s, c) => s + c.daily_budget, 0);
+
+  // Apply new budgets based on recommended shares
+  const results: string[] = [];
+  for (const s of scoring) {
+    const current = budgetsBefore.get(s.campaign_id);
+    if (!current) continue;
+
+    const newBudget = Math.round((s.recommended_budget_share / 100) * totalBudget);
+    if (newBudget === current.daily_budget) continue;
+
+    try {
+      // Meta API expects budget in cents (string)
+      await updateCampaign(s.campaign_id, { daily_budget: String(newBudget) });
+      const oldUsd = (current.daily_budget / 100).toFixed(0);
+      const newUsd = (newBudget / 100).toFixed(0);
+      const icon = s.recommendation === "increase" ? "↑" : "↓";
+      results.push(`  ${icon} ${s.campaign_name}: $${oldUsd}/d → $${newUsd}/d`);
+      await new Promise((r) => setTimeout(r, 500)); // Rate limiting
+    } catch (err) {
+      results.push(`  ❌ ${s.campaign_name}: ${err instanceof Error ? err.message : "failed"}`);
+    }
+  }
+
+  if (results.length === 0) {
+    await editMessageText(chatId, messageId, "⚡ Budget shifts — no changes needed (budgets already match recommendations).");
+    return;
+  }
+
+  await editMessageText(
+    chatId,
+    messageId,
+    `✅ Budget shifts applied:\n\n${results.join("\n")}\n\nTotal daily budget: $${(totalBudget / 100).toFixed(0)}/d`
+  );
+}
+
+async function graduateWinners(chatId: number, messageId: number): Promise<void> {
+  // Fetch current consistent winners from morning brief
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+  const cronSecret = process.env.CRON_SECRET;
+  const briefRes = await fetch(`${baseUrl}/api/morning-brief`, {
+    headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
+  });
+
+  if (!briefRes.ok) {
+    await editMessageText(chatId, messageId, "⭐ Winner graduation — failed to fetch data.");
+    return;
+  }
+
+  const briefData = await briefRes.json();
+  const winners: Array<{
+    ad_id: string;
+    adset_id: string | null;
+    ad_name: string | null;
+    campaign_name: string | null;
+    consistent_days: number;
+    avg_roas: number;
+  }> = briefData.signals?.consistent_winners ?? [];
+
+  if (winners.length === 0) {
+    await editMessageText(chatId, messageId, "⭐ No consistent winners to graduate right now.");
+    return;
+  }
+
+  // For each winner, increase its ad set's daily budget by 20%
+  const results: string[] = [];
+  const seenAdSets = new Set<string>();
+
+  for (const w of winners) {
+    if (!w.adset_id || seenAdSets.has(w.adset_id)) continue;
+    seenAdSets.add(w.adset_id);
+
+    try {
+      // Fetch current ad set budget
+      const adsetInfo = await metaFetchAdSetBudget(w.adset_id);
+      if (!adsetInfo.daily_budget || Number(adsetInfo.daily_budget) === 0) {
+        results.push(`  ℹ️ ${w.ad_name || "Unnamed"}: ad set has no daily budget (CBO campaign)`);
+        continue;
+      }
+
+      const currentBudget = Number(adsetInfo.daily_budget);
+      const newBudget = Math.round(currentBudget * 1.2); // +20%
+      await updateAdSetBudget(w.adset_id, newBudget);
+
+      const oldUsd = (currentBudget / 100).toFixed(0);
+      const newUsd = (newBudget / 100).toFixed(0);
+      results.push(`  🚀 ${w.ad_name || "Unnamed"}: $${oldUsd}/d → $${newUsd}/d (+20%)`);
+      await new Promise((r) => setTimeout(r, 500));
+    } catch (err) {
+      results.push(`  ❌ ${w.ad_name || "Unnamed"}: ${err instanceof Error ? err.message : "failed"}`);
+    }
+  }
+
+  if (results.length === 0) {
+    await editMessageText(chatId, messageId, "⭐ Winner graduation — no ad set budgets to adjust.");
+    return;
+  }
+
+  await editMessageText(
+    chatId,
+    messageId,
+    `✅ Winners graduated:\n\n${results.join("\n")}`
+  );
+}
+
+// Lightweight Meta API helpers for the webhook (avoid importing full meta.ts chain for simple queries)
+async function metaFetchAdSetBudget(adsetId: string): Promise<{ daily_budget: string; name: string }> {
+  const token = process.env.META_SYSTEM_USER_TOKEN;
+  if (!token) throw new Error("META_SYSTEM_USER_TOKEN not set");
+  const res = await fetch(`https://graph.facebook.com/v22.0/${adsetId}?fields=daily_budget,name&access_token=${token}`);
+  if (!res.ok) throw new Error(`Meta API error (${res.status})`);
+  return res.json();
+}
+
+async function updateAdSetBudget(adsetId: string, dailyBudget: number): Promise<void> {
+  const token = process.env.META_SYSTEM_USER_TOKEN;
+  if (!token) throw new Error("META_SYSTEM_USER_TOKEN not set");
+  const res = await fetch(`https://graph.facebook.com/v22.0/${adsetId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ daily_budget: String(dailyBudget) }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Meta API error (${res.status}): ${err}`);
   }
 }

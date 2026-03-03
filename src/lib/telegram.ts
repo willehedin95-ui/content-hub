@@ -94,6 +94,77 @@ export function detectPlatform(
   }
 }
 
+/** Send a message with an inline keyboard */
+export async function sendMessageWithInlineKeyboard(
+  chatId: number | string,
+  text: string,
+  buttons: Array<Array<{ text: string; callback_data: string }>>,
+  options?: { disable_web_page_preview?: boolean }
+): Promise<{ message_id?: number }> {
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      reply_markup: { inline_keyboard: buttons },
+      ...options,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] sendMessageWithInlineKeyboard failed: ${res.status} ${err}`);
+    return {};
+  }
+  const data = await res.json();
+  return { message_id: data.result?.message_id };
+}
+
+/** Answer a callback query (acknowledge button press) */
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string
+): Promise<void> {
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      text,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] answerCallbackQuery failed: ${res.status} ${err}`);
+  }
+}
+
+/** Edit the text of an existing message */
+export async function editMessageText(
+  chatId: number | string,
+  messageId: number,
+  text: string,
+  options?: { reply_markup?: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } }
+): Promise<void> {
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      ...options,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] editMessageText failed: ${res.status} ${err}`);
+  }
+}
+
 /** Format a CASH analysis summary for Telegram */
 export function formatCashSummary(
   analysis: Record<string, unknown>,

@@ -362,6 +362,7 @@ export async function GET(req: NextRequest) {
   // Ads performing consistently well over 5+ days
   const winnerAds: Array<{
     ad_id: string;
+    adset_id: string | null;
     ad_name: string | null;
     adset_name: string | null;
     campaign_name: string | null;
@@ -381,6 +382,7 @@ export async function GET(req: NextRequest) {
     if (adDays.length < 5) continue;
 
     const adName = adDays[adDays.length - 1].ad_name;
+    const adsetId = adDays[adDays.length - 1].adset_id;
     const adsetName = adDays[adDays.length - 1].adset_name;
     const campaignName = adDays[adDays.length - 1].campaign_name;
     const campId = adDays[adDays.length - 1].campaign_id ?? "unknown";
@@ -411,6 +413,7 @@ export async function GET(req: NextRequest) {
       const totalRevenue = recentDays.reduce((s, r) => s + Number(r.purchase_value), 0);
       winnerAds.push({
         ad_id: adId,
+        adset_id: adsetId,
         ad_name: adName,
         adset_name: adsetName,
         campaign_name: campaignName,

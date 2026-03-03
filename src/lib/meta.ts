@@ -326,6 +326,14 @@ export async function updateAdSet(adSetId: string, params: { name?: string; star
   });
 }
 
+export async function updateCampaign(campaignId: string, params: { daily_budget?: string; name?: string; status?: string }): Promise<{ success: boolean }> {
+  return metaJson(`/${campaignId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
 export async function updateAd(adId: string, params: { status?: string; name?: string }): Promise<{ success: boolean }> {
   return metaJson(`/${adId}`, {
     method: "POST",
