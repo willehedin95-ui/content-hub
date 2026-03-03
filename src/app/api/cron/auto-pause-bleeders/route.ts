@@ -79,6 +79,16 @@ export async function GET(req: NextRequest) {
         total_spend: bleeder.total_spend,
       });
 
+      // Record learning for future reference
+      await db.from("ad_learnings").insert({
+        meta_ad_id: bleeder.ad_id,
+        ad_name: bleeder.ad_name,
+        campaign_name: bleeder.campaign_name,
+        event_type: "paused_bleeder",
+        detail: `Auto-paused after ${bleeder.days_bleeding}d bleeding: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs campaign avg ${money(bleeder.campaign_avg_cpa)}`,
+        metrics: { days_bleeding: bleeder.days_bleeding, total_spend: bleeder.total_spend, avg_ctr: bleeder.avg_ctr, avg_cpa: bleeder.avg_cpa },
+      });
+
       results.push({ ad_id: bleeder.ad_id, ad_name: bleeder.ad_name, success: true });
 
       // Small delay to avoid Meta rate limiting

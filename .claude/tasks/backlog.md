@@ -26,15 +26,16 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Efficiency scoring per campaign — CTR/CPC ratio for ranking and budget shift recommendations (done 2026-03-03)
 
 ### Phase 3: Notifications & Actions
-- [ ] Morning brief via Telegram — send 5-question summary + action recommendations each morning (added 2026-03-03)
-- [ ] Auto-pause bleeders — auto-pause ads at 2.5x CPA for 48h+ (no approval needed) (added 2026-03-03)
-- [ ] Approval-based budget shifts — recommend shifts with 30% max cap, require approval via Telegram (added 2026-03-03)
-- [ ] Winner graduation workflow — easy post ID migration from testing → scaling campaign (added 2026-03-03)
+- [x] Morning brief via Telegram — cron at 6:15 UTC, formats and sends daily summary (done 2026-03-03)
+- [x] Auto-pause bleeders — cron at 6:30 UTC, pauses ads at 2.5x CPA for 48h+ (done 2026-03-03)
+- [x] Approval-based budget shifts — inline keyboard buttons in Telegram, re-fetches data on approval (done 2026-03-03)
+- [x] Winner graduation — inline keyboard, increases ad set budget by 20% for 5+ day consistent winners (done 2026-03-03)
+- [ ] **BLOCKED**: Set TELEGRAM_NOTIFY_CHAT_ID — need user to message bot, then capture chat ID
 
 ### Phase 4: Close the Loop
-- [ ] Auto-suggest creative refresh — when fatigue detected, prompt to generate fresh creative from static ad generator (added 2026-03-03)
-- [ ] Budget consolidation — redistribute budget to top performers (35/25/15/10/5% tiers based on efficiency) (added 2026-03-03)
-- [ ] Learning documentation — record what went right/wrong per test, feed back into brainstorm (added 2026-03-03)
+- [x] Auto-suggest creative refresh — Telegram brief shows "Creative Refresh Needed" section with link to brainstorm when fatigue detected (done 2026-03-03)
+- [x] Budget consolidation — covered by existing efficiency scoring + budget shift approval flow (dynamic approach is better than fixed tiers) (done 2026-03-03)
+- [x] Learning documentation — `ad_learnings` table + API, auto-populated on bleeder pause, winner graduation, and budget shifts. Dashboard shows "Recent Actions" section (done 2026-03-03)
 
 ## P3 — Backlog
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)

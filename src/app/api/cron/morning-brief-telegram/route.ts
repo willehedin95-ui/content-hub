@@ -147,6 +147,24 @@ function formatBrief(data: BriefResponse): string {
     lines.push("");
   }
 
+  // Creative refresh suggestions — when fatigue is detected, suggest generating fresh creative
+  const creativeFatigueAds = lp_vs_creative_fatigue.filter((f) => f.diagnosis === "creative");
+  const needsRefresh = [...fatigue_signals.critical, ...creativeFatigueAds];
+  if (needsRefresh.length > 0) {
+    const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+    lines.push("🔄 CREATIVE REFRESH NEEDED");
+    const adNames = new Set<string>();
+    for (const item of needsRefresh) {
+      const name = item.ad_name || "Unnamed";
+      if (!adNames.has(name)) {
+        adNames.add(name);
+        lines.push(`  • ${name}`);
+      }
+    }
+    lines.push(`  → Generate fresh creatives: ${hubUrl}/brainstorm`);
+    lines.push("");
+  }
+
   // Summary counts
   const summaryParts = [];
   if (warningCount > 0) summaryParts.push(`${warningCount} warnings`);

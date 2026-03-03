@@ -618,7 +618,65 @@ export default function MorningBriefClient() {
           </table>
         </div>
       </section>
+
+      {/* Recent Actions (from ad_learnings) */}
+      <RecentActionsSection />
     </div>
+  );
+}
+
+function RecentActionsSection() {
+  const [learnings, setLearnings] = useState<Array<{
+    id: string;
+    meta_ad_id: string;
+    ad_name: string | null;
+    campaign_name: string | null;
+    event_type: string;
+    detail: string;
+    created_at: string;
+  }>>([]);
+
+  useEffect(() => {
+    fetch("/api/ad-learnings?limit=10")
+      .then((r) => r.json())
+      .then((d) => setLearnings(d.learnings ?? []))
+      .catch(() => {});
+  }, []);
+
+  if (learnings.length === 0) return null;
+
+  const eventIcons: Record<string, string> = {
+    paused_bleeder: "🛑",
+    graduated_winner: "🚀",
+    fatigue_detected: "⚠️",
+    creative_refresh: "🔄",
+    budget_shifted: "⚡",
+    manual_note: "📝",
+  };
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+        <RefreshCw className="w-5 h-5 text-gray-600" />
+        Recent Actions
+      </h2>
+      <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+        {learnings.map((l) => (
+          <div key={l.id} className="px-5 py-3">
+            <div className="flex items-start gap-2">
+              <span className="text-base shrink-0 mt-0.5">{eventIcons[l.event_type] || "📋"}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 truncate">{l.ad_name || "Unknown"}</p>
+                <p className="text-xs text-gray-500">{l.detail}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(l.created_at).toLocaleDateString()} {new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

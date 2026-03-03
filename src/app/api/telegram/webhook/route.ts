@@ -339,6 +339,7 @@ async function applyBudgetShifts(chatId: number, messageId: number): Promise<voi
   const scoring: Array<{
     campaign_id: string;
     campaign_name: string;
+    efficiency_score: number;
     current_budget_share: number;
     recommended_budget_share: number;
     recommendation: string;
@@ -387,6 +388,18 @@ async function applyBudgetShifts(chatId: number, messageId: number): Promise<voi
       const newUsd = (newBudget / 100).toFixed(0);
       const icon = s.recommendation === "increase" ? "↑" : "↓";
       results.push(`  ${icon} ${s.campaign_name}: $${oldUsd}/d → $${newUsd}/d`);
+
+      // Record learning
+      const db = createServerSupabase();
+      await db.from("ad_learnings").insert({
+        meta_ad_id: s.campaign_id,
+        ad_name: s.campaign_name,
+        campaign_name: s.campaign_name,
+        event_type: "budget_shifted",
+        detail: `Campaign budget ${s.recommendation}d: $${oldUsd}/d → $${newUsd}/d (efficiency score: ${s.efficiency_score})`,
+        metrics: { old_budget: current.daily_budget, new_budget: newBudget, recommendation: s.recommendation },
+      });
+
       await new Promise((r) => setTimeout(r, 500)); // Rate limiting
     } catch (err) {
       results.push(`  ❌ ${s.campaign_name}: ${err instanceof Error ? err.message : "failed"}`);
@@ -456,6 +469,18 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
       const oldUsd = (currentBudget / 100).toFixed(0);
       const newUsd = (newBudget / 100).toFixed(0);
       results.push(`  🚀 ${w.ad_name || "Unnamed"}: $${oldUsd}/d → $${newUsd}/d (+20%)`);
+
+      // Record learning
+      const db = createServerSupabase();
+      await db.from("ad_learnings").insert({
+        meta_ad_id: w.ad_id,
+        ad_name: w.ad_name,
+        campaign_name: w.campaign_name,
+        event_type: "graduated_winner",
+        detail: `Budget increased 20% ($${oldUsd}/d → $${newUsd}/d) after ${w.consistent_days}d winning streak, ${w.avg_roas.toFixed(1)}x ROAS`,
+        metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: currentBudget, new_budget: newBudget },
+      });
+
       await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
       results.push(`  ❌ ${w.ad_name || "Unnamed"}: ${err instanceof Error ? err.message : "failed"}`);
