@@ -92,6 +92,18 @@ export async function POST(
       );
     }
 
+    // Auto-populate hook library from approved concept
+    const cashDna = proposal.cash_dna as { hooks?: string[]; awareness_level?: string; angle?: string } | null;
+    const conceptHooks = cashDna?.hooks || [];
+    const conceptHeadlines = proposal.ad_copy_headline || [];
+    const hookRows = [
+      ...conceptHooks.map((h: string) => ({ hook_text: h.trim(), hook_type: "hook", product, awareness_level: cashDna?.awareness_level || null, angle: cashDna?.angle || null, source: "concept_auto", status: "unreviewed" })),
+      ...conceptHeadlines.map((h: string) => ({ hook_text: h.trim(), hook_type: "headline", product, awareness_level: cashDna?.awareness_level || null, angle: cashDna?.angle || null, source: "concept_auto", status: "unreviewed" })),
+    ];
+    if (hookRows.length > 0) {
+      await db.from("hook_library").upsert(hookRows, { ignoreDuplicates: true });
+    }
+
     return NextResponse.json({
       job_id: job.id,
       concept_number: nextNumber,

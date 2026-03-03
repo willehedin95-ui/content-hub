@@ -70,6 +70,36 @@ export async function POST(
       return NextResponse.json({ error: "Failed to update concept" }, { status: 500 });
     }
 
+    // Auto-populate hook library from approved concept
+    const cashDna = typedConcept.cash_dna as { hooks?: string[]; awareness_level?: string; angle?: string } | null;
+    const conceptHooks = cashDna?.hooks || [];
+    const conceptHeadlines = typedConcept.ad_copy_headline || [];
+    const hookRows = [
+      ...conceptHooks.map((h: string) => ({
+        hook_text: h.trim(),
+        hook_type: "hook",
+        product: typedConcept.product,
+        awareness_level: cashDna?.awareness_level || null,
+        angle: cashDna?.angle || null,
+        source: "concept_auto",
+        source_concept_id: typedConcept.id,
+        status: "unreviewed",
+      })),
+      ...conceptHeadlines.map((h: string) => ({
+        hook_text: h.trim(),
+        hook_type: "headline",
+        product: typedConcept.product,
+        awareness_level: cashDna?.awareness_level || null,
+        angle: cashDna?.angle || null,
+        source: "concept_auto",
+        source_concept_id: typedConcept.id,
+        status: "unreviewed",
+      })),
+    ];
+    if (hookRows.length > 0) {
+      await supabase.from("hook_library").upsert(hookRows, { ignoreDuplicates: true });
+    }
+
     // Trigger image generation
     const generateUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/image-jobs/${imageJob.id}/generate-all`;
     await fetch(generateUrl, { method: "POST" });
