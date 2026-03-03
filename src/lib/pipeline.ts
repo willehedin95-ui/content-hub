@@ -485,6 +485,40 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
   const db = createServerSupabase();
   const errors: string[] = [];
 
+  // Auto-repair: link orphaned meta_campaigns that have image_job_id but no image_job_markets
+  try {
+    const { data: allCampaigns } = await db
+      .from("meta_campaigns")
+      .select("id, image_job_id, countries")
+      .not("image_job_id", "is", null);
+
+    const { data: allMarkets } = await db
+      .from("image_job_markets")
+      .select("meta_campaign_id");
+
+    if (allCampaigns && allMarkets) {
+      const linkedCampaignIds = new Set(allMarkets.map((m) => m.meta_campaign_id).filter(Boolean));
+      const orphaned = allCampaigns.filter((c) => !linkedCampaignIds.has(c.id));
+
+      if (orphaned.length > 0) {
+        const rows = orphaned
+          .filter((c) => c.image_job_id && c.countries?.[0])
+          .map((c) => ({
+            image_job_id: c.image_job_id,
+            market: c.countries[0],
+            meta_campaign_id: c.id,
+          }));
+
+        if (rows.length > 0) {
+          await db.from("image_job_markets").upsert(rows, { onConflict: "image_job_id,market,meta_campaign_id", ignoreDuplicates: true });
+          console.log(`[Pipeline] Auto-linked ${rows.length} orphaned meta_campaigns`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Pipeline] Auto-repair failed:", err);
+  }
+
   // Fetch all image_job_markets with pushed Meta campaigns
   const { data: markets } = await db
     .from("image_job_markets")
@@ -849,6 +883,56 @@ export async function getPipelineData(): Promise<PipelineData> {
       killHypothesis: lifecycle?.hypothesis ?? null,
       killNotes: lifecycle?.notes ?? null,
     });
+  }
+
+  // ── Add draft concepts (image_jobs not yet pushed to Meta) ──
+  // Language → market mapping
+  const langToMarket: Record<string, string> = { da: "DK", no: "NO", sv: "SE", de: "DE" };
+
+  // Collect image_job IDs that already have market entries
+  const jobsWithMarkets = new Set(markets.map((m) => m.image_job_id));
+
+  // Fetch completed/ready jobs that have NO markets yet
+  const { data: draftJobs } = await db
+    .from("image_jobs")
+    .select("id, name, product, concept_number, status, cash_dna, created_at, target_languages, source_images(thumbnail_url, original_url)")
+    .in("status", ["completed", "reviewing", "ready"]);
+
+  for (const job of draftJobs ?? []) {
+    if (jobsWithMarkets.has(job.id)) continue; // already in pipeline via markets
+
+    const sourceImages = (job.source_images ?? []) as Array<{ thumbnail_url: string | null; original_url: string | null }>;
+    const thumbnailUrl = sourceImages[0]?.thumbnail_url ?? sourceImages[0]?.original_url ?? null;
+    const targetLangs = (job.target_languages ?? []) as string[];
+
+    // Create one draft entry per target market
+    for (const lang of targetLangs) {
+      const market = langToMarket[lang];
+      if (!market) continue;
+
+      concepts.push({
+        id: `draft-${job.id}-${market}`, // synthetic ID for drafts
+        imageJobId: job.id,
+        market,
+        name: job.name,
+        conceptNumber: job.concept_number ?? null,
+        product: job.product ?? null,
+        thumbnailUrl,
+        stage: "draft",
+        stageEnteredAt: job.created_at,
+        daysInStage: daysBetween(job.created_at, new Date()),
+        pushedAt: job.created_at,
+        daysSincePush: daysBetween(job.created_at, new Date()),
+        metrics: null,
+        signals: [],
+        targetCpa: null,
+        targetRoas: null,
+        currency: null,
+        cashDna: (job.cash_dna as CashDna | null) ?? null,
+        killHypothesis: null,
+        killNotes: null,
+      });
+    }
   }
 
   // Compute summary

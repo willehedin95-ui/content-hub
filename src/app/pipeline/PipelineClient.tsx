@@ -32,7 +32,7 @@ import type {
 
 // ── Constants ────────────────────────────────────────────────
 
-const STAGES: PipelineStage[] = ["queued", "testing", "review", "active", "killed"];
+const STAGES: PipelineStage[] = ["draft", "queued", "testing", "review", "active", "killed"];
 
 const STAGE_CONFIG: Record<
   PipelineStage,
@@ -470,8 +470,8 @@ export default function PipelineClient() {
 
   // When filtering by country, hide queued column (queued have no country) and show core stages
   const visibleStages = countryFilter
-    ? (["testing", "review", "active", "killed"] as PipelineStage[]).filter(
-        (s) => conceptsByStage[s].length > 0 || s === "testing" || s === "review" || s === "active"
+    ? (["draft", "testing", "review", "active", "killed"] as PipelineStage[]).filter(
+        (s) => conceptsByStage[s].length > 0 || s === "draft" || s === "testing" || s === "review" || s === "active"
       )
     : STAGES;
 
