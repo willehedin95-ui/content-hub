@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { getQueuedConcepts, getTestingCount, getTestingSlots, syncPipelineMetrics } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { notifyPushSuccess, notifyPushFailure, notifyPushSummary, notifyStageTransitions } from "@/lib/telegram-notify";
+import { getConversionsForTest, isShopifyConfigured } from "@/lib/shopify";
 
 export const maxDuration = 300;
 
@@ -35,6 +36,38 @@ export async function GET(req: NextRequest) {
 
     if (syncResult.errors.length > 0) {
       console.warn("[Pipeline Cron] Sync errors:", syncResult.errors);
+    }
+
+    // Step 1.5: Sync AB test conversions from Shopify
+    if (isShopifyConfigured()) {
+      console.log("[Pipeline Cron] Syncing AB test conversions...");
+      const { data: activeTests } = await db
+        .from("ab_tests")
+        .select("id, created_at")
+        .eq("status", "active");
+
+      for (const test of activeTests ?? []) {
+        try {
+          const conversions = await getConversionsForTest(test.id, test.created_at);
+          if (conversions.length > 0) {
+            await db
+              .from("ab_conversions")
+              .upsert(
+                conversions.map((c) => ({
+                  test_id: test.id,
+                  variant: c.variant,
+                  shopify_order_id: c.shopifyOrderId,
+                  revenue: c.revenue,
+                  currency: c.currency,
+                })),
+                { onConflict: "test_id,shopify_order_id", ignoreDuplicates: true }
+              );
+            console.log(`[Pipeline Cron] AB test ${test.id}: synced ${conversions.length} conversions`);
+          }
+        } catch (err) {
+          console.error(`[Pipeline Cron] AB test ${test.id} sync failed:`, err);
+        }
+      }
     }
 
     // Step 2: Push queued concepts to available testing slots
