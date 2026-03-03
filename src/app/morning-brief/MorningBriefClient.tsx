@@ -15,6 +15,12 @@ import {
   ShoppingCart,
   BarChart3,
   Zap,
+  Flame,
+  Star,
+  Stethoscope,
+  Gauge,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +93,55 @@ interface FatigueSignal {
   detail: string;
 }
 
+interface Bleeder {
+  ad_id: string;
+  ad_name: string | null;
+  adset_name: string | null;
+  campaign_name: string | null;
+  days_bleeding: number;
+  total_spend: number;
+  purchases: number;
+  avg_cpa: number;
+  campaign_avg_cpa: number;
+  avg_ctr: number;
+}
+
+interface ConsistentWinner {
+  ad_id: string;
+  ad_name: string | null;
+  adset_name: string | null;
+  campaign_name: string | null;
+  consistent_days: number;
+  total_spend: number;
+  total_purchases: number;
+  avg_roas: number;
+  avg_cpa: number;
+  avg_ctr: number;
+}
+
+interface LpVsCreativeFatigue {
+  ad_id: string;
+  ad_name: string | null;
+  adset_name: string | null;
+  campaign_name: string | null;
+  diagnosis: "landing_page" | "creative";
+  detail: string;
+}
+
+interface EfficiencyScore {
+  campaign_id: string | null;
+  campaign_name: string;
+  spend_7d: number;
+  roas_7d: number;
+  avg_ctr: number;
+  avg_cpc: number;
+  purchases_7d: number;
+  efficiency_score: number;
+  current_budget_share: number;
+  recommended_budget_share: number;
+  recommendation: "increase" | "decrease" | "maintain";
+}
+
 interface MorningBriefData {
   generated_at: string;
   data_date: string;
@@ -100,6 +155,12 @@ interface MorningBriefData {
       warning: FatigueSignal[];
       monitor: FatigueSignal[];
     };
+  };
+  signals: {
+    bleeders: Bleeder[];
+    consistent_winners: ConsistentWinner[];
+    lp_vs_creative_fatigue: LpVsCreativeFatigue[];
+    efficiency_scoring: EfficiencyScore[];
   };
 }
 
@@ -229,6 +290,8 @@ export default function MorningBriefClient() {
 
   const { spend_pacing, whats_running, performance_trends, winners_losers, fatigue_signals } =
     data.questions;
+  const { bleeders, consistent_winners, lp_vs_creative_fatigue, efficiency_scoring } =
+    data.signals;
 
   const totalFatigueCount =
     fatigue_signals.critical.length + fatigue_signals.warning.length + fatigue_signals.monitor.length;
@@ -348,6 +411,211 @@ export default function MorningBriefClient() {
             )}
           </div>
         )}
+      </section>
+
+      {/* Bleeders */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Bleeders</h2>
+          {bleeders.length > 0 ? (
+            <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+              {bleeders.length} ad{bleeders.length !== 1 ? "s" : ""} bleeding
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              None
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-gray-500 -mt-3 mb-4">
+          Ads with high spend, low CTR (&lt;1%), and CPA &gt;2.5x campaign average for 2+ days
+        </p>
+        {bleeders.length === 0 ? (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <p className="text-green-800 text-sm font-medium">No bleeders detected</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-red-500 overflow-hidden divide-y divide-gray-100">
+            {bleeders.map((b) => (
+              <div key={b.ad_id} className="px-5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
+                      <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
+                      {b.ad_name || "Unnamed"}
+                    </p>
+                    <p className="text-xs text-gray-500">{b.campaign_name}</p>
+                  </div>
+                  <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded shrink-0">
+                    {b.days_bleeding}d bleeding
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                  <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(b.total_spend)}</span></span>
+                  <span>Purchases: <span className="font-medium text-gray-700">{b.purchases}</span></span>
+                  <span>CTR: <span className="font-medium text-red-600">{b.avg_ctr}%</span></span>
+                  <span>Campaign avg CPA: <span className="font-medium text-gray-700">${b.campaign_avg_cpa}</span></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Consistent Winners */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Consistent Winners</h2>
+          {consistent_winners.length > 0 ? (
+            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+              {consistent_winners.length} ad{consistent_winners.length !== 1 ? "s" : ""}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              None yet
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-gray-500 -mt-3 mb-4">
+          Ads with ROAS &gt;1, CTR &gt;1%, and CPA at/below campaign avg for 5+ consecutive days
+        </p>
+        {consistent_winners.length === 0 ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+            <p className="text-gray-600 text-sm">No ads have sustained 5+ winning days yet</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-green-500 overflow-hidden divide-y divide-gray-100">
+            {consistent_winners.map((w) => (
+              <div key={w.ad_id} className="px-5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
+                      <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
+                      {w.ad_name || "Unnamed"}
+                    </p>
+                    <p className="text-xs text-gray-500">{w.campaign_name}</p>
+                  </div>
+                  <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded shrink-0">
+                    {w.consistent_days}d winning
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                  <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(w.total_spend)}</span></span>
+                  <span>Purchases: <span className="font-medium text-gray-700">{w.total_purchases}</span></span>
+                  <span>ROAS: <span className="font-medium text-green-700">{formatRoas(w.avg_roas)}</span></span>
+                  <span>CPA: <span className="font-medium text-gray-700">${w.avg_cpa}</span></span>
+                  <span>CTR: <span className="font-medium text-gray-700">{w.avg_ctr}%</span></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* LP vs Creative Fatigue */}
+      {lp_vs_creative_fatigue.length > 0 && (
+        <section>
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Fatigue Diagnosis</h2>
+            <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+              {lp_vs_creative_fatigue.length} signal{lp_vs_creative_fatigue.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 -mt-3 mb-4">
+            Distinguishing landing page issues from creative fatigue
+          </p>
+          <div className="space-y-2">
+            {lp_vs_creative_fatigue.map((f, i) => (
+              <div
+                key={`${f.ad_id}-${i}`}
+                className={cn(
+                  "bg-white rounded-lg border border-gray-200 border-l-4 px-5 py-3",
+                  f.diagnosis === "landing_page" ? "border-l-purple-500" : "border-l-orange-500"
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate" title={f.ad_name ?? ""}>
+                      <Stethoscope className="w-3.5 h-3.5 text-purple-600 inline mr-1.5" />
+                      {f.ad_name || "Unnamed"}
+                    </p>
+                    <p className="text-xs text-gray-500">{f.campaign_name}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-xs font-medium px-2 py-0.5 rounded shrink-0",
+                      f.diagnosis === "landing_page"
+                        ? "text-purple-700 bg-purple-50"
+                        : "text-orange-700 bg-orange-50"
+                    )}
+                  >
+                    {f.diagnosis === "landing_page" ? "Landing Page Issue" : "Creative Fatigue"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{f.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Efficiency Scoring */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Campaign Efficiency</h2>
+        </div>
+        <p className="text-sm text-gray-500 -mt-3 mb-4">
+          CTR/CPC efficiency ratio with budget allocation recommendations (30% max shift)
+        </p>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Campaign</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Spend 7d</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">ROAS</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">CTR</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">CPC</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Efficiency</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Budget</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {efficiency_scoring.map((c) => (
+                <tr key={c.campaign_id}>
+                  <td className="px-4 py-3 font-medium text-gray-900">{c.campaign_name}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(c.spend_7d)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={cn("font-medium", c.roas_7d >= 3 ? "text-green-700" : c.roas_7d >= 1 ? "text-gray-700" : "text-red-600")}>
+                      {formatRoas(c.roas_7d)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-700">{c.avg_ctr}%</td>
+                  <td className="px-4 py-3 text-right text-gray-700">${c.avg_cpc}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-mono font-medium text-gray-900">{c.efficiency_score}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
+                        c.recommendation === "increase"
+                          ? "text-green-700 bg-green-50"
+                          : c.recommendation === "decrease"
+                          ? "text-red-700 bg-red-50"
+                          : "text-gray-500 bg-gray-100"
+                      )}
+                    >
+                      {c.recommendation === "increase" && <ArrowUpRight className="w-3 h-3" />}
+                      {c.recommendation === "decrease" && <ArrowDownRight className="w-3 h-3" />}
+                      {c.current_budget_share}% → {c.recommended_budget_share}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

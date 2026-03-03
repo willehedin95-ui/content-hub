@@ -249,6 +249,269 @@ export async function GET() {
     }
   }
 
+  // ── Q6: Bleeder Detection ──
+  // Ads spending heavily with bad results for 2+ consecutive days
+  const bleeders: Array<{
+    ad_id: string;
+    ad_name: string | null;
+    adset_name: string | null;
+    campaign_name: string | null;
+    days_bleeding: number;
+    total_spend: number;
+    purchases: number;
+    avg_cpa: number;
+    campaign_avg_cpa: number;
+    avg_ctr: number;
+  }> = [];
+
+  // Compute campaign-level average CPA for baseline
+  const campaignCpa = new Map<string, number>();
+  for (const cid of campaignIds) {
+    const campRows = currentRows.filter((r) => r.campaign_id === cid);
+    const campSpend = sum(campRows, "spend");
+    const campPurchases = sum(campRows, "purchases");
+    campaignCpa.set(cid ?? "unknown", campPurchases > 0 ? campSpend / campPurchases : 0);
+  }
+
+  for (const adId of adIds) {
+    const adDays = currentRows
+      .filter((r) => r.meta_ad_id === adId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (adDays.length < 2) continue;
+
+    const adName = adDays[adDays.length - 1].ad_name;
+    const adsetName = adDays[adDays.length - 1].adset_name;
+    const campaignName = adDays[adDays.length - 1].campaign_name;
+    const campId = adDays[adDays.length - 1].campaign_id ?? "unknown";
+    const baseCpa = campaignCpa.get(campId) ?? 0;
+
+    if (baseCpa === 0) continue; // can't assess without campaign baseline
+
+    // Count consecutive bleeding days from the end
+    let bleedingDays = 0;
+    for (let i = adDays.length - 1; i >= 0; i--) {
+      const day = adDays[i];
+      const daySpend = Number(day.spend);
+      const dayPurchases = Number(day.purchases);
+      const dayCtr = Number(day.ctr);
+      const dayCpa = dayPurchases > 0 ? daySpend / dayPurchases : Infinity;
+
+      // Bleeding: spending with either no purchases or CPA > 2.5x campaign avg, AND CTR < 1%
+      if (daySpend > 5 && (dayCpa > baseCpa * 2.5 || dayPurchases === 0) && dayCtr < 1) {
+        bleedingDays++;
+      } else {
+        break;
+      }
+    }
+
+    if (bleedingDays >= 2) {
+      const recentDays = adDays.slice(-bleedingDays);
+      const totalSpend = recentDays.reduce((s, r) => s + Number(r.spend), 0);
+      const totalPurchases = recentDays.reduce((s, r) => s + Number(r.purchases), 0);
+      bleeders.push({
+        ad_id: adId,
+        ad_name: adName,
+        adset_name: adsetName,
+        campaign_name: campaignName,
+        days_bleeding: bleedingDays,
+        total_spend: round(totalSpend),
+        purchases: totalPurchases,
+        avg_cpa: totalPurchases > 0 ? round(totalSpend / totalPurchases) : 0,
+        campaign_avg_cpa: round(baseCpa),
+        avg_ctr: round(avg(recentDays, "ctr"), 2),
+      });
+    }
+  }
+
+  bleeders.sort((a, b) => b.total_spend - a.total_spend);
+
+  // ── Q7: Winner Detection ──
+  // Ads performing consistently well over 5+ days
+  const winnerAds: Array<{
+    ad_id: string;
+    ad_name: string | null;
+    adset_name: string | null;
+    campaign_name: string | null;
+    consistent_days: number;
+    total_spend: number;
+    total_purchases: number;
+    avg_roas: number;
+    avg_cpa: number;
+    avg_ctr: number;
+  }> = [];
+
+  for (const adId of adIds) {
+    const adDays = currentRows
+      .filter((r) => r.meta_ad_id === adId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (adDays.length < 5) continue;
+
+    const adName = adDays[adDays.length - 1].ad_name;
+    const adsetName = adDays[adDays.length - 1].adset_name;
+    const campaignName = adDays[adDays.length - 1].campaign_name;
+    const campId = adDays[adDays.length - 1].campaign_id ?? "unknown";
+    const baseCpa = campaignCpa.get(campId) ?? 0;
+
+    // Count consecutive winning days from the end
+    let winningDays = 0;
+    for (let i = adDays.length - 1; i >= 0; i--) {
+      const day = adDays[i];
+      const daySpend = Number(day.spend);
+      const dayPurchases = Number(day.purchases);
+      const dayCtr = Number(day.ctr);
+      const dayRoas = Number(day.roas);
+
+      // Winning: has purchases, ROAS > 1, CTR > 1%, and CPA at or below campaign average
+      const dayCpa = dayPurchases > 0 ? daySpend / dayPurchases : Infinity;
+      if (dayPurchases > 0 && dayRoas > 1 && dayCtr > 1 && (baseCpa === 0 || dayCpa <= baseCpa)) {
+        winningDays++;
+      } else {
+        break;
+      }
+    }
+
+    if (winningDays >= 5) {
+      const recentDays = adDays.slice(-winningDays);
+      const totalSpend = recentDays.reduce((s, r) => s + Number(r.spend), 0);
+      const totalPurchases = recentDays.reduce((s, r) => s + Number(r.purchases), 0);
+      const totalRevenue = recentDays.reduce((s, r) => s + Number(r.purchase_value), 0);
+      winnerAds.push({
+        ad_id: adId,
+        ad_name: adName,
+        adset_name: adsetName,
+        campaign_name: campaignName,
+        consistent_days: winningDays,
+        total_spend: round(totalSpend),
+        total_purchases: totalPurchases,
+        avg_roas: totalSpend > 0 ? round(totalRevenue / totalSpend) : 0,
+        avg_cpa: totalPurchases > 0 ? round(totalSpend / totalPurchases) : 0,
+        avg_ctr: round(avg(recentDays, "ctr"), 2),
+      });
+    }
+  }
+
+  winnerAds.sort((a, b) => b.avg_roas - a.avg_roas);
+
+  // ── Q8: LP vs Creative Fatigue ──
+  // If CTR is stable/rising but CPA is rising → landing page problem, not creative
+  const lpFatigueSignals: Array<{
+    ad_id: string;
+    ad_name: string | null;
+    adset_name: string | null;
+    campaign_name: string | null;
+    diagnosis: "landing_page" | "creative";
+    detail: string;
+  }> = [];
+
+  for (const adId of adIds) {
+    const adDays = currentRows
+      .filter((r) => r.meta_ad_id === adId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (adDays.length < 4) continue;
+
+    const adName = adDays[adDays.length - 1].ad_name;
+    const adsetName = adDays[adDays.length - 1].adset_name;
+    const campaignName = adDays[adDays.length - 1].campaign_name;
+
+    // Only analyze ads with purchases (can't compute CPA without them)
+    const daysWithPurchases = adDays.filter((r) => Number(r.purchases) > 0);
+    if (daysWithPurchases.length < 3) continue;
+
+    const ctrs = adDays.map((r) => Number(r.ctr));
+    const cpas = adDays.map((r) => {
+      const spend = Number(r.spend);
+      const purchases = Number(r.purchases);
+      return purchases > 0 ? spend / purchases : null;
+    }).filter((v): v is number => v !== null);
+
+    if (cpas.length < 3) continue;
+
+    const ctrDropping = isConsecutivelyDropping(ctrs, 3);
+    const cpaRising = isConsecutivelyRising(cpas, 3);
+
+    const firstCtr = ctrs[0];
+    const lastCtr = ctrs[ctrs.length - 1];
+    const ctrChangePct = firstCtr > 0 ? ((lastCtr - firstCtr) / firstCtr) * 100 : 0;
+
+    const firstCpa = cpas[0];
+    const lastCpa = cpas[cpas.length - 1];
+    const cpaChangePct = firstCpa > 0 ? ((lastCpa - firstCpa) / firstCpa) * 100 : 0;
+
+    // LP fatigue: CTR stable or rising (not dropping >10%) but CPA rising >20%
+    if (!ctrDropping && Math.abs(ctrChangePct) < 15 && cpaRising && cpaChangePct > 20) {
+      lpFatigueSignals.push({
+        ad_id: adId,
+        ad_name: adName,
+        adset_name: adsetName,
+        campaign_name: campaignName,
+        diagnosis: "landing_page",
+        detail: `CTR stable (${round(firstCtr, 2)}% → ${round(lastCtr, 2)}%) but CPA rising ${round(cpaChangePct, 0)}% ($${round(firstCpa, 0)} → $${round(lastCpa, 0)})`,
+      });
+    }
+
+    // Creative fatigue: CTR dropping AND CPA rising
+    if (ctrDropping && cpaRising && ctrChangePct < -15 && cpaChangePct > 15) {
+      lpFatigueSignals.push({
+        ad_id: adId,
+        ad_name: adName,
+        adset_name: adsetName,
+        campaign_name: campaignName,
+        diagnosis: "creative",
+        detail: `CTR dropping ${round(Math.abs(ctrChangePct), 0)}% (${round(firstCtr, 2)}% → ${round(lastCtr, 2)}%) and CPA rising ${round(cpaChangePct, 0)}% ($${round(firstCpa, 0)} → $${round(lastCpa, 0)})`,
+      });
+    }
+  }
+
+  // ── Q9: Efficiency Scoring ──
+  // Per-campaign CTR/CPC efficiency ratio + budget shift recommendations
+  const efficiencyScores = Array.from(campaignIds).map((cid) => {
+    const campRows = currentRows.filter((r) => r.campaign_id === cid);
+    const name = campRows[0]?.campaign_name ?? "Unknown";
+    const campSpend = sum(campRows, "spend");
+    const campRevenue = sum(campRows, "purchase_value");
+    const campPurchases = sum(campRows, "purchases");
+    const avgCtr = avg(campRows, "ctr");
+    const avgCpc = avg(campRows, "cpc");
+    const roas = campSpend > 0 ? campRevenue / campSpend : 0;
+
+    // Efficiency = CTR / CPC — higher means more clicks per dollar
+    const efficiency = avgCpc > 0 ? avgCtr / avgCpc : 0;
+
+    return {
+      campaign_id: cid,
+      campaign_name: name,
+      spend_7d: round(campSpend),
+      roas_7d: round(roas),
+      avg_ctr: round(avgCtr, 2),
+      avg_cpc: round(avgCpc, 2),
+      purchases_7d: campPurchases,
+      efficiency_score: round(efficiency, 3),
+    };
+  }).sort((a, b) => b.efficiency_score - a.efficiency_score);
+
+  // Compute budget recommendation tiers
+  const totalEfficiency = efficiencyScores.reduce((s, c) => s + c.efficiency_score, 0);
+  const efficiencyWithRecommendation = efficiencyScores.map((c, i) => {
+    const share = totalEfficiency > 0 ? c.efficiency_score / totalEfficiency : 1 / efficiencyScores.length;
+    // Cap recommendations at 30% max shift from current
+    const currentShare = c.spend_7d / Math.max(efficiencyScores.reduce((s, x) => s + x.spend_7d, 0), 1);
+    const rawRecommended = share;
+    const cappedRecommended = Math.min(rawRecommended, currentShare + 0.30);
+    const finalRecommended = Math.max(cappedRecommended, currentShare - 0.30);
+
+    return {
+      ...c,
+      current_budget_share: round(currentShare * 100, 1),
+      recommended_budget_share: round(finalRecommended * 100, 1),
+      recommendation: finalRecommended > currentShare + 0.02 ? "increase" as const :
+                       finalRecommended < currentShare - 0.02 ? "decrease" as const :
+                       "maintain" as const,
+    };
+  });
+
   return NextResponse.json({
     generated_at: new Date().toISOString(),
     data_date: latestDate,
@@ -258,6 +521,12 @@ export async function GET() {
       performance_trends: performanceTrends,
       winners_losers: { winners, losers },
       fatigue_signals: fatigueSignals,
+    },
+    signals: {
+      bleeders,
+      consistent_winners: winnerAds,
+      lp_vs_creative_fatigue: lpFatigueSignals,
+      efficiency_scoring: efficiencyWithRecommendation,
     },
   });
 }
