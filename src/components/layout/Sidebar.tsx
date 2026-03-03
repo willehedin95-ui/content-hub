@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse, Sun } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Bookmark, Workflow, Activity, Warehouse, Sun, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -49,6 +49,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
         { href: "/images", label: "Ad Concepts", icon: Image },
         { href: "/spy", label: "Ad Spy", icon: Eye },
         { href: "/saved-ads", label: "Saved Ads", icon: Bookmark },
+        { href: "/hooks", label: "Hook Bank", icon: Library },
       ],
     },
     { href: "/products", label: "Products", icon: Package },
