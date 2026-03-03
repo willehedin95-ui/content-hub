@@ -385,10 +385,8 @@ function injectOptOutScript(html: string, hubUrl?: string, excludedIps?: string[
   const script = `<script data-cc-optout="true">
 (function(){
   var c=document.cookie;
-  // Check existing cookie first (instant, no API call)
   if(c.indexOf('_ch_optout=1')!==-1){window.__chOptout=true;return}
   if(c.indexOf('_ch_optout=0')!==-1){return}
-  // Manual URL override
   var p=new URLSearchParams(location.search);
   if(p.get('_ch_optout')==='1'){
     document.cookie='_ch_optout=1;path=/;max-age=31536000;SameSite=Lax';
@@ -397,23 +395,15 @@ function injectOptOutScript(html: string, hubUrl?: string, excludedIps?: string[
     document.cookie='_ch_optout=0;path=/;max-age=31536000;SameSite=Lax';
     return;
   }
-  // IP check: call hub API to verify (only on first visit, before cookie is set)
   var ips=${ips};var api=${apiUrl};
   if(ips.length>0&&api){
-    var x=new XMLHttpRequest();
-    x.open('GET',api,false);// synchronous to block tracking scripts
-    try{
-      x.send();
-      if(x.status===200){
-        var r=JSON.parse(x.responseText);
-        if(r.optout){
-          document.cookie='_ch_optout=1;path=/;max-age=31536000;SameSite=Lax';
-          window.__chOptout=true;return;
-        }else{
-          document.cookie='_ch_optout=0;path=/;max-age=31536000;SameSite=Lax';
-        }
+    fetch(api).then(function(r){return r.json()}).then(function(d){
+      if(d.optout){
+        document.cookie='_ch_optout=1;path=/;max-age=31536000;SameSite=Lax';
+      }else{
+        document.cookie='_ch_optout=0;path=/;max-age=31536000;SameSite=Lax';
       }
-    }catch(e){}
+    }).catch(function(){});
   }
 })();
 </script>`;
