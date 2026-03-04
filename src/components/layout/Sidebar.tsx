@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Eye, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Sun, Library } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -46,14 +46,13 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
         { href: "/pipeline", label: "Ad Tracker", icon: Workflow },
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
         { href: "/images", label: "Static Ads", icon: Image },
-        { href: "/ad-library", label: "Ad Library", icon: Eye },
         { href: "/hooks", label: "Hook Bank", icon: Library },
       ],
     },
     { href: "/products", label: "Products", icon: Package },
     { href: "/stock", label: "Inventory", icon: Warehouse },
-    { href: "/performance", label: "Performance", icon: BarChart3 },
-    { href: "/morning-brief", label: "Morning Brief", icon: Sun },
+    { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
+    { href: "/morning-brief", label: "Daily Actions", icon: Zap },
   ], [pipelineBadgeCount]);
 
   // Initialize open state based on current route (once on mount + route changes)
