@@ -7,27 +7,14 @@ import {
   TrendingDown,
   Minus,
   AlertCircle,
-  AlertTriangle,
-  Eye,
+  RefreshCw,
+  Zap,
   Trophy,
   ThumbsDown,
-  RefreshCw,
-  DollarSign,
-  ShoppingCart,
-  BarChart3,
-  Zap,
-  Flame,
-  Star,
-  Stethoscope,
-  Gauge,
-  ArrowUpRight,
-  ArrowDownRight,
   ExternalLink,
   Loader2,
-  Pause,
-  Rocket,
   CheckCircle2,
-  GitBranch,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -158,6 +145,17 @@ interface EfficiencyScore {
   recommendation: "increase" | "decrease" | "maintain";
 }
 
+interface ActionCard {
+  id: string;
+  type: "pause" | "scale" | "refresh" | "budget" | "landing_page";
+  category: string;
+  title: string;
+  why: string;
+  expected_impact: string;
+  action_data: Record<string, unknown>;
+  priority: number;
+}
+
 interface MorningBriefData {
   generated_at: string;
   data_date: string;
@@ -178,6 +176,7 @@ interface MorningBriefData {
     lp_vs_creative_fatigue: LpVsCreativeFatigue[];
     efficiency_scoring: EfficiencyScore[];
   };
+  action_cards: ActionCard[];
 }
 
 // ── Helpers ──
@@ -215,25 +214,6 @@ function TrendBadge({ direction, label }: { direction: string; label?: string })
   );
 }
 
-function SeverityBadge({ level }: { level: "critical" | "warning" | "monitor" }) {
-  const styles = {
-    critical: "bg-red-100 text-red-800 border-red-200",
-    warning: "bg-amber-100 text-amber-800 border-amber-200",
-    monitor: "bg-blue-100 text-blue-700 border-blue-200",
-  };
-  const icons = {
-    critical: <AlertCircle className="w-3.5 h-3.5" />,
-    warning: <AlertTriangle className="w-3.5 h-3.5" />,
-    monitor: <Eye className="w-3.5 h-3.5" />,
-  };
-  return (
-    <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", styles[level])}>
-      {icons[level]}
-      {level.charAt(0).toUpperCase() + level.slice(1)}
-    </span>
-  );
-}
-
 function changePct(current: number, previous: number): number | null {
   if (previous === 0) return null;
   return ((current - previous) / previous) * 100;
@@ -245,6 +225,7 @@ export default function MorningBriefClient() {
   const [data, setData] = useState<MorningBriefData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const fetchBrief = async () => {
     setLoading(true);
@@ -265,168 +246,45 @@ export default function MorningBriefClient() {
 
   // Action state
   const [actionState, setActionState] = useState<{
-    loading: string | null; // action key currently loading
+    loading: string | null;
     results: Record<string, { ok: boolean; message: string }>;
   }>({ loading: null, results: {} });
 
-  async function handlePauseBleeders(bleedersToStop: Bleeder[]) {
-    setActionState((s) => ({ ...s, loading: "pause_bleeders" }));
+  async function handleApply(card: ActionCard) {
+    if (card.type === "refresh") {
+      window.location.href = "/brainstorm";
+      return;
+    }
+    if (card.type === "landing_page") {
+      window.location.href = "/pages";
+      return;
+    }
+
+    setActionState((s) => ({ ...s, loading: card.id }));
     try {
       const res = await fetch("/api/morning-brief/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "pause_bleeders",
-          bleeders: bleedersToStop.map((b) => ({
-            ad_id: b.ad_id,
-            ad_name: b.ad_name,
-            campaign_name: b.campaign_name,
-            days_bleeding: b.days_bleeding,
-            total_spend: b.total_spend,
-            avg_ctr: b.avg_ctr,
-            avg_cpa: b.avg_cpa,
-          })),
-        }),
+        body: JSON.stringify(card.action_data),
       });
-      const data = await res.json();
+      const result = await res.json();
       setActionState((s) => ({
-        ...s,
         loading: null,
         results: {
           ...s.results,
-          pause_bleeders: {
-            ok: data.ok,
-            message: `Paused ${data.paused} ad${data.paused !== 1 ? "s" : ""}${data.failed ? `, ${data.failed} failed` : ""}`,
+          [card.id]: {
+            ok: result.ok,
+            message: result.ok ? "Done!" : result.error || "Failed",
           },
         },
       }));
     } catch {
       setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: { ...s.results, pause_bleeders: { ok: false, message: "Action failed" } },
-      }));
-    }
-  }
-
-  async function handlePauseAd(adId: string, adName?: string | null, campaignName?: string | null) {
-    const key = `pause_${adId}`;
-    setActionState((s) => ({ ...s, loading: key }));
-    try {
-      const res = await fetch("/api/morning-brief/actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "pause_ad",
-          ad_id: adId,
-          ad_name: adName,
-          campaign_name: campaignName,
-          reason: "Paused from Morning Brief",
-        }),
-      });
-      const data = await res.json();
-      setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: { ...s.results, [key]: { ok: data.ok, message: data.ok ? "Paused" : "Failed" } },
-      }));
-    } catch {
-      setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: { ...s.results, [key]: { ok: false, message: "Failed" } },
-      }));
-    }
-  }
-
-  async function handleScaleWinner(w: ConsistentWinner) {
-    const key = `scale_${w.ad_id}`;
-    setActionState((s) => ({ ...s, loading: key }));
-    try {
-      const res = await fetch("/api/morning-brief/actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "scale_winner",
-          ad_id: w.ad_id,
-          adset_id: w.adset_id,
-          campaign_id: w.campaign_id,
-          ad_name: w.ad_name,
-          campaign_name: w.campaign_name,
-        }),
-      });
-      const data = await res.json();
-      setActionState((s) => ({
-        ...s,
         loading: null,
         results: {
           ...s.results,
-          [key]: {
-            ok: data.ok,
-            message: data.ok
-              ? `${data.level === "adset" ? "Ad set" : "Campaign"} budget: ${data.old_budget} → ${data.new_budget} kr/day`
-              : "Failed",
-          },
+          [card.id]: { ok: false, message: "Network error" },
         },
-      }));
-    } catch {
-      setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: { ...s.results, [key]: { ok: false, message: "Failed" } },
-      }));
-    }
-  }
-
-  async function handleScaleAllWinners(winners: ConsistentWinner[]) {
-    setActionState((s) => ({ ...s, loading: "scale_all" }));
-    for (const w of winners) {
-      await handleScaleWinner(w);
-    }
-    setActionState((s) => ({
-      ...s,
-      loading: null,
-      results: {
-        ...s.results,
-        scale_all: { ok: true, message: `Scaled ${winners.length} winner${winners.length !== 1 ? "s" : ""} +20%` },
-      },
-    }));
-  }
-
-  async function handleApplyBudgetShifts(scores: EfficiencyScore[]) {
-    setActionState((s) => ({ ...s, loading: "budget_shifts" }));
-    try {
-      const shifts = scores
-        .filter((s) => s.recommendation !== "maintain" && s.campaign_id)
-        .map((s) => ({
-          campaign_id: s.campaign_id!,
-          campaign_name: s.campaign_name,
-          efficiency_score: s.efficiency_score,
-          recommended_budget_share: s.recommended_budget_share,
-          recommendation: s.recommendation,
-        }));
-      const res = await fetch("/api/morning-brief/actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apply_budget_shifts", shifts }),
-      });
-      const data = await res.json();
-      setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: {
-          ...s.results,
-          budget_shifts: {
-            ok: data.ok,
-            message: data.ok ? `Updated ${data.updated} campaign budget${data.updated !== 1 ? "s" : ""}` : "Failed",
-          },
-        },
-      }));
-    } catch {
-      setActionState((s) => ({
-        ...s,
-        loading: null,
-        results: { ...s.results, budget_shifts: { ok: false, message: "Failed" } },
       }));
     }
   }
@@ -437,15 +295,15 @@ export default function MorningBriefClient() {
 
   if (loading) {
     return (
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-8 max-w-5xl mx-auto">
         <div className="animate-pulse space-y-6">
           <div className="h-8 w-64 bg-gray-200 rounded" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="h-10 bg-gray-200 rounded-lg" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-28 bg-gray-200 rounded-lg" />
+              <div key={i} className="h-40 bg-gray-200 rounded-lg" />
             ))}
           </div>
-          <div className="h-64 bg-gray-200 rounded-lg" />
         </div>
       </div>
     );
@@ -453,8 +311,8 @@ export default function MorningBriefClient() {
 
   if (error) {
     return (
-      <div className="p-8 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Morning Brief</h1>
+      <div className="p-8 max-w-5xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Daily Actions</h1>
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
           <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
           <p className="text-red-800 font-medium">{error}</p>
@@ -472,22 +330,24 @@ export default function MorningBriefClient() {
 
   if (!data) return null;
 
-  const { spend_pacing, whats_running, performance_trends, winners_losers, fatigue_signals } =
+  const { spend_pacing, whats_running, performance_trends, winners_losers } =
     data.questions;
-  const { bleeders, consistent_winners, lp_vs_creative_fatigue, efficiency_scoring } =
-    data.signals;
 
-  const totalFatigueCount =
-    fatigue_signals.critical.length + fatigue_signals.warning.length + fatigue_signals.monitor.length;
+  const visibleActions = (data.action_cards ?? []).filter(
+    (c) => !dismissed.has(c.id)
+  );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
-      {/* Header */}
+    <div className="p-8 max-w-5xl mx-auto space-y-6">
+      {/* 1. Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Morning Brief</h1>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Zap className="w-6 h-6 text-indigo-600" />
+            Daily Actions
+          </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Data from {data.data_date} &middot; Generated{" "}
+            {data.data_date} &middot; Generated{" "}
             {new Date(data.generated_at).toLocaleTimeString("en-US", {
               hour: "2-digit",
               minute: "2-digit",
@@ -503,483 +363,209 @@ export default function MorningBriefClient() {
         </button>
       </div>
 
-      {/* Q1: Spend Pacing — KPI Row */}
+      {/* 2. Compact KPI strip */}
+      <div className="flex items-center gap-6 bg-white border border-gray-200 rounded-lg px-5 py-3 text-sm text-gray-600">
+        <span>
+          Spend:{" "}
+          <span className="font-semibold text-gray-900">
+            {formatCurrency(spend_pacing.total_spend)}
+          </span>
+        </span>
+        <span className="text-gray-300">|</span>
+        <span>
+          ROAS:{" "}
+          <span className="font-semibold text-gray-900">
+            {formatRoas(spend_pacing.blended_roas)}
+          </span>
+        </span>
+        <span className="text-gray-300">|</span>
+        <span>
+          Purchases:{" "}
+          <span className="font-semibold text-gray-900">
+            {spend_pacing.total_purchases}
+          </span>
+        </span>
+        <span className="text-gray-300">|</span>
+        <span>
+          Active ads:{" "}
+          <span className="font-semibold text-gray-900">
+            {whats_running.total_active_ads}
+          </span>
+        </span>
+      </div>
+
+      {/* 3. Action Cards */}
       <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard
-            icon={<DollarSign className="w-5 h-5 text-gray-400" />}
-            label="Spend"
-            value={formatCurrency(spend_pacing.total_spend)}
-            sub={`${whats_running.active_campaigns} campaigns`}
-          />
-          <KpiCard
-            icon={<ShoppingCart className="w-5 h-5 text-gray-400" />}
-            label="Purchases"
-            value={spend_pacing.total_purchases.toString()}
-            sub={
-              spend_pacing.total_purchases > 0
-                ? `${(spend_pacing.total_spend / spend_pacing.total_purchases).toFixed(0)} kr CPA`
-                : "No purchases"
-            }
-          />
-          <KpiCard
-            icon={<BarChart3 className="w-5 h-5 text-gray-400" />}
-            label="Revenue"
-            value={formatCurrency(spend_pacing.total_revenue)}
-            sub={`${whats_running.total_active_ads} active ads`}
-          />
-          <KpiCard
-            icon={<Zap className="w-5 h-5 text-gray-400" />}
-            label="Blended ROAS"
-            value={formatRoas(spend_pacing.blended_roas)}
-            highlight={spend_pacing.blended_roas >= 3}
-            sub={spend_pacing.blended_roas >= 3 ? "Above target" : "Below target"}
-          />
-        </div>
+        {visibleActions.length === 0 ? (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
+            <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
+            <p className="text-green-800 font-semibold text-lg">All clear</p>
+            <p className="text-green-700 text-sm mt-1">
+              No actions needed today. Your campaigns are running well.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {visibleActions.map((card) => {
+              const result = actionState.results[card.id];
+              const isLoading = actionState.loading === card.id;
+              const isLink =
+                card.type === "refresh" || card.type === "landing_page";
+              const categoryColor =
+                card.category === "Budget"
+                  ? "bg-blue-50 text-blue-700"
+                  : "bg-purple-50 text-purple-700";
+
+              return (
+                <div
+                  key={card.id}
+                  className="bg-white border border-gray-200 rounded-lg p-5 flex flex-col"
+                >
+                  {/* Category badge */}
+                  <span
+                    className={cn(
+                      "inline-flex self-start text-xs font-medium px-2.5 py-0.5 rounded-full mb-3",
+                      categoryColor
+                    )}
+                  >
+                    {card.category}
+                  </span>
+
+                  {/* Title */}
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                    {card.title}
+                  </h3>
+
+                  {/* Why */}
+                  <p className="text-sm text-gray-600 mb-3 flex-1">
+                    {card.why}
+                  </p>
+
+                  {/* Expected impact */}
+                  <p className="text-xs text-gray-500 mb-4">
+                    <span className="font-medium">Expected impact:</span>{" "}
+                    {card.expected_impact}
+                  </p>
+
+                  {/* Action buttons */}
+                  {result ? (
+                    <div
+                      className={cn(
+                        "text-sm font-medium px-3 py-2 rounded-md text-center",
+                        result.ok
+                          ? "bg-green-50 text-green-700"
+                          : "bg-red-50 text-red-700"
+                      )}
+                    >
+                      <CheckCircle2 className="w-4 h-4 inline mr-1.5" />
+                      {result.message}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleApply(card)}
+                        disabled={!!actionState.loading}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md transition-colors"
+                      >
+                        {isLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : isLink ? (
+                          "Go to page"
+                        ) : (
+                          "Apply"
+                        )}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setDismissed((prev) => new Set(prev).add(card.id))
+                        }
+                        className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
-      {/* Q2 + Q3: Campaign Performance Trends */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Campaign Performance</h2>
-        <p className="text-sm text-gray-500 -mt-3 mb-4">7-day current vs 7-day previous</p>
-        <div className="space-y-3">
+      {/* 4. Collapsible detail sections */}
+
+      {/* Campaign Trends */}
+      <details className="bg-white border border-gray-200 rounded-lg">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg select-none">
+          Campaign Trends
+          <span className="text-xs font-normal text-gray-500 ml-2">
+            7d vs previous 7d
+          </span>
+        </summary>
+        <div className="px-5 pb-5 space-y-3">
           {performance_trends.map((ct) => (
             <CampaignCard key={ct.campaign_id} trend={ct} />
           ))}
         </div>
-      </section>
+      </details>
 
-      {/* Q4: Winners & Losers */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Winners & Losers</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AdTable
-            title="Top Performers"
-            icon={<Trophy className="w-4 h-4 text-green-600" />}
-            ads={winners_losers.winners}
-            type="winner"
-          />
-          <AdTable
-            title="Underperformers"
-            icon={<ThumbsDown className="w-4 h-4 text-red-500" />}
-            ads={winners_losers.losers}
-            type="loser"
-          />
+      {/* Winners & Losers */}
+      <details className="bg-white border border-gray-200 rounded-lg">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg select-none">
+          Winners & Losers
+          <span className="text-xs font-normal text-gray-500 ml-2">
+            Top/bottom 5 by ROAS
+          </span>
+        </summary>
+        <div className="px-5 pb-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <AdTable
+              title="Top Performers"
+              icon={<Trophy className="w-4 h-4 text-green-600" />}
+              ads={winners_losers.winners}
+              type="winner"
+            />
+            <AdTable
+              title="Underperformers"
+              icon={<ThumbsDown className="w-4 h-4 text-red-500" />}
+              ads={winners_losers.losers}
+              type="loser"
+            />
+          </div>
         </div>
-      </section>
+      </details>
 
-      {/* Q5: Fatigue Signals */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Fatigue Signals</h2>
-          {totalFatigueCount > 0 && (
-            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-              {totalFatigueCount} signal{totalFatigueCount !== 1 ? "s" : ""}
-            </span>
-          )}
+      {/* Recent Actions */}
+      <details className="bg-white border border-gray-200 rounded-lg">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg select-none">
+          Recent Actions
+          <span className="text-xs font-normal text-gray-500 ml-2">
+            Activity log
+          </span>
+        </summary>
+        <div className="px-5 pb-5">
+          <RecentActionsContent />
         </div>
-        {totalFatigueCount === 0 ? (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-            <p className="text-green-800 font-medium">All clear — no fatigue signals detected</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {fatigue_signals.critical.length > 0 && (
-              <>
-                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-                  <p className="text-sm text-red-800">
-                    <span className="font-semibold">Recommendation:</span> Pause critical fatigue ads and brainstorm fresh creatives.
-                  </p>
-                </div>
-                <FatigueGroup
-                  level="critical"
-                  signals={fatigue_signals.critical}
-                  onPauseAd={handlePauseAd}
-                  actionState={actionState}
-                />
-              </>
-            )}
-            {fatigue_signals.warning.length > 0 && (
-              <FatigueGroup level="warning" signals={fatigue_signals.warning} />
-            )}
-            {fatigue_signals.monitor.length > 0 && (
-              <FatigueGroup level="monitor" signals={fatigue_signals.monitor} />
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Bleeders */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Bleeders</h2>
-          {bleeders.length > 0 ? (
-            <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-              {bleeders.length} ad{bleeders.length !== 1 ? "s" : ""} bleeding
-            </span>
-          ) : (
-            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-              None
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-gray-500 -mt-3 mb-4">
-          Ads with high spend, low CTR (&lt;1%), and CPA &gt;2.5x campaign average for 2+ days
-        </p>
-        {bleeders.length === 0 ? (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-            <p className="text-green-800 text-sm font-medium">No bleeders detected</p>
-          </div>
-        ) : (
-          <>
-            {/* Recommendation */}
-            <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-3">
-              <p className="text-sm text-red-800">
-                <span className="font-semibold">Recommendation:</span> Pause these ads — they&apos;re spending without converting.
-              </p>
-              {actionState.results.pause_bleeders ? (
-                <span className={cn("text-xs font-medium px-3 py-1.5 rounded-lg", actionState.results.pause_bleeders.ok ? "text-green-700 bg-green-100" : "text-red-700 bg-red-100")}>
-                  <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
-                  {actionState.results.pause_bleeders.message}
-                </span>
-              ) : (
-                <button
-                  onClick={() => handlePauseBleeders(bleeders)}
-                  disabled={actionState.loading === "pause_bleeders"}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                >
-                  {actionState.loading === "pause_bleeders" ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Pause className="w-3.5 h-3.5" />
-                  )}
-                  Pause All Bleeders ({bleeders.length})
-                </button>
-              )}
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-red-500 overflow-hidden divide-y divide-gray-100">
-              {bleeders.map((b) => {
-                const pauseKey = `pause_${b.ad_id}`;
-                const pauseResult = actionState.results[pauseKey] || actionState.results.pause_bleeders;
-                return (
-                  <div key={b.ad_id} className="px-5 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900 truncate" title={b.ad_name ?? ""}>
-                            <Flame className="w-3.5 h-3.5 text-red-500 inline mr-1.5" />
-                            {b.ad_name || "Unnamed"}
-                          </p>
-                          <a href={metaAdUrl(b.ad_id)} target="_blank" rel="noopener noreferrer"
-                             className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-                        <p className="text-xs text-gray-500">{b.campaign_name}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-                          {b.days_bleeding}d bleeding
-                        </span>
-                        {!pauseResult && (
-                          <button
-                            onClick={() => handlePauseAd(b.ad_id, b.ad_name, b.campaign_name)}
-                            disabled={!!actionState.loading}
-                            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
-                          >
-                            {actionState.loading === pauseKey ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              "Pause"
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                      <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(b.total_spend)}</span></span>
-                      <span>Purchases: <span className="font-medium text-gray-700">{b.purchases}</span></span>
-                      <span>CTR: <span className="font-medium text-red-600">{b.avg_ctr}%</span></span>
-                      <span>Campaign avg CPA: <span className="font-medium text-gray-700">{b.campaign_avg_cpa} kr</span></span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* Consistent Winners */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Consistent Winners</h2>
-          {consistent_winners.length > 0 ? (
-            <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-              {consistent_winners.length} ad{consistent_winners.length !== 1 ? "s" : ""}
-            </span>
-          ) : (
-            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-              None yet
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-gray-500 -mt-3 mb-4">
-          Ads with ROAS &gt;1, CTR &gt;1%, and CPA at/below campaign avg for 5+ consecutive days
-        </p>
-        {consistent_winners.length === 0 ? (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-            <p className="text-gray-600 text-sm">No ads have sustained 5+ winning days yet</p>
-          </div>
-        ) : (
-          <>
-            {/* Recommendation */}
-            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-3">
-              <p className="text-sm text-green-800">
-                <span className="font-semibold">Recommendation:</span> Scale budget for these proven performers.
-              </p>
-              {actionState.results.scale_all ? (
-                <span className="text-xs font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-lg">
-                  <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
-                  {actionState.results.scale_all.message}
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleScaleAllWinners(consistent_winners)}
-                  disabled={actionState.loading === "scale_all"}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                >
-                  {actionState.loading === "scale_all" ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Rocket className="w-3.5 h-3.5" />
-                  )}
-                  Scale All +20%
-                </button>
-              )}
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 border-l-4 border-l-green-500 overflow-hidden divide-y divide-gray-100">
-              {consistent_winners.map((w) => {
-                const scaleKey = `scale_${w.ad_id}`;
-                const scaleResult = actionState.results[scaleKey];
-                return (
-                  <div key={w.ad_id} className="px-5 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900 truncate" title={w.ad_name ?? ""}>
-                            <Star className="w-3.5 h-3.5 text-green-600 inline mr-1.5" />
-                            {w.ad_name || "Unnamed"}
-                          </p>
-                          <a href={metaAdUrl(w.ad_id)} target="_blank" rel="noopener noreferrer"
-                             className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-                        <p className="text-xs text-gray-500">{w.campaign_name}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                          {w.consistent_days}d winning
-                        </span>
-                        {w.image_job_id && (
-                          <Link
-                            href={`/images/${w.image_job_id}`}
-                            className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
-                            title="Create iteration of this winner"
-                          >
-                            <GitBranch className="w-3.5 h-3.5" />
-                            Iterate
-                          </Link>
-                        )}
-                        {scaleResult ? (
-                          <span className={cn("text-xs", scaleResult.ok ? "text-green-600" : "text-red-600")}>
-                            {scaleResult.message}
-                          </span>
-                        ) : !actionState.results.scale_all && (
-                          <button
-                            onClick={() => handleScaleWinner(w)}
-                            disabled={!!actionState.loading}
-                            className="text-xs font-medium text-green-600 hover:text-green-700 disabled:opacity-50 transition-colors"
-                          >
-                            {actionState.loading === scaleKey ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              "+20%"
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                      <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(w.total_spend)}</span></span>
-                      <span>Purchases: <span className="font-medium text-gray-700">{w.total_purchases}</span></span>
-                      <span>ROAS: <span className="font-medium text-green-700">{formatRoas(w.avg_roas)}</span></span>
-                      <span>CPA: <span className="font-medium text-gray-700">{w.avg_cpa} kr</span></span>
-                      <span>CTR: <span className="font-medium text-gray-700">{w.avg_ctr}%</span></span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* LP vs Creative Fatigue */}
-      {lp_vs_creative_fatigue.length > 0 && (
-        <section>
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Fatigue Diagnosis</h2>
-            <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
-              {lp_vs_creative_fatigue.length} signal{lp_vs_creative_fatigue.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-          <p className="text-sm text-gray-500 -mt-3 mb-4">
-            Distinguishing landing page issues from creative fatigue
-          </p>
-          <div className="space-y-2">
-            {lp_vs_creative_fatigue.map((f, i) => (
-              <div
-                key={`${f.ad_id}-${i}`}
-                className={cn(
-                  "bg-white rounded-lg border border-gray-200 border-l-4 px-5 py-3",
-                  f.diagnosis === "landing_page" ? "border-l-purple-500" : "border-l-orange-500"
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-900 truncate" title={f.ad_name ?? ""}>
-                        <Stethoscope className="w-3.5 h-3.5 text-purple-600 inline mr-1.5" />
-                        {f.ad_name || "Unnamed"}
-                      </p>
-                      <a href={metaAdUrl(f.ad_id)} target="_blank" rel="noopener noreferrer"
-                         className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                    <p className="text-xs text-gray-500">{f.campaign_name}</p>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-xs font-medium px-2 py-0.5 rounded shrink-0",
-                      f.diagnosis === "landing_page"
-                        ? "text-purple-700 bg-purple-50"
-                        : "text-orange-700 bg-orange-50"
-                    )}
-                  >
-                    {f.diagnosis === "landing_page" ? "Landing Page Issue" : "Creative Fatigue"}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">{f.detail}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Efficiency Scoring */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Campaign Efficiency</h2>
-        </div>
-        <p className="text-sm text-gray-500 -mt-3 mb-4">
-          CTR/CPC efficiency ratio with budget allocation recommendations (30% max shift)
-        </p>
-        {efficiency_scoring.some((s) => s.recommendation !== "maintain") && (
-          <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 mb-3">
-            <p className="text-sm text-indigo-800">
-              <span className="font-semibold">Recommendation:</span> Rebalance budgets based on performance.
-            </p>
-            {actionState.results.budget_shifts ? (
-              <span className={cn("text-xs font-medium px-3 py-1.5 rounded-lg", actionState.results.budget_shifts.ok ? "text-green-700 bg-green-100" : "text-red-700 bg-red-100")}>
-                <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
-                {actionState.results.budget_shifts.message}
-              </span>
-            ) : (
-              <button
-                onClick={() => handleApplyBudgetShifts(efficiency_scoring)}
-                disabled={actionState.loading === "budget_shifts"}
-                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
-              >
-                {actionState.loading === "budget_shifts" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Gauge className="w-3.5 h-3.5" />
-                )}
-                Apply Recommended Shifts
-              </button>
-            )}
-          </div>
-        )}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Campaign</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Spend 7d</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">ROAS</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">CTR</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">CPC</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Efficiency</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Budget</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {efficiency_scoring.map((c) => (
-                <tr key={c.campaign_id}>
-                  <td className="px-4 py-3 font-medium text-gray-900">{c.campaign_name}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(c.spend_7d)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={cn("font-medium", c.roas_7d >= 3 ? "text-green-700" : c.roas_7d >= 1 ? "text-gray-700" : "text-red-600")}>
-                      {formatRoas(c.roas_7d)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-700">{c.avg_ctr}%</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{c.avg_cpc} kr</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="font-mono font-medium text-gray-900">{c.efficiency_score}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
-                        c.recommendation === "increase"
-                          ? "text-green-700 bg-green-50"
-                          : c.recommendation === "decrease"
-                          ? "text-red-700 bg-red-50"
-                          : "text-gray-500 bg-gray-100"
-                      )}
-                    >
-                      {c.recommendation === "increase" && <ArrowUpRight className="w-3 h-3" />}
-                      {c.recommendation === "decrease" && <ArrowDownRight className="w-3 h-3" />}
-                      {c.current_budget_share}% → {c.recommended_budget_share}%
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* Recent Actions (from ad_learnings) */}
-      <RecentActionsSection />
+      </details>
     </div>
   );
 }
 
-function RecentActionsSection() {
-  const [learnings, setLearnings] = useState<Array<{
-    id: string;
-    meta_ad_id: string;
-    ad_name: string | null;
-    campaign_name: string | null;
-    event_type: string;
-    detail: string;
-    created_at: string;
-  }>>([]);
+// ── Sub-Components ──
+
+function RecentActionsContent() {
+  const [learnings, setLearnings] = useState<
+    Array<{
+      id: string;
+      meta_ad_id: string;
+      ad_name: string | null;
+      campaign_name: string | null;
+      event_type: string;
+      detail: string;
+      created_at: string;
+    }>
+  >([]);
 
   useEffect(() => {
     fetch("/api/ad-learnings?limit=10")
@@ -987,8 +573,6 @@ function RecentActionsSection() {
       .then((d) => setLearnings(d.learnings ?? []))
       .catch(() => {});
   }, []);
-
-  if (learnings.length === 0) return null;
 
   const eventIcons: Record<string, string> = {
     paused_bleeder: "🛑",
@@ -999,57 +583,36 @@ function RecentActionsSection() {
     manual_note: "📝",
   };
 
-  return (
-    <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-        <RefreshCw className="w-5 h-5 text-gray-600" />
-        Recent Actions
-      </h2>
-      <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
-        {learnings.map((l) => (
-          <div key={l.id} className="px-5 py-3">
-            <div className="flex items-start gap-2">
-              <span className="text-base shrink-0 mt-0.5">{eventIcons[l.event_type] || "📋"}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 truncate">{l.ad_name || "Unknown"}</p>
-                <p className="text-xs text-gray-500">{l.detail}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {new Date(l.created_at).toLocaleDateString()} {new Date(l.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ── Sub-Components ──
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  sub,
-  highlight,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <p className="text-sm font-medium text-gray-500">{label}</p>
-      </div>
-      <p className={cn("text-3xl font-bold mb-1", highlight ? "text-green-700" : "text-gray-900")}>
-        {value}
+  if (learnings.length === 0) {
+    return (
+      <p className="text-sm text-gray-400 text-center py-4">
+        No recent actions recorded
       </p>
-      {sub && <p className="text-sm text-gray-500">{sub}</p>}
+    );
+  }
+
+  return (
+    <div className="divide-y divide-gray-100">
+      {learnings.map((l) => (
+        <div key={l.id} className="py-3 flex items-start gap-2">
+          <span className="text-base shrink-0 mt-0.5">
+            {eventIcons[l.event_type] || "📋"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {l.ad_name || "Unknown"}
+            </p>
+            <p className="text-xs text-gray-500">{l.detail}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {new Date(l.created_at).toLocaleDateString()}{" "}
+              {new Date(l.created_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1063,26 +626,63 @@ function CampaignCard({ trend }: { trend: CampaignTrend }) {
   const roasChange = changePct(curr.roas, prev.roas);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">{trend.campaign_name}</h3>
+    <div className="border border-gray-100 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-gray-900 text-sm">
+          {trend.campaign_name}
+        </h3>
         <div className="flex items-center gap-2">
-          <TrendBadge direction={trend.trend.roas} label={`ROAS ${trend.trend.roas}`} />
-          <TrendBadge direction={trend.trend.cpa} label={`CPA ${trend.trend.cpa}`} />
+          <TrendBadge
+            direction={trend.trend.roas}
+            label={`ROAS ${trend.trend.roas}`}
+          />
+          <TrendBadge
+            direction={trend.trend.cpa}
+            label={`CPA ${trend.trend.cpa}`}
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
-        <MetricCell label="Spend" current={formatCurrency(curr.spend)} changePct={spendChange} />
-        <MetricCell label="Revenue" current={formatCurrency(curr.revenue)} changePct={changePct(curr.revenue, prev.revenue)} />
-        <MetricCell label="Purchases" current={curr.purchases.toString()} changePct={changePct(curr.purchases, prev.purchases)} />
-        <MetricCell label="ROAS" current={formatRoas(curr.roas)} changePct={roasChange} goodDirection="up" />
-        <MetricCell label="CPA" current={curr.cpa > 0 ? `${curr.cpa.toFixed(0)} kr` : "—"} changePct={changePct(curr.cpa, prev.cpa)} goodDirection="down" />
-        <MetricCell label="CTR" current={`${curr.avg_ctr.toFixed(2)}%`} changePct={changePct(curr.avg_ctr, prev.avg_ctr)} goodDirection="up" />
+        <MetricCell
+          label="Spend"
+          current={formatCurrency(curr.spend)}
+          changePct={spendChange}
+        />
+        <MetricCell
+          label="Revenue"
+          current={formatCurrency(curr.revenue)}
+          changePct={changePct(curr.revenue, prev.revenue)}
+        />
+        <MetricCell
+          label="Purchases"
+          current={curr.purchases.toString()}
+          changePct={changePct(curr.purchases, prev.purchases)}
+        />
+        <MetricCell
+          label="ROAS"
+          current={formatRoas(curr.roas)}
+          changePct={roasChange}
+          goodDirection="up"
+        />
+        <MetricCell
+          label="CPA"
+          current={curr.cpa > 0 ? `${curr.cpa.toFixed(0)} kr` : "\u2014"}
+          changePct={changePct(curr.cpa, prev.cpa)}
+          goodDirection="down"
+        />
+        <MetricCell
+          label="CTR"
+          current={`${curr.avg_ctr.toFixed(2)}%`}
+          changePct={changePct(curr.avg_ctr, prev.avg_ctr)}
+          goodDirection="up"
+        />
       </div>
 
       {!hasPrev && (
-        <p className="text-xs text-gray-400 mt-3">New campaign — no previous period data</p>
+        <p className="text-xs text-gray-400 mt-3">
+          New campaign -- no previous period data
+        </p>
       )}
     </div>
   );
@@ -1100,8 +700,14 @@ function MetricCell({
   goodDirection?: "up" | "down";
 }) {
   const hasChange = change !== null && Number.isFinite(change);
-  const isGood = hasChange && ((goodDirection === "up" && change > 0) || (goodDirection === "down" && change < 0));
-  const isBad = hasChange && ((goodDirection === "up" && change < 0) || (goodDirection === "down" && change > 0));
+  const isGood =
+    hasChange &&
+    ((goodDirection === "up" && change > 0) ||
+      (goodDirection === "down" && change < 0));
+  const isBad =
+    hasChange &&
+    ((goodDirection === "up" && change < 0) ||
+      (goodDirection === "down" && change > 0));
 
   return (
     <div>
@@ -1111,7 +717,13 @@ function MetricCell({
         <p
           className={cn(
             "text-xs mt-0.5",
-            Math.abs(change) < 5 ? "text-gray-400" : isGood ? "text-green-600" : isBad ? "text-red-600" : "text-gray-400"
+            Math.abs(change) < 5
+              ? "text-gray-400"
+              : isGood
+              ? "text-green-600"
+              : isBad
+              ? "text-red-600"
+              : "text-gray-400"
           )}
         >
           {change > 0 ? "+" : ""}
@@ -1134,33 +746,45 @@ function AdTable({
   type: "winner" | "loser";
 }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+    <div className="border border-gray-100 rounded-lg overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
         {icon}
         <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
       </div>
       <div className="divide-y divide-gray-100">
         {ads.map((ad, i) => (
-          <div key={ad.ad_id} className="px-5 py-3 flex items-start gap-3">
+          <div key={ad.ad_id} className="px-4 py-2.5 flex items-start gap-3">
             <span
               className={cn(
                 "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5",
-                type === "winner" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                type === "winner"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
               )}
             >
               {i + 1}
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium text-gray-900 truncate" title={ad.ad_name ?? ""}>
+                <p
+                  className="text-sm font-medium text-gray-900 truncate"
+                  title={ad.ad_name ?? ""}
+                >
                   {ad.ad_name || "Unnamed"}
                 </p>
-                <a href={metaAdUrl(ad.ad_id)} target="_blank" rel="noopener noreferrer"
-                   className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
+                <a
+                  href={metaAdUrl(ad.ad_id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors"
+                  title="View in Meta Ads Manager"
+                >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
-              <p className="text-xs text-gray-500 truncate">{ad.campaign_name}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {ad.campaign_name}
+              </p>
               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                 <span>Spend: {formatCurrency(ad.spend)}</span>
                 <span>
@@ -1168,98 +792,31 @@ function AdTable({
                   <span
                     className={cn(
                       "font-medium",
-                      ad.roas >= 3 ? "text-green-700" : ad.roas > 0 ? "text-amber-700" : "text-red-600"
+                      ad.roas >= 3
+                        ? "text-green-700"
+                        : ad.roas > 0
+                        ? "text-amber-700"
+                        : "text-red-600"
                     )}
                   >
                     {formatRoas(ad.roas)}
                   </span>
                 </span>
                 <span>CTR: {ad.ctr.toFixed(2)}%</span>
-                {ad.purchases > 0 && <span>{ad.purchases} purchase{ad.purchases !== 1 ? "s" : ""}</span>}
+                {ad.purchases > 0 && (
+                  <span>
+                    {ad.purchases} purchase{ad.purchases !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
             </div>
           </div>
         ))}
         {ads.length === 0 && (
-          <div className="px-5 py-4 text-sm text-gray-400 text-center">No ads to show</div>
+          <div className="px-4 py-4 text-sm text-gray-400 text-center">
+            No ads to show
+          </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function FatigueGroup({
-  level,
-  signals,
-  onPauseAd,
-  actionState,
-}: {
-  level: "critical" | "warning" | "monitor";
-  signals: FatigueSignal[];
-  onPauseAd?: (adId: string, adName?: string | null, campaignName?: string | null) => void;
-  actionState?: { loading: string | null; results: Record<string, { ok: boolean; message: string }> };
-}) {
-  const borderColor = {
-    critical: "border-l-red-500",
-    warning: "border-l-amber-500",
-    monitor: "border-l-blue-400",
-  };
-
-  return (
-    <div className={cn("bg-white rounded-lg border border-gray-200 border-l-4 overflow-hidden", borderColor[level])}>
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-        <SeverityBadge level={level} />
-        <span className="text-xs text-gray-500">
-          {signals.length} signal{signals.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-      <div className="divide-y divide-gray-100">
-        {signals.map((s, i) => {
-          const pauseKey = `pause_${s.ad_id}`;
-          const pauseResult = actionState?.results[pauseKey];
-          return (
-            <div key={`${s.ad_id}-${i}`} className="px-5 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-gray-900 truncate" title={s.ad_name ?? ""}>
-                      {s.ad_name || "Unnamed"}
-                    </p>
-                    <a href={metaAdUrl(s.ad_id)} target="_blank" rel="noopener noreferrer"
-                       className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors" title="View in Meta Ads Manager">
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                  <p className="text-xs text-gray-500">{s.campaign_name}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                    {s.signal}
-                  </span>
-                  {onPauseAd && !pauseResult && (
-                    <button
-                      onClick={() => onPauseAd(s.ad_id, s.ad_name, s.campaign_name)}
-                      disabled={actionState?.loading === pauseKey}
-                      className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
-                    >
-                      {actionState?.loading === pauseKey ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        "Pause"
-                      )}
-                    </button>
-                  )}
-                  {pauseResult && (
-                    <span className={cn("text-xs", pauseResult.ok ? "text-green-600" : "text-red-600")}>
-                      {pauseResult.message}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">{s.detail}</p>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

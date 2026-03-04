@@ -568,6 +568,100 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // ── Synthesize Action Cards ──
+  interface ActionCard {
+    id: string;
+    type: "pause" | "scale" | "refresh" | "budget" | "landing_page";
+    category: string;
+    title: string;
+    why: string;
+    expected_impact: string;
+    action_data: Record<string, unknown>;
+    priority: number;
+  }
+
+  const actionCards: ActionCard[] = [];
+
+  // Bleeders → pause cards (priority 1)
+  for (const b of bleeders) {
+    actionCards.push({
+      id: `pause_${b.ad_id}`,
+      type: "pause",
+      category: "Budget",
+      title: `Pause ${b.ad_name || b.adset_name || "unnamed ad"}`,
+      why: `Spent ${b.total_spend} kr over ${b.days_bleeding} days with ${b.avg_ctr}% CTR — CPA is ${b.avg_cpa} kr vs campaign avg of ${b.campaign_avg_cpa} kr.`,
+      expected_impact: `Save ~${round(b.total_spend / b.days_bleeding)} kr/day, improve campaign ROAS`,
+      action_data: { action: "pause_ad", ad_id: b.ad_id, ad_name: b.ad_name, reason: "bleeder" },
+      priority: 1,
+    });
+  }
+
+  // Consistent winners → scale cards (priority 2)
+  for (const w of enrichedWinners) {
+    actionCards.push({
+      id: `scale_${w.ad_id}`,
+      type: "scale",
+      category: "Budget",
+      title: `Scale ${w.ad_name || w.adset_name || "unnamed ad"} +20%`,
+      why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS, ${w.avg_cpa} kr CPA, ${w.avg_ctr}% CTR.`,
+      expected_impact: "~20% more purchases at similar CPA",
+      action_data: { action: "scale_winner", ad_id: w.ad_id, adset_id: w.adset_id, campaign_id: w.campaign_id },
+      priority: 2,
+    });
+  }
+
+  // Critical fatigue signals → refresh cards (priority 3)
+  for (const f of fatigueSignals.critical) {
+    actionCards.push({
+      id: `refresh_${f.ad_id}`,
+      type: "refresh",
+      category: "Creative",
+      title: `Creative refresh needed: ${f.ad_name || "unnamed ad"}`,
+      why: f.detail,
+      expected_impact: "Restore CTR and reduce CPC by refreshing creative",
+      action_data: { ad_id: f.ad_id },
+      priority: 3,
+    });
+  }
+
+  // LP vs creative fatigue with diagnosis "landing_page" → landing_page cards (priority 3)
+  for (const lp of lpFatigueSignals) {
+    if (lp.diagnosis === "landing_page") {
+      actionCards.push({
+        id: `lp_${lp.ad_id}`,
+        type: "landing_page",
+        category: "Creative",
+        title: `Landing page issue: ${lp.ad_name || "unnamed ad"}`,
+        why: lp.detail,
+        expected_impact: "Improve CPA by updating or swapping landing page",
+        action_data: { ad_id: lp.ad_id },
+        priority: 3,
+      });
+    }
+  }
+
+  // Budget rebalance — single card if any campaign has >5% difference (priority 4)
+  const significantShifts = efficiencyWithRecommendation.filter(
+    (c) => Math.abs(c.recommended_budget_share - c.current_budget_share) > 5
+  );
+  if (significantShifts.length > 0) {
+    const increaseCount = significantShifts.filter((c) => c.recommendation === "increase").length;
+    const decreaseCount = significantShifts.filter((c) => c.recommendation === "decrease").length;
+    actionCards.push({
+      id: "budget_rebalance",
+      type: "budget",
+      category: "Budget",
+      title: "Rebalance campaign budgets",
+      why: `${increaseCount} campaign(s) deserve more budget, ${decreaseCount} should be reduced`,
+      expected_impact: "Better ROAS by shifting spend to efficient campaigns",
+      action_data: { action: "apply_budget_shifts", shifts: efficiencyWithRecommendation },
+      priority: 4,
+    });
+  }
+
+  // Sort by priority ascending
+  actionCards.sort((a, b) => a.priority - b.priority);
+
   return NextResponse.json({
     generated_at: new Date().toISOString(),
     data_date: latestDate,
@@ -584,6 +678,7 @@ export async function GET(req: NextRequest) {
       lp_vs_creative_fatigue: lpFatigueSignals,
       efficiency_scoring: efficiencyWithRecommendation,
     },
+    action_cards: actionCards,
   });
 }
 
