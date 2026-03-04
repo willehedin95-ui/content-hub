@@ -30,6 +30,8 @@ const DEFAULT_QUALITY_THRESHOLD = 80;
 interface Props {
   initialJob: ImageJob;
   autoIterate?: boolean;
+  iterateMarket?: string;
+  iteratePerf?: string;
 }
 
 function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boolean, boolean, boolean] {
@@ -61,7 +63,7 @@ function computeCurrentStep(j: ImageJob, ct: ConceptCopyTranslations): number {
   return 2;
 }
 
-export default function ImageJobDetail({ initialJob, autoIterate }: Props) {
+export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket, iteratePerf }: Props) {
   const [job, setJob] = useState<ImageJob>(initialJob);
   const [step, setStep] = useState<number>(() => computeCurrentStep(initialJob, initialJob.ad_copy_translations ?? {}));
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
@@ -361,9 +363,17 @@ export default function ImageJobDetail({ initialJob, autoIterate }: Props) {
 
   function handleTranslatedCopyChange(lang: string, field: "primary_texts" | "headlines", index: number, value: string) {
     setCopyTranslations((prev) => {
-      const ct = prev[lang];
-      if (!ct) return prev;
-      const updated = { ...ct, [field]: ct[field].map((t, i) => (i === index ? value : t)) };
+      const ct = prev[lang] ?? {
+        primary_texts: [""],
+        headlines: [""],
+        quality_score: null,
+        quality_analysis: null,
+        status: "completed" as const,
+      };
+      const arr = [...ct[field]];
+      while (arr.length <= index) arr.push("");
+      arr[index] = value;
+      const updated = { ...ct, [field]: arr };
       const next = { ...prev, [lang]: updated };
       if (translatedCopyDebounceRef.current) clearTimeout(translatedCopyDebounceRef.current);
       translatedCopyDebounceRef.current = setTimeout(async () => {
@@ -1331,6 +1341,8 @@ export default function ImageJobDetail({ initialJob, autoIterate }: Props) {
       {showIterateDialog && (
         <SmartIterateModal
           job={job}
+          market={iterateMarket}
+          performanceContext={iteratePerf}
           onClose={() => setShowIterateDialog(false)}
         />
       )}
