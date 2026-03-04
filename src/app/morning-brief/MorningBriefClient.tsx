@@ -15,6 +15,12 @@ import {
   Loader2,
   CheckCircle2,
   X,
+  Ban,
+  Rocket,
+  Palette,
+  ArrowLeftRight,
+  Globe,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -151,10 +157,76 @@ interface ActionCard {
   category: string;
   title: string;
   why: string;
+  guidance: string;
   expected_impact: string;
   action_data: Record<string, unknown>;
   priority: number;
+  ad_name?: string | null;
+  adset_name?: string | null;
+  campaign_name?: string | null;
+  image_url?: string | null;
 }
+
+// ── Action card visual config per type ──
+
+const ACTION_CONFIG: Record<
+  ActionCard["type"],
+  {
+    Icon: React.ComponentType<{ className?: string }>;
+    iconBg: string;
+    iconColor: string;
+    borderColor: string;
+    tagColor: string;
+    buttonLabel: string;
+    buttonColor: string;
+  }
+> = {
+  pause: {
+    Icon: Ban,
+    iconBg: "bg-red-100",
+    iconColor: "text-red-600",
+    borderColor: "border-l-4 border-l-red-400",
+    tagColor: "bg-red-50 text-red-700",
+    buttonLabel: "Pause this ad",
+    buttonColor: "text-white bg-red-600 hover:bg-red-700",
+  },
+  scale: {
+    Icon: Rocket,
+    iconBg: "bg-green-100",
+    iconColor: "text-green-600",
+    borderColor: "border-l-4 border-l-green-400",
+    tagColor: "bg-green-50 text-green-700",
+    buttonLabel: "Increase budget +20%",
+    buttonColor: "text-white bg-green-600 hover:bg-green-700",
+  },
+  refresh: {
+    Icon: Palette,
+    iconBg: "bg-amber-100",
+    iconColor: "text-amber-600",
+    borderColor: "border-l-4 border-l-amber-400",
+    tagColor: "bg-amber-50 text-amber-700",
+    buttonLabel: "Create new ads",
+    buttonColor: "text-white bg-amber-600 hover:bg-amber-700",
+  },
+  budget: {
+    Icon: ArrowLeftRight,
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-600",
+    borderColor: "border-l-4 border-l-blue-400",
+    tagColor: "bg-blue-50 text-blue-700",
+    buttonLabel: "Rebalance budgets",
+    buttonColor: "text-white bg-blue-600 hover:bg-blue-700",
+  },
+  landing_page: {
+    Icon: Globe,
+    iconBg: "bg-purple-100",
+    iconColor: "text-purple-600",
+    borderColor: "border-l-4 border-l-purple-400",
+    tagColor: "bg-purple-50 text-purple-700",
+    buttonLabel: "Review landing pages",
+    buttonColor: "text-white bg-purple-600 hover:bg-purple-700",
+  },
+};
 
 interface MorningBriefData {
   generated_at: string;
@@ -364,38 +436,50 @@ export default function MorningBriefClient() {
       </div>
 
       {/* 2. Compact KPI strip */}
-      <div className="flex items-center gap-6 bg-white border border-gray-200 rounded-lg px-5 py-3 text-sm text-gray-600">
-        <span>
-          Spend:{" "}
-          <span className="font-semibold text-gray-900">
-            {formatCurrency(spend_pacing.total_spend)}
+      <div className="bg-white border border-gray-200 rounded-lg px-5 py-3">
+        <div className="flex items-center gap-6 text-sm text-gray-600">
+          <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+            Yesterday
           </span>
-        </span>
-        <span className="text-gray-300">|</span>
-        <span>
-          ROAS:{" "}
-          <span className="font-semibold text-gray-900">
-            {formatRoas(spend_pacing.blended_roas)}
+          <span className="text-gray-200">|</span>
+          <span>
+            Spend:{" "}
+            <span className="font-semibold text-gray-900">
+              {formatCurrency(spend_pacing.total_spend)}
+            </span>
           </span>
-        </span>
-        <span className="text-gray-300">|</span>
-        <span>
-          Purchases:{" "}
-          <span className="font-semibold text-gray-900">
-            {spend_pacing.total_purchases}
+          <span className="text-gray-200">|</span>
+          <span>
+            Revenue:{" "}
+            <span className="font-semibold text-gray-900">
+              {formatCurrency(spend_pacing.total_revenue)}
+            </span>
           </span>
-        </span>
-        <span className="text-gray-300">|</span>
-        <span>
-          Active ads:{" "}
-          <span className="font-semibold text-gray-900">
-            {whats_running.total_active_ads}
+          <span className="text-gray-200">|</span>
+          <span>
+            ROAS:{" "}
+            <span className="font-semibold text-gray-900">
+              {formatRoas(spend_pacing.blended_roas)}
+            </span>
           </span>
-        </span>
+          <span className="text-gray-200">|</span>
+          <span>
+            Purchases:{" "}
+            <span className="font-semibold text-gray-900">
+              {spend_pacing.total_purchases}
+            </span>
+          </span>
+        </div>
       </div>
 
-      {/* 3. Action Cards */}
-      <section>
+      {/* 3. Action Cards — single column, Madgicx-style */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-sm font-semibold text-gray-700">
+            {visibleActions.length} action{visibleActions.length !== 1 ? "s" : ""} today
+          </h2>
+        </div>
+
         {visibleActions.length === 0 ? (
           <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
             <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
@@ -405,86 +489,135 @@ export default function MorningBriefClient() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-3">
             {visibleActions.map((card) => {
+              const config = ACTION_CONFIG[card.type];
               const result = actionState.results[card.id];
               const isLoading = actionState.loading === card.id;
-              const isLink =
-                card.type === "refresh" || card.type === "landing_page";
-              const categoryColor =
-                card.category === "Budget"
-                  ? "bg-blue-50 text-blue-700"
-                  : "bg-purple-50 text-purple-700";
+              const TypeIcon = config.Icon;
 
               return (
                 <div
                   key={card.id}
-                  className="bg-white border border-gray-200 rounded-lg p-5 flex flex-col"
+                  className={cn(
+                    "bg-white border border-gray-200 rounded-lg overflow-hidden",
+                    config.borderColor
+                  )}
                 >
-                  {/* Category badge */}
-                  <span
-                    className={cn(
-                      "inline-flex self-start text-xs font-medium px-2.5 py-0.5 rounded-full mb-3",
-                      categoryColor
-                    )}
-                  >
-                    {card.category}
-                  </span>
-
-                  {/* Title */}
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">
-                    {card.title}
-                  </h3>
-
-                  {/* Why */}
-                  <p className="text-sm text-gray-600 mb-3 flex-1">
-                    {card.why}
-                  </p>
-
-                  {/* Expected impact */}
-                  <p className="text-xs text-gray-500 mb-4">
-                    <span className="font-medium">Expected impact:</span>{" "}
-                    {card.expected_impact}
-                  </p>
-
-                  {/* Action buttons */}
-                  {result ? (
+                  {/* Main row */}
+                  <div className="flex items-center gap-4 p-4">
+                    {/* Type icon */}
                     <div
                       className={cn(
-                        "text-sm font-medium px-3 py-2 rounded-md text-center",
-                        result.ok
-                          ? "bg-green-50 text-green-700"
-                          : "bg-red-50 text-red-700"
+                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                        config.iconBg
                       )}
                     >
-                      <CheckCircle2 className="w-4 h-4 inline mr-1.5" />
-                      {result.message}
+                      <TypeIcon className={cn("w-5 h-5", config.iconColor)} />
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleApply(card)}
-                        disabled={!!actionState.loading}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md transition-colors"
-                      >
-                        {isLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : isLink ? (
-                          "Go to page"
-                        ) : (
-                          "Apply"
+
+                    {/* Ad image */}
+                    {card.image_url && (
+                      <img
+                        src={card.image_url}
+                        alt=""
+                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-gray-200"
+                      />
+                    )}
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        {card.title}
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                        {card.why}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {card.campaign_name && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 truncate max-w-[200px]">
+                            {card.campaign_name}
+                          </span>
                         )}
-                      </button>
-                      <button
-                        onClick={() =>
-                          setDismissed((prev) => new Set(prev).add(card.id))
-                        }
-                        className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        Dismiss
-                      </button>
+                        <span
+                          className={cn(
+                            "text-[11px] px-2 py-0.5 rounded-full font-medium",
+                            config.tagColor
+                          )}
+                        >
+                          {card.category}
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {result ? (
+                        <span
+                          className={cn(
+                            "text-xs font-medium px-3 py-2 rounded-md",
+                            result.ok
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
+                          )}
+                        >
+                          {result.ok ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
+                              Done
+                            </>
+                          ) : (
+                            result.message
+                          )}
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() =>
+                              setDismissed((prev) =>
+                                new Set(prev).add(card.id)
+                              )
+                            }
+                            className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+                            title="Dismiss"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleApply(card)}
+                            disabled={!!actionState.loading}
+                            className={cn(
+                              "px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap",
+                              config.buttonColor
+                            )}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              config.buttonLabel
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expandable guidance */}
+                  {card.guidance && !result && (
+                    <details className="border-t border-gray-100 group">
+                      <summary className="px-4 py-2 text-xs text-indigo-600 cursor-pointer hover:bg-gray-50 select-none flex items-center gap-1">
+                        <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
+                        Why should I do this?
+                      </summary>
+                      <div className="px-4 pb-3 text-xs text-gray-600 leading-relaxed pl-8">
+                        {card.guidance}
+                        {card.expected_impact && (
+                          <p className="mt-1.5 font-medium text-gray-700">
+                            Expected impact: {card.expected_impact}
+                          </p>
+                        )}
+                      </div>
+                    </details>
                   )}
                 </div>
               );

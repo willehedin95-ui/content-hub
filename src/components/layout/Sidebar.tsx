@@ -36,6 +36,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const nav: NavEntry[] = useMemo(() => [
+    { href: "/morning-brief", label: "Daily Actions", icon: Zap },
     { href: "/", label: "Business Pulse", icon: Activity },
     { href: "/pages", label: "Landing Pages", icon: Layers },
     { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
@@ -52,7 +53,6 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     { href: "/products", label: "Products", icon: Package },
     { href: "/stock", label: "Inventory", icon: Warehouse },
     { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
-    { href: "/morning-brief", label: "Daily Actions", icon: Zap },
   ], [pipelineBadgeCount]);
 
   // Initialize open state based on current route (once on mount + route changes)

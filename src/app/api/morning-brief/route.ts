@@ -575,67 +575,99 @@ export async function GET(req: NextRequest) {
     category: string;
     title: string;
     why: string;
+    guidance: string;
     expected_impact: string;
     action_data: Record<string, unknown>;
     priority: number;
+    ad_name?: string | null;
+    adset_name?: string | null;
+    campaign_name?: string | null;
+    image_url?: string | null;
   }
 
   const actionCards: ActionCard[] = [];
 
+  // Helper: look up adset_name from current data
+  const adIdToInfo = new Map<string, { adset_name: string | null; campaign_name: string | null }>();
+  for (const r of currentRows) {
+    adIdToInfo.set(r.meta_ad_id, { adset_name: r.adset_name, campaign_name: r.campaign_name });
+  }
+
   // Bleeders → pause cards (priority 1)
   for (const b of bleeders) {
+    const adLabel = b.ad_name || b.adset_name || "unnamed ad";
     actionCards.push({
       id: `pause_${b.ad_id}`,
       type: "pause",
       category: "Budget",
-      title: `Pause ${b.ad_name || b.adset_name || "unnamed ad"}`,
-      why: `Spent ${b.total_spend} kr over ${b.days_bleeding} days with ${b.avg_ctr}% CTR — CPA is ${b.avg_cpa} kr vs campaign avg of ${b.campaign_avg_cpa} kr.`,
-      expected_impact: `Save ~${round(b.total_spend / b.days_bleeding)} kr/day, improve campaign ROAS`,
+      title: `Pause "${adLabel}" — it's losing money`,
+      why: `Spent ${b.total_spend} kr over ${b.days_bleeding} days with only ${b.avg_ctr}% CTR and ${b.purchases} purchases. Campaign avg CPA is ${b.campaign_avg_cpa} kr.`,
+      guidance: `This ad has been underperforming for ${b.days_bleeding} consecutive days — it's not a temporary dip. Every day it runs, it wastes ~${round(b.total_spend / b.days_bleeding)} kr that Meta could redirect to your better ads. Pausing it is the safest move.`,
+      expected_impact: `Save ~${round(b.total_spend / b.days_bleeding)} kr/day`,
       action_data: { action: "pause_ad", ad_id: b.ad_id, ad_name: b.ad_name, reason: "bleeder" },
       priority: 1,
+      ad_name: b.ad_name,
+      adset_name: b.adset_name,
+      campaign_name: b.campaign_name,
     });
   }
 
   // Consistent winners → scale cards (priority 2)
   for (const w of enrichedWinners) {
+    const adLabel = w.ad_name || w.adset_name || "unnamed ad";
     actionCards.push({
       id: `scale_${w.ad_id}`,
       type: "scale",
       category: "Budget",
-      title: `Scale ${w.ad_name || w.adset_name || "unnamed ad"} +20%`,
+      title: `Give more budget to "${adLabel}"`,
       why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS, ${w.avg_cpa} kr CPA, ${w.avg_ctr}% CTR.`,
+      guidance: `This ad has been profitable for ${w.consistent_days} days straight. Increasing its budget by 20% should get you more sales at a similar cost. Meta's algorithm will gradually spend more on this proven winner.`,
       expected_impact: "~20% more purchases at similar CPA",
       action_data: { action: "scale_winner", ad_id: w.ad_id, adset_id: w.adset_id, campaign_id: w.campaign_id },
       priority: 2,
+      ad_name: w.ad_name,
+      adset_name: w.adset_name,
+      campaign_name: w.campaign_name,
     });
   }
 
   // Critical fatigue signals → refresh cards (priority 3)
   for (const f of fatigueSignals.critical) {
+    const adLabel = f.ad_name || "unnamed ad";
+    const info = adIdToInfo.get(f.ad_id);
     actionCards.push({
       id: `refresh_${f.ad_id}`,
       type: "refresh",
       category: "Creative",
-      title: `Creative refresh needed: ${f.ad_name || "unnamed ad"}`,
-      why: f.detail,
-      expected_impact: "Restore CTR and reduce CPC by refreshing creative",
+      title: `"${adLabel}" is getting stale — time for new ad images`,
+      why: `${f.detail}. People have seen this ad too many times and are starting to ignore it.`,
+      guidance: `When an ad's click rate drops like this, it means your audience has seen it enough times that it no longer catches their attention. You need to create new ad images with fresh angles for this same concept. Click "Create new ads" to go to Brainstorm where you can generate new variations.`,
+      expected_impact: "Restore click rate by refreshing creatives",
       action_data: { ad_id: f.ad_id },
       priority: 3,
+      ad_name: f.ad_name,
+      adset_name: info?.adset_name ?? null,
+      campaign_name: f.campaign_name,
     });
   }
 
-  // LP vs creative fatigue with diagnosis "landing_page" → landing_page cards (priority 3)
+  // LP vs creative fatigue → landing_page cards (priority 3)
   for (const lp of lpFatigueSignals) {
     if (lp.diagnosis === "landing_page") {
+      const adLabel = lp.ad_name || "unnamed ad";
       actionCards.push({
         id: `lp_${lp.ad_id}`,
         type: "landing_page",
         category: "Creative",
-        title: `Landing page issue: ${lp.ad_name || "unnamed ad"}`,
-        why: lp.detail,
-        expected_impact: "Improve CPA by updating or swapping landing page",
+        title: `Landing page hurting "${adLabel}" — people click but don't buy`,
+        why: `${lp.detail}. The ad gets clicks (CTR is fine) but conversions are dropping.`,
+        guidance: `The ad itself is working — people click on it. But after clicking, they're not buying. This usually means the landing page doesn't match the ad promise, loads slowly, or the offer isn't compelling. Try swapping to a different landing page or updating the current one.`,
+        expected_impact: "Lower CPA by improving post-click experience",
         action_data: { ad_id: lp.ad_id },
         priority: 3,
+        ad_name: lp.ad_name,
+        adset_name: lp.adset_name,
+        campaign_name: lp.campaign_name,
       });
     }
   }
@@ -645,15 +677,20 @@ export async function GET(req: NextRequest) {
     (c) => Math.abs(c.recommended_budget_share - c.current_budget_share) > 5
   );
   if (significantShifts.length > 0) {
-    const increaseCount = significantShifts.filter((c) => c.recommendation === "increase").length;
-    const decreaseCount = significantShifts.filter((c) => c.recommendation === "decrease").length;
+    const increaseNames = significantShifts
+      .filter((c) => c.recommendation === "increase")
+      .map((c) => c.campaign_name);
+    const decreaseNames = significantShifts
+      .filter((c) => c.recommendation === "decrease")
+      .map((c) => c.campaign_name);
     actionCards.push({
       id: "budget_rebalance",
       type: "budget",
       category: "Budget",
-      title: "Rebalance campaign budgets",
-      why: `${increaseCount} campaign(s) deserve more budget, ${decreaseCount} should be reduced`,
-      expected_impact: "Better ROAS by shifting spend to efficient campaigns",
+      title: "Move budget to your best campaigns",
+      why: `${increaseNames.length > 0 ? `Give more to: ${increaseNames.join(", ")}` : ""}${increaseNames.length > 0 && decreaseNames.length > 0 ? ". " : ""}${decreaseNames.length > 0 ? `Reduce: ${decreaseNames.join(", ")}` : ""}`,
+      guidance: `Some campaigns are more efficient at turning ad spend into sales. By shifting budget from underperforming campaigns to your best ones, you get more sales for the same total spend. This doesn't change your total budget — just redistributes it smarter.`,
+      expected_impact: "Better ROAS at same total spend",
       action_data: { action: "apply_budget_shifts", shifts: efficiencyWithRecommendation },
       priority: 4,
     });
@@ -661,6 +698,26 @@ export async function GET(req: NextRequest) {
 
   // Sort by priority ascending
   actionCards.sort((a, b) => a.priority - b.priority);
+
+  // Enrich action cards with ad images from meta_ads table
+  const actionAdIds = actionCards
+    .map((c) => (c.action_data.ad_id as string) || null)
+    .filter((id): id is string => !!id);
+  if (actionAdIds.length > 0) {
+    const { data: adImages } = await db
+      .from("meta_ads")
+      .select("meta_ad_id, image_url")
+      .in("meta_ad_id", actionAdIds);
+    const imageMap = new Map(
+      (adImages ?? []).map((a: { meta_ad_id: string; image_url: string | null }) => [a.meta_ad_id, a.image_url])
+    );
+    for (const card of actionCards) {
+      const adId = card.action_data.ad_id as string;
+      if (adId && imageMap.has(adId)) {
+        card.image_url = imageMap.get(adId) ?? null;
+      }
+    }
+  }
 
   return NextResponse.json({
     generated_at: new Date().toISOString(),
