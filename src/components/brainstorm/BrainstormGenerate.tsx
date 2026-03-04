@@ -16,6 +16,9 @@ import {
   LayoutTemplate,
   ArrowLeft,
   ThumbsDown,
+  Upload,
+  X,
+  Copy,
 } from "lucide-react";
 import {
   ConceptProposal,
@@ -38,6 +41,15 @@ const LOADING_MESSAGES = [
   "Finalizing proposals...",
 ];
 
+const COMPETITOR_LOADING_MESSAGES = [
+  "Analyzing competitor ad...",
+  "Reverse-engineering visual structure...",
+  "Mapping to C.A.S.H. framework...",
+  "Generating adapted concepts...",
+  "Creating images via Nano Banana...",
+  "Uploading to storage...",
+];
+
 const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Sparkles,
   Leaf,
@@ -45,6 +57,7 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   Grid3X3,
   Eye,
   LayoutTemplate,
+  Copy,
 };
 
 export default function BrainstormGenerate() {
@@ -62,6 +75,9 @@ export default function BrainstormGenerate() {
   const [segments, setSegments] = useState<ProductSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
   const [selectedTemplates, setSelectedTemplates] = useState<AdTemplate[]>([]);
+  const [competitorImage, setCompetitorImage] = useState<File | null>(null);
+  const [competitorImagePreview, setCompetitorImagePreview] = useState<string>("");
+  const [competitorAdCopy, setCompetitorAdCopy] = useState("");
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
@@ -107,13 +123,17 @@ export default function BrainstormGenerate() {
   }, [fetchSegments]);
 
   // Rotate loading messages
+  const activeLoadingMessages =
+    mode === "from_competitor_ad" ? COMPETITOR_LOADING_MESSAGES : LOADING_MESSAGES;
+
   useEffect(() => {
     if (phase !== "loading") return;
+    const msgs = mode === "from_competitor_ad" ? COMPETITOR_LOADING_MESSAGES : LOADING_MESSAGES;
     const interval = setInterval(() => {
-      setLoadingMsg((prev) => (prev + 1) % LOADING_MESSAGES.length);
+      setLoadingMsg((prev) => (prev + 1) % msgs.length);
     }, 2500);
     return () => clearInterval(interval);
-  }, [phase]);
+  }, [phase, mode]);
 
   async function handleGenerate() {
     setPhase("loading");
@@ -121,6 +141,38 @@ export default function BrainstormGenerate() {
     setLoadingMsg(0);
 
     try {
+      // Competitor ad flow: upload image → brainstorm → redirect to image job
+      if (mode === "from_competitor_ad" && competitorImage) {
+        // Step 1: Upload image to temp storage
+        const formData = new FormData();
+        formData.append("file", competitorImage);
+        const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
+        if (!uploadRes.ok) throw new Error("Failed to upload image");
+        const { url: imageUrl } = await uploadRes.json();
+
+        // Step 2: Call brainstorm API with competitor image URL
+        const res = await fetch("/api/brainstorm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            product,
+            count,
+            competitor_image_url: imageUrl,
+            competitor_ad_copy: competitorAdCopy || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Generation failed");
+        }
+        const data = await res.json();
+
+        // Step 3: Redirect to the image job detail page
+        router.push(`/images/${data.job_id}`);
+        return; // Skip the normal proposals flow
+      }
+
       const body: Record<string, unknown> = {
         mode,
         product,
@@ -354,6 +406,79 @@ export default function BrainstormGenerate() {
             </div>
           )}
 
+          {/* Competitor ad upload (for from_competitor_ad) */}
+          {mode === "from_competitor_ad" && (
+            <div className="space-y-4">
+              {/* Image upload area */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Competitor Ad Image
+                </label>
+                {!competitorImage ? (
+                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors">
+                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-500">
+                      Drop competitor ad image or click to upload
+                    </span>
+                    <span className="text-xs text-gray-400 mt-1">
+                      PNG, JPG, or WebP
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setCompetitorImage(file);
+                          const url = URL.createObjectURL(file);
+                          setCompetitorImagePreview(url);
+                        }
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={competitorImagePreview}
+                      alt="Competitor ad preview"
+                      className="max-h-64 rounded-xl border border-gray-200 object-contain"
+                    />
+                    <button
+                      onClick={() => {
+                        setCompetitorImage(null);
+                        if (competitorImagePreview) {
+                          URL.revokeObjectURL(competitorImagePreview);
+                        }
+                        setCompetitorImagePreview("");
+                      }}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Optional ad copy textarea */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Competitor Ad Copy (optional)
+                </label>
+                <textarea
+                  value={competitorAdCopy}
+                  onChange={(e) => setCompetitorAdCopy(e.target.value)}
+                  placeholder="Paste the competitor's primary text and headline from Meta Ads Library..."
+                  className="w-full h-28 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Adding the ad copy helps Claude better understand the competitor&apos;s strategy
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Segment selector */}
           {(mode === "from_scratch" || mode === "from_internal" || mode === "from_template") &&
             segments.length > 0 && (
@@ -425,7 +550,8 @@ export default function BrainstormGenerate() {
             onClick={handleGenerate}
             disabled={
               (mode === "from_organic" && !organicText.trim()) ||
-              (mode === "from_research" && !researchText.trim())
+              (mode === "from_research" && !researchText.trim()) ||
+              (mode === "from_competitor_ad" && !competitorImage)
             }
             className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -440,10 +566,12 @@ export default function BrainstormGenerate() {
         <div className="flex flex-col items-center justify-center py-20">
           <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
           <p className="text-sm text-gray-600 animate-pulse">
-            {LOADING_MESSAGES[loadingMsg]}
+            {activeLoadingMessages[loadingMsg]}
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            This usually takes 10-20 seconds
+            {mode === "from_competitor_ad"
+              ? "This may take a minute — analyzing image and generating ads..."
+              : "This usually takes 10-20 seconds"}
           </p>
         </div>
       )}
