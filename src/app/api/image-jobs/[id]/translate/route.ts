@@ -105,7 +105,7 @@ export async function POST(
     const { urls: resultUrls, costTimeMs } = await generateImage(
       prompt,
       [translation.source_images.original_url],
-      translation.aspect_ratio || "1:1"
+      translation.aspect_ratio || "4:5"
     );
 
     if (!resultUrls?.length) {

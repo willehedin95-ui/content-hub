@@ -873,7 +873,7 @@ export default function ConceptImagesStep({
                   <div key={t.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs" role="img" aria-label={langInfo?.label ?? t.language}>{langInfo?.flag}</span>
-                      {t.aspect_ratio && t.aspect_ratio !== "1:1" && (
+                      {t.aspect_ratio && t.aspect_ratio !== "4:5" && (
                         <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
                       )}
                       <TranslationStatusBadge status={t.status} />
