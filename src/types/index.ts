@@ -615,7 +615,7 @@ export interface ImageGenerationState {
 
 // --- Brainstorm Types ---
 
-export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template";
+export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template" | "from_competitor_ad";
 export type UnawareAdType = "straddle" | "symptom" | "worldview_porn" | "story";
 export type AdTemplate =
   | "before_after"
@@ -644,6 +644,9 @@ export interface BrainstormRequest {
   template_ids?: AdTemplate[];
   focus_angles?: Angle[];
   focus_awareness?: AwarenessLevel;
+  // From Competitor Ad mode
+  competitor_image_url?: string;
+  competitor_ad_copy?: string;
 }
 
 // --- Concept Generator Types ---

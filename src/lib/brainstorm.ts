@@ -832,6 +832,30 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
 }
 
 // ---------------------------------------------------------------------------
+// From Competitor Ad — placeholder (will be implemented in a subsequent task)
+// ---------------------------------------------------------------------------
+
+function buildFromCompetitorAdSystem(
+  product: ProductFull,
+  productBrief: string | undefined,
+  guidelines: CopywritingGuideline[],
+  segments: ProductSegment[],
+  hookInspiration?: string
+): string {
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+
+  return `You are a senior direct-response creative strategist. Analyze the competitor ad provided and generate original ad concepts inspired by (but not copying) the competitor's approach.
+
+## PRODUCT KNOWLEDGE
+
+${productContext}
+
+---
+
+${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Competitor-inspired")}`;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -851,6 +875,7 @@ const SYSTEM_BUILDERS: Record<
   from_internal: buildFromInternalSystem,
   unaware: buildUnawareSystem,
   from_template: buildFromTemplateSystem,
+  from_competitor_ad: buildFromCompetitorAdSystem,
 };
 
 /**
