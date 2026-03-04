@@ -494,6 +494,23 @@ export interface MarketProductUrl {
   url: string;
 }
 
+// --- Copy Bank Types ---
+
+export interface CopyBankEntry {
+  id: string;
+  product: string;
+  language: string;
+  primary_text: string;
+  headline: string | null;
+  segment_id: string | null;
+  source_meta_ad_id: string | null;
+  source_concept_name: string | null;
+  notes: string | null;
+  created_at: string;
+  // Joined relations (optional)
+  segment?: ProductSegment;
+}
+
 // --- Product Bank Types ---
 
 export type ImageCategory = "hero" | "lifestyle" | "detail" | "before-after" | "testimonial" | "other";
