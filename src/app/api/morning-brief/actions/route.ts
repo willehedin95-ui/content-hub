@@ -150,9 +150,9 @@ export async function POST(req: NextRequest) {
 
     case "scale_winner": {
       const { ad_id, adset_id, campaign_id, ad_name, campaign_name } = body;
-      if (!ad_id || !campaign_id) {
+      if (!campaign_id) {
         return NextResponse.json(
-          { error: "ad_id and campaign_id are required" },
+          { error: "campaign_id is required" },
           { status: 400 }
         );
       }
@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
 
       // Log to ad_learnings
       await db.from("ad_learnings").insert({
-        meta_ad_id: ad_id,
+        meta_ad_id: ad_id || campaign_id,
         ad_name: ad_name ?? null,
         campaign_name: campaign_name ?? null,
         event_type: "graduated_winner",
