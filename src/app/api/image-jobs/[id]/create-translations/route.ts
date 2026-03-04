@@ -16,7 +16,7 @@ export async function POST(
   // Verify job exists and is in "ready" status
   const { data: job, error: jobError } = await db
     .from("image_jobs")
-    .select("id, status, target_languages")
+    .select("id, status, target_languages, target_ratios")
     .eq("id", jobId)
     .single();
 
@@ -51,14 +51,17 @@ export async function POST(
     status: string;
   }[] = [];
 
+  const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5", "9:16"];
   for (const si of translatableImages) {
     for (const lang of job.target_languages) {
-      translationRows.push({
-        source_image_id: si.id,
-        language: lang,
-        aspect_ratio: "1:1",
-        status: "pending",
-      });
+      for (const ratio of ratios) {
+        translationRows.push({
+          source_image_id: si.id,
+          language: lang,
+          aspect_ratio: ratio,
+          status: "pending",
+        });
+      }
     }
   }
 
@@ -83,6 +86,7 @@ export async function POST(
   return NextResponse.json({
     created: translationRows.length,
     languages: job.target_languages.length,
+    ratios: ratios.length,
     images: translatableImages.length,
     skipped: sourceImages.length - translatableImages.length,
   });
