@@ -14,11 +14,13 @@ interface Props {
   avgSecondsPerImage?: number;
 }
 
+type DriveFileState = "translate" | "skip" | "exclude";
+
 interface DriveFileItem {
   id: string;
   name: string;
   thumbnailLink?: string;
-  translate: boolean; // true = needs translation, false = import only
+  state: DriveFileState;
 }
 
 interface DriveFolderItem {
@@ -123,7 +125,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
           id: f.id,
           name: f.name,
           thumbnailLink: f.thumbnailLink,
-          translate: true, // default: all images need translation
+          state: "translate" as DriveFileState,
         }))
       );
     } catch (err) {
@@ -151,7 +153,10 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
 
   if (!open) return null;
 
-  const translateCount = driveFiles.filter((f) => f.translate).length;
+  const translateCount = driveFiles.filter((f) => f.state === "translate").length;
+  const skipCount = driveFiles.filter((f) => f.state === "skip").length;
+  const excludeCount = driveFiles.filter((f) => f.state === "exclude").length;
+  const importCount = translateCount + skipCount;
   const totalFiles = driveFiles.length;
   const translationCostPer = 0.09;
 
@@ -159,14 +164,20 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
     ? folders.filter((f) => f.name.toLowerCase().includes(folderSearch.toLowerCase()))
     : folders;
 
-  function toggleTranslate(index: number) {
+  function cycleState(index: number) {
     setDriveFiles((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, translate: !f.translate } : f))
+      prev.map((f, i) => {
+        if (i !== index) return f;
+        const next: DriveFileState =
+          f.state === "translate" ? "skip" :
+          f.state === "skip" ? "exclude" : "translate";
+        return { ...f, state: next };
+      })
     );
   }
 
   async function handleSubmit() {
-    if (totalFiles === 0 || !name.trim() || selectedLanguages.size === 0) return;
+    if (importCount === 0 || !name.trim() || selectedLanguages.size === 0) return;
 
     setSubmitting(true);
     setError("");
@@ -198,8 +209,8 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
       const job = await createRes.json();
       onCreated(job.id);
 
-      // Download ALL files from Drive in parallel (fire and forget)
-      const allFiles = [...driveFiles];
+      // Download non-excluded files from Drive in parallel (fire and forget)
+      const allFiles = driveFiles.filter((f) => f.state !== "exclude");
       (async () => {
         try {
           const DOWNLOAD_CONCURRENCY = 5;
@@ -216,7 +227,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                     fileId: driveFile.id,
                     fileName: driveFile.name,
                     jobId: job.id,
-                    skipTranslation: !driveFile.translate,
+                    skipTranslation: driveFile.state === "skip",
                   }),
                 });
                 if (!res.ok) {
@@ -349,6 +360,8 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                 </label>
                 <p className="text-xs text-gray-400">
                   {translateCount} of {totalFiles} will be translated
+                  {skipCount > 0 && `, ${skipCount} skipped`}
+                  {excludeCount > 0 && `, ${excludeCount} excluded`}
                 </p>
               </div>
               <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto">
@@ -356,21 +369,26 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                   <button
                     key={file.id}
                     type="button"
-                    onClick={() => toggleTranslate(i)}
+                    onClick={() => cycleState(i)}
                     className={`relative rounded-lg overflow-hidden border-2 transition-all ${
-                      file.translate
+                      file.state === "translate"
                         ? "border-indigo-400 ring-1 ring-indigo-200"
-                        : "border-gray-200 opacity-60"
+                        : file.state === "skip"
+                        ? "border-gray-200 opacity-60"
+                        : "border-red-200 opacity-40"
                     }`}
-                    title={`${file.name}\n${file.translate ? "Will be translated" : "Import only (no translation)"}`}
+                    title={`${file.name}\n${
+                      file.state === "translate" ? "Will be translated" :
+                      file.state === "skip" ? "Import only (no translation)" :
+                      "Excluded from import"
+                    }`}
                   >
-                    {/* Thumbnail */}
                     <div className="aspect-square bg-gray-100">
                       {file.thumbnailLink ? (
                         <img
                           src={file.thumbnailLink}
                           alt={file.name}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover ${file.state === "exclude" ? "grayscale" : ""}`}
                           referrerPolicy="no-referrer"
                         />
                       ) : (
@@ -378,18 +396,25 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
                           No preview
                         </div>
                       )}
+                      {file.state === "exclude" && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <X className="w-8 h-8 text-red-400" />
+                        </div>
+                      )}
                     </div>
-                    {/* Translate badge */}
                     <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded-full flex items-center justify-center text-[9px] font-semibold leading-none ${
-                      file.translate
+                      file.state === "translate"
                         ? "bg-indigo-600 text-white"
-                        : "bg-gray-400 text-white"
+                        : file.state === "skip"
+                        ? "bg-gray-400 text-white"
+                        : "bg-red-400 text-white"
                     }`}>
-                      {file.translate ? "Translate" : "Skip"}
+                      {file.state === "translate" ? "Translate" : file.state === "skip" ? "Skip" : "Exclude"}
                     </div>
-                    {/* Filename */}
                     <div className="px-1 py-0.5 bg-white">
-                      <p className="text-[10px] text-gray-500 truncate">{file.name}</p>
+                      <p className={`text-[10px] truncate ${file.state === "exclude" ? "text-red-400 line-through" : "text-gray-500"}`}>
+                        {file.name}
+                      </p>
                     </div>
                   </button>
                 ))}
@@ -479,13 +504,14 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
               <div>
                 <p className="text-sm font-medium text-gray-800">{name || "Untitled"}</p>
                 {(() => {
-                  const totalTranslations = translateCount * selectedLanguages.size;
+                  const ratioCount = 2; // 4:5 + 9:16
+                  const totalTranslations = translateCount * selectedLanguages.size * ratioCount;
                   const batches = Math.ceil(totalTranslations / 10);
                   const estMinutes = Math.ceil(batches * avgSecondsPerImage / 60);
                   return (
                     <>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {totalFiles} images ({translateCount} to translate) &times; {selectedLanguages.size} languages = {totalTranslations} translations
+                        {importCount} images ({translateCount} to translate) &times; {selectedLanguages.size} languages &times; 2 ratios = {totalTranslations} translations
                         {" "}(~{(totalTranslations * 1).toFixed(0)} kr)
                       </p>
                       {totalTranslations > 0 && (
