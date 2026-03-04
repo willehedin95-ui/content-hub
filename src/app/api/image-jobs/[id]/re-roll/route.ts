@@ -139,7 +139,7 @@ export async function POST(
   let resultUrls: string[] | undefined;
   let costTimeMs: number | undefined;
   try {
-    const result = await generateImage(brief.prompt, referenceUrls, "1:1");
+    const result = await generateImage(brief.prompt, referenceUrls, "4:5");
     resultUrls = result.urls;
     costTimeMs = result.costTimeMs ?? undefined;
   } catch (err) {

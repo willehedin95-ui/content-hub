@@ -190,11 +190,11 @@ export async function POST(
         allProductImages,
       );
 
-      // Generate via Kie AI (1:1 for Meta)
+      // Generate via Kie AI (4:5 for Meta feed)
       const { urls: resultUrls, costTimeMs } = await generateImage(
         brief.prompt,
         referenceUrls,
-        "1:1"
+        "4:5"
       );
 
       if (!resultUrls?.length) {
