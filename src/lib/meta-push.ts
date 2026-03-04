@@ -19,18 +19,15 @@ export interface PushResult {
   error?: string;
   campaign_id?: string;
   scheduled_time?: string;
+  added_to_existing?: boolean;
 }
 
 /**
  * Push a concept (image_job) to Meta Ads — one ad set per target language/market.
  *
- * For each market:
- * 1. Look up campaign mapping (product × country)
- * 2. Auto-assign concept number if not set
- * 3. Translate ad copy (English → target language)
- * 4. Duplicate template ad set + rename
- * 5. Upload images + create ads (with image_cropping OPT_OUT to prevent auto-crop)
- * 6. Create meta_campaigns + meta_ads records
+ * If a pushed ad set already exists for a market, adds new (unpushed) images
+ * to the existing ad set instead of creating a new one. This supports the
+ * iteration batch flow where new images are generated within the same concept.
  *
  * Returns array of per-language results + scheduled time.
  */
@@ -216,7 +213,7 @@ export async function pushConceptToMeta(
 
       // Combine translated 1:1 images + skipped originals into a unified list
       const translatedForLang = completedTranslations
-        .filter((t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === "1:1")
+        .filter((t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === "4:5")
         .map((t: { translated_url: string; source_image_id: string }) => ({
           image_url: t.translated_url,
           source_image_id: t.source_image_id,
@@ -225,9 +222,9 @@ export async function pushConceptToMeta(
         image_url: si.original_url,
         source_image_id: si.source_image_id,
       }));
-      const langImages = [...translatedForLang, ...skippedForLang].slice(0, 5);
+      const allLangImages = [...translatedForLang, ...skippedForLang];
 
-      if (langImages.length === 0) {
+      if (allLangImages.length === 0) {
         return { language: lang, country, status: "error", error: `No completed 1:1 images for ${lang}` } as const;
       }
 
@@ -247,41 +244,89 @@ export async function pushConceptToMeta(
 
       const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
 
-      // Create ad set from template config
-      const templateConfig = await getAdSetConfig(mapping.template_adset_id);
-      const newAdSet = await createAdSetFromTemplate({
-        templateConfig,
-        name: adSetName,
-        startTime: scheduledStartTime || undefined,
-      });
-      const newAdSetId = newAdSet.id;
-
-      const { data: campaign } = await db
+      // Check for existing pushed ad set for this concept + language
+      // If found, add new images to it instead of creating a new ad set
+      const { data: existingCampaign } = await db
         .from("meta_campaigns")
-        .insert({
-          name: adSetName,
-          product: job.product,
-          image_job_id: jobId,
-          meta_campaign_id: mapping.meta_campaign_id,
-          meta_adset_id: newAdSetId,
-          objective: "OUTCOME_TRAFFIC",
-          countries: [country],
-          language: lang,
-          daily_budget: 0,
-          status: "pushing",
-          start_time: scheduledStartTime,
-        })
-        .select()
+        .select("id, meta_adset_id, meta_ads(image_url)")
+        .eq("image_job_id", jobId)
+        .eq("language", lang)
+        .eq("status", "pushed")
+        .order("created_at", { ascending: false })
+        .limit(1)
         .single();
 
-      if (!campaign) throw new Error("Failed to create campaign record");
+      let adSetId: string;
+      let campaignId: string;
+      let isAddingToExisting = false;
+
+      if (existingCampaign?.meta_adset_id) {
+        // Reuse existing ad set — filter out already-pushed images
+        const pushedUrls = new Set(
+          ((existingCampaign.meta_ads ?? []) as Array<{ image_url: string | null }>)
+            .map((a) => a.image_url)
+            .filter(Boolean)
+        );
+        const newImages = allLangImages.filter((img) => !pushedUrls.has(img.image_url));
+
+        if (newImages.length === 0) {
+          return { language: lang, country, status: "pushed", error: undefined } as const;
+        }
+
+        adSetId = existingCampaign.meta_adset_id;
+        campaignId = existingCampaign.id;
+        isAddingToExisting = true;
+
+        // Mark as pushing during the add
+        await db.from("meta_campaigns").update({
+          status: "pushing",
+          updated_at: new Date().toISOString(),
+        }).eq("id", campaignId);
+
+        // Replace with only new images
+        allLangImages.length = 0;
+        allLangImages.push(...newImages);
+      } else {
+        // Create new ad set from template config
+        const templateConfig = await getAdSetConfig(mapping.template_adset_id);
+        const newAdSet = await createAdSetFromTemplate({
+          templateConfig,
+          name: adSetName,
+          isDynamicCreative: true,
+          startTime: scheduledStartTime || undefined,
+        });
+        adSetId = newAdSet.id;
+
+        const { data: newCampaign } = await db
+          .from("meta_campaigns")
+          .insert({
+            name: adSetName,
+            product: job.product,
+            image_job_id: jobId,
+            meta_campaign_id: mapping.meta_campaign_id,
+            meta_adset_id: adSetId,
+            objective: "OUTCOME_TRAFFIC",
+            countries: [country],
+            language: lang,
+            daily_budget: 0,
+            status: "pushing",
+            start_time: scheduledStartTime,
+          })
+          .select()
+          .single();
+
+        if (!newCampaign) throw new Error("Failed to create campaign record");
+        campaignId = newCampaign.id;
+      }
+
+      const langImages = allLangImages.slice(0, 5);
 
       // Upsert image_job_markets entry for pipeline tracking
       // (may already exist from queue — just update meta_campaign_id)
       await db.from("image_job_markets").upsert({
         image_job_id: jobId,
         market: country,
-        meta_campaign_id: campaign.id,
+        meta_campaign_id: campaignId,
       }, { onConflict: "image_job_id,market" });
 
       try {
@@ -364,7 +409,7 @@ export async function pushConceptToMeta(
           const creativeResult = creativeResults[i];
           if (creativeResult.status === "rejected") {
             adRows.push({
-              campaign_id: campaign.id,
+              campaign_id: campaignId,
               name: adName,
               image_url: input.img.image_url,
               image_url_9x16: url9x16,
@@ -373,7 +418,7 @@ export async function pushConceptToMeta(
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
-              aspect_ratio: "1:1",
+              aspect_ratio: "4:5",
               variation_index: input.varIndex,
               status: "error",
               error_message: creativeResult.reason?.message ?? "Creative failed",
@@ -386,14 +431,14 @@ export async function pushConceptToMeta(
           try {
             const metaAd = await createAd({
               name: adName,
-              adSetId: newAdSetId,
+              adSetId,
               creativeId: creativeResult.value.creativeId,
               status: "ACTIVE",
               urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
             });
 
             adRows.push({
-              campaign_id: campaign.id,
+              campaign_id: campaignId,
               name: adName,
               image_url: input.img.image_url,
               image_url_9x16: url9x16,
@@ -404,7 +449,7 @@ export async function pushConceptToMeta(
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
-              aspect_ratio: "1:1",
+              aspect_ratio: "4:5",
               variation_index: input.varIndex,
               meta_creative_id: creativeResult.value.creativeId,
               meta_ad_id: metaAd.id,
@@ -412,7 +457,7 @@ export async function pushConceptToMeta(
             });
           } catch (adErr) {
             adRows.push({
-              campaign_id: campaign.id,
+              campaign_id: campaignId,
               name: adName,
               image_url: input.img.image_url,
               image_url_9x16: url9x16,
@@ -421,7 +466,7 @@ export async function pushConceptToMeta(
               source_primary_text: JSON.stringify(primaryTexts),
               source_headline: JSON.stringify(headlineTexts),
               landing_page_url: landingUrl,
-              aspect_ratio: "1:1",
+              aspect_ratio: "4:5",
               variation_index: input.varIndex,
               status: "error",
               error_message: adErr instanceof Error ? adErr.message : "Failed",
@@ -441,7 +486,7 @@ export async function pushConceptToMeta(
             error_message: hasSuccess ? null : "All ads failed",
             updated_at: new Date().toISOString(),
           })
-          .eq("id", campaign.id);
+          .eq("id", campaignId);
       } catch (crashErr) {
         // If anything crashes unexpectedly, mark the campaign as error so it doesn't stay stuck in "pushing"
         await db
@@ -451,7 +496,7 @@ export async function pushConceptToMeta(
             error_message: crashErr instanceof Error ? crashErr.message : "Push crashed unexpectedly",
             updated_at: new Date().toISOString(),
           })
-          .eq("id", campaign.id);
+          .eq("id", campaignId);
         throw crashErr; // Re-throw so it's reported as a failure for this language
       }
 
@@ -459,7 +504,7 @@ export async function pushConceptToMeta(
       const { data: finalCampaign } = await db
         .from("meta_campaigns")
         .select("status")
-        .eq("id", campaign.id)
+        .eq("id", campaignId)
         .single();
       const finalStatus = finalCampaign?.status === "pushed" ? "pushed" : "error";
 
@@ -467,9 +512,10 @@ export async function pushConceptToMeta(
         language: lang,
         country,
         status: finalStatus,
-        campaign_id: campaign.id,
-        scheduled_time: scheduledStartTime || undefined,
+        campaign_id: campaignId,
+        scheduled_time: isAddingToExisting ? undefined : (scheduledStartTime || undefined),
         error: finalStatus === "pushed" ? undefined : "Some or all ads failed to push",
+        added_to_existing: isAddingToExisting,
       } as const;
     })
   );
