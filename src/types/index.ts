@@ -274,6 +274,8 @@ export interface SourceImage {
   skip_translation: boolean;
   generation_prompt: string | null;
   generation_style: string | null;
+  batch: number;
+  batch_label: string | null;
   created_at: string;
   image_translations?: ImageTranslation[];
 }

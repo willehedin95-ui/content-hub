@@ -36,14 +36,14 @@ interface Props {
   onClose: () => void;
 }
 
-type Phase = "loading" | "suggestions" | "creating" | "generating" | "done" | "error";
+type Phase = "loading" | "suggestions" | "generating" | "done" | "error";
 
 export default function SmartIterateModal({ job, performanceContext, onClose }: Props) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("loading");
   const [suggestions, setSuggestions] = useState<IterationSuggestion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [childJobId, setChildJobId] = useState<string | null>(null);
+  const [newBatch, setNewBatch] = useState<number | null>(null);
   const [generatedCount, setGeneratedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,51 +86,49 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
     return () => { cancelled = true; };
   }, [job.id, performanceContext]);
 
-  // Phase 2+3: Create iteration + trigger generation
+  // Phase 2+3: Generate new batch of images within the SAME concept
   async function handleSelect(suggestion: IterationSuggestion) {
     setSelectedId(suggestion.id);
-    setPhase("creating");
+    setPhase("generating");
     setError(null);
 
+    // Build iteration context for the image brief generator
+    const iterationContext: Record<string, unknown> = {
+      iteration_type: suggestion.iteration_type,
+      ...suggestion.params,
+    };
+
+    // For cash_swap, include original values
+    if (suggestion.iteration_type === "cash_swap" && suggestion.params.swap_element) {
+      const el = suggestion.params.swap_element;
+      iterationContext.original_value =
+        el === "hook" ? (cashDna?.hooks?.[0] ?? null) :
+        el === "style" ? (cashDna?.style ?? null) :
+        (cashDna?.angle ?? null);
+    }
+
     try {
-      // Step 1: Create the iteration (child job)
-      const iterateRes = await fetch(`/api/image-jobs/${job.id}/iterate`, {
+      // Generate images directly on the same concept as a new batch
+      const genRes = await fetch(`/api/image-jobs/${job.id}/generate-static`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          iteration_type: suggestion.iteration_type,
-          ...suggestion.params,
+          count: 5,
+          batch_label: suggestion.title,
+          iteration_context: iterationContext,
         }),
       });
-      const iterateData = await iterateRes.json();
 
-      if (!iterateRes.ok) {
-        setError(iterateData.error || "Failed to create iteration");
+      const genData = await genRes.json();
+
+      if (!genRes.ok) {
+        setError(genData.error || "Failed to generate images");
         setPhase("error");
         return;
       }
 
-      const newChildId = iterateData.id as string;
-      setChildJobId(newChildId);
-      setPhase("generating");
-
-      // Step 2: Trigger image generation
-      const genRes = await fetch(`/api/image-jobs/${newChildId}/generate-static`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: 5 }),
-      });
-
-      if (!genRes.ok) {
-        // Generation trigger failed, but iteration was created — navigate to it
-        const genData = await genRes.json().catch(() => ({}));
-        console.warn("[smart-iterate] Generation trigger failed:", genData.error);
-        setPhase("done");
-        return;
-      }
-
-      const genData = await genRes.json();
       setGeneratedCount(genData.generated ?? 0);
+      setNewBatch(genData.batch ?? null);
       setPhase("done");
     } catch (err) {
       console.error("[smart-iterate] Error:", err);
@@ -140,9 +138,8 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
   }
 
   function handleViewResult() {
-    if (childJobId) {
-      router.push(`/images/${childJobId}`);
-    }
+    // Reload the current concept page to show new batch of images
+    router.refresh();
     onClose();
   }
 
@@ -254,21 +251,6 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
             </div>
           )}
 
-          {/* Creating phase */}
-          {phase === "creating" && (
-            <div className="flex flex-col items-center py-8 gap-3">
-              <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-              <p className="text-sm text-gray-500">
-                Creating iteration and rewriting copy...
-              </p>
-              {selectedId && suggestions.find((s) => s.id === selectedId) && (
-                <p className="text-xs text-gray-400">
-                  {suggestions.find((s) => s.id === selectedId)!.title}
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Generating phase */}
           {phase === "generating" && (
             <div className="flex flex-col items-center py-8 gap-3">
@@ -277,11 +259,11 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
                 <ImageIcon className="w-4 h-4 text-indigo-400 absolute -right-1 -bottom-1" />
               </div>
               <p className="text-sm text-gray-500">
-                Generating images...
+                Generating new images...
               </p>
-              {generatedCount > 0 && (
-                <p className="text-xs text-indigo-500 font-medium">
-                  {generatedCount} image{generatedCount !== 1 ? "s" : ""} ready
+              {selectedId && suggestions.find((s) => s.id === selectedId) && (
+                <p className="text-xs text-gray-400">
+                  {suggestions.find((s) => s.id === selectedId)!.title}
                 </p>
               )}
               <p className="text-xs text-gray-400">
@@ -298,12 +280,12 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-gray-900">
-                  Iteration ready!
+                  New images added!
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   {generatedCount > 0
-                    ? `${generatedCount} image${generatedCount !== 1 ? "s" : ""} generated`
-                    : "Concept created"}
+                    ? `${generatedCount} new image${generatedCount !== 1 ? "s" : ""} in batch ${newBatch ?? ""}`
+                    : "Generation complete"}
                 </p>
               </div>
               <button
@@ -311,7 +293,7 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
                 className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
               >
                 <Zap className="w-4 h-4" />
-                View Iteration
+                View Images
               </button>
             </div>
           )}

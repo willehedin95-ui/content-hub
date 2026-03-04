@@ -810,9 +810,40 @@ export default function ConceptImagesStep({
         )}
       </div>
 
-      {/* Image grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {filteredImages.map((si) => (
+      {/* Image grid — grouped by batch */}
+      {(() => {
+        // Group images by batch
+        const batches = new Map<number, { label: string | null; images: typeof filteredImages }>();
+        for (const si of filteredImages) {
+          const b = (si as SourceImage & { batch?: number }).batch ?? 1;
+          const bl = (si as SourceImage & { batch_label?: string | null }).batch_label ?? null;
+          if (!batches.has(b)) batches.set(b, { label: bl, images: [] });
+          batches.get(b)!.images.push(si);
+          // Use first non-null label for the batch
+          if (bl && !batches.get(b)!.label) batches.get(b)!.label = bl;
+        }
+        const sortedBatches = [...batches.entries()].sort((a, b) => a[0] - b[0]);
+        const hasMulitpleBatches = sortedBatches.length > 1;
+
+        return sortedBatches.map(([batchNum, { label, images }]) => (
+          <div key={batchNum} className={hasMulitpleBatches ? "mb-6" : ""}>
+            {hasMulitpleBatches && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  {batchNum === 1 ? "Original" : `Iteration ${batchNum - 1}`}
+                </span>
+                {label && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {label}
+                  </span>
+                )}
+                <span className="text-xs text-gray-300">
+                  {images.length} image{images.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {images.map((si) => (
           <div
             key={si.id}
             className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
@@ -865,7 +896,10 @@ export default function ConceptImagesStep({
             </div>
           </div>
         ))}
-      </div>
+            </div>
+          </div>
+        ));
+      })()}
       </>
       )}
     </>

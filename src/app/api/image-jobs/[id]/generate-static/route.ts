@@ -32,6 +32,12 @@ export async function POST(
     ? Math.min(requestedStyles.length, MAX_IMAGES_PER_CONCEPT)
     : Math.min(Math.max(body.count ?? 3, 1), MAX_IMAGES_PER_CONCEPT);
 
+  // Batch support: iteration images are grouped in batches within the same concept
+  const requestedBatch = typeof body.batch === "number" ? body.batch : undefined;
+  const batchLabel = typeof body.batch_label === "string" ? body.batch_label : undefined;
+  // Allow caller to override iteration_context (for Smart Iterate calling parent concept directly)
+  const overrideIterationContext = body.iteration_context as Record<string, unknown> | undefined;
+
   const db = createServerSupabase();
 
   // Fetch the image job
@@ -96,13 +102,20 @@ export async function POST(
   // Fetch existing prompts for diversity (avoid repeating similar approaches on re-generate)
   const { data: existingImages } = await db
     .from("source_images")
-    .select("generation_prompt")
+    .select("generation_prompt, batch")
     .eq("job_id", id)
     .not("generation_prompt", "is", null);
 
   const previousPrompts = (existingImages ?? [])
     .map((i) => i.generation_prompt as string)
     .filter(Boolean);
+
+  // Compute batch number: use requested or auto-increment from max existing
+  const maxExistingBatch = Math.max(1, ...(existingImages ?? []).map((i) => (i.batch as number) ?? 1));
+  const batch = requestedBatch ?? (existingImages && existingImages.length > 0 ? maxExistingBatch + 1 : 1);
+
+  // Use override iteration context (from Smart Iterate) or job's own
+  const iterationContext = overrideIterationContext ?? job.iteration_context ?? null;
 
   // Step 1: Claude generates distinct image briefs
   let briefs;
@@ -112,7 +125,7 @@ export async function POST(
       product: product as ProductFull,
       productImages: allProductImages,
       segment,
-      iterationContext: job.iteration_context ?? null,
+      iterationContext,
       count,
       styles: requestedStyles,
       previousPrompts,
@@ -219,6 +232,8 @@ export async function POST(
           skip_translation: false,
           generation_prompt: brief.prompt,
           generation_style: brief.style,
+          batch,
+          ...(batchLabel ? { batch_label: batchLabel } : {}),
         })
         .select()
         .single();
@@ -283,6 +298,8 @@ export async function POST(
   return NextResponse.json({
     generated: results.length,
     failed: errors.length,
+    batch,
+    batch_label: batchLabel ?? null,
     source_images: results,
     errors: errors.length > 0 ? errors : undefined,
     cost_usd: totalCost,
