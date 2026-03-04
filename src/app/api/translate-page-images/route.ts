@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // Detect original image dimensions to compute aspect ratio + resolution
-    let detectedAspectRatio = aspectRatio || "1:1";
+    let detectedAspectRatio = aspectRatio || "4:5";
     let resolution = "2K";
 
     try {

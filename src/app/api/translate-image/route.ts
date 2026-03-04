@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const { urls: resultUrls, costTimeMs } = await generateImage(
       prompt,
       [imageUrl],
-      aspectRatio || "1:1"
+      aspectRatio || "4:5"
     );
 
     if (!resultUrls?.length) {
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       cost_usd: KIE_IMAGE_COST,
       metadata: {
         image_url: imageUrl,
-        aspect_ratio: aspectRatio || "1:1",
+        aspect_ratio: aspectRatio || "4:5",
         duration_ms: durationMs,
         kie_cost_time_ms: costTimeMs,
       },

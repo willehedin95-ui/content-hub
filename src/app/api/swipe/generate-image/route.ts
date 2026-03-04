@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const { urls, costTimeMs } = await generateImage(
       prompt,
       referenceImages || [],
-      aspectRatio || "1:1"
+      aspectRatio || "4:5"
     );
 
     if (!urls?.length) {
