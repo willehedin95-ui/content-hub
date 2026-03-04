@@ -43,12 +43,12 @@ describe("isValidLanguage", () => {
 describe("isValidAspectRatio", () => {
   it("accepts supported ratios", () => {
     expect(isValidAspectRatio("1:1")).toBe(true);
+    expect(isValidAspectRatio("4:5")).toBe(true);
     expect(isValidAspectRatio("9:16")).toBe(true);
   });
 
   it("rejects unsupported ratios", () => {
     expect(isValidAspectRatio("16:9")).toBe(false);
-    expect(isValidAspectRatio("4:5")).toBe(false);
     expect(isValidAspectRatio("")).toBe(false);
     expect(isValidAspectRatio("2:3")).toBe(false);
   });

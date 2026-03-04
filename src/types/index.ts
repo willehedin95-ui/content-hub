@@ -136,10 +136,10 @@ export const LANGUAGES: {
 
 // --- Image Aspect Ratios ---
 
-export type AspectRatio = "1:1" | "9:16";
+export type AspectRatio = "1:1" | "4:5" | "9:16";
 
 export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
-  { value: "1:1", label: "1:1 Square" },
+  { value: "4:5", label: "4:5 Feed" },
   { value: "9:16", label: "9:16 Story/Reel" },
 ];
 

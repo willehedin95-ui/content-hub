@@ -8,7 +8,10 @@ export function isValidUUID(value: string): boolean {
 }
 
 const VALID_LANGUAGES = new Set(LANGUAGES.map((l) => l.value));
-const VALID_RATIOS = new Set(ASPECT_RATIOS.map((r) => r.value));
+const VALID_RATIOS = new Set<string>([
+  ...ASPECT_RATIOS.map((r) => r.value),
+  "1:1", // legacy — kept for backward compat with existing DB data
+]);
 
 export function isValidLanguage(lang: string): lang is Language {
   return VALID_LANGUAGES.has(lang as Language);
