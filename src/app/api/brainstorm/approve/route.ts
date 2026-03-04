@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         product,
         status: "draft",
         target_languages: target_languages ?? ["sv", "da", "no"],
-        target_ratios: target_ratios ?? ["1:1"],
+        target_ratios: target_ratios ?? ["4:5", "9:16"],
         concept_number: nextNumber,
         tags,
         cash_dna: proposal.cash_dna,

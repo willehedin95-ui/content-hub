@@ -41,7 +41,7 @@ export async function POST(
         pipeline_concept_id: typedConcept.id,
         status: "ready",
         target_languages: typedConcept.target_languages,
-        target_ratios: ["1:1"], // Meta only uses 1:1
+        target_ratios: ["4:5", "9:16"],
         ad_copy_primary: typedConcept.primary_copy,
         ad_copy_headline: typedConcept.ad_copy_headline,
         cash_dna: typedConcept.cash_dna,

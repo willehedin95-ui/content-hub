@@ -166,7 +166,7 @@ export default function BrainstormGenerate() {
         body: JSON.stringify({
           proposal,
           product,
-          target_ratios: ["1:1"],
+          target_ratios: ["4:5", "9:16"],
         }),
       });
 

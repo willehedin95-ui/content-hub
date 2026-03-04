@@ -41,7 +41,7 @@ export default function SettingsPage() {
     static_ads_quality_threshold: 80,
     static_ads_economy_mode: false,
     static_ads_default_languages: ["sv", "da", "no", "de"],
-    static_ads_default_ratios: ["1:1"],
+    static_ads_default_ratios: ["4:5", "9:16"],
     static_ads_max_retries: 5,
     static_ads_auto_export: false,
     static_ads_notification_email: "",

@@ -177,7 +177,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          target_ratios: getSettings().static_ads_default_ratios?.length ? getSettings().static_ads_default_ratios : ["1:1"],
+          target_ratios: getSettings().static_ads_default_ratios?.length ? getSettings().static_ads_default_ratios : ["4:5", "9:16"],
           target_languages: Array.from(selectedLanguages),
           ...(selectedFolder ? { source_folder_id: selectedFolder.id } : {}),
           product,
