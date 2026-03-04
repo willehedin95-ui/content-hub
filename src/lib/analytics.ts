@@ -20,6 +20,7 @@ export interface AnalyticsSummary {
     impressions: number;
     clicks: number;
     conversions: number;
+    conversionsValue: number;
     ctr: number;
     cpc: number;
     cpm: number;

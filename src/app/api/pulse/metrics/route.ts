@@ -30,6 +30,7 @@ export interface StockMetricData {
 
 export interface AdMetricData {
   spend: MetricData;
+  revenue: MetricData;
   roas: MetricData;
 }
 
@@ -258,13 +259,12 @@ export async function GET(request: NextRequest) {
       ? prevRevenue / prevMetaSpend
       : 0;
 
-    // Calculate Google-specific ROAS (Google spend vs Shopify revenue)
+    // Calculate Google-specific ROAS (Google conversion value / Google spend)
+    const currentGoogleConvValue = analytics.googleAds?.conversionsValue ?? 0;
     const currentGoogleRoas = currentGoogleSpend > 0
-      ? currentRevenue / currentGoogleSpend
+      ? currentGoogleConvValue / currentGoogleSpend
       : 0;
-    const prevGoogleRoas = prevGoogleSpend > 0
-      ? prevRevenue / prevGoogleSpend
-      : 0;
+    const prevGoogleRoas = 0; // No historical comparison yet
 
     // Build response
     const response: PulseMetricsResponse = {
@@ -314,13 +314,19 @@ export async function GET(request: NextRequest) {
             current: currentMetaSpend,
             previous: prevMetaSpend,
             changePercent: calculateChangePercent(currentMetaSpend, prevMetaSpend),
-            timeseries: [], // TODO V2: Daily spend breakdown
+            timeseries: [],
+          },
+          revenue: {
+            current: 0, // Meta revenue tracked via Shopify attribution, not direct
+            previous: 0,
+            changePercent: 0,
+            timeseries: [],
           },
           roas: {
             current: currentMetaRoas,
             previous: prevMetaRoas,
             changePercent: calculateChangePercent(currentMetaRoas, prevMetaRoas),
-            timeseries: [], // TODO V2: Daily ROAS breakdown
+            timeseries: [],
           },
         },
         googleAds: {
@@ -328,13 +334,19 @@ export async function GET(request: NextRequest) {
             current: currentGoogleSpend,
             previous: prevGoogleSpend,
             changePercent: calculateChangePercent(currentGoogleSpend, prevGoogleSpend),
-            timeseries: [], // TODO V2: Daily spend breakdown
+            timeseries: [],
+          },
+          revenue: {
+            current: currentGoogleConvValue,
+            previous: 0,
+            changePercent: 0,
+            timeseries: [],
           },
           roas: {
             current: currentGoogleRoas,
             previous: prevGoogleRoas,
             changePercent: calculateChangePercent(currentGoogleRoas, prevGoogleRoas),
-            timeseries: [], // TODO V2: Daily ROAS breakdown
+            timeseries: [],
           },
         },
       },

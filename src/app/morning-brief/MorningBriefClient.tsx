@@ -183,9 +183,9 @@ interface MorningBriefData {
 // ── Helpers ──
 
 function formatCurrency(n: number): string {
-  if (n >= 10000) return `$${(n / 1000).toFixed(1)}k`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
-  return `$${n.toFixed(0)}`;
+  if (n >= 10000) return `${(n / 1000).toFixed(1)}k kr`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k kr`;
+  return `${n.toFixed(0)} kr`;
 }
 
 function formatRoas(n: number): string {
@@ -364,7 +364,7 @@ export default function MorningBriefClient() {
           [key]: {
             ok: data.ok,
             message: data.ok
-              ? `${data.level === "adset" ? "Ad set" : "Campaign"} budget: $${data.old_budget} → $${data.new_budget}/day`
+              ? `${data.level === "adset" ? "Ad set" : "Campaign"} budget: ${data.old_budget} → ${data.new_budget} kr/day`
               : "Failed",
           },
         },
@@ -518,7 +518,7 @@ export default function MorningBriefClient() {
             value={spend_pacing.total_purchases.toString()}
             sub={
               spend_pacing.total_purchases > 0
-                ? `$${(spend_pacing.total_spend / spend_pacing.total_purchases).toFixed(0)} CPA`
+                ? `${(spend_pacing.total_spend / spend_pacing.total_purchases).toFixed(0)} kr CPA`
                 : "No purchases"
             }
           />
@@ -700,7 +700,7 @@ export default function MorningBriefClient() {
                       <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(b.total_spend)}</span></span>
                       <span>Purchases: <span className="font-medium text-gray-700">{b.purchases}</span></span>
                       <span>CTR: <span className="font-medium text-red-600">{b.avg_ctr}%</span></span>
-                      <span>Campaign avg CPA: <span className="font-medium text-gray-700">${b.campaign_avg_cpa}</span></span>
+                      <span>Campaign avg CPA: <span className="font-medium text-gray-700">{b.campaign_avg_cpa} kr</span></span>
                     </div>
                   </div>
                 );
@@ -815,7 +815,7 @@ export default function MorningBriefClient() {
                       <span>Spent: <span className="font-medium text-gray-700">{formatCurrency(w.total_spend)}</span></span>
                       <span>Purchases: <span className="font-medium text-gray-700">{w.total_purchases}</span></span>
                       <span>ROAS: <span className="font-medium text-green-700">{formatRoas(w.avg_roas)}</span></span>
-                      <span>CPA: <span className="font-medium text-gray-700">${w.avg_cpa}</span></span>
+                      <span>CPA: <span className="font-medium text-gray-700">{w.avg_cpa} kr</span></span>
                       <span>CTR: <span className="font-medium text-gray-700">{w.avg_ctr}%</span></span>
                     </div>
                   </div>
@@ -937,7 +937,7 @@ export default function MorningBriefClient() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-gray-700">{c.avg_ctr}%</td>
-                  <td className="px-4 py-3 text-right text-gray-700">${c.avg_cpc}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{c.avg_cpc} kr</td>
                   <td className="px-4 py-3 text-right">
                     <span className="font-mono font-medium text-gray-900">{c.efficiency_score}</span>
                   </td>
@@ -1077,7 +1077,7 @@ function CampaignCard({ trend }: { trend: CampaignTrend }) {
         <MetricCell label="Revenue" current={formatCurrency(curr.revenue)} changePct={changePct(curr.revenue, prev.revenue)} />
         <MetricCell label="Purchases" current={curr.purchases.toString()} changePct={changePct(curr.purchases, prev.purchases)} />
         <MetricCell label="ROAS" current={formatRoas(curr.roas)} changePct={roasChange} goodDirection="up" />
-        <MetricCell label="CPA" current={curr.cpa > 0 ? `$${curr.cpa.toFixed(0)}` : "—"} changePct={changePct(curr.cpa, prev.cpa)} goodDirection="down" />
+        <MetricCell label="CPA" current={curr.cpa > 0 ? `${curr.cpa.toFixed(0)} kr` : "—"} changePct={changePct(curr.cpa, prev.cpa)} goodDirection="down" />
         <MetricCell label="CTR" current={`${curr.avg_ctr.toFixed(2)}%`} changePct={changePct(curr.avg_ctr, prev.avg_ctr)} goodDirection="up" />
       </div>
 

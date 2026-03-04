@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { withRetry, isTransientError } from "./retry";
 
-const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v18";
+const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v20";
 
 // ---- Auth ----
 
@@ -130,6 +130,7 @@ export interface GoogleAdsAccountRow {
   impressions: number;
   clicks: number;
   conversions: number;
+  conversionsValue: number;
   ctr: number;
   cpc: number;
   cpm: number;
@@ -202,21 +203,23 @@ export async function getGoogleAdsAccountInsights(
       metrics.cost_micros,
       metrics.impressions,
       metrics.clicks,
-      metrics.conversions
+      metrics.conversions,
+      metrics.conversions_value
     FROM customer
     WHERE segments.date BETWEEN '${since}' AND '${until}'
   `;
 
   const results = await googleAdsQuery<{
-    metrics: { costMicros: string; impressions: string; clicks: string; conversions: string };
+    metrics: { costMicros: string; impressions: string; clicks: string; conversions: string; conversionsValue?: string };
   }>(query);
 
-  let spend = 0, impressions = 0, clicks = 0, conversions = 0;
+  let spend = 0, impressions = 0, clicks = 0, conversions = 0, conversionsValue = 0;
   for (const r of results) {
     spend += Number(r.metrics.costMicros) / 1_000_000;
     impressions += Number(r.metrics.impressions);
     clicks += Number(r.metrics.clicks);
     conversions += Number(r.metrics.conversions);
+    conversionsValue += Number(r.metrics.conversionsValue ?? 0);
   }
 
   return {
@@ -224,6 +227,7 @@ export async function getGoogleAdsAccountInsights(
     impressions,
     clicks,
     conversions,
+    conversionsValue,
     ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
     cpc: clicks > 0 ? spend / clicks : 0,
     cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,

@@ -25,12 +25,12 @@ export default function PeriodSelector({
       aria-label={ariaLabel}
       className="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      <option value="today">Idag</option>
-      <option value="yesterday">Igår</option>
-      <option value="7d">7 dagar</option>
-      <option value="14d">14 dagar</option>
-      <option value="30d">30 dagar</option>
-      <option value="90d">90 dagar</option>
+      <option value="today">Today</option>
+      <option value="yesterday">Yesterday</option>
+      <option value="7d">7 days</option>
+      <option value="14d">14 days</option>
+      <option value="30d">30 days</option>
+      <option value="90d">90 days</option>
     </select>
   );
 }
