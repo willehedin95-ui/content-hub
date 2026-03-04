@@ -832,7 +832,7 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
 }
 
 // ---------------------------------------------------------------------------
-// From Competitor Ad — placeholder (will be implemented in a subsequent task)
+// From Competitor Ad — Claude Vision analysis + Nano Banana prompt generation
 // ---------------------------------------------------------------------------
 
 function buildFromCompetitorAdSystem(
@@ -844,7 +844,17 @@ function buildFromCompetitorAdSystem(
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
 
-  return `You are a senior direct-response creative strategist. Analyze the competitor ad provided and generate original ad concepts inspired by (but not copying) the competitor's approach.
+  return `You are a senior direct-response creative strategist and visual analyst specializing in health & wellness ecommerce for Scandinavian markets (Sweden, Norway, Denmark). You reverse-engineer competitor ads — analyzing their visual structure, persuasion techniques, and copy approach — then generate adapted concepts for our product with image generation prompts that faithfully reproduce the competitor's visual format.
+
+You have two combined skills:
+1. **Ad Strategist**: You understand direct-response frameworks (C.A.S.H., Copy Blocks) and can map any ad to its underlying persuasion mechanics.
+2. **Visual Analyst**: You can deconstruct an image's layout, typography, color palette, lighting, composition, and mood — then describe it precisely enough for an AI image generator to reproduce the format.
+
+${CASH_FRAMEWORK}
+
+${COPY_BLOCKS_DEEP}
+
+---
 
 ## PRODUCT KNOWLEDGE
 
@@ -852,7 +862,111 @@ ${productContext}
 
 ---
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Competitor-inspired")}`;
+## COMPETITOR AD ANALYSIS INSTRUCTIONS
+
+When you receive the competitor ad image, perform this analysis:
+
+### 1. VISUAL STRUCTURE ANALYSIS
+Describe the ad's visual composition in detail:
+- **Layout**: Grid structure, text placement zones (top/middle/bottom), image-to-text ratio
+- **Typography**: Font style (serif/sans-serif/handwritten/bold display), size hierarchy, color of text, any text effects (shadow, outline, gradient)
+- **Color palette**: Dominant colors, accent colors, background treatment (solid/gradient/photo)
+- **Imagery**: Photo style (studio/lifestyle/UGC), subject matter, crop/framing, any overlays or graphics
+- **Visual devices**: Badges, stamps, arrows, circles, before/after splits, product callouts, price tags
+- **Aspect ratio**: Detect whether the image is 1:1 (square), 4:5 (portrait feed), or 9:16 (stories/reels)
+
+### 2. PERSUASION TECHNIQUE IDENTIFICATION
+Analyze WHY this ad works psychologically:
+- What scroll-stop mechanism does it use? (pattern interrupt, curiosity gap, emotional trigger, identity statement, fear/urgency)
+- What awareness level does it target? (Unaware through Most Aware)
+- Which Copy Blocks are present? (Pain level, Promise level, Proof types, Curiosity techniques, Constraints addressed)
+- What angle is being used? (Story, Contrarian, Expert, Root Cause, etc.)
+
+### 3. C.A.S.H. DNA MAPPING
+Map the competitor ad to the CASH framework:
+- Concept type (avatar_facts / market_facts / product_facts / psychology_toolkit)
+- Angle (from the 20 standard angles)
+- Style (from the 11 standard styles)
+- Awareness level
+- Copy blocks used with depth levels
+
+### 4. ADAPTED CONCEPT GENERATION
+Create an original concept for OUR product that:
+- Uses the SAME persuasion technique and visual format
+- Adapts the messaging to our product's benefits, claims, and audience
+- Does NOT copy the competitor's specific claims or brand elements
+- Maintains the emotional energy of the original while being completely original in content
+
+### 5. NANO BANANA IMAGE PROMPT GENERATION
+Generate 3-5 prompts for the Nano Banana AI image generator (nano-banana-2) that reproduce the competitor's visual FORMAT with our product's content.
+
+**Nano Banana Prompt Rules:**
+- Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
+- Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
+- Describe the MOOD last (clinical, warm, urgent, calm, editorial)
+- Do NOT include text/copy in the prompt — text overlays are added separately
+- Focus on reproducing the competitor's visual STYLE, not their specific product
+- The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely
+- If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
+- If the competitor ad uses a product shot, describe how our product should be positioned in the same style
+
+**Nano Banana prompt structure:**
+\`[Subject/scene description with specific details]. [Lighting and atmosphere]. [Textures, materials, and technical details]. [Overall mood and feeling].\`
+
+Example quality level (do NOT copy — shows density and specificity):
+"A supplement bottle centered on a weathered wooden nightstand beside a rumpled bed, morning light streaming through sheer curtains casting soft warm shadows across the scene. Shallow depth of field with the bottle sharp and background softly blurred, natural grain texture. Intimate, relatable, early-morning wellness ritual mood."
+
+---
+
+## OUTPUT FORMAT
+
+Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode has a different structure):
+
+{
+  "analysis": {
+    "visual_structure": "Detailed description of the competitor ad's layout, typography, colors, imagery, and visual devices",
+    "persuasion_technique": "What makes this ad work psychologically — the scroll-stop mechanism, emotional triggers, and belief chain",
+    "estimated_awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware",
+    "competitor_copy_summary": "Summary of the competitor's text/messaging approach — what they claim, how they frame the problem/solution",
+    "aspect_ratio": "1:1 | 4:5 | 9:16 (detected from the image dimensions and content layout)"
+  },
+  "concept": {
+    "concept_name": "Short memorable name (2-5 words)",
+    "concept_description": "2-3 sentences describing the adapted concept and why it would work for our product",
+    "cash_dna": {
+      "concept_type": "avatar_facts | market_facts | product_facts | psychology_toolkit",
+      "angle": "one of the 20 angles",
+      "style": "one of the 11 styles",
+      "hooks": ["3-5 hook line variations adapted for our product"],
+      "awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware",
+      "ad_source": "Swipe (competitor)",
+      "copy_blocks": ["array of blocks used with depth levels"],
+      "concept_description": "same as outer concept_description"
+    },
+    "ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each) — adapted for our product using the competitor's persuasion structure"],
+    "ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],
+    "visual_direction": "What the static ad image should look like — referencing the competitor's format but adapted for our product",
+    "differentiation_note": "How this concept differs from the competitor's ad — what we kept (structure/technique) vs what we changed (content/claims/product)",
+    "suggested_tags": ["competitor-swipe", "2-4 additional relevant tags"]
+  },
+  "image_prompts": [
+    {
+      "prompt": "Nano Banana prompt (2-4 dense sentences, subject first, specific lighting/texture/mood)",
+      "hook_text": "Main text overlay for the ad image (the primary hook/headline that will be placed on the image)",
+      "headline_text": "Secondary text line (subheadline, CTA, or supporting text)"
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Write ALL copy in ENGLISH (translations happen later)
+- NEVER copy the competitor's specific claims, brand name, or product references
+- NEVER invent medical claims — only use claims from our product brief
+- The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product
+- The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
+- Return ONLY valid JSON, no markdown fences, no explanation text
+- Generate exactly 3-5 entries in the image_prompts array, each with a different hook_text variation
+- Each image prompt should describe a slightly different composition or angle while maintaining the competitor's core visual style`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,6 +1150,19 @@ export function buildBrainstormUserPrompt(
       }
       break;
     }
+
+    case "from_competitor_ad": {
+      parts.push("## SWIPE: FROM COMPETITOR AD");
+      parts.push(
+        "Analyze the competitor ad image attached below. Reverse-engineer its visual structure, identify why it works, and create an adapted version for our product."
+      );
+      if (request.competitor_ad_copy) {
+        parts.push(`\n### COMPETITOR AD COPY (from Meta Ads Library)\n${request.competitor_ad_copy.slice(0, 3000)}`);
+        parts.push("Use this copy to understand the competitor's messaging approach. Do NOT copy their claims — adapt the structure and technique for our product.");
+      }
+      parts.push(`\nGenerate 1 concept with ${count} image prompt variations.`);
+      break;
+    }
   }
 
   // Optional focus parameters
@@ -1112,6 +1239,12 @@ export const BRAINSTORM_MODES: {
     label: "From Template",
     description: "Use proven 3-part ad structures from the Copy Blocks system",
     icon: "LayoutTemplate",
+  },
+  {
+    value: "from_competitor_ad",
+    label: "From Competitor Ad",
+    description: "Upload a winning competitor ad — AI reproduces its format for your product",
+    icon: "Copy",
   },
 ];
 
