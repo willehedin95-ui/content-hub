@@ -225,12 +225,12 @@ export async function createAdCreative(params: {
   const pageId = params.pageId || getPageId();
 
   // Use asset_feed_spec when we have a 9:16 image variant for placement
-  // customization (1:1 for feed, 9:16 for stories/reels).
+  // customization (4:5 for feed, 9:16 for stories/reels).
   // The ad set MUST have is_dynamic_creative=true (set at creation time).
   const useAssetFeed = !!params.imageHash9x16;
 
   if (useAssetFeed) {
-    // 9:16 placement customization: feed gets 1:1, stories/reels get 9:16
+    // 9:16 placement customization: feed gets 4:5, stories/reels get 9:16
     const images = [
       { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
       { hash: params.imageHash9x16!, adlabels: [{ name: "story_image" }] },
@@ -435,7 +435,7 @@ export async function createAd(params: {
       creative: { creative_id: params.creativeId },
       status: params.status || "PAUSED",
       // Prevent Meta from auto-cropping the image for vertical placements (stories/reels).
-      // Without this, a 1:1 image gets zoomed-in to fill 9:16, cutting off content.
+      // Without this, a 4:5 image gets zoomed-in to fill 9:16, cutting off content.
       creative_features_spec: {
         image_cropping: { enroll_status: "OPT_OUT" },
       },
