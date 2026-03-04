@@ -21,6 +21,7 @@ import {
   ArrowLeftRight,
   Globe,
   ChevronDown,
+  BookmarkPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -153,7 +154,7 @@ interface EfficiencyScore {
 
 interface ActionCard {
   id: string;
-  type: "pause" | "scale" | "refresh" | "budget" | "landing_page";
+  type: "pause" | "scale" | "refresh" | "budget" | "landing_page" | "save_copy";
   category: string;
   title: string;
   why: string;
@@ -231,6 +232,15 @@ const ACTION_CONFIG: Record<
     tagColor: "bg-purple-50 text-purple-700",
     buttonLabel: "Review landing pages",
     buttonColor: "text-white bg-purple-600 hover:bg-purple-700",
+  },
+  save_copy: {
+    Icon: BookmarkPlus,
+    iconBg: "bg-violet-100",
+    iconColor: "text-violet-600",
+    borderColor: "border-l-4 border-l-violet-400",
+    tagColor: "bg-violet-50 text-violet-700",
+    buttonLabel: "Save to Copy Bank",
+    buttonColor: "text-white bg-violet-600 hover:bg-violet-700",
   },
 };
 
@@ -330,10 +340,20 @@ export default function MorningBriefClient() {
 
   async function handleApply(card: ActionCard) {
     if (card.type === "refresh") {
-      // Navigate to concept in Static Ads with iterate modal auto-opened
+      // Navigate to concept with iterate modal auto-opened, passing market context
       const imageJobId = card.image_job_id || card.action_data.image_job_id;
       if (imageJobId) {
-        window.location.href = `/images/${imageJobId}?iterate=true`;
+        const market = card.action_data.market as string | undefined;
+        const params = new URLSearchParams({ iterate: "true" });
+        if (market) params.set("market", market);
+        // Pass performance context so Claude can tailor iteration suggestions
+        const perfContext = [
+          card.why,
+          card.adset_roas != null ? `ROAS: ${card.adset_roas}x` : null,
+          card.days_running != null ? `Running: ${card.days_running} days` : null,
+        ].filter(Boolean).join(". ");
+        if (perfContext) params.set("perf", perfContext);
+        window.location.href = `/images/${imageJobId}?${params.toString()}`;
       } else {
         window.location.href = "/brainstorm";
       }
@@ -341,6 +361,44 @@ export default function MorningBriefClient() {
     }
     if (card.type === "landing_page") {
       window.location.href = "/pages";
+      return;
+    }
+
+    if (card.type === "save_copy") {
+      setActionState((s) => ({ ...s, loading: card.id }));
+      try {
+        const res = await fetch("/api/copy-bank", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product: card.action_data.product,
+            language: card.action_data.language,
+            primary_text: card.action_data.primary_text,
+            headline: card.action_data.headline,
+            source_meta_ad_id: card.action_data.meta_ad_id,
+            source_concept_name: card.action_data.source_concept_name,
+          }),
+        });
+        const result = await res.json();
+        setActionState((s) => ({
+          loading: null,
+          results: {
+            ...s.results,
+            [card.id]: {
+              ok: res.ok,
+              message: res.ok ? "Saved!" : result.error || "Failed",
+            },
+          },
+        }));
+      } catch {
+        setActionState((s) => ({
+          loading: null,
+          results: {
+            ...s.results,
+            [card.id]: { ok: false, message: "Network error" },
+          },
+        }));
+      }
       return;
     }
 
@@ -562,6 +620,11 @@ export default function MorningBriefClient() {
                             card.adset_roas >= 1 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
                           )}>
                             {card.adset_roas}x ROAS
+                          </span>
+                        )}
+                        {typeof card.action_data?.market === "string" && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                            {card.action_data.market}
                           </span>
                         )}
                         <span

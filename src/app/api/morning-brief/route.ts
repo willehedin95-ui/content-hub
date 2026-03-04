@@ -596,6 +596,7 @@ export async function GET(req: NextRequest) {
     cash_dna: Record<string, unknown> | null;
     pushed_at: string | null;
     days_running: number | null;
+    market: string | null;
   }
   const adsetEnrichment = new Map<string, AdsetEnrichment>();
 
@@ -603,12 +604,13 @@ export async function GET(req: NextRequest) {
     const allEnrichIds = [...enrichmentAdsetIds];
     const { data: adsetConcepts } = await db
       .from("meta_campaigns")
-      .select("meta_adset_id, image_job_id, created_at")
+      .select("meta_adset_id, image_job_id, created_at, countries")
       .in("meta_adset_id", allEnrichIds);
 
     const conceptIds = new Set<string>();
     const adsetToConceptMap = new Map<string, string>();
     const adsetToPushedAt = new Map<string, string>();
+    const adsetToMarket = new Map<string, string>();
 
     for (const row of adsetConcepts ?? []) {
       if (row.image_job_id) {
@@ -617,6 +619,10 @@ export async function GET(req: NextRequest) {
       }
       if (row.created_at) {
         adsetToPushedAt.set(row.meta_adset_id, row.created_at);
+      }
+      const countries = row.countries as string[] | null;
+      if (countries?.[0]) {
+        adsetToMarket.set(row.meta_adset_id, countries[0]);
       }
     }
 
@@ -645,6 +651,7 @@ export async function GET(req: NextRequest) {
         cash_dna: concept?.cash_dna ?? null,
         pushed_at: pushedAt,
         days_running: daysRunning,
+        market: adsetToMarket.get(adsetId) ?? null,
       });
     }
   }
@@ -674,7 +681,7 @@ export async function GET(req: NextRequest) {
   // ── Synthesize Action Cards ──
   interface ActionCard {
     id: string;
-    type: "pause" | "scale" | "refresh" | "budget" | "landing_page";
+    type: "pause" | "scale" | "refresh" | "budget" | "landing_page" | "save_copy";
     category: string;
     title: string;
     why: string;
@@ -831,6 +838,63 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // ── Winners → save winning copy to bank (priority 4) ──
+  const winnerAdIds = enrichedWinners.map(w => w.ad_id);
+  const { data: winnerMetaAds } = winnerAdIds.length > 0
+    ? await db
+        .from("meta_ads")
+        .select("id, ad_copy, headline, campaign_id, meta_campaigns!inner(product, language, image_job_id, image_jobs(name))")
+        .in("meta_ad_id", winnerAdIds)
+        .eq("status", "pushed")
+        .not("ad_copy", "is", null)
+    : { data: [] };
+
+  const copyTexts = (winnerMetaAds ?? []).map(a => (a.ad_copy ?? "").trim()).filter(Boolean);
+  const { data: existingBank } = copyTexts.length > 0
+    ? await db.from("copy_bank").select("primary_text").in("primary_text", copyTexts)
+    : { data: [] };
+  const bankedTexts = new Set((existingBank ?? []).map(b => b.primary_text));
+
+  for (const wa of (winnerMetaAds ?? [])) {
+    const copy = (wa.ad_copy ?? "").trim();
+    if (!copy || bankedTexts.has(copy)) continue;
+
+    const mc = wa.meta_campaigns as unknown as { product: string; language: string; image_job_id: string | null; image_jobs: { name: string } | null } | null;
+    if (!mc) continue;
+
+    const conceptName = mc.image_jobs?.name ?? "unknown";
+    const preview = copy.length > 80 ? copy.slice(0, 80) + "..." : copy;
+
+    actionCards.push({
+      id: `save_copy_${wa.id}`,
+      type: "save_copy",
+      category: "Copy",
+      title: `Save winning ${mc.language.toUpperCase()} copy to bank`,
+      why: `This copy is performing well. Save it so you can reuse it on future concepts without re-translating.`,
+      guidance: `"${preview}"`,
+      expected_impact: "Reuse proven copy on new concepts",
+      button_label: "Save to Copy Bank",
+      action_data: {
+        action: "save_copy",
+        meta_ad_id: wa.id,
+        primary_text: copy,
+        headline: wa.headline ?? null,
+        product: mc.product,
+        language: mc.language,
+        source_concept_name: conceptName,
+      },
+      priority: 4,
+      ad_name: null,
+      adset_id: null,
+      adset_name: null,
+      campaign_name: null,
+      image_job_id: mc.image_job_id,
+      concept_name: conceptName,
+      days_running: null,
+      adset_roas: null,
+    });
+  }
+
   // ── Critical fatigue → iterate (profitable) or kill (unprofitable) ──
   for (const f of fatigueSignals.critical) {
     const enrichment = f.adset_id ? adsetEnrichment.get(f.adset_id) : null;
@@ -843,18 +907,20 @@ export async function GET(req: NextRequest) {
     const angle = (cashDna as Record<string, unknown> | null)?.angle as string | undefined;
     const adLabel = conceptName || f.ad_name || "unnamed";
 
+    const market = enrichment?.market ?? null;
+
     if (isProfitable) {
       // Profitable but fatiguing → iterate on the concept
       actionCards.push({
         id: `refresh_${f.ad_id}`,
         type: "refresh",
         category: "Creative",
-        title: `"${adLabel}" is fatiguing — still profitable at ${adsetRoas}x, iterate!`,
+        title: `"${adLabel}" is fatiguing${market ? ` in ${market}` : ""} — still profitable at ${adsetRoas}x, iterate!`,
         why: `${f.detail}. Running for ${daysRunning ?? "?"}d with ${adsetRoas}x ROAS — this concept works but needs fresh creatives.`,
         guidance: `Your audience has seen this ad enough times that click rates are dropping, but the concept IS profitable. Create new variations with fresh visuals but the same winning angle.${angle ? ` Current angle: "${angle}".` : ""} Click below to open the iteration tool and generate a Segment Swap, Mechanism Swap, or C.A.S.H. Swap.`,
         expected_impact: "Keep a profitable concept alive with fresh creatives",
-        button_label: "Iterate on this concept",
-        action_data: { ad_id: f.ad_id, image_job_id: enrichment?.image_job_id ?? null },
+        button_label: market ? `Iterate for ${market}` : "Iterate on this concept",
+        action_data: { ad_id: f.ad_id, image_job_id: enrichment?.image_job_id ?? null, market },
         priority: 3,
         ad_name: f.ad_name,
         adset_id: f.adset_id,
