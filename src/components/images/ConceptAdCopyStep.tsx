@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Loader2,
   AlertTriangle,
@@ -9,8 +10,11 @@ import {
   Globe,
   Type,
   Wrench,
+  BookmarkCheck,
 } from "lucide-react";
 import { ImageJob, Language, LANGUAGES, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
+import type { CopyBankEntry, ProductSegment } from "@/types";
+import CopyBankPicker from "./CopyBankPicker";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
@@ -96,6 +100,21 @@ export default function ConceptAdCopyStep({
   handleTranslateCopy,
   handleWebsiteUrlChange,
 }: ConceptAdCopyStepProps) {
+  const [copyBankLang, setCopyBankLang] = useState<string | null>(null);
+  const [segments, setSegments] = useState<ProductSegment[]>([]);
+
+  useEffect(() => {
+    if (!job.product) return;
+    async function loadSegments() {
+      const res = await fetch(`/api/products/${job.product}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSegments(data.product_segments ?? []);
+      }
+    }
+    loadSegments();
+  }, [job.product]);
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -355,18 +374,28 @@ export default function ConceptAdCopyStep({
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleTranslateCopy(lang as Language)}
-                      disabled={copyState.translatingLang === lang || copyState.translating}
-                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
-                    >
-                      {copyState.translatingLang === lang ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <RotateCcw className="w-3 h-3" />
-                      )}
-                      {ct ? "Re-translate" : "Translate"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCopyBankLang(lang)}
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 transition-colors"
+                        title="Pick from Copy Bank"
+                      >
+                        <BookmarkCheck className="w-3 h-3" />
+                        Copy Bank
+                      </button>
+                      <button
+                        onClick={() => handleTranslateCopy(lang as Language)}
+                        disabled={copyState.translatingLang === lang || copyState.translating}
+                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                      >
+                        {copyState.translatingLang === lang ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-3 h-3" />
+                        )}
+                        {ct ? "Re-translate" : "Translate"}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Translation content */}
@@ -451,6 +480,22 @@ export default function ConceptAdCopyStep({
             })}
           </div>
         </div>
+      )}
+
+      {copyBankLang && job.product && (
+        <CopyBankPicker
+          product={job.product}
+          language={copyBankLang}
+          segments={segments}
+          onSelect={(entry: CopyBankEntry) => {
+            handleTranslatedCopyChange(copyBankLang, "primary_texts", 0, entry.primary_text);
+            if (entry.headline) {
+              handleTranslatedCopyChange(copyBankLang, "headlines", 0, entry.headline);
+            }
+            setCopyBankLang(null);
+          }}
+          onClose={() => setCopyBankLang(null)}
+        />
       )}
 
     </div>
