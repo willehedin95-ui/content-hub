@@ -22,7 +22,7 @@ import ConceptImagesStep from "./ConceptImagesStep";
 import ConceptAdCopyStep from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
 import CashDnaEditor from "./CashDnaEditor";
-import IterationDialog from "./IterationDialog";
+import SmartIterateModal from "./SmartIterateModal";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -1327,11 +1327,10 @@ export default function ImageJobDetail({ initialJob, autoIterate }: Props) {
         />
       )}
 
-      {/* V3.4: Iteration dialog */}
+      {/* V3.4: Smart iterate modal — AI suggests iterations + auto-generates */}
       {showIterateDialog && (
-        <IterationDialog
+        <SmartIterateModal
           job={job}
-          segments={productSegments}
           onClose={() => setShowIterateDialog(false)}
         />
       )}
