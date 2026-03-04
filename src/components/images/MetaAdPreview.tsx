@@ -160,7 +160,7 @@ export default function MetaAdPreview({
     setHeadlineIndex(0);
   }, [activeLang]);
 
-  // Get all images for active language: translated 1:1 + skipped originals
+  // Get all images for active language: translated 4:5 + skipped originals
   const langImages = useMemo(() => {
     const sourceImages = job.source_images ?? [];
     // Translated images for this language
@@ -169,7 +169,7 @@ export default function MetaAdPreview({
         .filter(
           (t) =>
             t.language === activeLang &&
-            t.aspect_ratio === "1:1" &&
+            t.aspect_ratio === "4:5" &&
             t.status === "completed" &&
             t.translated_url
         )
@@ -490,7 +490,7 @@ export default function MetaAdPreview({
                 : (si.image_translations ?? []).some(
                     (t) =>
                       t.language === lang &&
-                      t.aspect_ratio === "1:1" &&
+                      t.aspect_ratio === "4:5" &&
                       t.status === "completed"
                   )
             );

@@ -34,14 +34,14 @@ export async function POST(
     const primaryTexts: string[] = job.ad_copy_primary || [];
     const headlines: string[] = job.ad_copy_headline || [];
 
-    // Collect completed 1:1 image URLs (deduplicated)
+    // Collect completed 4:5 image URLs (deduplicated)
     const imageUrls: string[] = [];
     for (const src of job.source_images || []) {
       if (src.skip_translation) {
         if (src.original_url) imageUrls.push(src.original_url);
       } else {
         for (const trans of src.image_translations || []) {
-          if (trans.aspect_ratio !== "1:1") continue;
+          if (trans.aspect_ratio !== "4:5") continue;
           if (trans.status === "completed" && trans.translated_url) {
             imageUrls.push(trans.translated_url);
           }

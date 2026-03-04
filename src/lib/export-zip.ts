@@ -13,7 +13,7 @@ export async function exportJobAsZip(job: ImageJob): Promise<void> {
           const blob = await imgRes.blob();
           const langLabel = LANGUAGES.find((l) => l.value === t.language)?.label ?? t.language;
           const filename = si.filename || `${si.id}.png`;
-          const ratioFolder = t.aspect_ratio && t.aspect_ratio !== "1:1" ? `${t.aspect_ratio}/` : "";
+          const ratioFolder = t.aspect_ratio && t.aspect_ratio !== "4:5" ? `${t.aspect_ratio}/` : "";
           zip.file(`${langLabel}/${ratioFolder}${filename}`, blob);
         } catch {
           // Skip failed downloads
