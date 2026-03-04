@@ -6,7 +6,6 @@ Updated: 2026-03-03
 - [ ] V3.4 Iteration System on Winners — segment swap, mechanism swap, C.A.S.H. swap (added 2026-02-28)
 
 ## P2 — Important
-- [ ] Ad Spy — monitor competitors, AI suggests new concepts (added 2025-02-25)
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
 - [ ] Telegram notifications — Hub messages when concepts ready for review (added 2025-02-25)
 
@@ -55,7 +54,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Per-image skip/translate toggle for source images (done 2026-02-26)
 - [x] Skeleton loading placeholders during static ad generation (done 2026-02-26)
 - [x] Anthropic prompt caching on brainstorm API (done 2026-02-26)
-- [x] Collapsible "Ads" sidebar group (Brainstorm, Ad Concepts, Ad Spy) (done 2026-02-26)
+- [x] Collapsible "Ads" sidebar group (Brainstorm, Ad Concepts) (done 2026-02-26)
 - [x] Fix style selector resetting on unaware concepts (done 2026-02-26)
 - [x] Fix brainstorm generating identical concepts (anti-copying instructions) (done 2026-02-26)
 - [x] Populate HappySleep product data + Hydro13 audience segments (done 2026-02-26)

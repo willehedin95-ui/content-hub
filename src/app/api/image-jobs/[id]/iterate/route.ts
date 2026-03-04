@@ -198,7 +198,6 @@ export async function POST(
       tags: [...(parent.tags ?? []), "iteration"],
       cash_dna: childDna,
       visual_direction: parent.visual_direction,
-      source_spy_ad_id: parent.source_spy_ad_id,
       iteration_of: id,
       iteration_type: iterationType,
       iteration_context: iterationContext,

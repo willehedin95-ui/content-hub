@@ -12,7 +12,7 @@ export interface ImageBrief {
   prompt: string;         // The Nano Banana prompt (2-4 dense sentences)
   hookText: string;
   headlineText?: string;
-  referenceStrategy: "product" | "spy-ad" | "both" | "none";
+  referenceStrategy: "product" | "none";
   reptileTriggers?: ReptileTriggerId[];
 }
 
@@ -50,14 +50,13 @@ export async function generateImageBriefs(options: {
   job: ImageJob;
   product: ProductFull;
   productImages: Array<{ url: string; category: string }>;
-  spyAd?: { media_url?: string; cash_analysis?: unknown } | null;
   segment?: ProductSegment | null;
   iterationContext?: Record<string, unknown> | null;
   count: number;
   styles?: StaticStyleId[];
   previousPrompts?: string[];
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
-  const { job, product, spyAd, segment, iterationContext, count } = options;
+  const { job, product, segment, iterationContext, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
   const hooks = cashDna?.hooks ?? [];
   const headlines = job.ad_copy_headline ?? [];
@@ -82,8 +81,6 @@ export async function generateImageBriefs(options: {
     hooks: hooks.slice(0, count),
     headlines,
     styles: styleIds,
-    spyAdContext: spyAd?.cash_analysis ? JSON.stringify(spyAd.cash_analysis) : null,
-    hasSpyAdImage: !!spyAd?.media_url,
     hasProductImages: options.productImages.length > 0,
     productImageCategories: [...new Set(options.productImages.map((pi) => pi.category))],
     segment: segment ?? null,
@@ -125,17 +122,12 @@ export async function generateImageBriefs(options: {
 export function resolveReferenceImages(
   brief: ImageBrief,
   productImages: Array<{ url: string; category: string }>,
-  spyAdMediaUrl?: string | null
 ): string[] {
   const refs: string[] = [];
 
   if (brief.referenceStrategy === "none") return refs;
 
-  if ((brief.referenceStrategy === "spy-ad" || brief.referenceStrategy === "both") && spyAdMediaUrl) {
-    refs.push(spyAdMediaUrl);
-  }
-
-  if (brief.referenceStrategy === "product" || brief.referenceStrategy === "both") {
+  if (brief.referenceStrategy === "product") {
     // Pick images based on style
     const preferred = getPreferredCategories(brief.style);
     for (const cat of preferred) {
@@ -146,7 +138,7 @@ export function resolveReferenceImages(
       }
     }
     // Fallback to hero if nothing found
-    if (refs.length === 0 || (brief.referenceStrategy === "both" && refs.length === 1)) {
+    if (refs.length === 0) {
       const hero = productImages.find((pi) => pi.category === "hero");
       if (hero && !refs.includes(hero.url)) {
         refs.push(hero.url);
@@ -253,8 +245,6 @@ Natural pairings (suggestions, not rules):
 ## Reference Image Strategy:
 For each brief, specify a referenceStrategy:
 - "product" — use product images as reference (for product-hero, comparison styles)
-- "spy-ad" — use the competitor's ad image as style reference (to adapt their visual approach)
-- "both" — combine product and competitor references
 - "none" — generate purely from text description (REQUIRED for native-medical, native-closeup, native-messy; also for bold-statement)
 
 ## Output Format:
@@ -280,8 +270,6 @@ function buildBriefUserPrompt(opts: {
   hooks: string[];
   headlines: string[];
   styles: StaticStyleId[];
-  spyAdContext: string | null;
-  hasSpyAdImage: boolean;
   hasProductImages: boolean;
   productImageCategories: string[];
   segment: ProductSegment | null;
@@ -309,10 +297,6 @@ function buildBriefUserPrompt(opts: {
 
   if (opts.visualDirection) {
     lines.push(`\nVisual direction from concept generator:\n${opts.visualDirection}`);
-  }
-
-  if (opts.spyAdContext) {
-    lines.push(`\nCompetitor ad analysis:\n${opts.spyAdContext}`);
   }
 
   // V3.3: Segment context
@@ -378,9 +362,8 @@ function buildBriefUserPrompt(opts: {
   lines.push(opts.styles.join(", "));
 
   lines.push(`\nREFERENCE IMAGES AVAILABLE:`);
-  if (opts.hasSpyAdImage) lines.push(`- Competitor ad image (for style reference)`);
   if (opts.hasProductImages) lines.push(`- Product images (categories: ${opts.productImageCategories.join(", ")})`);
-  if (!opts.hasSpyAdImage && !opts.hasProductImages) lines.push(`- None available`);
+  if (!opts.hasProductImages) lines.push(`- None available`);
 
   // Native ad special instructions for Unaware concepts
   const isNativeConcept = opts.cashDna?.awareness_level === "Unaware" ||
@@ -451,7 +434,7 @@ function parseBriefs(raw: string, expectedCount: number): ImageBrief[] {
       prompt,
       hookText,
       headlineText: obj.headline ? String(obj.headline) : undefined,
-      referenceStrategy: (["product", "spy-ad", "both", "none"].includes(String(obj.referenceStrategy))
+      referenceStrategy: (["product", "none"].includes(String(obj.referenceStrategy))
         ? String(obj.referenceStrategy)
         : "product") as ImageBrief["referenceStrategy"],
       reptileTriggers,

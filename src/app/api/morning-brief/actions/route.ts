@@ -311,6 +311,46 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    case "pause_adset": {
+      const { adset_id, adset_name, campaign_name, reason } = body;
+      if (!adset_id) {
+        return NextResponse.json(
+          { error: "adset_id is required" },
+          { status: 400 }
+        );
+      }
+
+      // Pause ad set via Meta Graph API
+      const token = META_TOKEN();
+      const res = await fetch(
+        `https://graph.facebook.com/v22.0/${adset_id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: "PAUSED" }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.text().catch(() => "");
+        throw new Error(`Meta API error (${res.status}): ${err}`);
+      }
+
+      // Log to ad_learnings
+      await db.from("ad_learnings").insert({
+        meta_ad_id: adset_id,
+        ad_name: adset_name ?? null,
+        campaign_name: campaign_name ?? null,
+        event_type: "paused_adset",
+        detail: reason || "Ad set paused from Daily Actions",
+        metrics: {},
+      });
+
+      return NextResponse.json({ ok: true, paused_adset: adset_id });
+    }
+
     default:
       return NextResponse.json(
         { error: `Unknown action: ${action}` },

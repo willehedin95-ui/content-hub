@@ -1,4 +1,4 @@
-import type { ProductFull, CopywritingGuideline, SpyAd, ConceptProposal } from "@/types";
+import type { ProductFull, CopywritingGuideline, ConceptProposal } from "@/types";
 
 // Condensed CASH framework for the system prompt
 const CASH_FRAMEWORK = `## C.A.S.H. Framework (Concepts, Angles, Styles, Hooks)
@@ -120,46 +120,6 @@ CRITICAL RULES:
 - Primary text should be ready-to-use ad copy, not placeholder text
 - Visual direction should be specific enough to brief a designer
 - Return ONLY valid JSON, no markdown fences, no explanation text`;
-}
-
-/**
- * Build the user prompt with spy ad details.
- */
-export function buildConceptUserPrompt(ad: SpyAd, count: number): string {
-  const parts: string[] = [];
-
-  parts.push("## COMPETITOR AD");
-  if (ad.brand) {
-    parts.push(`Brand: ${ad.brand.name}${ad.brand.category ? ` (${ad.brand.category})` : ""}`);
-  }
-  if (ad.headline) parts.push(`Headline: ${ad.headline}`);
-  if (ad.body) parts.push(`Body: ${ad.body}`);
-  if (ad.description) parts.push(`Description: ${ad.description}`);
-  if (ad.cta_type) parts.push(`CTA: ${ad.cta_type}`);
-  if (ad.media_type) parts.push(`Media type: ${ad.media_type}`);
-  if (ad.link_url) parts.push(`Destination: ${ad.link_url}`);
-
-  if (ad.cash_analysis) {
-    const a = ad.cash_analysis;
-    parts.push("");
-    parts.push("## CASH ANALYSIS OF COMPETITOR AD");
-    if (a.concept_type) parts.push(`Concept Type: ${a.concept_type}`);
-    if (a.angle) parts.push(`Angle: ${a.angle}`);
-    if (a.style) parts.push(`Style: ${a.style}`);
-    if (a.awareness_level) parts.push(`Awareness Level: ${a.awareness_level}`);
-    if (a.hooks?.length) parts.push(`Hooks: ${a.hooks.join(" | ")}`);
-    if (a.copy_blocks?.length) parts.push(`Copy Blocks: ${a.copy_blocks.join(", ")}`);
-    if (a.concept_description) parts.push(`Core Concept: ${a.concept_description}`);
-    if (a.offer_type) parts.push(`Offer Type: ${a.offer_type}`);
-    if (a.estimated_production) parts.push(`Production Style: ${a.estimated_production}`);
-  }
-
-  parts.push("");
-  parts.push(
-    `Generate ${count} concept proposals for our product inspired by this competitor ad. Each MUST use a DIFFERENT angle and approach. Draw inspiration from what makes this competitor ad effective, but adapt the strategy for our product with our own claims and proof.`
-  );
-
-  return parts.join("\n");
 }
 
 /**

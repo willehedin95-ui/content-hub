@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
         ad_copy_primary: proposal.ad_copy_primary,
         ad_copy_headline: allHeadlines,
         visual_direction: proposal.visual_direction ?? null,
-        source_spy_ad_id: null,
       })
       .select()
       .single();

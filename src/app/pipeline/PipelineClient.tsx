@@ -631,7 +631,7 @@ export default function PipelineClient() {
           <h3 className="text-sm font-medium text-gray-600 mb-3">No ads being tracked yet</h3>
           <div className="text-xs text-gray-400 max-w-md mx-auto space-y-1.5 mb-4">
             <p><span className="font-medium text-gray-500">1.</span> Go to <strong className="text-gray-600">Brainstorm</strong> to generate ad concepts</p>
-            <p><span className="font-medium text-gray-500">2.</span> Open <strong className="text-gray-600">Static Ads</strong> to design images and write copy</p>
+            <p><span className="font-medium text-gray-500">2.</span> Open <strong className="text-gray-600">Concepts</strong> to design images and write copy</p>
             <p><span className="font-medium text-gray-500">3.</span> Push to Meta &mdash; ads appear here automatically</p>
           </div>
           <Link
@@ -1270,7 +1270,7 @@ function ConceptModal({
                   className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700"
                   target="_blank"
                 >
-                  View in Static Ads <ExternalLink className="w-3 h-3" />
+                  View Concept <ExternalLink className="w-3 h-3" />
                 </Link>
                 {(concept.stage === "active" || concept.stage === "review") && (
                   <Link

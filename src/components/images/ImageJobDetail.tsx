@@ -9,6 +9,8 @@ import {
   RefreshCw,
   ExternalLink,
   GitBranch,
+  ChevronDown,
+  TrendingUp,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
@@ -27,6 +29,7 @@ const DEFAULT_QUALITY_THRESHOLD = 80;
 
 interface Props {
   initialJob: ImageJob;
+  autoIterate?: boolean;
 }
 
 function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boolean, boolean, boolean] {
@@ -58,7 +61,7 @@ function computeCurrentStep(j: ImageJob, ct: ConceptCopyTranslations): number {
   return 2;
 }
 
-export default function ImageJobDetail({ initialJob }: Props) {
+export default function ImageJobDetail({ initialJob, autoIterate }: Props) {
   const [job, setJob] = useState<ImageJob>(initialJob);
   const [step, setStep] = useState<number>(() => computeCurrentStep(initialJob, initialJob.ad_copy_translations ?? {}));
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
@@ -137,7 +140,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [productSegments, setProductSegments] = useState<ProductSegment[]>([]);
 
   // V3.4: Iteration dialog + lineage
-  const [showIterateDialog, setShowIterateDialog] = useState(false);
+  const [showIterateDialog, setShowIterateDialog] = useState(autoIterate ?? false);
   const [parentJob, setParentJob] = useState<{ id: string; name: string } | null>(null);
   const [childJobs, setChildJobs] = useState<Array<{ id: string; name: string; iteration_type: string }>>([]);
 
@@ -161,6 +164,45 @@ export default function ImageJobDetail({ initialJob }: Props) {
   const [copyTranslations, setCopyTranslations] = useState<ConceptCopyTranslations>(
     () => initialJob.ad_copy_translations ?? {}
   );
+
+  // Performance data from pipeline API
+  const [perfData, setPerfData] = useState<{
+    markets: Array<{
+      market: string;
+      stage: string;
+      daysSincePush: number;
+      metrics: { spend: number; revenue: number; roas: number; cpa: number; ctr: number; impressions: number; clicks: number; conversions: number } | null;
+    }>;
+    totals: { spend: number; revenue: number; roas: number; sales: number } | null;
+  } | null>(null);
+  const [perfExpanded, setPerfExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/pipeline/concept/${initialJob.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.markets?.length) return;
+        const markets = data.markets.map((m: { market: string; stage: string; daysSincePush: number; metrics: Record<string, number> | null }) => ({
+          market: m.market,
+          stage: m.stage,
+          daysSincePush: m.daysSincePush,
+          metrics: m.metrics,
+        }));
+        const totalSpend = markets.reduce((s: number, m: { metrics: { spend: number } | null }) => s + (m.metrics?.spend ?? 0), 0);
+        const totalRevenue = markets.reduce((s: number, m: { metrics: { revenue: number } | null }) => s + (m.metrics?.revenue ?? 0), 0);
+        const totalSales = markets.reduce((s: number, m: { metrics: { conversions: number } | null }) => s + (m.metrics?.conversions ?? 0), 0);
+        setPerfData({
+          markets,
+          totals: totalSpend > 0 ? {
+            spend: totalSpend,
+            revenue: totalRevenue,
+            roas: Math.round((totalRevenue / totalSpend) * 100) / 100,
+            sales: totalSales,
+          } : null,
+        });
+      })
+      .catch(() => {});
+  }, [initialJob.id]);
 
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
     // Init from job if already set, otherwise from settings defaults
@@ -1015,7 +1057,7 @@ export default function ImageJobDetail({ initialJob }: Props) {
         className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Static Ads
+        Concepts
       </Link>
 
       {/* Stall detection banner */}
@@ -1126,6 +1168,59 @@ export default function ImageJobDetail({ initialJob }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Performance data (from live Meta ads) */}
+      {perfData && perfData.markets.length > 0 && (
+        <div className="mb-4 border border-gray-100 rounded-lg bg-white overflow-hidden">
+          <button
+            onClick={() => setPerfExpanded(!perfExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-700">Live Performance</span>
+              {perfData.totals && (
+                <span className="text-xs text-gray-400">
+                  7d: {Math.round(perfData.totals.spend)} kr spend &middot;{" "}
+                  <span className={perfData.totals.roas >= 1 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                    {perfData.totals.roas}x ROAS
+                  </span>
+                  {" "}&middot; {perfData.totals.sales} sales
+                </span>
+              )}
+            </div>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${perfExpanded ? "rotate-180" : ""}`} />
+          </button>
+          {perfExpanded && (
+            <div className="border-t border-gray-100 px-4 py-3">
+              <div className="grid gap-3">
+                {perfData.markets.map((m) => {
+                  const flag = m.market === "SE" ? "\u{1F1F8}\u{1F1EA}" : m.market === "NO" ? "\u{1F1F3}\u{1F1F4}" : m.market === "DK" ? "\u{1F1E9}\u{1F1F0}" : "";
+                  return (
+                    <div key={m.market} className="flex items-center gap-3">
+                      <span className="text-sm">{flag} {m.market}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{m.stage}</span>
+                      <span className="text-[11px] text-gray-400">{m.daysSincePush}d</span>
+                      {m.metrics ? (
+                        <div className="flex items-center gap-3 text-xs text-gray-600 ml-auto">
+                          <span>{Math.round(m.metrics.spend)} kr</span>
+                          <span className={m.metrics.roas >= 1 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                            {m.metrics.roas}x
+                          </span>
+                          <span>{m.metrics.ctr}% CTR</span>
+                          <span>{m.metrics.conversions} sales</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 ml-auto">No data yet</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* CASH DNA */}
       <div className="mb-4">

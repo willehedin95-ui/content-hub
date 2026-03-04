@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default async function ImageJobPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ iterate?: string }>;
 }) {
   const { id } = await params;
   const db = createServerSupabase();
@@ -44,5 +46,7 @@ export default async function ImageJobPage({
     failed_translations: allTranslations.filter((t: { status: string }) => t.status === "failed").length,
   };
 
-  return <ImageJobDetail initialJob={enriched} />;
+  const { iterate } = await searchParams;
+
+  return <ImageJobDetail initialJob={enriched} autoIterate={iterate === "true"} />;
 }

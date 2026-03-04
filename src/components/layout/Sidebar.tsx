@@ -46,7 +46,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
       children: [
         { href: "/pipeline", label: "Ad Tracker", icon: Workflow },
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
-        { href: "/images", label: "Static Ads", icon: Image },
+        { href: "/images", label: "Concepts", icon: Image },
         { href: "/hooks", label: "Hook Bank", icon: Library },
       ],
     },

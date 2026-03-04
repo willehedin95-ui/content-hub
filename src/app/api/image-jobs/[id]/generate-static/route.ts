@@ -82,17 +82,6 @@ export async function POST(
 
   const allProductImages = (productImages ?? []) as Array<{ url: string; category: string }>;
 
-  // Fetch spy ad for reference (if linked)
-  let spyAd: { media_url?: string; cash_analysis?: unknown } | null = null;
-  if (job.source_spy_ad_id) {
-    const { data: sa } = await db
-      .from("spy_ads")
-      .select("media_url, cash_analysis")
-      .eq("id", job.source_spy_ad_id)
-      .single();
-    if (sa) spyAd = sa;
-  }
-
   // V3.3: Fetch target segment (if specified)
   let segment: ProductSegment | null = null;
   if (body.segment_id && isValidUUID(body.segment_id)) {
@@ -122,7 +111,6 @@ export async function POST(
       job,
       product: product as ProductFull,
       productImages: allProductImages,
-      spyAd,
       segment,
       iterationContext: job.iteration_context ?? null,
       count,
@@ -187,7 +175,6 @@ export async function POST(
       const referenceUrls = resolveReferenceImages(
         brief,
         allProductImages,
-        spyAd?.media_url
       );
 
       // Generate via Kie AI (1:1 for Meta)

@@ -81,17 +81,6 @@ export async function POST(
 
   const allProductImages = (productImages ?? []) as Array<{ url: string; category: string }>;
 
-  // Fetch spy ad if linked
-  let spyAd: { media_url?: string; cash_analysis?: unknown } | null = null;
-  if (job.source_spy_ad_id) {
-    const { data: sa } = await db
-      .from("spy_ads")
-      .select("media_url, cash_analysis")
-      .eq("id", job.source_spy_ad_id)
-      .single();
-    if (sa) spyAd = sa;
-  }
-
   // Fetch ALL existing prompts from this job's source images (for diversity)
   const { data: existingImages } = await db
     .from("source_images")
@@ -111,7 +100,6 @@ export async function POST(
       job,
       product: product as ProductFull,
       productImages: allProductImages,
-      spyAd,
       iterationContext: job.iteration_context ?? null,
       count: 1,
       styles: [style],
@@ -146,7 +134,7 @@ export async function POST(
   });
 
   // Generate image via Kie AI
-  const referenceUrls = resolveReferenceImages(brief, allProductImages, spyAd?.media_url);
+  const referenceUrls = resolveReferenceImages(brief, allProductImages);
 
   let resultUrls: string[] | undefined;
   let costTimeMs: number | undefined;

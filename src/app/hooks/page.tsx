@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 type ProductFilter = "all" | "happysleep" | "hydro13" | "universal";
 type StatusFilter = "all" | HookStatus;
-type SourceFilter = "all" | "manual" | "telegram" | "concept_auto" | "spy_ad";
+type SourceFilter = "all" | "manual" | "telegram" | "concept_auto";
 
 const PRODUCT_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -30,7 +30,6 @@ const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
   { value: "manual", label: "Manual" },
   { value: "telegram", label: "Telegram" },
   { value: "concept_auto", label: "From Concepts" },
-  { value: "spy_ad", label: "From Spy Ads" },
 ];
 
 /* ── Helpers ──────────────────────────────────────── */
@@ -52,7 +51,6 @@ function sourceLabel(s: HookSource) {
     manual: "Manual",
     telegram: "Telegram",
     concept_auto: "From Concepts",
-    spy_ad: "From Spy Ads",
   };
   return map[s] ?? s;
 }

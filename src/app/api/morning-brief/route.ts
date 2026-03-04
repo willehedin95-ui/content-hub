@@ -206,9 +206,9 @@ export async function GET(req: NextRequest) {
   // Get per-ad daily data for the last 7 days to detect trends
   const adIds = new Set(currentRows.map((r) => r.meta_ad_id));
   const fatigueSignals: {
-    critical: Array<{ ad_id: string; ad_name: string | null; campaign_name: string | null; signal: string; detail: string }>;
-    warning: Array<{ ad_id: string; ad_name: string | null; campaign_name: string | null; signal: string; detail: string }>;
-    monitor: Array<{ ad_id: string; ad_name: string | null; campaign_name: string | null; signal: string; detail: string }>;
+    critical: Array<{ ad_id: string; ad_name: string | null; adset_id: string | null; campaign_name: string | null; signal: string; detail: string }>;
+    warning: Array<{ ad_id: string; ad_name: string | null; adset_id: string | null; campaign_name: string | null; signal: string; detail: string }>;
+    monitor: Array<{ ad_id: string; ad_name: string | null; adset_id: string | null; campaign_name: string | null; signal: string; detail: string }>;
   } = { critical: [], warning: [], monitor: [] };
 
   for (const adId of adIds) {
@@ -219,6 +219,7 @@ export async function GET(req: NextRequest) {
     if (adDays.length < 3) continue;
 
     const adName = adDays[adDays.length - 1].ad_name;
+    const fatigueAdsetId = adDays[adDays.length - 1].adset_id;
     const campaignName = adDays[adDays.length - 1].campaign_name;
     const ctrs = adDays.map((r) => Number(r.ctr));
     const cpcs = adDays.map((r) => Number(r.cpc));
@@ -235,6 +236,7 @@ export async function GET(req: NextRequest) {
       fatigueSignals.critical.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: fatigueAdsetId,
         campaign_name: campaignName,
         signal: "CTR declining 3+ days",
         detail: `CTR dropped ${round(ctrDeclinePct, 1)}% from peak (${round(peakCtr, 2)}% → ${round(lastCtr, 2)}%)`,
@@ -246,6 +248,7 @@ export async function GET(req: NextRequest) {
       fatigueSignals.warning.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: fatigueAdsetId,
         campaign_name: campaignName,
         signal: "High frequency",
         detail: `Frequency ${round(latestFreq, 2)} (threshold: 3.5)`,
@@ -262,6 +265,7 @@ export async function GET(req: NextRequest) {
       fatigueSignals.warning.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: fatigueAdsetId,
         campaign_name: campaignName,
         signal: "CPC rising 3+ days",
         detail: `CPC up ${round(cpcIncreasePct, 1)}% from baseline ($${round(baselineCpc, 2)} → $${round(lastCpc, 2)})`,
@@ -274,6 +278,7 @@ export async function GET(req: NextRequest) {
       fatigueSignals.monitor.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: fatigueAdsetId,
         campaign_name: campaignName,
         signal: "Impressions declining",
         detail: `${impressions[impressions.length - 3]} → ${impressions[impressions.length - 1]} over 3 days`,
@@ -286,7 +291,9 @@ export async function GET(req: NextRequest) {
   const bleeders: Array<{
     ad_id: string;
     ad_name: string | null;
+    adset_id: string | null;
     adset_name: string | null;
+    campaign_id: string | null;
     campaign_name: string | null;
     days_bleeding: number;
     total_spend: number;
@@ -344,7 +351,9 @@ export async function GET(req: NextRequest) {
       bleeders.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: adDays[adDays.length - 1].adset_id,
         adset_name: adsetName,
+        campaign_id: campId,
         campaign_name: campaignName,
         days_bleeding: bleedingDays,
         total_spend: round(totalSpend),
@@ -455,6 +464,7 @@ export async function GET(req: NextRequest) {
   const lpFatigueSignals: Array<{
     ad_id: string;
     ad_name: string | null;
+    adset_id: string | null;
     adset_name: string | null;
     campaign_name: string | null;
     diagnosis: "landing_page" | "creative";
@@ -469,6 +479,7 @@ export async function GET(req: NextRequest) {
     if (adDays.length < 4) continue;
 
     const adName = adDays[adDays.length - 1].ad_name;
+    const lpAdsetId = adDays[adDays.length - 1].adset_id;
     const adsetName = adDays[adDays.length - 1].adset_name;
     const campaignName = adDays[adDays.length - 1].campaign_name;
 
@@ -501,6 +512,7 @@ export async function GET(req: NextRequest) {
       lpFatigueSignals.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: lpAdsetId,
         adset_name: adsetName,
         campaign_name: campaignName,
         diagnosis: "landing_page",
@@ -513,6 +525,7 @@ export async function GET(req: NextRequest) {
       lpFatigueSignals.push({
         ad_id: adId,
         ad_name: adName,
+        adset_id: lpAdsetId,
         adset_name: adsetName,
         campaign_name: campaignName,
         diagnosis: "creative",
@@ -568,6 +581,96 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // ── Ad Set Enrichment: concept context ──
+  // Collect all adset_ids referenced across signals
+  const enrichmentAdsetIds = new Set<string>();
+  for (const b of bleeders) if (b.adset_id) enrichmentAdsetIds.add(b.adset_id);
+  for (const f of fatigueSignals.critical) if (f.adset_id) enrichmentAdsetIds.add(f.adset_id);
+  for (const lp of lpFatigueSignals) if (lp.adset_id) enrichmentAdsetIds.add(lp.adset_id);
+  for (const w of enrichedWinners) if (w.adset_id) enrichmentAdsetIds.add(w.adset_id);
+
+  interface AdsetEnrichment {
+    image_job_id: string | null;
+    concept_name: string | null;
+    concept_number: number | null;
+    cash_dna: Record<string, unknown> | null;
+    pushed_at: string | null;
+    days_running: number | null;
+  }
+  const adsetEnrichment = new Map<string, AdsetEnrichment>();
+
+  if (enrichmentAdsetIds.size > 0) {
+    const allEnrichIds = [...enrichmentAdsetIds];
+    const { data: adsetConcepts } = await db
+      .from("meta_campaigns")
+      .select("meta_adset_id, image_job_id, created_at")
+      .in("meta_adset_id", allEnrichIds);
+
+    const conceptIds = new Set<string>();
+    const adsetToConceptMap = new Map<string, string>();
+    const adsetToPushedAt = new Map<string, string>();
+
+    for (const row of adsetConcepts ?? []) {
+      if (row.image_job_id) {
+        adsetToConceptMap.set(row.meta_adset_id, row.image_job_id);
+        conceptIds.add(row.image_job_id);
+      }
+      if (row.created_at) {
+        adsetToPushedAt.set(row.meta_adset_id, row.created_at);
+      }
+    }
+
+    // Fetch concept details
+    const conceptDetails = new Map<string, { name: string | null; concept_number: number | null; cash_dna: Record<string, unknown> | null }>();
+    if (conceptIds.size > 0) {
+      const { data: concepts } = await db
+        .from("image_jobs")
+        .select("id, name, concept_number, cash_dna")
+        .in("id", [...conceptIds]);
+      for (const c of concepts ?? []) {
+        conceptDetails.set(c.id, { name: c.name, concept_number: c.concept_number, cash_dna: c.cash_dna });
+      }
+    }
+
+    for (const adsetId of allEnrichIds) {
+      const conceptId = adsetToConceptMap.get(adsetId) ?? null;
+      const concept = conceptId ? conceptDetails.get(conceptId) ?? null : null;
+      const pushedAt = adsetToPushedAt.get(adsetId) ?? null;
+      const daysRunning = pushedAt ? Math.floor((Date.now() - new Date(pushedAt).getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+      adsetEnrichment.set(adsetId, {
+        image_job_id: conceptId,
+        concept_name: concept?.name ?? null,
+        concept_number: concept?.concept_number ?? null,
+        cash_dna: concept?.cash_dna ?? null,
+        pushed_at: pushedAt,
+        days_running: daysRunning,
+      });
+    }
+  }
+
+  // Compute per-adset stats from current data
+  const adsetAdCounts = new Map<string, Set<string>>();
+  for (const r of latestRows) {
+    if (!r.adset_id) continue;
+    if (!adsetAdCounts.has(r.adset_id)) adsetAdCounts.set(r.adset_id, new Set());
+    adsetAdCounts.get(r.adset_id)!.add(r.meta_ad_id);
+  }
+
+  const adsetStatsMap = new Map<string, { total_ads: number; spend_7d: number; revenue_7d: number; roas_7d: number; purchases_7d: number }>();
+  for (const r of currentRows) {
+    if (!r.adset_id) continue;
+    const existing = adsetStatsMap.get(r.adset_id) ?? { total_ads: 0, spend_7d: 0, revenue_7d: 0, roas_7d: 0, purchases_7d: 0 };
+    existing.spend_7d += Number(r.spend);
+    existing.revenue_7d += Number(r.purchase_value);
+    existing.purchases_7d += Number(r.purchases);
+    adsetStatsMap.set(r.adset_id, existing);
+  }
+  for (const [adsetId, stats] of adsetStatsMap) {
+    stats.total_ads = adsetAdCounts.get(adsetId)?.size ?? 0;
+    stats.roas_7d = stats.spend_7d > 0 ? round(stats.revenue_7d / stats.spend_7d) : 0;
+  }
+
   // ── Synthesize Action Cards ──
   interface ActionCard {
     id: string;
@@ -579,82 +682,219 @@ export async function GET(req: NextRequest) {
     expected_impact: string;
     action_data: Record<string, unknown>;
     priority: number;
+    button_label?: string;
     ad_name?: string | null;
+    adset_id?: string | null;
     adset_name?: string | null;
     campaign_name?: string | null;
     image_url?: string | null;
+    image_job_id?: string | null;
+    concept_name?: string | null;
+    days_running?: number | null;
+    adset_roas?: number | null;
   }
 
   const actionCards: ActionCard[] = [];
 
-  // Helper: look up adset_name from current data
-  const adIdToInfo = new Map<string, { adset_name: string | null; campaign_name: string | null }>();
+  // Helper: look up info from current data
+  const adIdToInfo = new Map<string, { adset_id: string | null; adset_name: string | null; campaign_name: string | null }>();
   for (const r of currentRows) {
-    adIdToInfo.set(r.meta_ad_id, { adset_name: r.adset_name, campaign_name: r.campaign_name });
+    adIdToInfo.set(r.meta_ad_id, { adset_id: r.adset_id, adset_name: r.adset_name, campaign_name: r.campaign_name });
   }
 
-  // Bleeders → pause cards (priority 1)
+  // ── Bleeders → pause cards (priority 1) — grouped by ad set ──
+  const bleedersByAdset = new Map<string, typeof bleeders>();
   for (const b of bleeders) {
-    const adLabel = b.ad_name || b.adset_name || "unnamed ad";
-    actionCards.push({
-      id: `pause_${b.ad_id}`,
-      type: "pause",
-      category: "Budget",
-      title: `Pause "${adLabel}" — it's losing money`,
-      why: `Spent ${b.total_spend} kr over ${b.days_bleeding} days with only ${b.avg_ctr}% CTR and ${b.purchases} purchases. Campaign avg CPA is ${b.campaign_avg_cpa} kr.`,
-      guidance: `This ad has been underperforming for ${b.days_bleeding} consecutive days — it's not a temporary dip. Every day it runs, it wastes ~${round(b.total_spend / b.days_bleeding)} kr that Meta could redirect to your better ads. Pausing it is the safest move.`,
-      expected_impact: `Save ~${round(b.total_spend / b.days_bleeding)} kr/day`,
-      action_data: { action: "pause_ad", ad_id: b.ad_id, ad_name: b.ad_name, reason: "bleeder" },
-      priority: 1,
-      ad_name: b.ad_name,
-      adset_name: b.adset_name,
-      campaign_name: b.campaign_name,
-    });
+    const key = b.adset_id ?? `solo_${b.ad_id}`;
+    if (!bleedersByAdset.has(key)) bleedersByAdset.set(key, []);
+    bleedersByAdset.get(key)!.push(b);
   }
 
-  // Consistent winners → scale cards (priority 2)
+  for (const [groupKey, adsetBleeders] of bleedersByAdset) {
+    const isGrouped = !groupKey.startsWith("solo_");
+    const adsetId = isGrouped ? groupKey : null;
+    const stats = adsetId ? adsetStatsMap.get(adsetId) : null;
+    const enrichment = adsetId ? adsetEnrichment.get(adsetId) : null;
+    const totalAdsInAdset = stats?.total_ads ?? adsetBleeders.length;
+    const allBleeding = adsetBleeders.length >= totalAdsInAdset;
+    const totalSpend = adsetBleeders.reduce((s, b) => s + b.total_spend, 0);
+    const avgDaysBleeding = Math.round(adsetBleeders.reduce((s, b) => s + b.days_bleeding, 0) / adsetBleeders.length);
+    const adsetLabel = enrichment?.concept_name || adsetBleeders[0].adset_name || adsetBleeders[0].ad_name || "unnamed";
+    const daysRunning = enrichment?.days_running;
+    const adsetRoas = stats?.roas_7d ?? 0;
+
+    if (allBleeding && totalAdsInAdset > 1) {
+      // ALL ads in ad set bleeding → recommend pausing the entire ad set
+      actionCards.push({
+        id: `pause_adset_${groupKey}`,
+        type: "pause",
+        category: "Budget",
+        title: `Kill ad set "${adsetLabel}" — all ${totalAdsInAdset} ads are losing money`,
+        why: `Every ad in this ad set has been bleeding for ${avgDaysBleeding}+ days. Total waste: ${round(totalSpend)} kr.${daysRunning ? ` Running for ${daysRunning} days.` : ""}${adsetRoas > 0 ? ` Overall ROAS: ${adsetRoas}x.` : ""}`,
+        guidance: `When ALL ads in an ad set are underperforming, the concept itself isn't working — not just individual ads. Pausing the entire ad set frees up a "testing slot" so Meta's algorithm can allocate that budget to your better-performing ad sets. Think of it this way: you have a limited number of ad sets (slots), and each one should earn its place.`,
+        expected_impact: `Save ~${round(totalSpend / avgDaysBleeding)} kr/day, free up a testing slot`,
+        button_label: "Pause entire ad set",
+        action_data: {
+          action: "pause_adset",
+          adset_id: adsetId,
+          adset_name: adsetLabel,
+          campaign_name: adsetBleeders[0].campaign_name,
+          reason: `All ${totalAdsInAdset} ads bleeding ${avgDaysBleeding}+ days, ${round(totalSpend)} kr wasted`,
+        },
+        priority: 1,
+        ad_name: null,
+        adset_id: adsetId,
+        adset_name: adsetBleeders[0].adset_name,
+        campaign_name: adsetBleeders[0].campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: enrichment?.concept_name ?? null,
+        days_running: daysRunning ?? null,
+        adset_roas: adsetRoas,
+      });
+    } else if (totalAdsInAdset > 1 && adsetBleeders.length > 0) {
+      // SOME ads bleeding → pause specific ads, keep winners
+      const okAds = totalAdsInAdset - adsetBleeders.length;
+      actionCards.push({
+        id: `pause_ads_${groupKey}`,
+        type: "pause",
+        category: "Budget",
+        title: `Remove ${adsetBleeders.length} bad ad${adsetBleeders.length > 1 ? "s" : ""} from "${adsetLabel}"`,
+        why: `${adsetBleeders.length} of ${totalAdsInAdset} ads are bleeding (${avgDaysBleeding}+ days, ${round(totalSpend)} kr wasted). ${okAds} ad${okAds > 1 ? "s" : ""} still performing OK.${daysRunning ? ` Ad set running for ${daysRunning} days.` : ""}`,
+        guidance: `Not all ads in this ad set are bad — ${okAds} ${okAds > 1 ? "are" : "is"} still performing. By pausing only the bleeders, Meta's algorithm will redistribute budget to the winning ads within this same ad set. The ad set stays active (keeps its slot), but stops wasting money on the bad ads.`,
+        expected_impact: `Save ~${round(totalSpend / avgDaysBleeding)} kr/day`,
+        button_label: `Pause ${adsetBleeders.length} ad${adsetBleeders.length > 1 ? "s" : ""}`,
+        action_data: {
+          action: "pause_bleeders",
+          bleeders: adsetBleeders.map((b) => ({
+            ad_id: b.ad_id,
+            ad_name: b.ad_name,
+            campaign_name: b.campaign_name,
+            days_bleeding: b.days_bleeding,
+            total_spend: b.total_spend,
+            avg_ctr: b.avg_ctr,
+            avg_cpa: b.avg_cpa,
+          })),
+        },
+        priority: 1,
+        ad_name: null,
+        adset_id: adsetId,
+        adset_name: adsetBleeders[0].adset_name,
+        campaign_name: adsetBleeders[0].campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: enrichment?.concept_name ?? null,
+        days_running: daysRunning ?? null,
+        adset_roas: adsetRoas,
+      });
+    } else {
+      // Single ad or unknown ad set → individual ad pause
+      const b = adsetBleeders[0];
+      const adLabel = b.ad_name || b.adset_name || "unnamed ad";
+      actionCards.push({
+        id: `pause_${b.ad_id}`,
+        type: "pause",
+        category: "Budget",
+        title: `Pause "${adLabel}" — it's losing money`,
+        why: `Spent ${b.total_spend} kr over ${b.days_bleeding} days with only ${b.avg_ctr}% CTR and ${b.purchases} purchases.`,
+        guidance: `This ad has been underperforming for ${b.days_bleeding} consecutive days. Pausing it lets Meta redirect the budget to your better ads.`,
+        expected_impact: `Save ~${round(b.total_spend / b.days_bleeding)} kr/day`,
+        action_data: { action: "pause_ad", ad_id: b.ad_id, ad_name: b.ad_name, reason: "bleeder" },
+        priority: 1,
+        ad_name: b.ad_name,
+        adset_id: adsetId,
+        adset_name: b.adset_name,
+        campaign_name: b.campaign_name,
+      });
+    }
+  }
+
+  // ── Consistent winners → scale cards (priority 2) ──
   for (const w of enrichedWinners) {
-    const adLabel = w.ad_name || w.adset_name || "unnamed ad";
+    const enrichment = w.adset_id ? adsetEnrichment.get(w.adset_id) : null;
+    const adLabel = enrichment?.concept_name || w.ad_name || w.adset_name || "unnamed ad";
     actionCards.push({
       id: `scale_${w.ad_id}`,
       type: "scale",
       category: "Budget",
       title: `Give more budget to "${adLabel}"`,
-      why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS, ${w.avg_cpa} kr CPA, ${w.avg_ctr}% CTR.`,
+      why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS, ${w.avg_cpa} kr CPA, ${w.avg_ctr}% CTR.${enrichment?.days_running ? ` Running for ${enrichment.days_running} days.` : ""}`,
       guidance: `This ad has been profitable for ${w.consistent_days} days straight. Increasing its budget by 20% should get you more sales at a similar cost. Meta's algorithm will gradually spend more on this proven winner.`,
       expected_impact: "~20% more purchases at similar CPA",
       action_data: { action: "scale_winner", ad_id: w.ad_id, adset_id: w.adset_id, campaign_id: w.campaign_id },
       priority: 2,
       ad_name: w.ad_name,
+      adset_id: w.adset_id,
       adset_name: w.adset_name,
       campaign_name: w.campaign_name,
+      image_job_id: enrichment?.image_job_id ?? w.image_job_id,
+      concept_name: enrichment?.concept_name ?? null,
+      days_running: enrichment?.days_running ?? null,
     });
   }
 
-  // Critical fatigue signals → refresh cards (priority 3)
+  // ── Critical fatigue → iterate (profitable) or kill (unprofitable) ──
   for (const f of fatigueSignals.critical) {
-    const adLabel = f.ad_name || "unnamed ad";
-    const info = adIdToInfo.get(f.ad_id);
-    actionCards.push({
-      id: `refresh_${f.ad_id}`,
-      type: "refresh",
-      category: "Creative",
-      title: `"${adLabel}" is getting stale — time for new ad images`,
-      why: `${f.detail}. People have seen this ad too many times and are starting to ignore it.`,
-      guidance: `When an ad's click rate drops like this, it means your audience has seen it enough times that it no longer catches their attention. You need to create new ad images with fresh angles for this same concept. Click "Create new ads" to go to Brainstorm where you can generate new variations.`,
-      expected_impact: "Restore click rate by refreshing creatives",
-      action_data: { ad_id: f.ad_id },
-      priority: 3,
-      ad_name: f.ad_name,
-      adset_name: info?.adset_name ?? null,
-      campaign_name: f.campaign_name,
-    });
+    const enrichment = f.adset_id ? adsetEnrichment.get(f.adset_id) : null;
+    const stats = f.adset_id ? adsetStatsMap.get(f.adset_id) : null;
+    const conceptName = enrichment?.concept_name;
+    const daysRunning = enrichment?.days_running;
+    const adsetRoas = stats?.roas_7d ?? 0;
+    const isProfitable = adsetRoas > 1;
+    const cashDna = enrichment?.cash_dna;
+    const angle = (cashDna as Record<string, unknown> | null)?.angle as string | undefined;
+    const adLabel = conceptName || f.ad_name || "unnamed";
+
+    if (isProfitable) {
+      // Profitable but fatiguing → iterate on the concept
+      actionCards.push({
+        id: `refresh_${f.ad_id}`,
+        type: "refresh",
+        category: "Creative",
+        title: `"${adLabel}" is fatiguing — still profitable at ${adsetRoas}x, iterate!`,
+        why: `${f.detail}. Running for ${daysRunning ?? "?"}d with ${adsetRoas}x ROAS — this concept works but needs fresh creatives.`,
+        guidance: `Your audience has seen this ad enough times that click rates are dropping, but the concept IS profitable. Create new variations with fresh visuals but the same winning angle.${angle ? ` Current angle: "${angle}".` : ""} Click below to open the iteration tool and generate a Segment Swap, Mechanism Swap, or C.A.S.H. Swap.`,
+        expected_impact: "Keep a profitable concept alive with fresh creatives",
+        button_label: "Iterate on this concept",
+        action_data: { ad_id: f.ad_id, image_job_id: enrichment?.image_job_id ?? null },
+        priority: 3,
+        ad_name: f.ad_name,
+        adset_id: f.adset_id,
+        adset_name: adIdToInfo.get(f.ad_id)?.adset_name ?? null,
+        campaign_name: f.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: conceptName ?? null,
+        days_running: daysRunning ?? null,
+        adset_roas: adsetRoas,
+      });
+    } else {
+      // Unprofitable AND fatiguing → kill it
+      actionCards.push({
+        id: `kill_fatigue_${f.ad_id}`,
+        type: "pause",
+        category: "Budget",
+        title: `Kill "${adLabel}" — fatiguing and not profitable`,
+        why: `${f.detail}. ${daysRunning ? `Running for ${daysRunning} days` : ""}${adsetRoas > 0 ? ` with only ${adsetRoas}x ROAS` : " with 0 sales"}. Not worth iterating on.`,
+        guidance: `This concept is both fatiguing (CTR dropping) and unprofitable. There's no reason to keep spending on it or create new variations. Pause the ad to stop wasting budget and free up spend for your winners.`,
+        expected_impact: "Stop wasting budget on an unprofitable, fatiguing concept",
+        button_label: "Pause this ad",
+        action_data: { action: "pause_ad", ad_id: f.ad_id, ad_name: f.ad_name, reason: "fatigue_unprofitable" },
+        priority: 1,
+        ad_name: f.ad_name,
+        adset_id: f.adset_id,
+        adset_name: adIdToInfo.get(f.ad_id)?.adset_name ?? null,
+        campaign_name: f.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: conceptName ?? null,
+        days_running: daysRunning ?? null,
+        adset_roas: adsetRoas,
+      });
+    }
   }
 
-  // LP vs creative fatigue → landing_page cards (priority 3)
+  // ── LP vs creative fatigue → landing_page cards (priority 3) ──
   for (const lp of lpFatigueSignals) {
     if (lp.diagnosis === "landing_page") {
-      const adLabel = lp.ad_name || "unnamed ad";
+      const enrichment = lp.adset_id ? adsetEnrichment.get(lp.adset_id) : null;
+      const adLabel = enrichment?.concept_name || lp.ad_name || "unnamed ad";
       actionCards.push({
         id: `lp_${lp.ad_id}`,
         type: "landing_page",
@@ -666,8 +906,11 @@ export async function GET(req: NextRequest) {
         action_data: { ad_id: lp.ad_id },
         priority: 3,
         ad_name: lp.ad_name,
+        adset_id: lp.adset_id,
         adset_name: lp.adset_name,
         campaign_name: lp.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: enrichment?.concept_name ?? null,
       });
     }
   }
@@ -701,7 +944,11 @@ export async function GET(req: NextRequest) {
 
   // Enrich action cards with ad images from meta_ads table
   const actionAdIds = actionCards
-    .map((c) => (c.action_data.ad_id as string) || null)
+    .map((c) => {
+      // For grouped cards, get first bleeder's ad_id; for single cards, use ad_id directly
+      const bleedersArr = c.action_data.bleeders as Array<{ ad_id: string }> | undefined;
+      return (c.action_data.ad_id as string) || bleedersArr?.[0]?.ad_id || null;
+    })
     .filter((id): id is string => !!id);
   if (actionAdIds.length > 0) {
     const { data: adImages } = await db
@@ -712,9 +959,12 @@ export async function GET(req: NextRequest) {
       (adImages ?? []).map((a: { meta_ad_id: string; image_url: string | null }) => [a.meta_ad_id, a.image_url])
     );
     for (const card of actionCards) {
+      if (card.image_url) continue; // already has image
       const adId = card.action_data.ad_id as string;
-      if (adId && imageMap.has(adId)) {
-        card.image_url = imageMap.get(adId) ?? null;
+      const bleedersArr = card.action_data.bleeders as Array<{ ad_id: string }> | undefined;
+      const lookupId = adId || bleedersArr?.[0]?.ad_id;
+      if (lookupId && imageMap.has(lookupId)) {
+        card.image_url = imageMap.get(lookupId) ?? null;
       }
     }
   }

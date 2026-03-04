@@ -19,7 +19,7 @@ export default function ImagesError({
       <div className="text-center max-w-md">
         <AlertTriangle className="w-10 h-10 text-red-600 mx-auto mb-4" />
         <h2 className="text-lg font-semibold text-gray-900 mb-2">
-          Static Ads — Something went wrong
+          Concepts — Something went wrong
         </h2>
         <p className="text-gray-500 text-sm mb-6">
           {error.message || "An unexpected error occurred. Please try again."}

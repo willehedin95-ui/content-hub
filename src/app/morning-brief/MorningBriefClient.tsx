@@ -161,10 +161,16 @@ interface ActionCard {
   expected_impact: string;
   action_data: Record<string, unknown>;
   priority: number;
+  button_label?: string;
   ad_name?: string | null;
+  adset_id?: string | null;
   adset_name?: string | null;
   campaign_name?: string | null;
   image_url?: string | null;
+  image_job_id?: string | null;
+  concept_name?: string | null;
+  days_running?: number | null;
+  adset_roas?: number | null;
 }
 
 // ── Action card visual config per type ──
@@ -324,7 +330,13 @@ export default function MorningBriefClient() {
 
   async function handleApply(card: ActionCard) {
     if (card.type === "refresh") {
-      window.location.href = "/brainstorm";
+      // Navigate to concept in Static Ads with iterate modal auto-opened
+      const imageJobId = card.image_job_id || card.action_data.image_job_id;
+      if (imageJobId) {
+        window.location.href = `/images/${imageJobId}?iterate=true`;
+      } else {
+        window.location.href = "/brainstorm";
+      }
       return;
     }
     if (card.type === "landing_page") {
@@ -539,6 +551,19 @@ export default function MorningBriefClient() {
                             {card.campaign_name}
                           </span>
                         )}
+                        {card.days_running != null && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            {card.days_running}d running
+                          </span>
+                        )}
+                        {card.adset_roas != null && card.adset_roas > 0 && (
+                          <span className={cn(
+                            "text-[11px] px-2 py-0.5 rounded-full font-medium",
+                            card.adset_roas >= 1 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                          )}>
+                            {card.adset_roas}x ROAS
+                          </span>
+                        )}
                         <span
                           className={cn(
                             "text-[11px] px-2 py-0.5 rounded-full font-medium",
@@ -594,7 +619,7 @@ export default function MorningBriefClient() {
                             {isLoading ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              config.buttonLabel
+                              card.button_label || config.buttonLabel
                             )}
                           </button>
                         </>

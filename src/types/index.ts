@@ -200,7 +200,7 @@ export interface CashDna {
 // --- Hook Library Types ---
 
 export type HookType = "hook";
-export type HookSource = "manual" | "telegram" | "concept_auto" | "spy_ad";
+export type HookSource = "manual" | "telegram" | "concept_auto";
 export type HookStatus = "unreviewed" | "approved" | "archived";
 
 export interface HookLibraryEntry {
@@ -248,7 +248,6 @@ export interface ImageJob {
   tags: string[];
   cash_dna?: CashDna | null;
   visual_direction?: string | null;
-  source_spy_ad_id?: string | null;
   iteration_of?: string | null;
   iteration_type?: IterationType | null;
   iteration_context?: Record<string, unknown> | null;
@@ -593,109 +592,6 @@ export interface ImageGenerationState {
   referenceImages?: string[];
   generatedUrl?: string;
   error?: string;
-}
-
-// --- Ad Spy Types ---
-
-export const SPY_CATEGORIES = [
-  "Health & Wellness",
-  "Beauty & Skincare",
-  "Sleep & Recovery",
-  "Food & Drink",
-  "Fashion",
-  "Home & Living",
-  "Fitness",
-  "Supplements",
-  "Other",
-] as const;
-export type SpyCategory = (typeof SPY_CATEGORIES)[number];
-
-export const SPY_COUNTRIES = [
-  { code: "US", label: "United States" },
-  { code: "GB", label: "United Kingdom" },
-  { code: "AU", label: "Australia" },
-  { code: "CA", label: "Canada" },
-  { code: "SE", label: "Sweden" },
-  { code: "NO", label: "Norway" },
-  { code: "DK", label: "Denmark" },
-  { code: "DE", label: "Germany" },
-  { code: "ALL", label: "All Countries" },
-] as const;
-
-export interface SpyBrand {
-  id: string;
-  name: string;
-  meta_page_id: string | null;
-  ad_library_url: string;
-  category: string | null;
-  logo_url: string | null;
-  notes: string | null;
-  is_active: boolean;
-  last_fetched_at: string | null;
-  ad_count: number;
-  scrape_countries: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SpyAd {
-  id: string;
-  brand_id: string;
-  meta_ad_id: string;
-  headline: string | null;
-  body: string | null;
-  description: string | null;
-  link_url: string | null;
-  cta_type: string | null;
-  media_type: string | null;
-  media_url: string | null;
-  thumbnail_url: string | null;
-  ad_snapshot_url: string | null;
-  ad_delivery_start_time: string | null;
-  is_active: boolean;
-  publisher_platforms: string[] | null;
-  impressions_rank: number | null;
-  impressions_label: string | null;
-  raw_data: Record<string, unknown> | null;
-  cash_analysis: SpyAdCashAnalysis | null;
-  analyzed_at: string | null;
-  is_bookmarked: boolean;
-  user_notes: string | null;
-  first_seen_at: string;
-  last_seen_at: string;
-  created_at: string;
-  updated_at: string;
-  // Joined
-  brand?: SpyBrand;
-}
-
-export interface SpyAdCashAnalysis extends CashDna {
-  offer_type: string | null;
-  asset_type: string | null;
-  estimated_production: string | null;
-}
-
-// --- Saved Ads Types (Telegram capture) ---
-
-export interface SavedAd {
-  id: string;
-  source_url: string | null;
-  source_platform: "instagram" | "facebook" | "unknown";
-  media_url: string | null;
-  media_type: string | null;
-  thumbnail_url: string | null;
-  headline: string | null;
-  body: string | null;
-  destination_url: string | null;
-  brand_name: string | null;
-  cash_analysis: SpyAdCashAnalysis | null;
-  analyzed_at: string | null;
-  user_notes: string | null;
-  is_bookmarked: boolean;
-  telegram_message_id: string | null;
-  raw_scrape_data: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
 }
 
 // --- Brainstorm Types ---

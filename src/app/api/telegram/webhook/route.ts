@@ -225,9 +225,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
       const brandLabel = brandName ? ` (${brandName})` : "";
-      await sendMessage(chatId, `Saved${brandLabel}!\n\nView in Hub: ${hubUrl}`);
+      await sendMessage(chatId, `Saved${brandLabel}!`);
       return NextResponse.json({ ok: true });
     }
 
@@ -257,10 +256,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      const hubUrl = `${hubBaseUrl}/saved-ads?id=${savedAd.id}`;
       await sendMessage(
         chatId,
-        `URL saved! For the best result, send a screenshot of the ad too.\n\nView in Hub: ${hubUrl}`
+        `URL saved! For the best result, send a screenshot of the ad too.`
       );
       return NextResponse.json({ ok: true });
     }
