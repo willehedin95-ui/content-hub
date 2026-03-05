@@ -1,9 +1,14 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-03
+Updated: 2026-03-04
+
+## P0 — Blockers
+- [ ] Fix AB test build failure — missing route modules `/api/ab-tests/[id]/sync-conversions` and `/api/ab-tests` (pre-existing, blocks production build)
 
 ## P1 — Do Next
+- [ ] Test competitor ad flow end-to-end — upload real competitor image, verify Claude analysis + Nano Banana generation (added 2026-03-04)
+- [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
+- [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
-- [ ] V3.4 Iteration System on Winners — segment swap, mechanism swap, C.A.S.H. swap (added 2026-02-28)
 
 ## P2 — Important
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
@@ -29,7 +34,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Auto-pause bleeders — cron at 6:30 UTC, pauses ads at 2.5x CPA for 48h+ (done 2026-03-03)
 - [x] Approval-based budget shifts — inline keyboard buttons in Telegram, re-fetches data on approval (done 2026-03-03)
 - [x] Winner graduation — inline keyboard, increases ad set budget by 20% for 5+ day consistent winners (done 2026-03-03)
-- [ ] **BLOCKED**: Set TELEGRAM_NOTIFY_CHAT_ID — need user to message bot, then capture chat ID
+- [x] Set TELEGRAM_NOTIFY_CHAT_ID — captured chat ID 5432096458 (done 2026-03-03)
 
 ### Phase 4: Close the Loop
 - [x] Auto-suggest creative refresh — Telegram brief shows "Creative Refresh Needed" section with link to brainstorm when fatigue detected (done 2026-03-03)
@@ -43,6 +48,12 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] "From Competitor Ad" brainstorm mode — upload competitor ad image, Claude Vision analyzes, generates adapted concepts + images (done 2026-03-04)
+- [x] Competitor ad upload UX — click/drag/paste/URL input with preview (done 2026-03-04)
+- [x] Market-aware Smart Iterate — pass market param to iteration suggestions (done 2026-03-04)
+- [x] V3.4 Iteration System — Smart Iterate with AI suggestions + batch-based generation within same concept (done 2026-03-04)
+- [x] Daily Actions iterate flow — profitable fatigue cards link to concept with auto-open iterate modal (done 2026-03-04)
+- [x] Rename Static Ads → Concepts everywhere (done 2026-03-04)
 - [x] Template-based brainstorm mode — 14 ad templates from Copy Blocks (done 2026-02-28)
 - [x] Wire deep Copy Blocks framework into brainstorm prompts (done 2026-02-28)
 - [x] Write copy-blocks-deep.md — unified framework document (done 2026-02-28)
