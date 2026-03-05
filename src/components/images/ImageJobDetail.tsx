@@ -577,6 +577,12 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     (t) => t.status === "pending" || t.status === "processing"
   ).length;
 
+  // 9:16 generation readiness
+  const translations4x5 = allTranslations.filter((t) => t.aspect_ratio === "4:5");
+  const translations9x16 = allTranslations.filter((t) => t.aspect_ratio === "9:16");
+  const all4x5Complete = translations4x5.length > 0 && translations4x5.every((t) => t.status === "completed");
+  const show9x16Button = all4x5Complete && translations9x16.length === 0 && !proc.processing;
+
   const sourceImages = job.source_images ?? [];
 
   const refreshJob = useCallback(async (compact = false) => {
@@ -652,11 +658,21 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Poll when job is "draft" (importing from Drive in background)
+  // Poll when job is "draft" (importing from Drive or generating competitor images in background)
+  // Auto-trigger competitor image generation if pending_competitor_gen is present
   // Also auto-recover: if stuck in draft with source images for >2min, retry create-translations
+  const competitorGenTriggeredRef = useRef(false);
   useEffect(() => {
     if (job.status !== "draft") return;
     const interval = setInterval(() => refreshJob(), 3000);
+
+    // Auto-trigger competitor image generation
+    if (job.pending_competitor_gen && !competitorGenTriggeredRef.current) {
+      competitorGenTriggeredRef.current = true;
+      fetch(`/api/image-jobs/${job.id}/generate-competitor`, { method: "POST" })
+        .then((res) => { if (res.ok) refreshJob(); })
+        .catch(() => { competitorGenTriggeredRef.current = false; });
+    }
 
     const staleMs = Date.now() - new Date(job.created_at).getTime();
     const hasImages = (job.source_images?.length ?? 0) > 0;
@@ -928,6 +944,25 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     });
 
     const res = await fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" });
+    if (!res.ok) {
+      setProc(prev => ({ ...prev, processing: false }));
+      return;
+    }
+    const updated = await refreshJob();
+    if (updated) {
+      const pending = getAllPending(updated);
+      if (pending.length > 0) {
+        startQueue(pending);
+      } else {
+        setProc(prev => ({ ...prev, processing: false }));
+      }
+    }
+  }
+
+  async function handleGenerate9x16() {
+    setProc(prev => ({ ...prev, processing: true }));
+
+    const res = await fetch(`/api/image-jobs/${job.id}/generate-9x16`, { method: "POST" });
     if (!res.ok) {
       setProc(prev => ({ ...prev, processing: false }));
       return;
@@ -1296,6 +1331,9 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           onReroll={handleReroll}
           rerollingId={rerollingId}
           onToggleSkip={handleToggleSkip}
+          handleGenerate9x16={handleGenerate9x16}
+          show9x16Button={show9x16Button}
+          count9x16={translations4x5.length}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep

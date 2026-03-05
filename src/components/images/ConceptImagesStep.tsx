@@ -223,6 +223,10 @@ export interface ConceptImagesStepProps {
   rerollingId?: string | null;
   // Skip translation toggle
   onToggleSkip?: (sourceImageId: string, skip: boolean) => void;
+  // 9:16 generation
+  handleGenerate9x16?: () => void;
+  show9x16Button?: boolean;
+  count9x16?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +266,9 @@ export default function ConceptImagesStep({
   onReroll,
   rerollingId,
   onToggleSkip,
+  handleGenerate9x16,
+  show9x16Button,
+  count9x16,
 }: ConceptImagesStepProps) {
   // Show generate section when job has visual_direction and isn't processing
   const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
@@ -442,38 +449,58 @@ export default function ConceptImagesStep({
 
       {job.status === "draft" && !(showGenerateSection && !hasExistingImages) ? (
         <div className="space-y-4">
-          <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {job.visual_direction ? "Generating images..." : "Importing from Drive..."}
-            {sourceImages.length > 0 && (
-              <span className="text-gray-500 ml-1">{sourceImages.length} generated</span>
-            )}
-            <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
-          </div>
+          {(() => {
+            const pendingCount = job.pending_competitor_gen
+              ? job.pending_competitor_gen.image_prompts?.length ?? 5
+              : 0;
+            const totalExpected = Math.max(pendingCount, 4);
+            const isCompetitorGen = pendingCount > 0 || job.tags?.includes("competitor-swipe");
+            return (
+              <>
+                <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {isCompetitorGen
+                    ? `Generating competitor-swipe images (${sourceImages.length}/${totalExpected})...`
+                    : job.visual_direction ? "Generating images..." : "Importing from Drive..."}
+                  <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
+                </div>
 
-          {/* Skeleton image grid -- show imported images + placeholder skeletons */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {sourceImages.map((si) => (
-              <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="aspect-square bg-gray-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={si.original_url} alt={si.filename ?? ""} className="w-full h-full object-cover" />
+                {/* Progress bar for competitor generation */}
+                {isCompetitorGen && totalExpected > 0 && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (sourceImages.length / totalExpected) * 100)}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Skeleton image grid -- show generated images + placeholder skeletons */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {sourceImages.map((si) => (
+                    <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="aspect-[4/5] bg-gray-50">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={si.original_url} alt={si.filename ?? ""} className="w-full h-full object-cover" />
+                      </div>
+                      {si.filename && <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>}
+                    </div>
+                  ))}
+                  {/* Skeleton placeholders for images still loading */}
+                  {Array.from({ length: Math.max(0, totalExpected - sourceImages.length) }).map((_, i) => (
+                    <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center relative">
+                        <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
+                      </div>
+                      <div className="px-2 py-1.5">
+                        <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {si.filename && <p className="text-xs text-gray-400 px-2 py-1.5 truncate">{si.filename}</p>}
-              </div>
-            ))}
-            {/* Skeleton placeholders for images still loading */}
-            {Array.from({ length: Math.max(0, 4 - sourceImages.length) }).map((_, i) => (
-              <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
-                  <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
-                </div>
-                <div className="px-2 py-1.5">
-                  <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
+              </>
+            );
+          })()}
         </div>
       ) : job.status === "ready" ? (
         <>
@@ -481,7 +508,7 @@ export default function ConceptImagesStep({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
               <div key={si.id} className={`bg-white border rounded-lg overflow-hidden relative group transition-colors ${si.skip_translation ? "border-gray-300 opacity-60" : "border-gray-200"}`}>
-                <div className="aspect-square bg-gray-50 relative">
+                <div className="aspect-[4/5] bg-gray-50 relative">
                   {rerollingId === si.id && (
                     <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                       <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -584,8 +611,8 @@ export default function ConceptImagesStep({
                 </button>
                 {selectedLanguages.size > 0 && (
                   <p className="text-sm text-gray-400">
-                    {sourceImages.length * selectedLanguages.size} translations
-                    {" \u2248 "}{(sourceImages.length * selectedLanguages.size * 1).toFixed(0)} kr
+                    {sourceImages.filter(si => !si.skip_translation).length * selectedLanguages.size} translations (4:5)
+                    {" \u2248 "}{(sourceImages.filter(si => !si.skip_translation).length * selectedLanguages.size * 1).toFixed(0)} kr
                   </p>
                 )}
               </div>
@@ -711,6 +738,26 @@ export default function ConceptImagesStep({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Generate 9:16 CTA */}
+      {show9x16Button && handleGenerate9x16 && (
+        <div className="mb-6 bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900">4:5 translations ready</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Generate 9:16 versions for Stories &amp; Reels ({count9x16} images)
+              {count9x16 ? <> &asymp; {(count9x16 * 0.09 * 11).toFixed(0)} kr</> : null}
+            </p>
+          </div>
+          <button
+            onClick={handleGenerate9x16}
+            className="px-5 py-2.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium text-sm flex items-center gap-2"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate 9:16 Versions
+          </button>
         </div>
       )}
 
@@ -850,7 +897,7 @@ export default function ConceptImagesStep({
             onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
           >
             {/* Thumbnail */}
-            <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
+            <div className="aspect-[4/5] bg-gray-50 flex items-center justify-center overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={si.original_url}
