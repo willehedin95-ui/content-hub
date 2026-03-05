@@ -138,6 +138,23 @@ interface LpVsCreativeFatigue {
   detail: string;
 }
 
+interface AdDiagnostic {
+  ad_id: string;
+  ad_name: string | null;
+  adset_id: string | null;
+  adset_name: string | null;
+  campaign_name: string | null;
+  bucket: "landing_page_problem" | "creative_problem" | "everything_problem" | "winner";
+  ctr_7d: number;
+  cpa_7d: number | null;
+  spend_7d: number;
+  purchases_7d: number;
+  impressions_7d: number;
+  ctr_threshold_high: number;
+  ctr_threshold_low: number;
+  target_cpa: number | null;
+}
+
 interface EfficiencyScore {
   campaign_id: string | null;
   campaign_name: string;
@@ -269,6 +286,7 @@ interface MorningBriefData {
     consistent_winners: ConsistentWinner[];
     lp_vs_creative_fatigue: LpVsCreativeFatigue[];
     efficiency_scoring: EfficiencyScore[];
+    ad_diagnostics: AdDiagnostic[];
   };
   action_cards: ActionCard[];
 }
@@ -320,6 +338,9 @@ export default function MorningBriefClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    diagnostics: true,
+  });
 
   const fetchBrief = async () => {
     setLoading(true);
@@ -766,6 +787,64 @@ export default function MorningBriefClient() {
           </div>
         </div>
       </details>
+
+      {/* Ad Diagnostics */}
+      {data.signals.ad_diagnostics && data.signals.ad_diagnostics.length > 0 && (
+        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setExpandedSections((s) => ({ ...s, diagnostics: !s.diagnostics }))}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-indigo-100">
+                <AlertCircle className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-gray-900">Ad Diagnostics</h3>
+                <p className="text-sm text-gray-500">
+                  {data.signals.ad_diagnostics.filter((d) => d.bucket === "landing_page_problem").length} LP problems,{" "}
+                  {data.signals.ad_diagnostics.filter((d) => d.bucket === "creative_problem").length} creative problems
+                </p>
+              </div>
+            </div>
+            <ChevronDown className={cn("w-5 h-5 text-gray-400 transition-transform", expandedSections.diagnostics && "rotate-180")} />
+          </button>
+          {expandedSections.diagnostics && (
+            <div className="px-4 pb-4 space-y-3">
+              <p className="text-xs text-gray-400">
+                High CTR: &ge;{data.signals.ad_diagnostics[0]?.ctr_threshold_high}% (75th pctl) | Low CTR: &le;{data.signals.ad_diagnostics[0]?.ctr_threshold_low}% (25th pctl)
+              </p>
+              {data.signals.ad_diagnostics
+                .filter((d) => d.bucket !== "winner")
+                .map((d) => {
+                  const borderColor =
+                    d.bucket === "landing_page_problem" ? "border-l-purple-400" :
+                    d.bucket === "creative_problem" ? "border-l-amber-400" : "border-l-gray-300";
+                  const label =
+                    d.bucket === "landing_page_problem" ? "LP Problem" :
+                    d.bucket === "creative_problem" ? "Weak Hook" : "Needs Rethink";
+                  const labelColor =
+                    d.bucket === "landing_page_problem" ? "bg-purple-50 text-purple-700" :
+                    d.bucket === "creative_problem" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-600";
+                  return (
+                    <div key={d.ad_id} className={cn("border-l-4 rounded-lg bg-gray-50 p-3", borderColor)}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm text-gray-900 truncate">{d.ad_name || "Unnamed ad"}</span>
+                        <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", labelColor)}>{label}</span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-gray-500">
+                        <span>CTR: <strong className={d.bucket === "landing_page_problem" ? "text-green-600" : d.bucket === "creative_problem" ? "text-red-600" : "text-gray-700"}>{d.ctr_7d}%</strong></span>
+                        <span>CPA: <strong className={d.cpa_7d !== null && d.target_cpa !== null && d.cpa_7d > d.target_cpa ? "text-red-600" : "text-gray-700"}>{d.cpa_7d !== null ? `${d.cpa_7d} kr` : "no sales"}</strong>{d.target_cpa ? ` / ${d.target_cpa} kr target` : ""}</span>
+                        <span>Spend: {d.spend_7d} kr</span>
+                        <span>{d.purchases_7d} purchases</span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Recent Actions */}
       <details className="bg-white border border-gray-200 rounded-lg">
