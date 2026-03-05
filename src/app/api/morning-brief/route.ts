@@ -286,6 +286,28 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── Fetch pipeline_settings for data-driven profitability checks ──
+  const { data: pipelineSettings } = await db
+    .from("pipeline_settings")
+    .select("product, country, target_roas, target_cpa, currency");
+  const beRoasMap = new Map<string, number>(); // "product:country" → target_roas
+  const targetCpaMap = new Map<string, number>(); // "product:country" → target_cpa
+  for (const s of pipelineSettings ?? []) {
+    const key = `${s.product}:${s.country}`;
+    if (s.target_roas != null) beRoasMap.set(key, s.target_roas);
+    if (s.target_cpa != null) targetCpaMap.set(key, s.target_cpa);
+  }
+  // Helper: look up BE-ROAS for a product/market, returns null if not configured
+  function getBeRoas(product: string | null, market: string | null): number | null {
+    if (!product || !market) return null;
+    return beRoasMap.get(`${product}:${market}`) ?? null;
+  }
+  // Helper: look up target CPA for a product/market, returns null if not configured
+  function getTargetCpa(product: string | null, market: string | null): number | null {
+    if (!product || !market) return null;
+    return targetCpaMap.get(`${product}:${market}`) ?? null;
+  }
+
   // ── Q6: Bleeder Detection ──
   // Ads spending money while unprofitable (below target CPA) for 2+ consecutive days.
   // Uses target_cpa from pipeline_settings as the profitability baseline.
@@ -703,28 +725,6 @@ export async function GET(req: NextRequest) {
         product: adsetToProduct.get(adsetId) ?? null,
       });
     }
-  }
-
-  // ── Fetch pipeline_settings for data-driven profitability checks ──
-  const { data: pipelineSettings } = await db
-    .from("pipeline_settings")
-    .select("product, country, target_roas, target_cpa, currency");
-  const beRoasMap = new Map<string, number>(); // "product:country" → target_roas
-  const targetCpaMap = new Map<string, number>(); // "product:country" → target_cpa
-  for (const s of pipelineSettings ?? []) {
-    const key = `${s.product}:${s.country}`;
-    if (s.target_roas != null) beRoasMap.set(key, s.target_roas);
-    if (s.target_cpa != null) targetCpaMap.set(key, s.target_cpa);
-  }
-  // Helper: look up BE-ROAS for a product/market, returns null if not configured
-  function getBeRoas(product: string | null, market: string | null): number | null {
-    if (!product || !market) return null;
-    return beRoasMap.get(`${product}:${market}`) ?? null;
-  }
-  // Helper: look up target CPA for a product/market, returns null if not configured
-  function getTargetCpa(product: string | null, market: string | null): number | null {
-    if (!product || !market) return null;
-    return targetCpaMap.get(`${product}:${market}`) ?? null;
   }
 
   // ── Q10: Ad Diagnostics — Structural Performance Classification ──
