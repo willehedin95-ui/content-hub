@@ -475,6 +475,113 @@ export async function buildHookInspiration(product: string): Promise<string> {
   return lines.join("\n");
 }
 
+/**
+ * Build learnings context from past concept outcomes for brainstorm prompt injection.
+ */
+export async function buildLearningsContext(product: string): Promise<string> {
+  const { createServerSupabase } = await import("@/lib/supabase");
+  const db = createServerSupabase();
+
+  const { data: learnings } = await db
+    .from("concept_learnings")
+    .select("*")
+    .eq("product", product)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (!learnings || learnings.length === 0) return "";
+
+  const lines: string[] = [
+    "\n---\n",
+    "## LEARNINGS FROM PAST AD TESTS",
+    "Use these learnings to inform your concept generation. Avoid repeating approaches that have consistently failed. Lean into patterns that have worked.\n",
+  ];
+
+  // Aggregate patterns by angle
+  const angleStats = new Map<string, { wins: number; losses: number; avgRoas: number; roasCount: number }>();
+  const awarenessStats = new Map<string, { wins: number; losses: number }>();
+  const styleStats = new Map<string, { wins: number; losses: number }>();
+
+  for (const l of learnings) {
+    if (l.angle) {
+      const s = angleStats.get(l.angle) ?? { wins: 0, losses: 0, avgRoas: 0, roasCount: 0 };
+      if (l.outcome === "winner") {
+        s.wins++;
+        if (l.roas) { s.avgRoas += l.roas; s.roasCount++; }
+      } else {
+        s.losses++;
+      }
+      angleStats.set(l.angle, s);
+    }
+    if (l.awareness_level) {
+      const s = awarenessStats.get(l.awareness_level) ?? { wins: 0, losses: 0 };
+      l.outcome === "winner" ? s.wins++ : s.losses++;
+      awarenessStats.set(l.awareness_level, s);
+    }
+    if (l.style) {
+      const s = styleStats.get(l.style) ?? { wins: 0, losses: 0 };
+      l.outcome === "winner" ? s.wins++ : s.losses++;
+      styleStats.set(l.style, s);
+    }
+  }
+
+  // What works (win rate > 50% with 2+ tests)
+  const winners: string[] = [];
+  for (const [angle, s] of angleStats) {
+    const total = s.wins + s.losses;
+    if (total >= 2 && s.wins / total > 0.5) {
+      const roasStr = s.roasCount > 0 ? ` (avg ROAS ${(s.avgRoas / s.roasCount).toFixed(1)}x)` : "";
+      winners.push(`- **${angle}** angle: ${s.wins}/${total} won${roasStr}`);
+    }
+  }
+  for (const [awareness, s] of awarenessStats) {
+    const total = s.wins + s.losses;
+    if (total >= 2 && s.wins / total > 0.5) {
+      winners.push(`- **${awareness}** awareness: ${s.wins}/${total} won`);
+    }
+  }
+
+  if (winners.length > 0) {
+    lines.push("### What Works");
+    lines.push(...winners);
+    lines.push("");
+  }
+
+  // What doesn't work (win rate < 30% with 2+ tests)
+  const losers: string[] = [];
+  for (const [angle, s] of angleStats) {
+    const total = s.wins + s.losses;
+    if (total >= 2 && s.wins / total < 0.3) {
+      losers.push(`- **${angle}** angle: ${s.wins}/${total} won — avoid or try different execution`);
+    }
+  }
+  for (const [awareness, s] of awarenessStats) {
+    const total = s.wins + s.losses;
+    if (total >= 2 && s.wins / total < 0.3) {
+      losers.push(`- **${awareness}** awareness: ${s.wins}/${total} won`);
+    }
+  }
+
+  if (losers.length > 0) {
+    lines.push("### What Doesn't Work");
+    lines.push(...losers);
+    lines.push("");
+  }
+
+  // Recent takeaways (last 5 with non-empty takeaways)
+  const recentWithTakeaways = learnings.filter((l: { takeaway: string | null }) => l.takeaway).slice(0, 5);
+  if (recentWithTakeaways.length > 0) {
+    lines.push("### Recent Takeaways");
+    for (const l of recentWithTakeaways) {
+      const badge = l.outcome === "winner" ? "WON" : "LOST";
+      lines.push(`- "${l.concept_name}" (${l.market}, ${badge}): ${l.takeaway}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builders
 // ---------------------------------------------------------------------------
@@ -484,7 +591,8 @@ function buildProductContext(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
   const parts: string[] = [];
 
@@ -522,6 +630,10 @@ function buildProductContext(
       )
       .join("\n");
     parts.push(`\n### Audience Segments\n${segmentList}`);
+  }
+
+  if (learningsContext) {
+    parts.push(learningsContext);
   }
 
   if (hookInspiration) {
@@ -578,9 +690,10 @@ function buildFromScratchSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets (Sweden, Norway, Denmark). You generate original ad concept ideas from first principles — product knowledge, audience psychology, and proven creative frameworks.
 
@@ -612,9 +725,10 @@ function buildFromOrganicSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in adapting organic content — viral posts, articles, Reddit threads, comments — into paid ad concepts.
 
@@ -648,9 +762,10 @@ function buildFromResearchSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in turning research findings, statistics, studies, and customer comments into compelling ad concepts.
 
@@ -686,9 +801,10 @@ function buildFromInternalSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in creative coverage analysis — finding gaps in existing ad portfolios and filling them with fresh concepts.
 
@@ -726,9 +842,10 @@ function buildUnawareSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in UNAWARE ads — the hardest but highest-scaling ad type. You create ads that grab people who aren't looking for a solution and make them feel a gap they didn't know existed.
 
@@ -798,9 +915,10 @@ function buildFromTemplateSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in template-based ad creation — using proven 3-part ad structures (Opening → Middle → Close) to generate high-converting ad concepts.
 
@@ -840,9 +958,10 @@ function buildFromCompetitorAdSystem(
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
   return `You are a senior direct-response creative strategist and visual analyst specializing in health & wellness ecommerce for Scandinavian markets (Sweden, Norway, Denmark). You reverse-engineer competitor ads — analyzing their visual structure, persuasion techniques, and copy approach — then generate adapted concepts for our product with image generation prompts that faithfully reproduce the competitor's visual format.
 
@@ -980,7 +1099,8 @@ const SYSTEM_BUILDERS: Record<
     brief: string | undefined,
     guidelines: CopywritingGuideline[],
     segments: ProductSegment[],
-    hookInspiration?: string
+    hookInspiration?: string,
+    learningsContext?: string
   ) => string
 > = {
   from_scratch: buildFromScratchSystem,
@@ -1001,10 +1121,11 @@ export function buildBrainstormSystemPrompt(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   mode: BrainstormMode,
-  hookInspiration?: string
+  hookInspiration?: string,
+  learningsContext?: string
 ): string {
   const builder = SYSTEM_BUILDERS[mode];
-  return builder(product, productBrief, guidelines, segments, hookInspiration);
+  return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   Link,
   Copy,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   ConceptProposal,
   Product,
@@ -30,6 +31,20 @@ import {
   ProductSegment,
 } from "@/types";
 import { BRAINSTORM_MODES, AD_TEMPLATE_META } from "@/lib/brainstorm";
+
+interface LearningEntry {
+  takeaway: string;
+  outcome: string;
+  angle?: string;
+  awareness_level?: string;
+  style?: string;
+  concept_name?: string;
+}
+
+interface LearningsData {
+  learnings: LearningEntry[];
+  patterns: Record<string, { wins: number; losses: number }>;
+}
 
 type Phase = "configure" | "loading" | "proposals";
 
@@ -98,6 +113,26 @@ export default function BrainstormGenerate() {
     output_tokens: number;
     cost_usd: number;
   } | null>(null);
+
+  // Learnings preview state
+  const [learnings, setLearnings] = useState<LearningsData | null>(null);
+  const [learningsOpen, setLearningsOpen] = useState(false);
+
+  // Fetch learnings when product changes
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/learnings?product=${product}&limit=10`);
+        if (res.ok && !cancelled) {
+          setLearnings(await res.json());
+        }
+      } catch {
+        // silently ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [product]);
 
   // Fetch segments when product changes
   const fetchSegments = useCallback(async () => {
@@ -604,6 +639,120 @@ export default function BrainstormGenerate() {
               ~$0.03-0.05 per generation (Claude Sonnet 4.5)
             </p>
           </div>
+
+          {/* Learnings preview */}
+          {learnings && learnings.learnings.length > 0 && (
+            <div className="border border-amber-200 bg-amber-50 rounded-xl overflow-hidden">
+              <button
+                onClick={() => setLearningsOpen((v) => !v)}
+                className="w-full flex items-center gap-2 px-4 py-3 text-left"
+              >
+                <BookOpen className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="text-sm font-medium text-amber-900 flex-1">
+                  Past Learnings ({learnings.learnings.length})
+                </span>
+                <span className="text-xs text-amber-600">
+                  AI sees these during brainstorm
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 text-amber-500 transition-transform",
+                    learningsOpen && "rotate-180"
+                  )}
+                />
+              </button>
+              {learningsOpen && (
+                <div className="px-4 pb-4 space-y-3">
+                  {/* Pattern summary */}
+                  {(() => {
+                    const entries = Object.entries(learnings.patterns)
+                      .map(([key, val]) => ({
+                        key,
+                        total: val.wins + val.losses,
+                        winRate: val.wins / (val.wins + val.losses),
+                        ...val,
+                      }))
+                      .filter((e) => e.total >= 2)
+                      .sort((a, b) => b.total - a.total)
+                      .slice(0, 6);
+
+                    return entries.length > 0 ? (
+                      <div>
+                        <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1.5">
+                          Patterns
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {entries.map((e) => {
+                            const [category, label] = e.key.split(":");
+                            return (
+                              <div
+                                key={e.key}
+                                className="bg-white/70 rounded-lg px-3 py-2 border border-amber-100"
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] text-amber-600">{category}</span>
+                                  <span className="text-[10px] font-medium text-amber-800">
+                                    {Math.round(e.winRate * 100)}% wins
+                                  </span>
+                                </div>
+                                <p className="text-xs font-medium text-gray-900 truncate">{label}</p>
+                                <div className="mt-1 h-1 rounded-full bg-amber-100 overflow-hidden">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full",
+                                      e.winRate >= 0.5 ? "bg-emerald-500" : "bg-red-400"
+                                    )}
+                                    style={{ width: `${e.winRate * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Recent takeaways */}
+                  <div>
+                    <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1.5">
+                      Recent Takeaways
+                    </p>
+                    <div className="space-y-1.5">
+                      {learnings.learnings
+                        .filter((l) => l.takeaway)
+                        .slice(0, 5)
+                        .map((l, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 bg-white/70 rounded-lg px-3 py-2 border border-amber-100"
+                          >
+                            <span
+                              className={cn(
+                                "text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 mt-0.5",
+                                l.outcome === "winner"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-red-100 text-red-700"
+                              )}
+                            >
+                              {l.outcome === "winner" ? "W" : "L"}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs text-gray-700">{l.takeaway}</p>
+                              {l.concept_name && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                                  {l.concept_name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-2">

@@ -10,6 +10,7 @@ import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
   buildHookInspiration,
+  buildLearningsContext,
   parseConceptProposals,
 } from "@/lib/brainstorm";
 import type { ProductFull, CopywritingGuideline, ProductSegment, BrainstormMode } from "@/types";
@@ -123,6 +124,9 @@ export async function POST(req: NextRequest) {
   // Fetch approved hooks for inspiration
   const hookInspiration = await buildHookInspiration(productSlug);
 
+  // Fetch learnings from past ad tests
+  const learningsContext = await buildLearningsContext(productSlug);
+
   // -----------------------------------------------------------------------
   // FROM COMPETITOR AD — separate code path (vision + image generation)
   // -----------------------------------------------------------------------
@@ -144,7 +148,8 @@ export async function POST(req: NextRequest) {
       guidelines,
       segments,
       mode,
-      hookInspiration
+      hookInspiration,
+      learningsContext
     );
 
     const userPrompt = buildBrainstormUserPrompt(

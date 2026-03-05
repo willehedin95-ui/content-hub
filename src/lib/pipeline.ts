@@ -230,16 +230,39 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
   const imageJobIds = [...new Set(activeMarkets.map((m) => m.image_job_id))];
   const { data: jobData } = await db
     .from("image_jobs")
-    .select("id, product, name, concept_number")
+    .select("id, product, name, concept_number, cash_dna, pipeline_concept_id")
     .in("id", imageJobIds);
 
-  const jobInfoMap = new Map<string, { product: string | null; name: string; conceptNumber: number | null }>();
+  const jobInfoMap = new Map<string, {
+    product: string | null;
+    name: string;
+    conceptNumber: number | null;
+    cashDna: CashDna | null;
+    pipelineConceptId: string | null;
+  }>();
   for (const j of jobData ?? []) {
     jobInfoMap.set(j.id, {
       product: j.product ?? null,
       name: j.name ?? "Unknown",
       conceptNumber: j.concept_number ?? null,
+      cashDna: (j.cash_dna as CashDna | null) ?? null,
+      pipelineConceptId: j.pipeline_concept_id ?? null,
     });
+  }
+
+  // Fetch original hypotheses from pipeline_concepts
+  const pipelineConceptIds = [...jobInfoMap.values()]
+    .map((j) => j.pipelineConceptId)
+    .filter(Boolean) as string[];
+  const hypothesisMap = new Map<string, string>();
+  if (pipelineConceptIds.length > 0) {
+    const { data: pcData } = await db
+      .from("pipeline_concepts")
+      .select("id, hypothesis")
+      .in("id", pipelineConceptIds);
+    for (const pc of pcData ?? []) {
+      if (pc.hypothesis) hypothesisMap.set(pc.id, pc.hypothesis);
+    }
   }
 
   // Get aggregated metrics from concept_metrics
@@ -347,9 +370,9 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
       const enteredAt =
         !currentLifecycle && newStage === "testing" ? market.created_at : now;
 
-      // Generate AI hypothesis for auto-killed concepts
+      // Generate AI learning for terminal outcomes (killed or active)
       let hypothesis: string | null = null;
-      if (newStage === "killed") {
+      if (newStage === "killed" || newStage === "active") {
         try {
           const totalSpend = dailyMetrics.reduce((s, m) => s + m.spend, 0);
           const totalImpressions = dailyMetrics.reduce((s, m) => s + m.impressions, 0);
@@ -360,11 +383,18 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
           const settingKey = product ? `${product}:${market.market}` : null;
           const setting = settingKey ? settingsMap.get(settingKey) : null;
 
-          hypothesis = await generateKillHypothesis({
+          const originalHypothesis = jobInfo.pipelineConceptId
+            ? hypothesisMap.get(jobInfo.pipelineConceptId) ?? null
+            : null;
+
+          const outcome = newStage === "killed" ? "loser" as const : "winner" as const;
+
+          const learningResult = await generateConceptLearning({
             name: jobInfo.name,
             conceptNumber: jobInfo.conceptNumber,
             product,
             market: market.market,
+            outcome,
             daysTested: daysSincePush,
             totalSpend,
             impressions: totalImpressions,
@@ -377,10 +407,37 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
             targetCpa,
             targetRoas: setting?.target_roas ?? null,
             currency: setting?.currency ?? "SEK",
-            killSignal: signal ?? "auto",
+            signal: signal ?? "auto",
+            cashDna: jobInfo.cashDna,
+            originalHypothesis,
+          });
+
+          hypothesis = learningResult.hypothesis;
+
+          // Insert structured learning record
+          await insertConceptLearning({
+            imageJobMarketId: marketId,
+            imageJobId: market.image_job_id,
+            product: product ?? "unknown",
+            market: market.market,
+            outcome,
+            cashDna: jobInfo.cashDna,
+            conceptName: jobInfo.name,
+            daysTested: daysSincePush,
+            totalSpend,
+            impressions: totalImpressions,
+            clicks: totalClicks,
+            ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+            conversions: totalConvs,
+            cpa,
+            roas: totalSpend > 0 ? totalRevenue / totalSpend : null,
+            signal: signal ?? "auto",
+            hypothesisTested: originalHypothesis,
+            takeaway: learningResult.takeaway,
+            tags: learningResult.tags,
           });
         } catch (err) {
-          console.error("[AutoKill] Hypothesis generation failed:", err);
+          console.error(`[AutoTransition] Learning generation failed for ${marketId}:`, err);
         }
       }
 
@@ -1228,13 +1285,14 @@ export async function unqueueConcept(imageJobMarketId: string): Promise<void> {
     .is("exited_at", null);
 }
 
-// ── AI hypothesis for killed concepts ────────────────────────
+// ── AI learning generation for concept outcomes ────────────────
 
-async function generateKillHypothesis(opts: {
+interface ConceptLearningInput {
   name: string;
   conceptNumber: number | null;
   product: string | null;
   market: string;
+  outcome: "winner" | "loser";
   daysTested: number;
   totalSpend: number;
   impressions: number;
@@ -1247,41 +1305,150 @@ async function generateKillHypothesis(opts: {
   targetCpa: number | null;
   targetRoas: number | null;
   currency: string;
-  killSignal: string;
-}): Promise<string> {
+  signal: string;
+  cashDna: CashDna | null;
+  originalHypothesis: string | null;
+}
+
+interface ConceptLearningResult {
+  hypothesis: string;
+  takeaway: string;
+  tags: string[];
+}
+
+async function generateConceptLearning(
+  opts: ConceptLearningInput
+): Promise<ConceptLearningResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return "AI hypothesis unavailable (no API key configured).";
+  if (!apiKey) {
+    return {
+      hypothesis: "AI analysis unavailable (no API key configured).",
+      takeaway: "",
+      tags: [],
+    };
+  }
 
   const client = new Anthropic({ apiKey });
-  const prompt = `You are a performance marketing analyst. A Meta ad concept was killed after testing.
+
+  const cashDnaSection = opts.cashDna
+    ? `
+CASH DNA:
+- Angle: ${opts.cashDna.angle ?? "unknown"}
+- Awareness Level: ${opts.cashDna.awareness_level ?? "unknown"}
+- Style: ${opts.cashDna.style ?? "unknown"}
+- Concept Type: ${opts.cashDna.concept_type ?? "unknown"}
+- Copy Blocks: ${opts.cashDna.copy_blocks?.join(", ") || "none"}`
+    : "CASH DNA: Not available";
+
+  const hypothesisSection = opts.originalHypothesis
+    ? `Original Hypothesis: "${opts.originalHypothesis}"`
+    : "No original hypothesis recorded.";
+
+  const prompt = `You are a performance marketing analyst reviewing ad test results to extract learnings.
 
 Concept: "${opts.name}"${opts.conceptNumber ? ` (#${opts.conceptNumber})` : ""}
 Product: ${opts.product || "unknown"}
 Market: ${opts.market}
-Days tested: ${opts.daysTested}
-Total spend: ${opts.totalSpend.toFixed(0)} ${opts.currency}
-Impressions: ${opts.impressions.toLocaleString()}
-Clicks: ${opts.clicks.toLocaleString()}
-CTR: ${opts.ctr.toFixed(2)}%
-Conversions: ${opts.conversions}
-CPA: ${opts.conversions > 0 ? `${opts.cpa.toFixed(0)} ${opts.currency}` : "N/A (no conversions)"}${opts.targetCpa ? ` (target: ${opts.targetCpa.toFixed(0)} ${opts.currency})` : ""}
-ROAS: ${opts.roas !== null ? `${opts.roas.toFixed(2)}x` : "N/A"}${opts.targetRoas ? ` (target: ${opts.targetRoas.toFixed(2)}x)` : ""}
-Revenue: ${opts.revenue.toFixed(0)} ${opts.currency}
-Kill reason: ${opts.killSignal}
+Outcome: ${opts.outcome.toUpperCase()}
 
-In 2-3 sentences, hypothesize why this concept underperformed. Consider: weak hook, audience mismatch, poor offer framing, creative fatigue, low relevance, or competitive pressure. Be specific and actionable — suggest what to try differently next time.`;
+${cashDnaSection}
+
+${hypothesisSection}
+
+Performance:
+- Days tested: ${opts.daysTested}
+- Total spend: ${opts.totalSpend.toFixed(0)} ${opts.currency}
+- Impressions: ${opts.impressions.toLocaleString()}
+- Clicks: ${opts.clicks.toLocaleString()}
+- CTR: ${opts.ctr.toFixed(2)}%
+- Conversions: ${opts.conversions}
+- CPA: ${opts.conversions > 0 ? `${opts.cpa.toFixed(0)} ${opts.currency}` : "N/A (no conversions)"}${opts.targetCpa ? ` (target: ${opts.targetCpa.toFixed(0)} ${opts.currency})` : ""}
+- ROAS: ${opts.roas !== null ? `${opts.roas.toFixed(2)}x` : "N/A"}${opts.targetRoas ? ` (target: ${opts.targetRoas.toFixed(2)}x)` : ""}
+- Revenue: ${opts.revenue.toFixed(0)} ${opts.currency}
+- Signal: ${opts.signal}
+
+Return a JSON object with exactly these fields:
+{
+  "hypothesis": "2-3 sentences explaining why this concept ${opts.outcome === "winner" ? "succeeded" : "underperformed"}. Be specific about which CASH DNA variables (angle, awareness level, style) likely contributed to the outcome.",
+  "takeaway": "2-3 sentences describing the reusable learning. Frame it as: 'We learned that [variable combination] [does/doesn't] work for [product] in [market] because [reason].' Focus on what to do differently or repeat next time.",
+  "tags": ["2-5 lowercase keywords describing the key variables and themes, e.g. 'fear', 'native-style', 'problem-aware', 'sleep-quality', 'no-conversions'"]
+}
+
+Return ONLY the JSON, no markdown fences or extra text.`;
 
   try {
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
+      max_tokens: 500,
       messages: [{ role: "user", content: prompt }],
     });
-    const textBlock = response.content.find((b) => b.type === "text");
-    return textBlock?.text ?? "No hypothesis generated.";
+    let text = response.content.find((b) => b.type === "text")?.text ?? "";
+    // Strip markdown fences if model wraps JSON
+    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const parsed = JSON.parse(text);
+    return {
+      hypothesis: parsed.hypothesis ?? "No hypothesis generated.",
+      takeaway: parsed.takeaway ?? "",
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+    };
   } catch (err) {
-    console.error("[Hypothesis] Claude API error:", err);
-    return "AI hypothesis failed to generate.";
+    console.error("[Learning] Claude API error:", err);
+    return {
+      hypothesis: "AI analysis failed to generate.",
+      takeaway: "",
+      tags: [],
+    };
+  }
+}
+
+async function insertConceptLearning(opts: {
+  imageJobMarketId: string;
+  imageJobId: string;
+  product: string;
+  market: string;
+  outcome: "winner" | "loser";
+  cashDna: CashDna | null;
+  conceptName: string;
+  daysTested: number;
+  totalSpend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  conversions: number;
+  cpa: number;
+  roas: number | null;
+  signal: string;
+  hypothesisTested: string | null;
+  takeaway: string;
+  tags: string[];
+}): Promise<void> {
+  const db = createServerSupabase();
+  const { error } = await db.from("concept_learnings").insert({
+    image_job_market_id: opts.imageJobMarketId,
+    image_job_id: opts.imageJobId,
+    product: opts.product,
+    market: opts.market,
+    outcome: opts.outcome,
+    angle: opts.cashDna?.angle ?? null,
+    awareness_level: opts.cashDna?.awareness_level ?? null,
+    style: opts.cashDna?.style ?? null,
+    concept_type: opts.cashDna?.concept_type ?? null,
+    days_tested: opts.daysTested,
+    total_spend: opts.totalSpend,
+    impressions: opts.impressions,
+    clicks: opts.clicks,
+    ctr: opts.ctr,
+    conversions: opts.conversions,
+    cpa: opts.cpa,
+    roas: opts.roas,
+    hypothesis_tested: opts.hypothesisTested,
+    takeaway: opts.takeaway || null,
+    tags: opts.tags,
+    signal: opts.signal,
+    concept_name: opts.conceptName,
+  });
+  if (error) {
+    console.error("[Learning] Failed to insert concept_learnings:", error.message);
   }
 }
 
@@ -1322,15 +1489,25 @@ export async function killConcept(
     }
   }
 
-  // Generate AI hypothesis from metrics
+  // Generate AI learning from metrics
   let hypothesis: string | null = null;
   try {
-    // Gather concept info and metrics for hypothesis
     const { data: jobInfo } = await db
       .from("image_jobs")
-      .select("name, product, concept_number")
+      .select("name, product, concept_number, cash_dna, pipeline_concept_id")
       .eq("id", market.image_job_id)
       .single();
+
+    // Fetch original hypothesis from pipeline_concepts if available
+    let originalHypothesis: string | null = null;
+    if (jobInfo?.pipeline_concept_id) {
+      const { data: pipelineConcept } = await db
+        .from("pipeline_concepts")
+        .select("hypothesis")
+        .eq("id", jobInfo.pipeline_concept_id)
+        .single();
+      originalHypothesis = pipelineConcept?.hypothesis ?? null;
+    }
 
     const { data: metricsRows } = await db
       .from("concept_metrics")
@@ -1347,7 +1524,6 @@ export async function killConcept(
     const cpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : null;
 
-    // Get target CPA/ROAS and currency from settings
     let targetCpa: number | null = null;
     let targetRoas: number | null = null;
     let currency = "SEK";
@@ -1365,12 +1541,16 @@ export async function killConcept(
       }
     }
 
-    hypothesis = await generateKillHypothesis({
+    const cashDna = (jobInfo?.cash_dna as CashDna | null) ?? null;
+    const daysTested = daysBetween(market.created_at, now);
+
+    const learningResult = await generateConceptLearning({
       name: jobInfo?.name ?? "Unknown",
       conceptNumber: jobInfo?.concept_number ?? null,
       product: jobInfo?.product ?? null,
       market: market.market,
-      daysTested: daysBetween(market.created_at, now),
+      outcome: "loser",
+      daysTested,
       totalSpend,
       impressions: totalImpressions,
       clicks: totalClicks,
@@ -1382,10 +1562,37 @@ export async function killConcept(
       targetCpa,
       targetRoas,
       currency,
-      killSignal: "manual_kill",
+      signal: "manual_kill",
+      cashDna,
+      originalHypothesis,
+    });
+
+    hypothesis = learningResult.hypothesis;
+
+    // Insert structured learning record
+    await insertConceptLearning({
+      imageJobMarketId: imageJobMarketId,
+      imageJobId: market.image_job_id,
+      product: jobInfo?.product ?? "unknown",
+      market: market.market,
+      outcome: "loser",
+      cashDna,
+      conceptName: jobInfo?.name ?? "Unknown",
+      daysTested,
+      totalSpend,
+      impressions: totalImpressions,
+      clicks: totalClicks,
+      ctr,
+      conversions: totalConversions,
+      cpa,
+      roas,
+      signal: "manual_kill",
+      hypothesisTested: originalHypothesis,
+      takeaway: learningResult.takeaway,
+      tags: learningResult.tags,
     });
   } catch (err) {
-    console.error("[Kill] Hypothesis generation failed:", err);
+    console.error("[Kill] Learning generation failed:", err);
   }
 
   // Close current lifecycle stage

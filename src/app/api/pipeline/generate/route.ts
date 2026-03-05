@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   buildBrainstormSystemPrompt,
   buildHookInspiration,
+  buildLearningsContext,
   parseConceptProposals,
 } from "@/lib/brainstorm";
 import {
@@ -88,6 +89,9 @@ export async function POST(request: Request) {
     // Fetch approved hooks for inspiration
     const hookInspiration = await buildHookInspiration(product);
 
+    // Fetch learnings from past ad tests
+    const learningsContext = await buildLearningsContext(product);
+
     // Build prompts
     const brainstormMode = mapModeToBrainstormMode(mode);
     const systemPrompt = buildBrainstormSystemPrompt(
@@ -96,7 +100,8 @@ export async function POST(request: Request) {
       guidelines,
       (productData.segments || []) as ProductSegment[],
       brainstormMode,
-      hookInspiration
+      hookInspiration,
+      learningsContext
     );
 
     // Enhanced user prompt with coverage gaps + hypothesis requirement
