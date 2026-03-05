@@ -109,7 +109,7 @@ interface Bleeder {
   total_spend: number;
   purchases: number;
   avg_cpa: number;
-  campaign_avg_cpa: number;
+  target_cpa: number;
   avg_ctr: number;
 }
 
@@ -172,6 +172,7 @@ interface ActionCard {
   concept_name?: string | null;
   days_running?: number | null;
   adset_roas?: number | null;
+  be_roas?: number | null;
 }
 
 // ── Action card visual config per type ──
@@ -247,6 +248,11 @@ const ACTION_CONFIG: Record<
 interface MorningBriefData {
   generated_at: string;
   data_date: string;
+  pipeline_thresholds?: {
+    be_roas_map: Record<string, number>;
+    target_cpa_map: Record<string, number>;
+    min_be_roas: number | null;
+  };
   questions: {
     spend_pacing: SpendPacing;
     whats_running: WhatsRunning;
@@ -617,7 +623,9 @@ export default function MorningBriefClient() {
                         {card.adset_roas != null && card.adset_roas > 0 && (
                           <span className={cn(
                             "text-[11px] px-2 py-0.5 rounded-full font-medium",
-                            card.adset_roas >= 1 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                            card.adset_roas >= (card.be_roas ?? 1.5)
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
                           )}>
                             {card.adset_roas}x ROAS
                           </span>
@@ -746,12 +754,14 @@ export default function MorningBriefClient() {
               icon={<Trophy className="w-4 h-4 text-green-600" />}
               ads={winners_losers.winners}
               type="winner"
+              minBeRoas={data.pipeline_thresholds?.min_be_roas ?? null}
             />
             <AdTable
               title="Underperformers"
               icon={<ThumbsDown className="w-4 h-4 text-red-500" />}
               ads={winners_losers.losers}
               type="loser"
+              minBeRoas={data.pipeline_thresholds?.min_be_roas ?? null}
             />
           </div>
         </div>
@@ -960,11 +970,13 @@ function AdTable({
   icon,
   ads,
   type,
+  minBeRoas,
 }: {
   title: string;
   icon: React.ReactNode;
   ads: AdRanking[];
   type: "winner" | "loser";
+  minBeRoas: number | null;
 }) {
   return (
     <div className="border border-gray-100 rounded-lg overflow-hidden">
@@ -1013,7 +1025,7 @@ function AdTable({
                   <span
                     className={cn(
                       "font-medium",
-                      ad.roas >= 3
+                      ad.roas >= (minBeRoas ?? 1.5)
                         ? "text-green-700"
                         : ad.roas > 0
                         ? "text-amber-700"

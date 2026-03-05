@@ -14,7 +14,7 @@ interface Bleeder {
   total_spend: number;
   purchases: number;
   avg_cpa: number;
-  campaign_avg_cpa: number;
+  target_cpa: number;
   avg_ctr: number;
 }
 
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
         adset_id: null,
         ad_name: bleeder.ad_name,
         campaign_name: bleeder.campaign_name,
-        reason: `Bleeding ${bleeder.days_bleeding}d: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs campaign avg ${money(bleeder.campaign_avg_cpa)}`,
+        reason: `Bleeding ${bleeder.days_bleeding}d: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs target ${money(bleeder.target_cpa)}`,
         days_bleeding: bleeder.days_bleeding,
         total_spend: bleeder.total_spend,
       });
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
         ad_name: bleeder.ad_name,
         campaign_name: bleeder.campaign_name,
         event_type: "paused_bleeder",
-        detail: `Auto-paused after ${bleeder.days_bleeding}d bleeding: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs campaign avg ${money(bleeder.campaign_avg_cpa)}`,
+        detail: `Auto-paused after ${bleeder.days_bleeding}d bleeding: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs target ${money(bleeder.target_cpa)}`,
         metrics: { days_bleeding: bleeder.days_bleeding, total_spend: bleeder.total_spend, avg_ctr: bleeder.avg_ctr, avg_cpa: bleeder.avg_cpa },
       });
 

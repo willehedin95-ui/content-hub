@@ -287,7 +287,8 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Q6: Bleeder Detection ──
-  // Ads spending heavily with bad results for 2+ consecutive days
+  // Ads spending money while unprofitable (below target CPA) for 2+ consecutive days.
+  // Uses target_cpa from pipeline_settings as the profitability baseline.
   const bleeders: Array<{
     ad_id: string;
     ad_name: string | null;
@@ -299,11 +300,35 @@ export async function GET(req: NextRequest) {
     total_spend: number;
     purchases: number;
     avg_cpa: number;
-    campaign_avg_cpa: number;
+    target_cpa: number;
     avg_ctr: number;
   }> = [];
 
-  // Compute campaign-level average CPA for baseline
+  // We need adset→product/market mapping for bleeder detection too.
+  // Build a lightweight ad_id→adset_id→product/market lookup from currentRows + meta_campaigns.
+  // First collect unique adset IDs from current data.
+  const allAdsetIds = new Set<string>();
+  for (const r of currentRows) {
+    if (r.adset_id) allAdsetIds.add(r.adset_id);
+  }
+
+  // Fetch product/market for all adsets at once (needed for bleeder + winner detection)
+  const adsetProductMarket = new Map<string, { product: string | null; market: string | null }>();
+  if (allAdsetIds.size > 0) {
+    const { data: adsetMeta } = await db
+      .from("meta_campaigns")
+      .select("meta_adset_id, product, countries")
+      .in("meta_adset_id", [...allAdsetIds]);
+    for (const row of adsetMeta ?? []) {
+      const countries = row.countries as string[] | null;
+      adsetProductMarket.set(row.meta_adset_id, {
+        product: row.product ?? null,
+        market: countries?.[0] ?? null,
+      });
+    }
+  }
+
+  // Compute campaign-level average CPA (kept as secondary fallback only)
   const campaignCpa = new Map<string, number>();
   for (const cid of campaignIds) {
     const campRows = currentRows.filter((r) => r.campaign_id === cid);
@@ -323,9 +348,16 @@ export async function GET(req: NextRequest) {
     const adsetName = adDays[adDays.length - 1].adset_name;
     const campaignName = adDays[adDays.length - 1].campaign_name;
     const campId = adDays[adDays.length - 1].campaign_id ?? "unknown";
-    const baseCpa = campaignCpa.get(campId) ?? 0;
+    const adsetId = adDays[adDays.length - 1].adset_id;
 
-    if (baseCpa === 0) continue; // can't assess without campaign baseline
+    // Look up target CPA from pipeline_settings for this ad's product/market
+    const pm = adsetId ? adsetProductMarket.get(adsetId) : null;
+    const tCpa = getTargetCpa(pm?.product ?? null, pm?.market ?? null);
+    // Fall back to campaign avg CPA × 1.5 if no pipeline setting exists
+    const campAvgCpa = campaignCpa.get(campId) ?? 0;
+    const cpaThreshold = tCpa ?? (campAvgCpa > 0 ? campAvgCpa * 1.5 : 0);
+
+    if (cpaThreshold === 0) continue; // no baseline available at all
 
     // Count consecutive bleeding days from the end
     let bleedingDays = 0;
@@ -333,11 +365,11 @@ export async function GET(req: NextRequest) {
       const day = adDays[i];
       const daySpend = Number(day.spend);
       const dayPurchases = Number(day.purchases);
-      const dayCtr = Number(day.ctr);
       const dayCpa = dayPurchases > 0 ? daySpend / dayPurchases : Infinity;
 
-      // Bleeding: spending with either no purchases or CPA > 2.5x campaign avg, AND CTR < 1%
-      if (daySpend > 5 && (dayCpa > baseCpa * 2.5 || dayPurchases === 0) && dayCtr < 1) {
+      // Bleeding: spending money with either no purchases or CPA above target.
+      // No CTR gate — an ad losing money is bleeding regardless of click rate.
+      if (daySpend > 5 && (dayPurchases === 0 || dayCpa > cpaThreshold)) {
         bleedingDays++;
       } else {
         break;
@@ -359,7 +391,7 @@ export async function GET(req: NextRequest) {
         total_spend: round(totalSpend),
         purchases: totalPurchases,
         avg_cpa: totalPurchases > 0 ? round(totalSpend / totalPurchases) : 0,
-        campaign_avg_cpa: round(baseCpa),
+        target_cpa: round(cpaThreshold),
         avg_ctr: round(avg(recentDays, "ctr"), 2),
       });
     }
@@ -368,7 +400,8 @@ export async function GET(req: NextRequest) {
   bleeders.sort((a, b) => b.total_spend - a.total_spend);
 
   // ── Q7: Winner Detection ──
-  // Ads performing consistently well over 5+ days
+  // Ads performing consistently above breakeven (BE-ROAS + target CPA) over 5+ days.
+  // Uses pipeline_settings thresholds — no hardcoded ROAS or CTR gates.
   const winnerAds: Array<{
     ad_id: string;
     adset_id: string | null;
@@ -396,7 +429,14 @@ export async function GET(req: NextRequest) {
     const adsetName = adDays[adDays.length - 1].adset_name;
     const campaignName = adDays[adDays.length - 1].campaign_name;
     const campId = adDays[adDays.length - 1].campaign_id ?? "unknown";
-    const baseCpa = campaignCpa.get(campId) ?? 0;
+
+    // Look up data-driven thresholds for this ad's product/market
+    const pm = adsetId ? adsetProductMarket.get(adsetId) : null;
+    const beRoas = getBeRoas(pm?.product ?? null, pm?.market ?? null);
+    const tCpa = getTargetCpa(pm?.product ?? null, pm?.market ?? null);
+    // Use target CPA from settings, fall back to campaign avg CPA
+    const campAvgCpa = campaignCpa.get(campId) ?? 0;
+    const cpaLimit = tCpa ?? (campAvgCpa > 0 ? campAvgCpa : null);
 
     // Count consecutive winning days from the end
     let winningDays = 0;
@@ -404,12 +444,13 @@ export async function GET(req: NextRequest) {
       const day = adDays[i];
       const daySpend = Number(day.spend);
       const dayPurchases = Number(day.purchases);
-      const dayCtr = Number(day.ctr);
       const dayRoas = Number(day.roas);
 
-      // Winning: has purchases, ROAS > 1, CTR > 1%, and CPA at or below campaign average
+      // Winning: must have purchases AND be above breakeven ROAS AND CPA at/below target
       const dayCpa = dayPurchases > 0 ? daySpend / dayPurchases : Infinity;
-      if (dayPurchases > 0 && dayRoas > 1 && dayCtr > 1 && (baseCpa === 0 || dayCpa <= baseCpa)) {
+      const roasOk = beRoas ? dayRoas >= beRoas : dayRoas >= 1.5; // fallback 1.5x if no setting
+      const cpaOk = cpaLimit ? dayCpa <= cpaLimit : true; // skip CPA check if no baseline
+      if (dayPurchases > 0 && roasOk && cpaOk) {
         winningDays++;
       } else {
         break;
@@ -535,7 +576,9 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Q9: Efficiency Scoring ──
-  // Per-campaign CTR/CPC efficiency ratio + budget shift recommendations
+  // Per-campaign ROAS-based efficiency + budget shift recommendations.
+  // Campaigns with higher ROAS should get more budget — this measures actual profitability,
+  // not just cheap clicks (the old CTR/CPC metric rewarded clicks, not sales).
   const efficiencyScores = Array.from(campaignIds).map((cid) => {
     const campRows = currentRows.filter((r) => r.campaign_id === cid);
     const name = campRows[0]?.campaign_name ?? "Unknown";
@@ -546,8 +589,8 @@ export async function GET(req: NextRequest) {
     const avgCpc = avg(campRows, "cpc");
     const roas = campSpend > 0 ? campRevenue / campSpend : 0;
 
-    // Efficiency = CTR / CPC — higher means more clicks per dollar
-    const efficiency = avgCpc > 0 ? avgCtr / avgCpc : 0;
+    // Efficiency = ROAS — higher means more revenue per ad dollar
+    const efficiency = roas;
 
     return {
       campaign_id: cid,
@@ -597,6 +640,7 @@ export async function GET(req: NextRequest) {
     pushed_at: string | null;
     days_running: number | null;
     market: string | null;
+    product: string | null;
   }
   const adsetEnrichment = new Map<string, AdsetEnrichment>();
 
@@ -604,13 +648,14 @@ export async function GET(req: NextRequest) {
     const allEnrichIds = [...enrichmentAdsetIds];
     const { data: adsetConcepts } = await db
       .from("meta_campaigns")
-      .select("meta_adset_id, image_job_id, created_at, countries")
+      .select("meta_adset_id, image_job_id, created_at, countries, product")
       .in("meta_adset_id", allEnrichIds);
 
     const conceptIds = new Set<string>();
     const adsetToConceptMap = new Map<string, string>();
     const adsetToPushedAt = new Map<string, string>();
     const adsetToMarket = new Map<string, string>();
+    const adsetToProduct = new Map<string, string>();
 
     for (const row of adsetConcepts ?? []) {
       if (row.image_job_id) {
@@ -623,6 +668,9 @@ export async function GET(req: NextRequest) {
       const countries = row.countries as string[] | null;
       if (countries?.[0]) {
         adsetToMarket.set(row.meta_adset_id, countries[0]);
+      }
+      if (row.product) {
+        adsetToProduct.set(row.meta_adset_id, row.product);
       }
     }
 
@@ -652,8 +700,31 @@ export async function GET(req: NextRequest) {
         pushed_at: pushedAt,
         days_running: daysRunning,
         market: adsetToMarket.get(adsetId) ?? null,
+        product: adsetToProduct.get(adsetId) ?? null,
       });
     }
+  }
+
+  // ── Fetch pipeline_settings for data-driven profitability checks ──
+  const { data: pipelineSettings } = await db
+    .from("pipeline_settings")
+    .select("product, country, target_roas, target_cpa, currency");
+  const beRoasMap = new Map<string, number>(); // "product:country" → target_roas
+  const targetCpaMap = new Map<string, number>(); // "product:country" → target_cpa
+  for (const s of pipelineSettings ?? []) {
+    const key = `${s.product}:${s.country}`;
+    if (s.target_roas != null) beRoasMap.set(key, s.target_roas);
+    if (s.target_cpa != null) targetCpaMap.set(key, s.target_cpa);
+  }
+  // Helper: look up BE-ROAS for a product/market, returns null if not configured
+  function getBeRoas(product: string | null, market: string | null): number | null {
+    if (!product || !market) return null;
+    return beRoasMap.get(`${product}:${market}`) ?? null;
+  }
+  // Helper: look up target CPA for a product/market, returns null if not configured
+  function getTargetCpa(product: string | null, market: string | null): number | null {
+    if (!product || !market) return null;
+    return targetCpaMap.get(`${product}:${market}`) ?? null;
   }
 
   // Compute per-adset stats from current data
@@ -699,6 +770,7 @@ export async function GET(req: NextRequest) {
     concept_name?: string | null;
     days_running?: number | null;
     adset_roas?: number | null;
+    be_roas?: number | null;
   }
 
   const actionCards: ActionCard[] = [];
@@ -722,6 +794,8 @@ export async function GET(req: NextRequest) {
     const adsetId = isGrouped ? groupKey : null;
     const stats = adsetId ? adsetStatsMap.get(adsetId) : null;
     const enrichment = adsetId ? adsetEnrichment.get(adsetId) : null;
+    const pm = adsetId ? adsetProductMarket.get(adsetId) : null;
+    const cardBeRoas = getBeRoas(pm?.product ?? null, pm?.market ?? null);
     const totalAdsInAdset = stats?.total_ads ?? adsetBleeders.length;
     const allBleeding = adsetBleeders.length >= totalAdsInAdset;
     const totalSpend = adsetBleeders.reduce((s, b) => s + b.total_spend, 0);
@@ -757,6 +831,7 @@ export async function GET(req: NextRequest) {
         concept_name: enrichment?.concept_name ?? null,
         days_running: daysRunning ?? null,
         adset_roas: adsetRoas,
+        be_roas: cardBeRoas,
       });
     } else if (totalAdsInAdset > 1 && adsetBleeders.length > 0) {
       // SOME ads bleeding → pause specific ads, keep winners
@@ -791,6 +866,7 @@ export async function GET(req: NextRequest) {
         concept_name: enrichment?.concept_name ?? null,
         days_running: daysRunning ?? null,
         adset_roas: adsetRoas,
+        be_roas: cardBeRoas,
       });
     } else {
       // Single ad or unknown ad set → individual ad pause
@@ -817,15 +893,20 @@ export async function GET(req: NextRequest) {
   // ── Consistent winners → scale cards (priority 2) ──
   for (const w of enrichedWinners) {
     const enrichment = w.adset_id ? adsetEnrichment.get(w.adset_id) : null;
+    const wPm = w.adset_id ? adsetProductMarket.get(w.adset_id) : null;
+    const wBeRoas = getBeRoas(wPm?.product ?? null, wPm?.market ?? null);
+    const wTargetCpa = getTargetCpa(wPm?.product ?? null, wPm?.market ?? null);
     const adLabel = enrichment?.concept_name || w.ad_name || w.adset_name || "unnamed ad";
+    const beContext = wBeRoas ? ` (breakeven: ${wBeRoas}x)` : "";
+    const cpaContext = wTargetCpa ? ` (target: ${wTargetCpa} kr)` : "";
     actionCards.push({
       id: `scale_${w.ad_id}`,
       type: "scale",
       category: "Budget",
       title: `Give more budget to "${adLabel}"`,
-      why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS, ${w.avg_cpa} kr CPA, ${w.avg_ctr}% CTR.${enrichment?.days_running ? ` Running for ${enrichment.days_running} days.` : ""}`,
-      guidance: `This ad has been profitable for ${w.consistent_days} days straight. Increasing its budget by 20% should get you more sales at a similar cost. Meta's algorithm will gradually spend more on this proven winner.`,
-      expected_impact: "~20% more purchases at similar CPA",
+      why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS${beContext}, ${w.avg_cpa} kr CPA${cpaContext}.${enrichment?.days_running ? ` Running for ${enrichment.days_running} days.` : ""}`,
+      guidance: `This ad has been profitable above your breakeven for ${w.consistent_days} days straight. Increasing its budget by 20% should get you more sales at a similar cost. Meta's algorithm will gradually spend more on this proven winner.`,
+      expected_impact: "More purchases from a proven profitable ad",
       action_data: { action: "scale_winner", ad_id: w.ad_id, adset_id: w.adset_id, campaign_id: w.campaign_id },
       priority: 2,
       ad_name: w.ad_name,
@@ -835,6 +916,8 @@ export async function GET(req: NextRequest) {
       image_job_id: enrichment?.image_job_id ?? w.image_job_id,
       concept_name: enrichment?.concept_name ?? null,
       days_running: enrichment?.days_running ?? null,
+      adset_roas: w.avg_roas,
+      be_roas: wBeRoas,
     });
   }
 
@@ -896,28 +979,36 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Critical fatigue → iterate (profitable) or kill (unprofitable) ──
+  // Uses per-product/market BE-ROAS from pipeline_settings instead of hardcoded threshold
   for (const f of fatigueSignals.critical) {
     const enrichment = f.adset_id ? adsetEnrichment.get(f.adset_id) : null;
     const stats = f.adset_id ? adsetStatsMap.get(f.adset_id) : null;
     const conceptName = enrichment?.concept_name;
     const daysRunning = enrichment?.days_running;
     const adsetRoas = stats?.roas_7d ?? 0;
-    const isProfitable = adsetRoas > 1;
     const cashDna = enrichment?.cash_dna;
     const angle = (cashDna as Record<string, unknown> | null)?.angle as string | undefined;
     const adLabel = conceptName || f.ad_name || "unnamed";
 
     const market = enrichment?.market ?? null;
+    const product = enrichment?.product ?? null;
+
+    // Look up BE-ROAS for this product/market
+    const beRoas = getBeRoas(product, market);
+    const beRoasThreshold = beRoas ?? 1.5; // fallback only if settings missing
+    const isProfitable = adsetRoas >= beRoasThreshold;
+    const isMarginal = !isProfitable && adsetRoas > beRoasThreshold * 0.7; // within 30% of breakeven
+    const beRoasLabel = beRoas ? `${beRoas}x` : `~1.5x (no setting configured)`;
 
     if (isProfitable) {
-      // Profitable but fatiguing → iterate on the concept
+      // Above BE-ROAS and fatiguing → iterate on the concept
       actionCards.push({
         id: `refresh_${f.ad_id}`,
         type: "refresh",
         category: "Creative",
-        title: `"${adLabel}" is fatiguing${market ? ` in ${market}` : ""} — still profitable at ${adsetRoas}x, iterate!`,
-        why: `${f.detail}. Running for ${daysRunning ?? "?"}d with ${adsetRoas}x ROAS — this concept works but needs fresh creatives.`,
-        guidance: `Your audience has seen this ad enough times that click rates are dropping, but the concept IS profitable. Create new variations with fresh visuals but the same winning angle.${angle ? ` Current angle: "${angle}".` : ""} Click below to open the iteration tool and generate a Segment Swap, Mechanism Swap, or C.A.S.H. Swap.`,
+        title: `"${adLabel}" is fatiguing${market ? ` in ${market}` : ""} — profitable at ${adsetRoas}x (BE: ${beRoasLabel}), iterate!`,
+        why: `${f.detail}. Running for ${daysRunning ?? "?"}d with ${adsetRoas}x ROAS (breakeven is ${beRoasLabel}) — this concept works but needs fresh creatives.`,
+        guidance: `Your audience has seen this ad enough times that click rates are dropping, but the concept IS profitable above your ${beRoasLabel} breakeven. Create new variations with fresh visuals but the same winning angle.${angle ? ` Current angle: "${angle}".` : ""} Click below to open the iteration tool and generate a Segment Swap, Mechanism Swap, or C.A.S.H. Swap.`,
         expected_impact: "Keep a profitable concept alive with fresh creatives",
         button_label: market ? `Iterate for ${market}` : "Iterate on this concept",
         action_data: { ad_id: f.ad_id, image_job_id: enrichment?.image_job_id ?? null, market },
@@ -930,17 +1021,21 @@ export async function GET(req: NextRequest) {
         concept_name: conceptName ?? null,
         days_running: daysRunning ?? null,
         adset_roas: adsetRoas,
+        be_roas: beRoas,
       });
     } else {
-      // Unprofitable AND fatiguing → kill it
+      // Below BE-ROAS AND fatiguing → kill it
+      const roasContext = isMarginal
+        ? `with ${adsetRoas}x ROAS — close but below your ${beRoasLabel} breakeven`
+        : adsetRoas > 0 ? `with only ${adsetRoas}x ROAS (breakeven is ${beRoasLabel})` : "with 0 sales";
       actionCards.push({
         id: `kill_fatigue_${f.ad_id}`,
         type: "pause",
         category: "Budget",
-        title: `Kill "${adLabel}" — fatiguing and not profitable`,
-        why: `${f.detail}. ${daysRunning ? `Running for ${daysRunning} days` : ""}${adsetRoas > 0 ? ` with only ${adsetRoas}x ROAS` : " with 0 sales"}. Not worth iterating on.`,
-        guidance: `This concept is both fatiguing (CTR dropping) and unprofitable. There's no reason to keep spending on it or create new variations. Pause the ad to stop wasting budget and free up spend for your winners.`,
-        expected_impact: "Stop wasting budget on an unprofitable, fatiguing concept",
+        title: `Kill "${adLabel}"${market ? ` in ${market}` : ""} — fatiguing at ${adsetRoas}x ROAS (BE: ${beRoasLabel})`,
+        why: `${f.detail}. ${daysRunning ? `Running for ${daysRunning} days ` : ""}${roasContext}. Not worth iterating on.`,
+        guidance: `This concept is fatiguing (CTR dropping) and below your ${beRoasLabel} breakeven ROAS for ${product ?? "this product"}${market ? ` in ${market}` : ""}. Pause the ad to stop losing money and free up budget for winners.`,
+        expected_impact: "Stop losing money on an unprofitable, fatiguing concept",
         button_label: "Pause this ad",
         action_data: { action: "pause_ad", ad_id: f.ad_id, ad_name: f.ad_name, reason: "fatigue_unprofitable" },
         priority: 1,
@@ -952,6 +1047,7 @@ export async function GET(req: NextRequest) {
         concept_name: conceptName ?? null,
         days_running: daysRunning ?? null,
         adset_roas: adsetRoas,
+        be_roas: beRoas,
       });
     }
   }
@@ -1035,9 +1131,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Include pipeline settings in response so client can use data-driven thresholds
+  const beRoasValues = [...beRoasMap.values()];
+  const minBeRoas = beRoasValues.length > 0 ? Math.min(...beRoasValues) : null;
+
   return NextResponse.json({
     generated_at: new Date().toISOString(),
     data_date: latestDate,
+    pipeline_thresholds: {
+      be_roas_map: Object.fromEntries(beRoasMap),
+      target_cpa_map: Object.fromEntries(targetCpaMap),
+      min_be_roas: minBeRoas,
+    },
     questions: {
       spend_pacing: spendPacing,
       whats_running: whatsRunning,
