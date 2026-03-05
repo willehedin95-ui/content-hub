@@ -1011,10 +1011,12 @@ Map the competitor ad to the CASH framework:
 
 ### 4. ADAPTED CONCEPT GENERATION
 Create an original concept for OUR product that:
-- Uses the SAME persuasion technique and visual format
-- Adapts the messaging to our product's benefits, claims, and audience
+- Reproduces the SAME visual format and persuasion STRUCTURE (e.g. testimonial style, before/after, UGC selfie, zoomed-in detail shot)
+- **CRITICAL: The adapted concept MUST be about OUR product's actual problem domain and benefits.** Do NOT keep the competitor's problem/solution angle. If the competitor sells a beauty supplement and talks about "cortisol face" or "jawline", you must NOT write beauty-related hooks for a pillow. Instead, map the persuasion structure to HappySleep's real benefits: better sleep, reduced snoring, neck/shoulder pain relief, waking up refreshed, etc.
+- The competitor's specific health claims, ingredients, and problem domain are IRRELEVANT to us — only their ad FORMAT and persuasion MECHANICS matter
 - Does NOT copy the competitor's specific claims or brand elements
-- Maintains the emotional energy of the original while being completely original in content
+- Think: "What would this exact visual format look like if it was always about a pillow that fixes sleep problems?" — NOT "How can I loosely connect the competitor's beauty angle to a pillow?"
+- Maintains the emotional energy of the original while being completely original in content and problem domain
 
 ### 5. NANO BANANA IMAGE PROMPT GENERATION
 Generate 3-5 prompts for the Nano Banana AI image generator (nano-banana-2) that reproduce the competitor's visual FORMAT with our product's content.
@@ -1023,7 +1025,7 @@ Generate 3-5 prompts for the Nano Banana AI image generator (nano-banana-2) that
 - Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
 - Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
 - Describe the MOOD last (clinical, warm, urgent, calm, editorial)
-- **TEXT IN IMAGES — CRITICAL**: The competitor image is passed as a reference to Nano Banana. If the competitor ad has text that is PART OF THE IMAGE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product in the prompt. Otherwise Nano Banana will just reproduce the competitor's original text from the reference image. Example: if competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading '[OUR ADAPTED HOOK]' in the same casual marker style". Each image_prompt variation should use a different hook_text, and that SAME text must appear in the Nano Banana prompt.
+- **TEXT IN IMAGES — CRITICAL**: The competitor image is passed as a reference to Nano Banana. If the competitor ad has text that is PART OF THE IMAGE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product in the prompt. Otherwise Nano Banana will just reproduce the competitor's original text from the reference image. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt for a PILLOW product must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style" — adapt to OUR product's problem domain, not theirs. Each image_prompt variation should use a different hook_text, and that SAME text must appear in the Nano Banana prompt.
 - Do NOT include design-overlay text (bold headlines, CTA buttons, price tags) — those are added separately in post-production
 - Focus on reproducing the competitor's visual STYLE, not their specific product
 - The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely, OVERRIDING any competitor-specific elements (text, product, branding) with our adapted versions
@@ -1082,9 +1084,10 @@ CRITICAL RULES:
 - Write ALL copy in ENGLISH (translations happen later)
 - NEVER copy the competitor's specific claims, brand name, or product references
 - NEVER invent medical claims — only use claims from our product brief
-- The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product
+- **NEVER keep the competitor's problem domain.** If the competitor ad is about beauty/skincare/supplements/weight loss/fitness — the adapted hooks MUST be about sleep, snoring, neck pain, or whatever OUR product actually solves. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
+- The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle
 - The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
-- **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST explicitly describe the adapted text content for our product. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
+- **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product. This text must be about OUR product's benefits (sleep/snoring/neck pain), NOT a reworded version of the competitor's claims. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly 3-5 entries in the image_prompts array, each with a different hook_text variation
 - Each image prompt should describe a slightly different composition or angle while maintaining the competitor's core visual style`;
