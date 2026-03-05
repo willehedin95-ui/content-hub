@@ -20,6 +20,7 @@ import {
   X,
   Link,
   Copy,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -108,6 +109,17 @@ export default function BrainstormGenerate() {
   // Common
   const [error, setError] = useState("");
   const [loadingMsg, setLoadingMsg] = useState(0);
+
+  // Streaming progress steps (used for all brainstorm modes)
+  type ProgressStep = {
+    step: string;
+    message: string;
+    done: boolean;
+    job_id?: string;
+    concept_name?: string;
+    images_count?: number;
+  };
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [cost, setCost] = useState<{
     input_tokens: number;
     output_tokens: number;
@@ -177,11 +189,17 @@ export default function BrainstormGenerate() {
     setPhase("loading");
     setError("");
     setLoadingMsg(0);
+    setProgressSteps([]);
 
     try {
-      // Competitor ad flow: upload image (if file) → brainstorm → redirect to image job
+      // Competitor ad flow: upload image → stream NDJSON progress → redirect to image job
       if (mode === "from_competitor_ad" && (competitorImage || competitorImageUrl)) {
         let imageUrl = competitorImageUrl;
+
+        // Initialize progress steps
+        setProgressSteps([
+          { step: "uploading", message: "Uploading competitor image...", done: false },
+        ]);
 
         // If user uploaded a file, upload it to temp storage first
         if (competitorImage) {
@@ -193,7 +211,12 @@ export default function BrainstormGenerate() {
           imageUrl = uploadData.url;
         }
 
-        // Call brainstorm API with competitor image URL
+        // Mark upload done
+        setProgressSteps((prev) =>
+          prev.map((s) => (s.step === "uploading" ? { ...s, done: true, message: "Image uploaded" } : s))
+        );
+
+        // Call brainstorm API — reads NDJSON stream for real-time progress
         const res = await fetch("/api/brainstorm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -205,32 +228,104 @@ export default function BrainstormGenerate() {
             competitor_ad_copy: competitorAdCopy || undefined,
           }),
         });
+
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || "Generation failed");
         }
-        const data = await res.json();
 
-        // Redirect to the image job detail page
-        router.push(`/images/${data.job_id}`);
+        // Read NDJSON stream
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let redirectJobId: string | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop()!; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+
+              if (event.step === "error") {
+                throw new Error(event.message);
+              }
+
+              if (event.step === "analyzing") {
+                setProgressSteps((prev) => [
+                  ...prev,
+                  { step: "analyzing", message: event.message, done: false },
+                ]);
+              } else if (event.step === "analyzed") {
+                setProgressSteps((prev) =>
+                  prev.map((s) => (s.step === "analyzing" ? { ...s, done: true, message: event.message } : s))
+                );
+              } else if (event.step === "creating_concept") {
+                setProgressSteps((prev) => [
+                  ...prev,
+                  { step: "creating_concept", message: event.message, done: false },
+                ]);
+              } else if (event.step === "concept_created") {
+                setProgressSteps((prev) => [
+                  ...prev.map((s) =>
+                    s.step === "creating_concept"
+                      ? { ...s, done: true, message: "Concept created" }
+                      : s
+                  ),
+                  {
+                    step: "concept_created",
+                    message: event.concept_name,
+                    done: true,
+                    job_id: event.job_id,
+                    concept_name: event.concept_name,
+                    images_count: event.images_count,
+                  },
+                ]);
+                redirectJobId = event.job_id;
+              }
+            } catch (parseErr) {
+              if (parseErr instanceof Error && parseErr.message !== line) throw parseErr;
+            }
+          }
+        }
+
+        if (redirectJobId) {
+          // Show "redirecting" step briefly then navigate
+          setProgressSteps((prev) => [
+            ...prev,
+            { step: "redirecting", message: "Loading concept page...", done: false },
+          ]);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          router.push(`/images/${redirectJobId}`);
+        }
         return;
       }
 
-      const body: Record<string, unknown> = {
+      const reqBody: Record<string, unknown> = {
         mode,
         product,
         count,
       };
 
-      if (mode === "from_organic" && organicText) body.organic_text = organicText;
-      if (mode === "from_research" && researchText) body.research_text = researchText;
-      if (mode === "from_template" && selectedTemplates.length > 0) body.template_ids = selectedTemplates;
-      if (selectedSegment) body.segment_id = selectedSegment;
+      if (mode === "from_organic" && organicText) reqBody.organic_text = organicText;
+      if (mode === "from_research" && researchText) reqBody.research_text = researchText;
+      if (mode === "from_template" && selectedTemplates.length > 0) reqBody.template_ids = selectedTemplates;
+      if (selectedSegment) reqBody.segment_id = selectedSegment;
+
+      // Initialize progress steps
+      setProgressSteps([
+        { step: "generating", message: "Generating concepts with AI...", done: false },
+      ]);
 
       const res = await fetch("/api/brainstorm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(reqBody),
       });
 
       if (!res.ok) {
@@ -238,11 +333,59 @@ export default function BrainstormGenerate() {
         throw new Error(data.error || "Generation failed");
       }
 
-      const data = await res.json();
-      setProposals(data.proposals);
-      setCost(data.cost);
-      setExistingConceptsCount(data.existing_concepts_count ?? 0);
-      setPhase("proposals");
+      // Read NDJSON stream for real-time progress
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop()!;
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+
+            if (event.step === "error") {
+              throw new Error(event.message);
+            }
+
+            if (event.step === "generating") {
+              setProgressSteps([
+                { step: "generating", message: event.message, done: false },
+              ]);
+            } else if (event.step === "generated") {
+              setProgressSteps((prev) =>
+                prev.map((s) => (s.step === "generating" ? { ...s, done: true, message: event.message } : s))
+              );
+            } else if (event.step === "parsing") {
+              setProgressSteps((prev) => [
+                ...prev,
+                { step: "parsing", message: event.message, done: false },
+              ]);
+            } else if (event.step === "done") {
+              setProgressSteps((prev) => [
+                ...prev.map((s) => (s.step === "parsing" ? { ...s, done: true, message: "Proposals parsed" } : s)),
+                { step: "done", message: event.message, done: true },
+              ]);
+
+              setProposals(event.proposals);
+              setCost(event.cost);
+              setExistingConceptsCount(event.existing_concepts_count ?? 0);
+
+              // Brief pause to show completion before switching to proposals view
+              await new Promise((resolve) => setTimeout(resolve, 400));
+              setPhase("proposals");
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== line) throw parseErr;
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setPhase("configure");
@@ -776,20 +919,42 @@ export default function BrainstormGenerate() {
         </div>
       )}
 
-      {/* Phase: Loading */}
-      {phase === "loading" && (
+      {/* Phase: Loading — checklist progress for all modes */}
+      {phase === "loading" && progressSteps.length > 0 ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="w-full max-w-sm space-y-3">
+            {progressSteps.map((s, i) => (
+              <div key={i} className="flex items-start gap-3">
+                {s.done ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                ) : (
+                  <Loader2 className="w-5 h-5 text-indigo-500 animate-spin shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-sm", s.done ? "text-gray-500" : "text-gray-800 font-medium")}>
+                    {s.message}
+                  </p>
+                  {s.step === "concept_created" && s.images_count && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {s.images_count} images will be generated on the next page
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : phase === "loading" ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
           <p className="text-sm text-gray-600 animate-pulse">
             {activeLoadingMessages[loadingMsg]}
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            {mode === "from_competitor_ad"
-              ? "This may take a minute — analyzing image and generating ads..."
-              : "This usually takes 10-20 seconds"}
+            This usually takes 10-20 seconds
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Phase: Proposals */}
       {phase === "proposals" && (

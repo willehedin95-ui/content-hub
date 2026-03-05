@@ -102,6 +102,12 @@ async function doPublish(
     html = html.replace(/ data-cc-hidden(?:="[^"]*")?/g, "");
     html = html.replace(/ contenteditable="[^"]*"/g, "");
 
+    // Report progress: optimizing images
+    await db
+      .from("translations")
+      .update({ publish_step: "optimizing_images" })
+      .eq("id", translationId);
+
     // Optimize images
     const imageResult = await optimizeImages(html, slugPrefix);
 
@@ -145,6 +151,12 @@ async function doPublish(
       excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
     };
 
+    // Report progress: deploying to Cloudflare
+    await db
+      .from("translations")
+      .update({ publish_step: "deploying" })
+      .eq("id", translationId);
+
     const result = await publishPage(
       html,
       slug,
@@ -160,6 +172,7 @@ async function doPublish(
         status: "published",
         published_url: result.url.trim(),
         publish_error: null,
+        publish_step: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", translationId);
@@ -172,6 +185,7 @@ async function doPublish(
       .update({
         status: "error",
         publish_error: message,
+        publish_step: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", translationId);

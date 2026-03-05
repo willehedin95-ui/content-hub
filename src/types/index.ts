@@ -262,6 +262,11 @@ export interface ImageJob {
   // Per-language translated ad copy with quality scores (stored as JSON in DB)
   ad_copy_translations?: ConceptCopyTranslations;
   compliance_result?: ComplianceResult | null;
+  pending_competitor_gen?: {
+    image_prompts: Array<{ prompt: string; hook_text: string; headline_text: string }>;
+    competitor_image_url: string;
+    product_hero_urls: string[];
+  } | null;
 }
 
 export interface SourceImage {

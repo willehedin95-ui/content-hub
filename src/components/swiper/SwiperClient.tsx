@@ -7,6 +7,7 @@ import {
   Loader2,
   AlertCircle,
   RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 
 interface ProductWithImages {
@@ -31,6 +32,10 @@ export default function SwiperClient({ products }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Progress steps
+  type SwipeStep = { label: string; done: boolean };
+  const [steps, setSteps] = useState<SwipeStep[]>([]);
+
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
   async function safeJson<T>(res: Response, fallbackMsg: string): Promise<T> {
@@ -54,6 +59,9 @@ export default function SwiperClient({ products }: Props) {
     if (!url.trim() || !selectedProductId) return;
     setError(null);
     setSubmitting(true);
+    setSteps([
+      { label: "Fetching competitor page...", done: false },
+    ]);
 
     try {
       // Step 1: Fetch the competitor page
@@ -67,6 +75,11 @@ export default function SwiperClient({ products }: Props) {
         fetchRes,
         "Failed to fetch URL"
       );
+
+      setSteps([
+        { label: "Page fetched", done: true },
+        { label: "Creating swipe job...", done: false },
+      ]);
 
       // Derive name/slug from title if not set
       const name = pageName.trim() || title || url.trim();
@@ -101,14 +114,22 @@ export default function SwiperClient({ products }: Props) {
         "Failed to create swipe job"
       );
 
+      setSteps([
+        { label: "Page fetched", done: true },
+        { label: "Swipe job created", done: true },
+        { label: "Redirecting to page...", done: false },
+      ]);
+
       // Redirect to page detail — ImportProgressPanel shows progress there
       if (pageId) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
         router.push(`/pages/${pageId}`);
       } else {
         throw new Error("Page was not created. Please try again.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      setSteps([]);
       setSubmitting(false);
     }
   }
@@ -247,7 +268,7 @@ export default function SwiperClient({ products }: Props) {
           {submitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Fetching page...
+              Swiping...
             </>
           ) : (
             <>
@@ -257,10 +278,24 @@ export default function SwiperClient({ products }: Props) {
           )}
         </button>
 
-        {submitting && (
-          <p className="text-xs text-gray-400 text-center">
-            The page will be created immediately and you can track the rewrite progress from the page detail view.
-          </p>
+        {submitting && steps.length > 0 && (
+          <div className="space-y-2 mt-2">
+            {steps.map((s, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {s.done ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                ) : (
+                  <Loader2 className="w-4 h-4 text-indigo-500 animate-spin shrink-0" />
+                )}
+                <span className={`text-xs ${s.done ? "text-gray-400" : "text-gray-700 font-medium"}`}>
+                  {s.label}
+                </span>
+              </div>
+            ))}
+            <p className="text-xs text-gray-400 mt-1">
+              You&apos;ll be redirected to track the Claude rewrite progress.
+            </p>
+          </div>
         )}
       </div>
     </div>

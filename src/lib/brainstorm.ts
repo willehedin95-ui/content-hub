@@ -1023,9 +1023,10 @@ Generate 3-5 prompts for the Nano Banana AI image generator (nano-banana-2) that
 - Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
 - Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
 - Describe the MOOD last (clinical, warm, urgent, calm, editorial)
-- Do NOT include text/copy in the prompt — text overlays are added separately
+- **TEXT IN IMAGES — CRITICAL**: The competitor image is passed as a reference to Nano Banana. If the competitor ad has text that is PART OF THE IMAGE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product in the prompt. Otherwise Nano Banana will just reproduce the competitor's original text from the reference image. Example: if competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading '[OUR ADAPTED HOOK]' in the same casual marker style". Each image_prompt variation should use a different hook_text, and that SAME text must appear in the Nano Banana prompt.
+- Do NOT include design-overlay text (bold headlines, CTA buttons, price tags) — those are added separately in post-production
 - Focus on reproducing the competitor's visual STYLE, not their specific product
-- The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely
+- The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely, OVERRIDING any competitor-specific elements (text, product, branding) with our adapted versions
 - If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
 - If the competitor ad uses a product shot, describe how our product should be positioned in the same style
 
@@ -1070,8 +1071,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
   },
   "image_prompts": [
     {
-      "prompt": "Nano Banana prompt (2-4 dense sentences, subject first, specific lighting/texture/mood)",
-      "hook_text": "Main text overlay for the ad image (the primary hook/headline that will be placed on the image)",
+      "prompt": "Nano Banana prompt (2-4 dense sentences, subject first, specific lighting/texture/mood). IMPORTANT: if the competitor ad has text baked into the image (handwritten, marker, tattoo, sign), your prompt MUST include the adapted text for our product — otherwise Nano Banana copies the competitor's text from the reference image.",
+      "hook_text": "Main text overlay for the ad image — if this text appears IN the image (handwritten etc.), it must also be described in the prompt field above",
       "headline_text": "Secondary text line (subheadline, CTA, or supporting text)"
     }
   ]
@@ -1083,6 +1084,7 @@ CRITICAL RULES:
 - NEVER invent medical claims — only use claims from our product brief
 - The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product
 - The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
+- **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST explicitly describe the adapted text content for our product. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly 3-5 entries in the image_prompts array, each with a different hook_text variation
 - Each image prompt should describe a slightly different composition or angle while maintaining the competitor's core visual style`;

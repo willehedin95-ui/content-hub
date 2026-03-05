@@ -16,7 +16,7 @@ export async function GET(
 
   const { data, error } = await db
     .from("translations")
-    .select("status, published_url, publish_error")
+    .select("status, published_url, publish_error, publish_step")
     .eq("id", translationId)
     .single();
 
@@ -28,5 +28,6 @@ export async function GET(
     status: data.status,
     published_url: data.published_url,
     publish_error: data.publish_error,
+    publish_step: data.publish_step,
   });
 }

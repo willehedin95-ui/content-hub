@@ -40,7 +40,7 @@ export default function EditableTags({ entityId, entityType, initialTags }: Prop
         onClick={() => setEditing(true)}
       >
         {tags.length > 0 ? (
-          tags.map((tag) => <TagBadge key={tag} tag={tag} />)
+          tags.map((tag, i) => <TagBadge key={`${tag}-${i}`} tag={tag} />)
         ) : (
           <span className="text-xs text-gray-400 group-hover:text-indigo-600 transition-colors">
             + Add tags

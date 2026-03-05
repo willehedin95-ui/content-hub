@@ -15,6 +15,7 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
   const [status, setStatus] = useState<"starting" | "publishing" | "published" | "error">("starting");
   const [publishedUrl, setPublishedUrl] = useState("");
   const [error, setError] = useState("");
+  const [publishStep, setPublishStep] = useState<string | null>(null);
   const didStart = useRef(false);
   const pollingRef = useRef(false);
 
@@ -22,6 +23,7 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
     setStatus("starting");
     setPublishedUrl("");
     setError("");
+    setPublishStep(null);
     didStart.current = false;
     pollingRef.current = false;
   }, []);
@@ -71,7 +73,12 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
 
             const data = await pollRes.json();
 
+            if (data.publish_step) {
+              setPublishStep(data.publish_step);
+            }
+
             if (data.status === "published") {
+              setPublishStep(null);
               setPublishedUrl(data.published_url || "");
               setStatus("published");
               pollingRef.current = false;
@@ -79,6 +86,7 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
             }
 
             if (data.status === "error") {
+              setPublishStep(null);
               setError(data.publish_error || "Publish failed");
               setStatus("error");
               pollingRef.current = false;
@@ -88,6 +96,7 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
             // If status is no longer "publishing" (e.g. "translated" from recovery),
             // treat as error
             if (data.status !== "publishing") {
+              setPublishStep(null);
               setError("Publish was interrupted");
               setStatus("error");
               pollingRef.current = false;
@@ -156,14 +165,40 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
                 : "Publishing..."}
           </h3>
 
-          {/* Message */}
-          <p className="text-center text-sm text-gray-500 mb-5">
-            {status === "published"
-              ? "Your page is now live"
-              : status === "error"
-                ? error
-                : "Optimizing images and deploying to Cloudflare Pages..."}
-          </p>
+          {/* Message / Steps */}
+          {status === "published" ? (
+            <p className="text-center text-sm text-gray-500 mb-5">Your page is now live</p>
+          ) : status === "error" ? (
+            <p className="text-center text-sm text-gray-500 mb-5">{error}</p>
+          ) : isInProgress && (publishStep || status === "publishing") ? (
+            <div className="space-y-2 mb-5">
+              {[
+                { key: "optimizing_images", label: "Optimizing images" },
+                { key: "deploying", label: "Deploying to Cloudflare Pages" },
+              ].map((step) => {
+                const isDone =
+                  step.key === "optimizing_images" && (publishStep === "deploying");
+                const isActive = publishStep === step.key;
+                const isPending = !isDone && !isActive;
+                return (
+                  <div key={step.key} className="flex items-center gap-2 justify-center">
+                    {isDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : isActive ? (
+                      <Loader2 className="w-4 h-4 text-indigo-500 animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-gray-200 shrink-0" />
+                    )}
+                    <span className={`text-sm ${isDone ? "text-gray-400" : isActive ? "text-gray-700 font-medium" : isPending ? "text-gray-300" : ""}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-center text-sm text-gray-500 mb-5">Starting publish...</p>
+          )}
 
           {/* Navigation note */}
           {isInProgress && (
