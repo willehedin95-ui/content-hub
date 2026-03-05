@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -18,6 +18,7 @@ import {
   ThumbsDown,
   Upload,
   X,
+  Link,
   Copy,
 } from "lucide-react";
 import {
@@ -77,7 +78,9 @@ export default function BrainstormGenerate() {
   const [selectedTemplates, setSelectedTemplates] = useState<AdTemplate[]>([]);
   const [competitorImage, setCompetitorImage] = useState<File | null>(null);
   const [competitorImagePreview, setCompetitorImagePreview] = useState<string>("");
+  const [competitorImageUrl, setCompetitorImageUrl] = useState<string>("");
   const [competitorAdCopy, setCompetitorAdCopy] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
@@ -141,16 +144,21 @@ export default function BrainstormGenerate() {
     setLoadingMsg(0);
 
     try {
-      // Competitor ad flow: upload image → brainstorm → redirect to image job
-      if (mode === "from_competitor_ad" && competitorImage) {
-        // Step 1: Upload image to temp storage
-        const formData = new FormData();
-        formData.append("file", competitorImage);
-        const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
-        if (!uploadRes.ok) throw new Error("Failed to upload image");
-        const { url: imageUrl } = await uploadRes.json();
+      // Competitor ad flow: upload image (if file) → brainstorm → redirect to image job
+      if (mode === "from_competitor_ad" && (competitorImage || competitorImageUrl)) {
+        let imageUrl = competitorImageUrl;
 
-        // Step 2: Call brainstorm API with competitor image URL
+        // If user uploaded a file, upload it to temp storage first
+        if (competitorImage) {
+          const formData = new FormData();
+          formData.append("file", competitorImage);
+          const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
+          if (!uploadRes.ok) throw new Error("Failed to upload image");
+          const uploadData = await uploadRes.json();
+          imageUrl = uploadData.url;
+        }
+
+        // Call brainstorm API with competitor image URL
         const res = await fetch("/api/brainstorm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -168,9 +176,9 @@ export default function BrainstormGenerate() {
         }
         const data = await res.json();
 
-        // Step 3: Redirect to the image job detail page
+        // Redirect to the image job detail page
         router.push(`/images/${data.job_id}`);
-        return; // Skip the normal proposals flow
+        return;
       }
 
       const body: Record<string, unknown> = {
@@ -409,49 +417,107 @@ export default function BrainstormGenerate() {
           {/* Competitor ad upload (for from_competitor_ad) */}
           {mode === "from_competitor_ad" && (
             <div className="space-y-4">
-              {/* Image upload area */}
+              {/* Image input area */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Competitor Ad Image
                 </label>
-                {!competitorImage ? (
-                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors">
-                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                    <span className="text-sm text-gray-500">
-                      Drop competitor ad image or click to upload
-                    </span>
-                    <span className="text-xs text-gray-400 mt-1">
-                      PNG, JPG, or WebP
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setCompetitorImage(file);
-                          const url = URL.createObjectURL(file);
-                          setCompetitorImagePreview(url);
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setCompetitorImage(file);
+                      setCompetitorImageUrl("");
+                      setCompetitorImagePreview(URL.createObjectURL(file));
+                    }
+                    e.target.value = "";
+                  }}
+                />
+                {!competitorImage && !competitorImageUrl ? (
+                  <div className="space-y-3">
+                    {/* Upload / paste drop zone */}
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onPaste={(e) => {
+                        const items = e.clipboardData?.items;
+                        if (!items) return;
+                        for (const item of Array.from(items)) {
+                          if (item.type.startsWith("image/")) {
+                            e.preventDefault();
+                            const file = item.getAsFile();
+                            if (file) {
+                              setCompetitorImage(file);
+                              setCompetitorImageUrl("");
+                              setCompetitorImagePreview(URL.createObjectURL(file));
+                            }
+                            return;
+                          }
                         }
                       }}
-                    />
-                  </label>
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file && file.type.startsWith("image/")) {
+                          setCompetitorImage(file);
+                          setCompetitorImageUrl("");
+                          setCompetitorImagePreview(URL.createObjectURL(file));
+                        }
+                      }}
+                      tabIndex={0}
+                      className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    >
+                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-500">
+                        Click to upload, drag & drop, or paste from clipboard
+                      </span>
+                      <span className="text-xs text-gray-400 mt-1">
+                        PNG, JPG, or WebP
+                      </span>
+                    </div>
+
+                    {/* OR divider */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400">or paste image URL</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+
+                    {/* URL input */}
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="url"
+                          value={competitorImageUrl}
+                          onChange={(e) => setCompetitorImageUrl(e.target.value)}
+                          placeholder="https://example.com/ad-image.jpg"
+                          className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="relative inline-block">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={competitorImagePreview}
+                      src={competitorImagePreview || competitorImageUrl}
                       alt="Competitor ad preview"
                       className="max-h-64 rounded-xl border border-gray-200 object-contain"
                     />
                     <button
                       onClick={() => {
-                        setCompetitorImage(null);
                         if (competitorImagePreview) {
                           URL.revokeObjectURL(competitorImagePreview);
                         }
+                        setCompetitorImage(null);
                         setCompetitorImagePreview("");
+                        setCompetitorImageUrl("");
                       }}
                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
                     >
@@ -551,7 +617,7 @@ export default function BrainstormGenerate() {
             disabled={
               (mode === "from_organic" && !organicText.trim()) ||
               (mode === "from_research" && !researchText.trim()) ||
-              (mode === "from_competitor_ad" && !competitorImage)
+              (mode === "from_competitor_ad" && !competitorImage && !competitorImageUrl.trim())
             }
             className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
