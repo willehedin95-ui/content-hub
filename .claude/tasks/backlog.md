@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-04
+Updated: 2026-03-05
 
 ## P0 — Blockers
 - [ ] Fix AB test build failure — missing route modules `/api/ab-tests/[id]/sync-conversions` and `/api/ab-tests` (pre-existing, blocks production build)
@@ -40,6 +40,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Auto-suggest creative refresh — Telegram brief shows "Creative Refresh Needed" section with link to brainstorm when fatigue detected (done 2026-03-03)
 - [x] Budget consolidation — covered by existing efficiency scoring + budget shift approval flow (dynamic approach is better than fixed tiers) (done 2026-03-03)
 - [x] Learning documentation — `ad_learnings` table + API, auto-populated on bleeder pause, winner graduation, and budget shifts. Dashboard shows "Recent Actions" section (done 2026-03-03)
+- [x] Creative Testing Learnings — concept_learnings table, AI-generated learnings on kill/promotion, /learnings page, brainstorm injection, backfill script (done 2026-03-05)
 
 ## P3 — Backlog
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
@@ -48,6 +49,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] Creative Testing Learnings feedback loop — AI auto-generates structured learnings on ad kill/promotion, feeds back into brainstorm prompts (done 2026-03-05)
 - [x] "From Competitor Ad" brainstorm mode — upload competitor ad image, Claude Vision analyzes, generates adapted concepts + images (done 2026-03-04)
 - [x] Competitor ad upload UX — click/drag/paste/URL input with preview (done 2026-03-04)
 - [x] Market-aware Smart Iterate — pass market param to iteration suggestions (done 2026-03-04)
