@@ -25,6 +25,7 @@ const VALID_MODES: BrainstormMode[] = [
   "unaware",
   "from_template",
   "from_competitor_ad",
+  "video_ugc",
 ];
 
 // POST /api/brainstorm — generate concept proposals from brainstorm modes
@@ -340,6 +341,133 @@ export async function POST(req: NextRequest) {
         const detail = err instanceof Error ? err.message : String(err);
         console.error("[brainstorm/competitor] Error:", detail);
         await emit({ step: "error", message: `Competitor ad brainstorm failed: ${detail}` });
+        await writer.close();
+      }
+    })();
+
+    return new Response(stream.readable, {
+      headers: { "Content-Type": "application/x-ndjson" },
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // VIDEO UGC — separate code path (video concept generation)
+  // -----------------------------------------------------------------------
+  if (mode === "video_ugc") {
+    const encoder = new TextEncoder();
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+
+    async function emit(data: object) {
+      await writer.write(encoder.encode(JSON.stringify(data) + "\n"));
+    }
+
+    (async () => {
+      try {
+        const { buildVideoUgcSystemPrompt, buildVideoUgcUserPrompt, loadVideoUgcContext } =
+          await import("@/lib/video-brainstorm");
+
+        await emit({ step: "generating", message: "Generating video concepts..." });
+
+        const context = await loadVideoUgcContext(productSlug);
+
+        const systemPrompt = buildVideoUgcSystemPrompt(
+          productSlug,
+          context.productBrief,
+          context.guidelines,
+          context.hookInspiration,
+          context.learningsContext,
+          context.existingCharacters
+        );
+
+        const userPrompt = buildVideoUgcUserPrompt(
+          body.request ?? "",
+          count,
+          context.existingConcepts,
+          rejectedConcepts.map((r) => `${r.angle ?? "?"} / ${r.awareness_level ?? "?"}: ${r.concept_description ?? ""}`)
+        );
+
+        const client = new Anthropic({ apiKey });
+        const response = await client.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 16000,
+          temperature: 0.8,
+          system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: userPrompt }],
+        });
+
+        const rawContent =
+          response.content[0]?.type === "text"
+            ? response.content[0].text.trim()
+            : "";
+
+        if (!rawContent) {
+          await emit({ step: "error", message: "No response from AI" });
+          await writer.close();
+          return;
+        }
+
+        // Parse JSON (strip markdown fences — Haiku quirk)
+        let parsed: { proposals: unknown[] };
+        try {
+          const cleaned = rawContent
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          parsed = JSON.parse(cleaned);
+        } catch (parseErr) {
+          const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          console.error("[brainstorm/video_ugc] Parse error:", msg, "\nRaw:", rawContent.slice(0, 500));
+          await emit({ step: "error", message: `Failed to parse AI response: ${msg}` });
+          await writer.close();
+          return;
+        }
+
+        if (!parsed.proposals?.length) {
+          await emit({ step: "error", message: "AI returned no video proposals" });
+          await writer.close();
+          return;
+        }
+
+        // Log usage
+        const inputTokens = response.usage.input_tokens;
+        const outputTokens = response.usage.output_tokens;
+        const cacheCreation = (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
+        const cacheRead = (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
+        const costUsd = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
+
+        await db.from("usage_logs").insert({
+          type: "video_brainstorm",
+          page_id: null,
+          translation_id: null,
+          model: CLAUDE_MODEL,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: costUsd,
+          metadata: {
+            purpose: "video_ugc_brainstorm",
+            mode,
+            product: productSlug,
+            proposals_count: parsed.proposals.length,
+          },
+        });
+
+        await emit({
+          step: "done",
+          proposals: parsed.proposals,
+          type: "video_ugc",
+          cost: {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cost_usd: costUsd,
+          },
+        });
+
+        await writer.close();
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error("[brainstorm/video_ugc] Error:", detail);
+        await emit({ step: "error", message: `Video UGC brainstorm failed: ${detail}` });
         await writer.close();
       }
     })();

@@ -620,7 +620,7 @@ export interface ImageGenerationState {
 
 // --- Brainstorm Types ---
 
-export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template" | "from_competitor_ad";
+export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template" | "from_competitor_ad" | "video_ugc";
 export type UnawareAdType = "straddle" | "symptom" | "worldview_porn" | "story";
 export type AdTemplate =
   | "before_after"

@@ -1115,6 +1115,9 @@ const SYSTEM_BUILDERS: Record<
   unaware: buildUnawareSystem,
   from_template: buildFromTemplateSystem,
   from_competitor_ad: buildFromCompetitorAdSystem,
+  video_ugc: () => {
+    throw new Error("video_ugc mode uses its own prompt builder — see video-brainstorm.ts");
+  },
 };
 
 /**
@@ -1371,6 +1374,12 @@ export const BRAINSTORM_MODES: {
     label: "From Competitor Ad",
     description: "Upload a winning competitor ad — AI reproduces its format for your product",
     icon: "Copy",
+  },
+  {
+    value: "video_ugc",
+    label: "Video UGC",
+    description: "Generate AI video UGC concepts with scripts and Sora prompts",
+    icon: "Video",
   },
 ];
 
