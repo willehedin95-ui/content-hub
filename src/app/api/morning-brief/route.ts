@@ -751,7 +751,7 @@ export async function GET(req: NextRequest) {
   const adDiagnostics: AdDiagnostic[] = [];
 
   // Aggregate 7-day metrics per ad
-  const adAgg = new Map<string, { spend: number; impressions: number; clicks: number; purchases: number; ad_name: string | null; adset_id: string | null; adset_name: string | null; campaign_name: string | null }>();
+  const adAgg = new Map<string, { spend: number; impressions: number; clicks: number; purchases: number; days: Set<string>; ad_name: string | null; adset_id: string | null; adset_name: string | null; campaign_name: string | null }>();
   for (const r of currentRows) {
     const existing = adAgg.get(r.meta_ad_id);
     if (existing) {
@@ -759,12 +759,14 @@ export async function GET(req: NextRequest) {
       existing.impressions += Number(r.impressions);
       existing.clicks += Number(r.clicks);
       existing.purchases += Number(r.purchases);
+      existing.days.add(r.date);
     } else {
       adAgg.set(r.meta_ad_id, {
         spend: Number(r.spend),
         impressions: Number(r.impressions),
         clicks: Number(r.clicks),
         purchases: Number(r.purchases),
+        days: new Set([r.date]),
         ad_name: r.ad_name,
         adset_id: r.adset_id,
         adset_name: r.adset_name,
@@ -778,8 +780,7 @@ export async function GET(req: NextRequest) {
   for (const [adId, agg] of adAgg) {
     if (agg.spend < 10 || agg.impressions < 500) continue;
     // Need at least 3 days of data to be meaningful
-    const dayCount = currentRows.filter((r) => r.meta_ad_id === adId).length;
-    if (dayCount < 3) continue;
+    if (agg.days.size < 3) continue;
     const ctr = agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : 0;
     const cpa = agg.purchases > 0 ? agg.spend / agg.purchases : null;
     qualifyingAds.push({ ad_id: adId, ctr, cpa, spend: agg.spend, impressions: agg.impressions, purchases: agg.purchases, ad_name: agg.ad_name, adset_id: agg.adset_id, adset_name: agg.adset_name, campaign_name: agg.campaign_name });
@@ -808,8 +809,10 @@ export async function GET(req: NextRequest) {
     let bucket: AdDiagnostic["bucket"];
     if (isHighCtr && isBadConversion) {
       bucket = "landing_page_problem";
-    } else if (isLowCtr) {
-      bucket = "creative_problem";
+    } else if (isLowCtr && isGoodConversion) {
+      bucket = "creative_problem"; // clicks are rare but they convert — creative is the issue
+    } else if (isLowCtr && isBadConversion) {
+      bucket = "everything_problem"; // both signals are bad
     } else if (isHighCtr && isGoodConversion) {
       bucket = "winner"; // already caught by existing winner detection
     } else if (!isHighCtr && !isLowCtr && isBadConversion) {
@@ -1203,7 +1206,7 @@ export async function GET(req: NextRequest) {
         id: `diag_lp_${diag.ad_id}`,
         type: "landing_page",
         category: "Creative",
-        title: `LP problem: "${adLabel}" — ${diag.ctr_7d}% CTR but ${diag.cpa_7d !== null ? diag.cpa_7d + " kr" : "0"} CPA`,
+        title: `LP problem: "${adLabel}" — ${diag.ctr_7d}% CTR but ${diag.cpa_7d !== null ? diag.cpa_7d + " kr CPA" : "no sales"}`,
         why: `This ad has above-average CTR (${diag.ctr_7d}% — top 25% of your ads) but ${diag.cpa_7d !== null ? "CPA is " + diag.cpa_7d + " kr (target: " + diag.target_cpa + " kr)" : "zero purchases"} over 7 days with ${diag.spend_7d} kr spent. People click but don't buy — the landing page isn't converting.`,
         guidance: "The ad creative is doing its job — it gets attention and clicks. The problem is what happens after the click. Try a different landing page, or review the current one for offer mismatch, slow load time, or weak CTA.",
         expected_impact: "Lower CPA by improving post-click conversion",
@@ -1217,6 +1220,10 @@ export async function GET(req: NextRequest) {
         concept_name: enrichment?.concept_name ?? null,
       });
     } else if (diag.bucket === "creative_problem") {
+      // Don't duplicate if already flagged as needing refresh
+      const alreadyRefresh = actionCards.some((c) => c.type === "refresh" && c.action_data.ad_id === diag.ad_id);
+      if (alreadyRefresh) continue;
+
       actionCards.push({
         id: `diag_creative_${diag.ad_id}`,
         type: "refresh",
