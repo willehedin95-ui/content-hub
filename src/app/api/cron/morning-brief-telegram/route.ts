@@ -42,6 +42,15 @@ interface BriefResponse {
       recommended_budget_share: number;
       recommendation: string;
     }>;
+    ad_diagnostics?: Array<{
+      ad_name: string | null;
+      bucket: string;
+      ctr_7d: number;
+      cpa_7d: number | null;
+      spend_7d: number;
+      purchases_7d: number;
+      target_cpa: number | null;
+    }>;
   };
 }
 
@@ -106,6 +115,31 @@ function formatBrief(data: BriefResponse): string {
       lines.push(`  ${icon} ${f.ad_name || "Unnamed"}: ${f.detail}`);
     }
     lines.push("");
+  }
+
+  // Ad diagnostics (structural)
+  const diagnostics = data.signals.ad_diagnostics;
+  if (diagnostics && diagnostics.length > 0) {
+    const lpProblems = diagnostics.filter((d) => d.bucket === "landing_page_problem");
+    const creativeProblems = diagnostics.filter((d) => d.bucket === "creative_problem");
+
+    if (lpProblems.length > 0) {
+      lines.push("");
+      lines.push("🟣 LANDING PAGE PROBLEMS");
+      lines.push("  High CTR but bad conversion — swap the page, not the ad");
+      for (const d of lpProblems) {
+        lines.push(`  • ${d.ad_name || "Unnamed"}: ${d.ctr_7d}% CTR, ${d.cpa_7d !== null ? d.cpa_7d + " kr CPA" : "0 sales"} (target: ${d.target_cpa} kr)`);
+      }
+    }
+
+    if (creativeProblems.length > 0) {
+      lines.push("");
+      lines.push("🎨 WEAK HOOKS");
+      lines.push("  Low CTR — need better creative");
+      for (const d of creativeProblems) {
+        lines.push(`  • ${d.ad_name || "Unnamed"}: ${d.ctr_7d}% CTR (bottom 25%), ${d.spend_7d} kr spent`);
+      }
+    }
   }
 
   // Winners
