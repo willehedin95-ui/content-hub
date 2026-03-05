@@ -916,3 +916,148 @@ export interface AutoLiveTestingConcept extends AutoPipelineConcept {
   suggestion_action: "kill" | "scale" | null;
   suggestion_markets: string[] | null;
 }
+
+// --- Video UGC Types ---
+
+export type VideoJobStatus =
+  | "draft"
+  | "generating"
+  | "generated"
+  | "translating"
+  | "translated"
+  | "pushing"
+  | "live"
+  | "killed";
+
+export type VideoTranslationStatus =
+  | "pending"
+  | "translating"
+  | "generating"
+  | "completed"
+  | "failed";
+
+export type SourceVideoStatus = "pending" | "generating" | "completed" | "failed";
+
+export type VideoHookType =
+  | "problem_solution"
+  | "promise"
+  | "secret"
+  | "discovery"
+  | "social_proof"
+  | "curiosity"
+  | "confrontational";
+
+export type ScriptStructure =
+  | "testimonial"
+  | "insider_secret"
+  | "discovery"
+  | "before_after"
+  | "street_interview"
+  | "podcast";
+
+export type VideoFormatType =
+  | "selfie_testimonial"
+  | "street_interview"
+  | "dorm_confessional"
+  | "professor_lecture"
+  | "grocery_store"
+  | "grwm"
+  | "podcast_clip";
+
+export type DeliveryStyle =
+  | "conversational"
+  | "energetic"
+  | "conspiratorial"
+  | "emotional"
+  | "authority";
+
+export interface VideoJob {
+  id: string;
+  product: Product;
+  concept_name: string;
+  concept_number: number | null;
+  hook_type: VideoHookType | null;
+  script_structure: ScriptStructure | null;
+  format_type: VideoFormatType | null;
+  script: string | null;
+  sora_prompt: string | null;
+  character_description: string | null;
+  character_tag: string | null;
+  product_description: string | null;
+  duration_seconds: number;
+  target_languages: Language[];
+  status: VideoJobStatus;
+  brainstorm_session_id: string | null;
+  awareness_level: string | null;
+  style_notes: string | null;
+  ad_copy_primary: string[];
+  ad_copy_headline: string[];
+  landing_page_url: string | null;
+  created_at: string;
+  updated_at: string;
+  source_videos?: SourceVideo[];
+  video_translations?: VideoTranslation[];
+}
+
+export interface SourceVideo {
+  id: string;
+  video_job_id: string;
+  video_url: string | null;
+  kie_task_id: string | null;
+  thumbnail_url: string | null;
+  duration_seconds: number | null;
+  resolution: string;
+  model: string;
+  status: SourceVideoStatus;
+  error_message: string | null;
+  generation_params: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface VideoTranslation {
+  id: string;
+  video_job_id: string;
+  source_video_id: string | null;
+  language: Language;
+  translated_script: string | null;
+  translated_sora_prompt: string | null;
+  video_url: string | null;
+  kie_task_id: string | null;
+  status: VideoTranslationStatus;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface VideoCharacter {
+  id: string;
+  name: string;
+  sora_tag: string | null;
+  character_description: string | null;
+  reference_image_url: string | null;
+  product: string | null;
+  created_at: string;
+}
+
+export interface VideoProduct {
+  id: string;
+  product: string;
+  sora_tag: string | null;
+  product_description: string | null;
+  reference_image_url: string | null;
+  animated_video_url: string | null;
+  created_at: string;
+}
+
+export interface VideoConceptProposal {
+  concept_name: string;
+  format_type: VideoFormatType;
+  hook_type: VideoHookType;
+  script_structure: ScriptStructure;
+  awareness_level: string;
+  delivery_style: DeliveryStyle;
+  script: string;
+  character_description: string;
+  sora_prompt: string;
+  ad_copy_primary: string;
+  ad_copy_headline: string;
+}

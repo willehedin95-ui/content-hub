@@ -62,3 +62,39 @@ export const REPTILE_TRIGGERS = [
 
 export type ReptileTriggerId = (typeof REPTILE_TRIGGERS)[number]["id"];
 
+// --- Video UGC Constants ---
+
+export const KIE_VIDEO_MODEL = "sora-2-pro";
+export const VIDEO_STORAGE_BUCKET = "videos";
+
+export const VIDEO_FORMATS = [
+  { id: "selfie_testimonial", label: "Selfie Testimonial", description: "Single person, direct to camera, iPhone selfie in bedroom/car/bathroom" },
+  { id: "street_interview", label: "Street Interview", description: "Two people, vox pop style, interviewer off-camera" },
+  { id: "dorm_confessional", label: "Dorm Confessional", description: "Messy room, night, phone on desk, late-night realization" },
+  { id: "professor_lecture", label: "Professor Lecture", description: "Lecture hall, student secretly filming, authority + curiosity gap" },
+  { id: "grocery_store", label: "Grocery Store", description: "Grocery aisle, hidden camera style, organic discovery" },
+  { id: "grwm", label: "GRWM", description: "Vanity/bathroom, ring light, beauty/wellness tutorial" },
+  { id: "podcast_clip", label: "Podcast Clip", description: "Home studio, 2 hosts, professional camera, authority/education" },
+] as const;
+
+export type VideoFormatId = (typeof VIDEO_FORMATS)[number]["id"];
+
+export const HOOK_TYPES = [
+  { id: "problem_solution", label: "Problem-Solution", description: "Opens with relatable complaint, pivots to fix" },
+  { id: "promise", label: "Promise", description: "Opens with bold claim about a result" },
+  { id: "secret", label: "Secret / Insider", description: "Opens with forbidden or insider knowledge" },
+  { id: "discovery", label: "Discovery / Accident", description: "Opens like person just stumbled onto something" },
+  { id: "social_proof", label: "Social Proof / Numbers", description: "Opens with statistics or social validation" },
+  { id: "curiosity", label: "Curiosity Gap", description: "Opens with question that demands answer" },
+  { id: "confrontational", label: "Confrontational", description: "Opens with controversial or provocative statement" },
+] as const;
+
+export const SCRIPT_STRUCTURES = [
+  { id: "testimonial", label: "Testimonial" },
+  { id: "insider_secret", label: "Insider Secret" },
+  { id: "discovery", label: "Discovery / Unboxing" },
+  { id: "before_after", label: "Before/After" },
+  { id: "street_interview", label: "Street Interview" },
+  { id: "podcast", label: "Podcast (Two-Host)" },
+] as const;
+
