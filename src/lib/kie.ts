@@ -149,3 +149,73 @@ export async function generateImage(
   const taskId = await createImageTask(prompt, imageUrls, aspectRatio, "1K");
   return pollTaskResult(taskId);
 }
+
+// --- Video Generation (Sora 2 Pro) ---
+
+export interface VideoGenerationParams {
+  model?: string;
+  size?: string;
+  seconds?: string;
+  style?: string;
+  stylize?: number;
+}
+
+const VIDEO_DEFAULTS: VideoGenerationParams = {
+  model: "sora-2-pro",
+  size: "720x1280",
+  seconds: "12",
+  style: "raw",
+  stylize: 0,
+};
+
+export async function createVideoTask(
+  prompt: string,
+  params: VideoGenerationParams = {}
+): Promise<string> {
+  const merged = { ...VIDEO_DEFAULTS, ...params };
+  const input: Record<string, unknown> = {
+    prompt,
+    size: merged.size,
+    seconds: merged.seconds,
+    style: merged.style,
+    stylize: merged.stylize,
+  };
+
+  return withRetry(
+    async () => {
+      const res = await fetch(`${KIE_API_BASE}/createTask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getApiKey()}`,
+        },
+        body: JSON.stringify({
+          model: merged.model,
+          input,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Kie.ai createVideoTask failed (${res.status}): ${text}`);
+      }
+
+      const data: CreateTaskResponse = await res.json();
+      if (data.code !== 200) {
+        throw new Error(`Kie.ai createVideoTask error: ${data.msg}`);
+      }
+
+      return data.data.taskId;
+    },
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
+}
+
+export async function generateVideo(
+  prompt: string,
+  params: VideoGenerationParams = {}
+): Promise<{ urls: string[]; taskId: string; costTimeMs: number | null }> {
+  const taskId = await createVideoTask(prompt, params);
+  const result = await pollTaskResult(taskId);
+  return { ...result, taskId };
+}
