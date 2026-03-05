@@ -727,6 +727,115 @@ export async function GET(req: NextRequest) {
     return targetCpaMap.get(`${product}:${market}`) ?? null;
   }
 
+  // ── Q10: Ad Diagnostics — Structural Performance Classification ──
+  // Detects steady-state mismatches (not just deterioration over time):
+  // High CTR + bad conversion = landing page problem
+  // Low CTR = hook/creative problem
+  interface AdDiagnostic {
+    ad_id: string;
+    ad_name: string | null;
+    adset_id: string | null;
+    adset_name: string | null;
+    campaign_name: string | null;
+    bucket: "landing_page_problem" | "creative_problem" | "everything_problem" | "winner";
+    ctr_7d: number;
+    cpa_7d: number | null; // null if zero purchases
+    spend_7d: number;
+    purchases_7d: number;
+    impressions_7d: number;
+    ctr_threshold_high: number;
+    ctr_threshold_low: number;
+    target_cpa: number | null;
+  }
+
+  const adDiagnostics: AdDiagnostic[] = [];
+
+  // Aggregate 7-day metrics per ad
+  const adAgg = new Map<string, { spend: number; impressions: number; clicks: number; purchases: number; ad_name: string | null; adset_id: string | null; adset_name: string | null; campaign_name: string | null }>();
+  for (const r of currentRows) {
+    const existing = adAgg.get(r.meta_ad_id);
+    if (existing) {
+      existing.spend += Number(r.spend);
+      existing.impressions += Number(r.impressions);
+      existing.clicks += Number(r.clicks);
+      existing.purchases += Number(r.purchases);
+    } else {
+      adAgg.set(r.meta_ad_id, {
+        spend: Number(r.spend),
+        impressions: Number(r.impressions),
+        clicks: Number(r.clicks),
+        purchases: Number(r.purchases),
+        ad_name: r.ad_name,
+        adset_id: r.adset_id,
+        adset_name: r.adset_name,
+        campaign_name: r.campaign_name,
+      });
+    }
+  }
+
+  // Filter qualifying ads and compute CTR
+  const qualifyingAds: Array<{ ad_id: string; ctr: number; cpa: number | null; spend: number; impressions: number; purchases: number; ad_name: string | null; adset_id: string | null; adset_name: string | null; campaign_name: string | null }> = [];
+  for (const [adId, agg] of adAgg) {
+    if (agg.spend < 10 || agg.impressions < 500) continue;
+    // Need at least 3 days of data to be meaningful
+    const dayCount = currentRows.filter((r) => r.meta_ad_id === adId).length;
+    if (dayCount < 3) continue;
+    const ctr = agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : 0;
+    const cpa = agg.purchases > 0 ? agg.spend / agg.purchases : null;
+    qualifyingAds.push({ ad_id: adId, ctr, cpa, spend: agg.spend, impressions: agg.impressions, purchases: agg.purchases, ad_name: agg.ad_name, adset_id: agg.adset_id, adset_name: agg.adset_name, campaign_name: agg.campaign_name });
+  }
+
+  // Compute percentile thresholds (or fall back to fixed)
+  const sortedCtrs = qualifyingAds.map((a) => a.ctr).sort((a, b) => a - b);
+  const useDynamic = sortedCtrs.length >= 8;
+  const ctrHigh = useDynamic ? percentile(sortedCtrs, 75) : 1.5;
+  const ctrLow = useDynamic ? percentile(sortedCtrs, 25) : 0.8;
+
+  // Classify each ad
+  for (const ad of qualifyingAds) {
+    const pm = ad.adset_id ? adsetProductMarket.get(ad.adset_id) : null;
+    const cpaKey = pm ? `${pm.product}:${pm.market}` : null;
+    const adTargetCpa = cpaKey ? (targetCpaMap.get(cpaKey) ?? null) : null;
+
+    // Skip if no target_cpa configured — can't judge conversion quality
+    if (adTargetCpa === null) continue;
+
+    const isHighCtr = ad.ctr >= ctrHigh;
+    const isLowCtr = ad.ctr <= ctrLow;
+    const isBadConversion = ad.cpa === null || ad.cpa > adTargetCpa;
+    const isGoodConversion = ad.cpa !== null && ad.cpa <= adTargetCpa;
+
+    let bucket: AdDiagnostic["bucket"];
+    if (isHighCtr && isBadConversion) {
+      bucket = "landing_page_problem";
+    } else if (isLowCtr) {
+      bucket = "creative_problem";
+    } else if (isHighCtr && isGoodConversion) {
+      bucket = "winner"; // already caught by existing winner detection
+    } else if (!isHighCtr && !isLowCtr && isBadConversion) {
+      bucket = "everything_problem";
+    } else {
+      continue; // mid CTR + good conversion — nothing to flag
+    }
+
+    adDiagnostics.push({
+      ad_id: ad.ad_id,
+      ad_name: ad.ad_name,
+      adset_id: ad.adset_id,
+      adset_name: ad.adset_name,
+      campaign_name: ad.campaign_name,
+      bucket,
+      ctr_7d: round(ad.ctr, 2),
+      cpa_7d: ad.cpa !== null ? round(ad.cpa, 0) : null,
+      spend_7d: round(ad.spend, 0),
+      purchases_7d: ad.purchases,
+      impressions_7d: ad.impressions,
+      ctr_threshold_high: round(ctrHigh, 2),
+      ctr_threshold_low: round(ctrLow, 2),
+      target_cpa: adTargetCpa,
+    });
+  }
+
   // Compute per-adset stats from current data
   const adsetAdCounts = new Map<string, Set<string>>();
   for (const r of latestRows) {
@@ -1077,6 +1186,58 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── Ad diagnostics → action cards ──
+  for (const diag of adDiagnostics) {
+    if (diag.bucket === "winner") continue; // already handled by existing winner detection
+
+    const enrichment = diag.adset_id ? adsetEnrichment.get(diag.adset_id) : null;
+    const adLabel = enrichment?.concept_name || diag.ad_name || "unnamed ad";
+    const market = diag.adset_id ? adsetProductMarket.get(diag.adset_id)?.market : null;
+
+    if (diag.bucket === "landing_page_problem") {
+      // Don't duplicate if Q8 already flagged this ad as landing_page
+      const alreadyFlagged = actionCards.some((c) => c.type === "landing_page" && c.action_data.ad_id === diag.ad_id);
+      if (alreadyFlagged) continue;
+
+      actionCards.push({
+        id: `diag_lp_${diag.ad_id}`,
+        type: "landing_page",
+        category: "Creative",
+        title: `LP problem: "${adLabel}" — ${diag.ctr_7d}% CTR but ${diag.cpa_7d !== null ? diag.cpa_7d + " kr" : "0"} CPA`,
+        why: `This ad has above-average CTR (${diag.ctr_7d}% — top 25% of your ads) but ${diag.cpa_7d !== null ? "CPA is " + diag.cpa_7d + " kr (target: " + diag.target_cpa + " kr)" : "zero purchases"} over 7 days with ${diag.spend_7d} kr spent. People click but don't buy — the landing page isn't converting.`,
+        guidance: "The ad creative is doing its job — it gets attention and clicks. The problem is what happens after the click. Try a different landing page, or review the current one for offer mismatch, slow load time, or weak CTA.",
+        expected_impact: "Lower CPA by improving post-click conversion",
+        action_data: { ad_id: diag.ad_id, diagnosis: "structural_lp_problem" },
+        priority: 2,
+        ad_name: diag.ad_name,
+        adset_id: diag.adset_id,
+        adset_name: diag.adset_name,
+        campaign_name: diag.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: enrichment?.concept_name ?? null,
+      });
+    } else if (diag.bucket === "creative_problem") {
+      actionCards.push({
+        id: `diag_creative_${diag.ad_id}`,
+        type: "refresh",
+        category: "Creative",
+        title: `Weak hook: "${adLabel}" — only ${diag.ctr_7d}% CTR${market ? ` in ${market}` : ""}`,
+        why: `CTR is ${diag.ctr_7d}% — in the bottom 25% of your ads (threshold: ${diag.ctr_threshold_low}%). ${diag.spend_7d} kr spent over 7 days. The hook isn't stopping the scroll.`,
+        guidance: "The landing page might be fine — the problem is the ad creative. People aren't clicking. Try a different hook, image style, or opening line. Consider a completely different angle for this product.",
+        expected_impact: "Higher CTR → more traffic to a potentially working page",
+        action_data: { ad_id: diag.ad_id, image_job_id: enrichment?.image_job_id, diagnosis: "structural_creative_problem" },
+        priority: 3,
+        ad_name: diag.ad_name,
+        adset_id: diag.adset_id,
+        adset_name: diag.adset_name,
+        campaign_name: diag.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? null,
+        concept_name: enrichment?.concept_name ?? null,
+      });
+    }
+    // "everything_problem" — no separate action card; these are caught by bleeders
+  }
+
   // Budget rebalance — single card if any campaign has >5% difference (priority 4)
   const significantShifts = efficiencyWithRecommendation.filter(
     (c) => Math.abs(c.recommended_budget_share - c.current_budget_share) > 5
@@ -1155,6 +1316,7 @@ export async function GET(req: NextRequest) {
       consistent_winners: enrichedWinners,
       lp_vs_creative_fatigue: lpFatigueSignals,
       efficiency_scoring: efficiencyWithRecommendation,
+      ad_diagnostics: adDiagnostics,
     },
     action_cards: actionCards,
   });
@@ -1218,4 +1380,14 @@ function isConsecutivelyRising(values: number[], minConsecutive: number): boolea
     }
   }
   return false;
+}
+
+/** Compute the Nth percentile of a sorted array of numbers */
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = (p / 100) * (sorted.length - 1);
+  const lower = Math.floor(idx);
+  const upper = Math.ceil(idx);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (idx - lower);
 }
