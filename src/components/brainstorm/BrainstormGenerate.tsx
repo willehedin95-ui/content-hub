@@ -21,10 +21,15 @@ import {
   Link,
   Copy,
   CheckCircle2,
+  Video,
+  Film,
+  Mic,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ConceptProposal,
+  VideoConceptProposal,
   Product,
   PRODUCTS,
   BrainstormMode,
@@ -67,6 +72,15 @@ const COMPETITOR_LOADING_MESSAGES = [
   "Uploading to storage...",
 ];
 
+const VIDEO_LOADING_MESSAGES = [
+  "Analyzing product for video angles...",
+  "Selecting format and hook types...",
+  "Writing UGC scripts...",
+  "Crafting Sora prompts...",
+  "Drafting ad copy...",
+  "Finalizing video proposals...",
+];
+
 const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Sparkles,
   Leaf,
@@ -75,6 +89,7 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   Eye,
   LayoutTemplate,
   Copy,
+  Video,
 };
 
 export default function BrainstormGenerate() {
@@ -100,8 +115,11 @@ export default function BrainstormGenerate() {
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
+  const [videoProposals, setVideoProposals] = useState<VideoConceptProposal[]>([]);
+  const [resultType, setResultType] = useState<"static" | "video_ugc">("static");
   const [expandedVisual, setExpandedVisual] = useState<number | null>(null);
   const [expandedCopy, setExpandedCopy] = useState<number | null>(null);
+  const [expandedScript, setExpandedScript] = useState<number | null>(null);
   const [existingConceptsCount, setExistingConceptsCount] = useState(0);
   const [rejectingIdx, setRejectingIdx] = useState<number | null>(null);
   const [approvingIdx, setApprovingIdx] = useState<number | null>(null);
@@ -174,11 +192,20 @@ export default function BrainstormGenerate() {
 
   // Rotate loading messages
   const activeLoadingMessages =
-    mode === "from_competitor_ad" ? COMPETITOR_LOADING_MESSAGES : LOADING_MESSAGES;
+    mode === "from_competitor_ad"
+      ? COMPETITOR_LOADING_MESSAGES
+      : mode === "video_ugc"
+        ? VIDEO_LOADING_MESSAGES
+        : LOADING_MESSAGES;
 
   useEffect(() => {
     if (phase !== "loading") return;
-    const msgs = mode === "from_competitor_ad" ? COMPETITOR_LOADING_MESSAGES : LOADING_MESSAGES;
+    const msgs =
+      mode === "from_competitor_ad"
+        ? COMPETITOR_LOADING_MESSAGES
+        : mode === "video_ugc"
+          ? VIDEO_LOADING_MESSAGES
+          : LOADING_MESSAGES;
     const interval = setInterval(() => {
       setLoadingMsg((prev) => (prev + 1) % msgs.length);
     }, 2500);
@@ -373,7 +400,13 @@ export default function BrainstormGenerate() {
                 { step: "done", message: event.message, done: true },
               ]);
 
-              setProposals(event.proposals);
+              if (event.type === "video_ugc") {
+                setVideoProposals(event.proposals);
+                setResultType("video_ugc");
+              } else {
+                setProposals(event.proposals);
+                setResultType("static");
+              }
               setCost(event.cost);
               setExistingConceptsCount(event.existing_concepts_count ?? 0);
 
@@ -415,6 +448,46 @@ export default function BrainstormGenerate() {
 
       const data = await res.json();
       router.push(`/images/${data.job_id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setApprovingIdx(null);
+    }
+  }
+
+  async function handleApproveVideo(proposal: VideoConceptProposal, idx: number) {
+    if (approvingIdx !== null) return;
+    setApprovingIdx(idx);
+    setError("");
+
+    try {
+      const res = await fetch("/api/video-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product,
+          concept_name: proposal.concept_name,
+          hook_type: proposal.hook_type,
+          script_structure: proposal.script_structure,
+          format_type: proposal.format_type,
+          script: proposal.script,
+          sora_prompt: proposal.sora_prompt,
+          character_description: proposal.character_description,
+          duration_seconds: 12,
+          target_languages: ["sv", "no", "da"],
+          awareness_level: proposal.awareness_level,
+          delivery_style: proposal.delivery_style,
+          ad_copy_primary: proposal.ad_copy_primary,
+          ad_copy_headline: proposal.ad_copy_headline,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to create video job");
+      }
+
+      const job = await res.json();
+      router.push(`/video-ads/${job.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setApprovingIdx(null);
@@ -965,6 +1038,7 @@ export default function BrainstormGenerate() {
               onClick={() => {
                 setPhase("configure");
                 setProposals([]);
+                setVideoProposals([]);
                 setCost(null);
               }}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -993,208 +1067,368 @@ export default function BrainstormGenerate() {
             </div>
           </div>
 
-          <h2 className="text-lg font-semibold text-gray-900">
-            {proposals.length} Concept{proposals.length !== 1 ? "s" : ""} Generated
-          </h2>
+          {resultType === "video_ugc" ? (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Film className="w-5 h-5 text-purple-500" />
+                {videoProposals.length} Video Concept{videoProposals.length !== 1 ? "s" : ""} Generated
+              </h2>
 
-          {/* Proposal cards */}
-          <div className="space-y-4">
-            {proposals.map((proposal, i) => (
-              <div
-                key={i}
-                className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors bg-white"
-              >
-                <div className="p-5">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 mr-3">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        {proposal.concept_name}
-                      </h3>
-                      <p className="text-xs text-gray-500 italic mt-0.5">
-                        {proposal.concept_description}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={async () => {
-                          setRejectingIdx(i);
-                          try {
-                            await fetch("/api/brainstorm/reject", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                product,
-                                angle: proposal.cash_dna.angle ?? null,
-                                awareness_level: proposal.cash_dna.awareness_level ?? null,
-                                concept_description: proposal.concept_description ?? null,
-                              }),
-                            });
-                            setProposals((prev) => prev.filter((_, idx) => idx !== i));
-                          } catch {}
-                          setRejectingIdx(null);
-                        }}
-                        disabled={rejectingIdx === i}
-                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Reject — avoid similar concepts in future"
-                      >
-                        {rejectingIdx === i ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <ThumbsDown className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleApprove(proposal, i)}
-                        disabled={approvingIdx !== null}
-                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {approvingIdx === i ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Wand2 className="w-3 h-3" />
-                        )}
-                        Use This
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* CASH badges */}
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {proposal.cash_dna.angle && (
-                      <span className="text-[10px] font-medium text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg border border-violet-200">
-                        {proposal.cash_dna.angle}
-                      </span>
-                    )}
-                    {proposal.cash_dna.style && (
-                      <span className="text-[10px] font-medium text-fuchsia-700 bg-fuchsia-50 px-2 py-0.5 rounded-lg border border-fuchsia-200">
-                        {proposal.cash_dna.style}
-                      </span>
-                    )}
-                    {proposal.cash_dna.awareness_level && (
-                      <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
-                        {proposal.cash_dna.awareness_level}
-                      </span>
-                    )}
-                    {proposal.cash_dna.concept_type && (
-                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                        {proposal.cash_dna.concept_type}
-                      </span>
-                    )}
-                    {proposal.cash_dna.ad_source && (
-                      <span className="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-lg border border-gray-200">
-                        {proposal.cash_dna.ad_source}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Hooks */}
-                  <div className="mb-3">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                      Hooks
-                    </label>
-                    <ul className="space-y-0.5">
-                      {proposal.cash_dna.hooks.slice(0, 4).map((hook, j) => (
-                        <li
-                          key={j}
-                          className="text-xs text-gray-700 flex items-start gap-1.5"
-                        >
-                          <span className="text-gray-400 shrink-0">&bull;</span>
-                          {hook}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Headlines */}
-                  {(() => {
-                    const allHeadlines = [
-                      ...proposal.ad_copy_headline,
-                      ...(proposal.native_headlines ?? []).filter(
-                        (h) => !proposal.ad_copy_headline.includes(h)
-                      ),
-                    ];
-                    return allHeadlines.length > 0 ? (
-                      <div className="mb-3">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                          Headlines
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {allHeadlines.map((h, j) => (
-                            <span
-                              key={j}
-                              className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded"
-                            >
-                              {h}
-                            </span>
-                          ))}
+              {/* Video Proposal cards */}
+              <div className="space-y-4">
+                {videoProposals.map((proposal, i) => (
+                  <div
+                    key={i}
+                    className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors bg-white"
+                  >
+                    <div className="p-5">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 mr-3">
+                          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <Video className="w-4 h-4 text-purple-500 shrink-0" />
+                            {proposal.concept_name}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => {
+                              setVideoProposals((prev) => prev.filter((_, idx) => idx !== i));
+                            }}
+                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Dismiss"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleApproveVideo(proposal, i)}
+                            disabled={approvingIdx !== null}
+                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {approvingIdx === i ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Play className="w-3 h-3" />
+                            )}
+                            Create Video Job
+                          </button>
                         </div>
                       </div>
-                    ) : null;
-                  })()}
 
-                  {/* Primary text preview */}
-                  <div className="mb-3">
-                    <button
-                      onClick={() =>
-                        setExpandedCopy(expandedCopy === i ? null : i)
-                      }
-                      className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
-                    >
-                      Ad Copy ({proposal.ad_copy_primary.length} variation
-                      {proposal.ad_copy_primary.length !== 1 ? "s" : ""})
-                      {expandedCopy === i ? (
-                        <ChevronUp className="w-3 h-3" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3" />
-                      )}
-                    </button>
-                    {expandedCopy === i ? (
-                      <div className="space-y-2 mt-1">
-                        {proposal.ad_copy_primary.map((text, j) => (
-                          <p
-                            key={j}
-                            className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3"
-                          >
-                            {text}
-                          </p>
-                        ))}
+                      {/* Type badges */}
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        <span className="text-[10px] font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200">
+                          {proposal.format_type.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+                          {proposal.awareness_level}
+                        </span>
+                        <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                          {proposal.hook_type.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                          {proposal.script_structure.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[10px] font-medium text-fuchsia-700 bg-fuchsia-50 px-2 py-0.5 rounded-lg border border-fuchsia-200">
+                          {proposal.delivery_style}
+                        </span>
                       </div>
-                    ) : (
-                      <p className="text-xs text-gray-600 line-clamp-2 mt-1">
-                        {proposal.ad_copy_primary[0]}
-                      </p>
-                    )}
+
+                      {/* Script */}
+                      <div className="mb-3">
+                        <button
+                          onClick={() =>
+                            setExpandedScript(expandedScript === i ? null : i)
+                          }
+                          className="flex items-center gap-1.5 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
+                        >
+                          <Mic className="w-3 h-3" />
+                          UGC Script
+                          {expandedScript === i ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                        </button>
+                        {expandedScript === i ? (
+                          <div className="mt-2 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                              {proposal.script}
+                            </pre>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-600 line-clamp-3 mt-1">
+                            {proposal.script}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Character Description */}
+                      {proposal.character_description && (
+                        <div className="mb-3">
+                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                            Character
+                          </label>
+                          <p className="text-xs text-gray-600">
+                            {proposal.character_description}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Sora Prompt */}
+                      <div className="mb-3">
+                        <button
+                          onClick={() =>
+                            setExpandedVisual(expandedVisual === i ? null : i)
+                          }
+                          className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
+                        >
+                          Sora Prompt
+                          {expandedVisual === i ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                        </button>
+                        {expandedVisual === i && (
+                          <div className="mt-1 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                            <p className="text-xs text-gray-600 font-mono whitespace-pre-wrap">
+                              {proposal.sora_prompt}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Ad Copy */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                            Ad Headline
+                          </label>
+                          <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                            {proposal.ad_copy_headline}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                            Primary Text
+                          </label>
+                          <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                            {proposal.ad_copy_primary}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-
-                  {/* Visual direction */}
-                  <button
-                    onClick={() =>
-                      setExpandedVisual(expandedVisual === i ? null : i)
-                    }
-                    className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
-                  >
-                    Visual Direction
-                    {expandedVisual === i ? (
-                      <ChevronUp className="w-3 h-3" />
-                    ) : (
-                      <ChevronDown className="w-3 h-3" />
-                    )}
-                  </button>
-                  {expandedVisual === i && (
-                    <p className="text-xs text-gray-600 mt-1 bg-gray-50 rounded-lg p-2">
-                      {proposal.visual_direction}
-                    </p>
-                  )}
-
-                  {/* Differentiation note */}
-                  <p className="text-[10px] text-gray-400 mt-2 italic">
-                    {proposal.differentiation_note}
-                  </p>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {proposals.length} Concept{proposals.length !== 1 ? "s" : ""} Generated
+              </h2>
+
+              {/* Proposal cards */}
+              <div className="space-y-4">
+                {proposals.map((proposal, i) => (
+                  <div
+                    key={i}
+                    className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors bg-white"
+                  >
+                    <div className="p-5">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 mr-3">
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            {proposal.concept_name}
+                          </h3>
+                          <p className="text-xs text-gray-500 italic mt-0.5">
+                            {proposal.concept_description}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={async () => {
+                              setRejectingIdx(i);
+                              try {
+                                await fetch("/api/brainstorm/reject", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    product,
+                                    angle: proposal.cash_dna.angle ?? null,
+                                    awareness_level: proposal.cash_dna.awareness_level ?? null,
+                                    concept_description: proposal.concept_description ?? null,
+                                  }),
+                                });
+                                setProposals((prev) => prev.filter((_, idx) => idx !== i));
+                              } catch {}
+                              setRejectingIdx(null);
+                            }}
+                            disabled={rejectingIdx === i}
+                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Reject — avoid similar concepts in future"
+                          >
+                            {rejectingIdx === i ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleApprove(proposal, i)}
+                            disabled={approvingIdx !== null}
+                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {approvingIdx === i ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Wand2 className="w-3 h-3" />
+                            )}
+                            Use This
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* CASH badges */}
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {proposal.cash_dna.angle && (
+                          <span className="text-[10px] font-medium text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg border border-violet-200">
+                            {proposal.cash_dna.angle}
+                          </span>
+                        )}
+                        {proposal.cash_dna.style && (
+                          <span className="text-[10px] font-medium text-fuchsia-700 bg-fuchsia-50 px-2 py-0.5 rounded-lg border border-fuchsia-200">
+                            {proposal.cash_dna.style}
+                          </span>
+                        )}
+                        {proposal.cash_dna.awareness_level && (
+                          <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+                            {proposal.cash_dna.awareness_level}
+                          </span>
+                        )}
+                        {proposal.cash_dna.concept_type && (
+                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            {proposal.cash_dna.concept_type}
+                          </span>
+                        )}
+                        {proposal.cash_dna.ad_source && (
+                          <span className="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-lg border border-gray-200">
+                            {proposal.cash_dna.ad_source}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Hooks */}
+                      <div className="mb-3">
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                          Hooks
+                        </label>
+                        <ul className="space-y-0.5">
+                          {proposal.cash_dna.hooks.slice(0, 4).map((hook, j) => (
+                            <li
+                              key={j}
+                              className="text-xs text-gray-700 flex items-start gap-1.5"
+                            >
+                              <span className="text-gray-400 shrink-0">&bull;</span>
+                              {hook}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Headlines */}
+                      {(() => {
+                        const allHeadlines = [
+                          ...proposal.ad_copy_headline,
+                          ...(proposal.native_headlines ?? []).filter(
+                            (h) => !proposal.ad_copy_headline.includes(h)
+                          ),
+                        ];
+                        return allHeadlines.length > 0 ? (
+                          <div className="mb-3">
+                            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                              Headlines
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {allHeadlines.map((h, j) => (
+                                <span
+                                  key={j}
+                                  className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded"
+                                >
+                                  {h}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null;
+                      })()}
+
+                      {/* Primary text preview */}
+                      <div className="mb-3">
+                        <button
+                          onClick={() =>
+                            setExpandedCopy(expandedCopy === i ? null : i)
+                          }
+                          className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
+                        >
+                          Ad Copy ({proposal.ad_copy_primary.length} variation
+                          {proposal.ad_copy_primary.length !== 1 ? "s" : ""})
+                          {expandedCopy === i ? (
+                            <ChevronUp className="w-3 h-3" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3" />
+                          )}
+                        </button>
+                        {expandedCopy === i ? (
+                          <div className="space-y-2 mt-1">
+                            {proposal.ad_copy_primary.map((text, j) => (
+                              <p
+                                key={j}
+                                className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3"
+                              >
+                                {text}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-600 line-clamp-2 mt-1">
+                            {proposal.ad_copy_primary[0]}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Visual direction */}
+                      <button
+                        onClick={() =>
+                          setExpandedVisual(expandedVisual === i ? null : i)
+                        }
+                        className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
+                      >
+                        Visual Direction
+                        {expandedVisual === i ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                      </button>
+                      {expandedVisual === i && (
+                        <p className="text-xs text-gray-600 mt-1 bg-gray-50 rounded-lg p-2">
+                          {proposal.visual_direction}
+                        </p>
+                      )}
+
+                      {/* Differentiation note */}
+                      <p className="text-[10px] text-gray-400 mt-2 italic">
+                        {proposal.differentiation_note}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
