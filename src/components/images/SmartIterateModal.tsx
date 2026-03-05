@@ -33,12 +33,13 @@ interface IterationSuggestion {
 interface Props {
   job: ImageJob;
   performanceContext?: string; // Optional perf summary from Daily Actions
+  market?: string; // Target market from Daily Actions (e.g. "NO", "DK", "SE")
   onClose: () => void;
 }
 
 type Phase = "loading" | "suggestions" | "generating" | "done" | "error";
 
-export default function SmartIterateModal({ job, performanceContext, onClose }: Props) {
+export default function SmartIterateModal({ job, performanceContext, market, onClose }: Props) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("loading");
   const [suggestions, setSuggestions] = useState<IterationSuggestion[]>([]);
@@ -60,6 +61,7 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             performance_context: performanceContext ?? null,
+            market: market ?? null,
           }),
         });
         const data = await res.json();
@@ -84,7 +86,7 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
 
     fetchSuggestions();
     return () => { cancelled = true; };
-  }, [job.id, performanceContext]);
+  }, [job.id, performanceContext, market]);
 
   // Phase 2+3: Generate new batch of images within the SAME concept
   async function handleSelect(suggestion: IterationSuggestion) {
@@ -177,6 +179,11 @@ export default function SmartIterateModal({ job, performanceContext, onClose }: 
             <h3 className="text-base font-semibold text-gray-900">
               Smart Iterate
             </h3>
+            {market && (
+              <span className="text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                {market}
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}

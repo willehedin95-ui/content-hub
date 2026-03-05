@@ -9,7 +9,7 @@ export default async function ImageJobPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ iterate?: string }>;
+  searchParams: Promise<{ iterate?: string; market?: string; perf?: string }>;
 }) {
   const { id } = await params;
   const db = createServerSupabase();
@@ -46,7 +46,7 @@ export default async function ImageJobPage({
     failed_translations: allTranslations.filter((t: { status: string }) => t.status === "failed").length,
   };
 
-  const { iterate } = await searchParams;
+  const { iterate, market, perf } = await searchParams;
 
-  return <ImageJobDetail initialJob={enriched} autoIterate={iterate === "true"} />;
+  return <ImageJobDetail initialJob={enriched} autoIterate={iterate === "true"} iterateMarket={market} iteratePerf={perf} />;
 }

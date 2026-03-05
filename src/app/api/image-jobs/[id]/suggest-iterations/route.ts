@@ -35,6 +35,7 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const performanceContext = body.performance_context as string | undefined;
+  const market = body.market as string | undefined;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -106,8 +107,7 @@ Headlines: ${(job.ad_copy_headline ?? []).join(" | ") || "none"}
 ### Visual Direction
 ${job.visual_direction ?? "none"}
 
-${performanceContext ? `### Performance Context\n${performanceContext}\n` : ""}
-### Available Segments for Segment Swap
+${performanceContext ? `### Performance Context\n${performanceContext}\n` : ""}${market ? `### Target Market\nThis iteration is specifically for the ${market} market. Tailor suggestions to this market's audience.\n\n` : ""}### Available Segments for Segment Swap
 ${segmentList}
 
 ---
