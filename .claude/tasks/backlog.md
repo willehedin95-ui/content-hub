@@ -2,7 +2,7 @@
 Updated: 2026-03-05
 
 ## P0 — Blockers
-- [ ] Fix AB test build failure — missing route modules `/api/ab-tests/[id]/sync-conversions` and `/api/ab-tests` (pre-existing, blocks production build)
+- [ ] Fix AB test build failure — missing route modules `/ab-tests` page and `/api/ab-tests/[id]/winner` route (pre-existing, blocks production build)
 
 ## P1 — Do Next
 - [ ] Test competitor ad flow end-to-end — upload real competitor image, verify Claude analysis + Nano Banana generation (added 2026-03-04)
@@ -49,6 +49,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] Real-time progress checklists — NDJSON streaming for brainstorm, step-based progress for swiper + publish modal, deferred competitor image gen with polling (done 2026-03-05)
+- [x] Competitor ad text adaptation — Nano Banana prompts now adapt in-image text for target product (done 2026-03-05)
 - [x] Creative Testing Learnings feedback loop — AI auto-generates structured learnings on ad kill/promotion, feeds back into brainstorm prompts (done 2026-03-05)
 - [x] "From Competitor Ad" brainstorm mode — upload competitor ad image, Claude Vision analyzes, generates adapted concepts + images (done 2026-03-04)
 - [x] Competitor ad upload UX — click/drag/paste/URL input with preview (done 2026-03-04)
