@@ -75,7 +75,7 @@ export async function POST(
     status: string;
   }[] = [];
 
-  const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5", "9:16"];
+  const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5"];
   for (const si of translatableImages) {
     for (const lang of toAdd) {
       for (const ratio of ratios) {
