@@ -108,8 +108,71 @@ export function buildVideoUgcSystemPrompt(
   guidelines: string,
   hookInspiration: string,
   learningsContext: string,
-  existingCharacters: string
+  existingCharacters: string,
+  pipelineMode: string = "single_clip"
 ): string {
+  const outputFormat = pipelineMode === "multi_clip" ? `## Output Format
+
+Return a JSON object with this exact structure:
+\`\`\`json
+{
+  "proposals": [
+    {
+      "concept_name": "Short descriptive name",
+      "format_type": "selfie_testimonial|street_interview|dorm_confessional|professor_lecture|grocery_store|grwm|podcast_clip",
+      "hook_type": "problem_solution|promise|secret|discovery|social_proof|curiosity|confrontational",
+      "script_structure": "testimonial|insider_secret|discovery|before_after|street_interview|podcast",
+      "awareness_level": "problem_aware|solution_aware|product_aware|most_aware",
+      "delivery_style": "conversational|energetic|conspiratorial|emotional|authority",
+      "script": "Full script with [SHOT 1], [SHOT 2], [SHOT 3] markers separating each shot's dialogue",
+      "character_description": "Detailed character block: age, ethnicity, gender, hair, eyes, facial features, skin tone, build, clothing, posture, mannerisms, emotional baseline, accessories, voice",
+      "shots": [
+        {
+          "shot_number": 1,
+          "shot_description": "Describe the keyframe still image for this shot — character pose, camera angle, environment, lighting, expression. This image will be generated first, then used as the starting frame of the video clip.",
+          "veo_prompt": "Complete Veo3 prompt for this shot (~1500 chars). MUST include full character description (repeated from character_description). Describe the action, camera movement, dialogue delivery, and atmosphere for this specific 8-second clip.",
+          "duration_seconds": 8
+        }
+      ],
+      "ad_copy_primary": "The primary text that appears above the video in the Meta ad",
+      "ad_copy_headline": "Short headline for the Meta ad"
+    }
+  ]
+}
+\`\`\`
+
+## Multi-Clip Rules
+- Generate 3-5 shots per concept, each exactly 8 seconds
+- Each shot's \`veo_prompt\` MUST repeat the full character description (appearance, clothing, features) — Veo3 needs this for character consistency even when using image-to-video
+- Each shot's \`shot_description\` describes the STILL KEYFRAME IMAGE that will be generated first — describe the character's exact pose, expression, framing, and environment as a photograph
+- First shot is the HOOK — the most important shot that stops the scroll
+- Last shot is the CTA / product shot — product clearly visible, character delivering call to action
+- Each shot should be a complete scene (no mid-action cuts — each shot starts and ends at natural points)
+- Vary camera angle/framing between shots for visual interest (close-up → medium → wide → close-up)
+- The \`sora_prompt\` field at the top level can be left as an empty string for multi-clip mode
+- The \`script\` field should contain the FULL script with [SHOT 1], [SHOT 2] etc. markers showing where each shot begins` : `## Output Format
+
+Return a JSON object with this exact structure:
+\`\`\`json
+{
+  "proposals": [
+    {
+      "concept_name": "Short descriptive name",
+      "format_type": "selfie_testimonial|street_interview|dorm_confessional|professor_lecture|grocery_store|grwm|podcast_clip",
+      "hook_type": "problem_solution|promise|secret|discovery|social_proof|curiosity|confrontational",
+      "script_structure": "testimonial|insider_secret|discovery|before_after|street_interview|podcast",
+      "awareness_level": "problem_aware|solution_aware|product_aware|most_aware",
+      "delivery_style": "conversational|energetic|conspiratorial|emotional|authority",
+      "script": "Full script with delivery notes in brackets, filler words, pauses marked with ..., emotions in [brackets]",
+      "character_description": "Detailed character block: age, ethnicity, gender, hair, eyes, facial features, skin tone, build, clothing, posture, mannerisms, emotional baseline, accessories, voice",
+      "sora_prompt": "Complete ~5000 character Sora 2 prompt following the master template exactly",
+      "ad_copy_primary": "The primary text that appears above the video in the Meta ad",
+      "ad_copy_headline": "Short headline for the Meta ad"
+    }
+  ]
+}
+\`\`\``;
+
   return `You are a world-class UGC video creative director specializing in AI-generated video ads. You create concepts for realistic, scroll-stopping UGC videos generated with Sora 2 Pro.
 
 ## Your Product
@@ -149,41 +212,56 @@ ${learningsContext || "No learnings yet."}
 5. **AUTHENTIC SPEECH**: Include natural filler words, pauses, self-corrections. Never write polished copy — write how real people actually talk.
 6. **SORA PROMPT LENGTH**: Target ~5000 characters for the Sora 2 prompt. Be extremely detailed about character appearance, cinematography, and environment.
 
-## Output Format
-
-Return a JSON object with this exact structure:
-\`\`\`json
-{
-  "proposals": [
-    {
-      "concept_name": "Short descriptive name",
-      "format_type": "selfie_testimonial|street_interview|dorm_confessional|professor_lecture|grocery_store|grwm|podcast_clip",
-      "hook_type": "problem_solution|promise|secret|discovery|social_proof|curiosity|confrontational",
-      "script_structure": "testimonial|insider_secret|discovery|before_after|street_interview|podcast",
-      "awareness_level": "problem_aware|solution_aware|product_aware|most_aware",
-      "delivery_style": "conversational|energetic|conspiratorial|emotional|authority",
-      "script": "Full script with delivery notes in brackets, filler words, pauses marked with ..., emotions in [brackets]",
-      "character_description": "Detailed character block: age, ethnicity, gender, hair, eyes, facial features, skin tone, build, clothing, posture, mannerisms, emotional baseline, accessories, voice",
-      "sora_prompt": "Complete ~5000 character Sora 2 prompt following the master template exactly",
-      "ad_copy_primary": "The primary text that appears above the video in the Meta ad",
-      "ad_copy_headline": "Short headline for the Meta ad"
-    }
-  ]
-}
-\`\`\`
+${outputFormat}
 
 Return ONLY valid JSON. No markdown fences. No explanation text.`;
 }
+
+interface VideoUgcOptions {
+  language?: string;
+  format_type?: string;
+  hook_type?: string;
+  character_description?: string;
+  pipeline_mode?: string;
+}
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  sv: "Swedish",
+  no: "Norwegian",
+  da: "Danish",
+};
 
 export function buildVideoUgcUserPrompt(
   request: string,
   count: number,
   existingConcepts?: string[],
-  rejectedConcepts?: string[]
+  rejectedConcepts?: string[],
+  options?: VideoUgcOptions
 ): string {
+  const lang = options?.language || "sv";
+  const langLabel = LANGUAGE_LABELS[lang] || lang;
+
   let prompt = `Generate ${count} unique UGC video concept${count > 1 ? "s" : ""} for this product.
 
-User request: ${request || "Create fresh video concepts that will stop the scroll and convert."}`;
+**LANGUAGE: ${langLabel}** — Write the script, sora_prompt, ad_copy_primary, and ad_copy_headline in ${langLabel}. Use ${langLabel} filler words and natural ${langLabel} speech patterns.`;
+
+  if (options?.format_type) {
+    prompt += `\n\n**REQUIRED FORMAT**: Use "${options.format_type}" as the format_type. All concepts must use this format.`;
+  }
+
+  if (options?.hook_type) {
+    prompt += `\n\n**REQUIRED HOOK TYPE**: Use "${options.hook_type}" as the hook_type. All concepts must use this hook approach.`;
+  }
+
+  if (options?.character_description) {
+    prompt += `\n\n**CHARACTER BRIEF FROM USER**: ${options.character_description}\nUse this as the basis for the character_description. Expand with specific visual details needed for Sora (hair color, eye color, skin tone, clothing details, posture) while keeping the user's intent.`;
+  }
+
+  if (request) {
+    prompt += `\n\n**CREATIVE DIRECTION**: ${request}`;
+  } else {
+    prompt += `\n\nCreate fresh video concepts that will stop the scroll and convert.`;
+  }
 
   if (existingConcepts?.length) {
     prompt += `\n\nExisting concepts (DO NOT duplicate these angles):\n${existingConcepts.map((c) => `- ${c}`).join("\n")}`;
@@ -193,12 +271,25 @@ User request: ${request || "Create fresh video concepts that will stop the scrol
     prompt += `\n\nRejected concepts (DO NOT use similar approaches):\n${rejectedConcepts.map((c) => `- ${c}`).join("\n")}`;
   }
 
-  prompt += `\n\nEach concept MUST:
-- Use a DIFFERENT format_type and hook_type from the others
+  prompt += `\n\nEach concept MUST:`;
+  if (!options?.format_type && count > 1) {
+    prompt += `\n- Use a DIFFERENT format_type from the others`;
+  }
+  if (!options?.hook_type && count > 1) {
+    prompt += `\n- Use a DIFFERENT hook_type from the others`;
+  }
+  prompt += `
 - Have a completely original hook that doesn't repeat any example phrases
-- Include a full script with natural speech patterns, filler words, and delivery notes
+- Include a full script in ${langLabel} with natural speech patterns, filler words, and delivery notes
 - Include a complete ~5000 character Sora 2 prompt following the master template
-- Include ad copy (primary text + headline) for the Meta ad`;
+- Include ad copy in ${langLabel} (primary text + headline) for the Meta ad`;
+
+  if (options?.pipeline_mode === "multi_clip") {
+    prompt += `
+- Split the concept into 3-5 shots (each 8 seconds) with individual veo_prompts per shot
+- Each shot's veo_prompt must include the FULL character description for consistency
+- Describe each shot_description as a still photograph (keyframe) that will be used as the starting frame`;
+  }
 
   return prompt;
 }

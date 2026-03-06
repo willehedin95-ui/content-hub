@@ -377,27 +377,52 @@ export async function POST(req: NextRequest) {
           context.guidelines,
           context.hookInspiration,
           context.learningsContext,
-          context.existingCharacters
+          context.existingCharacters,
+          body.pipeline_mode || "single_clip"
         );
 
         const userPrompt = buildVideoUgcUserPrompt(
-          body.request ?? "",
+          body.creative_direction ?? body.request ?? "",
           count,
           context.existingConcepts,
-          rejectedConcepts.map((r) => `${r.angle ?? "?"} / ${r.awareness_level ?? "?"}: ${r.concept_description ?? ""}`)
+          rejectedConcepts.map((r) => `${r.angle ?? "?"} / ${r.awareness_level ?? "?"}: ${r.concept_description ?? ""}`),
+          {
+            language: body.language,
+            format_type: body.format_type,
+            hook_type: body.hook_type,
+            character_description: body.character_description,
+            pipeline_mode: body.pipeline_mode,
+          }
         );
 
-        const client = new Anthropic({ apiKey });
-        const response = await client.messages.create({
-          model: CLAUDE_MODEL,
-          max_tokens: 16000,
-          temperature: 0.8,
-          system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: userPrompt }],
-        });
+        const client = new Anthropic({ apiKey, timeout: 5 * 60 * 1000 }); // 5 min timeout
+
+        // Retry on transient connection errors (video UGC prompts are large)
+        let response: Anthropic.Message | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            response = await client.messages.create({
+              model: CLAUDE_MODEL,
+              max_tokens: 16000,
+              temperature: 0.8,
+              system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+              messages: [{ role: "user", content: userPrompt }],
+            });
+            break; // success
+          } catch (retryErr) {
+            const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            if (attempt < 2 && msg.toLowerCase().includes("connection")) {
+              console.warn(`[brainstorm/video_ugc] Connection error on attempt ${attempt}, retrying...`);
+              await emit({ step: "retrying", message: "Connection issue, retrying..." });
+              await new Promise((r) => setTimeout(r, 3000));
+              continue;
+            }
+            throw retryErr;
+          }
+        }
 
         const rawContent =
-          response.content[0]?.type === "text"
+          response?.content[0]?.type === "text"
             ? response.content[0].text.trim()
             : "";
 
@@ -430,10 +455,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Log usage
-        const inputTokens = response.usage.input_tokens;
-        const outputTokens = response.usage.output_tokens;
-        const cacheCreation = (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
-        const cacheRead = (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
+        const inputTokens = response!.usage.input_tokens;
+        const outputTokens = response!.usage.output_tokens;
+        const cacheCreation = (response!.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
+        const cacheRead = (response!.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
         const costUsd = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
 
         await db.from("usage_logs").insert({

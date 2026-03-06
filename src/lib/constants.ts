@@ -64,7 +64,7 @@ export type ReptileTriggerId = (typeof REPTILE_TRIGGERS)[number]["id"];
 
 // --- Video UGC Constants ---
 
-export const KIE_VIDEO_MODEL = "sora-2-pro";
+export const KIE_VIDEO_MODEL = "sora-2-pro-text-to-video";
 export const VIDEO_STORAGE_BUCKET = "videos";
 
 export const VIDEO_FORMATS = [

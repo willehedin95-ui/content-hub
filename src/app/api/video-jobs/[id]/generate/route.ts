@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { generateVideo } from "@/lib/kie";
+import { generateVideo, type VideoModel } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
 export const maxDuration = 300; // 5 minutes for Vercel
 
+const VALID_MODELS: VideoModel[] = ["sora-2-pro-text-to-video", "veo3", "veo3_fast"];
+
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const body = await req.json().catch(() => ({}));
+  const model: VideoModel = VALID_MODELS.includes(body.model) ? body.model : "sora-2-pro-text-to-video";
   const db = createServerSupabase();
 
   // 1. Fetch the video job
@@ -25,22 +29,23 @@ export async function POST(
     return NextResponse.json({ error: "No Sora prompt set on this job" }, { status: 400 });
   }
 
-  // 2. Create source_video row
-  const generationParams = {
-    model: "sora-2-pro",
-    size: "720x1280",
-    seconds: String(job.duration_seconds || 12),
-    style: "raw",
-    stylize: 0,
-  };
+  // 2. Build generation params per model
+  const isVeo = model === "veo3" || model === "veo3_fast";
+  const generationParams = isVeo
+    ? { model, aspect_ratio: "9:16" as const }
+    : {
+        model,
+        size: "standard" as const,
+        n_frames: (job.duration_seconds && job.duration_seconds >= 12 ? "15" : "10") as "10" | "15",
+      };
 
   const { data: sourceVideo, error: svError } = await db
     .from("source_videos")
     .insert({
       video_job_id: id,
       status: "generating",
-      resolution: "720x1280",
-      model: "sora-2-pro",
+      resolution: isVeo ? "1080p" : "1080p",
+      model,
       generation_params: generationParams,
     })
     .select()
@@ -97,7 +102,7 @@ export async function POST(
     // 8. Log usage
     await db.from("usage_logs").insert({
       type: "video_generation",
-      model: "sora-2-pro",
+      model,
       cost_usd: 0,
       metadata: {
         video_job_id: id,

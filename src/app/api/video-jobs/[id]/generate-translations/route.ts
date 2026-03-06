@@ -41,8 +41,9 @@ export async function POST(
       .eq("id", translation.id);
 
     try {
+      const nFrames = job.duration_seconds && job.duration_seconds >= 12 ? "15" : "10";
       const result = await generateVideo(translation.translated_sora_prompt, {
-        seconds: String(job.duration_seconds || 12),
+        n_frames: nFrames as "10" | "15",
       });
 
       if (!result.urls.length) throw new Error("No video URLs returned");

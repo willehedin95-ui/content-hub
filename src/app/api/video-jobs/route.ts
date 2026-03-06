@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*)")
     .order("created_at", { ascending: false });
 
   if (product) {
@@ -74,12 +74,31 @@ export async function POST(req: NextRequest) {
       ad_copy_primary: adCopyPrimary,
       ad_copy_headline: adCopyHeadline,
       landing_page_url: body.landing_page_url || null,
+      pipeline_mode: body.pipeline_mode || "single_clip",
+      max_shots: body.max_shots ?? 4,
     })
     .select()
     .single();
 
   if (error) {
     return safeError(error, "Failed to create video job");
+  }
+
+  // Create video_shots if multi-clip mode
+  if (body.pipeline_mode === "multi_clip" && Array.isArray(body.shots) && body.shots.length > 0) {
+    const shotRows = body.shots.map((shot: { shot_number: number; shot_description: string; veo_prompt: string; duration_seconds?: number }) => ({
+      video_job_id: data.id,
+      shot_number: shot.shot_number,
+      shot_description: shot.shot_description,
+      veo_prompt: shot.veo_prompt,
+      video_duration_seconds: shot.duration_seconds ?? 8,
+    }));
+
+    const { error: shotsError } = await db.from("video_shots").insert(shotRows);
+    if (shotsError) {
+      console.error("Failed to insert video shots:", shotsError);
+      // Don't fail the whole request - the job was created, shots can be added later
+    }
   }
 
   return NextResponse.json(data, { status: 201 });

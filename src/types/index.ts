@@ -938,6 +938,36 @@ export type VideoTranslationStatus =
 
 export type SourceVideoStatus = "pending" | "generating" | "completed" | "failed";
 
+export type PipelineMode = "single_clip" | "multi_clip";
+export type ShotImageStatus = "pending" | "generating" | "completed" | "failed";
+export type ShotVideoStatus = "pending" | "generating" | "completed" | "failed";
+export type CharacterRefStatus = "pending" | "generating" | "completed" | "failed" | "skipped";
+
+export interface VideoShot {
+  id: string;
+  video_job_id: string;
+  shot_number: number;
+  shot_description: string;
+  veo_prompt: string;
+  image_url: string | null;
+  image_kie_task_id: string | null;
+  image_status: ShotImageStatus;
+  video_url: string | null;
+  video_kie_task_id: string | null;
+  video_status: ShotVideoStatus;
+  video_duration_seconds: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoShotProposal {
+  shot_number: number;
+  shot_description: string;
+  veo_prompt: string;
+  duration_seconds: number;
+}
+
 export type VideoHookType =
   | "problem_solution"
   | "promise"
@@ -997,6 +1027,11 @@ export interface VideoJob {
   updated_at: string;
   source_videos?: SourceVideo[];
   video_translations?: VideoTranslation[];
+  pipeline_mode: PipelineMode;
+  character_ref_urls: string[];
+  character_ref_status: CharacterRefStatus;
+  max_shots: number;
+  video_shots?: VideoShot[];
 }
 
 export interface SourceVideo {
@@ -1060,4 +1095,5 @@ export interface VideoConceptProposal {
   sora_prompt: string;
   ad_copy_primary: string;
   ad_copy_headline: string;
+  shots?: VideoShotProposal[];
 }

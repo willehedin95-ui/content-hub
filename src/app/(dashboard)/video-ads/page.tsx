@@ -40,7 +40,7 @@ export default async function VideoAdsPage() {
 
   const { data: jobs, error } = await supabase
     .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*)")
     .order("created_at", { ascending: false });
 
   const videoJobs: VideoJob[] = error ? [] : (jobs ?? []);
@@ -117,6 +117,11 @@ export default async function VideoAdsPage() {
                     >
                       {job.status}
                     </span>
+                    {job.pipeline_mode === "multi_clip" && (
+                      <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded">
+                        Multi-Clip{job.video_shots?.length ? ` (${job.video_shots.length} shots)` : ""}
+                      </span>
+                    )}
                   </div>
 
                   {/* Concept name */}

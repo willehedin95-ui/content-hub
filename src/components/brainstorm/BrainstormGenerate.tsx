@@ -37,6 +37,7 @@ import {
   ProductSegment,
 } from "@/types";
 import { BRAINSTORM_MODES, AD_TEMPLATE_META } from "@/lib/brainstorm";
+import { VIDEO_FORMATS, HOOK_TYPES } from "@/lib/constants";
 
 interface LearningEntry {
   takeaway: string;
@@ -113,6 +114,14 @@ export default function BrainstormGenerate() {
   const [competitorAdCopy, setCompetitorAdCopy] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Video UGC state
+  const [videoFormat, setVideoFormat] = useState<string>("");
+  const [videoHookType, setVideoHookType] = useState<string>("");
+  const [videoLanguage, setVideoLanguage] = useState<string>("sv");
+  const [videoDirection, setVideoDirection] = useState("");
+  const [videoCharacterDesc, setVideoCharacterDesc] = useState("");
+  const [pipelineMode, setPipelineMode] = useState<"single_clip" | "multi_clip">("multi_clip");
+
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
   const [videoProposals, setVideoProposals] = useState<VideoConceptProposal[]>([]);
@@ -143,6 +152,14 @@ export default function BrainstormGenerate() {
     output_tokens: number;
     cost_usd: number;
   } | null>(null);
+
+  // Elapsed time during loading
+  const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    if (phase !== "loading") { setElapsedSec(0); return; }
+    const t = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [phase]);
 
   // Learnings preview state
   const [learnings, setLearnings] = useState<LearningsData | null>(null);
@@ -344,9 +361,25 @@ export default function BrainstormGenerate() {
       if (mode === "from_template" && selectedTemplates.length > 0) reqBody.template_ids = selectedTemplates;
       if (selectedSegment) reqBody.segment_id = selectedSegment;
 
+      if (mode === "video_ugc") {
+        reqBody.language = videoLanguage;
+        reqBody.pipeline_mode = pipelineMode;
+        if (videoFormat) reqBody.format_type = videoFormat;
+        if (videoHookType) reqBody.hook_type = videoHookType;
+        if (videoDirection.trim()) reqBody.creative_direction = videoDirection.trim();
+        if (videoCharacterDesc.trim()) reqBody.character_description = videoCharacterDesc.trim();
+      }
+
       // Initialize progress steps
+      const isVideo = mode === "video_ugc";
       setProgressSteps([
-        { step: "generating", message: "Generating concepts with AI...", done: false },
+        {
+          step: "generating",
+          message: isVideo
+            ? `Generating ${count} video concept${count > 1 ? "s" : ""} with AI (this takes 1-3 min)...`
+            : "Generating concepts with AI...",
+          done: false,
+        },
       ]);
 
       const res = await fetch("/api/brainstorm", {
@@ -384,6 +417,11 @@ export default function BrainstormGenerate() {
             if (event.step === "generating") {
               setProgressSteps([
                 { step: "generating", message: event.message, done: false },
+              ]);
+            } else if (event.step === "retrying") {
+              setProgressSteps((prev) => [
+                ...prev,
+                { step: "retrying", message: event.message, done: false },
               ]);
             } else if (event.step === "generated") {
               setProgressSteps((prev) =>
@@ -473,11 +511,13 @@ export default function BrainstormGenerate() {
           sora_prompt: proposal.sora_prompt,
           character_description: proposal.character_description,
           duration_seconds: 12,
-          target_languages: ["sv", "no", "da"],
+          target_languages: [videoLanguage],
           awareness_level: proposal.awareness_level,
           delivery_style: proposal.delivery_style,
           ad_copy_primary: proposal.ad_copy_primary,
           ad_copy_headline: proposal.ad_copy_headline,
+          pipeline_mode: pipelineMode,
+          shots: pipelineMode === "multi_clip" ? proposal.shots : undefined,
         }),
       });
 
@@ -532,7 +572,12 @@ export default function BrainstormGenerate() {
                 return (
                   <button
                     key={m.value}
-                    onClick={() => setMode(m.value)}
+                    onClick={() => {
+                      setMode(m.value);
+                      // Video UGC defaults to 1 concept (large output per concept)
+                      if (m.value === "video_ugc") setCount(1);
+                      else if (count === 1 && mode === "video_ugc") setCount(3);
+                    }}
                     className={`flex items-start gap-3 p-4 rounded-xl border text-left transition-all ${
                       mode === m.value
                         ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200"
@@ -796,6 +841,145 @@ export default function BrainstormGenerate() {
             </div>
           )}
 
+          {/* Video UGC inputs */}
+          {mode === "video_ugc" && (
+            <div className="space-y-4">
+              {/* Pipeline Mode */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pipeline Mode
+                </label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "single_clip" as const, label: "Single Clip", desc: "One 8s video clip" },
+                    { value: "multi_clip" as const, label: "Multi-Clip Pipeline", desc: "3-5 shots with keyframes" },
+                  ].map((m) => (
+                    <button
+                      key={m.value}
+                      onClick={() => setPipelineMode(m.value)}
+                      className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                        pipelineMode === m.value
+                          ? "bg-purple-50 border-purple-300 text-purple-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <div>{m.label}</div>
+                      <div className="text-[10px] font-normal mt-0.5 opacity-70">{m.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Language */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language
+                </label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "sv", label: "Swedish" },
+                    { value: "no", label: "Norwegian" },
+                    { value: "da", label: "Danish" },
+                  ].map((l) => (
+                    <button
+                      key={l.value}
+                      onClick={() => setVideoLanguage(l.value)}
+                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        videoLanguage === l.value
+                          ? "bg-purple-50 border-purple-300 text-purple-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Script and Sora prompt will be generated in this language
+                </p>
+              </div>
+
+              {/* Video Format */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Video Format
+                  <span className="font-normal text-gray-400 ml-1">(optional — AI picks if empty)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {VIDEO_FORMATS.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setVideoFormat(videoFormat === f.id ? "" : f.id)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                        videoFormat === f.id
+                          ? "bg-purple-50 border-purple-300 text-purple-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                      title={f.description}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Hook Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hook Type
+                  <span className="font-normal text-gray-400 ml-1">(optional — AI picks if empty)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {HOOK_TYPES.map((h) => (
+                    <button
+                      key={h.id}
+                      onClick={() => setVideoHookType(videoHookType === h.id ? "" : h.id)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                        videoHookType === h.id
+                          ? "bg-blue-50 border-blue-300 text-blue-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                      title={h.description}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Creative Direction */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Creative Direction
+                  <span className="font-normal text-gray-400 ml-1">(optional)</span>
+                </label>
+                <textarea
+                  value={videoDirection}
+                  onChange={(e) => setVideoDirection(e.target.value)}
+                  placeholder="Describe your vision... e.g. &quot;A tired mom discovering the product on her nightstand, intimate bedroom setting, 2 AM insomnia vibe&quot;"
+                  className="w-full h-24 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300 resize-none"
+                />
+              </div>
+
+              {/* Character Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Character Description
+                  <span className="font-normal text-gray-400 ml-1">(optional)</span>
+                </label>
+                <textarea
+                  value={videoCharacterDesc}
+                  onChange={(e) => setVideoCharacterDesc(e.target.value)}
+                  placeholder="e.g. &quot;Woman, late 30s, Scandinavian, light brown hair in messy bun, no makeup, wearing oversized grey t-shirt&quot;"
+                  className="w-full h-20 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300 resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Describe the person in the video — age, appearance, clothing, mood
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Segment selector */}
           {(mode === "from_scratch" || mode === "from_internal" || mode === "from_template") &&
             segments.length > 0 && (
@@ -852,7 +1036,11 @@ export default function BrainstormGenerate() {
               ))}
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              ~$0.03-0.05 per generation (Claude Sonnet 4.5)
+              {mode === "video_ugc"
+                ? pipelineMode === "multi_clip"
+                  ? "Multi-clip: ~$0.15-0.20 per concept (includes shot storyboard). Image + video generation costs are separate."
+                  : "Video UGC: ~$0.10-0.15 per concept. Each concept includes a ~5000 char Sora prompt."
+                : "~$0.03-0.05 per generation (Claude Sonnet 4.5)"}
             </p>
           </div>
 
@@ -1015,6 +1203,12 @@ export default function BrainstormGenerate() {
                 </div>
               </div>
             ))}
+            {/* Elapsed timer */}
+            {elapsedSec > 3 && (
+              <p className="text-xs text-gray-400 text-center pt-2">
+                {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, "0")} elapsed
+              </p>
+            )}
           </div>
         </div>
       ) : phase === "loading" ? (
