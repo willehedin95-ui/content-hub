@@ -11,6 +11,8 @@ import {
   GitBranch,
   ChevronDown,
   TrendingUp,
+  Rocket,
+  X,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
@@ -145,6 +147,17 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   const [showIterateDialog, setShowIterateDialog] = useState(autoIterate ?? false);
   const [parentJob, setParentJob] = useState<{ id: string; name: string } | null>(null);
   const [childJobs, setChildJobs] = useState<Array<{ id: string; name: string; iteration_type: string }>>([]);
+
+  // Launch Pad state
+  const [launchpad, setLaunchpad] = useState<{
+    priority: number | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    priority: initialJob.launchpad_priority ?? null,
+    loading: false,
+    error: null,
+  });
 
   // Doc fetch states
   const [doc, setDoc] = useState<{
@@ -566,6 +579,47 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       oscillator.stop(ctx.currentTime + 0.5);
     } catch {}
   }, []);
+
+  // Launch Pad handlers
+  async function handleAddToLaunchpad() {
+    setLaunchpad(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/launchpad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageJobId: job.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLaunchpad({ priority: data.priority, loading: false, error: null });
+      } else if (res.status === 422 && data.details) {
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.details.join(". ") }));
+      } else {
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.error || "Failed to add" }));
+      }
+    } catch {
+      setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
+
+  async function handleRemoveFromLaunchpad() {
+    setLaunchpad(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/launchpad", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageJobId: job.id }),
+      });
+      if (res.ok) {
+        setLaunchpad({ priority: null, loading: false, error: null });
+      } else {
+        const data = await res.json();
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.error || "Failed to remove" }));
+      }
+    } catch {
+      setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
 
   const allTranslations = job.source_images?.flatMap(
     (si) => si.image_translations ?? []
@@ -1192,6 +1246,33 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           })()}
         </div>
         <div className="flex items-center gap-1">
+          {/* Launch Pad button */}
+          {launchpad.priority !== null ? (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
+                <Rocket className="w-3.5 h-3.5" />
+                On Launch Pad
+              </span>
+              <button
+                onClick={handleRemoveFromLaunchpad}
+                disabled={launchpad.loading}
+                className="text-gray-400 hover:text-red-500 p-1 transition-colors disabled:opacity-50"
+                title="Remove from Launch Pad"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAddToLaunchpad}
+              disabled={launchpad.loading}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              title="Add to Launch Pad"
+            >
+              <Rocket className="w-3.5 h-3.5" />
+              {launchpad.loading ? "Adding..." : "Add to Launch Pad"}
+            </button>
+          )}
           {/* V3.4: Iterate button — show when concept has source images */}
           {sourceImages.length > 0 && (
             <button
@@ -1213,6 +1294,22 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           </button>
         </div>
       </div>
+
+      {/* Launch Pad error */}
+      {launchpad.error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            <span className="text-sm text-red-700">{launchpad.error}</span>
+          </div>
+          <button
+            onClick={() => setLaunchpad(prev => ({ ...prev, error: null }))}
+            className="text-red-400 hover:text-red-600 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Performance data (from live Meta ads) */}
       {perfData && perfData.markets.length > 0 && (
