@@ -1195,6 +1195,8 @@ export async function getLiveConceptCount(product?: string): Promise<number> {
  * Auto-calculate testing slots based on Meta campaign budgets.
  * Formula: floor(total_daily_budget / min_budget_per_concept)
  * Falls back to static testing_slots from pipeline_settings if Meta API fails.
+ *
+ * @deprecated Use calculateAvailableBudget() instead. Kept for backward compat.
  */
 export async function getTestingSlots(product: string): Promise<number> {
   const db = createServerSupabase();

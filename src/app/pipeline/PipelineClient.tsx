@@ -184,7 +184,6 @@ export default function PipelineClient() {
   const [newTargetCpa, setNewTargetCpa] = useState("");
   const [newTargetRoas, setNewTargetRoas] = useState("");
   const [newCurrency, setNewCurrency] = useState("NOK");
-  const [newTestingSlots, setNewTestingSlots] = useState("5");
   const [savingNewSetting, setSavingNewSetting] = useState(false);
 
   // Inline editing for existing settings
@@ -192,7 +191,6 @@ export default function PipelineClient() {
   const [editCpa, setEditCpa] = useState("");
   const [editRoas, setEditRoas] = useState("");
   const [editCurrency, setEditCurrency] = useState("");
-  const [editTestingSlots, setEditTestingSlots] = useState("");
   const [savingSettingId, setSavingSettingId] = useState<string | null>(null);
 
   // ── Data fetching ────────────────────────────────────────
@@ -272,11 +270,11 @@ export default function PipelineClient() {
 
   // ── Settings CRUD ────────────────────────────────────────
 
-  async function handleSaveSetting(product: string, country: string, targetCpa: number, targetRoas: number | null, currency: string, testingSlots?: number) {
+  async function handleSaveSetting(product: string, country: string, targetCpa: number, targetRoas: number | null, currency: string) {
     const res = await fetch("/api/pipeline/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product, country, target_cpa: targetCpa, target_roas: targetRoas, currency, testing_slots: testingSlots }),
+      body: JSON.stringify({ product, country, target_cpa: targetCpa, target_roas: targetRoas, currency }),
     });
     if (!res.ok) throw new Error("Failed to save setting");
     await fetchSettings();
@@ -292,12 +290,10 @@ export default function PipelineClient() {
         newCountry,
         parseFloat(newTargetCpa),
         newTargetRoas ? parseFloat(newTargetRoas) : null,
-        newCurrency,
-        newTestingSlots ? parseInt(newTestingSlots) : 5
+        newCurrency
       );
       setNewTargetCpa("");
       setNewTargetRoas("");
-      setNewTestingSlots("5");
     } catch (err) {
       console.error("Add setting error:", err);
     } finally {
@@ -314,8 +310,7 @@ export default function PipelineClient() {
         setting.country,
         parseFloat(editCpa),
         editRoas ? parseFloat(editRoas) : null,
-        editCurrency,
-        editTestingSlots ? parseInt(editTestingSlots) : undefined
+        editCurrency
       );
       setEditingSettingId(null);
     } catch (err) {
@@ -604,6 +599,36 @@ export default function PipelineClient() {
         </div>
       )}
 
+      {/* Budget availability per market */}
+      {summary?.availableBudgetByMarket && Object.keys(summary.availableBudgetByMarket).length > 0 && (
+        <div className="flex flex-wrap gap-3 mb-4">
+          {Object.entries(summary.availableBudgetByMarket)
+            .filter(([market]) => !countryFilter || market === countryFilter)
+            .map(([market, info]) => (
+              <div
+                key={market}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                  info.canPush > 0
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    : "bg-gray-50 border-gray-200 text-gray-500"
+                }`}
+              >
+                <span className="font-semibold uppercase">{market}</span>
+                <span className="tabular-nums">
+                  {info.available > 0
+                    ? `${info.available} ${info.currency} available`
+                    : "No budget headroom"}
+                </span>
+                {info.canPush > 0 && (
+                  <span className="bg-emerald-200 text-emerald-800 font-medium px-1.5 py-0.5 rounded-full tabular-nums">
+                    can push {info.canPush}
+                  </span>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* Alert badges */}
       {alerts.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-6">
@@ -856,7 +881,7 @@ export default function PipelineClient() {
                     Currency
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
-                    Slots
+                    Min Budget
                   </th>
                   <th className="px-2 py-2 text-xs uppercase tracking-wider font-medium text-gray-400">
                     Actions
@@ -910,18 +935,7 @@ export default function PipelineClient() {
                       )}
                     </td>
                     <td className="px-2 py-2">
-                      {editingSettingId === s.id ? (
-                        <input
-                          type="number"
-                          min="1"
-                          max="20"
-                          value={editTestingSlots}
-                          onChange={(e) => setEditTestingSlots(e.target.value)}
-                          className="w-14 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
-                        />
-                      ) : (
-                        <span className="tabular-nums">{s.testing_slots ?? 5}</span>
-                      )}
+                      <span className="tabular-nums">{s.min_budget_per_concept} {s.currency}/concept</span>
                     </td>
                     <td className="px-2 py-2">
                       {editingSettingId === s.id ? (
@@ -952,7 +966,6 @@ export default function PipelineClient() {
                             setEditCpa(s.target_cpa.toString());
                             setEditRoas(s.target_roas?.toString() ?? "");
                             setEditCurrency(s.currency);
-                            setEditTestingSlots(String(s.testing_slots ?? 5));
                           }}
                           className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                         >
@@ -1015,14 +1028,7 @@ export default function PipelineClient() {
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={newTestingSlots}
-                      onChange={(e) => setNewTestingSlots(e.target.value)}
-                      className="w-14 border border-gray-300 rounded px-2 py-1 text-xs tabular-nums"
-                    />
+                    <span className="text-xs text-gray-400">auto</span>
                   </td>
                   <td className="px-2 py-2">
                     <button
