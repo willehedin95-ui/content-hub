@@ -103,11 +103,13 @@ export async function POST(req: NextRequest) {
     source_folder_id?: string;
     product?: string;
     concept_number?: number;
+    source: string;
   } = {
     name: cleanName,
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["4:5", "9:16"],
+    source: "external",
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
   if (product) insertData.product = product;

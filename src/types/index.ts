@@ -251,6 +251,7 @@ export interface ImageJob {
   iteration_of?: string | null;
   iteration_type?: IterationType | null;
   iteration_context?: Record<string, unknown> | null;
+  source?: "hub" | "external";
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
@@ -267,6 +268,7 @@ export interface ImageJob {
     competitor_image_url: string;
     product_hero_urls: string[];
   } | null;
+  launchpad_priority?: number | null;
 }
 
 export interface SourceImage {
