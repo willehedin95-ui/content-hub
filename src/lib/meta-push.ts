@@ -73,39 +73,55 @@ export async function pushConceptToMeta(
     throw new Error("A push is already in progress for this concept");
   }
 
-  // Auto-assign concept number if not set (atomic to prevent duplicates)
+  // Auto-assign concept number if not set
   let conceptNumber = job.concept_number;
+  const isExternal = job.source === "external";
+
   if (!conceptNumber) {
-    const { data: assigned, error: rpcError } = await db.rpc("assign_next_concept_number", {
-      p_job_id: jobId,
-      p_product: job.product,
-    });
+    if (isExternal) {
+      const { data: assigned, error: rpcError } = await db.rpc("assign_next_external_concept_number", {
+        p_job_id: jobId,
+        p_product: job.product,
+      });
+      if (!rpcError && assigned !== null) {
+        conceptNumber = assigned;
+      }
+    }
 
-    if (rpcError || assigned === null || assigned === undefined) {
-      // Fallback: non-atomic assignment (safe for single-user tool)
-      const { data: maxRow } = await db
-        .from("image_jobs")
-        .select("concept_number")
-        .eq("product", job.product)
-        .not("concept_number", "is", null)
-        .order("concept_number", { ascending: false })
-        .limit(1)
-        .single();
+    if (!conceptNumber) {
+      // Hub concepts or fallback
+      const { data: assigned, error: rpcError } = await db.rpc("assign_next_concept_number", {
+        p_job_id: jobId,
+        p_product: job.product,
+      });
 
-      conceptNumber = (maxRow?.concept_number ?? 0) + 1;
+      if (rpcError || assigned === null || assigned === undefined) {
+        const { data: maxRow } = await db
+          .from("image_jobs")
+          .select("concept_number")
+          .eq("product", job.product)
+          .not("concept_number", "is", null)
+          .neq("source", "external")
+          .order("concept_number", { ascending: false })
+          .limit(1)
+          .single();
 
-      await db
-        .from("image_jobs")
-        .update({ concept_number: conceptNumber })
-        .eq("id", jobId);
-    } else {
-      conceptNumber = assigned;
+        conceptNumber = (maxRow?.concept_number ?? 0) + 1;
+
+        await db
+          .from("image_jobs")
+          .update({ concept_number: conceptNumber })
+          .eq("id", jobId);
+      } else {
+        conceptNumber = assigned;
+      }
     }
   }
 
   const conceptNumberStr = String(conceptNumber).padStart(3, "0");
-  // Strip leading "#XXX " prefix from concept name to avoid duplication in ad set name
-  const conceptName = job.name.replace(/^#\d+\s*/, "").toLowerCase();
+  const numberPrefix = isExternal ? "R" : "#";
+  // Strip leading "#XXX " or "RXXX " prefix from concept name to avoid duplication in ad set name
+  const conceptName = job.name.replace(/^#\d+\s*/, "").replace(/^R\d+\s*/, "").toLowerCase();
 
   // Load default schedule time from settings (e.g. "03:00")
   let scheduledStartTime: string | null = null;
@@ -242,7 +258,7 @@ export async function pushConceptToMeta(
         translatedHeadlines = result.translatedHeadlines;
       }
 
-      const adSetName = `${country} #${conceptNumberStr} | statics | ${conceptName}`;
+      const adSetName = `${country} ${numberPrefix}${conceptNumberStr} | statics | ${conceptName}`;
 
       // Check for existing pushed ad set for this concept + language
       // If found, add new images to it instead of creating a new ad set
