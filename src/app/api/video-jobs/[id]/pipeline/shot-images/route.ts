@@ -34,28 +34,58 @@ export async function POST(
 
   // Use character ref images as reference input for consistency
   const charRefUrls = job.character_ref_urls || [];
+  const reuseFirstFrame = job.reuse_first_frame ?? true;
 
-  const results: { shot_id: string; shot_number: number; task_id: string }[] = [];
+  const results: { shot_id: string; shot_number: number; task_id: string; reused?: boolean }[] = [];
 
   try {
-    for (const shot of shots) {
-      // Adapt veo_prompt for still image generation
-      const imagePrompt = `High quality photograph, cinematic still frame. ${shot.shot_description}. Detailed, realistic, 9:16 vertical format.`;
+    if (reuseFirstFrame) {
+      // REUSE FIRST FRAME MODE (VEO Studio approach for talking head UGC):
+      // Generate only shot 1's image, all other shots wait for it.
+      // The status endpoint will copy shot 1's image_url to all other shots once it completes.
+      const firstShot = shots[0]; // shots are ordered by shot_number, so [0] is the lowest pending
 
+      const imagePrompt = buildImagePrompt(firstShot.shot_description, job.character_description, job.product_description);
       const taskId = await createImageTask(imagePrompt, charRefUrls, "2:3", "1K");
 
       await db.from("video_shots").update({
         image_kie_task_id: taskId,
         image_status: "generating",
-      }).eq("id", shot.id);
+      }).eq("id", firstShot.id);
 
-      results.push({ shot_id: shot.id, shot_number: shot.shot_number, task_id: taskId });
+      results.push({ shot_id: firstShot.id, shot_number: firstShot.shot_number, task_id: taskId });
 
-      // Small delay between API calls
-      await new Promise((r) => setTimeout(r, 500));
+      // Mark remaining shots as "generating" too (they'll be resolved when shot 1 completes)
+      const remainingShots = shots.filter(s => s.id !== firstShot.id);
+      for (const shot of remainingShots) {
+        await db.from("video_shots").update({
+          image_status: "generating",
+          // Store metadata to indicate this shot reuses shot 1's image
+          image_kie_task_id: `reuse:${firstShot.id}`,
+        }).eq("id", shot.id);
+
+        results.push({ shot_id: shot.id, shot_number: shot.shot_number, task_id: `reuse:${firstShot.id}`, reused: true });
+      }
+    } else {
+      // INDIVIDUAL IMAGE MODE: Generate a unique keyframe for each shot
+      for (const shot of shots) {
+        const imagePrompt = buildImagePrompt(shot.shot_description, job.character_description, job.product_description);
+        const taskId = await createImageTask(imagePrompt, charRefUrls, "2:3", "1K");
+
+        await db.from("video_shots").update({
+          image_kie_task_id: taskId,
+          image_status: "generating",
+        }).eq("id", shot.id);
+
+        results.push({ shot_id: shot.id, shot_number: shot.shot_number, task_id: taskId });
+
+        // Small delay between API calls
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
 
     // Log usage
+    const actualGenerations = results.filter(r => !r.reused).length;
     await db.from("usage_logs").insert({
       type: "video_shot_image",
       model: "nano-banana-2",
@@ -64,11 +94,24 @@ export async function POST(
         video_job_id: id,
         pipeline: "multi_clip",
         shots_kicked: results.length,
+        actual_generations: actualGenerations,
+        reuse_first_frame: reuseFirstFrame,
       },
     });
 
-    return NextResponse.json({ kicked: results.length, results });
+    return NextResponse.json({ kicked: results.length, reuse_first_frame: reuseFirstFrame, results });
   } catch (err) {
     return safeError(err, "Failed to kick off shot image generation");
   }
+}
+
+function buildImagePrompt(shotDescription: string, charDesc: string | null, productDesc: string | null): string {
+  return [
+    shotDescription,
+    charDesc ? `\n\nCharacter: ${charDesc}.` : "",
+    productDesc ? `\n\nProduct: ${productDesc}` : "",
+    `\n\nYou are locked into a permanent capture style: Authentic iPhone front-camera photo realism.`,
+    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. Micro motion blur allowed. No HDR look. Flat image colors.`,
+    `Subject behavior: Neutral expression or as described. Relaxed posture. Arms not posed. This image must look like a casual iPhone video frame or paused reel, NOT a professional photo.`,
+  ].filter(Boolean).join(" ");
 }

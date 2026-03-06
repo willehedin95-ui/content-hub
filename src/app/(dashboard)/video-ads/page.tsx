@@ -117,11 +117,26 @@ export default async function VideoAdsPage() {
                     >
                       {job.status}
                     </span>
-                    {job.pipeline_mode === "multi_clip" && (
+                    {job.video_shots?.length ? (
                       <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded">
-                        Multi-Clip{job.video_shots?.length ? ` (${job.video_shots.length} shots)` : ""}
+                        {job.video_shots.length} shots
+                      </span>
+                    ) : null}
+                    {job.video_generation_method === "storyboard" && (
+                      <span className="bg-cyan-50 text-cyan-700 text-xs px-2 py-0.5 rounded">
+                        Storyboard{job.storyboard_duration ? ` ${job.storyboard_duration}s` : ""}
                       </span>
                     )}
+                    {job.video_generation_method === "kling" && (
+                      <span className="bg-emerald-50 text-emerald-700 text-xs px-2 py-0.5 rounded">
+                        Kling 3.0
+                      </span>
+                    )}
+                    {job.video_generation_method === "veo3" && job.video_shots?.length ? (
+                      <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded">
+                        Veo 3.1
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Concept name */}

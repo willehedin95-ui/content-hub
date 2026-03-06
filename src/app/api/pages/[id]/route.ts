@@ -34,38 +34,43 @@ export async function PATCH(
   if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
-  const body = await req.json();
-  const { name, tags, original_html, status } = body as {
-    name?: string;
-    tags?: string[];
-    original_html?: string;
-    status?: string;
-  };
 
-  const updateData: Record<string, unknown> = {};
-  if (name?.trim()) updateData.name = name.trim();
-  if (tags !== undefined) updateData.tags = tags;
-  if (original_html !== undefined) updateData.original_html = original_html;
-  if (status && ["importing", "ready"].includes(status)) updateData.status = status;
+  try {
+    const body = await req.json();
+    const { name, tags, original_html, status } = body as {
+      name?: string;
+      tags?: string[];
+      original_html?: string;
+      status?: string;
+    };
 
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+    const updateData: Record<string, unknown> = {};
+    if (name?.trim()) updateData.name = name.trim();
+    if (tags !== undefined) updateData.tags = tags;
+    if (original_html !== undefined) updateData.original_html = original_html;
+    if (status && ["importing", "ready"].includes(status)) updateData.status = status;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+    }
+
+    const db = createServerSupabase();
+
+    const { data, error } = await db
+      .from("pages")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return safeError(error, "Failed to update page");
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    return safeError(err, "Failed to update page");
   }
-
-  const db = createServerSupabase();
-
-  const { data, error } = await db
-    .from("pages")
-    .update(updateData)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    return safeError(error, "Failed to update page");
-  }
-
-  return NextResponse.json(data);
 }
 
 export async function DELETE(

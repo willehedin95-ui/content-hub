@@ -1,19 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   AlertTriangle,
-  RefreshCw,
-  Play,
   ChevronDown,
   ChevronRight,
   Film,
-  Languages,
-  Loader2,
+  Play,
+  RefreshCw,
 } from "lucide-react";
-import { VideoJob, VideoTranslation, LANGUAGES } from "@/types";
+import { VideoJob } from "@/types";
 import { VIDEO_FORMATS, HOOK_TYPES, SCRIPT_STRUCTURES } from "@/lib/constants";
 import MultiClipPipeline from "./MultiClipPipeline";
 
@@ -58,41 +56,10 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-type VideoModel = "sora-2-pro-text-to-video" | "veo3" | "veo3_fast";
-
-interface ModelOption {
-  value: VideoModel;
-  label: string;
-  description: string;
-}
-
-const MODEL_OPTIONS: ModelOption[] = [
-  { value: "sora-2-pro-text-to-video", label: "Sora 2 Pro", description: "OpenAI — best for detailed character prompts" },
-  { value: "veo3_fast", label: "Veo 3.1 Fast", description: "Google — fast, good quality, ~$0.40" },
-  { value: "veo3", label: "Veo 3.1 Quality", description: "Google — highest quality, ~$2.00" },
-];
-
-interface ModelStats {
-  [model: string]: { completed: number; failed: number; total: number; rate: number };
-}
-
 export default function VideoJobDetail({ initialJob }: Props) {
   const [job, setJob] = useState<VideoJob>(initialJob);
-  const [generating, setGenerating] = useState(false);
-  const [translating, setTranslating] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<VideoModel>("veo3_fast");
-  const [modelStats, setModelStats] = useState<ModelStats | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Fetch model success rates
-  useEffect(() => {
-    fetch("/api/video-jobs/model-status")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setModelStats(data); })
-      .catch(() => {});
-  }, []);
 
   // Derived lookups
   const formatLabel =
@@ -118,94 +85,11 @@ export default function VideoJobDetail({ initialJob }: Props) {
     return null;
   }, [job.id]);
 
-  // Polling: when job is generating or translating, poll every 3s
-  useEffect(() => {
-    const shouldPoll =
-      job.status === "generating" || job.status === "translating";
-
-    if (shouldPoll) {
-      pollRef.current = setInterval(() => {
-        refreshJob();
-      }, 3000);
-    }
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [job.status, refreshJob]);
-
-  // Generate source video
-  async function handleGenerate() {
-    setGenerating(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/video-jobs/${job.id}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: selectedModel }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Generation failed");
-      }
-      await refreshJob();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  // Create translations then generate them
-  async function handleTranslate() {
-    setTranslating(true);
-    setError(null);
-    try {
-      // Step 1: Create translations (translates scripts via Claude)
-      const createRes = await fetch(
-        `/api/video-jobs/${job.id}/create-translations`,
-        { method: "POST" }
-      );
-      const createData = await createRes.json();
-      if (!createRes.ok) {
-        setError(createData.error || "Failed to create translations");
-        setTranslating(false);
-        return;
-      }
-
-      await refreshJob();
-
-      // Step 2: Generate translated videos via Sora
-      const genRes = await fetch(
-        `/api/video-jobs/${job.id}/generate-translations`,
-        { method: "POST" }
-      );
-      const genData = await genRes.json();
-      if (!genRes.ok) {
-        setError(genData.error || "Failed to generate translations");
-      }
-      await refreshJob();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Translation failed"
-      );
-    } finally {
-      setTranslating(false);
-    }
-  }
-
-  // Find source video
+  // Find source video (for legacy single-clip jobs)
   const sourceVideo =
     job.source_videos?.find((sv) => sv.status === "completed") ??
     job.source_videos?.[0] ??
     null;
-
-  const translations = job.video_translations ?? [];
-  const hasTargetLanguages =
-    job.target_languages && job.target_languages.length > 0;
 
   // Title
   const title = [
@@ -255,9 +139,9 @@ export default function VideoJobDetail({ initialJob }: Props) {
                   {structureLabel}
                 </span>
               )}
-              {job.pipeline_mode === "multi_clip" && (
+              {job.video_shots && job.video_shots.length > 0 && (
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-orange-50 text-xs font-medium text-orange-700">
-                  Multi-Clip ({job.video_shots?.length ?? 0} shots)
+                  {job.video_shots.length} shots
                 </span>
               )}
               <span className="text-xs text-gray-400">
@@ -340,257 +224,47 @@ export default function VideoJobDetail({ initialJob }: Props) {
           )}
         </div>
 
-        {/* === RIGHT COLUMN: Video + Translations === */}
+        {/* === RIGHT COLUMN: Video Pipeline === */}
         <div className="space-y-6">
-          {job.pipeline_mode === "multi_clip" ? (
-            /* Multi-clip pipeline UI */
+          {job.video_shots && job.video_shots.length > 0 ? (
             <MultiClipPipeline job={job} onJobUpdate={async () => { await refreshJob(); }} />
           ) : (
-            <>
-              {/* Single-clip: Video preview panel */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                    <Film className="w-4 h-4 text-gray-400" />
-                    Source Video
-                  </h2>
-                  <button
-                    onClick={() => refreshJob()}
-                    className="text-gray-400 hover:text-gray-700 p-1 transition-colors"
-                    title="Refresh"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="p-4">
-                  {sourceVideo?.video_url ? (
-                    <video
-                      src={sourceVideo.video_url}
-                      controls
-                      className="w-full rounded-lg bg-black"
-                      preload="metadata"
-                    />
-                  ) : sourceVideo?.status === "generating" ? (
-                    <div className="aspect-[9/16] max-h-[400px] bg-gray-100 rounded-lg flex flex-col items-center justify-center gap-3">
-                      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                      <p className="text-sm text-gray-500">
-                        Generating video...
-                      </p>
-                    </div>
-                  ) : sourceVideo?.status === "failed" ? (
-                    <div className="aspect-[9/16] max-h-[400px] bg-red-50 rounded-lg flex flex-col items-center justify-center gap-3 p-6">
-                      <AlertTriangle className="w-8 h-8 text-red-400" />
-                      <p className="text-sm text-red-600 text-center">
-                        {sourceVideo.error_message || "Generation failed"}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="aspect-[9/16] max-h-[400px] bg-gray-100 rounded-lg flex flex-col items-center justify-center gap-3">
-                      <Play className="w-8 h-8 text-gray-300" />
-                      <p className="text-sm text-gray-400">
-                        No video generated yet
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Model selector + Generate button */}
-                  {(job.status === "draft" || job.status === "generated") &&
-                    job.sora_prompt && (
-                      <div className="mt-4 space-y-3">
-                        {/* Model selector */}
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1.5">
-                            Video Model
-                          </label>
-                          <div className="space-y-1.5">
-                            {MODEL_OPTIONS.map((opt) => {
-                              const stats = modelStats?.[opt.value];
-                              const hasData = stats && stats.total > 0;
-                              const isLow = hasData && stats.rate < 50;
-                              return (
-                                <button
-                                  key={opt.value}
-                                  onClick={() => setSelectedModel(opt.value)}
-                                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
-                                    selectedModel === opt.value
-                                      ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200"
-                                      : "bg-white border-gray-200 hover:border-gray-300"
-                                  }`}
-                                >
-                                  <div>
-                                    <span className={`font-medium ${selectedModel === opt.value ? "text-indigo-900" : "text-gray-800"}`}>
-                                      {opt.label}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400 ml-2">
-                                      {opt.description}
-                                    </span>
-                                  </div>
-                                  {hasData && (
-                                    <span
-                                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                        isLow
-                                          ? "bg-red-100 text-red-700"
-                                          : "bg-green-100 text-green-700"
-                                      }`}
-                                      title={`${stats.completed}/${stats.total} succeeded (your data, last 7 days)`}
-                                    >
-                                      {stats.completed}/{stats.total} ok
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGenerate}
-                          disabled={generating}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {generating ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Film className="w-4 h-4" />
-                              {sourceVideo?.video_url
-                                ? "Re-generate Video"
-                                : "Generate Video"}
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-
-                  {/* Generate Translations button */}
-                  {job.status === "generated" && hasTargetLanguages && (
-                    <button
-                      onClick={handleTranslate}
-                      disabled={translating}
-                      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {translating ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Translating...
-                        </>
-                      ) : (
-                        <>
-                          <Languages className="w-4 h-4" />
-                          Generate Translations (
-                          {job.target_languages.length} languages)
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
+            /* Legacy single-clip jobs (backward compat) */
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Film className="w-4 h-4 text-gray-400" />
+                  Source Video
+                </h2>
+                <button
+                  onClick={() => refreshJob()}
+                  className="text-gray-400 hover:text-gray-700 p-1 transition-colors"
+                  title="Refresh"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
               </div>
-
-              {/* Translations panel */}
-              {translations.length > 0 && (
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <Languages className="w-4 h-4 text-gray-400" />
-                      Translations
-                      <span className="text-xs text-gray-400 font-normal">
-                        ({translations.filter((t) => t.status === "completed").length}
-                        /{translations.length} complete)
-                      </span>
-                    </h2>
+              <div className="p-4">
+                {sourceVideo?.video_url ? (
+                  <video
+                    src={sourceVideo.video_url}
+                    controls
+                    className="w-full rounded-lg bg-black"
+                    preload="metadata"
+                  />
+                ) : (
+                  <div className="aspect-[9/16] max-h-[400px] bg-gray-100 rounded-lg flex flex-col items-center justify-center gap-3">
+                    <Play className="w-8 h-8 text-gray-300" />
+                    <p className="text-sm text-gray-400">
+                      Legacy single-clip job — no pipeline available
+                    </p>
                   </div>
-                  <div className="divide-y divide-gray-100">
-                    {translations.map((t) => (
-                      <TranslationCard key={t.id} translation={t} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- Translation Card Sub-component ---
-
-function TranslationCard({ translation }: { translation: VideoTranslation }) {
-  const [showScript, setShowScript] = useState(false);
-
-  const langInfo = LANGUAGES.find((l) => l.value === translation.language);
-  const flag = langInfo?.flag ?? "";
-  const label = langInfo?.label ?? translation.language;
-
-  return (
-    <div className="p-4">
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-base">{flag}</span>
-          <span className="text-sm font-medium text-gray-700">{label}</span>
-        </div>
-        <StatusBadge status={translation.status} />
-      </div>
-
-      {/* Video player */}
-      {translation.video_url && (
-        <video
-          src={translation.video_url}
-          controls
-          className="w-full rounded-lg bg-black mb-3"
-          preload="metadata"
-        />
-      )}
-
-      {/* Generating state */}
-      {translation.status === "generating" && (
-        <div className="flex items-center gap-2 text-sm text-amber-600 mb-3">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Generating video...
-        </div>
-      )}
-
-      {/* Translating state */}
-      {translation.status === "translating" && (
-        <div className="flex items-center gap-2 text-sm text-amber-600 mb-3">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Translating script...
-        </div>
-      )}
-
-      {/* Error display */}
-      {translation.error_message && (
-        <div className="bg-red-50 rounded-md px-3 py-2 mb-3">
-          <p className="text-xs text-red-600">{translation.error_message}</p>
-        </div>
-      )}
-
-      {/* Collapsible translated script */}
-      {translation.translated_script && (
-        <div>
-          <button
-            onClick={() => setShowScript(!showScript)}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            {showScript ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-            Translated script
-          </button>
-          {showScript && (
-            <pre className="mt-2 text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed bg-gray-50 rounded-md p-3">
-              {translation.translated_script}
-            </pre>
-          )}
-        </div>
-      )}
     </div>
   );
 }

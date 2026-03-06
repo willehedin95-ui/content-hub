@@ -45,110 +45,115 @@ export async function PUT(
   if (!isValidUUID(id)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
-  const body = await req.json();
-  const { translated_html, translated_texts, seo_title, seo_description, slug } =
-    body as {
-      translated_html?: string;
-      translated_texts?: Record<string, string>;
-      seo_title?: string;
-      seo_description?: string;
-      slug?: string;
-    };
 
-  if (!translated_html && !translated_texts) {
-    return NextResponse.json(
-      { error: "translated_html or translated_texts is required" },
-      { status: 400 }
-    );
-  }
+  try {
+    const body = await req.json();
+    const { translated_html, translated_texts, seo_title, seo_description, slug } =
+      body as {
+        translated_html?: string;
+        translated_texts?: Record<string, string>;
+        seo_title?: string;
+        seo_description?: string;
+        slug?: string;
+      };
 
-  const db = createServerSupabase();
-
-  const { data: translation, error: fetchError } = await db
-    .from("translations")
-    .select(`*, pages (original_html)`)
-    .eq("id", id)
-    .single();
-
-  if (fetchError || !translation) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  let finalHtml: string;
-
-  if (translated_html) {
-    // Inline editing path — HTML comes directly from the client
-    const $ = cheerio.load(translated_html);
-
-    // Server-side sanitization: strip ALL editor artifacts
-    $("[data-cc-editor]").remove();
-    $("[data-cc-injected]").remove();
-    $("[data-cc-el-toolbar]").remove();
-    $("[data-cc-exclude-mode]").remove();
-    $("[data-cc-editable]").removeAttr("data-cc-editable");
-    $("[contenteditable]").removeAttr("contenteditable");
-    $("[data-cc-padded]").removeAttr("data-cc-padded");
-    $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
-    $("[data-cc-hidden]").removeAttr("data-cc-hidden");
-    $("[data-cc-selected]").removeAttr("data-cc-selected");
-    $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
-
-    // Apply SEO meta tags
-    if (seo_title) {
-      $("title").text(seo_title);
-      $('meta[property="og:title"]').attr("content", seo_title);
-    }
-    if (seo_description) {
-      $('meta[name="description"]').attr("content", seo_description);
-      $('meta[property="og:description"]').attr("content", seo_description);
+    if (!translated_html && !translated_texts) {
+      return NextResponse.json(
+        { error: "translated_html or translated_texts is required" },
+        { status: 400 }
+      );
     }
 
-    finalHtml = sanitizeHtml($.html());
-  } else {
-    // Legacy segment editing path — rebuild HTML from placeholders
-    const { modifiedHtml } = extractContent(
-      (translation.pages as { original_html: string }).original_html
-    );
+    const db = createServerSupabase();
 
-    const metaTranslations = {
-      title: seo_title,
-      description: seo_description,
-      ogTitle: seo_title,
-      ogDescription: seo_description,
-    };
+    const { data: translation, error: fetchError } = await db
+      .from("translations")
+      .select(`*, pages (original_html)`)
+      .eq("id", id)
+      .single();
 
-    finalHtml = applyTranslations(
-      modifiedHtml,
-      translated_texts!,
-      metaTranslations
-    );
+    if (fetchError || !translation) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    let finalHtml: string;
+
+    if (translated_html) {
+      // Inline editing path — HTML comes directly from the client
+      const $ = cheerio.load(translated_html);
+
+      // Server-side sanitization: strip ALL editor artifacts
+      $("[data-cc-editor]").remove();
+      $("[data-cc-injected]").remove();
+      $("[data-cc-el-toolbar]").remove();
+      $("[data-cc-exclude-mode]").remove();
+      $("[data-cc-editable]").removeAttr("data-cc-editable");
+      $("[contenteditable]").removeAttr("contenteditable");
+      $("[data-cc-padded]").removeAttr("data-cc-padded");
+      $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
+      $("[data-cc-hidden]").removeAttr("data-cc-hidden");
+      $("[data-cc-selected]").removeAttr("data-cc-selected");
+      $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
+
+      // Apply SEO meta tags
+      if (seo_title) {
+        $("title").text(seo_title);
+        $('meta[property="og:title"]').attr("content", seo_title);
+      }
+      if (seo_description) {
+        $('meta[name="description"]').attr("content", seo_description);
+        $('meta[property="og:description"]').attr("content", seo_description);
+      }
+
+      finalHtml = sanitizeHtml($.html());
+    } else {
+      // Legacy segment editing path — rebuild HTML from placeholders
+      const { modifiedHtml } = extractContent(
+        (translation.pages as { original_html: string }).original_html
+      );
+
+      const metaTranslations = {
+        title: seo_title,
+        description: seo_description,
+        ogTitle: seo_title,
+        ogDescription: seo_description,
+      };
+
+      finalHtml = applyTranslations(
+        modifiedHtml,
+        translated_texts!,
+        metaTranslations
+      );
+    }
+
+    // Clear quality data if the HTML content actually changed (scores would be stale)
+    const htmlChanged = finalHtml !== translation.translated_html;
+
+    const { data: updated, error: saveError } = await db
+      .from("translations")
+      .update({
+        translated_html: finalHtml,
+        translated_texts: translated_texts ?? translation.translated_texts,
+        seo_title: seo_title ?? translation.seo_title,
+        seo_description: seo_description ?? translation.seo_description,
+        slug: slug ?? translation.slug,
+        status:
+          translation.status === "published" ? "translated" : translation.status,
+        ...(htmlChanged && { quality_score: null, quality_analysis: null }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (saveError) {
+      return safeError(saveError, "Failed to save translation");
+    }
+
+    return NextResponse.json(updated);
+  } catch (err) {
+    return safeError(err, "Failed to save translation");
   }
-
-  // Clear quality data if the HTML content actually changed (scores would be stale)
-  const htmlChanged = finalHtml !== translation.translated_html;
-
-  const { data: updated, error: saveError } = await db
-    .from("translations")
-    .update({
-      translated_html: finalHtml,
-      translated_texts: translated_texts ?? translation.translated_texts,
-      seo_title: seo_title ?? translation.seo_title,
-      seo_description: seo_description ?? translation.seo_description,
-      slug: slug ?? translation.slug,
-      status:
-        translation.status === "published" ? "translated" : translation.status,
-      ...(htmlChanged && { quality_score: null, quality_analysis: null }),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (saveError) {
-    return safeError(saveError, "Failed to save translation");
-  }
-
-  return NextResponse.json(updated);
 }
 
 /**

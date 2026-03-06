@@ -337,7 +337,8 @@ export default function MorningBriefClient() {
   const [data, setData] = useState<MorningBriefData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Tracks applied + dismissed card IDs (persisted to DB via action-log API)
+  const [handledCards, setHandledCards] = useState<Record<string, string>>({});
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     diagnostics: true,
   });
@@ -351,12 +352,39 @@ export default function MorningBriefClient() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || `HTTP ${res.status}`);
       }
-      setData(await res.json());
+      const briefData = await res.json();
+      setData(briefData);
+
+      // Load persisted action log for this brief's date
+      if (briefData.data_date) {
+        const logRes = await fetch(
+          `/api/morning-brief/action-log?date=${briefData.data_date}`
+        );
+        if (logRes.ok) {
+          const log = await logRes.json();
+          setHandledCards(log);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
+  };
+
+  /** Persist an applied/dismissed action to the server */
+  const logAction = async (cardId: string, status: "applied" | "dismissed") => {
+    if (!data?.data_date) return;
+    setHandledCards((prev) => ({ ...prev, [cardId]: status }));
+    fetch("/api/morning-brief/action-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brief_date: data.data_date,
+        card_id: cardId,
+        status,
+      }),
+    }).catch(() => {}); // fire-and-forget
   };
 
   // Action state
@@ -417,6 +445,7 @@ export default function MorningBriefClient() {
             },
           },
         }));
+        if (res.ok) logAction(card.id, "applied");
       } catch {
         setActionState((s) => ({
           loading: null,
@@ -437,16 +466,21 @@ export default function MorningBriefClient() {
         body: JSON.stringify(card.action_data),
       });
       const result = await res.json();
+      const ok = res.ok && result.ok;
       setActionState((s) => ({
         loading: null,
         results: {
           ...s.results,
           [card.id]: {
-            ok: result.ok,
-            message: result.ok ? "Done!" : result.error || "Failed",
+            ok,
+            message: ok ? "Done!" : result.error || `Failed (${res.status})`,
           },
         },
       }));
+      // Persist successful actions so they don't reappear on refresh
+      if (ok) {
+        logAction(card.id, "applied");
+      }
     } catch {
       setActionState((s) => ({
         loading: null,
@@ -503,7 +537,7 @@ export default function MorningBriefClient() {
     data.questions;
 
   const visibleActions = (data.action_cards ?? []).filter(
-    (c) => !dismissed.has(c.id)
+    (c) => !handledCards[c.id]
   );
 
   return (
@@ -690,11 +724,7 @@ export default function MorningBriefClient() {
                       ) : (
                         <>
                           <button
-                            onClick={() =>
-                              setDismissed((prev) =>
-                                new Set(prev).add(card.id)
-                              )
-                            }
+                            onClick={() => logAction(card.id, "dismissed")}
                             className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
                             title="Dismiss"
                           >

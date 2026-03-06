@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
       landing_page_url: body.landing_page_url || null,
       pipeline_mode: body.pipeline_mode || "single_clip",
       max_shots: body.max_shots ?? 4,
+      reuse_first_frame: body.reuse_first_frame ?? true,
     })
     .select()
     .single();

@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
   const { action } = body;
   const db = createServerSupabase();
 
-  switch (action) {
+  try {
+    switch (action) {
     case "pause_ad": {
       const { ad_id, ad_name, campaign_name, reason } = body;
       if (!ad_id) {
@@ -356,5 +357,12 @@ export async function POST(req: NextRequest) {
         { error: `Unknown action: ${action}` },
         { status: 400 }
       );
+  }
+  } catch (err) {
+    console.error(`[morning-brief/actions] ${action} failed:`, err);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : "Action failed" },
+      { status: 500 }
+    );
   }
 }

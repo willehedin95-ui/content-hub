@@ -20,6 +20,7 @@ import {
   DollarSign,
   Percent,
   RefreshCw,
+  Calendar,
 } from "lucide-react";
 import { ABTest, Translation, LANGUAGES } from "@/types";
 import { calculateSignificance } from "@/lib/ab-stats";
@@ -76,6 +77,10 @@ export default function ABTestManager({
   const isActive = abTest.status === "active";
   const isCompleted = abTest.status === "completed";
   const isDraft = abTest.status === "draft";
+
+  const daysRunning = Math.floor(
+    (Date.now() - new Date(abTest.created_at).getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   const significance = stats
     ? calculateSignificance(stats.control.views, stats.control.clicks, stats.variant.views, stats.variant.clicks)
@@ -272,6 +277,16 @@ export default function ABTestManager({
               {isActive ? "Active" : isCompleted ? "Completed" : "Draft"}
             </span>
             <span className="text-xs text-gray-400">/{testSlug}</span>
+            {(isActive || isCompleted) && (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {new Date(abTest.created_at).toLocaleDateString("sv-SE")}
+                {" "}
+                <span className="text-gray-300">|</span>
+                {" "}
+                {daysRunning === 0 ? "Today" : `${daysRunning}d`}
+              </span>
+            )}
             {abTest.winner && (
               <span className="text-xs text-emerald-600 flex items-center gap-1">
                 <Trophy className="w-3.5 h-3.5" />

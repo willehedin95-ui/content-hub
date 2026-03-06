@@ -27,12 +27,30 @@ export async function POST(
   await db.from("video_jobs").update({ character_ref_status: "generating" }).eq("id", id);
 
   try {
-    const prompt = `Professional portrait photograph of ${job.character_description}. Clean neutral background. Multiple expressions. High quality, detailed, realistic. 9:16 vertical format.`;
+    // Three-view character reference sheet (VEO Studio approach):
+    // Front view, 3/4 view, and side profile on clean white background.
+    // Gives the image generator maximum visual information for character consistency.
+    const prompt = `Generate a single reference sheet showing ONLY this one character: ${job.character_description}.
 
-    // Generate 2 character reference images
+Three-view layout on a clean solid white background:
+- LEFT: Front view, facing camera directly, neutral expression
+- CENTER: 3/4 angle view, slight head turn
+- RIGHT: Side profile view
+
+Requirements:
+- Show ONLY this single character, nothing else
+- Clean, simple white or light gray background
+- Consistent proportions and appearance across all three views
+- Real skin texture with visible pores, natural imperfections
+- Natural casual clothing as described
+- No other characters, objects, or text in the image
+- Photorealistic style, NOT stylized or artistic`;
+
+    // Generate 1 comprehensive three-view reference sheet
+    // (more useful than 2 separate portraits — gives front/side/back in one image)
     const refUrls: string[] = [];
-    for (let i = 0; i < 2; i++) {
-      const taskId = await createImageTask(prompt, [], "2:3", "1K");
+    for (let i = 0; i < 1; i++) {
+      const taskId = await createImageTask(prompt, [], "16:9", "1K");
       const result = await pollTaskResult(taskId);
 
       if (result.urls.length > 0) {

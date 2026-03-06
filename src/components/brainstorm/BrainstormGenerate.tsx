@@ -120,7 +120,11 @@ export default function BrainstormGenerate() {
   const [videoLanguage, setVideoLanguage] = useState<string>("sv");
   const [videoDirection, setVideoDirection] = useState("");
   const [videoCharacterDesc, setVideoCharacterDesc] = useState("");
-  const [pipelineMode, setPipelineMode] = useState<"single_clip" | "multi_clip">("multi_clip");
+  const pipelineMode = "multi_clip" as const;
+  const [reuseFirstFrame, setReuseFirstFrame] = useState(true);
+  const [productPlacement, setProductPlacement] = useState(false);
+  const [productPlacementStyle, setProductPlacementStyle] = useState<string>("held_in_hand");
+  const [productVisualDesc, setProductVisualDesc] = useState("");
 
   // Proposal state
   const [proposals, setProposals] = useState<ConceptProposal[]>([]);
@@ -368,6 +372,11 @@ export default function BrainstormGenerate() {
         if (videoHookType) reqBody.hook_type = videoHookType;
         if (videoDirection.trim()) reqBody.creative_direction = videoDirection.trim();
         if (videoCharacterDesc.trim()) reqBody.character_description = videoCharacterDesc.trim();
+        if (productPlacement) {
+          reqBody.product_placement = true;
+          reqBody.product_placement_style = productPlacementStyle;
+          if (productVisualDesc.trim()) reqBody.product_visual_description = productVisualDesc.trim();
+        }
       }
 
       // Initialize progress steps
@@ -432,9 +441,21 @@ export default function BrainstormGenerate() {
                 ...prev,
                 { step: "parsing", message: event.message, done: false },
               ]);
+            } else if (event.step === "translating") {
+              setProgressSteps((prev) => [
+                ...prev.map((s) => (s.step === "generating" ? { ...s, done: true } : s)),
+                { step: "translating", message: event.message, done: false },
+              ]);
+            } else if (event.step === "translation_warning") {
+              setProgressSteps((prev) => [
+                ...prev.map((s) => (s.step === "translating" ? { ...s, done: true, message: event.message } : s)),
+              ]);
             } else if (event.step === "done") {
               setProgressSteps((prev) => [
-                ...prev.map((s) => (s.step === "parsing" ? { ...s, done: true, message: "Proposals parsed" } : s)),
+                ...prev.map((s) =>
+                  s.step === "parsing" ? { ...s, done: true, message: "Proposals parsed" } :
+                  s.step === "translating" ? { ...s, done: true, message: "Scripts translated" } : s
+                ),
                 { step: "done", message: event.message, done: true },
               ]);
 
@@ -516,8 +537,10 @@ export default function BrainstormGenerate() {
           delivery_style: proposal.delivery_style,
           ad_copy_primary: proposal.ad_copy_primary,
           ad_copy_headline: proposal.ad_copy_headline,
+          product_description: proposal.product_description || null,
           pipeline_mode: pipelineMode,
-          shots: pipelineMode === "multi_clip" ? proposal.shots : undefined,
+          reuse_first_frame: reuseFirstFrame,
+          shots: proposal.shots,
         }),
       });
 
@@ -844,30 +867,21 @@ export default function BrainstormGenerate() {
           {/* Video UGC inputs */}
           {mode === "video_ugc" && (
             <div className="space-y-4">
-              {/* Pipeline Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Pipeline Mode
+              {/* Reuse First Frame toggle */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <input
+                  type="checkbox"
+                  id="reuse-first-frame"
+                  checked={reuseFirstFrame}
+                  onChange={(e) => setReuseFirstFrame(e.target.checked)}
+                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <label htmlFor="reuse-first-frame" className="text-sm cursor-pointer">
+                  <span className="font-medium text-amber-800">Reuse first frame for all shots</span>
+                  <span className="block text-[11px] text-amber-600 mt-0.5">
+                    Recommended for talking head UGC — generates one keyframe and reuses it for all clips, guaranteeing perfect character consistency.
+                  </span>
                 </label>
-                <div className="flex gap-2">
-                  {[
-                    { value: "single_clip" as const, label: "Single Clip", desc: "One 8s video clip" },
-                    { value: "multi_clip" as const, label: "Multi-Clip Pipeline", desc: "3-5 shots with keyframes" },
-                  ].map((m) => (
-                    <button
-                      key={m.value}
-                      onClick={() => setPipelineMode(m.value)}
-                      className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
-                        pipelineMode === m.value
-                          ? "bg-purple-50 border-purple-300 text-purple-700"
-                          : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                      }`}
-                    >
-                      <div>{m.label}</div>
-                      <div className="text-[10px] font-normal mt-0.5 opacity-70">{m.desc}</div>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Language */}
@@ -895,7 +909,7 @@ export default function BrainstormGenerate() {
                   ))}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Script and Sora prompt will be generated in this language
+                  Concept generated in English, then translated to native-quality script
                 </p>
               </div>
 
@@ -977,6 +991,73 @@ export default function BrainstormGenerate() {
                   Describe the person in the video — age, appearance, clothing, mood
                 </p>
               </div>
+
+              {/* Product Placement toggle */}
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Product Placement</label>
+                    <p className="text-xs text-gray-400">Show product in the video (optional — not every UGC ad needs it)</p>
+                  </div>
+                  <button
+                    onClick={() => setProductPlacement(!productPlacement)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      productPlacement ? "bg-purple-500" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        productPlacement ? "translate-x-5" : ""
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {productPlacement && (
+                  <div className="space-y-3 pt-2 border-t border-gray-100">
+                    {/* Visual Description */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Visual Description
+                        <span className="font-normal text-gray-400 ml-1">(optional — AI will use product bank if empty)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={productVisualDesc}
+                        onChange={(e) => setProductVisualDesc(e.target.value)}
+                        placeholder="e.g. White contoured memory foam pillow with grey jersey cover"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300"
+                      />
+                    </div>
+
+                    {/* Placement Style */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Placement Style</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: "held_in_hand", label: "Held in hand" },
+                          { value: "on_table", label: "On table" },
+                          { value: "in_background", label: "In background" },
+                          { value: "unboxing", label: "Unboxing" },
+                          { value: "using_it", label: "Using it" },
+                        ].map((s) => (
+                          <button
+                            key={s.value}
+                            onClick={() => setProductPlacementStyle(s.value)}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                              productPlacementStyle === s.value
+                                ? "bg-purple-50 border-purple-300 text-purple-700"
+                                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1037,9 +1118,7 @@ export default function BrainstormGenerate() {
             </div>
             <p className="text-xs text-gray-400 mt-1">
               {mode === "video_ugc"
-                ? pipelineMode === "multi_clip"
-                  ? "Multi-clip: ~$0.15-0.20 per concept (includes shot storyboard). Image + video generation costs are separate."
-                  : "Video UGC: ~$0.10-0.15 per concept. Each concept includes a ~5000 char Sora prompt."
+                ? "~$0.15-0.20 per concept (includes shot storyboard). Image + video generation costs are separate."
                 : "~$0.03-0.05 per generation (Claude Sonnet 4.5)"}
             </p>
           </div>

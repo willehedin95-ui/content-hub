@@ -33,6 +33,28 @@ export async function GET(
   for (const shot of shots || []) {
     // Check image generation status
     if (shot.image_status === "generating" && shot.image_kie_task_id) {
+      // Handle "reuse" shots — these inherit the source shot's completed image
+      if (shot.image_kie_task_id.startsWith("reuse:")) {
+        const sourceId = shot.image_kie_task_id.replace("reuse:", "");
+        const sourceShot = (shots || []).find((s: { id: string }) => s.id === sourceId);
+        if (sourceShot?.image_status === "completed" && sourceShot?.image_url) {
+          await db.from("video_shots").update({
+            image_status: "completed",
+            image_url: sourceShot.image_url,
+          }).eq("id", shot.id);
+          shot.image_status = "completed";
+          shot.image_url = sourceShot.image_url;
+        } else if (sourceShot?.image_status === "failed") {
+          await db.from("video_shots").update({
+            image_status: "failed",
+            error_message: "Source shot image failed",
+          }).eq("id", shot.id);
+          shot.image_status = "failed";
+          shot.error_message = "Source shot image failed";
+        }
+        continue;
+      }
+
       try {
         const status = await checkImageTaskStatus(shot.image_kie_task_id);
         if (status.status === "completed" && status.urls.length > 0) {
@@ -105,6 +127,44 @@ export async function GET(
     }
   }
 
+  // Check storyboard generation status
+  let storyboardStatus = job.storyboard_status || "pending";
+  let storyboardUrl = job.storyboard_url || null;
+
+  if (storyboardStatus === "generating" && job.storyboard_kie_task_id) {
+    try {
+      const status = await checkImageTaskStatus(job.storyboard_kie_task_id);
+      if (status.status === "completed" && status.urls.length > 0) {
+        const videoResponse = await fetch(status.urls[0]);
+        if (videoResponse.ok) {
+          const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+          const storagePath = `${job.product}/${id}/storyboard.mp4`;
+          const { error: uploadError } = await db.storage
+            .from(VIDEO_STORAGE_BUCKET)
+            .upload(storagePath, videoBuffer, { contentType: "video/mp4", upsert: true });
+
+          if (!uploadError) {
+            const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
+            storyboardUrl = publicUrl.publicUrl;
+            storyboardStatus = "completed";
+            await db.from("video_jobs").update({
+              storyboard_status: "completed",
+              storyboard_url: storyboardUrl,
+              status: "generated",
+            }).eq("id", id);
+          }
+        }
+      } else if (status.status === "failed") {
+        storyboardStatus = "failed";
+        await db.from("video_jobs").update({
+          storyboard_status: "failed",
+        }).eq("id", id);
+      }
+    } catch (err) {
+      console.error("Error checking storyboard status:", err);
+    }
+  }
+
   // Determine overall pipeline status
   const allShots = shots || [];
   let overallStatus = "pending";
@@ -115,7 +175,12 @@ export async function GET(
   const allVideosCompleted = allShots.length > 0 && allShots.every((s: { video_status: string }) => s.video_status === "completed");
   const anyFailed = allShots.some((s: { image_status: string; video_status: string }) => s.image_status === "failed" || s.video_status === "failed");
 
-  if (anyFailed) overallStatus = "failed";
+  // Single-video methods (storyboard/kling): completed when video is done
+  const isStoryboard = job.video_generation_method === "storyboard" || job.video_generation_method === "kling";
+  if (isStoryboard && storyboardStatus === "completed") overallStatus = "completed";
+  else if (isStoryboard && storyboardStatus === "generating") overallStatus = "generating_storyboard";
+  else if (isStoryboard && storyboardStatus === "failed") overallStatus = "failed";
+  else if (anyFailed) overallStatus = "failed";
   else if (allVideosCompleted) overallStatus = "completed";
   else if (anyVideoGenerating) overallStatus = "generating_clips";
   else if (allImagesCompleted) overallStatus = "reviewing";
@@ -123,8 +188,13 @@ export async function GET(
 
   return NextResponse.json({
     pipeline_mode: job.pipeline_mode,
+    video_generation_method: job.video_generation_method || "veo3",
     character_ref_status: job.character_ref_status,
     character_ref_urls: job.character_ref_urls || [],
+    reuse_first_frame: job.reuse_first_frame ?? true,
+    storyboard_status: storyboardStatus,
+    storyboard_url: storyboardUrl,
+    storyboard_duration: job.storyboard_duration || "15",
     shots: (shots || []).map((s: Record<string, unknown>) => ({
       id: s.id,
       shot_number: s.shot_number,

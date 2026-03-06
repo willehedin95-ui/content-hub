@@ -150,6 +150,116 @@ export async function generateImage(
   return pollTaskResult(taskId);
 }
 
+// --- Sora 2 Pro Storyboard (image-to-video, no text prompt) ---
+
+export type StoryboardDuration = "10" | "15" | "25";
+export type StoryboardAspectRatio = "portrait" | "landscape";
+
+export async function createStoryboardTask(
+  imageUrls: string[],
+  duration: StoryboardDuration = "15",
+  aspectRatio: StoryboardAspectRatio = "portrait"
+): Promise<string> {
+  if (!imageUrls.length) throw new Error("At least one image URL is required for storyboard");
+
+  return withRetry(
+    async () => {
+      const res = await fetch(`${KIE_API_BASE}/createTask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getApiKey()}`,
+        },
+        body: JSON.stringify({
+          model: "sora-2-pro-storyboard",
+          input: {
+            n_frames: duration,
+            image_urls: imageUrls,
+            aspect_ratio: aspectRatio,
+            upload_method: "s3",
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Kie.ai Storyboard createTask failed (${res.status}): ${text}`);
+      }
+
+      const data: CreateTaskResponse = await res.json();
+      if (data.code !== 200) {
+        throw new Error(`Kie.ai Storyboard createTask error: ${data.msg}`);
+      }
+
+      return data.data.taskId;
+    },
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
+}
+
+// --- Kling 3.0 (text-to-video with optional start frame + sound) ---
+
+export interface KlingParams {
+  prompt: string;
+  imageUrls?: string[];
+  multiShots?: boolean;
+  sound?: boolean;
+  duration?: number;
+  aspectRatio?: string;
+  mode?: "std" | "pro";
+}
+
+export async function createKlingTask(params: KlingParams): Promise<string> {
+  const {
+    prompt,
+    imageUrls = [],
+    multiShots = false,
+    sound = true,
+    duration = 15,
+    aspectRatio = "9:16",
+    mode = "std",
+  } = params;
+
+  if (!prompt) throw new Error("Prompt is required for Kling 3.0");
+
+  return withRetry(
+    async () => {
+      const res = await fetch(`${KIE_API_BASE}/createTask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getApiKey()}`,
+        },
+        body: JSON.stringify({
+          model: "kling-3.0/video",
+          input: {
+            prompt,
+            ...(imageUrls.length > 0 && { image_urls: imageUrls }),
+            multi_shots: multiShots,
+            sound,
+            duration,
+            aspect_ratio: aspectRatio,
+            mode,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Kie.ai Kling createTask failed (${res.status}): ${text}`);
+      }
+
+      const data: CreateTaskResponse = await res.json();
+      if (data.code !== 200) {
+        throw new Error(`Kie.ai Kling createTask error: ${data.msg}`);
+      }
+
+      return data.data.taskId;
+    },
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+  );
+}
+
 // --- Video Generation ---
 
 export type VideoModel = "sora-2-pro-text-to-video" | "veo3" | "veo3_fast";

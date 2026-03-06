@@ -335,7 +335,7 @@ export default function EditPageClient({
           mode,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.variation && el) {
         el.textContent = data.variation;
         markDirty();
@@ -366,7 +366,7 @@ export default function EditPageClient({
           product: pageProduct || null,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.suggestions) {
         setHeadlineSuggestions(data.suggestions);
       }
@@ -768,8 +768,8 @@ export default function EditPageClient({
         });
 
         if (!res.ok) {
-          const data = await res.json();
-          setSaveError(data.error || "Failed to save");
+          const data = await res.json().catch(() => ({}));
+          setSaveError(data.error || `Failed to save (${res.status})`);
           return;
         }
       } else {
@@ -786,8 +786,8 @@ export default function EditPageClient({
         });
 
         if (!res.ok) {
-          const data = await res.json();
-          setSaveError(data.error || "Failed to save");
+          const data = await res.json().catch(() => ({}));
+          setSaveError(data.error || `Failed to save (${res.status})`);
           return;
         }
       }
@@ -826,8 +826,8 @@ export default function EditPageClient({
       });
 
       if (!saveRes.ok) {
-        const data = await saveRes.json();
-        setSaveError(data.error || "Failed to save before publish");
+        const data = await saveRes.json().catch(() => ({}));
+        setSaveError(data.error || `Failed to save before publish (${saveRes.status})`);
         return;
       }
 
@@ -894,7 +894,7 @@ export default function EditPageClient({
         }),
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setQualityScore(data.quality_score ?? null);
         setQualityAnalysis(data);
       } else {
@@ -920,12 +920,12 @@ export default function EditPageClient({
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setSaveError(data.error || "Fix failed");
         return;
       }
 
-      const fixData = await res.json();
+      const fixData = await res.json().catch(() => ({}));
 
       setIsDirty(false);
       setIframeKey((k) => k + 1);
@@ -963,7 +963,7 @@ export default function EditPageClient({
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setSaveError(data.error || "Re-translation failed");
         return;
       }

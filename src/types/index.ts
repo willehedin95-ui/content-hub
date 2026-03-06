@@ -938,7 +938,9 @@ export type VideoTranslationStatus =
 
 export type SourceVideoStatus = "pending" | "generating" | "completed" | "failed";
 
-export type PipelineMode = "single_clip" | "multi_clip";
+export type PipelineMode = "single_clip" | "multi_clip"; // single_clip kept for backward compat with existing DB records
+export type VideoGenerationMethod = "veo3" | "storyboard" | "kling";
+export type StoryboardStatus = "pending" | "generating" | "completed" | "failed";
 export type ShotImageStatus = "pending" | "generating" | "completed" | "failed";
 export type ShotVideoStatus = "pending" | "generating" | "completed" | "failed";
 export type CharacterRefStatus = "pending" | "generating" | "completed" | "failed" | "skipped";
@@ -1028,9 +1030,15 @@ export interface VideoJob {
   source_videos?: SourceVideo[];
   video_translations?: VideoTranslation[];
   pipeline_mode: PipelineMode;
+  video_generation_method: VideoGenerationMethod;
   character_ref_urls: string[];
   character_ref_status: CharacterRefStatus;
   max_shots: number;
+  reuse_first_frame: boolean;
+  storyboard_kie_task_id: string | null;
+  storyboard_url: string | null;
+  storyboard_status: StoryboardStatus;
+  storyboard_duration: string;
   video_shots?: VideoShot[];
 }
 
@@ -1092,6 +1100,7 @@ export interface VideoConceptProposal {
   delivery_style: DeliveryStyle;
   script: string;
   character_description: string;
+  product_description?: string;
   sora_prompt: string;
   ad_copy_primary: string;
   ad_copy_headline: string;
