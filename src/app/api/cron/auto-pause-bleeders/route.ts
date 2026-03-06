@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { updateAd } from "@/lib/meta";
+import { updateAd, updateAdSet } from "@/lib/meta";
 import { sendMessage } from "@/lib/telegram";
 
 export const maxDuration = 60;
@@ -121,11 +121,80 @@ export async function GET(req: NextRequest) {
     await sendMessage(chatId, lines.join("\n"));
   }
 
+  // === Concept-level kills: zombie ad sets (all ads paused) ===
+
+  const { data: activeCampaigns } = await db
+    .from("meta_campaigns")
+    .select("id, meta_adset_id, image_job_id, adset_name")
+    .eq("status", "pushed");
+
+  const killedAdSets: string[] = [];
+
+  for (const campaign of activeCampaigns ?? []) {
+    if (!campaign.meta_adset_id) continue;
+
+    // Check if any active ads remain in this ad set
+    const { data: ads } = await db
+      .from("meta_ads")
+      .select("meta_ad_id, status")
+      .eq("campaign_id", campaign.id);
+
+    const activeAds = (ads ?? []).filter((a) => a.status !== "PAUSED");
+
+    if (ads && ads.length > 0 && activeAds.length === 0) {
+      // All ads paused -> kill the ad set
+      try {
+        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+        killedAdSets.push(campaign.adset_name ?? campaign.meta_adset_id);
+
+        // Mark concept as killed in lifecycle
+        const { data: markets } = await db
+          .from("image_job_markets")
+          .select("id")
+          .eq("image_job_id", campaign.image_job_id);
+
+        for (const market of markets ?? []) {
+          const { data: lifecycle } = await db
+            .from("concept_lifecycle")
+            .select("id, stage")
+            .eq("image_job_market_id", market.id)
+            .in("stage", ["testing", "review", "active"])
+            .is("exited_at", null)
+            .single();
+
+          if (lifecycle) {
+            const now = new Date().toISOString();
+            await db.from("concept_lifecycle")
+              .update({ exited_at: now })
+              .eq("id", lifecycle.id);
+            await db.from("concept_lifecycle").insert({
+              image_job_market_id: market.id,
+              stage: "killed",
+              entered_at: now,
+              signal: "zombie_all_ads_paused",
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to kill zombie ad set ${campaign.adset_name}:`, err);
+      }
+    }
+  }
+
+  if (killedAdSets.length > 0 && chatId) {
+    await sendMessage(
+      chatId,
+      `\u{1FAA6} Killed ${killedAdSets.length} zombie ad set(s) (all ads paused):\n` +
+      killedAdSets.map((n) => `  \u2022 ${n}`).join("\n")
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     paused,
     failed,
     results,
+    killedZombieAdSets: killedAdSets.length,
   });
 }
 
