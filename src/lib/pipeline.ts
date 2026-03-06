@@ -1243,6 +1243,195 @@ export async function getTestingSlots(product: string): Promise<number> {
   }
 }
 
+// ── Budget-aware push logic ──────────────────────────────────
+
+/**
+ * Calculate available testing budget per market.
+ * Formula: campaign_budget - avg_winner_spend(3d) - concepts_in_testing(3d) × 150
+ * Returns per-market: { available, currency, canPush, campaignBudget }
+ */
+export async function calculateAvailableBudget(): Promise<
+  Record<string, { available: number; currency: string; canPush: number; campaignBudget: number }>
+> {
+  const db = createServerSupabase();
+  const BUDGET_PER_NEW_CONCEPT = 150;
+
+  // Get campaign mappings to know which campaigns serve which markets
+  const { data: mappings } = await db
+    .from("meta_campaign_mappings")
+    .select("product, country, meta_campaign_id");
+
+  if (!mappings || mappings.length === 0) return {};
+
+  // Get pipeline settings for currency
+  const { data: settings } = await db
+    .from("pipeline_settings")
+    .select("country, currency");
+
+  const currencyMap = new Map((settings ?? []).map((s) => [s.country, s.currency]));
+
+  // Get campaign budgets from Meta
+  const uniqueCampaigns = [...new Set(mappings.map((m) => m.meta_campaign_id).filter(Boolean))];
+  const budgetByCountry: Record<string, number> = {};
+
+  for (const campaignId of uniqueCampaigns) {
+    try {
+      const data = await getCampaignBudget(campaignId);
+      const dailyBudget = parseInt(data.daily_budget || "0", 10) / 100;
+      const mapping = mappings.find((m) => m.meta_campaign_id === campaignId);
+      if (mapping) {
+        budgetByCountry[mapping.country] = (budgetByCountry[mapping.country] ?? 0) + dailyBudget;
+      }
+    } catch {
+      // Skip failed campaigns
+    }
+  }
+
+  // Get avg daily spend per market over last 3 days
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  const sinceDate = threeDaysAgo.toISOString().split("T")[0];
+
+  const { data: recentMetrics } = await db
+    .from("concept_metrics")
+    .select("image_job_market_id, spend, date")
+    .gte("date", sinceDate);
+
+  const metricMarketIds = [...new Set((recentMetrics ?? []).map((m) => m.image_job_market_id))];
+  const { data: marketRows } = await db
+    .from("image_job_markets")
+    .select("id, market")
+    .in("id", metricMarketIds.length > 0 ? metricMarketIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const marketLookup = new Map((marketRows ?? []).map((m) => [m.id, m.market]));
+
+  const spendByMarket: Record<string, number> = {};
+  for (const metric of recentMetrics ?? []) {
+    const market = marketLookup.get(metric.image_job_market_id);
+    if (market) {
+      spendByMarket[market] = (spendByMarket[market] ?? 0) + metric.spend;
+    }
+  }
+
+  // Count concepts pushed in last 3 days per market
+  const { data: recentPushes } = await db
+    .from("concept_lifecycle")
+    .select("image_job_market_id")
+    .eq("stage", "testing")
+    .gte("entered_at", threeDaysAgo.toISOString());
+
+  const recentPushMarketIds = (recentPushes ?? []).map((p) => p.image_job_market_id);
+  const { data: recentPushMarkets } = await db
+    .from("image_job_markets")
+    .select("id, market")
+    .in("id", recentPushMarketIds.length > 0 ? recentPushMarketIds : ["00000000-0000-0000-0000-000000000000"]);
+
+  const conceptsTestingByMarket: Record<string, number> = {};
+  for (const m of recentPushMarkets ?? []) {
+    conceptsTestingByMarket[m.market] = (conceptsTestingByMarket[m.market] ?? 0) + 1;
+  }
+
+  // Calculate per market
+  const result: Record<string, { available: number; currency: string; canPush: number; campaignBudget: number }> = {};
+
+  for (const country of Object.keys(budgetByCountry)) {
+    const campaignBudget = budgetByCountry[country];
+    const avgDailySpend = (spendByMarket[country] ?? 0) / 3;
+    const conceptsInTesting = conceptsTestingByMarket[country] ?? 0;
+    const testingCost = conceptsInTesting * BUDGET_PER_NEW_CONCEPT;
+    const available = Math.max(0, campaignBudget - avgDailySpend - testingCost);
+    const canPush = Math.floor(available / BUDGET_PER_NEW_CONCEPT);
+
+    result[country] = {
+      available: Math.round(available),
+      currency: currencyMap.get(country) ?? "SEK",
+      canPush,
+      campaignBudget,
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Get concepts on the launch pad, ordered by priority.
+ * Returns concepts with per-market push status.
+ */
+export async function getLaunchpadConcepts(): Promise<
+  Array<{
+    imageJobId: string;
+    name: string;
+    conceptNumber: number | null;
+    source: string;
+    product: string | null;
+    thumbnailUrl: string | null;
+    priority: number;
+    markets: Array<{
+      market: string;
+      imageJobMarketId: string;
+      stage: PipelineStage;
+    }>;
+  }>
+> {
+  const db = createServerSupabase();
+
+  const { data: jobs } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, source, product, launchpad_priority")
+    .not("launchpad_priority", "is", null)
+    .order("launchpad_priority", { ascending: true });
+
+  if (!jobs || jobs.length === 0) return [];
+
+  const jobIds = jobs.map((j) => j.id);
+
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .select("id, image_job_id, market")
+    .in("image_job_id", jobIds);
+
+  const marketIds = (markets ?? []).map((m) => m.id);
+  const { data: lifecycles } = await db
+    .from("concept_lifecycle")
+    .select("image_job_market_id, stage")
+    .in("image_job_market_id", marketIds.length > 0 ? marketIds : ["00000000-0000-0000-0000-000000000000"])
+    .is("exited_at", null);
+
+  const stageMap = new Map((lifecycles ?? []).map((l) => [l.image_job_market_id, l.stage as PipelineStage]));
+
+  // Get first source image per job as thumbnail
+  const { data: sourceImages } = await db
+    .from("source_images")
+    .select("image_job_id, thumbnail_url, original_url")
+    .in("image_job_id", jobIds)
+    .order("created_at", { ascending: true });
+
+  const thumbMap = new Map<string, string>();
+  for (const img of sourceImages ?? []) {
+    if (!thumbMap.has(img.image_job_id)) {
+      const url = img.thumbnail_url ?? img.original_url;
+      if (url) thumbMap.set(img.image_job_id, url);
+    }
+  }
+
+  return jobs.map((job) => ({
+    imageJobId: job.id,
+    name: job.name,
+    conceptNumber: job.concept_number,
+    source: job.source ?? "hub",
+    product: job.product,
+    thumbnailUrl: thumbMap.get(job.id) ?? null,
+    priority: job.launchpad_priority!,
+    markets: (markets ?? [])
+      .filter((m) => m.image_job_id === job.id)
+      .map((m) => ({
+        market: m.market,
+        imageJobMarketId: m.id,
+        stage: stageMap.get(m.id) ?? ("launchpad" as PipelineStage),
+      })),
+  }));
+}
+
 // ── Queue concept ────────────────────────────────────────────
 
 export async function queueConcept(imageJobMarketId: string): Promise<{ position: number }> {
