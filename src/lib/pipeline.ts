@@ -1290,28 +1290,27 @@ export async function calculateAvailableBudget(): Promise<
   }
 
   // Get avg daily spend per market over last 3 days
+  // Use meta_ad_performance (reliably synced) instead of concept_metrics (often stale)
   const threeDaysAgo = new Date();
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   const sinceDate = threeDaysAgo.toISOString().split("T")[0];
 
-  const { data: recentMetrics } = await db
-    .from("concept_metrics")
-    .select("image_job_market_id, spend, date")
+  // Map campaign IDs to countries from our mappings
+  const campaignToCountry = new Map<string, string>();
+  for (const m of mappings) {
+    if (m.meta_campaign_id) campaignToCountry.set(m.meta_campaign_id, m.country);
+  }
+
+  const { data: recentPerf } = await db
+    .from("meta_ad_performance")
+    .select("campaign_id, spend, date")
     .gte("date", sinceDate);
 
-  const metricMarketIds = [...new Set((recentMetrics ?? []).map((m) => m.image_job_market_id))];
-  const { data: marketRows } = await db
-    .from("image_job_markets")
-    .select("id, market")
-    .in("id", metricMarketIds.length > 0 ? metricMarketIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  const marketLookup = new Map((marketRows ?? []).map((m) => [m.id, m.market]));
-
   const spendByMarket: Record<string, number> = {};
-  for (const metric of recentMetrics ?? []) {
-    const market = marketLookup.get(metric.image_job_market_id);
-    if (market) {
-      spendByMarket[market] = (spendByMarket[market] ?? 0) + metric.spend;
+  for (const row of recentPerf ?? []) {
+    const country = campaignToCountry.get(row.campaign_id);
+    if (country) {
+      spendByMarket[country] = (spendByMarket[country] ?? 0) + (row.spend ?? 0);
     }
   }
 
