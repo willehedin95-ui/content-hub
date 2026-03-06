@@ -37,7 +37,7 @@ import type {
 
 // ── Constants ────────────────────────────────────────────────
 
-const STAGES: PipelineStage[] = ["draft", "queued", "testing", "review", "active", "killed"];
+const STAGES: PipelineStage[] = ["draft", "queued", "launchpad", "testing", "review", "active", "killed"];
 
 const STAGE_CONFIG: Record<
   PipelineStage,
@@ -56,6 +56,13 @@ const STAGE_CONFIG: Record<
     headerBg: "bg-violet-50",
     headerText: "text-violet-700",
     borderColor: "border-violet-200",
+  },
+  launchpad: {
+    label: "Launchpad",
+    description: "Ready to push when budget is available",
+    headerBg: "bg-indigo-50",
+    headerText: "text-indigo-700",
+    borderColor: "border-indigo-200",
   },
   testing: {
     label: "Testing",
@@ -392,19 +399,14 @@ export default function PipelineClient() {
   const summary = countryFilter
     ? (() => {
         const filteredTesting = concepts.filter((c) => c.stage === "testing").length;
-        const countrySettings = settings.filter((s) => s.country === countryFilter);
-        const countrySlots = countrySettings.length > 0
-          ? Math.max(...countrySettings.map((s) => s.testing_slots ?? 5))
-          : 5;
         return {
-          queued: 0, // queued have no country, hidden when filtering
+          launchpad: concepts.filter((c) => c.stage === "queued" || c.stage === "launchpad").length,
           inTesting: filteredTesting,
-          testingSlotsUsed: `${filteredTesting}/${countrySlots}`,
           needsReview: concepts.filter((c) => c.stage === "review").length,
           activeScaling: concepts.filter((c) => c.stage === "active").length,
           killed: concepts.filter((c) => c.stage === "killed").length,
           avgCreativeAge: pipelineData?.summary?.avgCreativeAge ?? 0,
-          testingBudgetPct: pipelineData?.summary?.testingBudgetPct ?? 0,
+          availableBudgetByMarket: pipelineData?.summary?.availableBudgetByMarket ?? {},
         };
       })()
     : pipelineData?.summary ?? null;
@@ -460,6 +462,7 @@ export default function PipelineClient() {
   const conceptsByStage: Record<PipelineStage, PipelineConcept[]> = {
     draft: [],
     queued: [],
+    launchpad: [],
     testing: [],
     review: [],
     active: [],
@@ -569,16 +572,15 @@ export default function PipelineClient() {
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
           <SummaryCard
-            icon={<ListOrdered className="w-4 h-4 text-violet-500" />}
-            label="Queued"
-            value={summary.queued}
-            color="violet"
+            icon={<ListOrdered className="w-4 h-4 text-indigo-500" />}
+            label="Launchpad"
+            value={summary.launchpad}
+            color="indigo"
           />
           <SummaryCard
             icon={<FlaskConical className="w-4 h-4 text-slate-500" />}
             label="Testing"
             value={summary.inTesting}
-            sub={`slots: ${summary.testingSlotsUsed}`}
             color="slate"
           />
           <SummaryCard

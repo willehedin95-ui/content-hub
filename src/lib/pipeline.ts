@@ -924,6 +924,8 @@ export async function getPipelineData(): Promise<PipelineData> {
       name: jobInfo.name,
       conceptNumber: jobInfo.conceptNumber,
       product: jobInfo.product,
+      source: "legacy",
+      launchpadPriority: null,
       thumbnailUrl: jobInfo.thumbnailUrl,
       stage,
       stageEnteredAt,
@@ -972,6 +974,8 @@ export async function getPipelineData(): Promise<PipelineData> {
         name: job.name,
         conceptNumber: job.concept_number ?? null,
         product: job.product ?? null,
+        source: "legacy",
+        launchpadPriority: null,
         thumbnailUrl,
         stage: "draft",
         stageEnteredAt: job.created_at,
@@ -991,27 +995,40 @@ export async function getPipelineData(): Promise<PipelineData> {
   }
 
   // Compute summary
-  const queued = concepts.filter((c) => c.stage === "queued").length;
+  const launchpad = concepts.filter((c) => c.stage === "queued" || c.stage === "launchpad").length;
   const inTesting = concepts.filter((c) => c.stage === "testing").length;
   const needsReview = concepts.filter((c) => c.stage === "review").length;
   const activeScaling = concepts.filter((c) => c.stage === "active").length;
   const killed = concepts.filter((c) => c.stage === "killed").length;
 
-  // Testing slots: get max from settings (per-product, take first found)
-  const testingSlots = settingsRows.length > 0
-    ? Math.max(...settingsRows.map((s) => s.testing_slots ?? 5))
-    : 5;
-
-  // Avg creative age (days since push for non-draft, non-queued, non-killed)
+  // Avg creative age (days since push for non-draft, non-queued, non-launchpad, non-killed)
   const activeConcepts = concepts.filter(
-    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "killed"
+    (c) => c.stage !== "draft" && c.stage !== "queued" && c.stage !== "launchpad" && c.stage !== "killed"
   );
   const avgCreativeAge =
     activeConcepts.length > 0
       ? activeConcepts.reduce((sum, c) => sum + c.daysInStage, 0) / activeConcepts.length
       : 0;
 
-  // Testing budget % (testing spend / total spend)
+  // Build available budget per market (placeholder — will be computed properly in Task 5)
+  const availableBudgetByMarket: Record<string, { available: number; currency: string; canPush: number }> = {};
+  for (const row of settingsRows) {
+    if (!availableBudgetByMarket[row.country]) {
+      availableBudgetByMarket[row.country] = { available: 0, currency: row.currency, canPush: 0 };
+    }
+  }
+
+  const summary: PipelineSummary = {
+    launchpad,
+    inTesting,
+    needsReview,
+    activeScaling,
+    killed,
+    avgCreativeAge,
+    availableBudgetByMarket,
+  };
+
+  // Testing budget % (for alert computation)
   const totalSpend = concepts.reduce(
     (sum, c) => sum + (c.metrics?.totalSpend ?? 0),
     0
@@ -1021,17 +1038,6 @@ export async function getPipelineData(): Promise<PipelineData> {
     .reduce((sum, c) => sum + (c.metrics?.totalSpend ?? 0), 0);
   const testingBudgetPct =
     totalSpend > 0 ? (testingSpend / totalSpend) * 100 : 0;
-
-  const summary: PipelineSummary = {
-    queued,
-    inTesting,
-    testingSlotsUsed: `${inTesting}/${testingSlots}`,
-    needsReview,
-    activeScaling,
-    killed,
-    avgCreativeAge,
-    testingBudgetPct,
-  };
 
   // Compute alerts
   const alerts: PipelineAlert[] = [];

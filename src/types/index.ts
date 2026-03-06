@@ -680,7 +680,9 @@ export interface ConceptProposal {
 
 // ── Pipeline Dashboard ──────────────────────────────────────
 
-export type PipelineStage = "draft" | "queued" | "testing" | "review" | "active" | "killed";
+export type PipelineStage = "draft" | "queued" | "launchpad" | "testing" | "review" | "active" | "killed";
+
+export type ConceptSource = "hub" | "external" | "legacy";
 
 export interface PipelineSetting {
   id: string;
@@ -689,7 +691,7 @@ export interface PipelineSetting {
   target_cpa: number;
   target_roas: number | null;
   currency: string;
-  testing_slots: number;
+  testing_slots?: number;
   min_budget_per_concept: number;
   created_at: string;
   updated_at: string;
@@ -742,6 +744,8 @@ export interface PipelineConcept {
   name: string;
   conceptNumber: number | null;
   product: string | null;
+  source: ConceptSource;
+  launchpadPriority: number | null;
   thumbnailUrl: string | null;
   stage: PipelineStage;
   stageEnteredAt: string;
@@ -771,14 +775,13 @@ export interface PipelineConcept {
 }
 
 export interface PipelineSummary {
-  queued: number;
+  launchpad: number;
   inTesting: number;
-  testingSlotsUsed: string;
   needsReview: number;
   activeScaling: number;
   killed: number;
   avgCreativeAge: number;
-  testingBudgetPct: number;
+  availableBudgetByMarket: Record<string, { available: number; currency: string; canPush: number }>;
 }
 
 export interface CampaignBudget {
