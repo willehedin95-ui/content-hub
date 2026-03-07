@@ -3,6 +3,8 @@ import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
+export const maxDuration = 120;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -10,10 +12,10 @@ export async function POST(
   const { id } = await params;
   const db = createServerSupabase();
 
-  // Verify job exists
+  // Verify job exists and get target languages
   const { data: job, error: jobError } = await db
     .from("video_jobs")
-    .select("product")
+    .select("product, target_languages")
     .eq("id", id)
     .single();
 
@@ -40,11 +42,39 @@ export async function POST(
     .from(VIDEO_STORAGE_BUCKET)
     .getPublicUrl(storagePath);
 
+  const videoUrl = publicUrl.publicUrl;
+
   // Update job status
   await db
     .from("video_jobs")
     .update({ status: "generated" })
     .eq("id", id);
 
-  return NextResponse.json({ video_url: publicUrl.publicUrl });
+  // Ensure video_translations exist for each target language and set video_url
+  // so the Captions step can find completed videos
+  const languages: string[] = job.target_languages ?? [];
+  for (const lang of languages) {
+    const { data: existing } = await db
+      .from("video_translations")
+      .select("id")
+      .eq("video_job_id", id)
+      .eq("language", lang)
+      .single();
+
+    if (existing) {
+      await db
+        .from("video_translations")
+        .update({ video_url: videoUrl, status: "completed" })
+        .eq("id", existing.id);
+    } else {
+      await db.from("video_translations").insert({
+        video_job_id: id,
+        language: lang,
+        video_url: videoUrl,
+        status: "completed",
+      });
+    }
+  }
+
+  return NextResponse.json({ video_url: videoUrl });
 }
