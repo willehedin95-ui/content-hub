@@ -579,7 +579,7 @@ export async function translateVideoProposals(
 }
 
 /** Extract the dialogue from a veo_prompt. Looks for: [Name/pronoun] says: "..." */
-function extractDialogue(veoPrompt: string): string | null {
+export function extractDialogue(veoPrompt: string): string | null {
   // Match any word (character name or pronoun) followed by says/say: "..."
   const match = veoPrompt.match(/\w+\s+says?:\s*"([^"]*(?:\\.[^"]*)*)"/i)
     || veoPrompt.match(/\w+\s+says?:\s*\\"([^\\]*(?:\\.[^\\]*)*)\\"/i);
@@ -587,7 +587,7 @@ function extractDialogue(veoPrompt: string): string | null {
 }
 
 /** Replace the dialogue in a veo_prompt with translated text */
-function replaceDialogue(veoPrompt: string, newDialogue: string): string {
+export function replaceDialogue(veoPrompt: string, newDialogue: string): string {
   // Replace the dialogue portion while keeping the rest of the prompt intact
   const escaped = newDialogue.replace(/"/g, '\\"');
   return veoPrompt

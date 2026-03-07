@@ -80,7 +80,14 @@ export default async function VideoAdsPage() {
               (t) => t.status === "completed"
             ).length;
             const totalTranslations = (job.video_translations ?? []).length;
-            const thumbnail = job.source_videos?.[0]?.thumbnail_url;
+            // Thumbnail fallback: first shot keyframe > source video thumbnail > placeholder
+            const shotsSorted = [...(job.video_shots || [])].sort(
+              (a, b) => a.shot_number - b.shot_number
+            );
+            const thumbnail =
+              shotsSorted.find((s) => s.image_url)?.image_url ??
+              job.source_videos?.[0]?.thumbnail_url ??
+              null;
             const conceptNum = job.concept_number;
             const statusColor = STATUS_COLORS[job.status] ?? STATUS_COLORS.draft;
 
@@ -93,11 +100,17 @@ export default async function VideoAdsPage() {
                 {/* Thumbnail */}
                 <div className="aspect-video bg-gray-100 relative overflow-hidden">
                   {thumbnail ? (
-                    <img
-                      src={thumbnail}
-                      alt={job.concept_name}
-                      className="w-full h-full object-cover"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={thumbnail}
+                        alt={job.concept_name}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-2 right-2 bg-black/60 rounded p-1">
+                        <Video className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    </>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Video className="w-8 h-8 text-gray-300" />
@@ -163,24 +176,26 @@ export default async function VideoAdsPage() {
                     )}
                   </div>
 
-                  {/* Footer: translation progress + date */}
+                  {/* Footer: language pills + date */}
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                      {totalTranslations > 0 ? (
-                        <>
-                          <span
-                            className={
-                              completedTranslations === totalTranslations
-                                ? "text-emerald-600 font-medium"
-                                : ""
-                            }
-                          >
-                            {completedTranslations}/{totalTranslations}
-                          </span>
-                          <span>translations</span>
-                        </>
-                      ) : (
-                        <span>No translations</span>
+                    <div className="flex items-center gap-1 text-xs">
+                      {/* Original language */}
+                      {job.target_languages?.[0] && (
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium uppercase">
+                          {job.target_languages[0]}
+                        </span>
+                      )}
+                      {/* Translated languages */}
+                      {(job.video_translations ?? []).map((t) => (
+                        <span
+                          key={t.language}
+                          className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium uppercase"
+                        >
+                          {t.language}
+                        </span>
+                      ))}
+                      {totalTranslations === 0 && !job.target_languages?.[0] && (
+                        <span className="text-gray-400">No translations</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1 text-xs text-gray-400">

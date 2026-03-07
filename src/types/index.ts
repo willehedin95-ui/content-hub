@@ -999,7 +999,8 @@ export type VideoFormatType =
   | "professor_lecture"
   | "grocery_store"
   | "grwm"
-  | "podcast_clip";
+  | "podcast_clip"
+  | "pixar_animation";
 
 export type DeliveryStyle =
   | "conversational"
@@ -1062,6 +1063,12 @@ export interface SourceVideo {
   created_at: string;
 }
 
+export interface TranslatedShot {
+  shot_number: number;
+  translated_dialogue: string;
+  translated_veo_prompt: string;
+}
+
 export interface VideoTranslation {
   id: string;
   video_job_id: string;
@@ -1069,6 +1076,7 @@ export interface VideoTranslation {
   language: Language;
   translated_script: string | null;
   translated_sora_prompt: string | null;
+  translated_shots: TranslatedShot[] | null;
   video_url: string | null;
   kie_task_id: string | null;
   status: VideoTranslationStatus;
@@ -1112,17 +1120,22 @@ export interface VideoConceptProposal {
   shots?: VideoShotProposal[];
 }
 
-export interface PixarAnimationProposal {
-  concept_name: string;
+export interface PixarCharacterShot {
   character_object: string;
   character_category: string;
   character_mood: string;
   dialogue: string;
   duration_seconds: number;
-  awareness_level: string;
-  hook_type: string;
   character_image_prompt: string;
   veo_prompt: string;
+}
+
+export interface PixarAnimationProposal {
+  concept_name: string;
+  theme: string;
+  awareness_level: string;
+  hook_type: string;
+  shots: PixarCharacterShot[];
   ad_copy_primary: string;
   ad_copy_headline: string;
 }
