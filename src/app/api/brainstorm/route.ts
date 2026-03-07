@@ -13,6 +13,7 @@ import {
   buildLearningsContext,
   parseConceptProposals,
 } from "@/lib/brainstorm";
+import { buildPixarAnimationSystemPrompt, buildPixarAnimationUserPrompt } from "@/lib/pixar-brainstorm";
 import type { ProductFull, CopywritingGuideline, ProductSegment, BrainstormMode } from "@/types";
 
 export const maxDuration = 300;
@@ -539,6 +540,137 @@ export async function POST(req: NextRequest) {
         const detail = err instanceof Error ? err.message : String(err);
         console.error("[brainstorm/video_ugc] Error:", detail);
         await emit({ step: "error", message: `Video UGC brainstorm failed: ${detail}` });
+        await writer.close();
+      }
+    })();
+
+    return new Response(stream.readable, {
+      headers: { "Content-Type": "application/x-ndjson" },
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // PIXAR ANIMATION — separate code path (talking object video concepts)
+  // -----------------------------------------------------------------------
+  if (mode === "pixar_animation") {
+    const encoder = new TextEncoder();
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+
+    async function emit(data: object) {
+      await writer.write(encoder.encode(JSON.stringify(data) + "\n"));
+    }
+
+    (async () => {
+      try {
+        await emit({ step: "generating", message: "Generating Pixar talking object concepts..." });
+
+        // Build guidelines string for the pixar prompt builder
+        const guidelinesText = guidelines
+          .filter((g) => g.name !== "Product Brief")
+          .map((g) => `### ${g.name}\n${g.content}`)
+          .join("\n\n");
+
+        const systemPrompt = buildPixarAnimationSystemPrompt(
+          productSlug,
+          productBrief ?? "",
+          guidelinesText,
+          learningsContext
+        );
+
+        const rejectedStrings = rejectedConcepts.map(
+          (r) => `${r.angle ?? "?"} / ${r.awareness_level ?? "?"}: ${r.concept_description ?? ""}`
+        );
+
+        const userPrompt = buildPixarAnimationUserPrompt(
+          count,
+          undefined, // existingConcepts — not needed for pixar mode
+          rejectedStrings.length > 0 ? rejectedStrings : undefined,
+          body.direction
+        );
+
+        const client = new Anthropic({ apiKey });
+
+        const response = await client.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 8000,
+          temperature: 0.8,
+          system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: userPrompt }],
+        });
+
+        const rawContent =
+          response.content[0]?.type === "text"
+            ? response.content[0].text.trim()
+            : "";
+
+        if (!rawContent) {
+          await emit({ step: "error", message: "No response from AI" });
+          await writer.close();
+          return;
+        }
+
+        // Parse JSON (strip markdown fences — Haiku quirk)
+        let parsed: { proposals: unknown[] };
+        try {
+          const cleaned = rawContent
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          parsed = JSON.parse(cleaned);
+        } catch (parseErr) {
+          const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          console.error("[brainstorm/pixar_animation] Parse error:", msg, "\nRaw:", rawContent.slice(0, 500));
+          await emit({ step: "error", message: `Failed to parse AI response: ${msg}` });
+          await writer.close();
+          return;
+        }
+
+        if (!parsed.proposals?.length) {
+          await emit({ step: "error", message: "AI returned no Pixar animation proposals" });
+          await writer.close();
+          return;
+        }
+
+        // Log usage
+        const inputTokens = response.usage.input_tokens;
+        const outputTokens = response.usage.output_tokens;
+        const cacheCreation = (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
+        const cacheRead = (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
+        const costUsd = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
+
+        await db.from("usage_logs").insert({
+          type: "pixar_brainstorm",
+          page_id: null,
+          translation_id: null,
+          model: CLAUDE_MODEL,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: costUsd,
+          metadata: {
+            purpose: "pixar_animation_brainstorm",
+            mode,
+            product: productSlug,
+            proposals_count: parsed.proposals.length,
+          },
+        });
+
+        await emit({
+          step: "done",
+          proposals: parsed.proposals,
+          type: "pixar_animation",
+          cost: {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cost_usd: costUsd,
+          },
+        });
+
+        await writer.close();
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error("[brainstorm/pixar_animation] Error:", detail);
+        await emit({ step: "error", message: `Pixar animation brainstorm failed: ${detail}` });
         await writer.close();
       }
     })();
