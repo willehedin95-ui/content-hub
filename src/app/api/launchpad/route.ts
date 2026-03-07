@@ -13,16 +13,78 @@ export async function GET() {
 
 // POST: Add concept to launch pad
 export async function POST(req: NextRequest) {
-  const { imageJobId } = await req.json();
-  if (!imageJobId) return NextResponse.json({ error: "imageJobId required" }, { status: 400 });
+  const body = await req.json();
+
+  // Support both new { conceptId, type } and legacy { imageJobId }
+  const conceptId: string | undefined = body.conceptId ?? body.imageJobId;
+  const type: "image" | "video" = body.type ?? "image";
+
+  if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
 
-  // Validate concept exists and is ready
+  if (type === "video") {
+    // --- Video concept validation ---
+    const { data: job } = await db
+      .from("video_jobs")
+      .select("id, concept_name, product, target_languages, landing_page_id, landing_page_url, ab_test_id, ad_copy_primary")
+      .eq("id", conceptId)
+      .single();
+
+    if (!job) return NextResponse.json({ error: "Video concept not found" }, { status: 404 });
+
+    const errors: string[] = [];
+    if (!job.product) errors.push("Product not set");
+    if (!job.landing_page_id && !job.landing_page_url && !job.ab_test_id) errors.push("No landing page or A/B test selected");
+    if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
+
+    // Check for completed video translations (captioned or raw)
+    const { data: translations } = await db
+      .from("video_translations")
+      .select("id, language, status, captioned_video_url, video_url")
+      .eq("video_job_id", conceptId);
+
+    const hasCompletedVideos = (translations ?? []).some(
+      (t) => t.status === "completed" && (t.captioned_video_url || t.video_url)
+    );
+    if (!hasCompletedVideos) errors.push("No completed video translations");
+
+    if (errors.length > 0) {
+      return NextResponse.json({ error: "Concept not ready", details: errors }, { status: 422 });
+    }
+
+    // Get next priority number (check both tables)
+    const [{ data: maxImagePriority }, { data: maxVideoPriority }] = await Promise.all([
+      db.from("image_jobs")
+        .select("launchpad_priority")
+        .not("launchpad_priority", "is", null)
+        .order("launchpad_priority", { ascending: false })
+        .limit(1)
+        .single(),
+      db.from("video_jobs")
+        .select("launchpad_priority")
+        .not("launchpad_priority", "is", null)
+        .order("launchpad_priority", { ascending: false })
+        .limit(1)
+        .single(),
+    ]);
+
+    const nextPriority = Math.max(maxImagePriority?.launchpad_priority ?? 0, maxVideoPriority?.launchpad_priority ?? 0) + 1;
+
+    // Set launchpad_priority (no concept_lifecycle for videos — stage derived from meta_campaigns)
+    await db
+      .from("video_jobs")
+      .update({ launchpad_priority: nextPriority })
+      .eq("id", conceptId);
+
+    return NextResponse.json({ success: true, priority: nextPriority });
+  }
+
+  // --- Image concept (original logic) ---
   const { data: job } = await db
     .from("image_jobs")
     .select("id, name, product, source, target_languages, landing_page_id, ab_test_id, ad_copy_primary")
-    .eq("id", imageJobId)
+    .eq("id", conceptId)
     .single();
 
   if (!job) return NextResponse.json({ error: "Concept not found" }, { status: 404 });
@@ -36,28 +98,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Concept not ready", details: errors }, { status: 422 });
   }
 
-  // Get next priority number
-  const { data: maxPriority } = await db
-    .from("image_jobs")
-    .select("launchpad_priority")
-    .not("launchpad_priority", "is", null)
-    .order("launchpad_priority", { ascending: false })
-    .limit(1)
-    .single();
+  // Get next priority number (check both tables)
+  const [{ data: maxImagePriority }, { data: maxVideoPriority }] = await Promise.all([
+    db.from("image_jobs")
+      .select("launchpad_priority")
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+    db.from("video_jobs")
+      .select("launchpad_priority")
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
 
-  const nextPriority = (maxPriority?.launchpad_priority ?? 0) + 1;
+  const nextPriority = Math.max(maxImagePriority?.launchpad_priority ?? 0, maxVideoPriority?.launchpad_priority ?? 0) + 1;
 
   // Set launchpad_priority
   await db
     .from("image_jobs")
     .update({ launchpad_priority: nextPriority })
-    .eq("id", imageJobId);
+    .eq("id", conceptId);
 
   // Create launchpad lifecycle entries per market
   const { data: markets } = await db
     .from("image_job_markets")
     .select("id")
-    .eq("image_job_id", imageJobId);
+    .eq("image_job_id", conceptId);
 
   const now = new Date().toISOString();
   for (const market of markets ?? []) {
@@ -83,22 +152,38 @@ export async function POST(req: NextRequest) {
 
 // DELETE: Remove concept from launch pad
 export async function DELETE(req: NextRequest) {
-  const { imageJobId } = await req.json();
-  if (!imageJobId) return NextResponse.json({ error: "imageJobId required" }, { status: 400 });
+  const body = await req.json();
+
+  // Support both new { conceptId, type } and legacy { imageJobId }
+  const conceptId: string | undefined = body.conceptId ?? body.imageJobId;
+  const type: "image" | "video" = body.type ?? "image";
+
+  if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
+  const now = new Date().toISOString();
 
+  if (type === "video") {
+    // Just clear the priority — no concept_lifecycle for videos
+    await db
+      .from("video_jobs")
+      .update({ launchpad_priority: null })
+      .eq("id", conceptId);
+
+    return NextResponse.json({ success: true });
+  }
+
+  // Image concept (original logic)
   await db
     .from("image_jobs")
     .update({ launchpad_priority: null })
-    .eq("id", imageJobId);
+    .eq("id", conceptId);
 
   const { data: markets } = await db
     .from("image_job_markets")
     .select("id")
-    .eq("image_job_id", imageJobId);
+    .eq("image_job_id", conceptId);
 
-  const now = new Date().toISOString();
   for (const market of markets ?? []) {
     await db
       .from("concept_lifecycle")

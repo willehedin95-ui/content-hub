@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics, MAX_CONCEPTS_PER_BATCH } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
+import { pushVideoToMeta } from "@/lib/meta-video-push";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
 import { sendMessage } from "@/lib/telegram";
 import { getConversionsForTest, isShopifyConfigured } from "@/lib/shopify";
 
 export const maxDuration = 300;
 
+const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
+
 /**
  * Daily pipeline cron (03:00 UTC):
- * 1. Sync metrics from Meta → detect stage transitions (auto-kill, promote to review/active)
- * 2. Push launch pad concepts to Meta when budget allows (per market)
+ * 1. Sync metrics from Meta -> detect stage transitions (auto-kill, promote to review/active)
+ * 2. Push launch pad concepts to Meta when budget allows (per market, per format)
  */
 export async function GET(req: NextRequest) {
   // Verify CRON_SECRET
@@ -25,7 +28,6 @@ export async function GET(req: NextRequest) {
 
   try {
     // Step 1: Sync metrics and detect stage transitions
-    // This auto-kills underperformers and promotes winners, freeing up budget
     console.log("[Pipeline Cron] Syncing metrics and detecting stage transitions...");
     const syncResult = await syncPipelineMetrics();
     console.log(`[Pipeline Cron] Synced ${syncResult.synced} metrics, ${syncResult.transitions.length} stage transitions`);
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Step 2: Push from launch pad based on available budget per market
+    // Step 2: Push from launch pad based on available budget per market (format-aware)
     const budgets = await calculateAvailableBudget();
     const launchpadConcepts = await getLaunchpadConcepts();
 
@@ -83,67 +85,112 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
-    const results: Array<{ concept: string; market: string; status: string; error?: string }> = [];
+    const results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> = [];
+
+    // Track how many we've pushed per market+format so we respect MAX_CONCEPTS_PER_BATCH
+    const pushCounts: Record<string, number> = {}; // key: "market:format"
 
     for (const [market, budget] of Object.entries(budgets)) {
-      if (budget.canPush <= 0) {
-        console.log(`[Pipeline Push] ${market}: No budget for testing (${budget.available} ${budget.currency} available, need 150)`);
-        continue;
-      }
+      for (const format of ["image", "video"] as const) {
+        const formatBudget = budget[format];
+        if (formatBudget.canPush <= 0) {
+          console.log(`[Pipeline Push] ${market}/${format}: No budget for testing (${formatBudget.available} ${formatBudget.currency} available, need 150)`);
+          continue;
+        }
 
-      let pushCount = 0;
-      for (const concept of launchpadConcepts) {
-        if (pushCount >= Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH)) break;
+        const countKey = `${market}:${format}`;
+        pushCounts[countKey] = 0;
 
-        const marketEntry = concept.markets.find((m) => m.market === market);
-        if (!marketEntry || marketEntry.stage !== "launchpad") continue;
+        for (const concept of launchpadConcepts) {
+          if (concept.type !== format) continue;
+          if (pushCounts[countKey] >= Math.min(formatBudget.canPush, MAX_CONCEPTS_PER_BATCH)) break;
 
-        const lang = MARKET_TO_LANG[market];
-        if (!lang) continue;
+          const marketEntry = concept.markets.find((m) => m.market === market);
+          if (!marketEntry || marketEntry.stage !== "launchpad") continue;
 
-        try {
-          console.log(`[Pipeline Push] Pushing ${concept.name} to ${market} (budget: ${budget.available} ${budget.currency})...`);
-          const pushResult = await pushConceptToMeta(concept.imageJobId, { languages: [lang] });
-          const langResult = pushResult.results.find((r) => r.language === lang);
+          const lang = MARKET_TO_LANG[market];
+          if (!lang) continue;
 
-          if (langResult?.status === "pushed") {
-            const now = new Date().toISOString();
+          try {
+            console.log(`[Pipeline Push] Pushing ${concept.type} "${concept.name}" to ${market} (budget: ${formatBudget.available} ${formatBudget.currency})...`);
 
-            await db
-              .from("concept_lifecycle")
-              .update({ exited_at: now })
-              .eq("image_job_market_id", marketEntry.imageJobMarketId)
-              .eq("stage", "launchpad")
-              .is("exited_at", null);
+            if (concept.type === "video") {
+              // Video push — pushVideoToMeta handles meta_campaigns tracking internally
+              const pushResult = await pushVideoToMeta(concept.conceptId, { languages: [lang] });
+              const langResult = pushResult.results.find((r) => r.language === lang);
 
-            await db.from("concept_lifecycle").insert({
-              image_job_market_id: marketEntry.imageJobMarketId,
-              stage: "testing",
-              entered_at: now,
-              signal: "auto_pushed_budget_aware",
-            });
+              if (langResult?.status === "pushed") {
+                results.push({ concept: concept.name, type: "video", market, status: "pushed" });
+                pushCounts[countKey]++;
 
-            results.push({ concept: concept.name, market, status: "pushed" });
-            pushCount++;
+                // Check if all markets pushed -> clear from launch pad
+                const allMarkets = concept.markets.map((m) => m.market);
+                const pushedMarkets = new Set<string>();
+                // Re-check from meta_campaigns which markets have been pushed
+                const { data: videoMeta } = await db
+                  .from("meta_campaigns")
+                  .select("language, status")
+                  .eq("video_job_id", concept.conceptId);
 
-            // Check if concept fully pushed → clear from launch pad
-            const { data: remaining } = await db
-              .from("concept_lifecycle")
-              .select("stage")
-              .in("image_job_market_id", concept.markets.map((m) => m.imageJobMarketId))
-              .eq("stage", "launchpad")
-              .is("exited_at", null);
+                const langToMarket: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+                for (const mc of videoMeta ?? []) {
+                  if (mc.status === "pushed" || mc.status === "active") {
+                    const mkt = langToMarket[mc.language];
+                    if (mkt) pushedMarkets.add(mkt);
+                  }
+                }
 
-            if (!remaining || remaining.length === 0) {
-              await db.from("image_jobs").update({ launchpad_priority: null }).eq("id", concept.imageJobId);
+                const allPushed = allMarkets.every((m) => pushedMarkets.has(m));
+                if (allPushed) {
+                  await db.from("video_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
+                }
+              } else {
+                results.push({ concept: concept.name, type: "video", market, status: "failed", error: langResult?.error ?? "Unknown" });
+              }
+            } else {
+              // Image push (original logic with concept_lifecycle)
+              const pushResult = await pushConceptToMeta(concept.conceptId, { languages: [lang] });
+              const langResult = pushResult.results.find((r) => r.language === lang);
+
+              if (langResult?.status === "pushed") {
+                const now = new Date().toISOString();
+
+                await db
+                  .from("concept_lifecycle")
+                  .update({ exited_at: now })
+                  .eq("image_job_market_id", marketEntry.imageJobMarketId)
+                  .eq("stage", "launchpad")
+                  .is("exited_at", null);
+
+                await db.from("concept_lifecycle").insert({
+                  image_job_market_id: marketEntry.imageJobMarketId,
+                  stage: "testing",
+                  entered_at: now,
+                  signal: "auto_pushed_budget_aware",
+                });
+
+                results.push({ concept: concept.name, type: "image", market, status: "pushed" });
+                pushCounts[countKey]++;
+
+                // Check if concept fully pushed -> clear from launch pad
+                const { data: remaining } = await db
+                  .from("concept_lifecycle")
+                  .select("stage")
+                  .in("image_job_market_id", concept.markets.map((m) => m.imageJobMarketId))
+                  .eq("stage", "launchpad")
+                  .is("exited_at", null);
+
+                if (!remaining || remaining.length === 0) {
+                  await db.from("image_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
+                }
+              } else {
+                results.push({ concept: concept.name, type: "image", market, status: "failed", error: langResult?.error ?? "Unknown" });
+              }
             }
-          } else {
-            results.push({ concept: concept.name, market, status: "failed", error: langResult?.error ?? "Unknown" });
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : "Unknown error";
+            results.push({ concept: concept.name, type: concept.type, market, status: "failed", error: errorMsg });
           }
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          results.push({ concept: concept.name, market, status: "failed", error: errorMsg });
         }
       }
     }
@@ -157,12 +204,12 @@ export async function GET(req: NextRequest) {
         const remaining = await getLaunchpadConcepts();
 
         const lines = [
-          `🚀 Auto-push results:`,
-          ...pushed.map((r) => `  ✅ ${r.concept} → ${r.market}`),
-          ...failed.map((r) => `  ❌ ${r.concept} → ${r.market}: ${r.error}`),
+          `\u{1F680} Auto-push results:`,
+          ...pushed.map((r) => `  \u2705 [${r.type}] ${r.concept} \u2192 ${r.market}`),
+          ...failed.map((r) => `  \u274C [${r.type}] ${r.concept} \u2192 ${r.market}: ${r.error}`),
           ``,
-          `📋 Launch pad: ${remaining.length} concepts remaining`,
-          ...Object.entries(budgets).map(([m, b]) => `  ${m}: ${b.available} ${b.currency} available`),
+          `\u{1F4CB} Launch pad: ${remaining.length} concepts remaining`,
+          ...Object.entries(budgets).map(([m, b]) => `  ${m}: ${b.available} ${b.currency} available (img: ${b.image.canPush}, vid: ${b.video.canPush})`),
         ];
 
         await sendMessage(chatId, lines.join("\n"));

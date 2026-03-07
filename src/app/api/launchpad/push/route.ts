@@ -1,26 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { pushConceptToMeta } from "@/lib/meta-push";
+import { pushVideoToMeta } from "@/lib/meta-video-push";
+
+export const maxDuration = 300;
 
 const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
 
 export async function POST(req: NextRequest) {
-  const { imageJobId, markets } = await req.json();
-  if (!imageJobId) return NextResponse.json({ error: "imageJobId required" }, { status: 400 });
+  const body = await req.json();
+
+  // Support both new { conceptId, type } and legacy { imageJobId }
+  const conceptId: string | undefined = body.conceptId ?? body.imageJobId;
+  const type: "image" | "video" = body.type ?? "image";
+
+  if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
 
-  const languages = (markets ?? ["NO", "DK", "SE"])
+  const languages = (body.markets ?? ["NO", "DK", "SE"])
     .map((m: string) => MARKET_TO_LANG[m])
     .filter(Boolean);
 
-  const pushResult = await pushConceptToMeta(imageJobId, { languages });
+  if (type === "video") {
+    // --- Video push ---
+    const pushResult = await pushVideoToMeta(conceptId, { languages });
+
+    // pushVideoToMeta already records in meta_campaigns + meta_ads and updates video_jobs.status.
+    // If all languages were pushed successfully, clear launchpad_priority.
+    const allPushed = pushResult.results.length > 0 && pushResult.results.every((r) => r.status === "pushed");
+    if (allPushed) {
+      await db
+        .from("video_jobs")
+        .update({ launchpad_priority: null })
+        .eq("id", conceptId);
+    }
+
+    return NextResponse.json({ success: true, results: pushResult.results });
+  }
+
+  // --- Image push (original logic) ---
+  const pushResult = await pushConceptToMeta(conceptId, { languages });
 
   const now = new Date().toISOString();
   const { data: marketRows } = await db
     .from("image_job_markets")
     .select("id, market")
-    .eq("image_job_id", imageJobId);
+    .eq("image_job_id", conceptId);
 
   for (const row of marketRows ?? []) {
     const lang = MARKET_TO_LANG[row.market];
@@ -55,7 +81,7 @@ export async function POST(req: NextRequest) {
     await db
       .from("image_jobs")
       .update({ launchpad_priority: null })
-      .eq("id", imageJobId);
+      .eq("id", conceptId);
   }
 
   return NextResponse.json({ success: true, results: pushResult.results });

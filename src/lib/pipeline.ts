@@ -1264,15 +1264,34 @@ export const MAX_CONCEPTS_PER_BATCH = 3; // max new concepts per market per push
 export const BUDGET_PER_NEW_CONCEPT = 150; // kr/day — empirical from March batch
 const MIN_VIABLE_SPEND = 100; // kr/day — floor before ad set performance degrades
 
+export interface FormatBudgetInfo {
+  available: number;
+  currency: string;
+  canPush: number;
+  campaignBudget: number;
+  activeAdSets: number;
+  campaignIds: string[];
+}
+
 export async function calculateAvailableBudget(): Promise<
-  Record<string, { available: number; currency: string; canPush: number; campaignBudget: number; activeAdSets: number; campaignIds: string[] }>
+  Record<string, {
+    image: FormatBudgetInfo;
+    video: FormatBudgetInfo;
+    /** Combined budget across formats (backward compat) */
+    available: number;
+    currency: string;
+    canPush: number;
+    campaignBudget: number;
+    activeAdSets: number;
+    campaignIds: string[];
+  }>
 > {
   const db = createServerSupabase();
 
-  // Get campaign mappings
+  // Get campaign mappings (including format)
   const { data: mappings } = await db
     .from("meta_campaign_mappings")
-    .select("product, country, meta_campaign_id");
+    .select("product, country, meta_campaign_id, format");
 
   if (!mappings || mappings.length === 0) return {};
 
@@ -1283,8 +1302,17 @@ export async function calculateAvailableBudget(): Promise<
 
   const currencyMap = new Map((settings ?? []).map((s) => [s.country, s.currency]));
 
-  // Get campaign budgets from Meta
+  // Track which format each campaign ID belongs to
+  const campaignFormat = new Map<string, "image" | "video">();
+  for (const m of mappings) {
+    if (m.meta_campaign_id) {
+      campaignFormat.set(m.meta_campaign_id, (m.format as "image" | "video") ?? "image");
+    }
+  }
+
+  // Get campaign budgets from Meta — track by country+format
   const uniqueCampaigns = [...new Set(mappings.map((m) => m.meta_campaign_id).filter(Boolean))];
+  const budgetByKey: Record<string, number> = {}; // key = "country:format"
   const budgetByCountry: Record<string, number> = {};
 
   for (const campaignId of uniqueCampaigns) {
@@ -1293,6 +1321,9 @@ export async function calculateAvailableBudget(): Promise<
       const dailyBudget = parseInt(data.daily_budget || "0", 10) / 100;
       const mapping = mappings.find((m) => m.meta_campaign_id === campaignId);
       if (mapping) {
+        const format = (mapping.format as string) ?? "image";
+        const key = `${mapping.country}:${format}`;
+        budgetByKey[key] = (budgetByKey[key] ?? 0) + dailyBudget;
         budgetByCountry[mapping.country] = (budgetByCountry[mapping.country] ?? 0) + dailyBudget;
       }
     } catch {
@@ -1315,31 +1346,45 @@ export async function calculateAvailableBudget(): Promise<
     .select("campaign_id, adset_id, spend, date")
     .gte("date", sinceDate);
 
-  // Sum spend per ad set over last 3 days
-  const adSetSpend = new Map<string, { country: string; totalSpend: number }>();
+  // Sum spend per ad set over last 3 days, grouped by country+format
+  const adSetSpend = new Map<string, { country: string; format: "image" | "video"; totalSpend: number }>();
   for (const row of recentPerf ?? []) {
     const country = campaignToCountry.get(row.campaign_id);
     if (!country || !row.adset_id) continue;
-    const existing = adSetSpend.get(row.adset_id) ?? { country, totalSpend: 0 };
+    const format = campaignFormat.get(row.campaign_id) ?? "image";
+    const existing = adSetSpend.get(row.adset_id) ?? { country, format, totalSpend: 0 };
     existing.totalSpend += row.spend ?? 0;
     adSetSpend.set(row.adset_id, existing);
   }
 
-  // Calculate avg daily spend per active ad set per market
+  // Calculate avg daily spend per active ad set per market+format
+  const winnerSpendByKey: Record<string, number> = {};
+  const activeAdSetsByKey: Record<string, number> = {};
   const winnerSpendByMarket: Record<string, number> = {};
   const activeAdSetsByMarket: Record<string, number> = {};
+
   for (const [, info] of adSetSpend) {
     const avgDaily = info.totalSpend / 3;
     if (avgDaily > 10) {
+      const key = `${info.country}:${info.format}`;
+      winnerSpendByKey[key] = (winnerSpendByKey[key] ?? 0) + avgDaily;
+      activeAdSetsByKey[key] = (activeAdSetsByKey[key] ?? 0) + 1;
       winnerSpendByMarket[info.country] = (winnerSpendByMarket[info.country] ?? 0) + avgDaily;
       activeAdSetsByMarket[info.country] = (activeAdSetsByMarket[info.country] ?? 0) + 1;
     }
   }
 
-  // Build campaign IDs per market
+  // Build campaign IDs per market+format
+  const campaignIdsByKey: Record<string, string[]> = {};
   const campaignIdsByCountry: Record<string, string[]> = {};
   for (const m of mappings) {
     if (m.meta_campaign_id && m.country) {
+      const format = (m.format as string) ?? "image";
+      const key = `${m.country}:${format}`;
+      if (!campaignIdsByKey[key]) campaignIdsByKey[key] = [];
+      if (!campaignIdsByKey[key].includes(m.meta_campaign_id)) {
+        campaignIdsByKey[key].push(m.meta_campaign_id);
+      }
       if (!campaignIdsByCountry[m.country]) campaignIdsByCountry[m.country] = [];
       if (!campaignIdsByCountry[m.country].includes(m.meta_campaign_id)) {
         campaignIdsByCountry[m.country].push(m.meta_campaign_id);
@@ -1347,22 +1392,66 @@ export async function calculateAvailableBudget(): Promise<
     }
   }
 
-  // Calculate testing capacity per market
-  const result: Record<string, { available: number; currency: string; canPush: number; campaignBudget: number; activeAdSets: number; campaignIds: string[] }> = {};
+  // Helper: calculate budget for a specific country+format
+  function calcForFormat(country: string, format: "image" | "video"): FormatBudgetInfo {
+    const key = `${country}:${format}`;
+    const campaignBudget = budgetByKey[key] ?? 0;
+    const winnerSpend = winnerSpendByKey[key] ?? 0;
+    const activeAdSets = activeAdSetsByKey[key] ?? 0;
 
-  for (const country of Object.keys(budgetByCountry)) {
-    const campaignBudget = budgetByCountry[country];
+    const avgSpendPerAdSet = activeAdSets > 0 ? winnerSpend / activeAdSets : 0;
+    const compressiblePerAdSet = Math.max(0, avgSpendPerAdSet - MIN_VIABLE_SPEND);
+    const totalCompressible = Math.round(compressiblePerAdSet * activeAdSets);
+    const canPush = Math.floor(totalCompressible / BUDGET_PER_NEW_CONCEPT);
+
+    return {
+      available: totalCompressible,
+      currency: currencyMap.get(country) ?? "SEK",
+      canPush,
+      campaignBudget,
+      activeAdSets,
+      campaignIds: campaignIdsByKey[key] ?? [],
+    };
+  }
+
+  // Get all unique countries (from both budgets and mappings)
+  const allCountries = new Set([
+    ...Object.keys(budgetByCountry),
+    ...mappings.map((m) => m.country).filter(Boolean),
+  ]);
+
+  // Calculate testing capacity per market (combined + per-format)
+  const result: Record<string, {
+    image: FormatBudgetInfo;
+    video: FormatBudgetInfo;
+    available: number;
+    currency: string;
+    canPush: number;
+    campaignBudget: number;
+    activeAdSets: number;
+    campaignIds: string[];
+  }> = {};
+
+  for (const country of allCountries) {
+    const campaignBudget = budgetByCountry[country] ?? 0;
+    if (campaignBudget === 0 && !(budgetByKey[`${country}:image`] || budgetByKey[`${country}:video`])) {
+      // Skip countries with no budget at all — but still include if they have mappings (budget may be 0 but campaigns exist)
+      const hasMapping = mappings.some((m) => m.country === country);
+      if (!hasMapping) continue;
+    }
+
     const winnerSpend = winnerSpendByMarket[country] ?? 0;
     const activeAdSets = activeAdSetsByMarket[country] ?? 0;
 
-    // How much can existing winners be compressed?
-    // Each ad set can give up (avg_spend - min_viable) kr/day before starving.
     const avgSpendPerAdSet = activeAdSets > 0 ? winnerSpend / activeAdSets : 0;
     const compressiblePerAdSet = Math.max(0, avgSpendPerAdSet - MIN_VIABLE_SPEND);
     const totalCompressible = Math.round(compressiblePerAdSet * activeAdSets);
     const canPush = Math.floor(totalCompressible / BUDGET_PER_NEW_CONCEPT);
 
     result[country] = {
+      image: calcForFormat(country, "image"),
+      video: calcForFormat(country, "video"),
+      // Combined (backward compat)
       available: totalCompressible,
       currency: currencyMap.get(country) ?? "SEK",
       canPush,
@@ -1377,11 +1466,12 @@ export async function calculateAvailableBudget(): Promise<
 
 /**
  * Get concepts on the launch pad, ordered by priority.
- * Returns concepts with per-market push status.
+ * Returns both image and video concepts with per-market push status.
  */
 export async function getLaunchpadConcepts(): Promise<
   Array<{
-    imageJobId: string;
+    conceptId: string;
+    type: "image" | "video";
     name: string;
     conceptNumber: number | null;
     source: string;
@@ -1393,65 +1483,155 @@ export async function getLaunchpadConcepts(): Promise<
       imageJobMarketId: string;
       stage: PipelineStage;
     }>;
+    /** @deprecated Use conceptId instead */
+    imageJobId: string;
   }>
 > {
   const db = createServerSupabase();
 
-  const { data: jobs } = await db
+  // --- Image concepts ---
+  const { data: imageJobs } = await db
     .from("image_jobs")
     .select("id, name, concept_number, source, product, launchpad_priority")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
 
-  if (!jobs || jobs.length === 0) return [];
+  const imageJobIds = (imageJobs ?? []).map((j) => j.id);
 
-  const jobIds = jobs.map((j) => j.id);
+  // Get markets for image jobs
+  const { data: imageMarkets } = imageJobIds.length > 0
+    ? await db
+        .from("image_job_markets")
+        .select("id, image_job_id, market")
+        .in("image_job_id", imageJobIds)
+    : { data: [] as { id: string; image_job_id: string; market: string }[] };
 
-  const { data: markets } = await db
-    .from("image_job_markets")
-    .select("id, image_job_id, market")
-    .in("image_job_id", jobIds);
+  const imageMarketIds = (imageMarkets ?? []).map((m) => m.id);
 
-  const marketIds = (markets ?? []).map((m) => m.id);
-  const { data: lifecycles } = await db
-    .from("concept_lifecycle")
-    .select("image_job_market_id, stage")
-    .in("image_job_market_id", marketIds.length > 0 ? marketIds : ["00000000-0000-0000-0000-000000000000"])
-    .is("exited_at", null);
+  // Get lifecycle stages for image markets
+  const { data: imageLifecycles } = imageMarketIds.length > 0
+    ? await db
+        .from("concept_lifecycle")
+        .select("image_job_market_id, stage")
+        .in("image_job_market_id", imageMarketIds)
+        .is("exited_at", null)
+    : { data: [] as { image_job_market_id: string; stage: string }[] };
 
-  const stageMap = new Map((lifecycles ?? []).map((l) => [l.image_job_market_id, l.stage as PipelineStage]));
+  const imageStageMap = new Map((imageLifecycles ?? []).map((l) => [l.image_job_market_id, l.stage as PipelineStage]));
 
   // Get first source image per job as thumbnail
-  const { data: sourceImages } = await db
-    .from("source_images")
-    .select("image_job_id, thumbnail_url, original_url")
-    .in("image_job_id", jobIds)
-    .order("created_at", { ascending: true });
+  const { data: sourceImages } = imageJobIds.length > 0
+    ? await db
+        .from("source_images")
+        .select("image_job_id, thumbnail_url, original_url")
+        .in("image_job_id", imageJobIds)
+        .order("created_at", { ascending: true })
+    : { data: [] as { image_job_id: string; thumbnail_url: string | null; original_url: string }[] };
 
-  const thumbMap = new Map<string, string>();
+  const imageThumbMap = new Map<string, string>();
   for (const img of sourceImages ?? []) {
-    if (!thumbMap.has(img.image_job_id)) {
+    if (!imageThumbMap.has(img.image_job_id)) {
       const url = img.thumbnail_url ?? img.original_url;
-      if (url) thumbMap.set(img.image_job_id, url);
+      if (url) imageThumbMap.set(img.image_job_id, url);
     }
   }
 
-  return jobs.map((job) => ({
+  const LANG_TO_MARKET: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+
+  const imageConcepts = (imageJobs ?? []).map((job) => ({
+    conceptId: job.id,
     imageJobId: job.id,
+    type: "image" as const,
     name: job.name,
     conceptNumber: job.concept_number,
     source: job.source ?? "hub",
     product: job.product,
-    thumbnailUrl: thumbMap.get(job.id) ?? null,
+    thumbnailUrl: imageThumbMap.get(job.id) ?? null,
     priority: job.launchpad_priority!,
-    markets: (markets ?? [])
+    markets: (imageMarkets ?? [])
       .filter((m) => m.image_job_id === job.id)
       .map((m) => ({
         market: m.market,
         imageJobMarketId: m.id,
-        stage: stageMap.get(m.id) ?? ("launchpad" as PipelineStage),
+        stage: imageStageMap.get(m.id) ?? ("launchpad" as PipelineStage),
       })),
   }));
+
+  // --- Video concepts ---
+  const { data: videoJobs } = await db
+    .from("video_jobs")
+    .select("id, concept_name, concept_number, product, target_languages, launchpad_priority")
+    .not("launchpad_priority", "is", null)
+    .order("launchpad_priority", { ascending: true });
+
+  const videoJobIds = (videoJobs ?? []).map((j) => j.id);
+
+  // Get first source video per job as thumbnail
+  const { data: sourceVideos } = videoJobIds.length > 0
+    ? await db
+        .from("source_videos")
+        .select("video_job_id, thumbnail_url")
+        .in("video_job_id", videoJobIds)
+        .order("created_at", { ascending: true })
+    : { data: [] as { video_job_id: string; thumbnail_url: string | null }[] };
+
+  const videoThumbMap = new Map<string, string>();
+  for (const sv of sourceVideos ?? []) {
+    if (!videoThumbMap.has(sv.video_job_id)) {
+      if (sv.thumbnail_url) videoThumbMap.set(sv.video_job_id, sv.thumbnail_url);
+    }
+  }
+
+  // For video jobs, determine per-market stage from meta_campaigns table
+  // (concept_lifecycle uses uuid FK — not usable for videos)
+  // If there's a meta_campaigns record for this video job + country with status "pushed", it's "testing"
+  const { data: videoMetaCampaigns } = videoJobIds.length > 0
+    ? await db
+        .from("meta_campaigns")
+        .select("video_job_id, language, status")
+        .in("video_job_id", videoJobIds)
+    : { data: [] as { video_job_id: string; language: string; status: string }[] };
+
+  // Map: "videoJobId:market" → stage
+  const videoMarketStageMap = new Map<string, PipelineStage>();
+  for (const mc of videoMetaCampaigns ?? []) {
+    const market = LANG_TO_MARKET[mc.language];
+    if (!market) continue;
+    const key = `${mc.video_job_id}:${market}`;
+    if (mc.status === "pushed" || mc.status === "active") {
+      videoMarketStageMap.set(key, "testing");
+    } else if (mc.status === "error" && !videoMarketStageMap.has(key)) {
+      // Don't override a "testing" stage with an error
+      videoMarketStageMap.set(key, "launchpad");
+    }
+  }
+
+  const videoConcepts = (videoJobs ?? []).map((job) => ({
+    conceptId: job.id,
+    imageJobId: job.id, // backward compat alias
+    type: "video" as const,
+    name: job.concept_name,
+    conceptNumber: job.concept_number,
+    source: "hub",
+    product: job.product,
+    thumbnailUrl: videoThumbMap.get(job.id) ?? null,
+    priority: job.launchpad_priority!,
+    markets: (job.target_languages ?? [])
+      .map((lang: string) => {
+        const market = LANG_TO_MARKET[lang];
+        if (!market) return null;
+        const key = `${job.id}:${market}`;
+        return {
+          market,
+          imageJobMarketId: `video:${job.id}:${market}`, // synthetic key (not a real UUID)
+          stage: videoMarketStageMap.get(key) ?? ("launchpad" as PipelineStage),
+        };
+      })
+      .filter((m: { market: string; imageJobMarketId: string; stage: PipelineStage } | null): m is { market: string; imageJobMarketId: string; stage: PipelineStage } => m !== null),
+  }));
+
+  // Merge and sort by priority ascending
+  return [...imageConcepts, ...videoConcepts].sort((a, b) => a.priority - b.priority);
 }
 
 // ── Queue concept ────────────────────────────────────────────

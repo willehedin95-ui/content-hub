@@ -12,6 +12,8 @@ import {
   Zap,
   XCircle,
   TrendingUp,
+  Play,
+  Film,
 } from "lucide-react";
 import type { PipelineStage } from "@/types";
 
@@ -24,7 +26,8 @@ interface LaunchpadMarket {
 }
 
 interface LaunchpadConcept {
-  imageJobId: string;
+  conceptId: string;
+  type: "image" | "video";
   name: string;
   conceptNumber: number | null;
   source: string;
@@ -32,9 +35,23 @@ interface LaunchpadConcept {
   thumbnailUrl: string | null;
   priority: number;
   markets: LaunchpadMarket[];
+  /** @deprecated Use conceptId */
+  imageJobId: string;
+}
+
+interface FormatBudgetInfo {
+  available: number;
+  currency: string;
+  canPush: number;
+  campaignBudget: number;
+  activeAdSets: number;
+  campaignIds: string[];
 }
 
 interface BudgetInfo {
+  image: FormatBudgetInfo;
+  video: FormatBudgetInfo;
+  /** Combined */
   available: number;
   currency: string;
   canPush: number;
@@ -50,9 +67,16 @@ interface LaunchpadData {
 
 // ── Constants ────────────────────────────────────────────────
 
+type TypeFilter = "all" | "image" | "video";
+
 const PRODUCT_COLORS: Record<string, string> = {
   happysleep: "bg-indigo-100 text-indigo-700",
   hydro13: "bg-teal-100 text-teal-700",
+};
+
+const TYPE_BADGE: Record<"image" | "video", { label: string; className: string }> = {
+  image: { label: "Image", className: "bg-sky-100 text-sky-700" },
+  video: { label: "Video", className: "bg-violet-100 text-violet-700" },
 };
 
 const MARKETS = ["NO", "DK", "SE"] as const;
@@ -107,6 +131,7 @@ export default function LaunchpadClient() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [increasingBudget, setIncreasingBudget] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -130,14 +155,14 @@ export default function LaunchpadClient() {
 
   // ── Actions ──────────────────────────────────────────────
 
-  async function handlePush(imageJobId: string) {
-    setPushingId(imageJobId);
+  async function handlePush(concept: LaunchpadConcept) {
+    setPushingId(concept.conceptId);
     setError(null);
     try {
       const res = await fetch("/api/launchpad/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageJobId }),
+        body: JSON.stringify({ conceptId: concept.conceptId, type: concept.type }),
       });
       if (!res.ok) {
         const json = await res.json();
@@ -152,14 +177,14 @@ export default function LaunchpadClient() {
     }
   }
 
-  async function handleRemove(imageJobId: string) {
-    setRemovingId(imageJobId);
+  async function handleRemove(concept: LaunchpadConcept) {
+    setRemovingId(concept.conceptId);
     setError(null);
     try {
       const res = await fetch("/api/launchpad", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageJobId }),
+        body: JSON.stringify({ conceptId: concept.conceptId, type: concept.type }),
       });
       if (!res.ok) throw new Error("Remove failed");
       await fetchData();
@@ -186,7 +211,9 @@ export default function LaunchpadClient() {
       const res = await fetch("/api/launchpad/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order: newOrder.map((c) => c.imageJobId) }),
+        body: JSON.stringify({
+          order: newOrder.map((c) => ({ conceptId: c.conceptId, type: c.type })),
+        }),
       });
       if (!res.ok) throw new Error("Reorder failed");
       await fetchData();
@@ -204,7 +231,7 @@ export default function LaunchpadClient() {
     setIncreasingBudget(market);
     setError(null);
     try {
-      // Calculate extra budget needed: how many concepts lack room × 150 kr, in cents
+      // Calculate extra budget needed: how many concepts lack room x 150 kr, in cents
       const extraNeeded = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
       const extraPerCampaign = Math.round((extraNeeded / budget.campaignIds.length) * 100); // cents, split evenly
 
@@ -242,8 +269,14 @@ export default function LaunchpadClient() {
     );
   }
 
-  const concepts = data?.concepts ?? [];
+  const allConcepts = data?.concepts ?? [];
+  const concepts = typeFilter === "all"
+    ? allConcepts
+    : allConcepts.filter((c) => c.type === typeFilter);
   const budgets = data?.budgets ?? {};
+
+  const imageCount = allConcepts.filter((c) => c.type === "image").length;
+  const videoCount = allConcepts.filter((c) => c.type === "video").length;
 
   return (
     <div className="max-w-[900px] pl-8">
@@ -274,6 +307,31 @@ export default function LaunchpadClient() {
         </div>
       )}
 
+      {/* Type filter tabs */}
+      {allConcepts.length > 0 && (
+        <div className="flex items-center gap-1 mb-4">
+          {(
+            [
+              { key: "all" as TypeFilter, label: "All", count: allConcepts.length },
+              { key: "image" as TypeFilter, label: "Images", count: imageCount },
+              { key: "video" as TypeFilter, label: "Videos", count: videoCount },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setTypeFilter(tab.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                typeFilter === tab.key
+                  ? "bg-indigo-100 text-indigo-700"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Budget indicators */}
       {Object.keys(budgets).length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -292,13 +350,16 @@ export default function LaunchpadClient() {
             }
 
             // Count queued concepts for this market
-            const queuedForMarket = concepts.filter((c) =>
+            const queuedForMarket = allConcepts.filter((c) =>
               c.markets.some((m) => m.market === market && m.stage === "launchpad")
             ).length;
             const effectiveCanPush = Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH);
             const needsMore = queuedForMarket > 0 && budget.canPush < Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH);
             const conceptsNeeded = Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH) - budget.canPush;
             const extraBudget = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
+
+            const hasImageBudget = budget.image.campaignBudget > 0 || budget.image.activeAdSets > 0;
+            const hasVideoBudget = budget.video.campaignBudget > 0 || budget.video.activeAdSets > 0;
 
             return (
               <div
@@ -316,6 +377,13 @@ export default function LaunchpadClient() {
                     <p className="text-xs text-gray-500 mt-0.5">
                       {budget.campaignBudget} {budget.currency}/day &middot; {budget.activeAdSets} active &middot; ~{effectiveCanPush} per batch (max {MAX_CONCEPTS_PER_BATCH})
                     </p>
+                    {/* Per-format breakdown if both formats have campaigns */}
+                    {hasImageBudget && hasVideoBudget && (
+                      <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
+                        <span>Img: {budget.image.canPush} slots</span>
+                        <span>Vid: {budget.video.canPush} slots</span>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -351,9 +419,13 @@ export default function LaunchpadClient() {
       {concepts.length === 0 && (
         <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl">
           <Rocket className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-sm font-medium text-gray-600 mb-1">No concepts on launch pad</h3>
+          <h3 className="text-sm font-medium text-gray-600 mb-1">
+            {typeFilter !== "all" && allConcepts.length > 0
+              ? `No ${typeFilter} concepts on launch pad`
+              : "No concepts on launch pad"}
+          </h3>
           <p className="text-xs text-gray-400">
-            Add concepts from the Concepts page.
+            Add concepts from the Concepts or Video Ads page.
           </p>
         </div>
       )}
@@ -361,115 +433,136 @@ export default function LaunchpadClient() {
       {/* Concept list */}
       {concepts.length > 0 && (
         <div className="space-y-3">
-          {concepts.map((concept, index) => (
-            <div
-              key={concept.imageJobId}
-              className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
-            >
-              <div className="flex items-start gap-3">
-                {/* Priority number */}
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                  <span className="text-sm font-bold text-indigo-600 tabular-nums">{index + 1}</span>
-                </div>
-
-                {/* Thumbnail */}
-                {concept.thumbnailUrl ? (
-                  <Image
-                    src={concept.thumbnailUrl}
-                    alt=""
-                    width={48}
-                    height={48}
-                    className="w-12 h-12 rounded-lg object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                    <ImageIcon className="w-5 h-5 text-gray-300" />
-                  </div>
-                )}
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{concept.name}</p>
+          {concepts.map((concept, index) => {
+            const typeBadge = TYPE_BADGE[concept.type];
+            return (
+              <div
+                key={`${concept.type}-${concept.conceptId}`}
+                className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  {/* Priority number */}
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                    <span className="text-sm font-bold text-indigo-600 tabular-nums">{index + 1}</span>
                   </div>
 
-                  {/* Badges */}
-                  <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sourceBadgeColors(concept.source)}`}>
-                      {sourceBadge(concept.source, concept.conceptNumber)}
-                    </span>
-                    {concept.product && (
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"}`}>
-                        {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Hydro13" : concept.product}
+                  {/* Thumbnail */}
+                  <div className="relative shrink-0">
+                    {concept.thumbnailUrl ? (
+                      <Image
+                        src={concept.thumbnailUrl}
+                        alt=""
+                        width={48}
+                        height={48}
+                        className="w-12 h-12 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                        {concept.type === "video" ? (
+                          <Film className="w-5 h-5 text-gray-300" />
+                        ) : (
+                          <ImageIcon className="w-5 h-5 text-gray-300" />
+                        )}
+                      </div>
+                    )}
+                    {/* Play icon overlay for video */}
+                    {concept.type === "video" && concept.thumbnailUrl && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
+                          <Play className="w-3 h-3 text-white ml-0.5" fill="white" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{concept.name}</p>
+                    </div>
+
+                    {/* Badges */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      {/* Type badge */}
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${typeBadge.className}`}>
+                        {typeBadge.label}
                       </span>
-                    )}
-                  </div>
-
-                  {/* Per-market status */}
-                  <div className="flex items-center gap-3">
-                    {concept.markets.map((m) => {
-                      const display = stageDisplay(m.stage);
-                      return (
-                        <span key={m.imageJobMarketId} className={`text-xs ${display.className}`}>
-                          {m.market}: {m.stage === "launchpad" ? "\u23F3" : m.stage === "testing" || m.stage === "active" ? "\u2705" : ""} {display.label}
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sourceBadgeColors(concept.source)}`}>
+                        {sourceBadge(concept.source, concept.conceptNumber)}
+                      </span>
+                      {concept.product && (
+                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"}`}>
+                          {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Hydro13" : concept.product}
                         </span>
-                      );
-                    })}
+                      )}
+                    </div>
+
+                    {/* Per-market status */}
+                    <div className="flex items-center gap-3">
+                      {concept.markets.map((m) => {
+                        const display = stageDisplay(m.stage);
+                        return (
+                          <span key={m.imageJobMarketId} className={`text-xs ${display.className}`}>
+                            {m.market}: {m.stage === "launchpad" ? "\u23F3" : m.stage === "testing" || m.stage === "active" ? "\u2705" : ""} {display.label}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Reorder buttons */}
-                  <button
-                    onClick={() => handleReorder(concepts, index, "up")}
-                    disabled={index === 0 || reordering}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                    title="Move up"
-                  >
-                    <ChevronUp className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleReorder(concepts, index, "down")}
-                    disabled={index === concepts.length - 1 || reordering}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                    title="Move down"
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Reorder buttons */}
+                    <button
+                      onClick={() => handleReorder(allConcepts, allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type), "up")}
+                      disabled={allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type) === 0 || reordering}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                      title="Move up"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleReorder(allConcepts, allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type), "down")}
+                      disabled={allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type) === allConcepts.length - 1 || reordering}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                      title="Move down"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
 
-                  {/* Push button */}
-                  <button
-                    onClick={() => handlePush(concept.imageJobId)}
-                    disabled={pushingId !== null}
-                    className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ml-1"
-                    title="Push to Meta now"
-                  >
-                    {pushingId === concept.imageJobId ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    {pushingId === concept.imageJobId ? "Pushing..." : "Push Now"}
-                  </button>
+                    {/* Push button */}
+                    <button
+                      onClick={() => handlePush(concept)}
+                      disabled={pushingId !== null}
+                      className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ml-1"
+                      title="Push to Meta now"
+                    >
+                      {pushingId === concept.conceptId ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5" />
+                      )}
+                      {pushingId === concept.conceptId ? "Pushing..." : "Push Now"}
+                    </button>
 
-                  {/* Remove button */}
-                  <button
-                    onClick={() => handleRemove(concept.imageJobId)}
-                    disabled={removingId !== null}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 transition-colors"
-                    title="Remove from launch pad"
-                  >
-                    {removingId === concept.imageJobId ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+                    {/* Remove button */}
+                    <button
+                      onClick={() => handleRemove(concept)}
+                      disabled={removingId !== null}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 transition-colors"
+                      title="Remove from launch pad"
+                    >
+                      {removingId === concept.conceptId ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
