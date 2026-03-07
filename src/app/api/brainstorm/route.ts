@@ -26,6 +26,7 @@ const VALID_MODES: BrainstormMode[] = [
   "from_template",
   "from_competitor_ad",
   "video_ugc",
+  "pixar_animation",
 ];
 
 // POST /api/brainstorm — generate concept proposals from brainstorm modes

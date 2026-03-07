@@ -1118,6 +1118,9 @@ const SYSTEM_BUILDERS: Record<
   video_ugc: () => {
     throw new Error("video_ugc mode uses its own prompt builder — see video-brainstorm.ts");
   },
+  pixar_animation: () => {
+    throw new Error("pixar_animation mode uses its own prompt builder — see pixar-brainstorm.ts");
+  },
 };
 
 /**
@@ -1292,6 +1295,11 @@ export function buildBrainstormUserPrompt(
       parts.push(`\nGenerate 1 concept with ${count} image prompt variations.`);
       break;
     }
+
+    case "pixar_animation": {
+      // Handled by pixar-brainstorm.ts
+      break;
+    }
   }
 
   // Optional focus parameters
@@ -1380,6 +1388,12 @@ export const BRAINSTORM_MODES: {
     label: "Video UGC",
     description: "Generate AI video UGC concepts with scripts and Sora prompts",
     icon: "Video",
+  },
+  {
+    value: "pixar_animation",
+    label: "Pixar Animation",
+    description: "Generate viral talking object/body part video ads in Pixar 3D animated style",
+    icon: "Clapperboard",
   },
 ];
 
