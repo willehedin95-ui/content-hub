@@ -18,7 +18,9 @@ import {
   Rocket,
   Save,
   Subtitles,
+  Trash2,
   Type,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -165,7 +167,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
   // Caption generation state (Step 1)
   const [captionGenerating, setCaptionGenerating] = useState<Record<string, boolean>>({});
   const [captionProgress, setCaptionProgress] = useState<Record<string, string>>({});
-  const [captionStyles, setCaptionStyles] = useState<Record<string, "highlight" | "clean">>({});
 
   // Ad Copy state (Step 2)
   const [primaryTexts, setPrimaryTexts] = useState<string[]>(
@@ -177,6 +178,10 @@ export default function VideoJobDetail({ initialJob }: Props) {
   const [copySaving, setCopySaving] = useState(false);
   const [copyTranslating, setCopyTranslating] = useState(false);
   const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Per-language video upload state (Step 0)
+  const [videoUploading, setVideoUploading] = useState(false);
+  const videoFileRef = useRef<HTMLInputElement>(null);
 
   // Preview & Push state (Step 3)
   const [landingPageId, setLandingPageId] = useState(initialJob.landing_page_id ?? "");
@@ -198,7 +203,11 @@ export default function VideoJobDetail({ initialJob }: Props) {
   for (const t of job.video_translations || []) {
     translationsMap.set(t.language, t);
   }
-  const coveredLanguages = [originalLang, ...Array.from(translationsMap.keys())];
+  // Deduplicate: originalLang is always shown, translations map may also include it
+  const coveredLanguages = [
+    originalLang,
+    ...Array.from(translationsMap.keys()).filter((l) => l !== originalLang),
+  ];
   const uncoveredLanguages = ALL_LANGUAGES.filter(
     (l) => !coveredLanguages.includes(l)
   );
@@ -281,6 +290,53 @@ export default function VideoJobDetail({ initialJob }: Props) {
     }
   }
 
+  // Upload video for a specific language
+  async function handleUploadVideo(file: File, language: string) {
+    setVideoUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("language", language);
+      const res = await fetch(`/api/video-jobs/${job.id}/upload-stitched`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(data.error || "Upload failed");
+      }
+      await refreshJob();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Video upload failed");
+    } finally {
+      setVideoUploading(false);
+    }
+  }
+
+  // Delete translation
+  const [deleting, setDeleting] = useState(false);
+  async function handleDeleteTranslation(language: string) {
+    if (!confirm(`Delete ${LANG_META[language]?.label || language} translation? You can re-translate after.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/video-jobs/${job.id}/translate?language=${language}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Delete failed" }));
+        throw new Error(data.error || "Delete failed");
+      }
+      setActiveLang(originalLang);
+      await refreshJob();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete translation");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   // Find source video (for legacy single-clip jobs)
   const sourceVideo =
     job.source_videos?.find((sv) => sv.status === "completed") ??
@@ -297,12 +353,11 @@ export default function VideoJobDetail({ initialJob }: Props) {
 
   // --- Caption handlers (Step 1) ---
 
-  async function handleGenerateCaptions(translationId: string, language: string) {
-    const style = captionStyles[translationId] || "highlight";
+  async function handleGenerateCaptions(translationId: string, _language: string) {
     setCaptionGenerating((prev) => ({ ...prev, [translationId]: true }));
     setCaptionProgress((prev) => ({
       ...prev,
-      [translationId]: "Starting caption generation...",
+      [translationId]: "Downloading video...",
     }));
     setError(null);
 
@@ -310,9 +365,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
       // Show progress stages
       const stages = [
         "Downloading video...",
-        "Extracting audio...",
-        "Transcribing speech...",
-        "Generating SRT captions...",
+        "Generating captions from script...",
         "Burning captions into video...",
       ];
       let stageIdx = 0;
@@ -322,12 +375,12 @@ export default function VideoJobDetail({ initialJob }: Props) {
           ...prev,
           [translationId]: stages[stageIdx],
         }));
-      }, 8000);
+      }, 5000);
 
       const res = await fetch(`/api/video-jobs/${job.id}/generate-captions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translationId, style }),
+        body: JSON.stringify({ translationId }),
       });
 
       clearInterval(interval);
@@ -679,7 +732,9 @@ export default function VideoJobDetail({ initialJob }: Props) {
                   {LANG_META[originalLang]?.flag}{" "}
                   {LANG_META[originalLang]?.label || originalLang.toUpperCase()}
                 </button>
-                {Array.from(translationsMap.entries()).map(([lang]) => (
+                {Array.from(translationsMap.entries())
+                  .filter(([lang]) => lang !== originalLang)
+                  .map(([lang]) => (
                   <button
                     key={lang}
                     onClick={() => setActiveLang(lang)}
@@ -930,12 +985,14 @@ export default function VideoJobDetail({ initialJob }: Props) {
 
           {/* RIGHT COLUMN: Video Pipeline */}
           <div className="space-y-6">
+            {/* Pipeline — shown for ALL languages */}
             {job.video_shots && job.video_shots.length > 0 ? (
               <MultiClipPipeline
                 job={job}
                 onJobUpdate={async () => {
                   await refreshJob();
                 }}
+                language={isViewingTranslation ? activeLang : undefined}
               />
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -970,6 +1027,102 @@ export default function VideoJobDetail({ initialJob }: Props) {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Per-language video upload */}
+            {(() => {
+              const lang = activeLang;
+              const translation = translationsMap.get(lang);
+              const videoUrl = translation?.video_url;
+              const flag = LANG_META[lang]?.flag || "";
+              const label = LANG_META[lang]?.label || lang.toUpperCase();
+
+              return (
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <Upload className="w-4 h-4 text-gray-400" />
+                      Upload {flag} {label} Video
+                    </h2>
+                    {videoUrl && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                        <Check className="w-3 h-3" />
+                        Uploaded
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    {videoUrl && (
+                      <div className="rounded-lg overflow-hidden border border-gray-200 bg-black mb-4">
+                        <video
+                          src={videoUrl}
+                          controls
+                          className="w-full max-h-[300px]"
+                          preload="metadata"
+                        />
+                      </div>
+                    )}
+                    <div
+                      className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                        videoUploading
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer"
+                      }`}
+                      onClick={() => !videoUploading && videoFileRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files[0];
+                        if (file && file.type.startsWith("video/")) {
+                          handleUploadVideo(file, lang);
+                        }
+                      }}
+                    >
+                      <input
+                        ref={videoFileRef}
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadVideo(file, lang);
+                          e.target.value = "";
+                        }}
+                      />
+                      {videoUploading ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                          <p className="text-sm text-indigo-600 font-medium">Uploading...</p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2">
+                          <Upload className="w-5 h-5 text-gray-400" />
+                          <p className="text-sm text-gray-600">
+                            {videoUrl ? "Replace" : "Upload"} {flag} video
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Delete translation (only for non-original languages) */}
+            {isViewingTranslation && (
+              <button
+                onClick={() => handleDeleteTranslation(activeLang)}
+                disabled={deleting}
+                className="flex items-center gap-2 text-xs text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                Delete {LANG_META[activeLang]?.flag} translation & re-translate
+              </button>
             )}
           </div>
         </div>
@@ -1015,7 +1168,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
                   const isGenerating = captionGenerating[t.id] ?? false;
                   const progress = captionProgress[t.id];
                   const hasCaptions = !!t.captioned_video_url;
-                  const selectedStyle = captionStyles[t.id] ?? t.caption_style ?? "highlight";
 
                   return (
                     <div
@@ -1052,29 +1204,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
                       </div>
 
                       <div className="p-4 space-y-4">
-                        {/* Caption style selector */}
-                        <div className="flex items-center gap-3">
-                          <label className="text-xs text-gray-500 font-medium">
-                            Style:
-                          </label>
-                          <select
-                            value={selectedStyle}
-                            onChange={(e) =>
-                              setCaptionStyles((prev) => ({
-                                ...prev,
-                                [t.id]: e.target.value as "highlight" | "clean",
-                              }))
-                            }
-                            disabled={isGenerating}
-                            className="text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 text-gray-700 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-                          >
-                            <option value="highlight">
-                              Word-by-word highlight
-                            </option>
-                            <option value="clean">Clean subtitles</option>
-                          </select>
-                        </div>
-
                         {/* Progress indicator */}
                         {isGenerating && progress && (
                           <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">

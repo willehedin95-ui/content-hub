@@ -14,6 +14,7 @@ export async function POST(
   const multiShots: boolean = body.multi_shots ?? false;
   const mode: "std" | "pro" = body.mode === "pro" ? "pro" : "std";
   const useStartFrame: boolean = body.use_start_frame ?? true;
+  const language: string | undefined = body.language;
 
   const db = createServerSupabase();
 
@@ -24,6 +25,18 @@ export async function POST(
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
+
+  // If language is specified, fetch translated script
+  let translatedScript: string | null = null;
+  if (language) {
+    const { data: translation } = await db
+      .from("video_translations")
+      .select("translated_script")
+      .eq("video_job_id", id)
+      .eq("language", language)
+      .single();
+    translatedScript = translation?.translated_script || null;
+  }
 
   // Fetch completed shot images (for optional start frame)
   const { data: shots } = await db
@@ -53,8 +66,9 @@ export async function POST(
     );
   }
 
-  if (job.script) {
-    promptParts.push(`Script (the character says this):\n${job.script}`);
+  const scriptToUse = translatedScript || job.script;
+  if (scriptToUse) {
+    promptParts.push(`Script (the character says this):\n${scriptToUse}`);
   }
 
   const prompt = promptParts.join("\n\n");

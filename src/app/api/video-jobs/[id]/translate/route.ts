@@ -219,3 +219,30 @@ export async function POST(
     },
   });
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const { searchParams } = new URL(req.url);
+  const language = searchParams.get("language");
+
+  if (!language) {
+    return NextResponse.json({ error: "language query param is required" }, { status: 400 });
+  }
+
+  const db = createServerSupabase();
+
+  const { error } = await db
+    .from("video_translations")
+    .delete()
+    .eq("video_job_id", id)
+    .eq("language", language);
+
+  if (error) {
+    return safeError(error, "Failed to delete translation");
+  }
+
+  return NextResponse.json({ success: true });
+}

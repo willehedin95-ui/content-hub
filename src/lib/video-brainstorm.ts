@@ -578,25 +578,26 @@ export async function translateVideoProposals(
   };
 }
 
-/** Extract the dialogue from a veo_prompt. Looks for: [Name/pronoun] says: "..." */
+/** Extract the dialogue from a veo_prompt. Looks for: [word][optional punctuation] says: "..." */
 export function extractDialogue(veoPrompt: string): string | null {
-  // Match any word (character name or pronoun) followed by says/say: "..."
-  const match = veoPrompt.match(/\w+\s+says?:\s*"([^"]*(?:\\.[^"]*)*)"/i)
-    || veoPrompt.match(/\w+\s+says?:\s*\\"([^\\]*(?:\\.[^\\]*)*)\\"/i);
+  // Allow optional comma/period/etc between the preceding word and "says"
+  const match = veoPrompt.match(/\w+[,.]?\s+says?:\s*"([^"]*(?:\\.[^"]*)*)"/i)
+    || veoPrompt.match(/\w+[,.]?\s+says?:\s*\\"([^\\]*(?:\\.[^\\]*)*)\\"/i);
   return match ? match[1].replace(/\\"/g, '"') : null;
 }
 
 /** Replace the dialogue in a veo_prompt with translated text */
 export function replaceDialogue(veoPrompt: string, newDialogue: string): string {
   // Replace the dialogue portion while keeping the rest of the prompt intact
+  // Allow optional comma/period between preceding word and "says"
   const escaped = newDialogue.replace(/"/g, '\\"');
   return veoPrompt
     .replace(
-      /(\w+\s+says?:\s*)"[^"]*(?:\\.[^"]*)*"/i,
+      /(\w+[,.]?\s+says?:\s*)"[^"]*(?:\\.[^"]*)*"/i,
       `$1"${escaped}"`
     )
     .replace(
-      /(\w+\s+says?:\s*)\\"[^\\]*(?:\\.[^\\]*)*\\"/i,
+      /(\w+[,.]?\s+says?:\s*)\\"[^\\]*(?:\\.[^\\]*)*\\"/i,
       `$1\\"${escaped}\\"`
     );
 }

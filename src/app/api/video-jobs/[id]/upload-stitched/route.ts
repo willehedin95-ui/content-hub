@@ -23,12 +23,17 @@ export async function POST(
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  const language = formData.get("language") as string | null;
+
   if (!file)
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const storagePath = `${job.product}/${id}/stitched.mp4`;
+  // Use language-specific storage path when uploading per-language
+  const storagePath = language
+    ? `${job.product}/${id}/stitched-${language}.mp4`
+    : `${job.product}/${id}/stitched.mp4`;
 
+  const buffer = Buffer.from(await file.arrayBuffer());
   const { error: uploadError } = await db.storage
     .from(VIDEO_STORAGE_BUCKET)
     .upload(storagePath, buffer, {
@@ -50,9 +55,9 @@ export async function POST(
     .update({ status: "generated" })
     .eq("id", id);
 
-  // Ensure video_translations exist for each target language and set video_url
-  // so the Captions step can find completed videos
-  const languages: string[] = job.target_languages ?? [];
+  // If a specific language is provided, only update that language's translation.
+  // Otherwise update all target languages (backward compat for VideoStitcher).
+  const languages: string[] = language ? [language] : (job.target_languages ?? []);
   for (const lang of languages) {
     const { data: existing } = await db
       .from("video_translations")

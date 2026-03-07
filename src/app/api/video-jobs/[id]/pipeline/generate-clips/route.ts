@@ -15,6 +15,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model: VideoModel = VALID_MODELS.includes(body.model) ? body.model : "veo3_fast";
   const shotIds: string[] | undefined = body.shot_ids;
+  const language: string | undefined = body.language;
 
   const db = createServerSupabase();
 
@@ -25,6 +26,29 @@ export async function POST(
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
+
+  // If language is specified, fetch translated VEO prompts
+  let translatedPrompts: Map<number, string> | null = null;
+  if (language) {
+    const { data: translation } = await db
+      .from("video_translations")
+      .select("translated_shots")
+      .eq("video_job_id", id)
+      .eq("language", language)
+      .single();
+
+    if (translation?.translated_shots) {
+      translatedPrompts = new Map();
+      for (const ts of translation.translated_shots as Array<{
+        shot_number: number;
+        translated_veo_prompt?: string;
+      }>) {
+        if (ts.translated_veo_prompt) {
+          translatedPrompts.set(ts.shot_number, ts.translated_veo_prompt);
+        }
+      }
+    }
+  }
 
   // Fetch shots — either specific ones or all with completed images and pending video
   let query = db
@@ -49,8 +73,11 @@ export async function POST(
 
   try {
     for (const shot of shots) {
+      // Use translated prompt if available, otherwise original
+      const prompt = translatedPrompts?.get(shot.shot_number) || shot.veo_prompt;
+
       // Use FIRST_AND_LAST_FRAMES_2_VIDEO with the shot's keyframe image
-      const taskId = await createVeoTask(shot.veo_prompt, {
+      const taskId = await createVeoTask(prompt, {
         model,
         aspect_ratio: "9:16",
         generationType: "FIRST_AND_LAST_FRAMES_2_VIDEO",
@@ -80,6 +107,7 @@ export async function POST(
         pipeline: "multi_clip",
         shots_kicked: results.length,
         generation_type: "FIRST_AND_LAST_FRAMES_2_VIDEO",
+        language: language || null,
       },
     });
 

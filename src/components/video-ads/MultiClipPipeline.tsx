@@ -89,6 +89,8 @@ const PIPELINE_STEPS_STORYBOARD: PipelineStep[] = [
 interface MultiClipPipelineProps {
   job: VideoJob;
   onJobUpdate: () => Promise<void>;
+  /** When set, clip generation uses translated VEO prompts for this language */
+  language?: string;
 }
 
 // --- Helpers ---
@@ -139,6 +141,7 @@ function isStepCompleted(
 export default function MultiClipPipeline({
   job,
   onJobUpdate,
+  language,
 }: MultiClipPipelineProps) {
   const [pipelineStatus, setPipelineStatus] =
     useState<PipelineStatusResponse | null>(null);
@@ -250,7 +253,7 @@ export default function MultiClipPipeline({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: selectedModel }),
+          body: JSON.stringify({ model: selectedModel, language }),
         }
       );
       if (!res.ok) {
@@ -303,6 +306,7 @@ export default function MultiClipPipeline({
             multi_shots: klingMultiShots,
             mode: klingMode,
             use_start_frame: klingUseStartFrame,
+            language,
           }),
         }
       );
@@ -351,6 +355,7 @@ export default function MultiClipPipeline({
             body: JSON.stringify({
               model: selectedModel,
               shot_ids: shotIds,
+              language,
             }),
           }
         );
