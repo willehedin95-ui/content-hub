@@ -1111,3 +1111,18 @@ export interface VideoConceptProposal {
   ad_copy_headline: string;
   shots?: VideoShotProposal[];
 }
+
+export interface PixarAnimationProposal {
+  concept_name: string;
+  character_object: string;
+  character_category: string;
+  character_mood: string;
+  dialogue: string;
+  duration_seconds: number;
+  awareness_level: string;
+  hook_type: string;
+  character_image_prompt: string;
+  veo_prompt: string;
+  ad_copy_primary: string;
+  ad_copy_headline: string;
+}
