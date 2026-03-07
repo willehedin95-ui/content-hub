@@ -6,7 +6,10 @@ export const maxDuration = 300;
 
 /**
  * Push a video job's completed translations to Meta Ads.
- * Body: { ad_set_id: string, languages?: string[] }
+ * Body: { markets?: string[] }
+ *
+ * Uses campaign mappings (format='video') to auto-create ad sets per market.
+ * No longer requires a hardcoded adSetId.
  */
 export async function POST(
   req: NextRequest,
@@ -17,35 +20,29 @@ export async function POST(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 
-  let body: { ad_set_id?: string; languages?: string[] };
+  let body: { markets?: string[] } = {};
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const adSetId = body.ad_set_id;
-  if (!adSetId || typeof adSetId !== "string") {
-    return NextResponse.json(
-      { error: "ad_set_id is required" },
-      { status: 400 }
-    );
+    // Empty body is fine — defaults to all target markets
   }
 
   try {
-    const results = await pushVideoToMeta(jobId, adSetId, {
-      languages: body.languages,
+    const { results } = await pushVideoToMeta(jobId, {
+      markets: body.markets,
     });
-    return NextResponse.json({ results });
+    return NextResponse.json({ success: true, results });
   } catch (err) {
     console.error("[Video Push to Meta] Error:", err);
     const message = err instanceof Error ? err.message : "Push failed";
     const status =
       message === "Video job not found"
         ? 404
-        : message.includes("is required")
-          ? 400
-          : 500;
+        : message === "A push is already in progress for this video concept"
+          ? 409
+          : message.includes("is required")
+            ? 400
+            : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

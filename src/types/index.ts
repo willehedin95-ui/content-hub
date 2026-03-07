@@ -436,6 +436,7 @@ export interface MetaCampaign {
   name: string;
   product: Product | null;
   image_job_id: string | null;
+  video_job_id: string | null;
   meta_campaign_id: string | null;
   meta_adset_id: string | null;
   objective: string;
