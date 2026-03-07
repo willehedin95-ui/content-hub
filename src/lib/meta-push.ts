@@ -229,7 +229,7 @@ export async function pushConceptToMeta(
 
       // Check campaign mapping + page config in parallel
       const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
-        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("product", job.product).eq("country", country).single(),
+        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("product", job.product).eq("country", country).eq("format", "image").single(),
         db.from("meta_page_config").select("meta_page_id").eq("country", country).single(),
       ]);
 
@@ -566,7 +566,7 @@ export async function pushConceptToMeta(
 /**
  * Translate all ad copy variants using GPT-4o (single API call for all variants)
  */
-async function translateAdCopyBatch(
+export async function translateAdCopyBatch(
   primaryTexts: string[],
   headlines: string[],
   language: Language,
