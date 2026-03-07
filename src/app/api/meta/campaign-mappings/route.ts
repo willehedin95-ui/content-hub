@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { product, country, meta_campaign_id, meta_campaign_name, template_adset_id, template_adset_name } =
+  const { product, country, meta_campaign_id, meta_campaign_name, template_adset_id, template_adset_name, format } =
     (await req.json()) as {
       product: string;
       country: string;
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       meta_campaign_name?: string;
       template_adset_id?: string;
       template_adset_name?: string;
+      format?: string;
     };
 
   if (!product || !country || !meta_campaign_id) {
@@ -48,9 +49,10 @@ export async function POST(req: NextRequest) {
         meta_campaign_name: meta_campaign_name ?? null,
         template_adset_id: template_adset_id ?? null,
         template_adset_name: template_adset_name ?? null,
+        format: format ?? "image",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "product,country" }
+      { onConflict: "product,country,format" }
     )
     .select()
     .single();

@@ -79,6 +79,7 @@ export async function POST(
         .select("template_adset_id")
         .eq("product", campaign.product)
         .eq("country", campaign.countries[0])
+        .eq("format", "image")
         .single();
 
       if (!mapping?.template_adset_id) {
