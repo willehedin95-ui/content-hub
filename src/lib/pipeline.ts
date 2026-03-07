@@ -582,34 +582,28 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     .select("id, meta_campaign_id")
     .not("meta_campaign_id", "is", null);
 
-  if (!markets || markets.length === 0) {
-    return { synced: 0, errors: [], transitions: [] };
-  }
+  const campaignIds = (markets ?? []).map((m) => m.meta_campaign_id).filter(Boolean) as string[];
 
-  const campaignIds = markets.map((m) => m.meta_campaign_id).filter(Boolean) as string[];
-
-  // Get campaigns and their ads
-  const { data: campaigns } = await db
-    .from("meta_campaigns")
-    .select("id, meta_ads(meta_ad_id)")
-    .in("id", campaignIds)
-    .in("status", ["pushed", "pushing"]);
-
-  if (!campaigns || campaigns.length === 0) {
-    return { synced: 0, errors: [], transitions: [] };
-  }
+  // Get image campaigns and their ads
+  const { data: imageCampaigns } = campaignIds.length > 0
+    ? await db
+        .from("meta_campaigns")
+        .select("id, meta_ads(meta_ad_id)")
+        .in("id", campaignIds)
+        .in("status", ["pushed", "pushing"])
+    : { data: [] as Array<{ id: string; meta_ads: Array<{ meta_ad_id: string | null }> }> };
 
   // Build map: meta_ad_id → image_job_market_id
   const adToMarketMap = new Map<string, string>();
   const campaignToMarketMap = new Map<string, string>();
 
-  for (const market of markets) {
+  for (const market of (markets ?? [])) {
     if (market.meta_campaign_id) {
       campaignToMarketMap.set(market.meta_campaign_id, market.id);
     }
   }
 
-  for (const campaign of campaigns) {
+  for (const campaign of (imageCampaigns ?? [])) {
     const marketId = campaignToMarketMap.get(campaign.id);
     if (!marketId) continue;
 
@@ -617,6 +611,22 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     for (const ad of ads) {
       if (ad.meta_ad_id) {
         adToMarketMap.set(ad.meta_ad_id, marketId);
+      }
+    }
+  }
+
+  // Also include video campaigns — they use meta_campaigns.id as the market key
+  const { data: videoCampaigns } = await db
+    .from("meta_campaigns")
+    .select("id, meta_ads(meta_ad_id)")
+    .not("video_job_id", "is", null)
+    .in("status", ["pushed", "pushing"]);
+
+  for (const vc of (videoCampaigns ?? [])) {
+    const ads = (vc.meta_ads ?? []) as Array<{ meta_ad_id: string | null }>;
+    for (const ad of ads) {
+      if (ad.meta_ad_id) {
+        adToMarketMap.set(ad.meta_ad_id, vc.id); // use meta_campaigns.id as market key
       }
     }
   }
@@ -920,6 +930,7 @@ export async function getPipelineData(): Promise<PipelineData> {
     concepts.push({
       id: market.id, // image_job_market.id
       imageJobId: market.image_job_id,
+      conceptType: "image",
       market: market.market,
       name: jobInfo.name,
       conceptNumber: jobInfo.conceptNumber,
@@ -970,6 +981,7 @@ export async function getPipelineData(): Promise<PipelineData> {
       concepts.push({
         id: `draft-${job.id}-${market}`, // synthetic ID for drafts
         imageJobId: job.id,
+        conceptType: "image",
         market,
         name: job.name,
         conceptNumber: job.concept_number ?? null,
@@ -990,6 +1002,149 @@ export async function getPipelineData(): Promise<PipelineData> {
         cashDna: (job.cash_dna as CashDna | null) ?? null,
         killHypothesis: null,
         killNotes: null,
+      });
+    }
+  }
+
+  // ── Add video concepts pushed to Meta ──
+  const LANG_TO_MARKET: Record<string, string> = { da: "DK", no: "NO", sv: "SE", de: "DE" };
+
+  const { data: videoMetaCampaigns } = await db
+    .from("meta_campaigns")
+    .select("id, video_job_id, countries, language, status, created_at")
+    .not("video_job_id", "is", null)
+    .in("status", ["pushed", "pushing"]);
+
+  if (videoMetaCampaigns && videoMetaCampaigns.length > 0) {
+    // Collect unique video job IDs
+    const videoJobIds = [...new Set(videoMetaCampaigns.map((c) => c.video_job_id).filter(Boolean))];
+
+    // Fetch video job info
+    const { data: videoJobsData } = await db
+      .from("video_jobs")
+      .select("id, concept_name, concept_number, product, hook_type, script_structure, format_type, created_at")
+      .in("id", videoJobIds);
+
+    // Fetch first source video thumbnail per job
+    const { data: sourceVids } = videoJobIds.length > 0
+      ? await db
+          .from("source_videos")
+          .select("video_job_id, thumbnail_url")
+          .in("video_job_id", videoJobIds)
+          .order("created_at", { ascending: true })
+      : { data: [] as { video_job_id: string; thumbnail_url: string | null }[] };
+
+    const videoThumbMap = new Map<string, string>();
+    for (const sv of sourceVids ?? []) {
+      if (!videoThumbMap.has(sv.video_job_id) && sv.thumbnail_url) {
+        videoThumbMap.set(sv.video_job_id, sv.thumbnail_url);
+      }
+    }
+
+    const videoJobMap = new Map(
+      (videoJobsData ?? []).map((j) => [j.id, j])
+    );
+
+    for (const vc of videoMetaCampaigns) {
+      const jobInfo = vc.video_job_id ? videoJobMap.get(vc.video_job_id) : null;
+      if (!jobInfo) continue;
+
+      const market = vc.countries?.[0] ?? LANG_TO_MARKET[vc.language] ?? "SE";
+      const dailyMetrics = metricsMap.get(vc.id) ?? []; // metrics keyed by meta_campaigns.id
+
+      // Determine stage from lifecycle (if tracked) or default to "testing"
+      const lifecycle = stageMap.get(vc.id);
+      let stage: PipelineStage;
+      let stageEnteredAt: string;
+      if (lifecycle) {
+        stage = lifecycle.stage;
+        stageEnteredAt = lifecycle.entered_at;
+      } else {
+        stage = "testing";
+        stageEnteredAt = vc.created_at;
+      }
+
+      // Aggregate metrics
+      let metricsAgg: PipelineConcept["metrics"] = null;
+      if (dailyMetrics.length > 0) {
+        const totalSpend = dailyMetrics.reduce((s, m) => s + m.spend, 0);
+        const totalImpressions = dailyMetrics.reduce((s, m) => s + m.impressions, 0);
+        const totalClicks = dailyMetrics.reduce((s, m) => s + m.clicks, 0);
+        const totalConversions = dailyMetrics.reduce((s, m) => s + m.conversions, 0);
+        const totalRevenue = dailyMetrics.reduce((s, m) => s + (m.revenue || 0), 0);
+        const avgFrequency = dailyMetrics.reduce((s, m) => s + m.frequency, 0) / dailyMetrics.length;
+
+        metricsAgg = {
+          totalSpend,
+          cpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
+          ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+          cpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
+          cpm: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
+          frequency: avgFrequency,
+          conversions: totalConversions,
+          impressions: totalImpressions,
+          clicks: totalClicks,
+          roas: totalSpend > 0 ? totalRevenue / totalSpend : null,
+          revenue: totalRevenue,
+        };
+
+        for (const m of dailyMetrics) {
+          if (!lastSyncedAt || m.synced_at > lastSyncedAt) {
+            lastSyncedAt = m.synced_at;
+          }
+        }
+      }
+
+      // Target CPA + ROAS lookup
+      let targetCpa: number | null = null;
+      let targetRoas: number | null = null;
+      let currency: string | null = null;
+      if (jobInfo.product) {
+        const key = `${jobInfo.product}:${market}`;
+        const setting = settingsLookup.get(key);
+        if (setting) {
+          targetCpa = setting.target_cpa;
+          targetRoas = setting.target_roas ?? null;
+          currency = setting.currency;
+        }
+      }
+
+      const daysSincePush = daysBetween(vc.created_at, new Date());
+      const signals = computeSignals({
+        stage,
+        daysSincePush,
+        totalSpend: metricsAgg?.totalSpend ?? 0,
+        totalConversions: metricsAgg?.conversions ?? 0,
+        cpa: metricsAgg?.cpa ?? 0,
+        targetCpa,
+        frequency: metricsAgg?.frequency ?? 0,
+        dailyMetrics,
+      });
+
+      concepts.push({
+        id: vc.id, // meta_campaigns.id as market key
+        imageJobId: vc.video_job_id!, // backward compat — actually video_job_id
+        conceptType: "video",
+        market,
+        name: jobInfo.concept_name,
+        conceptNumber: jobInfo.concept_number ?? null,
+        product: jobInfo.product ?? null,
+        source: "hub",
+        launchpadPriority: null,
+        thumbnailUrl: videoThumbMap.get(jobInfo.id) ?? null,
+        stage,
+        stageEnteredAt,
+        daysInStage: daysBetween(stageEnteredAt, new Date()),
+        pushedAt: vc.created_at,
+        daysSincePush,
+        metrics: metricsAgg,
+        signals,
+        targetCpa,
+        targetRoas,
+        currency,
+        cashDna: null, // video concepts don't have CASH DNA
+        killHypothesis: lifecycle?.hypothesis ?? null,
+        killNotes: lifecycle?.notes ?? null,
       });
     }
   }
@@ -1705,6 +1860,11 @@ interface ConceptLearningInput {
   signal: string;
   cashDna: CashDna | null;
   originalHypothesis: string | null;
+  /** Video-specific fields (omit for image concepts) */
+  conceptType?: "image" | "video";
+  formatType?: string | null;
+  hookType?: string | null;
+  scriptStructure?: string | null;
 }
 
 interface ConceptLearningResult {
@@ -1727,6 +1887,9 @@ async function generateConceptLearning(
 
   const client = new Anthropic({ apiKey });
 
+  const isVideo = opts.conceptType === "video";
+  const formatTag = isVideo ? " (VIDEO AD)" : " (STATIC IMAGE AD)";
+
   const cashDnaSection = opts.cashDna
     ? `
 CASH DNA:
@@ -1735,7 +1898,12 @@ CASH DNA:
 - Style: ${opts.cashDna.style ?? "unknown"}
 - Concept Type: ${opts.cashDna.concept_type ?? "unknown"}
 - Copy Blocks: ${opts.cashDna.copy_blocks?.join(", ") || "none"}`
-    : "CASH DNA: Not available";
+    : isVideo
+      ? `VIDEO CREATIVE DETAILS:
+- Format Type: ${opts.formatType ?? "unknown"}
+- Hook Type: ${opts.hookType ?? "unknown"}
+- Script Structure: ${opts.scriptStructure ?? "unknown"}`
+      : "CASH DNA: Not available";
 
   const hypothesisSection = opts.originalHypothesis
     ? `Original Hypothesis: "${opts.originalHypothesis}"`
@@ -1743,7 +1911,7 @@ CASH DNA:
 
   const prompt = `You are a performance marketing analyst reviewing ad test results to extract learnings.
 
-Concept: "${opts.name}"${opts.conceptNumber ? ` (#${opts.conceptNumber})` : ""}
+Concept: "${opts.name}"${opts.conceptNumber ? ` (#${opts.conceptNumber})` : ""}${formatTag}
 Product: ${opts.product || "unknown"}
 Market: ${opts.market}
 Outcome: ${opts.outcome.toUpperCase()}
@@ -1766,9 +1934,9 @@ Performance:
 
 Return a JSON object with exactly these fields:
 {
-  "hypothesis": "2-3 sentences explaining why this concept ${opts.outcome === "winner" ? "succeeded" : "underperformed"}. Be specific about which CASH DNA variables (angle, awareness level, style) likely contributed to the outcome.",
+  "hypothesis": "2-3 sentences explaining why this concept ${opts.outcome === "winner" ? "succeeded" : "underperformed"}. Be specific about which ${isVideo ? "creative variables (format type, hook type, script structure)" : "CASH DNA variables (angle, awareness level, style)"} likely contributed to the outcome.",
   "takeaway": "2-3 sentences describing the reusable learning. Frame it as: 'We learned that [variable combination] [does/doesn't] work for [product] in [market] because [reason].' Focus on what to do differently or repeat next time.",
-  "tags": ["2-5 lowercase keywords describing the key variables and themes, e.g. 'fear', 'native-style', 'problem-aware', 'sleep-quality', 'no-conversions'"]
+  "tags": ["2-5 lowercase keywords describing the key variables and themes, e.g. ${isVideo ? "'video', 'ugc', 'hook-type', 'testimonial', 'no-conversions'" : "'fear', 'native-style', 'problem-aware', 'sleep-quality', 'no-conversions'"}"]
 }
 
 Return ONLY the JSON, no markdown fences or extra text.`;
@@ -1818,8 +1986,15 @@ async function insertConceptLearning(opts: {
   hypothesisTested: string | null;
   takeaway: string;
   tags: string[];
+  /** "image" or "video" — affects concept_type and auto-adds "video" tag */
+  adFormat?: "image" | "video";
 }): Promise<void> {
   const db = createServerSupabase();
+  // For video concepts, ensure "video" tag is present
+  const tags = opts.adFormat === "video" && !opts.tags.includes("video")
+    ? ["video", ...opts.tags]
+    : opts.tags;
+
   const { error } = await db.from("concept_learnings").insert({
     image_job_market_id: opts.imageJobMarketId,
     image_job_id: opts.imageJobId,
@@ -1840,7 +2015,7 @@ async function insertConceptLearning(opts: {
     roas: opts.roas,
     hypothesis_tested: opts.hypothesisTested,
     takeaway: opts.takeaway || null,
-    tags: opts.tags,
+    tags,
     signal: opts.signal,
     concept_name: opts.conceptName,
   });

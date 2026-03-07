@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Trash2,
   ImageIcon,
+  Video,
   Settings,
   Plus,
   Save,
@@ -1125,8 +1126,14 @@ function ConceptCard({
         </div>
       </div>
 
-      {/* Row 2: Product badge + Country flags */}
+      {/* Row 2: Product badge + Type badge + Country flags */}
       <div className="flex items-center gap-1.5 mb-1.5">
+        {concept.conceptType === "video" && (
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+            <Video className="w-3 h-3" />
+            Video
+          </span>
+        )}
         {concept.product && (
           <span
             className={`text-xs font-medium px-1.5 py-0.5 rounded ${
@@ -1248,6 +1255,12 @@ function ConceptModal({
               {concept.conceptNumber !== null && (
                 <span className="text-xs text-gray-400">#{concept.conceptNumber}</span>
               )}
+              {concept.conceptType === "video" && (
+                <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                  <Video className="w-3 h-3" />
+                  Video
+                </span>
+              )}
               {concept.product && (
                 <span
                   className={`text-xs font-medium px-1.5 py-0.5 rounded ${
@@ -1274,13 +1287,13 @@ function ConceptModal({
             {concept.imageJobId && (
               <div className="flex items-center gap-3 mt-1">
                 <Link
-                  href={`/images/${concept.imageJobId}`}
+                  href={concept.conceptType === "video" ? `/video/${concept.imageJobId}` : `/images/${concept.imageJobId}`}
                   className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700"
                   target="_blank"
                 >
                   View Concept <ExternalLink className="w-3 h-3" />
                 </Link>
-                {(concept.stage === "active" || concept.stage === "review") && (
+                {concept.conceptType !== "video" && (concept.stage === "active" || concept.stage === "review") && (
                   <Link
                     href={`/images/${concept.imageJobId}`}
                     className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-700"

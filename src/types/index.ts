@@ -745,6 +745,7 @@ export interface PipelineAlert {
 export interface PipelineConcept {
   id: string; // image_job_market.id (not image_job.id!)
   imageJobId: string; // for linking back to source concept
+  conceptType: "image" | "video"; // distinguishes image vs video concepts
   market: string; // "SE", "DK", "NO", or "DE"
   name: string;
   conceptNumber: number | null;
