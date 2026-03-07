@@ -40,16 +40,21 @@ export async function POST(
     promptParts.push(`Character: ${job.character_description}`);
   }
 
-  const formatLabel = job.format_type
-    ? job.format_type.replace(/_/g, " ")
-    : "UGC";
-
-  promptParts.push(
-    `Setting: ${formatLabel} style UGC video, person talking directly to phone camera in portrait 9:16 format.`
-  );
+  if (job.format_type === "pixar_animation") {
+    promptParts.push(
+      `Setting: High-end Pixar-style 3D character animation. Anthropomorphic animated object speaking directly to camera in portrait 9:16 format. Stylized realism, expressive oversized eyes, cinematic lighting, premium animated film quality.`
+    );
+  } else {
+    const formatLabel = job.format_type
+      ? job.format_type.replace(/_/g, " ")
+      : "UGC";
+    promptParts.push(
+      `Setting: ${formatLabel} style UGC video, person talking directly to phone camera in portrait 9:16 format.`
+    );
+  }
 
   if (job.script) {
-    promptParts.push(`Script (the person says this):\n${job.script}`);
+    promptParts.push(`Script (the character says this):\n${job.script}`);
   }
 
   const prompt = promptParts.join("\n\n");

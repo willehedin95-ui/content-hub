@@ -69,12 +69,14 @@ export async function GET(
 
             if (!uploadError) {
               const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
+              // Add cache-busting param so browser doesn't serve stale image after regeneration
+              const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
               await db.from("video_shots").update({
                 image_status: "completed",
-                image_url: publicUrl.publicUrl,
+                image_url: bustUrl,
               }).eq("id", shot.id);
               shot.image_status = "completed";
-              shot.image_url = publicUrl.publicUrl;
+              shot.image_url = bustUrl;
             }
           }
         } else if (status.status === "failed") {
@@ -105,12 +107,13 @@ export async function GET(
 
             if (!uploadError) {
               const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
+              const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
               await db.from("video_shots").update({
                 video_status: "completed",
-                video_url: publicUrl.publicUrl,
+                video_url: bustUrl,
               }).eq("id", shot.id);
               shot.video_status = "completed";
-              shot.video_url = publicUrl.publicUrl;
+              shot.video_url = bustUrl;
             }
           }
         } else if (status.status === "failed") {
@@ -145,7 +148,7 @@ export async function GET(
 
           if (!uploadError) {
             const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
-            storyboardUrl = publicUrl.publicUrl;
+            storyboardUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
             storyboardStatus = "completed";
             await db.from("video_jobs").update({
               storyboard_status: "completed",
@@ -203,6 +206,7 @@ export async function GET(
       image_url: s.image_url,
       video_status: s.video_status,
       video_url: s.video_url,
+      veo_prompt: s.veo_prompt,
       video_duration_seconds: s.video_duration_seconds,
       error_message: s.error_message,
     })),

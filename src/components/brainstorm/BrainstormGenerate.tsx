@@ -387,6 +387,7 @@ export default function BrainstormGenerate() {
 
       if (mode === "pixar_animation") {
         if (direction.trim()) reqBody.direction = direction.trim();
+        reqBody.language = videoLanguage;
       }
 
       if (mode === "video_ugc") {
@@ -590,6 +591,11 @@ export default function BrainstormGenerate() {
     setError("");
 
     try {
+      const totalDuration = proposal.shots.reduce((sum, s) => sum + (s.duration_seconds || 8), 0);
+      const fullScript = proposal.shots
+        .map((s, i) => `[Shot ${i + 1}: ${s.character_object}]\n${s.dialogue}`)
+        .join("\n\n");
+
       const res = await fetch("/api/video-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -598,30 +604,25 @@ export default function BrainstormGenerate() {
           concept_name: proposal.concept_name,
           hook_type: proposal.hook_type,
           format_type: "pixar_animation",
-          script: proposal.dialogue,
-          character_description: proposal.character_image_prompt,
-          sora_prompt: proposal.veo_prompt,
-          duration_seconds: proposal.duration_seconds || 8,
+          script: fullScript,
+          duration_seconds: totalDuration,
+          target_languages: [videoLanguage],
           awareness_level: proposal.awareness_level,
           ad_copy_primary: proposal.ad_copy_primary,
           ad_copy_headline: proposal.ad_copy_headline,
           style_notes: JSON.stringify({
-            character_object: proposal.character_object,
-            character_category: proposal.character_category,
-            character_mood: proposal.character_mood,
+            theme: proposal.theme,
             animation_style: "pixar",
           }),
-          pipeline_mode: "single_clip",
-          max_shots: 1,
-          reuse_first_frame: true,
-          shots: [
-            {
-              shot_number: 1,
-              shot_description: proposal.character_image_prompt,
-              veo_prompt: proposal.veo_prompt,
-              duration_seconds: proposal.duration_seconds || 8,
-            },
-          ],
+          pipeline_mode: "multi_clip",
+          max_shots: proposal.shots.length,
+          reuse_first_frame: false,
+          shots: proposal.shots.map((shot, i) => ({
+            shot_number: i + 1,
+            shot_description: shot.character_image_prompt,
+            veo_prompt: shot.veo_prompt,
+            duration_seconds: shot.duration_seconds || 8,
+          })),
         }),
       });
 
@@ -1145,6 +1146,36 @@ export default function BrainstormGenerate() {
           {/* Pixar Animation inputs */}
           {mode === "pixar_animation" && (
             <div className="space-y-4">
+              {/* Language */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Language
+                </label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "sv", label: "Swedish" },
+                    { value: "no", label: "Norwegian" },
+                    { value: "da", label: "Danish" },
+                  ].map((l) => (
+                    <button
+                      key={l.value}
+                      onClick={() => setVideoLanguage(l.value)}
+                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        videoLanguage === l.value
+                          ? "bg-purple-50 border-purple-300 text-purple-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Dialogue will be generated directly in this language
+                </p>
+              </div>
+
+              {/* Creative Direction */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Creative Direction
@@ -1608,162 +1639,154 @@ export default function BrainstormGenerate() {
 
               {/* Pixar Proposal cards */}
               <div className="space-y-4">
-                {pixarProposals.map((proposal, i) => (
-                  <div
-                    key={i}
-                    className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors bg-white"
-                  >
-                    <div className="p-5">
-                      {/* Header */}
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 mr-3">
-                          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                            <Clapperboard className="w-4 h-4 text-indigo-500 shrink-0" />
-                            {proposal.concept_name}
-                          </h3>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {proposal.character_object} &middot; {proposal.character_mood}
-                          </p>
+                {pixarProposals.map((proposal, i) => {
+                  const totalDuration = proposal.shots.reduce((sum, s) => sum + (s.duration_seconds || 8), 0);
+                  return (
+                    <div
+                      key={i}
+                      className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors bg-white"
+                    >
+                      <div className="p-5">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 mr-3">
+                            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                              <Clapperboard className="w-4 h-4 text-indigo-500 shrink-0" />
+                              {proposal.concept_name}
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {proposal.theme}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => {
+                                setPixarProposals((prev) => prev.filter((_, idx) => idx !== i));
+                              }}
+                              className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Dismiss"
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleApprovePixar(proposal, i)}
+                              disabled={approvingIdx !== null}
+                              className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              {approvingIdx === i ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Wand2 className="w-3 h-3" />
+                              )}
+                              Approve
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+
+                        {/* Type badges */}
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200">
+                            {proposal.hook_type.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+                            {proposal.awareness_level.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                            {proposal.shots.length} characters
+                          </span>
+                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            {totalDuration}s total
+                          </span>
+                        </div>
+
+                        {/* Character shots */}
+                        <div className="space-y-2 mb-3">
+                          {proposal.shots.map((shot, j) => (
+                            <div key={j} className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">Shot {j + 1}</span>
+                                <span className="text-[10px] font-medium text-indigo-600 capitalize">{shot.character_object}</span>
+                                <span className="text-[10px] text-gray-400">&middot;</span>
+                                <span className="text-[10px] text-gray-500 capitalize">{shot.character_mood.replace(/_/g, " ")}</span>
+                                <span className="text-[10px] text-gray-400">&middot;</span>
+                                <span className="text-[10px] text-gray-500">{shot.duration_seconds}s</span>
+                              </div>
+                              <p className="text-sm text-gray-800 italic">
+                                &ldquo;{shot.dialogue}&rdquo;
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Expandable prompts */}
+                        <div className="mb-3">
                           <button
-                            onClick={() => {
-                              setPixarProposals((prev) => prev.filter((_, idx) => idx !== i));
-                            }}
-                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Dismiss"
+                            onClick={() =>
+                              setExpandedVisual(expandedVisual === i ? null : i)
+                            }
+                            className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
                           >
-                            <ThumbsDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleApprovePixar(proposal, i)}
-                            disabled={approvingIdx !== null}
-                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {approvingIdx === i ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
+                            Image Prompts
+                            {expandedVisual === i ? (
+                              <ChevronUp className="w-3 h-3" />
                             ) : (
-                              <Wand2 className="w-3 h-3" />
+                              <ChevronDown className="w-3 h-3" />
                             )}
-                            Approve
                           </button>
+                          {expandedVisual === i && (
+                            <div className="mt-1 space-y-2">
+                              {proposal.shots.map((shot, j) => (
+                                <div key={j} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Shot {j + 1}: {shot.character_object}</p>
+                                  <p className="text-xs text-gray-600 font-mono whitespace-pre-wrap">
+                                    {shot.character_image_prompt}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Type badges */}
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200">
-                          {proposal.hook_type.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
-                          {proposal.awareness_level.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                          {proposal.character_category.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                          {proposal.duration_seconds}s
-                        </span>
-                      </div>
-
-                      {/* Dialogue */}
-                      <div className="mb-3">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                          Dialogue
-                        </label>
-                        <p className="text-sm text-gray-800 bg-indigo-50 rounded-lg px-4 py-3 italic border border-indigo-100">
-                          &ldquo;{proposal.dialogue}&rdquo;
-                        </p>
-                      </div>
-
-                      {/* Character Image Prompt */}
-                      <div className="mb-3">
-                        <button
-                          onClick={() =>
-                            setExpandedVisual(expandedVisual === i ? null : i)
-                          }
-                          className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
-                        >
-                          Character Image Prompt
-                          {expandedVisual === i ? (
-                            <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ChevronDown className="w-3 h-3" />
-                          )}
-                        </button>
-                        {expandedVisual === i && (
-                          <div className="mt-1 bg-gray-50 rounded-lg p-2 border border-gray-100">
-                            <p className="text-xs text-gray-600 font-mono whitespace-pre-wrap">
-                              {proposal.character_image_prompt}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* VEO Prompt */}
-                      <div className="mb-3">
-                        <button
-                          onClick={() =>
-                            setExpandedScript(expandedScript === i ? null : i)
-                          }
-                          className="flex items-center gap-1.5 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
-                        >
-                          <Film className="w-3 h-3" />
-                          VEO Prompt
-                          {expandedScript === i ? (
-                            <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ChevronDown className="w-3 h-3" />
-                          )}
-                        </button>
-                        {expandedScript === i && (
-                          <div className="mt-1 bg-gray-50 rounded-lg p-2 border border-gray-100">
-                            <p className="text-xs text-gray-600 font-mono whitespace-pre-wrap">
-                              {proposal.veo_prompt}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Ad Copy */}
-                      <div className="mb-3">
-                        <button
-                          onClick={() =>
-                            setExpandedCopy(expandedCopy === i ? null : i)
-                          }
-                          className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
-                        >
-                          Ad Copy
-                          {expandedCopy === i ? (
-                            <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ChevronDown className="w-3 h-3" />
-                          )}
-                        </button>
-                        {expandedCopy === i && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                            <div>
-                              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                                Ad Headline
-                              </label>
-                              <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
-                                {proposal.ad_copy_headline}
-                              </p>
+                        {/* Ad Copy */}
+                        <div className="mb-3">
+                          <button
+                            onClick={() =>
+                              setExpandedCopy(expandedCopy === i ? null : i)
+                            }
+                            className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-gray-700 uppercase tracking-wide transition-colors"
+                          >
+                            Ad Copy
+                            {expandedCopy === i ? (
+                              <ChevronUp className="w-3 h-3" />
+                            ) : (
+                              <ChevronDown className="w-3 h-3" />
+                            )}
+                          </button>
+                          {expandedCopy === i && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                              <div>
+                                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                                  Ad Headline
+                                </label>
+                                <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                                  {proposal.ad_copy_headline}
+                                </p>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+                                  Primary Text
+                                </label>
+                                <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                                  {proposal.ad_copy_primary}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1 block">
-                                Primary Text
-                              </label>
-                              <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
-                                {proposal.ad_copy_primary}
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : (

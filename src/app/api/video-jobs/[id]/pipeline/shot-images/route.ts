@@ -38,6 +38,8 @@ export async function POST(
 
   const results: { shot_id: string; shot_number: number; task_id: string; reused?: boolean }[] = [];
 
+  const isPixar = job.format_type === "pixar_animation";
+
   try {
     if (reuseFirstFrame) {
       // REUSE FIRST FRAME MODE (VEO Studio approach for talking head UGC):
@@ -45,7 +47,9 @@ export async function POST(
       // The status endpoint will copy shot 1's image_url to all other shots once it completes.
       const firstShot = shots[0]; // shots are ordered by shot_number, so [0] is the lowest pending
 
-      const imagePrompt = buildImagePrompt(firstShot.shot_description, job.character_description, job.product_description);
+      const imagePrompt = isPixar
+        ? firstShot.shot_description
+        : buildImagePrompt(firstShot.shot_description, job.character_description, job.product_description);
       const taskId = await createImageTask(imagePrompt, charRefUrls, "2:3", "1K");
 
       await db.from("video_shots").update({
@@ -69,7 +73,9 @@ export async function POST(
     } else {
       // INDIVIDUAL IMAGE MODE: Generate a unique keyframe for each shot
       for (const shot of shots) {
-        const imagePrompt = buildImagePrompt(shot.shot_description, job.character_description, job.product_description);
+        const imagePrompt = isPixar
+          ? shot.shot_description
+          : buildImagePrompt(shot.shot_description, job.character_description, job.product_description);
         const taskId = await createImageTask(imagePrompt, charRefUrls, "2:3", "1K");
 
         await db.from("video_shots").update({

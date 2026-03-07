@@ -571,11 +571,13 @@ export async function POST(req: NextRequest) {
           .map((g) => `### ${g.name}\n${g.content}`)
           .join("\n\n");
 
+        const language = body.language || "sv";
         const systemPrompt = buildPixarAnimationSystemPrompt(
           productSlug,
           productBrief ?? "",
           guidelinesText,
-          learningsContext
+          learningsContext,
+          language
         );
 
         const rejectedStrings = rejectedConcepts.map(
@@ -593,7 +595,7 @@ export async function POST(req: NextRequest) {
 
         const response = await client.messages.create({
           model: CLAUDE_MODEL,
-          max_tokens: 8000,
+          max_tokens: 16000,
           temperature: 0.8,
           system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userPrompt }],

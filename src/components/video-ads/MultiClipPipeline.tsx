@@ -30,6 +30,7 @@ interface PipelineShotStatus {
   image_url: string | null;
   video_status: string;
   video_url: string | null;
+  veo_prompt: string | null;
   video_duration_seconds: number;
   error_message: string | null;
 }
@@ -547,7 +548,7 @@ export default function MultiClipPipeline({
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {shots.map((shot) => (
-              <ShotCard key={shot.id} shot={shot} />
+              <ShotCard key={shot.id} shot={shot} jobId={job.id} onRegenerate={fetchStatus} />
             ))}
           </div>
         </div>
@@ -568,7 +569,7 @@ export default function MultiClipPipeline({
         {/* PENDING: character refs or shot images */}
         {overallStatus === "pending" && (
           <div className="space-y-4">
-            {characterRefStatus === "pending" && hasCharacterDescription && (
+            {characterRefStatus === "pending" && hasCharacterDescription && job.format_type !== "pixar_animation" && (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
                   This concept has a character description. You can generate
@@ -602,7 +603,8 @@ export default function MultiClipPipeline({
 
             {(characterRefStatus === "completed" ||
               characterRefStatus === "skipped" ||
-              !hasCharacterDescription) && (
+              !hasCharacterDescription ||
+              job.format_type === "pixar_animation") && (
               <div>
                 <button
                   onClick={handleGenerateShotImages}

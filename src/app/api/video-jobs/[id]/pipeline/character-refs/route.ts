@@ -30,7 +30,24 @@ export async function POST(
     // Three-view character reference sheet (VEO Studio approach):
     // Front view, 3/4 view, and side profile on clean white background.
     // Gives the image generator maximum visual information for character consistency.
-    const prompt = `Generate a single reference sheet showing ONLY this one character: ${job.character_description}.
+    const isPixar = job.format_type === "pixar_animation";
+    const prompt = isPixar
+      ? `Generate a single reference sheet showing ONLY this one character: ${job.character_description}.
+
+Three-view layout on a clean solid white background:
+- LEFT: Front view, facing camera directly
+- CENTER: 3/4 angle view, slight turn
+- RIGHT: Side profile view
+
+Requirements:
+- Show ONLY this single character, nothing else
+- Clean, simple white or light gray background
+- Consistent proportions and appearance across all three views
+- Pixar-style 3D animated aesthetic with expressive oversized eyes
+- Smooth glossy materials, soft rounded features
+- No other characters, objects, or text in the image
+- Stylized 3D animation style, NOT photorealistic`
+      : `Generate a single reference sheet showing ONLY this one character: ${job.character_description}.
 
 Three-view layout on a clean solid white background:
 - LEFT: Front view, facing camera directly, neutral expression
