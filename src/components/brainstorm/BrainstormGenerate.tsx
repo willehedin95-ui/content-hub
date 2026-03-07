@@ -584,6 +584,60 @@ export default function BrainstormGenerate() {
     }
   }
 
+  async function handleApprovePixar(proposal: PixarAnimationProposal, idx: number) {
+    if (approvingIdx !== null) return;
+    setApprovingIdx(idx);
+    setError("");
+
+    try {
+      const res = await fetch("/api/video-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product,
+          concept_name: proposal.concept_name,
+          hook_type: proposal.hook_type,
+          format_type: "pixar_animation",
+          script: proposal.dialogue,
+          character_description: proposal.character_image_prompt,
+          sora_prompt: proposal.veo_prompt,
+          duration_seconds: proposal.duration_seconds || 8,
+          awareness_level: proposal.awareness_level,
+          ad_copy_primary: proposal.ad_copy_primary,
+          ad_copy_headline: proposal.ad_copy_headline,
+          style_notes: JSON.stringify({
+            character_object: proposal.character_object,
+            character_category: proposal.character_category,
+            character_mood: proposal.character_mood,
+            animation_style: "pixar",
+          }),
+          pipeline_mode: "single_clip",
+          max_shots: 1,
+          reuse_first_frame: true,
+          shots: [
+            {
+              shot_number: 1,
+              shot_description: proposal.character_image_prompt,
+              veo_prompt: proposal.veo_prompt,
+              duration_seconds: proposal.duration_seconds || 8,
+            },
+          ],
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to create video job");
+      }
+
+      const job = await res.json();
+      router.push(`/video-ads/${job.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setApprovingIdx(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Phase: Configure */}
@@ -1582,25 +1636,7 @@ export default function BrainstormGenerate() {
                             <ThumbsDown className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleApprove({
-                              concept_name: proposal.concept_name,
-                              concept_description: `Pixar talking ${proposal.character_object} — ${proposal.character_mood}`,
-                              cash_dna: {
-                                angle: proposal.hook_type as ConceptProposal["cash_dna"]["angle"],
-                                awareness_level: proposal.awareness_level as ConceptProposal["cash_dna"]["awareness_level"],
-                                hooks: [proposal.dialogue],
-                                concept_type: null,
-                                style: null,
-                                ad_source: "Wildcard" as ConceptProposal["cash_dna"]["ad_source"],
-                                copy_blocks: [],
-                                concept_description: `Pixar talking ${proposal.character_object} — ${proposal.character_mood}`,
-                              },
-                              ad_copy_primary: [proposal.ad_copy_primary],
-                              ad_copy_headline: [proposal.ad_copy_headline],
-                              visual_direction: proposal.character_image_prompt,
-                              differentiation_note: `Pixar talking ${proposal.character_object} says: "${proposal.dialogue}"`,
-                              suggested_tags: ["pixar", proposal.character_category, proposal.character_object],
-                            }, i)}
+                            onClick={() => handleApprovePixar(proposal, i)}
                             disabled={approvingIdx !== null}
                             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
                           >

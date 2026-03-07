@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
     return safeError(error, "Failed to create video job");
   }
 
-  // Create video_shots if multi-clip mode
-  if (body.pipeline_mode === "multi_clip" && Array.isArray(body.shots) && body.shots.length > 0) {
+  // Create video_shots if provided (multi-clip or single-clip with explicit shots)
+  if (Array.isArray(body.shots) && body.shots.length > 0) {
     const shotRows = body.shots.map((shot: { shot_number: number; shot_description: string; veo_prompt: string; duration_seconds?: number }) => ({
       video_job_id: data.id,
       shot_number: shot.shot_number,
