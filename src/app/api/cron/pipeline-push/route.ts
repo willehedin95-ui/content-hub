@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics } from "@/lib/pipeline";
+import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics, MAX_CONCEPTS_PER_BATCH } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
 import { sendMessage } from "@/lib/telegram";
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
       let pushCount = 0;
       for (const concept of launchpadConcepts) {
-        if (pushCount >= budget.canPush) break;
+        if (pushCount >= Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH)) break;
 
         const marketEntry = concept.markets.find((m) => m.market === market);
         if (!marketEntry || marketEntry.stage !== "launchpad") continue;

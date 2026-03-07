@@ -494,41 +494,10 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
 
   const results: string[] = [];
   const graduatedCampaigns = new Set<string>();
-  const graduatedAdSets = new Set<string>();
 
   for (const w of winners) {
     try {
-      // First try ad set budget (ABO campaigns)
-      if (w.adset_id && !graduatedAdSets.has(w.adset_id)) {
-        const adsetInfo = await metaFetchAdSetBudget(w.adset_id);
-        const adsetBudget = Number(adsetInfo.daily_budget || 0);
-
-        if (adsetBudget > 0) {
-          // ABO: ad set has its own budget — increase it
-          graduatedAdSets.add(w.adset_id);
-          const newBudget = Math.round(adsetBudget * 1.2);
-          await updateAdSetBudget(w.adset_id, newBudget);
-
-          const oldUsd = (adsetBudget / 100).toFixed(0);
-          const newUsd = (newBudget / 100).toFixed(0);
-          results.push(`  🚀 ${w.ad_name || "Unnamed"} (ad set): $${oldUsd}/d → $${newUsd}/d (+20%)`);
-
-          const db = createServerSupabase();
-          await db.from("ad_learnings").insert({
-            meta_ad_id: w.ad_id,
-            ad_name: w.ad_name,
-            campaign_name: w.campaign_name,
-            event_type: "graduated_winner",
-            detail: `Ad set budget +20% ($${oldUsd}/d → $${newUsd}/d) after ${w.consistent_days}d streak, ${w.avg_roas.toFixed(1)}x ROAS`,
-            metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: adsetBudget, new_budget: newBudget, level: "adset" },
-          });
-
-          await new Promise((r) => setTimeout(r, 500));
-          continue;
-        }
-      }
-
-      // CBO: ad set has no budget — increase the campaign budget instead
+      // CBO: increase the campaign budget by 20%
       if (!w.campaign_id || graduatedCampaigns.has(w.campaign_id)) continue;
       graduatedCampaigns.add(w.campaign_id);
 
@@ -575,25 +544,3 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
   );
 }
 
-// Lightweight Meta API helpers for the webhook (avoid importing full meta.ts chain for simple queries)
-async function metaFetchAdSetBudget(adsetId: string): Promise<{ daily_budget: string; name: string }> {
-  const token = process.env.META_SYSTEM_USER_TOKEN;
-  if (!token) throw new Error("META_SYSTEM_USER_TOKEN not set");
-  const res = await fetch(`https://graph.facebook.com/v22.0/${adsetId}?fields=daily_budget,name&access_token=${token}`);
-  if (!res.ok) throw new Error(`Meta API error (${res.status})`);
-  return res.json();
-}
-
-async function updateAdSetBudget(adsetId: string, dailyBudget: number): Promise<void> {
-  const token = process.env.META_SYSTEM_USER_TOKEN;
-  if (!token) throw new Error("META_SYSTEM_USER_TOKEN not set");
-  const res = await fetch(`https://graph.facebook.com/v22.0/${adsetId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ daily_budget: String(dailyBudget) }),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Meta API error (${res.status}): ${err}`);
-  }
-}

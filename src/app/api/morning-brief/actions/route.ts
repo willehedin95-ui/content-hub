@@ -2,39 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { updateAd, updateCampaign, getCampaignBudget } from "@/lib/meta";
 
-const META_TOKEN = () => process.env.META_SYSTEM_USER_TOKEN!;
 const DELAY = 500;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function fetchAdSetBudget(
-  adsetId: string
-): Promise<{ daily_budget: string; name: string }> {
-  const token = META_TOKEN();
-  const res = await fetch(
-    `https://graph.facebook.com/v22.0/${adsetId}?fields=daily_budget,name&access_token=${token}`
-  );
-  if (!res.ok) throw new Error(`Meta API error (${res.status})`);
-  return res.json();
-}
-
-async function updateAdSetBudget(
-  adsetId: string,
-  dailyBudget: number
-): Promise<void> {
-  const token = META_TOKEN();
-  const res = await fetch(`https://graph.facebook.com/v22.0/${adsetId}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ daily_budget: String(dailyBudget) }),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Meta API error (${res.status}): ${err}`);
-  }
-}
 
 /**
  * POST /api/morning-brief/actions
@@ -150,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     case "scale_winner": {
-      const { ad_id, adset_id, campaign_id, ad_name, campaign_name } = body;
+      const { ad_id, campaign_id, ad_name, campaign_name } = body;
       if (!campaign_id) {
         return NextResponse.json(
           { error: "campaign_id is required" },
@@ -158,50 +127,26 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      let level: "adset" | "campaign" = "campaign";
-      let oldBudget = 0;
-      let newBudget = 0;
+      // CBO: increase campaign budget by 20%
+      const campaignInfo = await getCampaignBudget(campaign_id);
+      const oldBudget = Number(campaignInfo.daily_budget || 0);
+      const newBudget = Math.round(oldBudget * 1.2);
+      await updateCampaign(campaign_id, {
+        daily_budget: String(newBudget),
+      });
 
-      // Try ad set level first (ABO)
-      if (adset_id) {
-        try {
-          const adsetInfo = await fetchAdSetBudget(adset_id);
-          const adsetBudget = Number(adsetInfo.daily_budget || 0);
-          if (adsetBudget > 0) {
-            level = "adset";
-            oldBudget = adsetBudget;
-            newBudget = Math.round(adsetBudget * 1.2);
-            await updateAdSetBudget(adset_id, newBudget);
-          }
-        } catch {
-          // Fall through to campaign level
-        }
-      }
-
-      // Fall back to campaign level (CBO)
-      if (level === "campaign") {
-        const campaignInfo = await getCampaignBudget(campaign_id);
-        const campaignBudget = Number(campaignInfo.daily_budget || 0);
-        oldBudget = campaignBudget;
-        newBudget = Math.round(campaignBudget * 1.2);
-        await updateCampaign(campaign_id, {
-          daily_budget: String(newBudget),
-        });
-      }
-
-      // Log to ad_learnings
+      // Log to ad_learnings (use campaign_id so cooldown check can find it)
       await db.from("ad_learnings").insert({
-        meta_ad_id: ad_id || campaign_id,
+        meta_ad_id: campaign_id,
         ad_name: ad_name ?? null,
         campaign_name: campaign_name ?? null,
         event_type: "graduated_winner",
-        detail: `${level === "adset" ? "Ad set" : "Campaign"} budget +20% (${(oldBudget / 100).toFixed(0)} → ${(newBudget / 100).toFixed(0)}/day)`,
-        metrics: { old_budget: oldBudget, new_budget: newBudget, level },
+        detail: `Campaign budget +20% (${(oldBudget / 100).toFixed(0)} → ${(newBudget / 100).toFixed(0)}/day)`,
+        metrics: { old_budget: oldBudget, new_budget: newBudget, triggering_ad_id: ad_id },
       });
 
       return NextResponse.json({
         ok: true,
-        level,
         old_budget: oldBudget / 100,
         new_budget: newBudget / 100,
       });
@@ -322,7 +267,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Pause ad set via Meta Graph API
-      const token = META_TOKEN();
+      const token = process.env.META_SYSTEM_USER_TOKEN!;
       const res = await fetch(
         `https://graph.facebook.com/v22.0/${adset_id}`,
         {
@@ -350,6 +295,58 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, paused_adset: adset_id });
+    }
+
+    case "increase_budget": {
+      const { campaign_ids, extra_per_campaign, market, concepts_count } = body as {
+        campaign_ids: string[];
+        extra_per_campaign: number; // in cents (Meta format)
+        market: string;
+        concepts_count: number;
+      };
+      if (!campaign_ids?.length || !extra_per_campaign) {
+        return NextResponse.json(
+          { error: "campaign_ids and extra_per_campaign are required" },
+          { status: 400 }
+        );
+      }
+
+      const results: Array<{
+        campaign_id: string;
+        old_budget: number;
+        new_budget: number;
+      }> = [];
+
+      for (const campaignId of campaign_ids) {
+        const info = await getCampaignBudget(campaignId);
+        const oldBudget = Number(info.daily_budget || 0);
+        const newBudget = oldBudget + extra_per_campaign;
+
+        await updateCampaign(campaignId, {
+          daily_budget: String(newBudget),
+        });
+        await sleep(DELAY);
+
+        results.push({
+          campaign_id: campaignId,
+          old_budget: oldBudget / 100,
+          new_budget: newBudget / 100,
+        });
+      }
+
+      // Log to ad_learnings
+      await db.from("ad_learnings").insert({
+        meta_ad_id: campaign_ids[0],
+        campaign_name: market,
+        event_type: "budget_increased_for_testing",
+        detail: `Budget increased to fit ${concepts_count} new concept${concepts_count !== 1 ? "s" : ""} in ${market}: ${results.map((r) => `${r.old_budget} → ${r.new_budget}`).join(", ")}/day`,
+        metrics: { market, concepts_count, results },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        results,
+      });
     }
 
     default:

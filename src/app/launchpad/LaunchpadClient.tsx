@@ -11,6 +11,7 @@ import {
   Trash2,
   Zap,
   XCircle,
+  TrendingUp,
 } from "lucide-react";
 import type { PipelineStage } from "@/types";
 
@@ -38,6 +39,8 @@ interface BudgetInfo {
   currency: string;
   canPush: number;
   campaignBudget: number;
+  activeAdSets: number;
+  campaignIds: string[];
 }
 
 interface LaunchpadData {
@@ -53,6 +56,8 @@ const PRODUCT_COLORS: Record<string, string> = {
 };
 
 const MARKETS = ["NO", "DK", "SE"] as const;
+const MAX_CONCEPTS_PER_BATCH = 3;
+const BUDGET_PER_NEW_CONCEPT = 150; // kr/day
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -101,6 +106,7 @@ export default function LaunchpadClient() {
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [increasingBudget, setIncreasingBudget] = useState<string | null>(null);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -194,6 +200,38 @@ export default function LaunchpadClient() {
     }
   }
 
+  async function handleIncreaseBudget(market: string, budget: BudgetInfo, conceptsNeeded: number) {
+    setIncreasingBudget(market);
+    setError(null);
+    try {
+      // Calculate extra budget needed: how many concepts lack room × 150 kr, in cents
+      const extraNeeded = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
+      const extraPerCampaign = Math.round((extraNeeded / budget.campaignIds.length) * 100); // cents, split evenly
+
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "increase_budget",
+          campaign_ids: budget.campaignIds,
+          extra_per_campaign: extraPerCampaign,
+          market,
+          concepts_count: conceptsNeeded,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error || "Budget increase failed");
+      }
+      await fetchData();
+    } catch (err) {
+      console.error("Budget increase error:", err);
+      setError(err instanceof Error ? err.message : "Failed to increase budget");
+    } finally {
+      setIncreasingBudget(null);
+    }
+  }
+
   // ── Rendering ──────────────────────────────────────────────
 
   if (loading) {
@@ -253,6 +291,15 @@ export default function LaunchpadClient() {
               );
             }
 
+            // Count queued concepts for this market
+            const queuedForMarket = concepts.filter((c) =>
+              c.markets.some((m) => m.market === market && m.stage === "launchpad")
+            ).length;
+            const effectiveCanPush = Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH);
+            const needsMore = queuedForMarket > 0 && budget.canPush < Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH);
+            const conceptsNeeded = Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH) - budget.canPush;
+            const extraBudget = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
+
             return (
               <div
                 key={market}
@@ -262,13 +309,37 @@ export default function LaunchpadClient() {
                   {market}
                 </p>
                 {budget.canPush > 0 ? (
-                  <p className={`text-sm font-medium ${budgetTextClass(budget.canPush)}`}>
-                    ~{budget.available} {budget.currency} available &middot; can push {budget.canPush}
-                  </p>
+                  <div>
+                    <p className={`text-sm font-medium ${budgetTextClass(budget.canPush)}`}>
+                      {budget.available} {budget.currency} available for testing
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {budget.campaignBudget} {budget.currency}/day &middot; {budget.activeAdSets} active &middot; ~{effectiveCanPush} per batch (max {MAX_CONCEPTS_PER_BATCH})
+                    </p>
+                  </div>
                 ) : (
-                  <p className="text-sm font-medium text-red-700">
-                    No budget for testing
-                  </p>
+                  <div>
+                    <p className="text-sm font-medium text-red-700">
+                      Winners consuming full budget
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {budget.campaignBudget} {budget.currency}/day &middot; {budget.activeAdSets} active
+                    </p>
+                  </div>
+                )}
+                {needsMore && budget.campaignIds.length > 0 && (
+                  <button
+                    onClick={() => handleIncreaseBudget(market, budget, conceptsNeeded)}
+                    disabled={increasingBudget === market}
+                    className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {increasingBudget === market ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    )}
+                    +{extraBudget} {budget.currency}/day for {conceptsNeeded} concept{conceptsNeeded !== 1 ? "s" : ""}
+                  </button>
                 )}
               </div>
             );

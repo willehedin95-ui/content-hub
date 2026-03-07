@@ -864,13 +864,13 @@ export async function GET(req: NextRequest) {
   // ── Synthesize Action Cards ──
   interface ActionCard {
     id: string;
-    type: "pause" | "scale" | "refresh" | "budget" | "landing_page" | "save_copy";
+    type: "pause" | "scale" | "refresh" | "budget" | "landing_page" | "save_copy" | "info";
     category: string;
     title: string;
     why: string;
     guidance: string;
     expected_impact: string;
-    action_data: Record<string, unknown>;
+    action_data: Record<string, unknown> | null;
     priority: number;
     button_label?: string;
     ad_name?: string | null;
@@ -1003,7 +1003,32 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Consistent winners → scale cards (priority 2) ──
+  // Cooldown: check which campaigns were scaled in the last 3 days
+  const SCALE_COOLDOWN_DAYS = 3;
+  const cooldownCutoff = new Date(Date.now() - SCALE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const winnerCampaignIds = [...new Set(enrichedWinners.map((w) => w.campaign_id))];
+  const recentScales = new Map<string, string>(); // campaign_id → scaled_at
+  if (winnerCampaignIds.length > 0) {
+    const { data: recentScaleEvents } = await db
+      .from("ad_learnings")
+      .select("meta_ad_id, created_at")
+      .eq("event_type", "graduated_winner")
+      .gte("created_at", cooldownCutoff)
+      .in("meta_ad_id", winnerCampaignIds)
+      .order("created_at", { ascending: false });
+    for (const ev of recentScaleEvents ?? []) {
+      if (!recentScales.has(ev.meta_ad_id)) {
+        recentScales.set(ev.meta_ad_id, ev.created_at);
+      }
+    }
+  }
+
+  // Deduplicate: only one scale card per campaign
+  const seenScaleCampaigns = new Set<string>();
   for (const w of enrichedWinners) {
+    if (seenScaleCampaigns.has(w.campaign_id)) continue;
+    seenScaleCampaigns.add(w.campaign_id);
+
     const enrichment = w.adset_id ? adsetEnrichment.get(w.adset_id) : null;
     const wPm = w.adset_id ? adsetProductMarket.get(w.adset_id) : null;
     const wBeRoas = getBeRoas(wPm?.product ?? null, wPm?.market ?? null);
@@ -1011,13 +1036,42 @@ export async function GET(req: NextRequest) {
     const adLabel = enrichment?.concept_name || w.ad_name || w.adset_name || "unnamed ad";
     const beContext = wBeRoas ? ` (breakeven: ${wBeRoas}x)` : "";
     const cpaContext = wTargetCpa ? ` (target: ${wTargetCpa} kr)` : "";
+
+    // Check cooldown
+    const lastScaledAt = recentScales.get(w.campaign_id);
+    if (lastScaledAt) {
+      const daysAgo = Math.round((Date.now() - new Date(lastScaledAt).getTime()) / (24 * 60 * 60 * 1000));
+      const daysLeft = SCALE_COOLDOWN_DAYS - daysAgo;
+      actionCards.push({
+        id: `scale_cooldown_${w.campaign_id}`,
+        type: "info",
+        category: "Budget",
+        title: `"${adLabel}" still winning — scaled recently`,
+        why: `Budget was increased ${daysAgo}d ago. Wait ${daysLeft} more day${daysLeft !== 1 ? "s" : ""} before scaling again to let Meta's algorithm stabilize.`,
+        guidance: `Scaling more than 20% within 3 days can reset Meta's learning phase and hurt performance. This campaign is on cooldown.`,
+        expected_impact: "No action needed — patience protects performance",
+        action_data: null,
+        priority: 5,
+        ad_name: w.ad_name,
+        adset_id: w.adset_id,
+        adset_name: w.adset_name,
+        campaign_name: w.campaign_name,
+        image_job_id: enrichment?.image_job_id ?? w.image_job_id,
+        concept_name: enrichment?.concept_name ?? null,
+        days_running: enrichment?.days_running ?? null,
+        adset_roas: w.avg_roas,
+        be_roas: wBeRoas,
+      });
+      continue;
+    }
+
     actionCards.push({
       id: `scale_${w.ad_id}`,
       type: "scale",
       category: "Budget",
       title: `Give more budget to "${adLabel}"`,
       why: `Consistent winner for ${w.consistent_days} days — ${w.avg_roas}x ROAS${beContext}, ${w.avg_cpa} kr CPA${cpaContext}.${enrichment?.days_running ? ` Running for ${enrichment.days_running} days.` : ""}`,
-      guidance: `This ad has been profitable above your breakeven for ${w.consistent_days} days straight. Increasing its budget by 20% should get you more sales at a similar cost. Meta's algorithm will gradually spend more on this proven winner.`,
+      guidance: `This ad has been profitable above your breakeven for ${w.consistent_days} days straight. Increasing the campaign budget by 20% gives Meta more room to spend on this proven winner.`,
       expected_impact: "More purchases from a proven profitable ad",
       action_data: { action: "scale_winner", ad_id: w.ad_id, adset_id: w.adset_id, campaign_id: w.campaign_id },
       priority: 2,
@@ -1199,7 +1253,7 @@ export async function GET(req: NextRequest) {
 
     if (diag.bucket === "landing_page_problem") {
       // Don't duplicate if Q8 already flagged this ad as landing_page
-      const alreadyFlagged = actionCards.some((c) => c.type === "landing_page" && c.action_data.ad_id === diag.ad_id);
+      const alreadyFlagged = actionCards.some((c) => c.type === "landing_page" && c.action_data?.ad_id === diag.ad_id);
       if (alreadyFlagged) continue;
 
       actionCards.push({
@@ -1221,7 +1275,7 @@ export async function GET(req: NextRequest) {
       });
     } else if (diag.bucket === "creative_problem") {
       // Don't duplicate if already flagged as needing refresh
-      const alreadyRefresh = actionCards.some((c) => c.type === "refresh" && c.action_data.ad_id === diag.ad_id);
+      const alreadyRefresh = actionCards.some((c) => c.type === "refresh" && c.action_data?.ad_id === diag.ad_id);
       if (alreadyRefresh) continue;
 
       actionCards.push({
@@ -1276,8 +1330,8 @@ export async function GET(req: NextRequest) {
   const actionAdIds = actionCards
     .map((c) => {
       // For grouped cards, get first bleeder's ad_id; for single cards, use ad_id directly
-      const bleedersArr = c.action_data.bleeders as Array<{ ad_id: string }> | undefined;
-      return (c.action_data.ad_id as string) || bleedersArr?.[0]?.ad_id || null;
+      const bleedersArr = c.action_data?.bleeders as Array<{ ad_id: string }> | undefined;
+      return (c.action_data?.ad_id as string) || bleedersArr?.[0]?.ad_id || null;
     })
     .filter((id): id is string => !!id);
   if (actionAdIds.length > 0) {
@@ -1290,8 +1344,8 @@ export async function GET(req: NextRequest) {
     );
     for (const card of actionCards) {
       if (card.image_url) continue; // already has image
-      const adId = card.action_data.ad_id as string;
-      const bleedersArr = card.action_data.bleeders as Array<{ ad_id: string }> | undefined;
+      const adId = card.action_data?.ad_id as string;
+      const bleedersArr = card.action_data?.bleeders as Array<{ ad_id: string }> | undefined;
       const lookupId = adId || bleedersArr?.[0]?.ad_id;
       if (lookupId && imageMap.has(lookupId)) {
         card.image_url = imageMap.get(lookupId) ?? null;
@@ -1302,6 +1356,15 @@ export async function GET(req: NextRequest) {
   // Include pipeline settings in response so client can use data-driven thresholds
   const beRoasValues = [...beRoasMap.values()];
   const minBeRoas = beRoasValues.length > 0 ? Math.min(...beRoasValues) : null;
+
+  // ── Filter out paused products (out of stock) ──
+  // Hydro13 paused: no stock until late March 2026. Remove when stock arrives.
+  const pausedProducts = new Set(["hydro13"]);
+  const isPausedProduct = (adsetId: string | null | undefined) => {
+    if (!adsetId) return false;
+    const pm = adsetProductMarket.get(adsetId);
+    return pm?.product ? pausedProducts.has(pm.product) : false;
+  };
 
   return NextResponse.json({
     generated_at: new Date().toISOString(),
@@ -1316,16 +1379,20 @@ export async function GET(req: NextRequest) {
       whats_running: whatsRunning,
       performance_trends: performanceTrends,
       winners_losers: { winners, losers },
-      fatigue_signals: fatigueSignals,
+      fatigue_signals: {
+        critical: fatigueSignals.critical.filter((f) => !isPausedProduct(f.adset_id)),
+        warning: fatigueSignals.warning.filter((f) => !isPausedProduct(f.adset_id)),
+        monitor: fatigueSignals.monitor.filter((f) => !isPausedProduct(f.adset_id)),
+      },
     },
     signals: {
-      bleeders,
-      consistent_winners: enrichedWinners,
-      lp_vs_creative_fatigue: lpFatigueSignals,
+      bleeders: bleeders.filter((b) => !isPausedProduct(b.adset_id)),
+      consistent_winners: enrichedWinners.filter((w) => !isPausedProduct(w.adset_id)),
+      lp_vs_creative_fatigue: lpFatigueSignals.filter((l) => !isPausedProduct(l.adset_id)),
       efficiency_scoring: efficiencyWithRecommendation,
-      ad_diagnostics: adDiagnostics,
+      ad_diagnostics: adDiagnostics.filter((d) => !isPausedProduct(d.adset_id)),
     },
-    action_cards: actionCards,
+    action_cards: actionCards.filter((c) => !isPausedProduct(c.adset_id)),
   });
 }
 

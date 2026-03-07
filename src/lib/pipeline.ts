@@ -1010,13 +1010,8 @@ export async function getPipelineData(): Promise<PipelineData> {
       ? activeConcepts.reduce((sum, c) => sum + c.daysInStage, 0) / activeConcepts.length
       : 0;
 
-  // Build available budget per market (placeholder — will be computed properly in Task 5)
-  const availableBudgetByMarket: Record<string, { available: number; currency: string; canPush: number }> = {};
-  for (const row of settingsRows) {
-    if (!availableBudgetByMarket[row.country]) {
-      availableBudgetByMarket[row.country] = { available: 0, currency: row.currency, canPush: 0 };
-    }
-  }
+  // Compute available budget per market from live Meta data
+  const availableBudgetByMarket = await calculateAvailableBudget();
 
   const summary: PipelineSummary = {
     launchpad,
@@ -1249,16 +1244,32 @@ export async function getTestingSlots(product: string): Promise<number> {
 
 /**
  * Calculate available testing budget per market.
- * Formula: campaign_budget - avg_winner_spend(3d) - concepts_in_testing(3d) × 150
- * Returns per-market: { available, currency, canPush, campaignBudget }
+ *
+ * Meta's CBO always spends 100% of the daily budget — there's no "unused" money.
+ * When you push a new concept, Meta compresses existing winners to fund it.
+ * So the right question is: "How much compression can winners absorb?"
+ *
+ * Formula (compression-based):
+ *   avg_spend = total winner spend / num active ad sets
+ *   compressible = (avg_spend - MIN_VIABLE_SPEND) × num_ad_sets
+ *   can_push = floor(compressible / BUDGET_PER_NEW_CONCEPT)
+ *
+ * Example: DK has 3 ad sets averaging 348 kr/day each. Each can lose up to
+ * 248 kr (down to 100 floor) = 744 kr total compressible ÷ 150 = can push 4.
+ * vs NO with 7 ad sets averaging 148 kr = only 48 each = can push 2.
+ *
+ * Based on real data: new concepts get ~150 kr/day during learning phase.
  */
+export const MAX_CONCEPTS_PER_BATCH = 3; // max new concepts per market per push — prevents overwhelming Meta's learning
+export const BUDGET_PER_NEW_CONCEPT = 150; // kr/day — empirical from March batch
+const MIN_VIABLE_SPEND = 100; // kr/day — floor before ad set performance degrades
+
 export async function calculateAvailableBudget(): Promise<
-  Record<string, { available: number; currency: string; canPush: number; campaignBudget: number }>
+  Record<string, { available: number; currency: string; canPush: number; campaignBudget: number; activeAdSets: number; campaignIds: string[] }>
 > {
   const db = createServerSupabase();
-  const BUDGET_PER_NEW_CONCEPT = 150;
 
-  // Get campaign mappings to know which campaigns serve which markets
+  // Get campaign mappings
   const { data: mappings } = await db
     .from("meta_campaign_mappings")
     .select("product, country, meta_campaign_id");
@@ -1289,13 +1300,11 @@ export async function calculateAvailableBudget(): Promise<
     }
   }
 
-  // Get avg daily spend per market over last 3 days
-  // Use meta_ad_performance (reliably synced) instead of concept_metrics (often stale)
+  // Get last 3 days of ad set-level spend
   const threeDaysAgo = new Date();
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   const sinceDate = threeDaysAgo.toISOString().split("T")[0];
 
-  // Map campaign IDs to countries from our mappings
   const campaignToCountry = new Map<string, string>();
   for (const m of mappings) {
     if (m.meta_campaign_id) campaignToCountry.set(m.meta_campaign_id, m.country);
@@ -1303,51 +1312,63 @@ export async function calculateAvailableBudget(): Promise<
 
   const { data: recentPerf } = await db
     .from("meta_ad_performance")
-    .select("campaign_id, spend, date")
+    .select("campaign_id, adset_id, spend, date")
     .gte("date", sinceDate);
 
-  const spendByMarket: Record<string, number> = {};
+  // Sum spend per ad set over last 3 days
+  const adSetSpend = new Map<string, { country: string; totalSpend: number }>();
   for (const row of recentPerf ?? []) {
     const country = campaignToCountry.get(row.campaign_id);
-    if (country) {
-      spendByMarket[country] = (spendByMarket[country] ?? 0) + (row.spend ?? 0);
+    if (!country || !row.adset_id) continue;
+    const existing = adSetSpend.get(row.adset_id) ?? { country, totalSpend: 0 };
+    existing.totalSpend += row.spend ?? 0;
+    adSetSpend.set(row.adset_id, existing);
+  }
+
+  // Calculate avg daily spend per active ad set per market
+  const winnerSpendByMarket: Record<string, number> = {};
+  const activeAdSetsByMarket: Record<string, number> = {};
+  for (const [, info] of adSetSpend) {
+    const avgDaily = info.totalSpend / 3;
+    if (avgDaily > 10) {
+      winnerSpendByMarket[info.country] = (winnerSpendByMarket[info.country] ?? 0) + avgDaily;
+      activeAdSetsByMarket[info.country] = (activeAdSetsByMarket[info.country] ?? 0) + 1;
     }
   }
 
-  // Count concepts pushed in last 3 days per market
-  const { data: recentPushes } = await db
-    .from("concept_lifecycle")
-    .select("image_job_market_id")
-    .eq("stage", "testing")
-    .gte("entered_at", threeDaysAgo.toISOString());
-
-  const recentPushMarketIds = (recentPushes ?? []).map((p) => p.image_job_market_id);
-  const { data: recentPushMarkets } = await db
-    .from("image_job_markets")
-    .select("id, market")
-    .in("id", recentPushMarketIds.length > 0 ? recentPushMarketIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  const conceptsTestingByMarket: Record<string, number> = {};
-  for (const m of recentPushMarkets ?? []) {
-    conceptsTestingByMarket[m.market] = (conceptsTestingByMarket[m.market] ?? 0) + 1;
+  // Build campaign IDs per market
+  const campaignIdsByCountry: Record<string, string[]> = {};
+  for (const m of mappings) {
+    if (m.meta_campaign_id && m.country) {
+      if (!campaignIdsByCountry[m.country]) campaignIdsByCountry[m.country] = [];
+      if (!campaignIdsByCountry[m.country].includes(m.meta_campaign_id)) {
+        campaignIdsByCountry[m.country].push(m.meta_campaign_id);
+      }
+    }
   }
 
-  // Calculate per market
-  const result: Record<string, { available: number; currency: string; canPush: number; campaignBudget: number }> = {};
+  // Calculate testing capacity per market
+  const result: Record<string, { available: number; currency: string; canPush: number; campaignBudget: number; activeAdSets: number; campaignIds: string[] }> = {};
 
   for (const country of Object.keys(budgetByCountry)) {
     const campaignBudget = budgetByCountry[country];
-    const avgDailySpend = (spendByMarket[country] ?? 0) / 3;
-    const conceptsInTesting = conceptsTestingByMarket[country] ?? 0;
-    const testingCost = conceptsInTesting * BUDGET_PER_NEW_CONCEPT;
-    const available = Math.max(0, campaignBudget - avgDailySpend - testingCost);
-    const canPush = Math.floor(available / BUDGET_PER_NEW_CONCEPT);
+    const winnerSpend = winnerSpendByMarket[country] ?? 0;
+    const activeAdSets = activeAdSetsByMarket[country] ?? 0;
+
+    // How much can existing winners be compressed?
+    // Each ad set can give up (avg_spend - min_viable) kr/day before starving.
+    const avgSpendPerAdSet = activeAdSets > 0 ? winnerSpend / activeAdSets : 0;
+    const compressiblePerAdSet = Math.max(0, avgSpendPerAdSet - MIN_VIABLE_SPEND);
+    const totalCompressible = Math.round(compressiblePerAdSet * activeAdSets);
+    const canPush = Math.floor(totalCompressible / BUDGET_PER_NEW_CONCEPT);
 
     result[country] = {
-      available: Math.round(available),
+      available: totalCompressible,
       currency: currencyMap.get(country) ?? "SEK",
       canPush,
       campaignBudget,
+      activeAdSets,
+      campaignIds: campaignIdsByCountry[country] ?? [],
     };
   }
 

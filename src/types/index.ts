@@ -783,7 +783,7 @@ export interface PipelineSummary {
   activeScaling: number;
   killed: number;
   avgCreativeAge: number;
-  availableBudgetByMarket: Record<string, { available: number; currency: string; canPush: number }>;
+  availableBudgetByMarket: Record<string, { available: number; currency: string; canPush: number; campaignBudget: number; activeAdSets: number }>;
 }
 
 export interface CampaignBudget {

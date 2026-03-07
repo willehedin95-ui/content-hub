@@ -268,5 +268,74 @@ async function updateJobStatus(db: ReturnType<typeof createServerSupabase>, jobI
       .from("image_jobs")
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("id", jobId);
+
+    // Send Telegram notification when translations finish
+    await notifyTranslationComplete(db, jobId, newStatus, allTranslations.length, failed.length);
+  }
+}
+
+async function notifyTranslationComplete(
+  db: ReturnType<typeof createServerSupabase>,
+  jobId: string,
+  status: string,
+  totalCount: number,
+  failedCount: number,
+) {
+  try {
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    if (!chatId) return;
+
+    const { data: job } = await db
+      .from("image_jobs")
+      .select("name, concept_number, product, ad_copy_primary, landing_page_id, ab_test_id, launchpad_priority")
+      .eq("id", jobId)
+      .single();
+
+    if (!job) return;
+
+    const label = job.concept_number ? `#${job.concept_number} ${job.name}` : job.name;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://contenthub.up.railway.app";
+
+    if (status === "failed") {
+      const { sendMessage } = await import("@/lib/telegram");
+      await sendMessage(chatId, [
+        `⚠️ Translations finished with errors`,
+        `Concept: ${label}`,
+        `${totalCount - failedCount}/${totalCount} succeeded, ${failedCount} failed`,
+        ``,
+        `${baseUrl}/images/${jobId}`,
+      ].join("\n"));
+      return;
+    }
+
+    // All succeeded — check what's still needed for launchpad
+    const missing: string[] = [];
+    if (!job.product) missing.push("product");
+    if (!job.landing_page_id && !job.ab_test_id) missing.push("landing page");
+    if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) missing.push("ad copy");
+
+    const { sendMessage } = await import("@/lib/telegram");
+    if (missing.length === 0 && !job.launchpad_priority) {
+      await sendMessage(chatId, [
+        `✅ Translations complete — ready for launchpad!`,
+        `Concept: ${label}`,
+        `${totalCount} images translated`,
+        ``,
+        `${baseUrl}/images/${jobId}`,
+      ].join("\n"));
+    } else if (missing.length > 0) {
+      await sendMessage(chatId, [
+        `✅ Translations complete`,
+        `Concept: ${label}`,
+        `${totalCount} images translated`,
+        `Still needed: ${missing.join(", ")}`,
+        ``,
+        `${baseUrl}/images/${jobId}`,
+      ].join("\n"));
+    }
+    // If already on launchpad, don't notify (user already knows)
+  } catch (err) {
+    // Don't let notification failure break the translation flow
+    console.error("[Telegram] Translation notification failed:", err);
   }
 }

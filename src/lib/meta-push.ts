@@ -12,6 +12,21 @@ import OpenAI from "openai";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 
+/** Retry a Meta API call once after a delay (handles transient errors / rate limits) */
+async function withRetry<T>(fn: () => Promise<T>, delayMs = 2000): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    // Don't retry validation/permission errors — only transient ones
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("(#100)") || msg.includes("(#200)") || msg.includes("(#10)")) {
+      throw err; // validation or permission error, no point retrying
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+    return await fn();
+  }
+}
+
 export interface PushResult {
   language: string;
   country: string;
@@ -351,8 +366,8 @@ export async function pushConceptToMeta(
           langImages.map(async (img) => {
             const url9x16 = siblings9x16.get(`${img.source_image_id}:${lang}`) || null;
             const [img1x1, img9x16] = await Promise.all([
-              uploadImage(img.image_url),
-              url9x16 ? uploadImage(url9x16) : Promise.resolve(null),
+              withRetry(() => uploadImage(img.image_url)),
+              url9x16 ? withRetry(() => uploadImage(url9x16)) : Promise.resolve(null),
             ]);
             return { imageHash: img1x1.hash, imageHash9x16: img9x16?.hash, url9x16 };
           })
@@ -400,7 +415,7 @@ export async function pushConceptToMeta(
             const adName = multiVariation
               ? `${adSetName} - V${input.varIndex + 1} Ad ${input.imgIndex + 1}`
               : `${adSetName} - Ad ${input.imgIndex + 1}`;
-            const creative = await createAdCreative({
+            const creative = await withRetry(() => createAdCreative({
               name: adName,
               imageHash: input.imageHash,
               imageHash9x16: input.imageHash9x16 ?? undefined,
@@ -408,7 +423,7 @@ export async function pushConceptToMeta(
               headline: input.headline || undefined,
               linkUrl: landingUrl,
               pageId: pageConfig?.meta_page_id,
-            });
+            }));
             return { creativeId: creative.id, adName };
           })
         );
@@ -445,13 +460,13 @@ export async function pushConceptToMeta(
           if (i > 0) await new Promise((r) => setTimeout(r, 200));
 
           try {
-            const metaAd = await createAd({
+            const metaAd = await withRetry(() => createAd({
               name: adName,
               adSetId,
               creativeId: creativeResult.value.creativeId,
               status: "ACTIVE",
               urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
-            });
+            }));
 
             adRows.push({
               campaign_id: campaignId,
