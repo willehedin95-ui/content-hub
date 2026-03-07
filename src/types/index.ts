@@ -481,6 +481,7 @@ export interface MetaCampaignMapping {
   meta_campaign_name: string | null;
   template_adset_id: string | null;
   template_adset_name: string | null;
+  format: 'image' | 'video';
   created_at: string;
   updated_at: string;
 }
@@ -726,6 +727,7 @@ export interface ConceptLifecycle {
   signal: string | null;
   notes: string | null;
   hypothesis: string | null;
+  concept_type: 'image' | 'video';
 }
 
 export interface PipelineSignal {
@@ -1031,6 +1033,10 @@ export interface VideoJob {
   ad_copy_primary: string[];
   ad_copy_headline: string[];
   landing_page_url: string | null;
+  ad_copy_translations?: ConceptCopyTranslations;
+  landing_page_id: string | null;
+  ab_test_id: string | null;
+  launchpad_priority: number | null;
   created_at: string;
   updated_at: string;
   source_videos?: SourceVideo[];
@@ -1081,6 +1087,9 @@ export interface VideoTranslation {
   kie_task_id: string | null;
   status: VideoTranslationStatus;
   error_message: string | null;
+  caption_style: 'highlight' | 'clean' | null;
+  caption_srt_url: string | null;
+  captioned_video_url: string | null;
   created_at: string;
 }
 
