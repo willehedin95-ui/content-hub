@@ -43,7 +43,10 @@ const ALLOWED_PATCH_FIELDS = [
   "format_type",
   "ad_copy_primary",
   "ad_copy_headline",
+  "ad_copy_translations",
   "landing_page_url",
+  "landing_page_id",
+  "ab_test_id",
 ];
 
 export async function PATCH(
