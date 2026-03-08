@@ -224,71 +224,52 @@ export async function createAdCreative(params: {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
 
-  // Use asset_feed_spec when we have a 9:16 image variant for placement
-  // customization (4:5 for feed, 9:16 for stories/reels).
-  // The ad set MUST have is_dynamic_creative=true (set at creation time).
-  const useAssetFeed = !!params.imageHash9x16;
+  // Always use asset_feed_spec because ad sets are created with is_dynamic_creative=true.
+  // Dynamic creative ad sets REQUIRE asset_feed_spec — standard object_story_spec
+  // with link_data is rejected (subcode 1885702).
+  // When we have a 9:16 variant, add placement customization rules (4:5→feed, 9:16→stories/reels).
+  // When there's no 9:16 variant, use the single image for all placements.
 
-  if (useAssetFeed) {
-    // 9:16 placement customization: feed gets 4:5, stories/reels get 9:16
-    const images = [
-      { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
-      { hash: params.imageHash9x16!, adlabels: [{ name: "story_image" }] },
-    ];
+  const images = params.imageHash9x16
+    ? [
+        { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
+        { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
+      ]
+    : [{ hash: params.imageHash }];
 
-    const assetCustomizationRules = [
-      {
-        customization_spec: {
-          publisher_platforms: ["facebook"],
-          facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+  const assetCustomizationRules = params.imageHash9x16
+    ? [
+        {
+          customization_spec: {
+            publisher_platforms: ["facebook"],
+            facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+          },
+          image_label: { name: "feed_image" },
         },
-        image_label: { name: "feed_image" },
-      },
-      {
-        customization_spec: {
-          publisher_platforms: ["facebook"],
-          facebook_positions: ["story", "reels", "facebook_reels"],
+        {
+          customization_spec: {
+            publisher_platforms: ["facebook"],
+            facebook_positions: ["story", "reels", "facebook_reels"],
+          },
+          image_label: { name: "story_image" },
         },
-        image_label: { name: "story_image" },
-      },
-      {
-        customization_spec: {
-          publisher_platforms: ["instagram"],
-          instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
+        {
+          customization_spec: {
+            publisher_platforms: ["instagram"],
+            instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
+          },
+          image_label: { name: "feed_image" },
         },
-        image_label: { name: "feed_image" },
-      },
-      {
-        customization_spec: {
-          publisher_platforms: ["instagram"],
-          instagram_positions: ["story", "reels"],
+        {
+          customization_spec: {
+            publisher_platforms: ["instagram"],
+            instagram_positions: ["story", "reels"],
+          },
+          image_label: { name: "story_image" },
         },
-        image_label: { name: "story_image" },
-      },
-    ];
+      ]
+    : undefined;
 
-    return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: params.name,
-        object_story_spec: {
-          page_id: pageId,
-        },
-        asset_feed_spec: {
-          ad_formats: ["SINGLE_IMAGE"],
-          images,
-          bodies: [{ text: params.primaryText }],
-          titles: params.headline ? [{ text: params.headline }] : undefined,
-          link_urls: [{ website_url: params.linkUrl }],
-          call_to_action_types: [cta],
-          asset_customization_rules: assetCustomizationRules,
-        },
-      }),
-    });
-  }
-
-  // Single image, single text: use standard object_story_spec
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -296,13 +277,15 @@ export async function createAdCreative(params: {
       name: params.name,
       object_story_spec: {
         page_id: pageId,
-        link_data: {
-          image_hash: params.imageHash,
-          message: params.primaryText,
-          name: params.headline || undefined,
-          link: params.linkUrl,
-          call_to_action: { type: cta },
-        },
+      },
+      asset_feed_spec: {
+        ad_formats: ["SINGLE_IMAGE"],
+        images,
+        bodies: [{ text: params.primaryText }],
+        titles: params.headline ? [{ text: params.headline }] : undefined,
+        link_urls: [{ website_url: params.linkUrl }],
+        call_to_action_types: [cta],
+        ...(assetCustomizationRules ? { asset_customization_rules: assetCustomizationRules } : {}),
       },
     }),
   });
