@@ -396,49 +396,104 @@ export async function pushConceptToMeta(
           throw new Error("All image uploads failed");
         }
 
-        // Phase 2: Create ONE DCO creative with all images + all copy variants
-        const adName = adSetName;
-        const creative = await withRetry(() => createAdCreative({
-          name: adName,
-          images: uploadedImages.map((img) => ({
-            hash: img.hash,
-            hash9x16: img.hash9x16,
-          })),
-          bodies: translatedPrimaries,
-          titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
-          linkUrl: landingUrl,
-          pageId: pageConfig?.meta_page_id,
-        }));
+        // Phase 2 & 3: Create ads
+        // Meta's asset_customization_rules only support 1 image per rule per placement.
+        // When 9:16 variants exist, we must create one ad per image pair.
+        // Without 9:16, a single DCO creative with all images works fine.
+        const adBaseName = adSetName;
+        const hasAny9x16 = uploadedImages.some((img) => img.hash9x16);
+        const urlTags = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`;
 
-        // Phase 3: Create ONE ad for the DCO creative
-        const metaAd = await withRetry(() => createAd({
-          name: adName,
-          adSetId,
-          creativeId: creative.id,
-          status: "ACTIVE",
-          urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
-        }));
+        if (hasAny9x16) {
+          // One ad per image pair — proper feed/story placement routing
+          for (let idx = 0; idx < uploadedImages.length; idx++) {
+            const img = uploadedImages[idx];
+            const adName = uploadedImages.length > 1
+              ? `${adBaseName} v${idx + 1}`
+              : adBaseName;
 
-        // Store one meta_ads row for the DCO ad with all image URLs
-        await db.from("meta_ads").insert({
-          campaign_id: campaignId,
-          name: adName,
-          image_url: uploadedImages[0].url,
-          image_url_9x16: uploadedImages[0].url9x16,
-          image_urls: uploadedImages.map((img) => img.url),
-          meta_image_hash: uploadedImages[0].hash,
-          meta_image_hash_9x16: uploadedImages[0].hash9x16 || null,
-          ad_copy: translatedPrimaries[0],
-          headline: translatedHeadlines[0] || null,
-          source_primary_text: JSON.stringify(primaryTexts),
-          source_headline: JSON.stringify(headlineTexts),
-          landing_page_url: landingUrl,
-          aspect_ratio: feedRatio,
-          variation_index: 0,
-          meta_creative_id: creative.id,
-          meta_ad_id: metaAd.id,
-          status: "pushed",
-        });
+            const creative = await withRetry(() => createAdCreative({
+              name: adName,
+              images: [{ hash: img.hash, hash9x16: img.hash9x16 }],
+              bodies: translatedPrimaries,
+              titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
+              linkUrl: landingUrl,
+              pageId: pageConfig?.meta_page_id,
+            }));
+
+            await new Promise((r) => setTimeout(r, 500)); // Rate limit between API calls
+
+            const metaAd = await withRetry(() => createAd({
+              name: adName,
+              adSetId,
+              creativeId: creative.id,
+              status: "ACTIVE",
+              urlTags,
+            }));
+
+            await db.from("meta_ads").insert({
+              campaign_id: campaignId,
+              name: adName,
+              image_url: img.url,
+              image_url_9x16: img.url9x16,
+              image_urls: [img.url],
+              meta_image_hash: img.hash,
+              meta_image_hash_9x16: img.hash9x16 || null,
+              ad_copy: translatedPrimaries[0],
+              headline: translatedHeadlines[0] || null,
+              source_primary_text: JSON.stringify(primaryTexts),
+              source_headline: JSON.stringify(headlineTexts),
+              landing_page_url: landingUrl,
+              aspect_ratio: feedRatio,
+              variation_index: idx,
+              meta_creative_id: creative.id,
+              meta_ad_id: metaAd.id,
+              status: "pushed",
+            });
+
+            if (idx < uploadedImages.length - 1) {
+              await new Promise((r) => setTimeout(r, 500)); // Rate limit
+            }
+          }
+        } else {
+          // No 9:16 variants — single DCO creative with all images
+          const creative = await withRetry(() => createAdCreative({
+            name: adBaseName,
+            images: uploadedImages.map((img) => ({ hash: img.hash })),
+            bodies: translatedPrimaries,
+            titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
+            linkUrl: landingUrl,
+            pageId: pageConfig?.meta_page_id,
+          }));
+
+          const metaAd = await withRetry(() => createAd({
+            name: adBaseName,
+            adSetId,
+            creativeId: creative.id,
+            status: "ACTIVE",
+            urlTags,
+          }));
+
+          await db.from("meta_ads").insert({
+            campaign_id: campaignId,
+            name: adBaseName,
+            image_url: uploadedImages[0].url,
+            image_url_9x16: null,
+            image_urls: uploadedImages.map((img) => img.url),
+            meta_image_hash: uploadedImages[0].hash,
+            meta_image_hash_9x16: null,
+            ad_copy: translatedPrimaries[0],
+            headline: translatedHeadlines[0] || null,
+            source_primary_text: JSON.stringify(primaryTexts),
+            source_headline: JSON.stringify(headlineTexts),
+            landing_page_url: landingUrl,
+            aspect_ratio: feedRatio,
+            variation_index: 0,
+            meta_creative_id: creative.id,
+            meta_ad_id: metaAd.id,
+            status: "pushed",
+          });
+        }
 
         await db
           .from("meta_campaigns")
