@@ -101,24 +101,32 @@ export async function POST(
       }
     }
 
-    // For 9:16: use outpainting from completed 4:5 sibling instead of translating from source
+    // For 9:16: use outpainting from completed primary-ratio sibling instead of translating from source
     let imageInputUrl = translation.source_images.original_url;
 
     if (translation.aspect_ratio === "9:16") {
-      const { data: sibling4x5 } = await db
+      // Look up the job's primary ratio (first in target_ratios, default 4:5)
+      const { data: jobData } = await db
+        .from("image_jobs")
+        .select("target_ratios")
+        .eq("id", jobId)
+        .single();
+      const primaryRatio = jobData?.target_ratios?.[0] ?? "4:5";
+
+      const { data: siblingPrimary } = await db
         .from("image_translations")
         .select("translated_url")
         .eq("source_image_id", translation.source_image_id)
         .eq("language", translation.language)
-        .eq("aspect_ratio", "4:5")
+        .eq("aspect_ratio", primaryRatio)
         .eq("status", "completed")
         .single();
 
-      if (sibling4x5?.translated_url) {
-        imageInputUrl = sibling4x5.translated_url;
+      if (siblingPrimary?.translated_url) {
+        imageInputUrl = siblingPrimary.translated_url;
         prompt = `Extend this image vertically to fill a 9:16 portrait format. Continue the existing background naturally above and below. Do not add any new text, logos, or visual elements in the extended areas — only extend the background seamlessly.`;
       }
-      // If no 4:5 sibling found, fall through to normal translation prompt (backward compat)
+      // If no primary-ratio sibling found, fall through to normal translation prompt (backward compat)
     }
 
     // Call Kie AI

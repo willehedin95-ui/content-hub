@@ -745,7 +745,7 @@ export default function ConceptImagesStep({
       {show9x16Button && handleGenerate9x16 && (
         <div className="mb-6 bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-xl p-4 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-900">4:5 translations ready</p>
+            <p className="text-sm font-medium text-gray-900">{job.target_ratios?.[0] ?? "4:5"} translations ready</p>
             <p className="text-xs text-gray-500 mt-0.5">
               Generate 9:16 versions for Stories &amp; Reels ({count9x16} images)
               {count9x16 ? <> &asymp; {(count9x16 * 0.09 * 11).toFixed(0)} kr</> : null}

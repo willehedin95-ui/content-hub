@@ -619,10 +619,36 @@ export async function pushVideoToMeta(
         // Step 2: Wait for processing
         await waitForVideoProcessing(metaVideoId);
 
-        // Step 3: Upload thumbnail (if available)
+        // Step 3: Upload thumbnail (required by Meta)
         let imageHash = "";
         if (thumbnailUrl) {
           imageHash = await uploadThumbnail(thumbnailUrl);
+        } else {
+          // No thumbnail from source — use Meta's auto-generated video thumbnail
+          const { picture } = await metaFetchJson<{ picture: string }>(
+            `/${metaVideoId}?fields=picture`
+          );
+          if (picture) {
+            // Download Meta's thumbnail and upload as ad image
+            const thumbRes = await fetch(picture);
+            if (thumbRes.ok) {
+              const thumbBuffer = Buffer.from(await thumbRes.arrayBuffer());
+              const base64 = thumbBuffer.toString("base64");
+              const form = new FormData();
+              form.append("bytes", base64);
+              const imgData = await metaFetchJson<{
+                images: Record<string, { hash: string }>;
+              }>(`/act_${getAdAccountId()}/adimages`, {
+                method: "POST",
+                body: form,
+              });
+              const key = Object.keys(imgData.images)[0];
+              imageHash = imgData.images[key].hash;
+            }
+          }
+          if (!imageHash) {
+            throw new Error("No thumbnail available — upload a thumbnail or ensure video processing completes");
+          }
         }
 
         // Step 4: Create creative with translated copy
