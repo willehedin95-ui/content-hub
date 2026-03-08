@@ -1647,7 +1647,7 @@ export async function getLaunchpadConcepts(): Promise<
   // --- Image concepts ---
   const { data: imageJobs } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, source, product, launchpad_priority")
+    .select("id, name, concept_number, source, product, launchpad_priority, target_languages")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
 
@@ -1693,24 +1693,41 @@ export async function getLaunchpadConcepts(): Promise<
 
   const LANG_TO_MARKET: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
 
-  const imageConcepts = (imageJobs ?? []).map((job) => ({
-    conceptId: job.id,
-    imageJobId: job.id,
-    type: "image" as const,
-    name: job.name,
-    conceptNumber: job.concept_number,
-    source: job.source ?? "hub",
-    product: job.product,
-    thumbnailUrl: imageThumbMap.get(job.id) ?? null,
-    priority: job.launchpad_priority!,
-    markets: (imageMarkets ?? [])
-      .filter((m) => m.image_job_id === job.id)
-      .map((m) => ({
-        market: m.market,
-        imageJobMarketId: m.id,
-        stage: imageStageMap.get(m.id) ?? ("launchpad" as PipelineStage),
-      })),
-  }));
+  const imageConcepts = (imageJobs ?? []).map((job) => {
+    const jobMarkets = (imageMarkets ?? []).filter((m) => m.image_job_id === job.id);
+
+    // If image_job_markets rows exist, use them; otherwise derive from target_languages
+    const markets = jobMarkets.length > 0
+      ? jobMarkets.map((m) => ({
+          market: m.market,
+          imageJobMarketId: m.id,
+          stage: imageStageMap.get(m.id) ?? ("launchpad" as PipelineStage),
+        }))
+      : ((job.target_languages as string[] | null) ?? [])
+          .map((lang: string) => {
+            const market = LANG_TO_MARKET[lang];
+            if (!market) return null;
+            return {
+              market,
+              imageJobMarketId: `img:${job.id}:${market}`,
+              stage: "launchpad" as PipelineStage,
+            };
+          })
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+
+    return {
+      conceptId: job.id,
+      imageJobId: job.id,
+      type: "image" as const,
+      name: job.name,
+      conceptNumber: job.concept_number,
+      source: job.source ?? "hub",
+      product: job.product,
+      thumbnailUrl: imageThumbMap.get(job.id) ?? null,
+      priority: job.launchpad_priority!,
+      markets,
+    };
+  });
 
   // --- Video concepts ---
   const { data: videoJobs } = await db

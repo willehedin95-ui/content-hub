@@ -310,7 +310,9 @@ export async function createAdCreative(params: {
         images,
         bodies: params.bodies.map((text) => ({ text })),
         titles: params.titles && params.titles.length > 0
-          ? params.titles.map((text) => ({ text }))
+          ? (assetCustomizationRules
+              ? [{ text: params.titles[0] }]  // Rules only support 1 title per rule
+              : params.titles.map((text) => ({ text })))
           : undefined,
         link_urls: [{ website_url: params.linkUrl }],
         call_to_action_types: [cta],

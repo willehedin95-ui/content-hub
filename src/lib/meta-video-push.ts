@@ -249,7 +249,7 @@ interface CreateVideoCreativeOpts {
 export async function createVideoCreative(
   opts: CreateVideoCreativeOpts
 ): Promise<string> {
-  const cta = opts.callToAction || "SHOP_NOW";
+  const cta = opts.callToAction || "LEARN_MORE";
   const pageId = opts.pageId || getPageId();
 
   const data = await metaFetchJson<{ id: string }>(
@@ -287,18 +287,21 @@ interface CreateVideoAdOpts {
   name: string;
   adSetId: string;
   creativeId: string;
+  status?: string;
+  urlTags?: string;
 }
 
 /**
- * Create a Meta ad. Video ads are created PAUSED — no image_cropping opt-out
- * needed since there's no image to crop.
+ * Create a Meta ad for a video creative.
+ * Uses the shared createAd() which applies image_cropping opt-out automatically.
  */
 export async function createVideoAd(opts: CreateVideoAdOpts): Promise<string> {
   const result = await metaCreateAd({
     name: opts.name,
     adSetId: opts.adSetId,
     creativeId: opts.creativeId,
-    status: "PAUSED",
+    status: opts.status || "PAUSED",
+    urlTags: opts.urlTags,
   });
   return result.id;
 }
@@ -664,11 +667,13 @@ export async function pushVideoToMeta(
           pageId,
         });
 
-        // Step 5: Create ad
+        // Step 5: Create ad (ACTIVE + UTM tags, matching image ad flow)
         const metaAdId = await createVideoAd({
           name: adName,
           adSetId,
           creativeId,
+          status: "ACTIVE",
+          urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl).pathname.replace(/^\/|\/$/g, ""))}`,
         });
 
         // Step 6: Record in meta_ads

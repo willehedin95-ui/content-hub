@@ -80,6 +80,7 @@ const TYPE_BADGE: Record<"image" | "video", { label: string; className: string }
 };
 
 const MARKETS = ["NO", "DK", "SE"] as const;
+const MARKET_FLAG: Record<string, string> = { NO: "\uD83C\uDDF3\uD83C\uDDF4", DK: "\uD83C\uDDE9\uD83C\uDDF0", SE: "\uD83C\uDDF8\uD83C\uDDEA", DE: "\uD83C\uDDE9\uD83C\uDDEA" };
 const MAX_CONCEPTS_PER_BATCH = 3;
 const BUDGET_PER_NEW_CONCEPT = 150; // kr/day
 
@@ -285,7 +286,7 @@ export default function LaunchpadClient() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Launch Pad</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Concepts ready to push to Meta. Auto-push picks from here based on budget.
+            Concepts ready to push to Meta. Auto-pushes daily at 04:00 CET based on budget, or click Push Now.
           </p>
         </div>
         <button
@@ -482,7 +483,7 @@ export default function LaunchpadClient() {
                     </div>
 
                     {/* Badges */}
-                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {/* Type badge */}
                       <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${typeBadge.className}`}>
                         {typeBadge.label}
@@ -495,18 +496,27 @@ export default function LaunchpadClient() {
                           {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Hydro13" : concept.product}
                         </span>
                       )}
-                    </div>
-
-                    {/* Per-market status */}
-                    <div className="flex items-center gap-3">
-                      {concept.markets.map((m) => {
-                        const display = stageDisplay(m.stage);
-                        return (
-                          <span key={m.imageJobMarketId} className={`text-xs ${display.className}`}>
-                            {m.market}: {m.stage === "launchpad" ? "\u23F3" : m.stage === "testing" || m.stage === "active" ? "\u2705" : ""} {display.label}
-                          </span>
-                        );
-                      })}
+                      {/* Market flags with status */}
+                      {concept.markets.length > 0 && (
+                        <>
+                          <span className="text-gray-300 mx-0.5">|</span>
+                          {concept.markets.map((m) => {
+                            const flag = MARKET_FLAG[m.market] ?? m.market;
+                            const isLive = m.stage === "testing" || m.stage === "active";
+                            return (
+                              <span
+                                key={m.imageJobMarketId}
+                                className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                  isLive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"
+                                }`}
+                                title={`${m.market}: ${m.stage}`}
+                              >
+                                {flag} {isLive ? "Live" : "Queued"}
+                              </span>
+                            );
+                          })}
+                        </>
+                      )}
                     </div>
                   </div>
 
