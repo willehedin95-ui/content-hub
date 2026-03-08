@@ -259,8 +259,9 @@ export async function createAdCreative(params: {
   let assetCustomizationRules: Array<Record<string, unknown>> | undefined;
 
   if (has9x16) {
+    // Only Facebook placements — Instagram rules require an instagram_actor_id
+    // which may not be configured. Instagram placements use default image.
     assetCustomizationRules = [
-      // Feed placements → feed-ratio image
       {
         customization_spec: {
           publisher_platforms: ["facebook"],
@@ -270,23 +271,8 @@ export async function createAdCreative(params: {
       },
       {
         customization_spec: {
-          publisher_platforms: ["instagram"],
-          instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
-        },
-        image_label: { name: "feed" },
-      },
-      // Story/Reels placements → 9:16 image
-      {
-        customization_spec: {
           publisher_platforms: ["facebook"],
           facebook_positions: ["story", "facebook_reels"],
-        },
-        image_label: { name: "story" },
-      },
-      {
-        customization_spec: {
-          publisher_platforms: ["instagram"],
-          instagram_positions: ["story", "reels"],
         },
         image_label: { name: "story" },
       },
