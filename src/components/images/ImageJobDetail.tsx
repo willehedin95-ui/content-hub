@@ -1019,6 +1019,9 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
 
     const res = await fetch(`/api/image-jobs/${job.id}/generate-9x16`, { method: "POST" });
     if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      console.error("[generate-9x16] API error:", err);
+      alert(`Failed to generate 9:16: ${err.error || res.statusText}`);
       setProc(prev => ({ ...prev, processing: false }));
       return;
     }
