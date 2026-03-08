@@ -249,7 +249,7 @@ export async function createAdCreative(params: {
         {
           customization_spec: {
             publisher_platforms: ["facebook"],
-            facebook_positions: ["story", "reels", "facebook_reels"],
+            facebook_positions: ["story", "facebook_reels"],
           },
           image_label: { name: "story_image" },
         },
