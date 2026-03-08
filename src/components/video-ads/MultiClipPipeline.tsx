@@ -141,8 +141,11 @@ function isStepCompleted(
 export default function MultiClipPipeline({
   job,
   onJobUpdate,
-  language,
+  language: languageProp,
 }: MultiClipPipelineProps) {
+  // Always resolve a language — video_clips are per-language, so both
+  // generate-clips and status endpoints need it. Default to first target language.
+  const language = languageProp || (job.target_languages as string[] | undefined)?.[0];
   const [pipelineStatus, setPipelineStatus] =
     useState<PipelineStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
