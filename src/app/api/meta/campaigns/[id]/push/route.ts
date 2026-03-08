@@ -161,10 +161,9 @@ export async function POST(
 
         const creative = await createAdCreative({
           name: ad.name,
-          imageHash,
-          imageHash9x16,
-          primaryText: ad.ad_copy,
-          headline: ad.headline || undefined,
+          images: [{ hash: imageHash, hash9x16: imageHash9x16 }],
+          bodies: [ad.ad_copy],
+          titles: ad.headline ? [ad.headline] : undefined,
           linkUrl: ad.landing_page_url,
         });
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);

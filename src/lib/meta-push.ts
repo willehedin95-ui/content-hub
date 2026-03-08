@@ -366,156 +366,85 @@ export async function pushConceptToMeta(
         const uploadResults = await Promise.allSettled(
           langImages.map(async (img) => {
             const url9x16 = siblings9x16.get(`${img.source_image_id}:${lang}`) || null;
-            const [img1x1, img9x16] = await Promise.all([
+            const [imgFeed, img9x16] = await Promise.all([
               withRetry(() => uploadImage(img.image_url)),
               url9x16 ? withRetry(() => uploadImage(url9x16)) : Promise.resolve(null),
             ]);
-            return { imageHash: img1x1.hash, imageHash9x16: img9x16?.hash, url9x16 };
+            return { imageHash: imgFeed.hash, imageHash9x16: img9x16?.hash, url9x16, imageUrl: img.image_url };
           })
         );
 
-        // Build aligned text variations: variation[i] = primaries[i] + headlines[i] (or last headline)
-        const variations = translatedPrimaries.map((primary, i) => ({
-          primary,
-          headline: translatedHeadlines[Math.min(i, translatedHeadlines.length - 1)] || "",
-          index: i,
-        }));
-        const multiVariation = variations.length > 1;
-
-        // Phase 2: Build flat (image × variation) combos and create creatives in parallel
-        const creativeInputs: Array<{
-          imgIndex: number;
-          varIndex: number;
-          imageHash: string;
-          imageHash9x16: string | null;
+        // Collect successful uploads
+        const uploadedImages: Array<{
+          hash: string;
+          hash9x16?: string;
+          url: string;
           url9x16: string | null;
-          img: typeof langImages[number];
-          primary: string;
-          headline: string;
         }> = [];
-
-        for (let imgIdx = 0; imgIdx < langImages.length; imgIdx++) {
-          const upload = uploadResults[imgIdx];
-          if (upload.status === "rejected") continue;
-          for (const variation of variations) {
-            creativeInputs.push({
-              imgIndex: imgIdx,
-              varIndex: variation.index,
-              imageHash: upload.value.imageHash,
-              imageHash9x16: upload.value.imageHash9x16 ?? null,
-              url9x16: upload.value.url9x16,
-              img: langImages[imgIdx],
-              primary: variation.primary,
-              headline: variation.headline,
+        for (const r of uploadResults) {
+          if (r.status === "fulfilled") {
+            uploadedImages.push({
+              hash: r.value.imageHash,
+              hash9x16: r.value.imageHash9x16 ?? undefined,
+              url: r.value.imageUrl,
+              url9x16: r.value.url9x16,
             });
           }
         }
 
-        const creativeResults = await Promise.allSettled(
-          creativeInputs.map(async (input) => {
-            const adName = multiVariation
-              ? `${adSetName} - V${input.varIndex + 1} Ad ${input.imgIndex + 1}`
-              : `${adSetName} - Ad ${input.imgIndex + 1}`;
-            const creative = await withRetry(() => createAdCreative({
-              name: adName,
-              imageHash: input.imageHash,
-              imageHash9x16: input.imageHash9x16 ?? undefined,
-              primaryText: input.primary,
-              headline: input.headline || undefined,
-              linkUrl: landingUrl,
-              pageId: pageConfig?.meta_page_id,
-            }));
-            return { creativeId: creative.id, adName };
-          })
-        );
-
-        // Phase 3: Create ads sequentially (rate limit safety, 200ms stagger)
-        const adRows = [];
-        for (let i = 0; i < creativeInputs.length; i++) {
-          const input = creativeInputs[i];
-          const adName = multiVariation
-            ? `${adSetName} - V${input.varIndex + 1} Ad ${input.imgIndex + 1}`
-            : `${adSetName} - Ad ${input.imgIndex + 1}`;
-          const url9x16 = input.url9x16;
-
-          const creativeResult = creativeResults[i];
-          if (creativeResult.status === "rejected") {
-            adRows.push({
-              campaign_id: campaignId,
-              name: adName,
-              image_url: input.img.image_url,
-              image_url_9x16: url9x16,
-              ad_copy: input.primary,
-              headline: input.headline || null,
-              source_primary_text: JSON.stringify(primaryTexts),
-              source_headline: JSON.stringify(headlineTexts),
-              landing_page_url: landingUrl,
-              aspect_ratio: "4:5",
-              variation_index: input.varIndex,
-              status: "error",
-              error_message: creativeResult.reason?.message ?? "Creative failed",
-            });
-            continue;
-          }
-
-          if (i > 0) await new Promise((r) => setTimeout(r, 200));
-
-          try {
-            const metaAd = await withRetry(() => createAd({
-              name: adName,
-              adSetId,
-              creativeId: creativeResult.value.creativeId,
-              status: "ACTIVE",
-              urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
-            }));
-
-            adRows.push({
-              campaign_id: campaignId,
-              name: adName,
-              image_url: input.img.image_url,
-              image_url_9x16: url9x16,
-              meta_image_hash: input.imageHash,
-              meta_image_hash_9x16: input.imageHash9x16 || null,
-              ad_copy: input.primary,
-              headline: input.headline || null,
-              source_primary_text: JSON.stringify(primaryTexts),
-              source_headline: JSON.stringify(headlineTexts),
-              landing_page_url: landingUrl,
-              aspect_ratio: "4:5",
-              variation_index: input.varIndex,
-              meta_creative_id: creativeResult.value.creativeId,
-              meta_ad_id: metaAd.id,
-              status: "pushed",
-            });
-          } catch (adErr) {
-            adRows.push({
-              campaign_id: campaignId,
-              name: adName,
-              image_url: input.img.image_url,
-              image_url_9x16: url9x16,
-              ad_copy: input.primary,
-              headline: input.headline || null,
-              source_primary_text: JSON.stringify(primaryTexts),
-              source_headline: JSON.stringify(headlineTexts),
-              landing_page_url: landingUrl,
-              aspect_ratio: "4:5",
-              variation_index: input.varIndex,
-              status: "error",
-              error_message: adErr instanceof Error ? adErr.message : "Failed",
-            });
-          }
+        if (uploadedImages.length === 0) {
+          throw new Error("All image uploads failed");
         }
 
-        if (adRows.length > 0) {
-          await db.from("meta_ads").insert(adRows);
-        }
+        // Phase 2: Create ONE DCO creative with all images + all copy variants
+        const adName = adSetName;
+        const creative = await withRetry(() => createAdCreative({
+          name: adName,
+          images: uploadedImages.map((img) => ({
+            hash: img.hash,
+            hash9x16: img.hash9x16,
+          })),
+          bodies: translatedPrimaries,
+          titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
+          linkUrl: landingUrl,
+          pageId: pageConfig?.meta_page_id,
+        }));
 
-        const hasSuccess = adRows.some((a) => a.status === "pushed");
+        // Phase 3: Create ONE ad for the DCO creative
+        const metaAd = await withRetry(() => createAd({
+          name: adName,
+          adSetId,
+          creativeId: creative.id,
+          status: "ACTIVE",
+          urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`,
+        }));
+
+        // Store one meta_ads row for the DCO ad with all image URLs
+        await db.from("meta_ads").insert({
+          campaign_id: campaignId,
+          name: adName,
+          image_url: uploadedImages[0].url,
+          image_url_9x16: uploadedImages[0].url9x16,
+          image_urls: uploadedImages.map((img) => img.url),
+          meta_image_hash: uploadedImages[0].hash,
+          meta_image_hash_9x16: uploadedImages[0].hash9x16 || null,
+          ad_copy: translatedPrimaries[0],
+          headline: translatedHeadlines[0] || null,
+          source_primary_text: JSON.stringify(primaryTexts),
+          source_headline: JSON.stringify(headlineTexts),
+          landing_page_url: landingUrl,
+          aspect_ratio: feedRatio,
+          variation_index: 0,
+          meta_creative_id: creative.id,
+          meta_ad_id: metaAd.id,
+          status: "pushed",
+        });
+
         await db
           .from("meta_campaigns")
           .update({
-            status: hasSuccess ? "pushed" : "error",
-            error_message: hasSuccess ? null : "All ads failed",
+            status: "pushed",
+            error_message: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", campaignId);

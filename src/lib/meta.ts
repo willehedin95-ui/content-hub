@@ -211,12 +211,21 @@ export async function listPages(): Promise<
   );
 }
 
+/**
+ * Create a DCO ad creative with multiple images and copy variants.
+ * All images and text go into a single asset_feed_spec — Meta tests all combinations.
+ *
+ * When 9:16 siblings exist, each feed/story image pair gets ad labels
+ * and asset_customization_rules route them to the correct placements.
+ */
 export async function createAdCreative(params: {
   name: string;
-  imageHash: string;
-  imageHash9x16?: string;
-  primaryText: string;
-  headline?: string;
+  /** All images for the creative. Each can optionally have a 9:16 sibling. */
+  images: Array<{ hash: string; hash9x16?: string }>;
+  /** All primary text variants */
+  bodies: string[];
+  /** All headline variants (optional) */
+  titles?: string[];
   linkUrl: string;
   callToAction?: string;
   pageId?: string;
@@ -224,51 +233,69 @@ export async function createAdCreative(params: {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
 
-  // Always use asset_feed_spec because ad sets are created with is_dynamic_creative=true.
-  // Dynamic creative ad sets REQUIRE asset_feed_spec — standard object_story_spec
-  // with link_data is rejected (subcode 1885702).
-  // When we have a 9:16 variant, add placement customization rules (4:5→feed, 9:16→stories/reels).
-  // When there's no 9:16 variant, use the single image for all placements.
+  const has9x16 = params.images.some((img) => img.hash9x16);
 
-  const images = params.imageHash9x16
-    ? [
-        { hash: params.imageHash, adlabels: [{ name: "feed_image" }] },
-        { hash: params.imageHash9x16, adlabels: [{ name: "story_image" }] },
-      ]
-    : [{ hash: params.imageHash }];
+  // Build images array with ad labels for placement routing
+  const images: Array<{ hash: string; adlabels?: Array<{ name: string }> }> = [];
 
-  const assetCustomizationRules = params.imageHash9x16
-    ? [
+  if (has9x16) {
+    for (let i = 0; i < params.images.length; i++) {
+      const img = params.images[i];
+      images.push({ hash: img.hash, adlabels: [{ name: `feed_${i}` }] });
+      if (img.hash9x16) {
+        images.push({ hash: img.hash9x16, adlabels: [{ name: `story_${i}` }] });
+      }
+    }
+  } else {
+    // No 9:16 variants — just list all feed hashes, no labels needed
+    for (const img of params.images) {
+      images.push({ hash: img.hash });
+    }
+  }
+
+  // Build asset_customization_rules when we have 9:16 variants
+  let assetCustomizationRules: Array<Record<string, unknown>> | undefined;
+
+  if (has9x16) {
+    assetCustomizationRules = [];
+    for (let i = 0; i < params.images.length; i++) {
+      const img = params.images[i];
+      if (!img.hash9x16) continue; // No 9:16 for this image — it serves all placements via feed label
+
+      // Feed placements → 4:5 image
+      assetCustomizationRules.push(
         {
           customization_spec: {
             publisher_platforms: ["facebook"],
             facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
           },
-          image_label: { name: "feed_image" },
-        },
-        {
-          customization_spec: {
-            publisher_platforms: ["facebook"],
-            facebook_positions: ["story", "facebook_reels"],
-          },
-          image_label: { name: "story_image" },
+          image_label: { name: `feed_${i}` },
         },
         {
           customization_spec: {
             publisher_platforms: ["instagram"],
             instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
           },
-          image_label: { name: "feed_image" },
+          image_label: { name: `feed_${i}` },
+        },
+        // Story/Reels placements → 9:16 image
+        {
+          customization_spec: {
+            publisher_platforms: ["facebook"],
+            facebook_positions: ["story", "facebook_reels"],
+          },
+          image_label: { name: `story_${i}` },
         },
         {
           customization_spec: {
             publisher_platforms: ["instagram"],
             instagram_positions: ["story", "reels"],
           },
-          image_label: { name: "story_image" },
+          image_label: { name: `story_${i}` },
         },
-      ]
-    : undefined;
+      );
+    }
+  }
 
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
@@ -281,8 +308,10 @@ export async function createAdCreative(params: {
       asset_feed_spec: {
         ad_formats: ["SINGLE_IMAGE"],
         images,
-        bodies: [{ text: params.primaryText }],
-        titles: params.headline ? [{ text: params.headline }] : undefined,
+        bodies: params.bodies.map((text) => ({ text })),
+        titles: params.titles && params.titles.length > 0
+          ? params.titles.map((text) => ({ text }))
+          : undefined,
         link_urls: [{ website_url: params.linkUrl }],
         call_to_action_types: [cta],
         ...(assetCustomizationRules ? { asset_customization_rules: assetCustomizationRules } : {}),
