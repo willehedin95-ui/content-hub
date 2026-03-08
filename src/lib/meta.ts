@@ -239,11 +239,12 @@ export async function createAdCreative(params: {
   const images: Array<{ hash: string; adlabels?: Array<{ name: string }> }> = [];
 
   if (has9x16) {
-    for (let i = 0; i < params.images.length; i++) {
-      const img = params.images[i];
-      images.push({ hash: img.hash, adlabels: [{ name: `feed_${i}` }] });
+    // Use shared labels: all feed images → "feed", all story images → "story"
+    // Meta requires exactly 1 rule per placement, so we can't use per-image labels
+    for (const img of params.images) {
+      images.push({ hash: img.hash, adlabels: [{ name: "feed" }] });
       if (img.hash9x16) {
-        images.push({ hash: img.hash9x16, adlabels: [{ name: `story_${i}` }] });
+        images.push({ hash: img.hash9x16, adlabels: [{ name: "story" }] });
       }
     }
   } else {
@@ -254,47 +255,42 @@ export async function createAdCreative(params: {
   }
 
   // Build asset_customization_rules when we have 9:16 variants
+  // Exactly 4 rules: fb feed, ig feed, fb story, ig story — each referencing shared label
   let assetCustomizationRules: Array<Record<string, unknown>> | undefined;
 
   if (has9x16) {
-    assetCustomizationRules = [];
-    for (let i = 0; i < params.images.length; i++) {
-      const img = params.images[i];
-      if (!img.hash9x16) continue; // No 9:16 for this image — it serves all placements via feed label
-
-      // Feed placements → 4:5 image
-      assetCustomizationRules.push(
-        {
-          customization_spec: {
-            publisher_platforms: ["facebook"],
-            facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
-          },
-          image_label: { name: `feed_${i}` },
+    assetCustomizationRules = [
+      // Feed placements → feed-ratio image
+      {
+        customization_spec: {
+          publisher_platforms: ["facebook"],
+          facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
         },
-        {
-          customization_spec: {
-            publisher_platforms: ["instagram"],
-            instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
-          },
-          image_label: { name: `feed_${i}` },
+        image_label: { name: "feed" },
+      },
+      {
+        customization_spec: {
+          publisher_platforms: ["instagram"],
+          instagram_positions: ["stream", "explore", "explore_home", "profile_feed", "ig_search"],
         },
-        // Story/Reels placements → 9:16 image
-        {
-          customization_spec: {
-            publisher_platforms: ["facebook"],
-            facebook_positions: ["story", "facebook_reels"],
-          },
-          image_label: { name: `story_${i}` },
+        image_label: { name: "feed" },
+      },
+      // Story/Reels placements → 9:16 image
+      {
+        customization_spec: {
+          publisher_platforms: ["facebook"],
+          facebook_positions: ["story", "facebook_reels"],
         },
-        {
-          customization_spec: {
-            publisher_platforms: ["instagram"],
-            instagram_positions: ["story", "reels"],
-          },
-          image_label: { name: `story_${i}` },
+        image_label: { name: "story" },
+      },
+      {
+        customization_spec: {
+          publisher_platforms: ["instagram"],
+          instagram_positions: ["story", "reels"],
         },
-      );
-    }
+        image_label: { name: "story" },
+      },
+    ];
   }
 
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
