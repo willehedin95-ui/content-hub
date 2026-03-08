@@ -388,7 +388,13 @@ export async function createAdSetFromTemplate(params: {
       campaign_id: cfg.campaign_id,
       billing_event: cfg.billing_event,
       optimization_goal: cfg.optimization_goal,
-      targeting: cfg.targeting,
+      targeting: {
+        ...cfg.targeting,
+        // Restrict to Facebook only — Instagram requires instagram_actor_id
+        // which isn't configured on the pages. Audience Network excluded too.
+        publisher_platforms: ["facebook"],
+        facebook_positions: ["feed", "marketplace", "video_feeds", "story", "search", "facebook_reels", "right_hand_column"],
+      },
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
       bid_strategy: cfg.bid_strategy,
