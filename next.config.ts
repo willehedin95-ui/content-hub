@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   // Required for @sparticuz/chromium to work in Vercel serverless functions
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "sharp", "ffmpeg-static"],
   outputFileTracingIncludes: {
-    "/api/video-jobs/\\[id\\]/generate-captions": ["./node_modules/ffmpeg-static/ffmpeg"],
+    "/api/video-jobs/\\[id\\]/generate-captions": ["./node_modules/ffmpeg-static/ffmpeg", "./assets/fonts/**/*"],
   },
 };
 

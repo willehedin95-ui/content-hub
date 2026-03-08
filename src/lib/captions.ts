@@ -198,7 +198,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,90,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,640,1
+Style: Default,Inter,90,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,640,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -260,11 +260,19 @@ export async function burnCaptions(
     throw new Error("ffmpeg-static binary not found");
   }
 
+  // Resolve bundled fonts directory (assets/fonts/ in project root)
+  const fontsDir = path.resolve(process.cwd(), "assets", "fonts");
+
+  // Use subtitles filter with fontsdir so ffmpeg can find the bundled Inter font
+  // Escape colons and backslashes in paths for ffmpeg filter syntax
+  const escapedSubPath = subtitlePath.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+  const escapedFontsDir = fontsDir.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+
   await execFile(ffmpegPath, [
     "-i",
     videoPath,
     "-vf",
-    `ass=${subtitlePath}`,
+    `subtitles=${escapedSubPath}:fontsdir=${escapedFontsDir}`,
     "-c:a",
     "copy",
     "-y",
