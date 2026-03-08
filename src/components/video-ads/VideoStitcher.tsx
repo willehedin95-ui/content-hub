@@ -138,18 +138,40 @@ export default function VideoStitcher({
     if (!stitchedBlobRef.current) return;
     setStatus("saving");
     try {
-      const formData = new FormData();
-      formData.append("file", stitchedBlobRef.current, "stitched.mp4");
-      if (language) formData.append("language", language);
-      const res = await fetch(`/api/video-jobs/${jobId}/upload-stitched`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new Error(data.error || "Upload failed");
+      // Step 1: Get a signed upload URL (bypasses Vercel's 4.5MB body limit)
+      const langParam = language ? `?language=${language}` : "";
+      const urlRes = await fetch(`/api/video-jobs/${jobId}/upload-stitched${langParam}`);
+      if (!urlRes.ok) {
+        const d = await urlRes.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to get upload URL");
       }
-      const data = await res.json();
+      const { signed_url, token, storage_path } = await urlRes.json();
+
+      // Step 2: Upload directly to Supabase Storage
+      const uploadRes = await fetch(signed_url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "video/mp4",
+          ...(token ? { "x-upsert": "true" } : {}),
+        },
+        body: stitchedBlobRef.current,
+      });
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text().catch(() => "");
+        throw new Error(`Storage upload failed (${uploadRes.status}): ${text}`);
+      }
+
+      // Step 3: Tell API to update DB records
+      const finalizeRes = await fetch(`/api/video-jobs/${jobId}/upload-stitched`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, storage_path }),
+      });
+      if (!finalizeRes.ok) {
+        const d = await finalizeRes.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to finalize upload");
+      }
+      const data = await finalizeRes.json();
       setSavedUrl(data.video_url);
       setStatus("saved");
     } catch (err) {

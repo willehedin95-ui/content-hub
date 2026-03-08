@@ -5,6 +5,52 @@ import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
 export const maxDuration = 120;
 
+/**
+ * GET: Return a signed upload URL so the client can upload directly to
+ * Supabase Storage (bypasses Vercel's 4.5MB serverless body limit).
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const language = req.nextUrl.searchParams.get("language") || null;
+  const db = createServerSupabase();
+
+  const { data: job, error: jobError } = await db
+    .from("video_jobs")
+    .select("product")
+    .eq("id", id)
+    .single();
+
+  if (jobError || !job) return safeError(jobError, "Video job not found", 404);
+
+  const storagePath = language
+    ? `${job.product}/${id}/stitched-${language}.mp4`
+    : `${job.product}/${id}/stitched.mp4`;
+
+  const { data: signedUrl, error: signError } = await db.storage
+    .from(VIDEO_STORAGE_BUCKET)
+    .createSignedUploadUrl(storagePath, { upsert: true });
+
+  if (signError || !signedUrl) {
+    return safeError(signError, "Failed to create signed upload URL");
+  }
+
+  return NextResponse.json({
+    signed_url: signedUrl.signedUrl,
+    token: signedUrl.token,
+    path: signedUrl.path,
+    storage_path: storagePath,
+  });
+}
+
+/**
+ * POST: Finalize the upload — update DB records after the client uploaded
+ * directly to Supabase Storage via the signed URL.
+ *
+ * Expects JSON body: { language?: string, storage_path: string }
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,7 +58,6 @@ export async function POST(
   const { id } = await params;
   const db = createServerSupabase();
 
-  // Verify job exists and get target languages
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("product, target_languages")
@@ -21,27 +66,13 @@ export async function POST(
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
 
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-  const language = formData.get("language") as string | null;
+  const body = await req.json().catch(() => ({}));
+  const language: string | null = body.language || null;
+  const storagePath: string | null = body.storage_path || null;
 
-  if (!file)
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
-
-  // Use language-specific storage path when uploading per-language
-  const storagePath = language
-    ? `${job.product}/${id}/stitched-${language}.mp4`
-    : `${job.product}/${id}/stitched.mp4`;
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { error: uploadError } = await db.storage
-    .from(VIDEO_STORAGE_BUCKET)
-    .upload(storagePath, buffer, {
-      contentType: "video/mp4",
-      upsert: true,
-    });
-
-  if (uploadError) return safeError(uploadError, "Storage upload failed");
+  if (!storagePath) {
+    return NextResponse.json({ error: "storage_path is required" }, { status: 400 });
+  }
 
   const { data: publicUrl } = db.storage
     .from(VIDEO_STORAGE_BUCKET)
