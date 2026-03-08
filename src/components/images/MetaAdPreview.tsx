@@ -9,11 +9,7 @@ import {
   Loader2,
   ExternalLink,
   Globe,
-  BookmarkCheck,
   BarChart3,
-  ListPlus,
-  X,
-  Clock,
 } from "lucide-react";
 import {
   ImageJob,
@@ -52,8 +48,6 @@ interface Props {
   landingPageUrls: Record<string, string>;
   campaignMappings: MetaCampaignMapping[];
   pageConfigs: MetaPageConfig[];
-  markedReadyAt: string | null;
-  onMarkReady: () => void;
 }
 
 export default function MetaAdPreview({
@@ -65,8 +59,6 @@ export default function MetaAdPreview({
   landingPageUrls,
   campaignMappings,
   pageConfigs,
-  markedReadyAt,
-  onMarkReady,
 }: Props) {
   const [activeLang, setActiveLang] = useState<Language>(
     job.target_languages[0] as Language
@@ -96,63 +88,6 @@ export default function MetaAdPreview({
   }> | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
 
-  // Queue state
-  const [queueStatus, setQueueStatus] = useState<Array<{ market: string; status: string | null; position?: number }>>([]);
-  const [queueLoading, setQueueLoading] = useState(false);
-  const [queueChecked, setQueueChecked] = useState<Set<string>>(new Set());
-
-  // Fetch queue status
-  useEffect(() => {
-    fetch(`/api/image-jobs/${job.id}/queue`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data?.markets) setQueueStatus(data.markets);
-      })
-      .catch(() => {});
-  }, [job.id]);
-
-  async function handleAddToQueue() {
-    const markets = Array.from(queueChecked);
-    if (markets.length === 0) return;
-    setQueueLoading(true);
-    try {
-      const res = await fetch(`/api/image-jobs/${job.id}/queue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markets }),
-      });
-      if (res.ok) {
-        // Refresh queue status
-        const statusRes = await fetch(`/api/image-jobs/${job.id}/queue`);
-        if (statusRes.ok) {
-          const data = await statusRes.json();
-          setQueueStatus(data.markets);
-        }
-        setQueueChecked(new Set());
-      }
-    } catch {}
-    setQueueLoading(false);
-  }
-
-  async function handleRemoveFromQueue(market: string) {
-    setQueueLoading(true);
-    try {
-      const res = await fetch(`/api/image-jobs/${job.id}/queue`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markets: [market] }),
-      });
-      if (res.ok) {
-        const statusRes = await fetch(`/api/image-jobs/${job.id}/queue`);
-        if (statusRes.ok) {
-          const data = await statusRes.json();
-          setQueueStatus(data.markets);
-        }
-      }
-    } catch {}
-    setQueueLoading(false);
-  }
-
   // Reset navigation indices when language changes
   useEffect(() => {
     setImageIndex(0);
@@ -160,7 +95,10 @@ export default function MetaAdPreview({
     setHeadlineIndex(0);
   }, [activeLang]);
 
-  // Get all images for active language: translated 4:5 + skipped originals
+  // Determine the feed ratio from the job's target_ratios (4:5 for new, 1:1 for old)
+  const feedRatio = job.target_ratios?.[0] ?? "4:5";
+
+  // Get all images for active language: translated feed images + skipped originals
   const langImages = useMemo(() => {
     const sourceImages = job.source_images ?? [];
     // Translated images for this language
@@ -169,7 +107,7 @@ export default function MetaAdPreview({
         .filter(
           (t) =>
             t.language === activeLang &&
-            t.aspect_ratio === "4:5" &&
+            t.aspect_ratio === feedRatio &&
             t.status === "completed" &&
             t.translated_url
         )
@@ -190,7 +128,7 @@ export default function MetaAdPreview({
         (a.sourceImage.processing_order ?? 0) -
         (b.sourceImage.processing_order ?? 0)
     );
-  }, [job.source_images, activeLang]);
+  }, [job.source_images, activeLang, feedRatio]);
 
   // Compute next scheduled publish time from settings
   const scheduledLabel = useMemo(() => {
@@ -490,7 +428,7 @@ export default function MetaAdPreview({
                 : (si.image_translations ?? []).some(
                     (t) =>
                       t.language === lang &&
-                      t.aspect_ratio === "4:5" &&
+                      t.aspect_ratio === feedRatio &&
                       t.status === "completed"
                   )
             );
@@ -522,104 +460,6 @@ export default function MetaAdPreview({
           </div>
         )}
       </div>
-
-      {/* Queue for Meta */}
-      {!deployments.some((d) => d.status === "pushed") && canPush && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <ListPlus className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-semibold text-gray-800">Queue for Meta</h3>
-            <span className="text-xs text-gray-400">Auto-pushes when testing slots open</span>
-          </div>
-
-          <div className="space-y-2">
-            {job.target_languages.map((lang) => {
-              const c = COUNTRY_MAP[lang as Language];
-              const langInfo = LANGUAGES.find((l) => l.value === lang);
-              const qs = queueStatus.find((q) => q.market === c);
-              const isQueued = qs?.status === "queued";
-              const isInPipeline = qs?.status && qs.status !== "queued";
-
-              return (
-                <div
-                  key={lang}
-                  className="flex items-center justify-between py-1.5"
-                >
-                  <div className="flex items-center gap-2.5">
-                    {isQueued ? (
-                      <div className="flex items-center gap-1.5 text-sm">
-                        <Clock className="w-3.5 h-3.5 text-amber-500" />
-                        <span>{langInfo?.flag} {c}</span>
-                        <span className="text-xs text-amber-600 font-medium">
-                          Queued #{qs.position}
-                        </span>
-                      </div>
-                    ) : isInPipeline ? (
-                      <div className="flex items-center gap-1.5 text-sm">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>{langInfo?.flag} {c}</span>
-                        <span className="text-xs text-emerald-600 font-medium capitalize">
-                          {qs.status}
-                        </span>
-                      </div>
-                    ) : (
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={queueChecked.has(c)}
-                          onChange={(e) => {
-                            setQueueChecked((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(c);
-                              else next.delete(c);
-                              return next;
-                            });
-                          }}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span>{langInfo?.flag} {c}</span>
-                      </label>
-                    )}
-                  </div>
-                  {isQueued && (
-                    <button
-                      onClick={() => handleRemoveFromQueue(c)}
-                      disabled={queueLoading}
-                      className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {queueChecked.size > 0 && (
-            <button
-              onClick={handleAddToQueue}
-              disabled={queueLoading}
-              className="flex items-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
-            >
-              {queueLoading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <ListPlus className="w-3.5 h-3.5" />
-              )}
-              Add to Queue ({queueChecked.size})
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* — or publish directly — */}
-      {!deployments.some((d) => d.status === "pushed") && canPush && queueStatus.some((q) => q.status === "queued") && (
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <div className="flex-1 border-t border-gray-200" />
-          <span>or publish directly</span>
-          <div className="flex-1 border-t border-gray-200" />
-        </div>
-      )}
 
       {/* Push button */}
       <div className="space-y-2">
@@ -674,23 +514,6 @@ export default function MetaAdPreview({
         )}
       </div>
 
-      {/* Mark as Ready (shown when not yet pushed) */}
-      {!deployments.some((d) => d.status === "pushed") && (
-        markedReadyAt ? (
-          <div className="flex items-center gap-2 text-sm text-teal-700 bg-teal-50 border border-teal-200 px-4 py-2.5 rounded-lg">
-            <BookmarkCheck className="w-4 h-4" />
-            Marked as ready {new Date(markedReadyAt).toLocaleDateString()}
-          </div>
-        ) : (
-          <button
-            onClick={onMarkReady}
-            className="flex items-center gap-2 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-5 py-2.5 rounded-lg transition-colors"
-          >
-            <BookmarkCheck className="w-4 h-4" />
-            Mark as Ready
-          </button>
-        )
-      )}
 
       {/* Push results */}
       {metaPush.pushResults && (

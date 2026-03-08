@@ -20,7 +20,6 @@ import {
   Subtitles,
   Trash2,
   Type,
-  Upload,
   X,
 } from "lucide-react";
 import {
@@ -120,11 +119,18 @@ function computeStepCompletion(
     translationsWithVideo.length > 0 &&
     translationsWithVideo.every((t) => !!t.captioned_video_url);
 
-  // Step 2: Ad Copy — has primary text + all target languages translated
+  // Step 2: Ad Copy — has primary text + all covered languages translated
+  // Covered languages = target_languages + any extra languages from video_translations
+  const originalLangForStep = j.target_languages?.[0] || "sv";
+  const translationLangs = (j.video_translations ?? []).map((t) => t.language);
+  const allCoveredLangs = [
+    originalLangForStep,
+    ...translationLangs.filter((l) => l !== originalLangForStep),
+  ];
   const hasPrimary = (j.ad_copy_primary ?? []).some((t: string) => t.trim());
   const allLangsTranslated =
-    j.target_languages.length > 0 &&
-    j.target_languages.every((lang) => ct[lang]?.status === "completed");
+    allCoveredLangs.length > 0 &&
+    allCoveredLangs.every((lang) => ct[lang]?.status === "completed");
   const step2 = hasPrimary && allLangsTranslated;
 
   // Step 3: Preview & Push — has landing page/AB test selected
@@ -179,9 +185,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
   const [copyTranslating, setCopyTranslating] = useState(false);
   const copyDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Per-language video upload state (Step 0)
-  const [videoUploading, setVideoUploading] = useState(false);
-  const videoFileRef = useRef<HTMLInputElement>(null);
 
   // Preview & Push state (Step 3)
   const [landingPageId, setLandingPageId] = useState(initialJob.landing_page_id ?? "");
@@ -197,6 +200,17 @@ export default function VideoJobDetail({ initialJob }: Props) {
   const [pushResults, setPushResults] = useState<Array<{
     language: string; country: string; status: string; error?: string;
   }> | null>(null);
+
+  // Launch Pad state
+  const [launchpad, setLaunchpad] = useState<{
+    priority: number | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    priority: initialJob.launchpad_priority ?? null,
+    loading: false,
+    error: null,
+  });
 
   // Get translations map
   const translationsMap = new Map<string, VideoTranslation>();
@@ -290,29 +304,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
     }
   }
 
-  // Upload video for a specific language
-  async function handleUploadVideo(file: File, language: string) {
-    setVideoUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("language", language);
-      const res = await fetch(`/api/video-jobs/${job.id}/upload-stitched`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new Error(data.error || "Upload failed");
-      }
-      await refreshJob();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Video upload failed");
-    } finally {
-      setVideoUploading(false);
-    }
-  }
 
   // Delete translation
   const [deleting, setDeleting] = useState(false);
@@ -577,6 +568,46 @@ export default function VideoJobDetail({ initialJob }: Props) {
       .catch(() => {});
   }, [initialJob.product, initialJob.target_languages, step]);
 
+  async function handleAddToLaunchpad() {
+    setLaunchpad(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/launchpad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conceptId: job.id, type: "video" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLaunchpad({ priority: data.priority, loading: false, error: null });
+      } else if (res.status === 422 && data.details) {
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.details.join(". ") }));
+      } else {
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.error || "Failed to add" }));
+      }
+    } catch {
+      setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
+
+  async function handleRemoveFromLaunchpad() {
+    setLaunchpad(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await fetch("/api/launchpad", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conceptId: job.id, type: "video" }),
+      });
+      if (res.ok) {
+        setLaunchpad({ priority: null, loading: false, error: null });
+      } else {
+        const data = await res.json();
+        setLaunchpad(prev => ({ ...prev, loading: false, error: data.error || "Failed to remove" }));
+      }
+    } catch {
+      setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
+
   async function handleWebsiteUrlChange(value: string) {
     if (value.startsWith("abtest:")) {
       const newAbTestId = value.replace("abtest:", "");
@@ -685,13 +716,42 @@ export default function VideoJobDetail({ initialJob }: Props) {
             <span className="text-xs text-gray-400">{job.duration_seconds}s</span>
           </div>
         </div>
-        <button
-          onClick={() => refreshJob()}
-          className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Launch Pad button */}
+          {launchpad.priority !== null ? (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
+                <Rocket className="w-3.5 h-3.5" />
+                On Launch Pad
+              </span>
+              <button
+                onClick={handleRemoveFromLaunchpad}
+                disabled={launchpad.loading}
+                className="text-gray-400 hover:text-red-500 p-1 transition-colors disabled:opacity-50"
+                title="Remove from Launch Pad"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAddToLaunchpad}
+              disabled={launchpad.loading}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              title="Add to Launch Pad"
+            >
+              <Rocket className="w-3.5 h-3.5" />
+              {launchpad.loading ? "Adding..." : "Add to Launch Pad"}
+            </button>
+          )}
+          <button
+            onClick={() => refreshJob()}
+            className="text-gray-400 hover:text-gray-700 p-2 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -702,6 +762,20 @@ export default function VideoJobDetail({ initialJob }: Props) {
           <button
             onClick={() => setError(null)}
             className="ml-auto text-red-400 hover:text-red-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Launch Pad error */}
+      {launchpad.error && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700">{launchpad.error}</p>
+          <button
+            onClick={() => setLaunchpad(prev => ({ ...prev, error: null }))}
+            className="ml-auto text-amber-400 hover:text-amber-600"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1029,86 +1103,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
               </div>
             )}
 
-            {/* Per-language video upload */}
-            {(() => {
-              const lang = activeLang;
-              const translation = translationsMap.get(lang);
-              const videoUrl = translation?.video_url;
-              const flag = LANG_META[lang]?.flag || "";
-              const label = LANG_META[lang]?.label || lang.toUpperCase();
-
-              return (
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      <Upload className="w-4 h-4 text-gray-400" />
-                      Upload {flag} {label} Video
-                    </h2>
-                    {videoUrl && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
-                        <Check className="w-3 h-3" />
-                        Uploaded
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    {videoUrl && (
-                      <div className="rounded-lg overflow-hidden border border-gray-200 bg-black mb-4">
-                        <video
-                          src={videoUrl}
-                          controls
-                          className="w-full max-h-[300px]"
-                          preload="metadata"
-                        />
-                      </div>
-                    )}
-                    <div
-                      className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-                        videoUploading
-                          ? "border-indigo-300 bg-indigo-50"
-                          : "border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer"
-                      }`}
-                      onClick={() => !videoUploading && videoFileRef.current?.click()}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files[0];
-                        if (file && file.type.startsWith("video/")) {
-                          handleUploadVideo(file, lang);
-                        }
-                      }}
-                    >
-                      <input
-                        ref={videoFileRef}
-                        type="file"
-                        accept="video/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUploadVideo(file, lang);
-                          e.target.value = "";
-                        }}
-                      />
-                      {videoUploading ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
-                          <p className="text-sm text-indigo-600 font-medium">Uploading...</p>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          <Upload className="w-5 h-5 text-gray-400" />
-                          <p className="text-sm text-gray-600">
-                            {videoUrl ? "Replace" : "Upload"} {flag} video
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* Delete translation (only for non-original languages) */}
             {isViewingTranslation && (
               <button
@@ -1381,7 +1375,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
 
               {/* Per-language translation cards */}
               <div className="space-y-3">
-                {job.target_languages.map((lang) => {
+                {coveredLanguages.map((lang) => {
                   const langInfo = LANGUAGES.find((l) => l.value === lang);
                   const ct = copyTranslations[lang] as
                     | ConceptCopyTranslation
@@ -1404,6 +1398,9 @@ export default function VideoJobDetail({ initialJob }: Props) {
                           </span>
                           <span className="text-sm font-medium text-gray-700">
                             {langInfo?.label}
+                            {lang === originalLang && (
+                              <span className="text-xs text-gray-400 ml-1">(original)</span>
+                            )}
                           </span>
                           {ct?.status === "completed" &&
                             ct.quality_score != null && (
@@ -1501,7 +1498,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
       {step === 3 && (
         <div className="space-y-6">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Rocket className="w-5 h-5 text-indigo-600" />
+            <Globe className="w-5 h-5 text-indigo-600" />
             Preview & Push
           </h2>
 
@@ -1554,7 +1551,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
               </h3>
             </div>
             <div className="divide-y divide-gray-100">
-              {job.target_languages.map((lang) => {
+              {coveredLanguages.map((lang) => {
                 const langInfo = LANGUAGES.find((l) => l.value === lang);
                 const translation = translationsMap.get(lang);
                 const hasCaptionedVideo = !!translation?.captioned_video_url;
@@ -1608,7 +1605,12 @@ export default function VideoJobDetail({ initialJob }: Props) {
               {pushing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Rocket className="w-4 h-4" />
+                <svg viewBox="0 6 36 24" className="h-4 w-auto shrink-0" aria-label="Meta logo">
+                  <path
+                    d="M7.5 18c0-3.78 1.22-7.08 3.13-9.04C12.2 7.32 14.17 6.5 16 6.5c2.36 0 3.88 1.18 5.28 3.24l.66.97.66-.97C24.02 7.68 25.54 6.5 27.9 6.5c4.87 0 8.1 5.8 8.1 11.5 0 6.52-3.58 11.5-8 11.5-2.36 0-3.95-1.18-5.38-3.24L18 20.1l-4.62 6.16C11.95 28.32 10.36 29.5 8 29.5 3.58 29.5 0 24.52 0 18c0-5.7 3.23-11.5 8.1-11.5 1.83 0 3.8.82 5.37 2.46C11.72 10.92 10.5 14.22 10.5 18c0 1.38.14 2.7.42 3.9-.5.7-1.16 1.1-1.92 1.1-1.57 0-3.5-2.7-3.5-5zm21 0c0 2.3-1.93 5-3.5 5-.76 0-1.42-.4-1.93-1.12.28-1.18.43-2.5.43-3.88 0-3.78-1.22-7.08-3.13-9.04 1.4-1.7 2.8-2.46 4.13-2.46 2.63 0 4 3.66 4 5.5z"
+                    fill="currentColor"
+                  />
+                </svg>
               )}
               {pushing ? "Pushing..." : "Push to Meta"}
             </button>

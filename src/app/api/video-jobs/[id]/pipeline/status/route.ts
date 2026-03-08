@@ -11,6 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const language = req.nextUrl.searchParams.get("language") || null;
   const db = createServerSupabase();
 
   const { data: job, error: jobError } = await db
@@ -29,9 +30,31 @@ export async function GET(
 
   if (shotsError) return safeError(shotsError, "Failed to fetch shots");
 
+  // Fetch video_clips for the requested language (or none for legacy)
+  const clipsByShot: Record<number, {
+    id: string;
+    video_url: string | null;
+    video_kie_task_id: string | null;
+    video_status: string;
+    video_duration_seconds: number;
+    error_message: string | null;
+  }> = {};
+
+  if (language) {
+    const { data: clips } = await db
+      .from("video_clips")
+      .select("*")
+      .eq("video_job_id", id)
+      .eq("language", language);
+
+    for (const clip of clips || []) {
+      clipsByShot[clip.shot_number] = clip;
+    }
+  }
+
   // Check and update status for generating items
   for (const shot of shots || []) {
-    // Check image generation status
+    // Check image generation status (shared across languages — stays on video_shots)
     if (shot.image_status === "generating" && shot.image_kie_task_id) {
       // Handle "reuse" shots — these inherit the source shot's completed image
       if (shot.image_kie_task_id.startsWith("reuse:")) {
@@ -58,7 +81,6 @@ export async function GET(
       try {
         const status = await checkImageTaskStatus(shot.image_kie_task_id);
         if (status.status === "completed" && status.urls.length > 0) {
-          // Download and upload to storage
           const imgResponse = await fetch(status.urls[0]);
           if (imgResponse.ok) {
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
@@ -69,7 +91,6 @@ export async function GET(
 
             if (!uploadError) {
               const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
-              // Add cache-busting param so browser doesn't serve stale image after regeneration
               const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
               await db.from("video_shots").update({
                 image_status: "completed",
@@ -92,40 +113,83 @@ export async function GET(
       }
     }
 
-    // Check video generation status
-    if (shot.video_status === "generating" && shot.video_kie_task_id) {
-      try {
-        const status = await checkVeoStatus(shot.video_kie_task_id);
-        if (status.status === "completed" && status.urls.length > 0) {
-          const videoResponse = await fetch(status.urls[0]);
-          if (videoResponse.ok) {
-            const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-            const storagePath = `${job.product}/${id}/shot-${shot.shot_number}.mp4`;
-            const { error: uploadError } = await db.storage
-              .from(VIDEO_STORAGE_BUCKET)
-              .upload(storagePath, videoBuffer, { contentType: "video/mp4", upsert: true });
+    // Check video generation status — use video_clips if language provided, else legacy video_shots
+    if (language) {
+      const clip = clipsByShot[shot.shot_number];
+      if (clip?.video_status === "generating" && clip.video_kie_task_id) {
+        try {
+          const status = await checkVeoStatus(clip.video_kie_task_id);
+          if (status.status === "completed" && status.urls.length > 0) {
+            const videoResponse = await fetch(status.urls[0]);
+            if (videoResponse.ok) {
+              const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+              // Language-segmented storage path
+              const storagePath = `${job.product}/${id}/${language}/shot-${shot.shot_number}.mp4`;
+              const { error: uploadError } = await db.storage
+                .from(VIDEO_STORAGE_BUCKET)
+                .upload(storagePath, videoBuffer, { contentType: "video/mp4", upsert: true });
 
-            if (!uploadError) {
-              const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
-              const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
-              await db.from("video_shots").update({
-                video_status: "completed",
-                video_url: bustUrl,
-              }).eq("id", shot.id);
-              shot.video_status = "completed";
-              shot.video_url = bustUrl;
+              if (!uploadError) {
+                const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
+                const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
+                await db.from("video_clips").update({
+                  video_status: "completed",
+                  video_url: bustUrl,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", clip.id);
+                clip.video_status = "completed";
+                clip.video_url = bustUrl;
+              }
             }
+          } else if (status.status === "failed") {
+            await db.from("video_clips").update({
+              video_status: "failed",
+              error_message: status.errorMessage,
+              updated_at: new Date().toISOString(),
+            }).eq("id", clip.id);
+            clip.video_status = "failed";
+            clip.error_message = status.errorMessage;
           }
-        } else if (status.status === "failed") {
-          await db.from("video_shots").update({
-            video_status: "failed",
-            error_message: status.errorMessage,
-          }).eq("id", shot.id);
-          shot.video_status = "failed";
-          shot.error_message = status.errorMessage;
+        } catch (err) {
+          console.error(`Error checking clip status for shot ${shot.shot_number} (${language}):`, err);
         }
-      } catch (err) {
-        console.error(`Error checking video status for shot ${shot.shot_number}:`, err);
+      }
+    } else {
+      // Legacy: poll video_shots directly (for old jobs without video_clips)
+      if (shot.video_status === "generating" && shot.video_kie_task_id) {
+        try {
+          const status = await checkVeoStatus(shot.video_kie_task_id);
+          if (status.status === "completed" && status.urls.length > 0) {
+            const videoResponse = await fetch(status.urls[0]);
+            if (videoResponse.ok) {
+              const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+              const storagePath = `${job.product}/${id}/shot-${shot.shot_number}.mp4`;
+              const { error: uploadError } = await db.storage
+                .from(VIDEO_STORAGE_BUCKET)
+                .upload(storagePath, videoBuffer, { contentType: "video/mp4", upsert: true });
+
+              if (!uploadError) {
+                const { data: publicUrl } = db.storage.from(VIDEO_STORAGE_BUCKET).getPublicUrl(storagePath);
+                const bustUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
+                await db.from("video_shots").update({
+                  video_status: "completed",
+                  video_url: bustUrl,
+                }).eq("id", shot.id);
+                shot.video_status = "completed";
+                shot.video_url = bustUrl;
+              }
+            }
+          } else if (status.status === "failed") {
+            await db.from("video_shots").update({
+              video_status: "failed",
+              error_message: status.errorMessage,
+            }).eq("id", shot.id);
+            shot.video_status = "failed";
+            shot.error_message = status.errorMessage;
+          }
+        } catch (err) {
+          console.error(`Error checking video status for shot ${shot.shot_number}:`, err);
+        }
       }
     }
   }
@@ -155,6 +219,29 @@ export async function GET(
               storyboard_url: storyboardUrl,
               status: "generated",
             }).eq("id", id);
+
+            // Task 10: Copy storyboard result to video_translations for each target language
+            for (const lang of job.target_languages || []) {
+              const { data: existing } = await db
+                .from("video_translations")
+                .select("id")
+                .eq("video_job_id", id)
+                .eq("language", lang)
+                .single();
+
+              if (existing) {
+                await db.from("video_translations")
+                  .update({ video_url: storyboardUrl, status: "completed" })
+                  .eq("id", existing.id);
+              } else {
+                await db.from("video_translations").insert({
+                  video_job_id: id,
+                  language: lang,
+                  video_url: storyboardUrl,
+                  status: "completed",
+                });
+              }
+            }
           }
         }
       } else if (status.status === "failed") {
@@ -170,15 +257,32 @@ export async function GET(
 
   // Determine overall pipeline status
   const allShots = shots || [];
-  let overallStatus = "pending";
 
+  // Image status (always from video_shots — shared)
   const anyImageGenerating = allShots.some((s: { image_status: string }) => s.image_status === "generating");
-  const anyVideoGenerating = allShots.some((s: { video_status: string }) => s.video_status === "generating");
   const allImagesCompleted = allShots.length > 0 && allShots.every((s: { image_status: string }) => s.image_status === "completed");
-  const allVideosCompleted = allShots.length > 0 && allShots.every((s: { video_status: string }) => s.video_status === "completed");
-  const anyFailed = allShots.some((s: { image_status: string; video_status: string }) => s.image_status === "failed" || s.video_status === "failed");
+  const anyImageFailed = allShots.some((s: { image_status: string }) => s.image_status === "failed");
 
-  // Single-video methods (storyboard/kling): completed when video is done
+  // Video/clip status — from video_clips if language provided, else legacy video_shots
+  let anyVideoGenerating = false;
+  let allVideosCompleted = false;
+  let anyVideoFailed = false;
+
+  if (language && Object.keys(clipsByShot).length > 0) {
+    const clipValues = Object.values(clipsByShot);
+    anyVideoGenerating = clipValues.some((c) => c.video_status === "generating");
+    allVideosCompleted = allShots.length > 0 &&
+      allShots.every((s: { shot_number: number }) => clipsByShot[s.shot_number]?.video_status === "completed");
+    anyVideoFailed = clipValues.some((c) => c.video_status === "failed");
+  } else if (!language) {
+    anyVideoGenerating = allShots.some((s: { video_status: string }) => s.video_status === "generating");
+    allVideosCompleted = allShots.length > 0 && allShots.every((s: { video_status: string }) => s.video_status === "completed");
+    anyVideoFailed = allShots.some((s: { video_status: string }) => s.video_status === "failed");
+  }
+
+  const anyFailed = anyImageFailed || anyVideoFailed;
+
+  let overallStatus = "pending";
   const isStoryboard = job.video_generation_method === "storyboard" || job.video_generation_method === "kling";
   if (isStoryboard && storyboardStatus === "completed") overallStatus = "completed";
   else if (isStoryboard && storyboardStatus === "generating") overallStatus = "generating_storyboard";
@@ -198,18 +302,23 @@ export async function GET(
     storyboard_status: storyboardStatus,
     storyboard_url: storyboardUrl,
     storyboard_duration: job.storyboard_duration || "15",
-    shots: (shots || []).map((s: Record<string, unknown>) => ({
-      id: s.id,
-      shot_number: s.shot_number,
-      shot_description: s.shot_description,
-      image_status: s.image_status,
-      image_url: s.image_url,
-      video_status: s.video_status,
-      video_url: s.video_url,
-      veo_prompt: s.veo_prompt,
-      video_duration_seconds: s.video_duration_seconds,
-      error_message: s.error_message,
-    })),
+    language: language || null,
+    shots: (shots || []).map((s: Record<string, unknown>) => {
+      const clip = language ? clipsByShot[s.shot_number as number] : null;
+      return {
+        id: s.id,
+        shot_number: s.shot_number,
+        shot_description: s.shot_description,
+        image_status: s.image_status,
+        image_url: s.image_url,
+        // Use clip data if available, fall back to legacy video_shots columns
+        video_status: clip?.video_status ?? s.video_status ?? "pending",
+        video_url: clip?.video_url ?? s.video_url ?? null,
+        veo_prompt: s.veo_prompt,
+        video_duration_seconds: clip?.video_duration_seconds ?? s.video_duration_seconds,
+        error_message: clip?.error_message ?? s.error_message,
+      };
+    }),
     overall_status: overallStatus,
   });
 }

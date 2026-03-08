@@ -242,9 +242,10 @@ export async function pushConceptToMeta(
         return { language: lang, country, status: "error", error: `No published landing page for ${lang}` } as const;
       }
 
-      // Combine translated 1:1 images + skipped originals into a unified list
+      // Combine translated feed images + skipped originals into a unified list
+      const feedRatio = job.target_ratios?.[0] ?? "4:5";
       const translatedForLang = completedTranslations
-        .filter((t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === "4:5")
+        .filter((t: { language: string; aspect_ratio: string }) => t.language === lang && t.aspect_ratio === feedRatio)
         .map((t: { translated_url: string; source_image_id: string }) => ({
           image_url: t.translated_url,
           source_image_id: t.source_image_id,
@@ -256,7 +257,7 @@ export async function pushConceptToMeta(
       const allLangImages = [...translatedForLang, ...skippedForLang];
 
       if (allLangImages.length === 0) {
-        return { language: lang, country, status: "error", error: `No completed 1:1 images for ${lang}` } as const;
+        return { language: lang, country, status: "error", error: `No completed ${feedRatio} images for ${lang}` } as const;
       }
 
       // Use pre-translated copy if available, otherwise translate on-the-fly
@@ -570,13 +571,17 @@ export async function translateAdCopyBatch(
   primaryTexts: string[],
   headlines: string[],
   language: Language,
-  db: ReturnType<typeof createServerSupabase>
+  db: ReturnType<typeof createServerSupabase>,
+  sourceLanguage?: Language
 ): Promise<{ translatedPrimaries: string[]; translatedHeadlines: string[] }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
   const openai = new OpenAI({ apiKey });
   const langLabel = LANGUAGES.find((l) => l.value === language)?.label ?? language;
+  const sourceLangLabel = sourceLanguage
+    ? (LANGUAGES.find((l) => l.value === sourceLanguage)?.label ?? "English")
+    : "English";
 
   const response = await openai.chat.completions.create({
     model: OPENAI_MODEL,
@@ -584,7 +589,7 @@ export async function translateAdCopyBatch(
     messages: [
       {
         role: "system",
-        content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
+        content: `You are a professional ad copywriter and translator. Translate all ad copy variants from ${sourceLangLabel} to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(language)}
 Return a JSON object with exactly two keys:

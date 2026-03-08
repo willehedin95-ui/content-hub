@@ -18,6 +18,7 @@ interface ShotCardProps {
   };
   jobId: string;
   onRegenerate?: () => void;
+  language?: string;
 }
 
 function shotStatusColor(imageStatus: string, videoStatus: string): string {
@@ -40,7 +41,7 @@ function shotStatusText(imageStatus: string, videoStatus: string): string {
   return "Pending";
 }
 
-export default function ShotCard({ shot, jobId, onRegenerate }: ShotCardProps) {
+export default function ShotCard({ shot, jobId, onRegenerate, language }: ShotCardProps) {
   const statusText = shotStatusText(shot.image_status, shot.video_status);
   const statusColorClass = shotStatusColor(shot.image_status, shot.video_status);
   const [regenerating, setRegenerating] = useState<"image" | "video" | null>(null);
@@ -56,7 +57,7 @@ export default function ShotCard({ shot, jobId, onRegenerate }: ShotCardProps) {
       const res = await fetch(`/api/video-jobs/${jobId}/pipeline/regenerate-shot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shot_id: shot.id, type, model, ...promptOverrides }),
+        body: JSON.stringify({ shot_id: shot.id, type, model, language, ...promptOverrides }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

@@ -27,7 +27,16 @@ export async function POST(
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
 
-  // If language is specified, fetch translated VEO prompts
+  // Resolve language — required for video_clips, default to first target language
+  const lang = language || job.target_languages?.[0];
+  if (!lang) {
+    return NextResponse.json(
+      { error: "No language specified and job has no target languages" },
+      { status: 400 }
+    );
+  }
+
+  // If language differs from original, fetch translated VEO prompts
   let translatedPrompts: Map<number, string> | null = null;
   if (language) {
     const { data: translation } = await db
@@ -50,7 +59,7 @@ export async function POST(
     }
   }
 
-  // Fetch shots — either specific ones or all with completed images and pending video
+  // Fetch shots with completed images
   let query = db
     .from("video_shots")
     .select("*")
@@ -59,8 +68,6 @@ export async function POST(
 
   if (shotIds?.length) {
     query = query.in("id", shotIds);
-  } else {
-    query = query.eq("video_status", "pending");
   }
 
   const { data: shots, error: shotsError } = await query.order("shot_number");
@@ -69,10 +76,32 @@ export async function POST(
     return NextResponse.json({ message: "No shots ready for video generation" });
   }
 
+  // Check which shots already have completed clips for this language
+  const { data: existingClips } = await db
+    .from("video_clips")
+    .select("shot_number, video_status")
+    .eq("video_job_id", id)
+    .eq("language", lang);
+
+  const completedShotNumbers = new Set(
+    (existingClips || [])
+      .filter((c) => c.video_status === "completed")
+      .map((c) => c.shot_number)
+  );
+
+  // Filter to shots that don't yet have a completed clip (unless specific shot_ids requested)
+  const eligibleShots = shotIds?.length
+    ? shots
+    : shots.filter((s) => !completedShotNumbers.has(s.shot_number));
+
+  if (!eligibleShots.length) {
+    return NextResponse.json({ message: "All shots already have completed clips for this language" });
+  }
+
   const results: { shot_id: string; shot_number: number; task_id: string }[] = [];
 
   try {
-    for (const shot of shots) {
+    for (const shot of eligibleShots) {
       // Use translated prompt if available, otherwise original
       const prompt = translatedPrompts?.get(shot.shot_number) || shot.veo_prompt;
 
@@ -84,10 +113,21 @@ export async function POST(
         imageUrls: shot.image_url ? [shot.image_url] : undefined,
       });
 
-      await db.from("video_shots").update({
-        video_kie_task_id: taskId,
-        video_status: "generating",
-      }).eq("id", shot.id);
+      // Write to video_clips (per-language) instead of video_shots
+      await db.from("video_clips").upsert(
+        {
+          video_job_id: id,
+          language: lang,
+          shot_number: shot.shot_number,
+          video_kie_task_id: taskId,
+          video_status: "generating",
+          video_duration_seconds: shot.video_duration_seconds,
+          error_message: null,
+          video_url: null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "video_job_id,language,shot_number" }
+      );
 
       results.push({ shot_id: shot.id, shot_number: shot.shot_number, task_id: taskId });
 
@@ -107,11 +147,11 @@ export async function POST(
         pipeline: "multi_clip",
         shots_kicked: results.length,
         generation_type: "FIRST_AND_LAST_FRAMES_2_VIDEO",
-        language: language || null,
+        language: lang,
       },
     });
 
-    return NextResponse.json({ kicked: results.length, model, results });
+    return NextResponse.json({ kicked: results.length, model, language: lang, results });
   } catch (err) {
     return safeError(err, "Failed to kick off video clip generation");
   }

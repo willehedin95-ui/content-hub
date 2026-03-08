@@ -25,7 +25,6 @@ export interface ConceptPreviewStepProps {
     pageConfigs: MetaPageConfig[];
   } | null;
   onPushToMeta: () => void;
-  onMarkReady: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -39,7 +38,6 @@ export default function ConceptPreviewStep({
   deployments,
   previewData,
   onPushToMeta,
-  onMarkReady,
 }: ConceptPreviewStepProps) {
   return (
     <MetaAdPreview
@@ -51,8 +49,6 @@ export default function ConceptPreviewStep({
       landingPageUrls={previewData?.landingPageUrls ?? {}}
       campaignMappings={previewData?.campaignMappings ?? []}
       pageConfigs={previewData?.pageConfigs ?? []}
-      markedReadyAt={job.marked_ready_at}
-      onMarkReady={onMarkReady}
     />
   );
 }

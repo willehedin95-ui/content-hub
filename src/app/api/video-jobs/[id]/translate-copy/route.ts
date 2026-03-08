@@ -19,10 +19,10 @@ export async function POST(
   const body = await req.json();
   const db = createServerSupabase();
 
-  // 1. Load the video job
+  // 1. Load the video job + video translations (to get all covered languages)
   const { data: job, error: jobError } = await db
     .from("video_jobs")
-    .select("*")
+    .select("*, video_translations(language)")
     .eq("id", id)
     .single();
 
@@ -49,8 +49,15 @@ export async function POST(
     );
   }
 
-  // 4. Get target languages
-  const targetLanguages = (job.target_languages as string[]) || [];
+  // 4. Build covered languages: target_languages + any extra from video_translations
+  const baseLangs = (job.target_languages as string[]) || [];
+  const translationLangs = ((job.video_translations ?? []) as Array<{ language: string }>)
+    .map((t) => t.language);
+  const originalLang = baseLangs[0] || translationLangs[0] || "sv";
+  const targetLanguages = [
+    originalLang,
+    ...new Set([...baseLangs, ...translationLangs].filter((l) => l !== originalLang)),
+  ];
   if (targetLanguages.length === 0) {
     return NextResponse.json(
       { error: "No target languages set on video job" },
@@ -58,10 +65,25 @@ export async function POST(
     );
   }
 
-  // 5. Translate for each target language
+  // 5. Determine source language (the original ad copy language = first target lang)
+  const sourceLang = originalLang as Language;
+
+  // 6. Translate for each target language
   const translations: ConceptCopyTranslations = {};
 
   for (const lang of targetLanguages) {
+    // Original language: copy texts as-is (no translation needed)
+    if (lang === sourceLang) {
+      translations[lang] = {
+        primary_texts: [...primaryTexts],
+        headlines: [...headlines],
+        quality_score: null,
+        quality_analysis: null,
+        status: "completed",
+      };
+      continue;
+    }
+
     const entry: ConceptCopyTranslation = {
       primary_texts: [],
       headlines: [],
@@ -75,7 +97,8 @@ export async function POST(
         primaryTexts,
         headlines,
         lang as Language,
-        db
+        db,
+        sourceLang
       );
       entry.primary_texts = result.translatedPrimaries;
       entry.headlines = result.translatedHeadlines;

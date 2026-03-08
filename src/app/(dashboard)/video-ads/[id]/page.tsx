@@ -14,7 +14,7 @@ export default async function VideoJobPage({
 
   const { data: job, error } = await db
     .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*), video_shots(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .eq("id", id)
     .single();
 

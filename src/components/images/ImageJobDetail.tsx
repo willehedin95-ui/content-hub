@@ -631,11 +631,12 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     (t) => t.status === "pending" || t.status === "processing"
   ).length;
 
-  // 9:16 generation readiness
-  const translations4x5 = allTranslations.filter((t) => t.aspect_ratio === "4:5");
+  // 9:16 generation readiness — use the job's primary ratio (4:5 for new, 1:1 for old)
+  const primaryRatio = job.target_ratios?.[0] ?? "4:5";
+  const translationsPrimary = allTranslations.filter((t) => t.aspect_ratio === primaryRatio);
   const translations9x16 = allTranslations.filter((t) => t.aspect_ratio === "9:16");
-  const all4x5Complete = translations4x5.length > 0 && translations4x5.every((t) => t.status === "completed");
-  const show9x16Button = all4x5Complete && translations9x16.length === 0 && !proc.processing;
+  const allPrimaryComplete = translationsPrimary.length > 0 && translationsPrimary.every((t) => t.status === "completed");
+  const show9x16Button = allPrimaryComplete && translations9x16.length === 0 && !proc.processing;
 
   const sourceImages = job.source_images ?? [];
 
@@ -1430,7 +1431,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           onToggleSkip={handleToggleSkip}
           handleGenerate9x16={handleGenerate9x16}
           show9x16Button={show9x16Button}
-          count9x16={translations4x5.length}
+          count9x16={translationsPrimary.length}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep
@@ -1460,15 +1461,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           deployments={deployments}
           previewData={previewData}
           onPushToMeta={handlePushToMeta}
-          onMarkReady={async () => {
-            const now = new Date().toISOString();
-            await fetch(`/api/image-jobs/${job.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ marked_ready_at: now }),
-            });
-            setJob(prev => ({ ...prev, marked_ready_at: now }));
-          }}
         />
       )}
 

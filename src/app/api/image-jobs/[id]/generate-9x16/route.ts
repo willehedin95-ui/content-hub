@@ -13,6 +13,14 @@ export async function POST(
   }
   const db = createServerSupabase();
 
+  // Get the job's target_ratios to determine primary ratio
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("target_ratios")
+    .eq("id", jobId)
+    .single();
+  const primaryRatio = job?.target_ratios?.[0] ?? "4:5";
+
   // Get all image_translations for this job via source_images join
   const { data: sourceImages, error: siError } = await db
     .from("source_images")
@@ -28,18 +36,18 @@ export async function POST(
     (si) => (si.image_translations ?? []).map((t) => ({ ...t, source_image_id: si.id }))
   );
 
-  // Check: all 4:5 must be completed
-  const translations4x5 = allTranslations.filter((t) => t.aspect_ratio === "4:5");
-  const incomplete4x5 = translations4x5.filter((t) => t.status !== "completed");
-  if (incomplete4x5.length > 0) {
+  // Check: all primary-ratio translations must be completed
+  const translationsPrimary = allTranslations.filter((t) => t.aspect_ratio === primaryRatio);
+  const incompletePrimary = translationsPrimary.filter((t) => t.status !== "completed");
+  if (incompletePrimary.length > 0) {
     return NextResponse.json(
-      { error: `${incomplete4x5.length} of ${translations4x5.length} 4:5 translations are not yet completed` },
+      { error: `${incompletePrimary.length} of ${translationsPrimary.length} ${primaryRatio} translations are not yet completed` },
       { status: 400 }
     );
   }
 
-  if (translations4x5.length === 0) {
-    return NextResponse.json({ error: "No 4:5 translations found" }, { status: 400 });
+  if (translationsPrimary.length === 0) {
+    return NextResponse.json({ error: `No ${primaryRatio} translations found` }, { status: 400 });
   }
 
   // Check: don't create duplicates — skip if 9:16 rows already exist for this (source_image, language)
@@ -49,7 +57,7 @@ export async function POST(
       .map((t) => `${t.source_image_id}:${t.language}`)
   );
 
-  const rowsToCreate = translations4x5
+  const rowsToCreate = translationsPrimary
     .filter((t) => !existing9x16.has(`${t.source_image_id}:${t.language}`))
     .map((t) => ({
       source_image_id: t.source_image_id,

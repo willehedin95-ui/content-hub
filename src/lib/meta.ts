@@ -350,6 +350,7 @@ interface AdSetTemplateConfig {
   promoted_object?: Record<string, unknown>;
   attribution_spec?: Array<Record<string, unknown>>;
   bid_strategy?: string;
+  bid_amount?: string;
   daily_budget?: string;
   lifetime_budget?: string;
 }
@@ -358,7 +359,7 @@ interface AdSetTemplateConfig {
  * Fetch a template ad set's config so we can create new ad sets with the same settings.
  */
 export async function getAdSetConfig(adSetId: string): Promise<AdSetTemplateConfig> {
-  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,daily_budget,lifetime_budget`);
+  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,bid_amount,daily_budget,lifetime_budget`);
 }
 
 /**
@@ -395,6 +396,7 @@ export async function createAdSetFromTemplate(params: {
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
       bid_strategy: cfg.bid_strategy,
+      ...(cfg.bid_amount ? { bid_amount: cfg.bid_amount } : {}),
       ...budgetFields,
       is_dynamic_creative: params.isDynamicCreative || false,
       start_time: params.startTime || new Date().toISOString(),

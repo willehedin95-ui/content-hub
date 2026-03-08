@@ -46,8 +46,17 @@ export async function POST(
     );
   }
 
-  // 2. Determine the video URL
+  // 2. Determine the video URL (translation > storyboard > source_videos)
   let videoUrl: string | null = translation.video_url;
+  if (!videoUrl) {
+    // Check storyboard_url on the job
+    const { data: job } = await db
+      .from("video_jobs")
+      .select("storyboard_url")
+      .eq("id", id)
+      .single();
+    videoUrl = job?.storyboard_url || null;
+  }
   if (!videoUrl) {
     const { data: sourceVideos } = await db
       .from("source_videos")

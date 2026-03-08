@@ -11,12 +11,13 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const { shot_id, type, model, veo_prompt: newVeoPrompt, image_prompt: newImagePrompt } = body as {
+  const { shot_id, type, model, veo_prompt: newVeoPrompt, image_prompt: newImagePrompt, language } = body as {
     shot_id: string;
     type: "image" | "video";
     model?: VideoModel;
     veo_prompt?: string;
     image_prompt?: string;
+    language?: string;
   };
 
   if (!shot_id || !type) {
@@ -73,8 +74,17 @@ export async function POST(
         return NextResponse.json({ error: "Shot must have an image before generating video" }, { status: 400 });
       }
 
+      // Resolve the effective VEO prompt: new override > translated > original
+      let effectiveVeoPrompt = newVeoPrompt || shot.veo_prompt;
+      if (!newVeoPrompt && language) {
+        const { data: translation } = await db.from("video_translations")
+          .select("translated_shots").eq("video_job_id", id).eq("language", language).single();
+        const translatedShots = translation?.translated_shots as Array<{ shot_number: number; translated_veo_prompt?: string }> | null;
+        const translatedPrompt = translatedShots?.find((ts) => ts.shot_number === shot.shot_number)?.translated_veo_prompt;
+        if (translatedPrompt) effectiveVeoPrompt = translatedPrompt;
+      }
+
       // If a new VEO prompt was provided, save it to the shot
-      const effectiveVeoPrompt = newVeoPrompt || shot.veo_prompt;
       if (newVeoPrompt && newVeoPrompt !== shot.veo_prompt) {
         await db.from("video_shots").update({ veo_prompt: newVeoPrompt }).eq("id", shot_id);
       }
@@ -88,14 +98,32 @@ export async function POST(
         imageUrls: [shot.image_url],
       });
 
-      await db.from("video_shots").update({
-        video_kie_task_id: taskId,
-        video_status: "generating",
-        video_url: null,
-        error_message: null,
-      }).eq("id", shot_id);
+      // Resolve language for video_clips (default to first target language)
+      const clipLang = language || job.target_languages?.[0];
+      if (clipLang) {
+        // Write to video_clips (per-language)
+        await db.from("video_clips").upsert({
+          video_job_id: id,
+          language: clipLang,
+          shot_number: shot.shot_number,
+          video_kie_task_id: taskId,
+          video_status: "generating",
+          video_url: null,
+          error_message: null,
+          video_duration_seconds: shot.video_duration_seconds,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "video_job_id,language,shot_number" });
+      } else {
+        // Legacy fallback — no language context
+        await db.from("video_shots").update({
+          video_kie_task_id: taskId,
+          video_status: "generating",
+          video_url: null,
+          error_message: null,
+        }).eq("id", shot_id);
+      }
 
-      return NextResponse.json({ shot_id, type: "video", task_id: taskId, model: videoModel });
+      return NextResponse.json({ shot_id, type: "video", task_id: taskId, model: videoModel, language: clipLang });
     }
 
     return NextResponse.json({ error: "Invalid type" }, { status: 400 });

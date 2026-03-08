@@ -166,7 +166,8 @@ export default function MultiClipPipeline({
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/video-jobs/${job.id}/pipeline/status`);
+      const langParam = language ? `?language=${language}` : "";
+      const res = await fetch(`/api/video-jobs/${job.id}/pipeline/status${langParam}`);
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || "Failed to fetch pipeline status");
@@ -182,7 +183,7 @@ export default function MultiClipPipeline({
     } catch (e) {
       console.error("Pipeline status fetch error:", e);
     }
-  }, [job.id]);
+  }, [job.id, language]);
 
   // Initial fetch
   useEffect(() => {
@@ -553,7 +554,7 @@ export default function MultiClipPipeline({
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {shots.map((shot) => (
-              <ShotCard key={shot.id} shot={shot} jobId={job.id} onRegenerate={fetchStatus} />
+              <ShotCard key={shot.id} shot={shot} jobId={job.id} onRegenerate={fetchStatus} language={language} />
             ))}
           </div>
         </div>
@@ -898,6 +899,7 @@ export default function MultiClipPipeline({
                 }))}
               jobId={job.id}
               product={job.product}
+              language={language}
             />
           </div>
         )}

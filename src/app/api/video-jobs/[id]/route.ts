@@ -15,7 +15,7 @@ export async function GET(
   const db = createServerSupabase();
   const { data, error } = await db
     .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*), video_shots(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .eq("id", id)
     .single();
 
@@ -83,7 +83,7 @@ export async function PATCH(
     .from("video_jobs")
     .update(updateData)
     .eq("id", id)
-    .select("*, source_videos(*), video_translations(*), video_shots(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .single();
 
   if (error) {

@@ -19,6 +19,7 @@ interface VideoStitcherProps {
   }>;
   jobId: string;
   product: string;
+  language?: string;
 }
 
 type StitchStatus =
@@ -35,6 +36,7 @@ export default function VideoStitcher({
   shots,
   jobId,
   product,
+  language,
 }: VideoStitcherProps) {
   const [status, setStatus] = useState<StitchStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +140,7 @@ export default function VideoStitcher({
     try {
       const formData = new FormData();
       formData.append("file", stitchedBlobRef.current, "stitched.mp4");
+      if (language) formData.append("language", language);
       const res = await fetch(`/api/video-jobs/${jobId}/upload-stitched`, {
         method: "POST",
         body: formData,
@@ -153,7 +156,7 @@ export default function VideoStitcher({
       setError(err instanceof Error ? err.message : "Upload failed");
       setStatus("error");
     }
-  }, [jobId]);
+  }, [jobId, language]);
 
   const totalDuration = sortedShots.reduce(
     (sum, s) => sum + s.video_duration_seconds,

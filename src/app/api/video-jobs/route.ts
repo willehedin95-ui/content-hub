@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   let query = db
     .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*), video_shots(*)")
+    .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .order("created_at", { ascending: false });
 
   if (product) {

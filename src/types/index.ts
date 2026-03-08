@@ -963,6 +963,21 @@ export interface VideoShot {
   image_url: string | null;
   image_kie_task_id: string | null;
   image_status: ShotImageStatus;
+  // Legacy — kept for backward compat, new code uses video_clips
+  video_url?: string | null;
+  video_kie_task_id?: string | null;
+  video_status?: ShotVideoStatus;
+  video_duration_seconds: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoClip {
+  id: string;
+  video_job_id: string;
+  language: string;
+  shot_number: number;
   video_url: string | null;
   video_kie_task_id: string | null;
   video_status: ShotVideoStatus;
@@ -1054,6 +1069,7 @@ export interface VideoJob {
   storyboard_status: StoryboardStatus;
   storyboard_duration: string;
   video_shots?: VideoShot[];
+  video_clips?: VideoClip[];
 }
 
 export interface SourceVideo {
