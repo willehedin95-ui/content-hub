@@ -265,7 +265,7 @@ export async function createAdCreative(params: {
       {
         customization_spec: {
           publisher_platforms: ["facebook"],
-          facebook_positions: ["feed", "marketplace", "video_feeds", "search", "right_hand_column"],
+          facebook_positions: ["feed", "marketplace", "search", "right_hand_column"],
         },
         image_label: { name: "feed" },
       },
@@ -393,7 +393,7 @@ export async function createAdSetFromTemplate(params: {
         // Restrict to Facebook only — Instagram requires instagram_actor_id
         // which isn't configured on the pages. Audience Network excluded too.
         publisher_platforms: ["facebook"],
-        facebook_positions: ["feed", "marketplace", "video_feeds", "story", "search", "facebook_reels", "right_hand_column"],
+        facebook_positions: ["feed", "marketplace", "story", "search", "facebook_reels", "right_hand_column"],
       },
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
