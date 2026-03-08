@@ -33,8 +33,22 @@ export default function ImagePreviewModal({
   totalCount,
 }: Props) {
   const translations = sourceImage.image_translations ?? [];
-  const activeTranslation = activeLang
-    ? translations.find((t) => t.language === activeLang)
+
+  // Track selected translation by ID (not just language) to distinguish 1:1 vs 9:16
+  const [activeTranslationId, setActiveTranslationId] = useState<string | null>(null);
+
+  // When activeLang changes from parent (e.g. clicking an image card), pick first matching translation
+  useEffect(() => {
+    if (!activeLang) {
+      setActiveTranslationId(null);
+    } else {
+      const match = translations.find((t) => t.language === activeLang);
+      if (match) setActiveTranslationId(match.id);
+    }
+  }, [activeLang, sourceImage.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeTranslation = activeTranslationId
+    ? translations.find((t) => t.id === activeTranslationId)
     : null;
 
   // Get sorted versions for the active translation
@@ -47,22 +61,22 @@ export default function ImagePreviewModal({
   const [zoom, setZoom] = useState(1);
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
-  // Reset active version when language changes
+  // Reset active version when translation changes
   useEffect(() => {
     setActiveVersionId(activeTranslation?.active_version_id ?? null);
-  }, [activeLang, activeTranslation?.active_version_id]);
+  }, [activeTranslationId, activeTranslation?.active_version_id]);
 
-  // Reset zoom on language/image change
+  // Reset zoom on translation/image change
   useEffect(() => {
     setZoom(1);
-  }, [activeLang, sourceImage.id]);
+  }, [activeTranslationId, sourceImage.id]);
 
   const activeVersion = activeVersionId
     ? versions.find((v) => v.id === activeVersionId)
     : versions[0]; // default to latest
 
   const displayUrl = activeVersion?.translated_url ?? activeTranslation?.translated_url ?? sourceImage.original_url;
-  const isOriginal = !activeLang;
+  const isOriginal = !activeTranslationId;
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -191,7 +205,7 @@ export default function ImagePreviewModal({
         {/* Language tabs */}
         <div className="flex items-center gap-1 px-5 pt-3 shrink-0">
           <button
-            onClick={() => onChangeLang(null)}
+            onClick={() => { setActiveTranslationId(null); onChangeLang(null); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               isOriginal
                 ? "bg-indigo-50 text-indigo-600"
@@ -202,12 +216,16 @@ export default function ImagePreviewModal({
           </button>
           {translations.map((t) => {
             const langInfo = LANGUAGES.find((l) => l.value === t.language);
-            const isActive = activeLang === t.language;
+            const isActive = activeTranslationId === t.id;
             const isReady = t.status === "completed";
             return (
               <button
                 key={t.id}
-                onClick={() => isReady && onChangeLang(t.language)}
+                onClick={() => {
+                  if (!isReady) return;
+                  setActiveTranslationId(t.id);
+                  onChangeLang(t.language);
+                }}
                 disabled={!isReady}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   isActive
