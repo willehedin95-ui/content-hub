@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import OpenAI from "openai";
+import ffmpegPath from "ffmpeg-static";
 import { createServerSupabase } from "@/lib/supabase";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
@@ -70,48 +71,31 @@ interface WhisperWord {
 }
 
 /**
- * Extract audio from video and transcribe with OpenAI Whisper API.
+ * Transcribe video with OpenAI Whisper API (accepts mp4 directly).
  * Returns word-level timestamps for speech alignment.
  */
 async function transcribeWithWhisper(videoPath: string): Promise<WhisperWord[]> {
-  // Extract audio to WAV (Whisper works best with WAV)
-  const audioPath = path.join(os.tmpdir(), `whisper-audio-${Date.now()}.wav`);
+  const openai = new OpenAI();
+  const videoFile = await fs.promises.readFile(videoPath);
+  const file = new File([videoFile], "video.mp4", { type: "video/mp4" });
 
-  await execFile("ffmpeg", [
-    "-i", videoPath,
-    "-vn",           // no video
-    "-acodec", "pcm_s16le",
-    "-ar", "16000",  // 16kHz sample rate (optimal for Whisper)
-    "-ac", "1",      // mono
-    "-y",
-    audioPath,
-  ]);
+  const response = await openai.audio.transcriptions.create({
+    model: "whisper-1",
+    file,
+    response_format: "verbose_json",
+    timestamp_granularities: ["word"],
+  });
 
-  try {
-    const openai = new OpenAI();
-    const audioFile = await fs.promises.readFile(audioPath);
-    const file = new File([audioFile], "audio.wav", { type: "audio/wav" });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const words: WhisperWord[] = ((response as any).words ?? []).map(
+    (w: { word: string; start: number; end: number }) => ({
+      word: w.word.trim(),
+      start: w.start,
+      end: w.end,
+    })
+  );
 
-    const response = await openai.audio.transcriptions.create({
-      model: "whisper-1",
-      file,
-      response_format: "verbose_json",
-      timestamp_granularities: ["word"],
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const words: WhisperWord[] = ((response as any).words ?? []).map(
-      (w: { word: string; start: number; end: number }) => ({
-        word: w.word.trim(),
-        start: w.start,
-        end: w.end,
-      })
-    );
-
-    return words;
-  } finally {
-    await cleanupFiles(audioPath);
-  }
+  return words;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +198,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,90,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,250,1
+Style: Default,Arial,90,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,640,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -272,7 +256,11 @@ export async function burnCaptions(
     `captioned-${Date.now()}.mp4`
   );
 
-  await execFile("ffmpeg", [
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg-static binary not found");
+  }
+
+  await execFile(ffmpegPath, [
     "-i",
     videoPath,
     "-vf",
