@@ -39,6 +39,9 @@ export default function TextEditorControl() {
   useEffect(() => {
     const el = selectedElRef.current;
     if (!el || !TEXT_TAGS.has(el.tagName) || !editorRef.current) return;
+    // Skip if editor already has same content — prevents cursor reset during typing
+    // (syncToCanvas writes editor→canvas, markDirty triggers this effect, but content matches)
+    if (editorRef.current.innerHTML === el.innerHTML) return;
     syncingRef.current = true;
     // eslint-disable-next-line no-unsanitized/property
     editorRef.current.innerHTML = el.innerHTML;
