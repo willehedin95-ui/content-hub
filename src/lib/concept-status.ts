@@ -1,4 +1,4 @@
-import { ImageJob, Language, MetaCampaignStatus } from "@/types";
+import { ImageJob, Language, MetaCampaignStatus, COUNTRY_MAP } from "@/types";
 
 // --- Shared constants ---
 
@@ -108,8 +108,15 @@ export function getWizardStep(job: ImageJob): WizardStep {
   if (job.status === "draft")
     return { step: 0, label: "Importing", color: "text-gray-500 bg-gray-100" };
 
-  const hasPushed = job.deployments?.some((d) => d.status === "pushed");
-  if (hasPushed)
+  const pushedCountries = new Set(
+    (job.deployments ?? [])
+      .filter((d) => d.status === "pushed")
+      .map((d) => d.country)
+  );
+  const allMarkets = job.target_languages.map((l) => COUNTRY_MAP[l]).filter(Boolean);
+  const allPushed = allMarkets.length > 0 && allMarkets.every((c) => pushedCountries.has(c));
+
+  if (allPushed)
     return {
       step: 3,
       label: "Published",
