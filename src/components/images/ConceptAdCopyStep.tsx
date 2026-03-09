@@ -62,7 +62,7 @@ export interface ConceptAdCopyStepProps {
     matchedTab: string | null;
   };
   // Landing pages and AB tests
-  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }>;
+  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>;
   abTests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }>;
   // Handlers
   handlePrimaryChange: (index: number, value: string) => void;

@@ -1,5 +1,6 @@
 export type Product = "happysleep" | "hydro13";
 export type PageType = "advertorial" | "listicle";
+export type PageAngle = "snoring" | "neck_pain" | "neutral";
 export type Language = "sv" | "da" | "no" | "de";
 export type TranslationStatus =
   | "draft"
@@ -27,6 +28,8 @@ export interface Page {
   source_language: string;
   images_to_translate: PageImageSelection[];
   tags: string[];
+  angle: PageAngle;
+  thumbnail_url: string | null;
   swiped_from_url: string | null;
   status: PageStatus;
   swipe_job_id: string | null;

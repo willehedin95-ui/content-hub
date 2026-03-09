@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   // Fetch published landing pages
   let query = db
     .from("translations")
-    .select("id, language, slug, published_url, seo_title, pages!inner(id, name, slug, product, tags, page_type)")
+    .select("id, language, slug, published_url, seo_title, pages!inner(id, name, slug, product, tags, page_type, angle, thumbnail_url)")
     .eq("status", "published")
     .eq("language", language)
     .not("published_url", "is", null);

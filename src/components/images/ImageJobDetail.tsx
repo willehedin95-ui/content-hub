@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,6 +14,7 @@ import {
   TrendingUp,
   Rocket,
   X,
+  Trash2,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
@@ -25,6 +27,7 @@ import ConceptAdCopyStep from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
 import CashDnaEditor from "./CashDnaEditor";
 import SmartIterateModal from "./SmartIterateModal";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 const DEFAULT_MAX_VERSIONS = 5;
 const DEFAULT_QUALITY_THRESHOLD = 80;
@@ -66,7 +69,9 @@ function computeCurrentStep(j: ImageJob, ct: ConceptCopyTranslations): number {
 }
 
 export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket, iteratePerf }: Props) {
+  const router = useRouter();
   const [job, setJob] = useState<ImageJob>(initialJob);
+  const [confirmDeleteConcept, setConfirmDeleteConcept] = useState(false);
   const [step, setStep] = useState<number>(() => computeCurrentStep(initialJob, initialJob.ad_copy_translations ?? {}));
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   // Processing states
@@ -104,7 +109,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     pushResults: null,
   }));
 
-  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }>>([]);
+  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>>([]);
   const [abTests, setAbTests] = useState<Array<{ id: string; name: string; slug: string; language: string; router_url: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
@@ -249,15 +254,15 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       .then((results) => {
         // Deduplicate pages across languages
         const seenPages = new Set<string>();
-        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }> = [];
+        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }> = [];
         const seenTests = new Set<string>();
         const tests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }> = [];
         for (const data of results) {
           for (const t of data.pages ?? []) {
-            const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string }).id;
+            const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }).id;
             if (!seenPages.has(pageId)) {
               seenPages.add(pageId);
-              pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string });
+              pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null });
             }
           }
           for (const ab of data.abTests ?? []) {
@@ -1134,6 +1139,26 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
   }
 
+  async function handleDeleteImage(sourceImageId: string) {
+    // Optimistic removal
+    setJob((prev) => ({
+      ...prev,
+      source_images: (prev.source_images ?? []).filter((si) => si.id !== sourceImageId),
+    }));
+    try {
+      const res = await fetch(`/api/source-images/${sourceImageId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+    } catch (err) {
+      console.error("Delete image failed:", err);
+      await refreshJob();
+    }
+  }
+
+  async function handleDeleteConcept() {
+    const res = await fetch(`/api/image-jobs/${job.id}`, { method: "DELETE" });
+    if (res.ok) router.push("/images");
+  }
+
   // Filter images based on active tab
   const filteredImages = (job.source_images ?? []).map((si) => ({
     ...si,
@@ -1296,6 +1321,13 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           >
             <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
           </button>
+          <button
+            onClick={() => setConfirmDeleteConcept(true)}
+            className="text-gray-400 hover:text-red-500 p-2 transition-colors"
+            title="Delete concept"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -1435,6 +1467,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           handleGenerate9x16={handleGenerate9x16}
           show9x16Button={show9x16Button}
           count9x16={translationsPrimary.length}
+          onDeleteImage={handleDeleteImage}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep
@@ -1497,6 +1530,17 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           />
         );
       })()}
+
+      {/* Confirm delete concept dialog */}
+      <ConfirmDialog
+        open={confirmDeleteConcept}
+        title="Delete concept"
+        message="Delete this concept and all its images and translations? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleDeleteConcept}
+        onCancel={() => setConfirmDeleteConcept(false)}
+      />
     </div>
   );
 }
