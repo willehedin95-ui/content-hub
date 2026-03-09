@@ -12,10 +12,36 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  if (!isValidUUID(id)) {
+
+  // Handle source page: synthetic ID format "source_<pageId>"
+  const isSource = id.startsWith("source_");
+  const realId = isSource ? id.slice("source_".length) : id;
+
+  if (!isValidUUID(realId)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
+
   const db = createServerSupabase();
+
+  if (isSource) {
+    const { data: page, error } = await db
+      .from("pages")
+      .select("id, name, slug, source_url, original_html")
+      .eq("id", realId)
+      .single();
+
+    if (error || !page) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Return in translation-like format for compatibility
+    return NextResponse.json({
+      id,
+      page_id: page.id,
+      translated_html: page.original_html,
+      pages: page,
+    });
+  }
 
   const { data, error } = await db
     .from("translations")
@@ -42,7 +68,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  if (!isValidUUID(id)) {
+
+  // Handle source page editing: synthetic ID format "source_<pageId>"
+  const isSourceEdit = id.startsWith("source_");
+  const realId = isSourceEdit ? id.slice("source_".length) : id;
+
+  if (!isValidUUID(realId)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 
@@ -65,6 +96,55 @@ export async function PUT(
     }
 
     const db = createServerSupabase();
+
+    // Source page editing: save to pages.original_html
+    if (isSourceEdit) {
+      if (!translated_html) {
+        return NextResponse.json(
+          { error: "Source editing requires translated_html" },
+          { status: 400 }
+        );
+      }
+
+      const $ = cheerio.load(translated_html);
+
+      // Server-side sanitization: strip ALL editor artifacts
+      $("[data-cc-editor]").remove();
+      $("[data-cc-injected]").remove();
+      $("[data-cc-el-toolbar]").remove();
+      $("[data-cc-exclude-mode]").remove();
+      $("[data-cc-editable]").removeAttr("data-cc-editable");
+      $("[contenteditable]").removeAttr("contenteditable");
+      $("[data-cc-padded]").removeAttr("data-cc-padded");
+      $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
+      $("[data-cc-hidden]").removeAttr("data-cc-hidden");
+      $("[data-cc-selected]").removeAttr("data-cc-selected");
+      $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
+
+      const finalHtml = sanitizeHtml($.html());
+
+      const { data: page, error: saveError } = await db
+        .from("pages")
+        .update({
+          original_html: finalHtml,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", realId)
+        .select()
+        .single();
+
+      if (saveError) {
+        return safeError(saveError, "Failed to save source page");
+      }
+
+      // Return in translation-like format for compatibility
+      return NextResponse.json({
+        id,
+        page_id: realId,
+        translated_html: finalHtml,
+        updated_at: page.updated_at,
+      });
+    }
 
     const { data: translation, error: fetchError } = await db
       .from("translations")
