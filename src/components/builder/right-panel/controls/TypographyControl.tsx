@@ -8,10 +8,10 @@ const WEIGHT_OPTIONS = [
   { value: "100", label: "100 - Thin" },
   { value: "200", label: "200 - Extra Light" },
   { value: "300", label: "300 - Light" },
-  { value: "normal", label: "Normal (400)" },
+  { value: "400", label: "Normal (400)" },
   { value: "500", label: "500 - Medium" },
   { value: "600", label: "600 - Semi Bold" },
-  { value: "bold", label: "Bold (700)" },
+  { value: "700", label: "Bold (700)" },
   { value: "800", label: "800 - Extra Bold" },
   { value: "900", label: "900 - Black" },
 ];
@@ -42,7 +42,7 @@ export default function TypographyControl() {
   const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
 
   const [fontSize, setFontSize] = useState("");
-  const [fontWeight, setFontWeight] = useState("normal");
+  const [fontWeight, setFontWeight] = useState("400");
   const [textColor, setTextColor] = useState("#000000");
   const [textAlign, setTextAlign] = useState("left");
   const [lineHeight, setLineHeight] = useState("");
@@ -68,7 +68,7 @@ export default function TypographyControl() {
     setFontSize(String(Math.round(parseFloat(fs) || 16)));
 
     const fw = getComputedValue("font-weight");
-    setFontWeight(fw || "normal");
+    setFontWeight(fw || "400");
 
     const color = getComputedValue("color");
     setTextColor(rgbToHex(color));
