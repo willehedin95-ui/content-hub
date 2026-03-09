@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
@@ -65,9 +65,13 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", translation_id);
 
-  // Fire-and-forget: run the publish in the background
-  doPublish(translation_id, translation, db).catch((err) => {
-    console.error("[publish] Background publish failed:", err);
+  // Run publish after response is sent — keeps Vercel function alive until done
+  after(async () => {
+    try {
+      await doPublish(translation_id, translation, db);
+    } catch (err) {
+      console.error("[publish] Background publish failed:", err);
+    }
   });
 
   return NextResponse.json({ ok: true });
