@@ -27,6 +27,7 @@ export default function SwiperClient({ products }: Props) {
     products[0]?.id ?? ""
   );
   const [selectedAngle, setSelectedAngle] = useState("auto-detect");
+  const [sourceLanguage, setSourceLanguage] = useState("en");
   const [pageName, setPageName] = useState("");
   const [pageSlug, setPageSlug] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -71,10 +72,13 @@ export default function SwiperClient({ products }: Props) {
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      const { html, title } = await safeJson<{ html: string; title: string }>(
+      const { html, title, detectedLanguage: detLang } = await safeJson<{ html: string; title: string; detectedLanguage?: string }>(
         fetchRes,
         "Failed to fetch URL"
       );
+
+      // Auto-set source language from detected value
+      if (detLang) setSourceLanguage(detLang);
 
       setSteps([
         { label: "Page fetched", done: true },
@@ -101,7 +105,7 @@ export default function SwiperClient({ products }: Props) {
           html,
           productId: selectedProductId,
           sourceUrl: url.trim(),
-          sourceLanguage: "en",
+          sourceLanguage,
           angle: selectedAngle,
           name,
           slug,
@@ -206,6 +210,25 @@ export default function SwiperClient({ products }: Props) {
             <option value="snoring">Snoring</option>
             <option value="sleep-quality">Sleep Quality</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Source Language
+          </label>
+          <select
+            value={sourceLanguage}
+            onChange={(e) => setSourceLanguage(e.target.value)}
+            className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+            disabled={submitting}
+          >
+            <option value="en">English</option>
+            <option value="sv">Swedish</option>
+            <option value="da">Danish</option>
+            <option value="no">Norwegian</option>
+            <option value="de">German</option>
+          </select>
+          <p className="text-xs text-gray-400 mt-1">Auto-detected from page. Override if needed.</p>
         </div>
 
         {/* Optional: override name/slug before import */}

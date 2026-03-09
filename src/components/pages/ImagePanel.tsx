@@ -13,7 +13,7 @@ import {
   Check,
   ImagePlus,
 } from "lucide-react";
-import type { ProductImage } from "@/types";
+import type { ProductImage, Asset } from "@/types";
 
 interface ClickedImage {
   src: string;
@@ -73,6 +73,9 @@ export default function ImagePanel({
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [pickingFromBank, setPickingFromBank] = useState(false);
+  const [pickingFromAssets, setPickingFromAssets] = useState(false);
+  const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
+  const assetsFetchedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Product bank data (fetched client-side)
@@ -107,6 +110,16 @@ export default function ImagePanel({
       })
       .catch(() => {});
   }, [pageProduct]);
+
+  // Fetch asset bank data
+  useEffect(() => {
+    if (assetsFetchedRef.current) return;
+    assetsFetchedRef.current = true;
+    fetch("/api/assets")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Asset[]) => setAssetBankData(data))
+      .catch(() => {});
+  }, []);
 
   // Lightbox escape key
   useEffect(() => {
@@ -362,8 +375,17 @@ export default function ImagePanel({
     );
   }
 
+  /** Pick from asset bank */
+  function handleAssetPick(newUrl: string) {
+    if (!clickedImage) return;
+    setPickingFromAssets(false);
+    swapImageInIframe(clickedImage.index, newUrl);
+    onClickedImageClear();
+  }
+
   const canTranslate = !isSource;
   const hasProductBank = (productData?.images.length ?? 0) > 0;
+  const hasAssetBank = assetBankData.length > 0;
 
   return (
     <div className="px-4 py-3 space-y-3">
@@ -514,6 +536,17 @@ export default function ImagePanel({
         </button>
       )}
 
+      {hasAssetBank && (
+        <button
+          onClick={() => setPickingFromAssets(true)}
+          disabled={uploading}
+          className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 text-xs font-medium py-2.5 rounded-lg border border-gray-200 transition-colors"
+        >
+          <ImagePlus className="w-3.5 h-3.5" />
+          Asset Bank
+        </button>
+      )}
+
       {isModified && (
         <button
           onClick={handleRevert}
@@ -578,6 +611,55 @@ export default function ImagePanel({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Asset bank picker modal */}
+      {pickingFromAssets && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPickingFromAssets(false);
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-lg max-h-[80vh] overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-900">
+                Pick from Asset Bank
+              </h4>
+              <button
+                onClick={() => setPickingFromAssets(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <div className="grid grid-cols-3 gap-2">
+                {assetBankData.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => handleAssetPick(asset.url)}
+                    className="group relative rounded-lg overflow-hidden border border-gray-200 hover:border-indigo-400 transition-colors"
+                  >
+                    <div className="aspect-square bg-gray-50 flex items-center justify-center p-2">
+                      <img
+                        src={asset.url}
+                        alt={asset.alt_text || asset.name}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    </div>
+                    <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
+                      <Check className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg transition-opacity" />
+                    </div>
+                    <p className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1.5 py-0.5 truncate">
+                      {asset.name}
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

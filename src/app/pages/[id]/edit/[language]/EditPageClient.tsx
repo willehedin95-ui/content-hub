@@ -13,24 +13,20 @@ import {
   Monitor,
   Smartphone,
   Globe,
-  MoveHorizontal,
-  MoveVertical,
-  MousePointerClick,
-  Link2,
-  EyeOff,
   Eye,
   Undo2,
   Settings,
   X,
-  Sparkles,
-  Lightbulb,
 } from "lucide-react";
 
-import { Translation, LANGUAGES, PRODUCTS, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
+import { Translation, LANGUAGES, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
 import ImagePanel from "@/components/pages/ImagePanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import Dropdown from "@/components/ui/dropdown";
+import PaddingControls from "@/components/pages/editor/PaddingControls";
+import ElementControls from "@/components/pages/editor/ElementControls";
+import PageSettingsModal from "@/components/pages/editor/PageSettingsModal";
+import LayersPanel from "@/components/pages/editor/LayersPanel";
 
 interface Props {
   pageId: string;
@@ -92,20 +88,11 @@ export default function EditPageClient({
   // Element-level editing
   const selectedElRef = useRef<HTMLElement | null>(null);
   const [hasSelectedEl, setHasSelectedEl] = useState(false);
-  const [selectedElMargin, setSelectedElMargin] = useState({ top: "", right: "", bottom: "", left: "" });
-  const [elSpacingMode, setElSpacingMode] = useState<"hv" | "individual">("hv");
   const [hiddenCount, setHiddenCount] = useState(0);
   const [revealHidden, setRevealHidden] = useState(false);
   const excludeModeRef = useRef(false);
+  const [layersRefreshKey, setLayersRefreshKey] = useState(0);
 
-  // Generate variation
-  const [generatingVariation, setGeneratingVariation] = useState(false);
-  const [showVariationMenu, setShowVariationMenu] = useState(false);
-
-  // Headline suggestions
-  const [headlineSuggestions, setHeadlineSuggestions] = useState<{ headline: string; mechanism: string }[]>([]);
-  const [loadingHeadlines, setLoadingHeadlines] = useState(false);
-  const [showHeadlinePanel, setShowHeadlinePanel] = useState(false);
 
   // Quality analysis
   const [qualityScore, setQualityScore] = useState<number | null>(translation.quality_score ?? null);
@@ -173,6 +160,7 @@ export default function EditPageClient({
 
   const markDirty = useCallback(() => {
     setIsDirty(true);
+    setLayersRefreshKey((k) => k + 1);
     triggerAutosave();
   }, [triggerAutosave]);
 
@@ -291,114 +279,53 @@ export default function EditPageClient({
 
   useEffect(() => { excludeModeRef.current = excludeMode; }, [excludeMode]);
 
-  function handleElMarginChange(side: "top" | "right" | "bottom" | "left", value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
-    setSelectedElMargin(prev => ({ ...prev, [side]: value }));
-    const prop = `margin${side.charAt(0).toUpperCase() + side.slice(1)}` as
-      "marginTop" | "marginRight" | "marginBottom" | "marginLeft";
-    el.style[prop] = value !== "" ? `${value}px` : "";
-    markDirty();
-  }
 
-  function handleElMarginHV(axis: "h" | "v", value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
-    if (axis === "h") {
-      setSelectedElMargin(prev => ({ ...prev, left: value, right: value }));
-      el.style.marginLeft = value !== "" ? `${value}px` : "";
-      el.style.marginRight = value !== "" ? `${value}px` : "";
-    } else {
-      setSelectedElMargin(prev => ({ ...prev, top: value, bottom: value }));
-      el.style.marginTop = value !== "" ? `${value}px` : "";
-      el.style.marginBottom = value !== "" ? `${value}px` : "";
-    }
-    markDirty();
-  }
-
-  async function handleGenerateVariation(mode: "rewrite" | "hook_inspired") {
-    const el = selectedElRef.current;
-    if (!el) return;
-    const originalText = el.textContent?.trim();
-    if (!originalText) return;
-
-    setGeneratingVariation(true);
-    setShowVariationMenu(false);
-    try {
-      const res = await fetch("/api/hooks/generate-variation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: originalText,
-          language: isSource ? "en" : language.value,
-          product: pageProduct || null,
-          mode,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.variation && el) {
-        el.textContent = data.variation;
-        markDirty();
-      }
-    } catch (err) {
-      console.error("Variation generation failed:", err);
-    } finally {
-      setGeneratingVariation(false);
-    }
-  }
-
-  async function handleSuggestHeadlines() {
-    const el = selectedElRef.current;
-    if (!el) return;
-    const originalText = el.textContent?.trim();
-    if (!originalText) return;
-
-    setLoadingHeadlines(true);
-    setShowHeadlinePanel(true);
-    setHeadlineSuggestions([]);
-    try {
-      const res = await fetch("/api/headlines/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: originalText,
-          language: isSource ? "en" : language.value,
-          product: pageProduct || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.suggestions) {
-        setHeadlineSuggestions(data.suggestions);
-      }
-    } catch (err) {
-      console.error("Headline suggestion failed:", err);
-    } finally {
-      setLoadingHeadlines(false);
-    }
-  }
-
-  function applyHeadlineSuggestion(headline: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
-    el.textContent = headline;
-    markDirty();
-    setShowHeadlinePanel(false);
-    setHeadlineSuggestions([]);
-  }
 
   function handleHideElement() {
     const el = selectedElRef.current;
     if (!el) return;
     el.setAttribute("data-cc-hidden", "");
     el.style.display = "none";
-    // Deselect
     el.removeAttribute("data-cc-selected");
     selectedElRef.current = null;
     setHasSelectedEl(false);
-    // Update count
     const doc = iframeRef.current?.contentDocument;
     if (doc) setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
     markDirty();
+  }
+
+  function handleToggleLayerVisibility(el: HTMLElement) {
+    if (el.hasAttribute("data-cc-hidden")) {
+      el.removeAttribute("data-cc-hidden");
+      el.style.display = "";
+    } else {
+      el.setAttribute("data-cc-hidden", "");
+      el.style.display = "none";
+      if (el === selectedElRef.current) {
+        selectedElRef.current = null;
+        setHasSelectedEl(false);
+      }
+    }
+    const doc = iframeRef.current?.contentDocument;
+    if (doc) setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+    markDirty();
+  }
+
+  function handleDeleteElement() {
+    setConfirmAction({
+      title: "Delete element",
+      message: "Remove this element from the page? You can revert by reloading.",
+      variant: "danger",
+      action: () => {
+        setConfirmAction(null);
+        const el = selectedElRef.current;
+        if (!el) return;
+        el.remove();
+        selectedElRef.current = null;
+        setHasSelectedEl(false);
+        markDirty();
+      },
+    });
   }
 
   function toggleRevealHidden() {
@@ -617,18 +544,7 @@ export default function EditPageClient({
       // Select new element (works alongside text editing — both can coexist)
       target.setAttribute("data-cc-selected", "");
       selectedElRef.current = target;
-
-      const cs = win!.getComputedStyle(target);
-      setSelectedElMargin({
-        top: String(parseInt(cs.marginTop) || 0),
-        right: String(parseInt(cs.marginRight) || 0),
-        bottom: String(parseInt(cs.marginBottom) || 0),
-        left: String(parseInt(cs.marginLeft) || 0),
-      });
-      setElSpacingMode("hv");
       setHasSelectedEl(true);
-      setShowHeadlinePanel(false);
-      setHeadlineSuggestions([]);
     }, false);
   }
 
@@ -1255,241 +1171,38 @@ export default function EditPageClient({
           ) : (
             /* Normal view: page settings */
             <>
-              {/* Padding section — always visible */}
-              <div className="px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Padding
-                  </p>
-                  <div className="flex items-center bg-gray-100 rounded-md border border-gray-200 p-0.5">
-                    <button
-                      onClick={() => setViewMode("desktop")}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
-                        viewMode === "desktop"
-                          ? "bg-white text-gray-900 shadow-sm"
-                          : "text-gray-400 hover:text-gray-700"
-                      }`}
-                    >
-                      <Monitor className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode("mobile")}
-                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
-                        viewMode === "mobile"
-                          ? "bg-white text-gray-900 shadow-sm"
-                          : "text-gray-400 hover:text-gray-700"
-                      }`}
-                    >
-                      <Smartphone className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <input
-                      type="number"
-                      min="0"
-                      value={viewMode === "desktop" ? padDH : padMH}
-                      onChange={(e) => handlePaddingChange("h", e.target.value)}
-                      placeholder="—"
-                      className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <input
-                      type="number"
-                      min="0"
-                      value={viewMode === "desktop" ? padDV : padMV}
-                      onChange={(e) => handlePaddingChange("v", e.target.value)}
-                      placeholder="—"
-                      className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={() => setExcludeMode(!excludeMode)}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
-                    excludeMode
-                      ? "bg-amber-50 border-amber-300 text-amber-700"
-                      : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-                  }`}
-                >
-                  <MousePointerClick className="w-3 h-3" />
-                  Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
-                </button>
-              </div>
+              <PaddingControls
+                viewMode={viewMode}
+                padDH={padDH}
+                padDV={padDV}
+                padMH={padMH}
+                padMV={padMV}
+                excludeMode={excludeMode}
+                excludeCount={excludeCount}
+                onViewModeChange={setViewMode}
+                onPaddingChange={handlePaddingChange}
+                onToggleExclude={() => setExcludeMode(!excludeMode)}
+              />
               <div className="border-t border-gray-200" />
 
-              {/* Element controls (shown when an element is selected) */}
-              {hasSelectedEl && (
-                <>
-                  <div className="px-4 py-3 space-y-2 bg-indigo-50/50">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
-                        Element
-                      </p>
-                      <button
-                        onClick={() => {
-                          if (selectedElRef.current) {
-                            selectedElRef.current.removeAttribute("data-cc-selected");
-                            selectedElRef.current = null;
-                          }
-                          setHasSelectedEl(false);
-                        }}
-                        className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-                      >
-                        Deselect
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs text-gray-500 uppercase tracking-wider">Margin</label>
-                        <button
-                          onClick={() => setElSpacingMode(elSpacingMode === "hv" ? "individual" : "hv")}
-                          className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
-                        >
-                          {elSpacingMode === "hv" ? "T R B L" : "H / V"}
-                        </button>
-                      </div>
-                      {elSpacingMode === "hv" ? (
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1.5 flex-1">
-                            <MoveHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
-                            <input
-                              type="number"
-                              value={selectedElMargin.left === selectedElMargin.right ? selectedElMargin.left : ""}
-                              onChange={(e) => handleElMarginHV("h", e.target.value)}
-                              placeholder="—"
-                              className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-1">
-                            <MoveVertical className="w-3 h-3 text-gray-400 shrink-0" />
-                            <input
-                              type="number"
-                              value={selectedElMargin.top === selectedElMargin.bottom ? selectedElMargin.top : ""}
-                              onChange={(e) => handleElMarginHV("v", e.target.value)}
-                              placeholder="—"
-                              className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {(["top", "right", "bottom", "left"] as const).map(side => (
-                            <div key={side} className="space-y-0.5">
-                              <span className="text-xs text-gray-400 uppercase block text-center">{side[0].toUpperCase()}</span>
-                              <input
-                                type="number"
-                                value={selectedElMargin[side]}
-                                onChange={(e) => handleElMarginChange(side, e.target.value)}
-                                className="w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {/* Suggest Headlines — only for h1/h2/h3 */}
-                    {selectedElRef.current && ["H1", "H2", "H3"].includes(selectedElRef.current.tagName) && (
-                      <div>
-                        <button
-                          onClick={handleSuggestHeadlines}
-                          disabled={loadingHeadlines}
-                          className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50"
-                        >
-                          {loadingHeadlines ? (
-                            <><Loader2 className="w-3 h-3 animate-spin" /> Generating headlines…</>
-                          ) : (
-                            <><Lightbulb className="w-3 h-3" /> Suggest Headlines</>
-                          )}
-                        </button>
-                        {showHeadlinePanel && (
-                          <div className="mt-2 border border-amber-200 rounded-lg bg-amber-50/50 overflow-hidden">
-                            <div className="px-3 py-1.5 border-b border-amber-200 flex items-center justify-between">
-                              <span className="text-xs font-semibold text-amber-800">Headline Ideas</span>
-                              <button
-                                onClick={() => { setShowHeadlinePanel(false); setHeadlineSuggestions([]); }}
-                                className="text-amber-400 hover:text-amber-600 transition-colors"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                            {loadingHeadlines ? (
-                              <div className="px-3 py-4 flex items-center justify-center gap-2 text-xs text-amber-600">
-                                <Loader2 className="w-3 h-3 animate-spin" /> Generating 6 variations…
-                              </div>
-                            ) : (
-                              <div className="divide-y divide-amber-100">
-                                {headlineSuggestions.map((s, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => applyHeadlineSuggestion(s.headline)}
-                                    className="w-full text-left px-3 py-2 hover:bg-amber-100/70 transition-colors group"
-                                  >
-                                    <p className="text-xs text-gray-900 leading-snug group-hover:text-amber-900">{s.headline}</p>
-                                    <span className="inline-block mt-1 text-[10px] font-medium text-amber-600 bg-amber-100 rounded px-1.5 py-0.5">
-                                      {s.mechanism}
-                                    </span>
-                                  </button>
-                                ))}
-                                <button
-                                  onClick={handleSuggestHeadlines}
-                                  className="w-full flex items-center justify-center gap-1 px-3 py-2 text-xs text-amber-600 hover:bg-amber-100/70 transition-colors font-medium"
-                                >
-                                  <RefreshCw className="w-3 h-3" /> More suggestions
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* Generate Variation */}
-                    <div className="relative">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowVariationMenu(!showVariationMenu); }}
-                        disabled={generatingVariation}
-                        className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                      >
-                        {generatingVariation ? (
-                          <><Loader2 className="w-3 h-3 animate-spin" /> Generating…</>
-                        ) : (
-                          <><Sparkles className="w-3 h-3" /> Generate Variation</>
-                        )}
-                      </button>
-                      {showVariationMenu && !generatingVariation && (
-                        <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                          <button
-                            onClick={() => handleGenerateVariation("rewrite")}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
-                          >
-                            <span className="font-medium text-gray-900">Rewrite</span>
-                            <p className="text-gray-500 mt-0.5">Same meaning, different words</p>
-                          </button>
-                          <div className="border-t border-gray-100" />
-                          <button
-                            onClick={() => handleGenerateVariation("hook_inspired")}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
-                          >
-                            <span className="font-medium text-gray-900">Hook bank inspired</span>
-                            <p className="text-gray-500 mt-0.5">Different angle from proven hooks</p>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={handleHideElement}
-                      className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <EyeOff className="w-3 h-3" /> Hide Element
-                    </button>
-                  </div>
-                  <div className="border-t border-gray-200" />
-                </>
-              )}
+              <ElementControls
+                selectedElRef={selectedElRef}
+                iframeRef={iframeRef}
+                hasSelectedEl={hasSelectedEl}
+                onDeselect={() => {
+                  if (selectedElRef.current) {
+                    selectedElRef.current.removeAttribute("data-cc-selected");
+                    selectedElRef.current = null;
+                  }
+                  setHasSelectedEl(false);
+                }}
+                onHide={handleHideElement}
+                onDelete={handleDeleteElement}
+                markDirty={markDirty}
+                isSource={isSource}
+                languageValue={language.value}
+                pageProduct={pageProduct}
+              />
 
               {/* Hidden elements indicator */}
               {hiddenCount > 0 && !hasSelectedEl && (
@@ -1510,6 +1223,19 @@ export default function EditPageClient({
                   <div className="border-t border-gray-200" />
                 </>
               )}
+
+              {/* Layers panel */}
+              <LayersPanel
+                iframeRef={iframeRef}
+                selectedElRef={selectedElRef}
+                hasSelectedEl={hasSelectedEl}
+                refreshKey={layersRefreshKey}
+                onSelectElement={() => setHasSelectedEl(true)}
+                onToggleVisibility={handleToggleLayerVisibility}
+                markDirty={markDirty}
+              />
+
+              <div className="border-t border-gray-200" />
 
               {/* Page settings button */}
               <div className="px-4 py-3">
@@ -1538,153 +1264,23 @@ export default function EditPageClient({
         </div>
       </div>
 
-      {/* Page settings modal */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col mx-4">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
-              <h2 className="text-sm font-semibold text-gray-900">Page Settings</h2>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Destination URL */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Destination URL
-                </p>
-                {filteredUrls.length > 0 ? (
-                  <>
-                    <Dropdown
-                      value={urlMode === "saved" ? linkUrl : "__custom__"}
-                      onChange={(v) => {
-                        if (v === "__custom__") {
-                          setUrlMode("custom");
-                        } else {
-                          setUrlMode("saved");
-                          handleLinkUrlChange(v);
-                        }
-                      }}
-                      options={[
-                        ...filteredUrls.map((u) => ({
-                          value: u.url,
-                          label: `${PRODUCTS.find((p) => p.value === u.product)?.label ?? u.product} — ${u.url}`,
-                        })),
-                        { value: "__custom__", label: "Custom URL..." },
-                      ]}
-                      placeholder="Select product URL"
-                    />
-                    {urlMode === "custom" && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                        <input
-                          type="url"
-                          value={linkUrl}
-                          onChange={(e) => handleLinkUrlChange(e.target.value)}
-                          placeholder="https://..."
-                          className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <input
-                      type="url"
-                      value={linkUrl}
-                      onChange={(e) => handleLinkUrlChange(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate"
-                    />
-                  </div>
-                )}
-                <p className="text-xs text-gray-400">
-                  Applied to all links on the page.
-                </p>
-              </div>
-
-              <div className="border-t border-gray-200" />
-
-              {/* Slug */}
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Slug
-                </p>
-                <input
-                  type="text"
-                  value={slug}
-                  onChange={(e) => {
-                    setSlug(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder="page-slug"
-                  className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
-                />
-                <p className="text-xs text-gray-400 truncate">
-                  {language.domain}/{slug}
-                </p>
-              </div>
-
-              <div className="border-t border-gray-200" />
-
-              {/* SEO fields */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  SEO
-                </p>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">
-                    Page Title
-                  </label>
-                  <input
-                    value={seoTitle}
-                    onChange={(e) => {
-                      setSeoTitle(e.target.value);
-                      markDirty();
-                    }}
-                    placeholder="Page title..."
-                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
-                  />
-                  <p className={`text-xs text-right ${seoTitle.length > 60 ? "text-red-500" : seoTitle.length >= 50 ? "text-yellow-500" : "text-gray-400"}`}>
-                    {seoTitle.length}/60
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400 uppercase tracking-wider">
-                    Meta Description
-                  </label>
-                  <textarea
-                    value={seoDesc}
-                    onChange={(e) => {
-                      setSeoDesc(e.target.value);
-                      markDirty();
-                    }}
-                    placeholder="Meta description..."
-                    rows={4}
-                    className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 resize-none"
-                  />
-                  <p className={`text-xs text-right ${seoDesc.length > 160 ? "text-red-500" : seoDesc.length >= 140 ? "text-yellow-500" : "text-gray-400"}`}>
-                    {seoDesc.length}/160
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end px-5 py-4 border-t border-gray-200 shrink-0">
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PageSettingsModal
+        open={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        linkUrl={linkUrl}
+        onLinkUrlChange={handleLinkUrlChange}
+        slug={slug}
+        onSlugChange={setSlug}
+        seoTitle={seoTitle}
+        onSeoTitleChange={setSeoTitle}
+        seoDesc={seoDesc}
+        onSeoDescChange={setSeoDesc}
+        language={language}
+        filteredUrls={filteredUrls}
+        urlMode={urlMode}
+        onUrlModeChange={setUrlMode}
+        markDirty={markDirty}
+      />
 
       {/* Publish progress modal */}
       <PublishModal

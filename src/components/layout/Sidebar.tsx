@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Library, BookOpen, Video, Rocket } from "lucide-react";
+import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Library, BookOpen, Video, Rocket, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -54,6 +54,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
       ],
     },
     { href: "/products", label: "Products", icon: Package },
+    { href: "/assets", label: "Assets", icon: FolderOpen },
     { href: "/stock", label: "Inventory", icon: Warehouse },
     { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
   ], [pipelineBadgeCount]);

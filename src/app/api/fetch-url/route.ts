@@ -249,12 +249,18 @@ export async function POST(req: NextRequest) {
 
     const linkCount = $("a[href]").length;
 
+    // Detect source language from <html lang="..."> attribute
+    const htmlLang = ($("html").attr("lang") || "").toLowerCase().trim().split("-")[0];
+    const KNOWN_LANGS: Record<string, string> = { sv: "sv", da: "da", nb: "no", nn: "no", no: "no", en: "en", de: "de", fi: "fi", fr: "fr", es: "es" };
+    const detectedLanguage = KNOWN_LANGS[htmlLang] || "en";
+
     return NextResponse.json({
       html,
       title,
       textBlocks: textBlocks.slice(0, 100),
       images: images.slice(0, 30),
       linkCount,
+      detectedLanguage,
       stats: {
         textBlocks: textBlocks.length,
         images: images.length,

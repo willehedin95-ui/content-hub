@@ -1166,3 +1166,25 @@ export interface PixarAnimationProposal {
   ad_copy_primary: string;
   ad_copy_headline: string;
 }
+
+// ── Asset Bank ──────────────────────────────────────────────
+export type AssetCategory = "logo" | "icon" | "badge" | "background" | "other";
+
+export const ASSET_CATEGORIES: AssetCategory[] = [
+  "logo",
+  "icon",
+  "badge",
+  "background",
+  "other",
+];
+
+export interface Asset {
+  id: string;
+  name: string;
+  category: AssetCategory;
+  tags: string[];
+  url: string;
+  alt_text: string | null;
+  description: string | null;
+  created_at: string;
+}
