@@ -25,8 +25,8 @@ import {
 // ---------------------------------------------------------------------------
 
 export type ViewMode = "desktop" | "mobile";
-export type LeftTab = "layers" | "blocks" | "assets";
-export type RightTab = "design" | "seo" | "settings";
+export type LeftTab = "layers" | "components" | "settings";
+export type RightTab = "design" | "config" | "ai";
 export type AutoSaveStatus = "idle" | "saving" | "saved";
 export type BlockType = "text" | "image" | "cta" | "divider" | "video";
 
