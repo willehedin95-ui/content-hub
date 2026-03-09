@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useBuilder } from "../../BuilderContext";
 import { Bold, Italic, Underline, Strikethrough, Link2, RemoveFormatting } from "lucide-react";
+import LinkModal from "../../modals/LinkModal";
 
 const TEXT_TAGS = new Set([
   "H1", "H2", "H3", "H4", "H5", "H6",
@@ -11,7 +12,15 @@ const TEXT_TAGS = new Set([
 ]);
 
 export default function TextEditorControl() {
-  const { selectedElRef, hasSelectedEl, layersRefreshKey, pushUndoSnapshot, markDirty } = useBuilder();
+  const {
+    selectedElRef,
+    hasSelectedEl,
+    layersRefreshKey,
+    pushUndoSnapshot,
+    markDirty,
+    showLinkModal,
+    setShowLinkModal
+  } = useBuilder();
   const editorRef = useRef<HTMLDivElement>(null);
   const [isTextEl, setIsTextEl] = useState(false);
   const syncingRef = useRef(false);
@@ -23,13 +32,15 @@ export default function TextEditorControl() {
   }, [hasSelectedEl, layersRefreshKey, selectedElRef]);
 
   // Sync content from canvas element to editor.
-  // NOTE: This is trusted content from the user's own page (same-origin iframe),
-  // not untrusted external input. The content is only editable by the page owner.
+  // SECURITY NOTE: Uses innerHTML which could be XSS vector if content is compromised.
+  // Mitigation: Content is from authenticated user's pages (same-origin, access-controlled).
+  // TODO: Consider DOMPurify.sanitize() for defense-in-depth in future update.
   useEffect(() => {
     const el = selectedElRef.current;
     if (!el || !TEXT_TAGS.has(el.tagName) || !editorRef.current) return;
     syncingRef.current = true;
-    editorRef.current.innerHTML = el.innerHTML;  // eslint-disable-line
+    // eslint-disable-next-line no-unsanitized/property
+    editorRef.current.innerHTML = el.innerHTML;
     syncingRef.current = false;
   }, [hasSelectedEl, layersRefreshKey, selectedElRef]);
 
@@ -38,10 +49,13 @@ export default function TextEditorControl() {
     if (syncingRef.current) return;
     const el = selectedElRef.current;
     if (!el || !editorRef.current) return;
-    const newContent = editorRef.current.innerHTML;  // eslint-disable-line
-    if (el.innerHTML !== newContent) {  // eslint-disable-line
+    // eslint-disable-next-line no-unsanitized/property
+    const newContent = editorRef.current.innerHTML;
+    // eslint-disable-next-line no-unsanitized/property
+    if (el.innerHTML !== newContent) {
       pushUndoSnapshot();
-      el.innerHTML = newContent;  // eslint-disable-line
+      // eslint-disable-next-line no-unsanitized/property
+      el.innerHTML = newContent;
       markDirty();
     }
   }, [selectedElRef, pushUndoSnapshot, markDirty]);
@@ -54,8 +68,15 @@ export default function TextEditorControl() {
   }
 
   function handleLink() {
-    const url = window.prompt("Enter URL:");
-    if (url) execCmd("createLink", url);
+    setShowLinkModal(true);
+  }
+
+  function handleInsertLink(url: string) {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand("createLink", false, url);
+    syncToCanvas();
+    setShowLinkModal(false);
   }
 
   if (!isTextEl) return null;
@@ -97,9 +118,15 @@ export default function TextEditorControl() {
         ref={editorRef}
         contentEditable
         onInput={syncToCanvas}
-        onBlur={syncToCanvas}
         className="w-full min-h-[60px] max-h-[200px] overflow-y-auto border border-gray-200 border-t-0 rounded-b-md px-2.5 py-2 text-xs text-gray-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 [&_b]:font-bold [&_i]:italic [&_u]:underline [&_a]:text-indigo-600 [&_a]:underline"
         suppressContentEditableWarning
+      />
+
+      {/* Link Modal */}
+      <LinkModal
+        show={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        onInsert={handleInsertLink}
       />
     </div>
   );
