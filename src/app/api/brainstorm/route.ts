@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { mode, product: productSlug } = body;
   const count = Math.min(Math.max(body.count ?? 3, 1), 5);
+  const competitorVariations = Math.min(Math.max(body.count ?? 1, 1), 10);
 
   if (!productSlug) {
     return NextResponse.json({ error: "product is required" }, { status: 400 });
@@ -134,12 +135,13 @@ export async function POST(req: NextRequest) {
   // FROM COMPETITOR AD — separate code path (vision + image generation)
   // -----------------------------------------------------------------------
   if (mode === "from_competitor_ad") {
-    const competitorImageUrl: string | undefined = body.competitor_image_url;
+    const competitorImageUrls: string[] = body.competitor_image_urls
+      ?? (body.competitor_image_url ? [body.competitor_image_url] : []);
     const competitorAdCopy: string | undefined = body.competitor_ad_copy;
 
-    if (!competitorImageUrl) {
+    if (competitorImageUrls.length === 0) {
       return NextResponse.json(
-        { error: "competitor_image_url is required for from_competitor_ad mode" },
+        { error: "competitor_image_urls is required for from_competitor_ad mode" },
         { status: 400 }
       );
     }
@@ -152,11 +154,13 @@ export async function POST(req: NextRequest) {
       segments,
       mode,
       hookInspiration,
-      learningsContext
+      learningsContext,
+      competitorImageUrls.length,
+      competitorVariations
     );
 
     const userPrompt = buildBrainstormUserPrompt(
-      { ...body, count },
+      { ...body, count: competitorVariations, competitor_image_urls: competitorImageUrls },
       segments,
       undefined, // no existing concepts needed
       rejectedConcepts
@@ -178,7 +182,7 @@ export async function POST(req: NextRequest) {
 
         const client = new Anthropic({ apiKey });
 
-        // Call Claude Vision — image + text content blocks
+        // Call Claude Vision — image(s) + text content blocks
         const response = await client.messages.create({
           model: CLAUDE_MODEL,
           max_tokens: 8000,
@@ -187,8 +191,11 @@ export async function POST(req: NextRequest) {
           messages: [{
             role: "user",
             content: [
-              { type: "image", source: { type: "url", url: competitorImageUrl } },
-              { type: "text", text: userPrompt },
+              ...competitorImageUrls.map((url) => ({
+                type: "image" as const,
+                source: { type: "url" as const, url },
+              })),
+              { type: "text" as const, text: userPrompt },
             ],
           }],
         });
@@ -220,6 +227,7 @@ export async function POST(req: NextRequest) {
             suggested_tags: string[];
           };
           image_prompts: Array<{
+            source_index: number;
             prompt: string;
             hook_text: string;
             headline_text: string;
@@ -267,7 +275,8 @@ export async function POST(req: NextRequest) {
             purpose: "brainstorm_competitor_ad",
             mode,
             product: productSlug,
-            competitor_image_url: competitorImageUrl,
+            competitor_image_urls: competitorImageUrls,
+            competitor_image_count: competitorImageUrls.length,
             image_prompts_count: parsed.image_prompts.length,
           },
         });
@@ -317,7 +326,7 @@ export async function POST(req: NextRequest) {
             visual_direction: parsed.concept.visual_direction ?? null,
             pending_competitor_gen: {
               image_prompts: parsed.image_prompts,
-              competitor_image_url: competitorImageUrl,
+              competitor_image_urls: competitorImageUrls,
               product_hero_urls: productHeroUrls,
             },
           })

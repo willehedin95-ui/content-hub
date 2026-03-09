@@ -267,8 +267,8 @@ export interface ImageJob {
   ad_copy_translations?: ConceptCopyTranslations;
   compliance_result?: ComplianceResult | null;
   pending_competitor_gen?: {
-    image_prompts: Array<{ prompt: string; hook_text: string; headline_text: string }>;
-    competitor_image_url: string;
+    image_prompts: Array<{ source_index: number; prompt: string; hook_text: string; headline_text: string }>;
+    competitor_image_urls: string[];
     product_hero_urls: string[];
   } | null;
   launchpad_priority?: number | null;
@@ -658,6 +658,7 @@ export interface BrainstormRequest {
   focus_awareness?: AwarenessLevel;
   // From Competitor Ad mode
   competitor_image_url?: string;
+  competitor_image_urls?: string[];
   competitor_ad_copy?: string;
 }
 

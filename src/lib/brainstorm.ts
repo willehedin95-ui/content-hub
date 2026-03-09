@@ -959,7 +959,9 @@ function buildFromCompetitorAdSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  imageCount?: number,
+  variationsPerImage?: number
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
@@ -1019,7 +1021,24 @@ Create an original concept for OUR product that:
 - Maintains the emotional energy of the original while being completely original in content and problem domain
 
 ### 5. NANO BANANA IMAGE PROMPT GENERATION
-Generate 3-5 prompts for the Nano Banana AI image generator (nano-banana-2) that reproduce the competitor's visual FORMAT with our product's content.
+
+You will receive ${imageCount ?? 1} competitor image(s). For EACH image, generate exactly ${variationsPerImage ?? 1} visually distinct Nano Banana prompt(s).
+
+${(imageCount ?? 1) > 1 ? `Since there are ${imageCount} images in this competitor concept, analyze them as a COHESIVE SET. Understand the overall concept, then generate prompts for each image that maintain the set's visual consistency while adapting for our product.` : ""}
+
+Each variation of the same image MUST differ in visual composition — NOT just rewording. Vary these elements across variations:
+- Camera angle / framing (close-up, medium shot, wide, overhead, low angle)
+- Lighting setup (warm morning light, cool studio, harsh directional, soft diffused)
+- Background treatment (different textures, environments, or color temperatures)
+- Composition balance (product placement, negative space, asymmetry)
+
+Minor hook text tweaks are encouraged across variations (same core message, different emphasis or wording).
+
+Total image_prompts entries: ${(imageCount ?? 1)} images x ${variationsPerImage ?? 1} variations = ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries.
+
+Each entry MUST include "source_index" (0-based) indicating which uploaded image it is a variation of.
+
+Generate prompts for the Nano Banana AI image generator (nano-banana-2) that reproduce the competitor's visual FORMAT with our product's content.
 
 **Nano Banana Prompt Rules:**
 - Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
@@ -1073,9 +1092,10 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
   },
   "image_prompts": [
     {
-      "prompt": "Nano Banana prompt (2-4 dense sentences, subject first, specific lighting/texture/mood). IMPORTANT: if the competitor ad has text baked into the image (handwritten, marker, tattoo, sign), your prompt MUST include the adapted text for our product — otherwise Nano Banana copies the competitor's text from the reference image.",
-      "hook_text": "Main text overlay for the ad image — if this text appears IN the image (handwritten etc.), it must also be described in the prompt field above",
-      "headline_text": "Secondary text line (subheadline, CTA, or supporting text)"
+      "source_index": 0,
+      "prompt": "Nano Banana prompt (2-4 dense sentences)...",
+      "hook_text": "Main text overlay...",
+      "headline_text": "Secondary text line..."
     }
   ]
 }
@@ -1089,8 +1109,10 @@ CRITICAL RULES:
 - The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
 - **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product. This text must be about OUR product's benefits (sleep/snoring/neck pain), NOT a reworded version of the competitor's claims. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
 - Return ONLY valid JSON, no markdown fences, no explanation text
-- Generate exactly 3-5 entries in the image_prompts array, each with a different hook_text variation
-- Each image prompt should describe a slightly different composition or angle while maintaining the competitor's core visual style`;
+- Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
+- Each entry MUST have a source_index (0-based) matching the uploaded image it is based on
+- For each source image, generate exactly ${variationsPerImage ?? 1} visually distinct variation(s)
+- Each variation MUST differ in visual composition (angle, lighting, framing), not just text`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1133,8 +1155,18 @@ export function buildBrainstormSystemPrompt(
   segments: ProductSegment[],
   mode: BrainstormMode,
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  competitorImageCount?: number,
+  variationsPerImage?: number
 ): string {
+  // from_competitor_ad needs extra params (image count + variations)
+  if (mode === "from_competitor_ad") {
+    return buildFromCompetitorAdSystem(
+      product, productBrief, guidelines, segments,
+      hookInspiration, learningsContext,
+      competitorImageCount, variationsPerImage
+    );
+  }
   const builder = SYSTEM_BUILDERS[mode];
   return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 }
@@ -1285,14 +1317,17 @@ export function buildBrainstormUserPrompt(
 
     case "from_competitor_ad": {
       parts.push("## SWIPE: FROM COMPETITOR AD");
+      const imgCount = request.competitor_image_urls?.length ?? 1;
       parts.push(
-        "Analyze the competitor ad image attached below. Reverse-engineer its visual structure, identify why it works, and create an adapted version for our product."
+        imgCount > 1
+          ? `Analyze the ${imgCount} competitor ad images attached below as a cohesive concept set. Reverse-engineer their visual structure, identify why they work together, and create adapted versions for our product.`
+          : "Analyze the competitor ad image attached below. Reverse-engineer its visual structure, identify why it works, and create an adapted version for our product."
       );
       if (request.competitor_ad_copy) {
         parts.push(`\n### COMPETITOR AD COPY (from Meta Ads Library)\n${request.competitor_ad_copy.slice(0, 3000)}`);
         parts.push("Use this copy to understand the competitor's messaging approach. Do NOT copy their claims — adapt the structure and technique for our product.");
       }
-      parts.push(`\nGenerate 1 concept with ${count} image prompt variations.`);
+      parts.push(`\nGenerate 1 concept. For each of the ${imgCount} image(s), generate ${count} visual variation(s) = ${imgCount * count} total image prompts.`);
       break;
     }
 
