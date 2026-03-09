@@ -16,6 +16,14 @@ export default function LinkModal({ show, onClose, onInsert, initialUrl = "" }: 
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Reset state when modal opens with initialUrl
+  useEffect(() => {
+    if (show) {
+      setUrl(initialUrl);
+      setError("");
+    }
+  }, [show, initialUrl]);
+
   // Validate URL
   useEffect(() => {
     if (!url.trim()) {
@@ -71,7 +79,7 @@ export default function LinkModal({ show, onClose, onInsert, initialUrl = "" }: 
     }
   }
 
-  if (!show) return null;
+  if (!show || typeof document === 'undefined') return null;
 
   const isValid = url.trim() && !error;
 
