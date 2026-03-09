@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useBuilder } from "../BuilderContext";
-import { EyeOff, Trash2, Copy, X, Link2, Image, Video } from "lucide-react";
+import { EyeOff, Trash2, Copy, X, Link2, Image, Video, Type, Clipboard, ClipboardPaste } from "lucide-react";
 
 export default function ConfigTab() {
   const {
@@ -14,6 +14,9 @@ export default function ConfigTab() {
     handleHideElement,
     handleDeleteElement,
     handleDuplicateElement,
+    handleCopyStyles,
+    handlePasteStyles,
+    hasCopiedStyles,
     deselectElement,
     layersRefreshKey,
   } = useBuilder();
@@ -25,6 +28,9 @@ export default function ConfigTab() {
   // --- Image editing state ---
   const [imgSrc, setImgSrc] = useState("");
   const [imgAlt, setImgAlt] = useState("");
+
+  // --- Text editing state ---
+  const [textContent, setTextContent] = useState("");
 
   // --- Video editing state ---
   const [videoSrc, setVideoSrc] = useState("");
@@ -38,6 +44,8 @@ export default function ConfigTab() {
   const isLink = !!linkEl;
   const isImage = el?.tagName === "IMG";
   const isVideo = el?.tagName === "VIDEO" || el?.tagName === "SOURCE";
+  const TEXT_TAGS = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "P", "SPAN", "LI", "BUTTON", "A", "BLOCKQUOTE", "FIGCAPTION", "LABEL"]);
+  const isTextElement = el ? TEXT_TAGS.has(el.tagName) : false;
 
   // Sync state from DOM when selection changes
   useEffect(() => {
@@ -69,6 +77,16 @@ export default function ConfigTab() {
     }
     if (currentEl.tagName === "SOURCE") {
       setVideoSrc(currentEl.getAttribute("src") || "");
+    }
+
+    // Text content
+    if (TEXT_TAGS.has(currentEl.tagName)) {
+      // Get direct text — for elements with only text children
+      let directText = "";
+      for (const node of Array.from(currentEl.childNodes)) {
+        if (node.nodeType === 3) directText += node.textContent || "";
+      }
+      setTextContent(directText.trim() || currentEl.textContent?.trim() || "");
     }
   }, [hasSelectedEl, selectedElRef, layersRefreshKey]);
 
@@ -110,6 +128,29 @@ export default function ConfigTab() {
       (currentEl as HTMLImageElement).alt = newAlt;
       markDirty();
     }
+  }
+
+  // --- Text handlers ---
+  function handleTextContentChange(newText: string) {
+    setTextContent(newText);
+    const currentEl = selectedElRef.current;
+    if (!currentEl) return;
+    pushUndoSnapshot();
+    // If the element has only text children, replace all text nodes
+    const childNodes = Array.from(currentEl.childNodes);
+    const hasOnlyText = childNodes.every((n) => n.nodeType === 3 || n.nodeType === 8);
+    if (hasOnlyText) {
+      currentEl.textContent = newText;
+    } else {
+      // Find and replace the first text node
+      for (const node of childNodes) {
+        if (node.nodeType === 3 && node.textContent?.trim()) {
+          node.textContent = newText;
+          break;
+        }
+      }
+    }
+    markDirty();
   }
 
   // --- Video handlers ---
@@ -226,6 +267,22 @@ export default function ConfigTab() {
         </div>
       )}
 
+      {/* Text Content Editing */}
+      {isTextElement && (
+        <div className="px-4 py-3 space-y-2 border-b border-gray-100">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            <Type className="w-3 h-3" /> Text Content
+          </label>
+          <textarea
+            value={textContent}
+            onChange={(e) => handleTextContentChange(e.target.value)}
+            className={`${inputClass} min-h-[60px] resize-y`}
+            placeholder="Enter text..."
+            rows={2}
+          />
+        </div>
+      )}
+
       {/* Element Actions — always shown */}
       <div className="px-4 py-3 space-y-2">
         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -245,6 +302,21 @@ export default function ConfigTab() {
             title="Hide element"
           >
             <EyeOff className="w-3 h-3" /> Hide
+          </button>
+          <button
+            onClick={handleCopyStyles}
+            className="flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-teal-200 text-teal-600 hover:bg-teal-50 transition-colors"
+            title="Copy styles from this element"
+          >
+            <Clipboard className="w-3 h-3" /> Copy Style
+          </button>
+          <button
+            onClick={handlePasteStyles}
+            disabled={!hasCopiedStyles}
+            className="flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-teal-200 text-teal-600 hover:bg-teal-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Paste copied styles to this element"
+          >
+            <ClipboardPaste className="w-3 h-3" /> Paste Style
           </button>
           <button
             onClick={handleDeleteElement}

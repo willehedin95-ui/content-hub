@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Monitor, Smartphone } from "lucide-react";
+import { useBuilder } from "../BuilderContext";
 import SpacingControl from "./controls/SpacingControl";
 import SizeControl from "./controls/SizeControl";
 import TypographyControl from "./controls/TypographyControl";
@@ -39,8 +40,46 @@ function Section({
 }
 
 export default function DesignTab() {
+  const { viewMode, setViewMode } = useBuilder();
+
   return (
     <div>
+      {/* Responsive breakpoint indicator */}
+      <div className="px-4 py-2 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            Editing styles for
+          </span>
+          <div className="flex items-center bg-white rounded border border-gray-200 p-0.5">
+            <button
+              onClick={() => setViewMode("desktop")}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                viewMode === "desktop"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <Monitor className="w-3 h-3" />
+              Desktop
+            </button>
+            <button
+              onClick={() => setViewMode("mobile")}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                viewMode === "mobile"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <Smartphone className="w-3 h-3" />
+              Mobile
+            </button>
+          </div>
+        </div>
+        <p className="text-[9px] text-gray-400 mt-0.5">
+          {viewMode === "desktop" ? "min-width: 769px" : "max-width: 768px"}
+        </p>
+      </div>
+
       <Section title="Layout" defaultOpen={false}>
         <LayoutControl />
       </Section>

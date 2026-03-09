@@ -192,6 +192,11 @@ export interface BuilderContextValue {
   handleFixQuality: () => Promise<void>;
   doRetranslate: () => Promise<void>;
 
+  // --- Copy/paste styles ---
+  handleCopyStyles: () => void;
+  handlePasteStyles: () => void;
+  hasCopiedStyles: boolean;
+
   // --- Convenience methods ---
   selectElementInIframe: (el: HTMLElement) => void;
   deselectElement: () => void;
@@ -293,6 +298,7 @@ export function BuilderProvider({
   const savingRef = useRef(false);
   const prevLinkUrl = useRef("");
   const excludeModeRef = useRef(false);
+  const copiedStylesRef = useRef<Record<string, string> | null>(null);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // -----------------------------------------------------------------------
@@ -354,6 +360,9 @@ export function BuilderProvider({
   // Autosave
   const [autoSaveStatus, setAutoSaveStatus] =
     useState<AutoSaveStatus>("idle");
+
+  // Copy/paste styles
+  const [hasCopiedStyles, setHasCopiedStyles] = useState(false);
 
   // --- New builder layout state ---
   const [zoom, setZoom] = useState(100);
@@ -1209,6 +1218,41 @@ export function BuilderProvider({
   }
 
   // -----------------------------------------------------------------------
+  // Copy/paste styles
+  // -----------------------------------------------------------------------
+
+  const COPYABLE_STYLES = [
+    "font-size", "font-weight", "font-family", "color", "background-color",
+    "text-align", "line-height", "letter-spacing", "text-decoration",
+    "text-transform", "border", "border-radius", "padding", "margin",
+    "opacity", "box-shadow",
+  ];
+
+  function handleCopyStyles() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.defaultView) return;
+    const cs = doc.defaultView.getComputedStyle(el);
+    const styles: Record<string, string> = {};
+    for (const prop of COPYABLE_STYLES) {
+      styles[prop] = cs.getPropertyValue(prop);
+    }
+    copiedStylesRef.current = styles;
+    setHasCopiedStyles(true);
+  }
+
+  function handlePasteStyles() {
+    const el = selectedElRef.current;
+    if (!el || !copiedStylesRef.current) return;
+    pushUndoSnapshot();
+    for (const [prop, value] of Object.entries(copiedStylesRef.current)) {
+      el.style.setProperty(prop, value);
+    }
+    markDirty();
+  }
+
+  // -----------------------------------------------------------------------
   // Convenience methods
   // -----------------------------------------------------------------------
 
@@ -1517,6 +1561,11 @@ export function BuilderProvider({
     runQualityAnalysis,
     handleFixQuality,
     doRetranslate,
+
+    // Copy/paste styles
+    handleCopyStyles,
+    handlePasteStyles,
+    hasCopiedStyles,
 
     // Convenience methods
     selectElementInIframe,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronDown, Eye, EyeOff, MousePointer } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { ChevronDown, Eye, EyeOff, GripVertical, MousePointer, Search, X } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
 
 // ---------------------------------------------------------------------------
@@ -146,6 +146,24 @@ function buildTree(
 }
 
 // ---------------------------------------------------------------------------
+// Filter tree by search query
+// ---------------------------------------------------------------------------
+
+function filterTree(nodes: LayerNode[], query: string): LayerNode[] {
+  const q = query.toLowerCase();
+  const result: LayerNode[] = [];
+  for (const node of nodes) {
+    const tagLabel = (TAG_LABELS[node.tag] || node.tag).toLowerCase();
+    const selfMatch = tagLabel.includes(q) || node.label.toLowerCase().includes(q);
+    const filteredChildren = filterTree(node.children, query);
+    if (selfMatch || filteredChildren.length > 0) {
+      result.push({ ...node, children: filteredChildren });
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // LayerItem
 // ---------------------------------------------------------------------------
 
@@ -154,11 +172,19 @@ function LayerItem({
   selectedEl,
   onSelect,
   onToggleVisibility,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  dragOverEl,
 }: {
   node: LayerNode;
   selectedEl: HTMLElement | null;
   onSelect: (el: HTMLElement) => void;
   onToggleVisibility: (el: HTMLElement) => void;
+  onDragStart: (el: HTMLElement) => void;
+  onDragOver: (e: React.DragEvent, el: HTMLElement) => void;
+  onDrop: (el: HTMLElement) => void;
+  dragOverEl: HTMLElement | null;
 }) {
   // NAV and LIST at depth 0-1 start collapsed (nav menus are noisy)
   const defaultExpanded = !(
@@ -169,19 +195,40 @@ function LayerItem({
   const isSelected = node.el === selectedEl;
   const hasChildren = node.children.length > 0;
   const tagLabel = TAG_LABELS[node.tag] || node.tag;
+  const isDragOver = dragOverEl === node.el;
 
   return (
     <div>
       <div
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          onDragStart(node.el);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDragOver(e, node.el);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDrop(node.el);
+        }}
         className={`group flex items-center gap-1 py-0.5 pr-1 rounded cursor-pointer transition-colors ${
-          isSelected
-            ? "bg-indigo-50 text-indigo-700"
-            : node.hidden
-              ? "text-gray-300"
-              : "text-gray-600 hover:bg-gray-50"
+          isDragOver
+            ? "bg-indigo-100 border-t-2 border-indigo-400"
+            : isSelected
+              ? "bg-indigo-50 text-indigo-700"
+              : node.hidden
+                ? "text-gray-300"
+                : "text-gray-600 hover:bg-gray-50"
         }`}
         style={{ paddingLeft: `${node.depth * 12 + 4}px` }}
       >
+        <span className="p-0.5 shrink-0 cursor-grab opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
+          <GripVertical className="w-3 h-3" />
+        </span>
         {hasChildren ? (
           <button
             onClick={(e) => {
@@ -249,6 +296,10 @@ function LayerItem({
               selectedEl={selectedEl}
               onSelect={onSelect}
               onToggleVisibility={onToggleVisibility}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              dragOverEl={dragOverEl}
             />
           ))}
         </div>
@@ -272,9 +323,14 @@ export default function LayersTab() {
     toggleRevealHidden,
     handleToggleLayerVisibility,
     selectElementInIframe,
+    pushUndoSnapshot,
+    markDirty,
   } = useBuilder();
 
   const [layers, setLayers] = useState<LayerNode[]>([]);
+  const [search, setSearch] = useState("");
+  const dragSourceRef = useRef<HTMLElement | null>(null);
+  const [dragOverEl, setDragOverEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument;
@@ -286,13 +342,57 @@ export default function LayersTab() {
     setLayers(tree);
   }, [iframeRef, layersRefreshKey, hasSelectedEl]);
 
+  const filteredLayers = useMemo(
+    () => (search.trim() ? filterTree(layers, search.trim()) : layers),
+    [layers, search]
+  );
+
   function handleSelect(el: HTMLElement) {
     selectElementInIframe(el);
     el.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  function handleDragStart(el: HTMLElement) {
+    dragSourceRef.current = el;
+  }
+
+  function handleDragOver(e: React.DragEvent, el: HTMLElement) {
+    setDragOverEl(el);
+  }
+
+  function handleDrop(targetEl: HTMLElement) {
+    const sourceEl = dragSourceRef.current;
+    setDragOverEl(null);
+    dragSourceRef.current = null;
+    if (!sourceEl || sourceEl === targetEl) return;
+    if (sourceEl.contains(targetEl) || targetEl.contains(sourceEl)) return;
+    pushUndoSnapshot();
+    targetEl.parentNode?.insertBefore(sourceEl, targetEl);
+    markDirty();
+  }
+
   return (
     <div className="px-3 py-3">
+      {/* Search input */}
+      <div className="relative mb-2">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter layers..."
+          className="w-full pl-7 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-indigo-400 placeholder:text-gray-400"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
       {/* Hidden elements banner */}
       {hiddenCount > 0 && (
         <div className="flex items-center justify-between mb-2 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-md">
@@ -313,15 +413,23 @@ export default function LayersTab() {
           <MousePointer className="w-3 h-3" />
           Loading page structure...
         </div>
+      ) : filteredLayers.length === 0 ? (
+        <div className="text-xs text-gray-400 py-2 text-center">
+          No matching elements
+        </div>
       ) : (
         <div className="space-y-0">
-          {layers.map((node, i) => (
+          {filteredLayers.map((node, i) => (
             <LayerItem
               key={i}
               node={node}
               selectedEl={hasSelectedEl ? selectedElRef.current : null}
               onSelect={handleSelect}
               onToggleVisibility={handleToggleLayerVisibility}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              dragOverEl={dragOverEl}
             />
           ))}
         </div>

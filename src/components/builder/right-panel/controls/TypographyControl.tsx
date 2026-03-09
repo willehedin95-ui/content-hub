@@ -16,6 +16,12 @@ const WEIGHT_OPTIONS = [
   { value: "900", label: "900 - Black" },
 ];
 
+const COLOR_PRESETS = [
+  "#000000", "#ffffff", "#1f2937", "#374151", "#6b7280",
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
+  "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e",
+];
+
 const DECORATION_OPTIONS = ["none", "underline", "line-through", "overline"];
 const TRANSFORM_OPTIONS = ["none", "uppercase", "lowercase", "capitalize"];
 
@@ -172,6 +178,24 @@ export default function TypographyControl() {
             className={`${inputClass} flex-1`}
             placeholder="#000000"
           />
+        </div>
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {COLOR_PRESETS.map((c) => (
+            <button
+              key={c}
+              onClick={() => {
+                setTextColor(c);
+                applyStyle("color", c);
+              }}
+              className={`w-5 h-5 rounded-sm border transition-all ${
+                textColor === c
+                  ? "border-indigo-500 ring-1 ring-indigo-300"
+                  : "border-gray-200 hover:border-gray-400"
+              }`}
+              style={{ backgroundColor: c }}
+              title={c}
+            />
+          ))}
         </div>
       </div>
 

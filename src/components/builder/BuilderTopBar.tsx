@@ -78,7 +78,7 @@ export default function BuilderTopBar() {
           onClick={handleUndo}
           disabled={undoCount === 0}
           className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Undo"
+          title="Undo (Ctrl+Z)"
         >
           <Undo2 className="w-4 h-4" />
         </button>
@@ -86,7 +86,7 @@ export default function BuilderTopBar() {
           onClick={handleRedo}
           disabled={redoCount === 0}
           className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Redo"
+          title="Redo (Ctrl+Y)"
         >
           <Redo2 className="w-4 h-4" />
         </button>

@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useBuilder } from "../../BuilderContext";
 
+const COLOR_PRESETS = [
+  "#ffffff", "#000000", "#f3f4f6", "#e5e7eb", "#1f2937",
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
+  "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e",
+];
+
 const SIZE_OPTIONS = ["cover", "contain", "auto"];
 const POSITION_OPTIONS = [
   "center",
@@ -124,6 +130,21 @@ export default function BackgroundControl() {
             className={`${inputClass} flex-1`}
             placeholder="#ffffff"
           />
+        </div>
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {COLOR_PRESETS.map((c) => (
+            <button
+              key={c}
+              onClick={() => handleColorChange(c, bgOpacity)}
+              className={`w-5 h-5 rounded-sm border transition-all ${
+                bgColor === c
+                  ? "border-indigo-500 ring-1 ring-indigo-300"
+                  : "border-gray-200 hover:border-gray-400"
+              }`}
+              style={{ backgroundColor: c }}
+              title={c}
+            />
+          ))}
         </div>
       </div>
 
