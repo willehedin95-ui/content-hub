@@ -634,21 +634,13 @@ export function BuilderProvider({
   }
 
   function handleDeleteElement() {
-    setConfirmAction({
-      title: "Delete element",
-      message:
-        "Remove this element from the page? You can revert by reloading.",
-      variant: "danger",
-      action: () => {
-        setConfirmAction(null);
-        const el = selectedElRef.current;
-        if (!el) return;
-        el.remove();
-        selectedElRef.current = null;
-        setHasSelectedEl(false);
-        markDirty();
-      },
-    });
+    const el = selectedElRef.current;
+    if (!el) return;
+    pushUndoSnapshot();
+    el.remove();
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+    markDirty();
   }
 
   function toggleRevealHidden() {
@@ -684,6 +676,18 @@ export function BuilderProvider({
       const css = el.textContent || "";
       if (css.includes("data-cc-pad-skip") && css.includes("dashed"))
         el.remove();
+    });
+
+    // Strip third-party scripts/widgets from editor (Freshchat, analytics, etc.)
+    // They run live in the iframe and can't be selected/deleted. Keep only
+    // editor-injected scripts (data-cc-*). Originals are preserved in saved HTML.
+    doc.querySelectorAll("script").forEach((s) => {
+      if (!s.hasAttribute("data-cc-injected")) s.remove();
+    });
+    // Also remove iframes injected by widgets (chat widgets, trackers)
+    doc.querySelectorAll("iframe:not([data-cc-injected])").forEach((f) => {
+      const src = f.getAttribute("src") || "";
+      if (!src.startsWith("/api/preview")) f.remove();
     });
 
     // Convert clean data-pad attributes back to editor data-cc-padded
@@ -849,6 +853,9 @@ export function BuilderProvider({
 
     // Keyboard shortcut handler inside iframe
     doc.addEventListener("keydown", function (e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable;
+
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         undoRef.current?.();
@@ -856,6 +863,10 @@ export function BuilderProvider({
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         redoRef.current?.();
+      }
+      if ((e.key === "Backspace" || e.key === "Delete") && !isTyping && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        deleteRef.current?.();
       }
     });
 
@@ -879,9 +890,6 @@ export function BuilderProvider({
           return;
         }
 
-        // Skip images/videos — handled by iframe click handlers
-        if (target.tagName === "IMG" || target.tagName === "VIDEO") return;
-
         // Clicking body/html — deselect
         if (target === body || target.tagName === "HTML") {
           if (selectedElRef.current) {
@@ -904,6 +912,7 @@ export function BuilderProvider({
         target.setAttribute("data-cc-selected", "");
         selectedElRef.current = target;
         setHasSelectedEl(true);
+        setLayersRefreshKey((k) => k + 1);
       },
       false
     );
@@ -1264,6 +1273,7 @@ export function BuilderProvider({
     el.setAttribute("data-cc-selected", "");
     selectedElRef.current = el;
     setHasSelectedEl(true);
+    setLayersRefreshKey((k) => k + 1);
   }
 
   function deselectElement() {
@@ -1328,6 +1338,13 @@ export function BuilderProvider({
           width: e.data.width,
           height: e.data.height,
         });
+        // Also select the image element so it highlights in canvas + layers
+        const doc = iframeRef.current?.contentDocument;
+        if (doc) {
+          const imgs = doc.querySelectorAll("img");
+          const imgEl = imgs[e.data.index] as HTMLElement | undefined;
+          if (imgEl) selectElementInIframe(imgEl);
+        }
       }
       if (e.data?.type === "cc-video-click") {
         setClickedImage(null);
@@ -1337,6 +1354,13 @@ export function BuilderProvider({
           width: e.data.width,
           height: e.data.height,
         });
+        // Also select the video element
+        const doc = iframeRef.current?.contentDocument;
+        if (doc) {
+          const videos = doc.querySelectorAll("video");
+          const videoEl = videos[e.data.index] as HTMLElement | undefined;
+          if (videoEl) selectElementInIframe(videoEl);
+        }
       }
     }
     window.addEventListener("message", handleMessage);
@@ -1354,18 +1378,23 @@ export function BuilderProvider({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty, bgImageTranslating]);
 
-  // Keyboard shortcuts (Ctrl+S, Ctrl+Z, Ctrl+Shift+Z)
+  // Keyboard shortcuts (Ctrl+S, Ctrl+Z, Ctrl+Shift+Z, Backspace/Delete)
   const saveRef = useRef<(() => void) | null>(null);
   saveRef.current = () => {
     if (!saving && !publishing && !retranslating) handleSave();
   };
   const undoRef = useRef<(() => void) | null>(null);
   const redoRef = useRef<(() => void) | null>(null);
+  const deleteRef = useRef<(() => void) | null>(null);
   undoRef.current = handleUndo;
   redoRef.current = handleRedo;
+  deleteRef.current = handleDeleteElement;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable;
+
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         saveRef.current?.();
@@ -1377,6 +1406,10 @@ export function BuilderProvider({
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         redoRef.current?.();
+      }
+      if ((e.key === "Backspace" || e.key === "Delete") && !isTyping && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        deleteRef.current?.();
       }
     }
     window.addEventListener("keydown", handleKeyDown);

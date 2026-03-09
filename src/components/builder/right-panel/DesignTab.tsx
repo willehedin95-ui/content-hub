@@ -10,6 +10,7 @@ import BackgroundControl from "./controls/BackgroundControl";
 import BorderControl from "./controls/BorderControl";
 import EffectsControl from "./controls/EffectsControl";
 import LayoutControl from "./controls/LayoutControl";
+import TextEditorControl from "./controls/TextEditorControl";
 
 function Section({
   title,
@@ -78,6 +79,11 @@ export default function DesignTab() {
         <p className="text-[9px] text-gray-400 mt-0.5">
           {viewMode === "desktop" ? "min-width: 769px" : "max-width: 768px"}
         </p>
+      </div>
+
+      {/* Rich text editor — shown for text elements */}
+      <div className="px-4 py-3 border-b border-gray-100">
+        <TextEditorControl />
       </div>
 
       <Section title="Layout" defaultOpen={false}>

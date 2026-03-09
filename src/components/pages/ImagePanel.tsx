@@ -71,6 +71,7 @@ export default function ImagePanel({
   const [error, setError] = useState("");
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [pickingFromBank, setPickingFromBank] = useState(false);
   const [pickingFromAssets, setPickingFromAssets] = useState(false);
@@ -188,7 +189,7 @@ export default function ImagePanel({
     onImageReplaced();
   }
 
-  /** Fire-and-forget: translate image via Kie AI */
+  /** Translate image via Kie AI — keeps panel open during generation */
   async function handleTranslate() {
     if (!clickedImage) return;
 
@@ -199,9 +200,8 @@ export default function ImagePanel({
     const imageToProcess = { ...clickedImage };
     const currentPrompt = prompt;
 
-    // Fire-and-forget: clear panel immediately
-    onClickedImageClear();
     setError("");
+    setGenerating(true);
     onImageTranslating?.(true);
 
     try {
@@ -223,9 +223,12 @@ export default function ImagePanel({
 
       const { newImageUrl } = await res.json();
       swapImageInIframe(imageToProcess.index, newImageUrl);
+      onClickedImageClear();
     } catch (err) {
       console.error("Background image translation failed:", err);
+      setError(err instanceof Error ? err.message : "Image translation failed");
     } finally {
+      setGenerating(false);
       onImageTranslating?.(false);
     }
   }
@@ -272,7 +275,7 @@ export default function ImagePanel({
     }
   }
 
-  /** Fire-and-forget: generate replacement image via Kie AI */
+  /** Generate replacement image via Kie AI — keeps panel open during generation */
   async function handleReplace() {
     if (!clickedImage || !prompt.trim()) return;
 
@@ -282,9 +285,8 @@ export default function ImagePanel({
       .filter((img) => img.category === "hero" || img.category === "detail")
       .map((img) => img.url);
 
-    // Fire-and-forget: clear panel immediately
-    onClickedImageClear();
     setError("");
+    setGenerating(true);
     onImageTranslating?.(true);
 
     try {
@@ -305,9 +307,12 @@ export default function ImagePanel({
 
       const { generatedUrl } = await res.json();
       swapImageInIframe(imageToProcess.index, generatedUrl);
+      onClickedImageClear();
     } catch (err) {
       console.error("Background image replacement failed:", err);
+      setError(err instanceof Error ? err.message : "Image generation failed");
     } finally {
+      setGenerating(false);
       onImageTranslating?.(false);
     }
   }
@@ -484,20 +489,26 @@ export default function ImagePanel({
       {mode === "translate" ? (
         <button
           onClick={handleTranslate}
-          disabled={uploading || !prompt.trim()}
+          disabled={uploading || generating || !prompt.trim()}
           className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
         >
-          <ImageIcon className="w-3.5 h-3.5" />
-          Translate Image
+          {generating ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Translating...</>
+          ) : (
+            <><ImageIcon className="w-3.5 h-3.5" /> Translate Image</>
+          )}
         </button>
       ) : (
         <button
           onClick={handleReplace}
-          disabled={uploading || analyzing || !prompt.trim()}
+          disabled={uploading || generating || analyzing || !prompt.trim()}
           className="w-full flex items-center justify-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
         >
-          <Wand2 className="w-3.5 h-3.5" />
-          Generate Replacement
+          {generating ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating...</>
+          ) : (
+            <><Wand2 className="w-3.5 h-3.5" /> Generate Replacement</>
+          )}
         </button>
       )}
 

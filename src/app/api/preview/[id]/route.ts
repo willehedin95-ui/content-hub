@@ -64,8 +64,7 @@ export async function GET(
   var style = document.createElement('style');
   style.setAttribute('data-cc-editor', 'true');
   style.textContent = [
-    '[data-cc-editable]:hover { outline: 2px dashed rgba(99,102,241,0.5); outline-offset: 2px; cursor: text; }',
-    '[data-cc-editable][contenteditable="true"] { outline: 2px solid rgba(99,102,241,0.8); outline-offset: 2px; }',
+    '[data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }',
     'img:not([data-cc-img-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
     'img[data-cc-img-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }',
     'video:not([data-cc-media-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
@@ -73,32 +72,13 @@ export async function GET(
   ].join('\\n');
   document.head.appendChild(style);
 
-  // Mark text-containing elements as editable
-  document.querySelectorAll('body *').forEach(function(el) {
-    if (SKIP.indexOf(el.tagName) !== -1) return;
-    var hasText = Array.from(el.childNodes).some(function(n) {
-      return n.nodeType === 3 && n.textContent.trim().length > 0;
-    });
-    if (hasText) el.setAttribute('data-cc-editable', '');
-  });
-
-  // Deactivate current editable element
-  function deactivate() {
-    if (activeEl) {
-      activeEl.contentEditable = 'false';
-      activeEl.removeAttribute('contenteditable');
-      activeEl = null;
-    }
-  }
-
-  // Handle clicks: text editing, image selection, and deactivation
+  // Handle clicks: image/video selection only (text editing handled via right panel)
   document.addEventListener('click', function(e) {
-    // Image click — send to parent for translation
+    // Image click — send to parent for image panel
     var img = e.target.closest('img');
     if (img && img.src && !img.src.startsWith('data:')) {
       e.preventDefault();
       e.stopPropagation();
-      deactivate();
       var allImgs = Array.from(document.querySelectorAll('img'));
       window.parent.postMessage({
         type: 'cc-image-click',
@@ -115,7 +95,6 @@ export async function GET(
     if (video) {
       e.preventDefault();
       e.stopPropagation();
-      deactivate();
       var allVideos = Array.from(document.querySelectorAll('video'));
       var videoSrc = video.src || (video.querySelector('source') || {}).src || '';
       window.parent.postMessage({
@@ -127,38 +106,7 @@ export async function GET(
       }, ORIGIN);
       return;
     }
-
-    // Text element click — enable editing
-    var el = e.target.closest('[data-cc-editable]');
-    if (el) {
-      if (activeEl && activeEl !== el) deactivate();
-      if (el.contentEditable !== 'true') {
-        el.contentEditable = 'true';
-        activeEl = el;
-        el.focus();
-      }
-      return;
-    }
-
-    // Clicked on nothing editable — deactivate
-    deactivate();
   });
-
-  // Track dirty state
-  var dirty = false;
-  document.addEventListener('input', function() {
-    if (!dirty) {
-      dirty = true;
-      window.parent.postMessage({ type: 'cc-dirty' }, ORIGIN);
-    }
-  });
-
-  // Strip rich formatting on paste
-  document.addEventListener('paste', function(e) {
-    e.preventDefault();
-    var text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
-  }, true);
 })();
 </script>`;
 
