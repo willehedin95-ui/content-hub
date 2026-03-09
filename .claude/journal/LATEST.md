@@ -1,44 +1,43 @@
-# Session: 2026-03-09 (evening) — Page Builder Redesign
+# Session: 2026-03-09 afternoon (session 4)
 
 ## What was done
-- **Full page builder redesign** — Replo-inspired, from brainstorm to working implementation in one session
-- Brainstormed with user: researched Replo's UI, proposed 3 approaches, user chose Approach B (New Layout Shell + Component Extraction with React Context)
-- Wrote design doc (`docs/plans/2026-03-09-page-builder-redesign-design.md`) and detailed 25-task implementation plan (`docs/plans/2026-03-09-page-builder-redesign-plan.md`)
-- Used Subagent-Driven Development to execute all 25 tasks on `feat/page-builder-redesign` branch
-- **21 new files, 5,355 total lines** across components:
-  - `BuilderContext.tsx` (1,530 lines) — all state extracted from monolith into React Context
-  - `BuilderShell.tsx` — four-zone layout grid
-  - `BuilderTopBar.tsx` — back, page name, undo/redo, device switcher, save/publish
-  - `BuilderCanvas.tsx` — iframe wrapper with responsive modes
-  - `BuilderStatusBar.tsx` — quality badge, autosave status, zoom controls
-  - Left sidebar: `LeftSidebar.tsx`, `LayersTab.tsx`, `ComponentsTab.tsx`, `SettingsTab.tsx`
-  - Right panel: `RightPanel.tsx`, `DesignTab.tsx`, `ConfigTab.tsx`, `AITab.tsx`
-  - 7 design controls: Spacing, Size, Typography, Background, Border, Effects, Layout
-  - `QualityPanel.tsx` — quality analysis overlay
-- Deleted 5 old editor files (ElementControls, PaddingControls, PageSettingsModal, LayersPanel, backup)
-- Build passes, TypeScript clean, visual verification done via screenshot
-- 9 commits on feature branch
+- Designed and implemented **multi-image + variation count** for the "From Competitor Ad" brainstorm mode
+- Full brainstorming phase: clarified user intent, proposed approaches, got design approval
+- Wrote design doc and implementation plan (7 tasks)
+- Executed all 7 tasks via subagent-driven development with spec + code quality reviews
+- Fixed quality issues: added 10-image cap (`MAX_COMPETITOR_IMAGES`), extracted `totalCompetitorImages` derived var
+
+## Changes (5 commits, local — not pushed)
+1. `d274a03` — Design doc
+2. `ed1e985` — Implementation plan
+3. `33da325` — UI: multi-image state, upload area, handleGenerate
+4. `9ba911d` — API + prompt: accept `competitor_image_urls[]`, dynamic prompt for N images x M variations
+5. `3c8d928` — Generate-competitor: `source_index` for per-image Nano Banana reference
+
+## Files changed
+- `src/components/brainstorm/BrainstormGenerate.tsx` — multi-image state, upload UI, variations stepper, summary
+- `src/app/api/brainstorm/route.ts` — accept array of URLs, pass all to Claude Vision, `competitorVariations` (1-10)
+- `src/lib/brainstorm.ts` — system prompt generates `imageCount x variationsPerImage` prompts with `source_index`
+- `src/app/api/image-jobs/[id]/generate-competitor/route.ts` — per-prompt reference image via `source_index`
+- `src/types/index.ts` — updated `pending_competitor_gen` type
 
 ## Decisions made
-- **CSS overlay approach** for full-screen: `fixed inset-0 z-50` — simplest, no route restructuring needed
-- **React Context over Zustand** for state management — sufficient for single-page use, no new dependency
-- **Tab structure**: Left = Layers/Components/Settings, Right = Design/Config/AI
-- **iframe-based preview preserved** with existing postMessage communication
-- **Collapsible sidebars** — icon strip when collapsed, full panel when expanded
+- **Approach A (prompt-level multiplication)** chosen over seed-based Nano Banana variation — gives genuine visual variety through different prompts
+- **Claude sees all images at once** as a cohesive concept, not independently — maintains visual consistency
+- **`source_index`** field links each generated prompt back to its source competitor image
+- **Backward compatible** — API accepts both `competitor_image_url` (legacy) and `competitor_image_urls` (new)
+- **Max 10 images** cap to prevent runaway generation costs
 
 ## Current state
-- Feature branch `feat/page-builder-redesign` — NOT merged to main, NOT pushed
-- Build passes, TypeScript clean
-- Builder is fully functional: full-screen layout, all controls working, existing features preserved
-- Console errors in preview are from Shopify checkout resources in iframe (not our code)
+- Build passes cleanly
+- UI verified in browser — multi-image thumbnails, stepper, summary all working
+- **Not pushed to Vercel yet** — 5 local commits ahead of origin/main
+- Pre-existing BuilderContext.tsx uncommitted changes from page builder work (not related)
 
 ## Blockers / Open questions
-- Branch needs to be merged to main and pushed for deploy
-- Should user test more before merging?
-- Some iframe console errors from Shopify resources (cosmetic, not functional)
+- None for this feature — ready to push
 
 ## Next up
-1. Merge `feat/page-builder-redesign` to main and push (deploy to Vercel)
-2. User testing of the new builder in production
-3. Continue with P1 backlog items (competitor ad flow, push iterations, market-specific iterations)
-4. Animated Ads Pipeline (P3, plan ready)
+1. Push competitor swipe changes to main (deploy to Vercel)
+2. Live test: swipe an actual competitor ad with 2-3 images and 2 variations
+3. Continue backlog items from previous sessions

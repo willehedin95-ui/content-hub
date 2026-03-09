@@ -1,11 +1,13 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-09 (evening)
+Updated: 2026-03-09 (session 4)
 
 ## P0 — Blockers
 - [ ] Merge `feat/page-builder-redesign` to main and push — 21 new builder files, full Replo-inspired redesign. Build passes, TypeScript clean. (added 2026-03-09)
+- [ ] Merge `feat/launchpad-market-tabs` to main and push — per-market tabs, SEK currency fix, budget confirmation dialog. Build passes, TypeScript clean. (added 2026-03-09)
+- [ ] Push competitor swipe multi-image changes to main — 5 local commits ready, build passes. (added 2026-03-09)
 
 ## P1 — Do Next
-- [ ] Test competitor ad flow end-to-end — upload real competitor image, verify Claude analysis + Nano Banana generation (added 2026-03-04)
+- [ ] Live-test competitor swipe: upload real competitor ad (2-3 images), verify multi-image + variation count end-to-end (added 2026-03-09)
 - [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
@@ -50,6 +52,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Competitor Swipe Multi-Image + Variations** — upload multiple competitor images, pick 1-10 variations per image, `source_index` for per-image Nano Banana reference. Backward compatible. (done 2026-03-09)
+- [x] **Launchpad Market Tabs** — per-market NO/DK/SE tabs, independent priority ordering, SEK currency, budget confirmation dialog, per-market reorder/push. Branch: `feat/launchpad-market-tabs`. (done 2026-03-09)
 - [x] **Page Builder Redesign (Replo-inspired)** — full-screen builder, BuilderContext (React Context), 4-zone layout, left sidebar (Layers/Components/Settings), right panel (Design/Config/AI), 7 design controls, QualityPanel, zoom, collapsible panels. 21 files, 5,355 lines. Branch: `feat/page-builder-redesign`. (done 2026-03-09)
 - [x] Page builder enhancements — extracted components, text styling, layers panel, asset bank, content blocks, undo/redo, duplicate, link editor, video/media support (done 2026-03-09)
 - [x] Fixed AB tests build blocker — missing route modules for /ab-tests and /api/ab-tests/[id]/winner (done 2026-03-09)
