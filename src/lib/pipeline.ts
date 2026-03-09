@@ -1450,13 +1450,6 @@ export async function calculateAvailableBudget(): Promise<
 
   if (!mappings || mappings.length === 0) return {};
 
-  // Get pipeline settings for currency
-  const { data: settings } = await db
-    .from("pipeline_settings")
-    .select("country, currency");
-
-  const currencyMap = new Map((settings ?? []).map((s) => [s.country, s.currency]));
-
   // Track which format each campaign ID belongs to
   const campaignFormat = new Map<string, "image" | "video">();
   for (const m of mappings) {
@@ -1561,7 +1554,7 @@ export async function calculateAvailableBudget(): Promise<
 
     return {
       available: totalCompressible,
-      currency: currencyMap.get(country) ?? "SEK",
+      currency: "SEK",
       canPush,
       campaignBudget,
       activeAdSets,
@@ -1608,7 +1601,7 @@ export async function calculateAvailableBudget(): Promise<
       video: calcForFormat(country, "video"),
       // Combined (backward compat)
       available: totalCompressible,
-      currency: currencyMap.get(country) ?? "SEK",
+      currency: "SEK",
       canPush,
       campaignBudget,
       activeAdSets,
@@ -1633,6 +1626,7 @@ export async function getLaunchpadConcepts(): Promise<
     product: string | null;
     thumbnailUrl: string | null;
     priority: number;
+    marketPriorities: Record<string, number>;
     markets: Array<{
       market: string;
       imageJobMarketId: string;
@@ -1657,9 +1651,9 @@ export async function getLaunchpadConcepts(): Promise<
   const { data: imageMarkets } = imageJobIds.length > 0
     ? await db
         .from("image_job_markets")
-        .select("id, image_job_id, market")
+        .select("id, image_job_id, market, launchpad_priority")
         .in("image_job_id", imageJobIds)
-    : { data: [] as { id: string; image_job_id: string; market: string }[] };
+    : { data: [] as { id: string; image_job_id: string; market: string; launchpad_priority: number | null }[] };
 
   const imageMarketIds = (imageMarkets ?? []).map((m) => m.id);
 
@@ -1696,6 +1690,14 @@ export async function getLaunchpadConcepts(): Promise<
   const imageConcepts = (imageJobs ?? []).map((job) => {
     const jobMarkets = (imageMarkets ?? []).filter((m) => m.image_job_id === job.id);
 
+    // Build per-market priorities from image_job_markets rows
+    const marketPriorities: Record<string, number> = {};
+    for (const m of jobMarkets) {
+      if (m.launchpad_priority != null) {
+        marketPriorities[m.market] = m.launchpad_priority;
+      }
+    }
+
     // If image_job_markets rows exist, use them; otherwise derive from target_languages
     const markets = jobMarkets.length > 0
       ? jobMarkets.map((m) => ({
@@ -1725,6 +1727,7 @@ export async function getLaunchpadConcepts(): Promise<
       product: job.product,
       thumbnailUrl: imageThumbMap.get(job.id) ?? null,
       priority: job.launchpad_priority!,
+      marketPriorities,
       markets,
     };
   });
@@ -1732,7 +1735,7 @@ export async function getLaunchpadConcepts(): Promise<
   // --- Video concepts ---
   const { data: videoJobs } = await db
     .from("video_jobs")
-    .select("id, concept_name, concept_number, product, target_languages, launchpad_priority")
+    .select("id, concept_name, concept_number, product, target_languages, launchpad_priority, launchpad_market_priorities")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
 
@@ -1788,6 +1791,7 @@ export async function getLaunchpadConcepts(): Promise<
     product: job.product,
     thumbnailUrl: videoThumbMap.get(job.id) ?? null,
     priority: job.launchpad_priority!,
+    marketPriorities: (job.launchpad_market_priorities as Record<string, number>) ?? {},
     markets: (job.target_languages ?? [])
       .map((lang: string) => {
         const market = LANG_TO_MARKET[lang];

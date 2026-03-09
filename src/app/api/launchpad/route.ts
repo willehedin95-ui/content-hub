@@ -71,10 +71,18 @@ export async function POST(req: NextRequest) {
 
     const nextPriority = Math.max(maxImagePriority?.launchpad_priority ?? 0, maxVideoPriority?.launchpad_priority ?? 0) + 1;
 
+    // Build per-market priorities from target_languages
+    const LANG_TO_MKT: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+    const marketPriorities: Record<string, number> = {};
+    for (const lang of (job.target_languages as string[]) ?? []) {
+      const mkt = LANG_TO_MKT[lang];
+      if (mkt) marketPriorities[mkt] = nextPriority;
+    }
+
     // Set launchpad_priority (no concept_lifecycle for videos — stage derived from meta_campaigns)
     await db
       .from("video_jobs")
-      .update({ launchpad_priority: nextPriority })
+      .update({ launchpad_priority: nextPriority, launchpad_market_priorities: marketPriorities })
       .eq("id", conceptId);
 
     return NextResponse.json({ success: true, priority: nextPriority });
@@ -147,6 +155,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Set per-market launchpad priorities
+  const { data: marketRows } = await db
+    .from("image_job_markets")
+    .select("id, market")
+    .eq("image_job_id", conceptId);
+
+  for (const row of marketRows ?? []) {
+    const { data: maxPrio } = await db
+      .from("image_job_markets")
+      .select("launchpad_priority")
+      .eq("market", row.market)
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single();
+
+    await db
+      .from("image_job_markets")
+      .update({ launchpad_priority: (maxPrio?.launchpad_priority ?? 0) + 1 })
+      .eq("id", row.id);
+  }
+
   return NextResponse.json({ success: true, priority: nextPriority });
 }
 
@@ -167,7 +197,7 @@ export async function DELETE(req: NextRequest) {
     // Just clear the priority — no concept_lifecycle for videos
     await db
       .from("video_jobs")
-      .update({ launchpad_priority: null })
+      .update({ launchpad_priority: null, launchpad_market_priorities: null })
       .eq("id", conceptId);
 
     return NextResponse.json({ success: true });
@@ -178,6 +208,12 @@ export async function DELETE(req: NextRequest) {
     .from("image_jobs")
     .update({ launchpad_priority: null })
     .eq("id", conceptId);
+
+  // Clear per-market priorities
+  await db
+    .from("image_job_markets")
+    .update({ launchpad_priority: null })
+    .eq("image_job_id", conceptId);
 
   const { data: markets } = await db
     .from("image_job_markets")

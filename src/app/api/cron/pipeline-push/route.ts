@@ -101,7 +101,14 @@ export async function GET(req: NextRequest) {
         const countKey = `${market}:${format}`;
         pushCounts[countKey] = 0;
 
-        for (const concept of launchpadConcepts) {
+        // Sort concepts by this market's priority (fall back to global priority)
+        const sortedConcepts = [...launchpadConcepts].sort((a, b) => {
+          const aPrio = a.marketPriorities?.[market] ?? a.priority;
+          const bPrio = b.marketPriorities?.[market] ?? b.priority;
+          return aPrio - bPrio;
+        });
+
+        for (const concept of sortedConcepts) {
           if (concept.type !== format) continue;
           if (pushCounts[countKey] >= Math.min(formatBudget.canPush, MAX_CONCEPTS_PER_BATCH)) break;
 
