@@ -362,12 +362,24 @@ export async function pushConceptToMeta(
       }, { onConflict: "image_job_id,market" });
 
       try {
-        // Phase 1: Upload feed-ratio images in parallel
-        // 9:16 images are NOT uploaded — no asset_customization_rules to route them.
+        // Phase 1: Upload feed-ratio (4:5) AND 9:16 images in parallel.
+        // Both ratios go into asset_feed_spec without labels/rules —
+        // Meta's "Adapt to Placement" automatically selects the right ratio
+        // (4:5 for feed, 9:16 for stories/reels).
         const uploadResults = await Promise.allSettled(
           langImages.map(async (img) => {
             const imgFeed = await withRetry(() => uploadImage(img.image_url));
-            return { imageHash: imgFeed.hash, imageUrl: img.image_url };
+
+            // Look up 9:16 sibling for this source image + language
+            const key9x16 = `${img.source_image_id}:${lang}`;
+            const url9x16 = siblings9x16.get(key9x16) ?? null;
+            let hash9x16: string | null = null;
+            if (url9x16) {
+              const img9x16 = await withRetry(() => uploadImage(url9x16));
+              hash9x16 = img9x16.hash;
+            }
+
+            return { imageHash: imgFeed.hash, imageUrl: img.image_url, hash9x16, url9x16 };
           })
         );
 
@@ -375,6 +387,7 @@ export async function pushConceptToMeta(
         const uploadedImages: Array<{
           hash: string;
           url: string;
+          hash9x16: string | null;
           url9x16: string | null;
         }> = [];
         for (const r of uploadResults) {
@@ -382,7 +395,8 @@ export async function pushConceptToMeta(
             uploadedImages.push({
               hash: r.value.imageHash,
               url: r.value.imageUrl,
-              url9x16: null,
+              hash9x16: r.value.hash9x16,
+              url9x16: r.value.url9x16,
             });
           }
         }
@@ -391,15 +405,24 @@ export async function pushConceptToMeta(
           throw new Error("All image uploads failed");
         }
 
-        // Phase 2: Create ONE DCO creative with all feed images + all copy variants
-        // No asset_customization_rules — they cause cascading Meta API issues.
-        // 9:16 images are skipped (no placement routing without rules).
+        // Phase 2: Create ONE DCO creative with all images (4:5 + 9:16) + all copy variants.
+        // No asset_customization_rules — Meta's "Adapt to Placement" automatically
+        // selects 4:5 for feed and 9:16 for stories/reels.
         const adName = adSetName;
         const urlTags = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`;
 
+        // Combine 4:5 and 9:16 hashes — Meta picks the best ratio per placement
+        const allImageHashes: Array<{ hash: string }> = [];
+        for (const img of uploadedImages) {
+          allImageHashes.push({ hash: img.hash }); // 4:5
+          if (img.hash9x16) {
+            allImageHashes.push({ hash: img.hash9x16 }); // 9:16
+          }
+        }
+
         const creative = await withRetry(() => createAdCreative({
           name: adName,
-          images: uploadedImages.map((img) => ({ hash: img.hash })),
+          images: allImageHashes,
           bodies: translatedPrimaries,
           titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
           linkUrl: landingUrl,
@@ -423,7 +446,7 @@ export async function pushConceptToMeta(
           image_url_9x16: uploadedImages[0].url9x16,
           image_urls: uploadedImages.map((img) => img.url),
           meta_image_hash: uploadedImages[0].hash,
-          meta_image_hash_9x16: null,
+          meta_image_hash_9x16: uploadedImages[0].hash9x16 ?? null,
           ad_copy: translatedPrimaries[0],
           headline: translatedHeadlines[0] || null,
           source_primary_text: JSON.stringify(primaryTexts),
