@@ -10,7 +10,9 @@ import {
   EyeOff,
   Plus,
   Sparkles,
+  Trash2,
 } from "lucide-react";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { STATIC_STYLES, REPTILE_TRIGGERS } from "@/lib/constants";
@@ -227,6 +229,8 @@ export interface ConceptImagesStepProps {
   handleGenerate9x16?: () => void;
   show9x16Button?: boolean;
   count9x16?: number;
+  // Delete source image
+  onDeleteImage?: (sourceImageId: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -269,7 +273,9 @@ export default function ConceptImagesStep({
   handleGenerate9x16,
   show9x16Button,
   count9x16,
+  onDeleteImage,
 }: ConceptImagesStepProps) {
+  const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
   // Show generate section when job has visual_direction and isn't processing
   const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
   const hasExistingImages = sourceImages.length > 0;
@@ -893,14 +899,30 @@ export default function ConceptImagesStep({
         {images.map((si) => (
           <div
             key={si.id}
-            className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
+            className="group/card relative bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
             onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
           >
-            {/* Thumbnail */}
+            {/* Delete button — top-right, visible on hover */}
+            {onDeleteImage && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDeleteImageId(si.id); }}
+                className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-white/80 text-gray-400 opacity-0 group-hover/card:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
+                title="Delete image"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {/* Thumbnail — show translated version when a specific language tab is active */}
             <div className="aspect-[4/5] bg-gray-50 flex items-center justify-center overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={si.original_url}
+                src={
+                  activeTab !== "all"
+                    ? (si.image_translations?.find(
+                        (t) => t.language === activeTab && t.aspect_ratio === "4:5" && t.status === "completed" && t.translated_url
+                      )?.translated_url ?? si.original_url)
+                    : si.original_url
+                }
                 alt={si.filename ?? "Source image"}
                 className="w-full h-full object-cover"
               />
@@ -949,6 +971,22 @@ export default function ConceptImagesStep({
       })()}
       </>
       )}
+
+      {/* Confirm delete image dialog */}
+      <ConfirmDialog
+        open={!!confirmDeleteImageId}
+        title="Delete image"
+        message="Delete this image and all its translations? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (confirmDeleteImageId && onDeleteImage) {
+            onDeleteImage(confirmDeleteImageId);
+          }
+          setConfirmDeleteImageId(null);
+        }}
+        onCancel={() => setConfirmDeleteImageId(null)}
+      />
     </>
   );
 }
