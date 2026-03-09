@@ -943,6 +943,9 @@ export async function GET(req: NextRequest) {
     days_running?: number | null;
     adset_roas?: number | null;
     be_roas?: number | null;
+    tier?: "do_now" | "review_today" | "fyi";
+    what_happens?: string;
+    cost_of_inaction?: string;
   }
 
   const actionCards: ActionCard[] = [];
@@ -1402,6 +1405,61 @@ export async function GET(req: NextRequest) {
 
   // Sort by priority ascending
   actionCards.sort((a, b) => a.priority - b.priority);
+
+  // ── Assign tiers ──
+  // do_now: priority 1 cards (bleeders, unprofitable fatigue) — max 3
+  // review_today: priority 2-3 cards (scale, refresh, diagnostics, landing page)
+  // fyi: priority 4+ cards (save copy, budget rebalance, info)
+  let doNowCount = 0;
+  for (const card of actionCards) {
+    if (card.type === "info") {
+      card.tier = "fyi";
+    } else if (card.priority <= 1 && doNowCount < 3) {
+      card.tier = "do_now";
+      doNowCount++;
+    } else if (card.priority <= 1 && doNowCount >= 3) {
+      card.tier = "review_today";
+    } else if (card.priority <= 3) {
+      card.tier = "review_today";
+    } else {
+      card.tier = "fyi";
+    }
+
+    // ── Educational text per card type ──
+    switch (card.type) {
+      case "pause":
+        card.what_happens = card.action_data?.action === "pause_adset"
+          ? "The entire ad set stops spending immediately. The budget Meta was using for this ad set gets redistributed to your other active ad sets. You can always turn it back on later from Meta Ads Manager."
+          : "This ad stops spending immediately. Meta will redistribute its share of the budget to the other ads in the same ad set. You can always turn it back on later.";
+        card.cost_of_inaction = card.expected_impact.includes("kr/day")
+          ? `${card.expected_impact.replace("Save ", "")} continues to be spent with very low chance of converting.`
+          : "Money continues to be spent on an underperforming ad instead of your winners.";
+        break;
+      case "scale":
+        card.what_happens = "Increases this campaign's daily budget by 20%. Meta's algorithm needs about 2 days to adjust to the new budget. Watch the CPA for 3 days after scaling — if it rises too much, you can reduce the budget back.";
+        card.cost_of_inaction = "This proven winner keeps running at the current budget. No harm in waiting, but you're leaving potential sales on the table.";
+        break;
+      case "refresh":
+        card.what_happens = "Opens the concept iteration tool where you can generate new ad variations with fresh visuals but the same winning angle. The current ads keep running while you create new ones.";
+        card.cost_of_inaction = "The ad continues to fatigue — performance will gradually decline as the audience gets tired of seeing the same creative. Acting sooner preserves the concept's momentum.";
+        break;
+      case "budget":
+        card.what_happens = "Moves budget from your underperforming campaigns to your best-performing ones. Your total daily spend stays the same — it just gets distributed smarter. No ads are paused.";
+        card.cost_of_inaction = "Budget stays allocated based on old performance. Inefficient campaigns keep getting the same spend even though better ones could use it.";
+        break;
+      case "landing_page":
+        card.what_happens = "Opens the landing pages section where you can review and swap the landing page for this ad. The ad keeps running — only the destination URL changes.";
+        card.cost_of_inaction = "People keep clicking your ad but not buying. You're paying for clicks that don't convert — wasted ad spend.";
+        break;
+      case "save_copy":
+        card.what_happens = "Saves this winning ad copy to your Copy Bank so you can reuse it on future concepts without re-translating. The ad keeps running as-is.";
+        card.cost_of_inaction = "No immediate cost — but you might lose track of what copy worked well if this ad eventually gets paused.";
+        break;
+      default:
+        card.what_happens = "";
+        card.cost_of_inaction = "";
+    }
+  }
 
   // Enrich action cards with ad images from meta_ads table
   const actionAdIds = actionCards
