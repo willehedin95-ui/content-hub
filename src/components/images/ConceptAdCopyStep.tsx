@@ -15,6 +15,7 @@ import {
 import { ImageJob, Language, LANGUAGES, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import type { CopyBankEntry, ProductSegment } from "@/types";
 import CopyBankPicker from "./CopyBankPicker";
+import LandingPageModal from "./LandingPageModal";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
@@ -31,6 +32,61 @@ function QualityBadge({ score }: { score: number }) {
     <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${color}`}>
       {score}
     </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Landing page modal trigger                                         */
+/* ------------------------------------------------------------------ */
+
+function LandingPageModalTrigger({
+  landingPages,
+  abTests,
+  selectedValue,
+  onSelect,
+  conceptTags,
+  conceptAngle,
+}: {
+  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>;
+  abTests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }>;
+  selectedValue: string;
+  onSelect: (value: string) => void;
+  conceptTags?: string[];
+  conceptAngle?: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedPage = landingPages.find((p) => p.id === selectedValue);
+  const selectedTest = abTests.find((t) => `abtest:${t.id}` === selectedValue);
+  const label = selectedPage?.name ?? selectedTest?.name ?? "Select a destination...";
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center gap-3 bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm text-left hover:border-indigo-400 focus:outline-none focus:border-indigo-500 transition-colors"
+      >
+        {selectedPage?.thumbnail_url ? (
+          <img src={selectedPage.thumbnail_url} alt="" className="w-8 h-10 object-cover object-top rounded" />
+        ) : (
+          <div className="w-8 h-10 bg-gray-100 rounded flex items-center justify-center shrink-0">
+            <FileText className="w-4 h-4 text-gray-300" />
+          </div>
+        )}
+        <span className={selectedValue ? "text-gray-900" : "text-gray-400"}>{label}</span>
+      </button>
+      <LandingPageModal
+        open={open}
+        onClose={() => setOpen(false)}
+        onSelect={onSelect}
+        landingPages={landingPages}
+        abTests={abTests}
+        selectedValue={selectedValue}
+        conceptTags={conceptTags}
+        conceptAngle={conceptAngle}
+      />
+    </>
   );
 }
 
@@ -246,79 +302,42 @@ export default function ConceptAdCopyStep({
           <Globe className="w-4 h-4" />
           Website URL
         </label>
-        {(() => {
-          const isNative = (job.cash_dna as { awareness_level?: string } | null)?.awareness_level === "Unaware" ||
-            (job.tags ?? []).some((t) => t === "unaware" || t === "native");
-          const hasAdvertorials = landingPages.some((p) => p.page_type === "advertorial");
-
-          return landingPages.length > 0 || abTests.length > 0 ? (
-            <>
-              {isNative && (
+        {landingPages.length > 0 || abTests.length > 0 ? (
+          <>
+            {(() => {
+              const isNative = (job.cash_dna as { awareness_level?: string } | null)?.awareness_level === "Unaware" ||
+                (job.tags ?? []).some((t) => t === "unaware" || t === "native");
+              const hasAdvertorials = landingPages.some((p) => p.page_type === "advertorial");
+              return isNative ? (
                 <p className="text-xs text-amber-600 mb-1.5">
                   {hasAdvertorials
                     ? "Advertorial pages are recommended for native/unaware ads — they convert 3-4x better than direct product pages."
                     : "Tip: Native ads convert best with advertorial landing pages. Consider creating one for this product."}
                 </p>
-              )}
-              <select
-                value={metaPush.abTestId ? `abtest:${metaPush.abTestId}` : metaPush.landingPageId}
-                onChange={(e) => handleWebsiteUrlChange(e.target.value)}
-                className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">Select a destination...</option>
-                {landingPages.length > 0 && (
-                  <optgroup label={isNative && hasAdvertorials ? "Landing Pages (advertorials first)" : "Landing Pages"}>
-                    {[...landingPages]
-                      .sort((a, b) => {
-                        // For native/unaware concepts, sort advertorials first
-                        if (isNative) {
-                          const aIsAdv = a.page_type === "advertorial" ? 1 : 0;
-                          const bIsAdv = b.page_type === "advertorial" ? 1 : 0;
-                          if (bIsAdv !== aIsAdv) return bIsAdv - aIsAdv;
-                        }
-                        // Then sort by tag overlap
-                        const conceptTags = new Set(job.tags ?? []);
-                        if (conceptTags.size === 0) return 0;
-                        const aOverlap = (a.tags ?? []).filter((t) => conceptTags.has(t)).length;
-                        const bOverlap = (b.tags ?? []).filter((t) => conceptTags.has(t)).length;
-                        return bOverlap - aOverlap;
-                      })
-                      .map((page) => {
-                        const overlap = (job.tags ?? []).filter((t) => (page.tags ?? []).includes(t));
-                        const advLabel = isNative && page.page_type === "advertorial" ? " ★" : "";
-                        return (
-                          <option key={page.id} value={page.id}>
-                            {page.name}{advLabel}{overlap.length > 0 ? ` (${overlap.join(", ")})` : ""}
-                          </option>
-                        );
-                      })}
-                  </optgroup>
-                )}
-                {abTests.length > 0 && (
-                  <optgroup label="A/B Tests">
-                    {abTests.map((test) => (
-                      <option key={test.id} value={`abtest:${test.id}`}>
-                        {test.name} ({test.language.toUpperCase()})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              {metaPush.abTestId && (() => {
-                const selectedTest = abTests.find((t) => t.id === metaPush.abTestId);
-                return selectedTest ? (
-                  <p className="text-xs text-gray-500 mt-1">
-                    AB test URL for {selectedTest.language.toUpperCase()}, regular page for other languages
-                  </p>
-                ) : null;
-              })()}
-            </>
-          ) : (
-            <p className="text-sm text-gray-400">
-              No published pages or active A/B tests found
-            </p>
-          );
-        })()}
+              ) : null;
+            })()}
+            <LandingPageModalTrigger
+              landingPages={landingPages}
+              abTests={abTests}
+              selectedValue={metaPush.abTestId ? `abtest:${metaPush.abTestId}` : metaPush.landingPageId}
+              onSelect={(value) => handleWebsiteUrlChange(value)}
+              conceptTags={job.tags ?? undefined}
+              conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
+            />
+            {metaPush.abTestId && (() => {
+              const selectedTest = abTests.find((t) => t.id === metaPush.abTestId);
+              return selectedTest ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  AB test URL for {selectedTest.language.toUpperCase()}, regular page for other languages
+                </p>
+              ) : null;
+            })()}
+          </>
+        ) : (
+          <p className="text-sm text-gray-400">
+            No published pages or active A/B tests found
+          </p>
+        )}
       </div>
 
       {/* Translate Copy section */}
