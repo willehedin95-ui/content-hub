@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { validateImageFile } from "@/lib/validation";
+import { validateMediaFile } from "@/lib/validation";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const validation = validateImageFile(file);
+  const validation = validateMediaFile(file);
   if (!validation.valid) {
     return NextResponse.json({ error: validation.error }, { status: validation.status });
   }
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const { error: uploadError } = await db.storage
       .from(STORAGE_BUCKET)
       .upload(filePath, buffer, {
-        contentType: file.type || "image/png",
+        contentType: file.type || (validation.isVideo ? "video/mp4" : "image/png"),
         upsert: false,
       });
 
@@ -41,13 +41,16 @@ export async function POST(req: NextRequest) {
       .from(STORAGE_BUCKET)
       .getPublicUrl(filePath);
 
-    return NextResponse.json({ imageUrl: urlData.publicUrl });
+    return NextResponse.json({
+      imageUrl: urlData.publicUrl,
+      isVideo: validation.isVideo,
+    });
   } catch (error) {
-    console.error("Image upload error:", error);
+    console.error("Media upload error:", error);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Image upload failed",
+          error instanceof Error ? error.message : "Upload failed",
       },
       { status: 500 }
     );

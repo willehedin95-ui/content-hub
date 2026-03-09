@@ -22,6 +22,7 @@ import {
 
 import { Translation, LANGUAGES, COUNTRY_MAP, MarketProductUrl, PageQualityAnalysis } from "@/types";
 import ImagePanel from "@/components/pages/ImagePanel";
+import VideoPanel from "@/components/pages/VideoPanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import PaddingControls from "@/components/pages/editor/PaddingControls";
@@ -79,6 +80,12 @@ export default function EditPageClient({
   const prevLinkUrl = useRef("");
   const [slug, setSlug] = useState(translation.slug ?? pageSlug);
   const [clickedImage, setClickedImage] = useState<{
+    src: string;
+    index: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [clickedVideo, setClickedVideo] = useState<{
     src: string;
     index: number;
     width: number;
@@ -229,7 +236,17 @@ export default function EditPageClient({
         markDirty();
       }
       if (e.data?.type === "cc-image-click") {
+        setClickedVideo(null);
         setClickedImage({
+          src: e.data.src,
+          index: e.data.index,
+          width: e.data.width,
+          height: e.data.height,
+        });
+      }
+      if (e.data?.type === "cc-video-click") {
+        setClickedImage(null);
+        setClickedVideo({
           src: e.data.src,
           index: e.data.index,
           width: e.data.width,
@@ -639,8 +656,8 @@ export default function EditPageClient({
         return;
       }
 
-      // Skip images — handled by iframe image-click handler
-      if (target.tagName === "IMG") return;
+      // Skip images/videos — handled by iframe click handlers
+      if (target.tagName === "IMG" || target.tagName === "VIDEO") return;
 
       // Clicking body/html — deselect
       if (target === body || target.tagName === "HTML") {
@@ -741,6 +758,13 @@ export default function EditPageClient({
     clone.querySelectorAll("[data-cc-img-highlight]").forEach((el) => {
       (el as HTMLElement).style.outline = "";
       el.removeAttribute("data-cc-img-highlight");
+    });
+    clone.querySelectorAll("[data-cc-media-highlight]").forEach((el) => {
+      (el as HTMLElement).style.outline = "";
+      el.removeAttribute("data-cc-media-highlight");
+    });
+    clone.querySelectorAll("[data-cc-video-placeholder]").forEach((el) => {
+      el.removeAttribute("data-cc-video-placeholder");
     });
     clone.querySelectorAll("[data-cc-selected]").forEach((el) => {
       el.removeAttribute("data-cc-selected");
@@ -1305,6 +1329,15 @@ export default function EditPageClient({
               isSource={isSource}
               pageProduct={pageProduct}
             />
+          ) : clickedVideo ? (
+            /* Video clicked: show video replacement panel */
+            <VideoPanel
+              iframeRef={iframeRef}
+              translationId={translation.id}
+              clickedVideo={clickedVideo}
+              onClickedVideoClear={() => setClickedVideo(null)}
+              onVideoReplaced={() => markDirty()}
+            />
           ) : (
             /* Normal view: page settings */
             <>
@@ -1388,13 +1421,13 @@ export default function EditPageClient({
 
               <div className="border-t border-gray-200" />
 
-              {/* Images hint */}
+              {/* Media hint */}
               <div className="px-4 py-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Images
+                  Media
                 </p>
                 <p className="text-xs text-gray-400">
-                  Click an image in the preview to translate or replace it.
+                  Click an image or video in the preview to translate or replace it.
                 </p>
               </div>
             </>

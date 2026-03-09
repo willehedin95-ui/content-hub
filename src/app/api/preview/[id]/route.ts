@@ -67,7 +67,9 @@ export async function GET(
     '[data-cc-editable]:hover { outline: 2px dashed rgba(99,102,241,0.5); outline-offset: 2px; cursor: text; }',
     '[data-cc-editable][contenteditable="true"] { outline: 2px solid rgba(99,102,241,0.8); outline-offset: 2px; }',
     'img:not([data-cc-img-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
-    'img[data-cc-img-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }'
+    'img[data-cc-img-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }',
+    'video:not([data-cc-media-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
+    'video[data-cc-media-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }'
   ].join('\\n');
   document.head.appendChild(style);
 
@@ -104,6 +106,24 @@ export async function GET(
         index: allImgs.indexOf(img),
         width: img.naturalWidth || img.offsetWidth || 200,
         height: img.naturalHeight || img.offsetHeight || 200
+      }, ORIGIN);
+      return;
+    }
+
+    // Video click — send to parent for replacement
+    var video = e.target.closest('video');
+    if (video) {
+      e.preventDefault();
+      e.stopPropagation();
+      deactivate();
+      var allVideos = Array.from(document.querySelectorAll('video'));
+      var videoSrc = video.src || (video.querySelector('source') || {}).src || '';
+      window.parent.postMessage({
+        type: 'cc-video-click',
+        src: videoSrc,
+        index: allVideos.indexOf(video),
+        width: video.videoWidth || video.offsetWidth || 400,
+        height: video.videoHeight || video.offsetHeight || 300
       }, ORIGIN);
       return;
     }

@@ -505,7 +505,7 @@ export default function ImagePanel({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.gif,.webp"
         onChange={handleFileSelected}
         className="hidden"
       />

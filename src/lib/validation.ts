@@ -26,7 +26,10 @@ export function isValidBudget(budget: number): boolean {
 }
 
 export const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+export const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov"]);
+export const ALLOWED_MEDIA_EXTENSIONS = new Set([...ALLOWED_IMAGE_EXTENSIONS, ...ALLOWED_VIDEO_EXTENSIONS]);
 export const MAX_IMAGE_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+export const MAX_VIDEO_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
 
 export function validateImageFile(
   file: File
@@ -39,6 +42,21 @@ export function validateImageFile(
     return { valid: false, error: "File too large (max 50 MB)", status: 413 };
   }
   return { valid: true, ext };
+}
+
+export function validateMediaFile(
+  file: File
+): { valid: true; ext: string; isVideo: boolean } | { valid: false; error: string; status: number } {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (!ALLOWED_MEDIA_EXTENSIONS.has(ext)) {
+    return { valid: false, error: "Invalid file type. Allowed: png, jpg, jpeg, gif, webp, mp4, webm, mov", status: 400 };
+  }
+  const isVideo = ALLOWED_VIDEO_EXTENSIONS.has(ext);
+  const maxSize = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_IMAGE_FILE_SIZE;
+  if (file.size > maxSize) {
+    return { valid: false, error: `File too large (max ${isVideo ? "200" : "50"} MB)`, status: 413 };
+  }
+  return { valid: true, ext, isVideo };
 }
 
 const BLOCKED_HOSTNAMES = [

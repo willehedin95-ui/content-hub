@@ -21,6 +21,7 @@ import {
   Minus,
   Copy,
   Link2,
+  Video,
 } from "lucide-react";
 
 interface Props {
@@ -291,7 +292,7 @@ export default function ElementControls({
   }
 
   // --- Insert block ---
-  function insertBlock(type: "text" | "image" | "cta" | "divider", position: "before" | "after") {
+  function insertBlock(type: "text" | "image" | "video" | "cta" | "divider", position: "before" | "after") {
     const el = selectedElRef.current;
     const doc = iframeRef.current?.contentDocument;
     if (!el || !doc) return;
@@ -313,6 +314,16 @@ export default function ElementControls({
         );
         (newEl as HTMLImageElement).alt = "Placeholder";
         newEl.style.cssText = "width: 100%; height: auto; display: block; margin: 16px 0;";
+        break;
+      }
+      case "video": {
+        newEl = doc.createElement("video");
+        (newEl as HTMLVideoElement).controls = true;
+        (newEl as HTMLVideoElement).playsInline = true;
+        (newEl as HTMLVideoElement).loop = true;
+        (newEl as HTMLVideoElement).muted = true;
+        newEl.style.cssText = "width: 100%; height: auto; display: block; margin: 16px 0; background: #f3f4f6; min-height: 200px;";
+        newEl.setAttribute("data-cc-video-placeholder", "true");
         break;
       }
       case "cta": {
@@ -730,14 +741,21 @@ export default function ElementControls({
             >
               <Plus className="w-2.5 h-2.5" /><MousePointerClick className="w-3 h-3" /> CTA
             </button>
+            <button
+              onClick={() => insertBlock("video", "after")}
+              className="flex items-center justify-center gap-1 text-[10px] font-medium px-1.5 py-1.5 rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+              title="Insert video"
+            >
+              <Plus className="w-2.5 h-2.5" /><Video className="w-3 h-3" /> Video
+            </button>
+            <button
+              onClick={() => insertBlock("divider", "after")}
+              className="flex items-center justify-center gap-1 text-[10px] font-medium px-1.5 py-1.5 rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+              title="Insert divider"
+            >
+              <Plus className="w-2.5 h-2.5" /><Minus className="w-3 h-3" /> Divider
+            </button>
           </div>
-          <button
-            onClick={() => insertBlock("divider", "after")}
-            className="w-full flex items-center justify-center gap-1 text-[10px] font-medium px-1.5 py-1.5 rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
-            title="Insert divider"
-          >
-            <Plus className="w-2.5 h-2.5" /><Minus className="w-3 h-3" /> Divider
-          </button>
         </div>
 
         <div className="border-t border-indigo-100" />
