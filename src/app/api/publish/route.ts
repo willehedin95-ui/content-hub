@@ -176,6 +176,12 @@ async function doPublish(
         updated_at: new Date().toISOString(),
       })
       .eq("id", translationId);
+
+    // Fire-and-forget: capture page thumbnail for the selector modal
+    const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    fetch(`${appUrl}/api/pages/${translation.page_id}/screenshot`, {
+      method: "POST",
+    }).catch(() => {});
   } catch (err) {
     const message = err instanceof Error ? err.message : "Publish failed";
     console.error(`[publish] Failed for translation ${translationId}:`, message);
