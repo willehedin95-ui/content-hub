@@ -17,6 +17,7 @@ import {
   List,
   Film,
   Square,
+  ListTree,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
 
@@ -33,6 +34,10 @@ interface LayerNode {
   children: LayerNode[];
 }
 
+type LayersMode = "simplified" | "all";
+
+const LAYERS_MODE_KEY = "content-hub-layers-mode";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -45,6 +50,7 @@ const TAG_LABELS: Record<string, string> = {
   NAV: "Nav",
   MAIN: "Main",
   ARTICLE: "Article",
+  ASIDE: "Aside",
   H1: "Heading 1",
   H2: "Heading 2",
   H3: "Heading 3",
@@ -99,9 +105,80 @@ const SKIP_TAGS = new Set([
   "SYMBOL",
 ]);
 
+// Tags kept in simplified mode (content + semantic containers)
+const SIMPLIFIED_KEEP_TAGS = new Set([
+  // Content elements
+  "H1", "H2", "H3", "H4", "H5",
+  "P", "BLOCKQUOTE",
+  "IMG", "PICTURE", "VIDEO",
+  "A", "BUTTON",
+  "FORM", "INPUT", "SELECT", "TEXTAREA", "LABEL",
+  "UL", "OL", "LI",
+  "TABLE", "TR", "TD", "TH",
+  "FIGURE", "FIGCAPTION",
+  // Semantic containers
+  "HEADER", "FOOTER", "NAV", "MAIN", "ARTICLE", "SECTION", "ASIDE",
+]);
+
+// ---------------------------------------------------------------------------
+// Icon color per element type (Replo/Figma-inspired)
+// ---------------------------------------------------------------------------
+
+function getIconColor(tag: string, isSelected: boolean): string {
+  if (isSelected) return "text-indigo-600";
+  switch (tag) {
+    case "IMG":
+    case "PICTURE":
+      return "text-emerald-500";
+    case "H1":
+    case "H2":
+    case "H3":
+    case "H4":
+    case "H5":
+    case "P":
+    case "BLOCKQUOTE":
+    case "LABEL":
+    case "FIGCAPTION":
+      return "text-blue-500";
+    case "SPAN":
+      return "text-blue-400";
+    case "A":
+      return "text-indigo-500";
+    case "UL":
+    case "OL":
+    case "LI":
+      return "text-violet-500";
+    case "VIDEO":
+      return "text-pink-500";
+    case "SECTION":
+    case "HEADER":
+    case "FOOTER":
+    case "MAIN":
+    case "ARTICLE":
+    case "NAV":
+    case "ASIDE":
+      return "text-amber-500";
+    case "BUTTON":
+    case "INPUT":
+    case "SELECT":
+    case "TEXTAREA":
+    case "FORM":
+      return "text-orange-500";
+    case "TABLE":
+    case "TR":
+    case "TD":
+    case "TH":
+      return "text-cyan-500";
+    case "DIV":
+      return "text-gray-400";
+    default:
+      return "text-gray-400";
+  }
+}
+
 // Tag icons for the layer tree
 function TagIcon({ tag, className }: { tag: string; className?: string }) {
-  const cn = className || "w-3 h-3";
+  const cn = className || "w-4 h-4";
   switch (tag) {
     case "IMG":
     case "PICTURE":
@@ -115,6 +192,7 @@ function TagIcon({ tag, className }: { tag: string; className?: string }) {
     case "SPAN":
     case "BLOCKQUOTE":
     case "LABEL":
+    case "FIGCAPTION":
       return <Type className={cn} />;
     case "A":
       return <Link2 className={cn} />;
@@ -129,11 +207,13 @@ function TagIcon({ tag, className }: { tag: string; className?: string }) {
     case "MAIN":
     case "ARTICLE":
     case "NAV":
+    case "ASIDE":
       return <Layout className={cn} />;
     case "BUTTON":
     case "INPUT":
     case "SELECT":
     case "TEXTAREA":
+    case "FORM":
       return <Square className={cn} />;
     default:
       return <Box className={cn} />;
@@ -258,6 +338,39 @@ function filterTree(nodes: LayerNode[], query: string): LayerNode[] {
 }
 
 // ---------------------------------------------------------------------------
+// Simplify tree — keep only content/semantic elements, skip layout wrappers
+// ---------------------------------------------------------------------------
+
+function simplifyTree(nodes: LayerNode[], depth: number): LayerNode[] {
+  const result: LayerNode[] = [];
+  for (const node of nodes) {
+    if (SIMPLIFIED_KEEP_TAGS.has(node.tag)) {
+      // Keep this node, recursively simplify children
+      result.push({
+        ...node,
+        depth,
+        children: simplifyTree(node.children, depth + 1),
+      });
+    } else if (node.label && node.children.length === 0) {
+      // Wrapper with text content and no sub-elements — treat as content
+      result.push({ ...node, depth, children: [] });
+    } else {
+      // Layout wrapper — skip, promote children
+      result.push(...simplifyTree(node.children, depth));
+    }
+  }
+  return result;
+}
+
+// Collect all HTMLElements present in a tree
+function collectElements(nodes: LayerNode[], set: Set<HTMLElement>) {
+  for (const n of nodes) {
+    set.add(n.el);
+    collectElements(n.children, set);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LayerItem
 // ---------------------------------------------------------------------------
 
@@ -287,12 +400,9 @@ function LayerItem({
   const tagLabel = TAG_LABELS[node.tag] || node.tag;
   const isDragOver = dragOverEl === node.el;
   const isContainer =
-    node.tag === "DIV" ||
-    node.tag === "SPAN" ||
-    node.tag === "SECTION" ||
-    node.tag === "MAIN" ||
-    node.tag === "ARTICLE";
+    node.tag === "DIV" || node.tag === "SPAN";
   const itemRef = useRef<HTMLDivElement>(null);
+  const iconColor = getIconColor(node.tag, isSelected);
 
   // Auto-expand if selected element is inside this node
   const shouldAutoExpand =
@@ -334,16 +444,16 @@ function LayerItem({
           onDrop(node.el);
         }}
         onClick={() => onSelect(node.el)}
-        className={`group flex items-center h-7 pr-1 cursor-pointer transition-colors border-l-2 ${
+        className={`group flex items-center h-9 pr-2 cursor-pointer transition-colors border-l-2 ${
           isDragOver
             ? "bg-indigo-100 border-l-indigo-400"
             : isSelected
-              ? "bg-indigo-500/10 border-l-indigo-500"
+              ? "bg-indigo-50 border-l-indigo-500 ring-1 ring-inset ring-indigo-200"
               : node.hidden
                 ? "text-gray-300 border-l-transparent"
-                : "text-gray-600 hover:bg-gray-50 border-l-transparent"
+                : "hover:bg-gray-50 border-l-transparent"
         }`}
-        style={{ paddingLeft: `${node.depth * 16 + 4}px` }}
+        style={{ paddingLeft: `${node.depth * 20 + 8}px` }}
       >
         {/* Expand/collapse toggle */}
         {hasChildren ? (
@@ -355,41 +465,37 @@ function LayerItem({
             className="p-0.5 shrink-0"
           >
             <ChevronRight
-              className={`w-3 h-3 transition-transform duration-150 ${
+              className={`w-3.5 h-3.5 transition-transform duration-150 ${
                 expanded ? "rotate-90" : ""
-              } ${isSelected ? "text-indigo-600" : "text-gray-400"}`}
+              } ${isSelected ? "text-indigo-600" : "text-gray-500"}`}
             />
           </button>
         ) : (
-          <span className="w-4 shrink-0" />
+          <span className="w-[18px] shrink-0" />
         )}
 
-        {/* Tag icon */}
-        <span
-          className={`shrink-0 mr-1.5 ${
-            isSelected ? "text-indigo-600" : isContainer ? "text-gray-300" : "text-gray-400"
-          }`}
-        >
-          <TagIcon tag={node.tag} className="w-3 h-3" />
+        {/* Tag icon — colored per element type */}
+        <span className={`shrink-0 mr-2 ${iconColor}`}>
+          <TagIcon tag={node.tag} className="w-4 h-4" />
         </span>
 
         {/* Tag label + text preview */}
-        <span className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+        <span className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
           <span
-            className={`text-[11px] font-medium shrink-0 ${
+            className={`text-[13px] font-medium shrink-0 ${
               isSelected
                 ? "text-indigo-700"
                 : isContainer
-                  ? "text-gray-400"
-                  : "text-gray-600"
+                  ? "text-gray-500"
+                  : "text-gray-700"
             }`}
           >
             {tagLabel}
           </span>
           {node.label && (
             <span
-              className={`text-[10px] truncate ${
-                isSelected ? "text-indigo-500" : "text-gray-400"
+              className={`text-[11px] truncate ${
+                isSelected ? "text-indigo-500" : "text-gray-500"
               }`}
             >
               {node.label}
@@ -400,7 +506,7 @@ function LayerItem({
         {/* Drag handle + visibility toggle */}
         <span className="flex items-center gap-0.5 shrink-0">
           <span className="p-0.5 cursor-grab opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity">
-            <GripVertical className="w-3 h-3" />
+            <GripVertical className="w-3.5 h-3.5" />
           </span>
           <button
             onClick={(e) => {
@@ -409,15 +515,15 @@ function LayerItem({
             }}
             className={`p-0.5 transition-opacity ${
               node.hidden
-                ? "text-gray-300 hover:text-gray-500"
+                ? "text-gray-400 hover:text-gray-600"
                 : "opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600"
             }`}
             title={node.hidden ? "Show element" : "Hide element"}
           >
             {node.hidden ? (
-              <EyeOff className="w-3 h-3" />
+              <EyeOff className="w-3.5 h-3.5" />
             ) : (
-              <Eye className="w-3 h-3" />
+              <Eye className="w-3.5 h-3.5" />
             )}
           </button>
         </span>
@@ -470,6 +576,20 @@ export default function LayersTab() {
   const dragSourceRef = useRef<HTMLElement | null>(null);
   const [dragOverEl, setDragOverEl] = useState<HTMLElement | null>(null);
 
+  // Layers mode — persisted to localStorage
+  const [layersMode, setLayersMode] = useState<LayersMode>(() => {
+    if (typeof window === "undefined") return "simplified";
+    return (localStorage.getItem(LAYERS_MODE_KEY) as LayersMode) || "simplified";
+  });
+
+  const toggleLayersMode = useCallback(() => {
+    setLayersMode((prev) => {
+      const next = prev === "simplified" ? "all" : "simplified";
+      localStorage.setItem(LAYERS_MODE_KEY, next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) {
@@ -492,10 +612,32 @@ export default function LayersTab() {
     setDepthTruncated(checkDepth(doc.body, 0));
   }, [iframeRef, layersRefreshKey, hasSelectedEl]);
 
-  const filteredLayers = useMemo(
-    () => (search.trim() ? filterTree(layers, search.trim()) : layers),
-    [layers, search]
-  );
+  // Apply simplification + search filter
+  const displayLayers = useMemo(() => {
+    const base = layersMode === "simplified" ? simplifyTree(layers, 0) : layers;
+    return search.trim() ? filterTree(base, search.trim()) : base;
+  }, [layers, layersMode, search]);
+
+  // Build set of visible elements for effectiveSelectedEl
+  const visibleElements = useMemo(() => {
+    const set = new Set<HTMLElement>();
+    collectElements(displayLayers, set);
+    return set;
+  }, [displayLayers]);
+
+  // Resolve selectedEl to nearest visible ancestor in simplified mode
+  const rawSelectedEl = hasSelectedEl ? selectedElRef.current : null;
+  const effectiveSelectedEl = useMemo(() => {
+    if (!rawSelectedEl) return null;
+    if (visibleElements.has(rawSelectedEl)) return rawSelectedEl;
+    // Walk up DOM to find nearest visible ancestor
+    let el: HTMLElement | null = rawSelectedEl.parentElement;
+    while (el) {
+      if (visibleElements.has(el)) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }, [rawSelectedEl, visibleElements]);
 
   const handleSelect = useCallback(
     (el: HTMLElement) => {
@@ -525,28 +667,43 @@ export default function LayersTab() {
     markDirty();
   }
 
-  const selectedEl = hasSelectedEl ? selectedElRef.current : null;
-
   return (
     <div className="py-2">
-      {/* Search input */}
-      <div className="relative mb-2 px-3">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter layers..."
-          className="w-full pl-7 pr-7 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-indigo-400 placeholder:text-gray-400"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch("")}
-            className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        )}
+      {/* Search + toggle row */}
+      <div className="flex items-center gap-1.5 mb-2 px-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter layers..."
+            className="w-full pl-7 pr-7 py-2 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-indigo-400 placeholder:text-gray-400"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={toggleLayersMode}
+          className={`p-1.5 rounded-md transition-colors shrink-0 ${
+            layersMode === "simplified"
+              ? "bg-indigo-100 text-indigo-600"
+              : "bg-gray-100 text-gray-500 hover:text-gray-700"
+          }`}
+          title={
+            layersMode === "simplified"
+              ? "Simplified view — click for all elements"
+              : "All elements — click for simplified view"
+          }
+        >
+          <ListTree className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Depth truncation warning */}
@@ -575,20 +732,32 @@ export default function LayersTab() {
 
       {layers.length === 0 ? (
         <div className="flex items-center gap-1.5 text-xs text-gray-400 py-2 px-3">
-          <MousePointer className="w-3 h-3" />
+          <MousePointer className="w-3.5 h-3.5" />
           Loading page structure...
         </div>
-      ) : filteredLayers.length === 0 ? (
-        <div className="text-xs text-gray-400 py-2 text-center">
-          No matching elements
+      ) : displayLayers.length === 0 ? (
+        <div className="text-xs text-gray-500 py-4 text-center px-3">
+          {layersMode === "simplified" && layers.length > 0 ? (
+            <>
+              <p className="mb-1">No content elements found</p>
+              <button
+                onClick={toggleLayersMode}
+                className="text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                Show all elements
+              </button>
+            </>
+          ) : (
+            "No matching elements"
+          )}
         </div>
       ) : (
         <div>
-          {filteredLayers.map((node, i) => (
+          {displayLayers.map((node, i) => (
             <LayerItem
               key={i}
               node={node}
-              selectedEl={selectedEl}
+              selectedEl={effectiveSelectedEl}
               onSelect={handleSelect}
               onToggleVisibility={handleToggleLayerVisibility}
               onDragStart={handleDragStart}
