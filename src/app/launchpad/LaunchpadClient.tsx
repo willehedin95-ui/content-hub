@@ -36,6 +36,7 @@ interface LaunchpadConcept {
   product: string | null;
   thumbnailUrl: string | null;
   priority: number;
+  marketPriorities: Record<string, number>;
   markets: LaunchpadMarket[];
   /** @deprecated Use conceptId */
   imageJobId: string;
@@ -74,8 +75,6 @@ interface PushResult {
 }
 
 // ── Constants ────────────────────────────────────────────────
-
-type TypeFilter = "all" | "image" | "video";
 
 const PRODUCT_COLORS: Record<string, string> = {
   happysleep: "bg-indigo-100 text-indigo-700",
@@ -118,21 +117,6 @@ function budgetTextClass(canPush: number): string {
   return "text-red-700";
 }
 
-/** Check if a concept has any markets still waiting to be pushed */
-function hasWaitingMarkets(concept: LaunchpadConcept): boolean {
-  return concept.markets.some((m) => m.stage === "launchpad");
-}
-
-/** Get the waiting markets for a concept */
-function getWaitingMarkets(concept: LaunchpadConcept): LaunchpadMarket[] {
-  return concept.markets.filter((m) => m.stage === "launchpad");
-}
-
-/** Get the live markets for a concept */
-function getLiveMarkets(concept: LaunchpadConcept): LaunchpadMarket[] {
-  return concept.markets.filter((m) => m.stage === "testing" || m.stage === "active");
-}
-
 // ── Main Component ───────────────────────────────────────────
 
 export default function LaunchpadClient() {
@@ -143,7 +127,8 @@ export default function LaunchpadClient() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [increasingBudget, setIncreasingBudget] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [selectedMarket, setSelectedMarket] = useState<string>("SE");
+  const [confirmBudget, setConfirmBudget] = useState<{ market: string; budget: BudgetInfo; conceptsNeeded: number } | null>(null);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
 
   // ── Data fetching ────────────────────────────────────────
@@ -183,7 +168,11 @@ export default function LaunchpadClient() {
       const res = await fetch("/api/launchpad/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conceptId: concept.conceptId, type: concept.type }),
+        body: JSON.stringify({
+          conceptId: concept.conceptId,
+          type: concept.type,
+          markets: [selectedMarket],
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -248,15 +237,13 @@ export default function LaunchpadClient() {
     }
   }
 
-  async function handleReorder(concepts: LaunchpadConcept[], index: number, direction: "up" | "down") {
-    const newOrder = [...concepts];
+  async function handleReorder(index: number, direction: "up" | "down") {
+    const newOrder = [...marketConcepts];
     const swapIndex = direction === "up" ? index - 1 : index + 1;
     if (swapIndex < 0 || swapIndex >= newOrder.length) return;
 
     [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
 
-    // Optimistic update
-    setData((prev) => prev ? { ...prev, concepts: newOrder } : prev);
     setReordering(true);
 
     try {
@@ -264,6 +251,7 @@ export default function LaunchpadClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          market: selectedMarket,
           order: newOrder.map((c) => ({ conceptId: c.conceptId, type: c.type })),
         }),
       });
@@ -272,7 +260,6 @@ export default function LaunchpadClient() {
     } catch (err) {
       console.error("Reorder error:", err);
       setError(err instanceof Error ? err.message : "Failed to reorder");
-      // Revert optimistic update
       await fetchData();
     } finally {
       setReordering(false);
@@ -322,15 +309,18 @@ export default function LaunchpadClient() {
   }
 
   const allConcepts = data?.concepts ?? [];
-  // Filter out concepts that are fully live (no waiting markets left)
-  const activeConcepts = allConcepts.filter((c) => hasWaitingMarkets(c));
-  const concepts = typeFilter === "all"
-    ? activeConcepts
-    : activeConcepts.filter((c) => c.type === typeFilter);
   const budgets = data?.budgets ?? {};
 
-  const imageCount = activeConcepts.filter((c) => c.type === "image").length;
-  const videoCount = activeConcepts.filter((c) => c.type === "video").length;
+  // Concepts for selected market — only those in "launchpad" stage for this market
+  const marketConcepts = allConcepts
+    .filter((c) => c.markets.some((m) => m.market === selectedMarket && m.stage === "launchpad"))
+    .sort((a, b) => {
+      const aPrio = a.marketPriorities?.[selectedMarket] ?? a.priority;
+      const bPrio = b.marketPriorities?.[selectedMarket] ?? b.priority;
+      return aPrio - bPrio;
+    });
+
+  const selectedBudget = budgets[selectedMarket];
 
   return (
     <div className="max-w-[900px] pl-8">
@@ -388,127 +378,85 @@ export default function LaunchpadClient() {
         </div>
       )}
 
-      {/* Type filter tabs */}
-      {activeConcepts.length > 0 && (
-        <div className="flex items-center gap-1 mb-4">
-          {(
-            [
-              { key: "all" as TypeFilter, label: "All", count: activeConcepts.length },
-              { key: "image" as TypeFilter, label: "Images", count: imageCount },
-              { key: "video" as TypeFilter, label: "Videos", count: videoCount },
-            ] as const
-          ).map((tab) => (
+      {/* Market tabs */}
+      <div className="flex items-center gap-1 mb-4">
+        {MARKETS.map((market) => {
+          const flag = MARKET_FLAG[market];
+          const count = allConcepts.filter((c) =>
+            c.markets.some((m) => m.market === market && m.stage === "launchpad")
+          ).length;
+          return (
             <button
-              key={tab.key}
-              onClick={() => setTypeFilter(tab.key)}
+              key={market}
+              onClick={() => setSelectedMarket(market)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                typeFilter === tab.key
+                selectedMarket === market
                   ? "bg-indigo-100 text-indigo-700"
                   : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               }`}
             >
-              {tab.label} ({tab.count})
+              {flag} {market} ({count})
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      {/* Budget indicators */}
-      {Object.keys(budgets).length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          {MARKETS.map((market) => {
-            const budget = budgets[market];
-            if (!budget) {
-              return (
-                <div
-                  key={market}
-                  className="border border-gray-200 bg-gray-50 rounded-xl p-4"
-                >
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{market}</p>
-                  <p className="text-sm text-gray-400">No campaign configured</p>
-                </div>
-              );
-            }
-
-            // Count queued concepts for this market
-            const queuedForMarket = activeConcepts.filter((c) =>
-              c.markets.some((m) => m.market === market && m.stage === "launchpad")
-            ).length;
-            const effectiveCanPush = Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH);
-            const needsMore = queuedForMarket > 0 && budget.canPush < Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH);
-            const conceptsNeeded = Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH) - budget.canPush;
+      {/* Budget indicator — single card for selected market */}
+      {selectedBudget && (
+        <div className={`border rounded-xl p-4 mb-6 ${budgetColorClass(selectedBudget.canPush)}`}>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className={`text-lg font-bold ${budgetTextClass(selectedBudget.canPush)}`}>
+              {Math.min(selectedBudget.canPush, MAX_CONCEPTS_PER_BATCH)} new concept{Math.min(selectedBudget.canPush, MAX_CONCEPTS_PER_BATCH) !== 1 ? "s" : ""}/day
+            </p>
+            <span className="text-xs text-gray-400 font-medium">
+              {selectedBudget.campaignBudget} SEK/day
+            </span>
+          </div>
+          {selectedBudget.canPush > 0 ? (
+            <p className="text-xs text-gray-500">
+              {selectedBudget.available} SEK compressible from {selectedBudget.activeAdSets} active ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Winners consuming full budget across {selectedBudget.activeAdSets} ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}
+            </p>
+          )}
+          {selectedBudget.image.campaignBudget > 0 && selectedBudget.video.campaignBudget > 0 && (
+            <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
+              <span>Images: {selectedBudget.image.canPush}</span>
+              <span>Videos: {selectedBudget.video.canPush}</span>
+            </div>
+          )}
+          {(() => {
+            const queuedForMarket = marketConcepts.length;
+            const needsMore = queuedForMarket > 0 && selectedBudget.canPush < Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH);
+            if (!needsMore || selectedBudget.campaignIds.length === 0) return null;
+            const conceptsNeeded = Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH) - selectedBudget.canPush;
             const extraBudget = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
-
-            const hasImageBudget = budget.image.campaignBudget > 0 || budget.image.activeAdSets > 0;
-            const hasVideoBudget = budget.video.campaignBudget > 0 || budget.video.activeAdSets > 0;
-
             return (
-              <div
-                key={market}
-                className={`border rounded-xl p-4 ${budgetColorClass(budget.canPush)}`}
+              <button
+                onClick={() => setConfirmBudget({ market: selectedMarket, budget: selectedBudget, conceptsNeeded })}
+                disabled={increasingBudget === selectedMarket}
+                className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${budgetTextClass(budget.canPush)}`}>
-                    {market}
-                  </p>
-                  <span className="text-[10px] text-gray-400 font-medium">
-                    {budget.campaignBudget} {budget.currency}/day
-                  </span>
-                </div>
-                {budget.canPush > 0 ? (
-                  <div>
-                    <p className={`text-lg font-bold ${budgetTextClass(budget.canPush)}`}>
-                      {effectiveCanPush} new concept{effectiveCanPush !== 1 ? "s" : ""}/day
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {budget.available} {budget.currency} compressible from {budget.activeAdSets} active ad set{budget.activeAdSets !== 1 ? "s" : ""}
-                    </p>
-                    {/* Per-format breakdown if both formats have campaigns */}
-                    {hasImageBudget && hasVideoBudget && (
-                      <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
-                        <span>Images: {budget.image.canPush}</span>
-                        <span>Videos: {budget.video.canPush}</span>
-                      </div>
-                    )}
-                  </div>
+                {increasingBudget === selectedMarket ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <div>
-                    <p className="text-sm font-bold text-red-700">
-                      0 new concepts/day
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Winners consuming full budget across {budget.activeAdSets} ad set{budget.activeAdSets !== 1 ? "s" : ""}
-                    </p>
-                  </div>
+                  <TrendingUp className="w-3.5 h-3.5" />
                 )}
-                {needsMore && budget.campaignIds.length > 0 && (
-                  <button
-                    onClick={() => handleIncreaseBudget(market, budget, conceptsNeeded)}
-                    disabled={increasingBudget === market}
-                    className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    {increasingBudget === market ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <TrendingUp className="w-3.5 h-3.5" />
-                    )}
-                    +{extraBudget} {budget.currency}/day for {conceptsNeeded} more concept{conceptsNeeded !== 1 ? "s" : ""}
-                  </button>
-                )}
-              </div>
+                +{extraBudget} SEK/day for {conceptsNeeded} more concept{conceptsNeeded !== 1 ? "s" : ""}
+              </button>
             );
-          })}
+          })()}
         </div>
       )}
 
       {/* Empty state */}
-      {concepts.length === 0 && (
+      {marketConcepts.length === 0 && (
         <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl">
           <Rocket className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <h3 className="text-sm font-medium text-gray-600 mb-1">
-            {typeFilter !== "all" && activeConcepts.length > 0
-              ? `No ${typeFilter} concepts waiting to push`
-              : "No concepts waiting to push"}
+            No concepts waiting for {selectedMarket}
           </h3>
           <p className="text-xs text-gray-400">
             Add concepts from the Concepts or Video Ads page.
@@ -517,13 +465,11 @@ export default function LaunchpadClient() {
       )}
 
       {/* Concept list */}
-      {concepts.length > 0 && (
+      {marketConcepts.length > 0 && (
         <div className="space-y-3">
-          {concepts.map((concept, index) => {
+          {marketConcepts.map((concept, index) => {
             const typeBadge = TYPE_BADGE[concept.type];
-            const waitingMarkets = getWaitingMarkets(concept);
-            const liveMarkets = getLiveMarkets(concept);
-            const allIndex = activeConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type);
+            const liveMarkets = concept.markets.filter((m) => m.stage === "testing" || m.stage === "active");
 
             return (
               <div
@@ -531,11 +477,6 @@ export default function LaunchpadClient() {
                 className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
               >
                 <div className="flex items-start gap-3">
-                  {/* Priority number */}
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-1">
-                    <span className="text-sm font-bold text-indigo-600 tabular-nums">{index + 1}</span>
-                  </div>
-
                   {/* Thumbnail — bigger for better recognition */}
                   <div className="relative shrink-0">
                     {concept.thumbnailUrl ? (
@@ -569,7 +510,11 @@ export default function LaunchpadClient() {
                   <div className="flex-1 min-w-0">
                     {/* Name + meta badges */}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{concept.name}</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        <span className="text-indigo-600">#{index + 1}</span>
+                        <span className="text-gray-300 mx-1">&middot;</span>
+                        {concept.name}
+                      </p>
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${typeBadge.className}`}>
                         {typeBadge.label}
                       </span>
@@ -583,20 +528,12 @@ export default function LaunchpadClient() {
                       )}
                     </div>
 
-                    {/* Market status — big and clear */}
+                    {/* Market status */}
                     <div className="flex flex-wrap items-center gap-2">
-                      {waitingMarkets.map((m) => {
-                        const flag = MARKET_FLAG[m.market] ?? m.market;
-                        return (
-                          <span
-                            key={m.imageJobMarketId}
-                            className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200"
-                          >
-                            <CircleDot className="w-3 h-3" />
-                            {flag} Ready to push
-                          </span>
-                        );
-                      })}
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                        <CircleDot className="w-3 h-3" />
+                        Ready to push
+                      </span>
                       {liveMarkets.map((m) => {
                         const flag = MARKET_FLAG[m.market] ?? m.market;
                         return (
@@ -616,37 +553,35 @@ export default function LaunchpadClient() {
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Reorder buttons */}
                     <button
-                      onClick={() => handleReorder(activeConcepts, allIndex, "up")}
-                      disabled={allIndex === 0 || reordering}
+                      onClick={() => handleReorder(index, "up")}
+                      disabled={index === 0 || reordering}
                       className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                       title="Move up"
                     >
                       <ChevronUp className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleReorder(activeConcepts, allIndex, "down")}
-                      disabled={allIndex === activeConcepts.length - 1 || reordering}
+                      onClick={() => handleReorder(index, "down")}
+                      disabled={index === marketConcepts.length - 1 || reordering}
                       className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                       title="Move down"
                     >
                       <ChevronDown className="w-4 h-4" />
                     </button>
 
-                    {/* Push button — shows which markets */}
+                    {/* Push button */}
                     <button
                       onClick={() => handlePush(concept)}
                       disabled={pushingId !== null}
                       className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors ml-1"
-                      title={`Push to ${waitingMarkets.map((m) => m.market).join(", ")}`}
+                      title="Push to Meta"
                     >
                       {pushingId === concept.conceptId ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Zap className="w-3.5 h-3.5" />
                       )}
-                      {pushingId === concept.conceptId
-                        ? "Pushing..."
-                        : `Push ${waitingMarkets.map((m) => m.market).join(", ")}`}
+                      {pushingId === concept.conceptId ? "Pushing..." : "Push"}
                     </button>
 
                     {/* Remove button */}
@@ -667,6 +602,37 @@ export default function LaunchpadClient() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Confirmation dialog for budget increases */}
+      {confirmBudget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Increase daily budget?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will add {confirmBudget.conceptsNeeded * BUDGET_PER_NEW_CONCEPT} SEK/day to your {confirmBudget.market} campaigns
+              ({Math.round((confirmBudget.conceptsNeeded * BUDGET_PER_NEW_CONCEPT) / confirmBudget.budget.campaignIds.length)} SEK/day each across {confirmBudget.budget.campaignIds.length} campaign{confirmBudget.budget.campaignIds.length !== 1 ? "s" : ""}).
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmBudget(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const { market, budget, conceptsNeeded } = confirmBudget;
+                  setConfirmBudget(null);
+                  await handleIncreaseBudget(market, budget, conceptsNeeded);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
+              >
+                Yes, increase
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
