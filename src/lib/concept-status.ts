@@ -193,3 +193,22 @@ export function getDashboardStep(
   if (hasPrimary && hasLanding) return "preview";
   return "ad-copy";
 }
+
+/**
+ * Get a thumbnail URL for a concept.
+ * Prefers the first completed translated image, falls back to original source image URL.
+ */
+export function getConceptThumbnail(job: ImageJob): string | null {
+  const sourceImages = job.source_images;
+  if (!sourceImages?.length) return null;
+
+  for (const si of sourceImages) {
+    for (const t of si.image_translations ?? []) {
+      if (t.status === "completed" && t.translated_url) {
+        return t.translated_url;
+      }
+    }
+  }
+
+  return sourceImages[0]?.original_url ?? null;
+}
