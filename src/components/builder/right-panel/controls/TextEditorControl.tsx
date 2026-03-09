@@ -24,6 +24,7 @@ export default function TextEditorControl() {
   const editorRef = useRef<HTMLDivElement>(null);
   const [isTextEl, setIsTextEl] = useState(false);
   const syncingRef = useRef(false);
+  const savedSelection = useRef<Range | null>(null);
 
   // Check if selected element is a text element
   useEffect(() => {
@@ -68,15 +69,31 @@ export default function TextEditorControl() {
   }
 
   function handleLink() {
+    // Save current selection before modal opens
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      savedSelection.current = selection.getRangeAt(0);
+    }
     setShowLinkModal(true);
   }
 
   function handleInsertLink(url: string) {
     if (!editorRef.current) return;
+
+    // Restore saved selection
+    if (savedSelection.current) {
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(savedSelection.current);
+      }
+    }
+
     editorRef.current.focus();
     document.execCommand("createLink", false, url);
     syncToCanvas();
     setShowLinkModal(false);
+    savedSelection.current = null; // Clean up
   }
 
   if (!isTextEl) return null;
