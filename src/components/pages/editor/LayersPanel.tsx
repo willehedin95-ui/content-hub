@@ -51,22 +51,31 @@ const TAG_LABELS: Record<string, string> = {
   VIDEO: "Video",
 };
 
+// Only truly semantic/content elements shown in layers — DIVs and SPANs are skipped
 const SEMANTIC_TAGS = new Set([
-  "SECTION", "DIV", "HEADER", "FOOTER", "NAV", "MAIN", "ARTICLE",
+  "SECTION", "HEADER", "FOOTER", "NAV", "MAIN", "ARTICLE",
   "H1", "H2", "H3", "H4", "H5",
-  "P", "IMG", "A", "BUTTON",
+  "P", "IMG", "BUTTON",
   "UL", "OL", "LI",
   "FORM", "FIGURE", "FIGCAPTION", "BLOCKQUOTE", "VIDEO",
 ]);
 
 function getTextPreview(el: HTMLElement): string {
-  // For images, show alt text
   if (el.tagName === "IMG") {
     return (el as HTMLImageElement).alt || "[image]";
   }
-  // Get direct text content (not children's)
-  const text = el.textContent?.trim() || "";
-  return text.slice(0, 40) + (text.length > 40 ? "..." : "");
+  // Get only direct text content (not nested children text)
+  let directText = "";
+  for (const node of Array.from(el.childNodes)) {
+    if (node.nodeType === 3) directText += node.textContent || "";
+  }
+  directText = directText.trim();
+  // Fall back to first child's text for containers
+  if (!directText) {
+    const text = el.textContent?.trim() || "";
+    return text.slice(0, 30) + (text.length > 30 ? "..." : "");
+  }
+  return directText.slice(0, 30) + (directText.length > 30 ? "..." : "");
 }
 
 function buildTree(parent: HTMLElement, depth: number, maxDepth: number): LayerNode[] {
@@ -77,11 +86,12 @@ function buildTree(parent: HTMLElement, depth: number, maxDepth: number): LayerN
     const el = child as HTMLElement;
     if (!el.tagName || el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
     if (el.hasAttribute("data-cc-custom") || el.hasAttribute("data-cc-injected")) continue;
+    if (el.hasAttribute("data-cc-el-toolbar")) continue;
 
-    const isSemantic = SEMANTIC_TAGS.has(el.tagName);
     const hidden = el.style.display === "none" || el.hasAttribute("data-cc-hidden");
+    const shouldShow = SEMANTIC_TAGS.has(el.tagName);
 
-    if (isSemantic) {
+    if (shouldShow) {
       const children = buildTree(el, depth + 1, maxDepth);
       nodes.push({
         tag: el.tagName,
@@ -111,7 +121,11 @@ function LayerItem({
   onSelect: (el: HTMLElement) => void;
   onToggleVisibility: (el: HTMLElement) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  // NAV and LIST at depth 0-1 start collapsed (nav menus are noisy)
+  const defaultExpanded = !(
+    (node.tag === "NAV" || node.tag === "UL" || node.tag === "OL") && node.depth <= 1
+  );
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const isSelected = node.el === selectedEl;
   const hasChildren = node.children.length > 0;
   const tagLabel = TAG_LABELS[node.tag] || node.tag;
@@ -210,7 +224,7 @@ export default function LayersPanel({
       setLayers([]);
       return;
     }
-    const tree = buildTree(doc.body, 0, 4);
+    const tree = buildTree(doc.body, 0, 5);
     setLayers(tree);
   }, [iframeRef, refreshKey, hasSelectedEl]);
 

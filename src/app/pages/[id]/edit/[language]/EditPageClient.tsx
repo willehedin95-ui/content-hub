@@ -449,6 +449,9 @@ export default function EditPageClient({
     // Count existing hidden elements
     setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
 
+    // Trigger layers panel rebuild now that iframe DOM is ready
+    setLayersRefreshKey((k) => k + 1);
+
     // Inject element selection styles
     const elStyle = doc.createElement("style");
     elStyle.setAttribute("data-cc-el-toolbar", "true");
