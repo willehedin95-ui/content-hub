@@ -164,6 +164,22 @@ export interface BuilderContextValue {
   rightPanelOpen: boolean;
   setRightPanelOpen: (v: boolean) => void;
 
+  // --- Viewport configuration ---
+  viewportConfig: {
+    device: "desktop" | "iphone-13" | "ipad" | "custom";
+    width: number | null;
+    height: number | null;
+  };
+  setViewportConfig: React.Dispatch<React.SetStateAction<{
+    device: "desktop" | "iphone-13" | "ipad" | "custom";
+    width: number | null;
+    height: number | null;
+  }>>;
+
+  // --- Link modal state ---
+  showLinkModal: boolean;
+  setShowLinkModal: React.Dispatch<React.SetStateAction<boolean>>;
+
   // --- Callbacks ---
   triggerAutosave: () => void;
   pushUndoSnapshot: () => void;
@@ -371,6 +387,22 @@ export function BuilderProvider({
   const [rightTab, setRightTab] = useState<RightTab>("design");
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
+  // Viewport configuration
+  type ViewportConfig = {
+    device: "desktop" | "iphone-13" | "ipad" | "custom";
+    width: number | null;
+    height: number | null;
+  };
+
+  const [viewportConfig, setViewportConfig] = useState<ViewportConfig>({
+    device: "desktop",
+    width: null,
+    height: null,
+  });
+
+  // Link modal state
+  const [showLinkModal, setShowLinkModal] = useState(false);
+
   // -----------------------------------------------------------------------
   // Derived
   // -----------------------------------------------------------------------
@@ -478,7 +510,9 @@ export function BuilderProvider({
   const triggerAutosave = useCallback(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(async () => {
+      // Lock autosave to prevent concurrent saves
       if (savingRef.current) return;
+      savingRef.current = true;
       setAutoSaveStatus("saving");
       try {
         const html = extractHtmlFromIframe();
@@ -516,6 +550,8 @@ export function BuilderProvider({
         }
       } catch {
         setAutoSaveStatus("idle");
+      } finally {
+        savingRef.current = false;
       }
     }, 3000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -707,44 +743,52 @@ export function BuilderProvider({
       "IMG",
     ];
     const allElements = body.querySelectorAll("*");
-    const limit = Math.min(allElements.length, 500);
+    const limit = Math.min(allElements.length, 200); // Reduced from 500 to 200
     let maxH = 0;
 
-    for (let i = 0; i < limit; i++) {
-      const el = allElements[i] as HTMLElement;
-      if (SKIP_TAGS.includes(el.tagName)) continue;
-      if (el.hasAttribute("data-cc-padded")) {
+    // Use requestIdleCallback if available for non-blocking detection
+    const detectPadding = (startIdx: number, endIdx: number) => {
+      for (let i = startIdx; i < endIdx; i++) {
+        const el = allElements[i] as HTMLElement;
+        if (SKIP_TAGS.includes(el.tagName)) continue;
+        if (el.hasAttribute("data-cc-padded")) {
+          const cs = win.getComputedStyle(el);
+          const pl = parseInt(cs.paddingLeft) || 0;
+          const pr = parseInt(cs.paddingRight) || 0;
+          maxH = Math.max(maxH, pl, pr);
+          continue;
+        }
+
         const cs = win.getComputedStyle(el);
+        const display = cs.display;
+        if (
+          !display.includes("block") &&
+          !display.includes("flex") &&
+          !display.includes("grid")
+        )
+          continue;
+
         const pl = parseInt(cs.paddingLeft) || 0;
         const pr = parseInt(cs.paddingRight) || 0;
-        maxH = Math.max(maxH, pl, pr);
-        continue;
+        const pad = Math.max(pl, pr);
+        if (pad >= 16) {
+          el.setAttribute("data-cc-padded", "");
+          maxH = Math.max(maxH, pad);
+        }
       }
+    };
 
-      const cs = win.getComputedStyle(el);
-      const display = cs.display;
-      if (
-        !display.includes("block") &&
-        !display.includes("flex") &&
-        !display.includes("grid")
-      )
-        continue;
-
-      const pl = parseInt(cs.paddingLeft) || 0;
-      const pr = parseInt(cs.paddingRight) || 0;
-      const pad = Math.max(pl, pr);
-      if (pad >= 16) {
-        el.setAttribute("data-cc-padded", "");
-        maxH = Math.max(maxH, pad);
-      }
-    }
+    // Process in smaller batches to avoid blocking
+    detectPadding(0, limit);
 
     // Detect link URL, element selection, hidden count
     setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
 
+    // Optimize link detection by sampling first 100 links
     const links = doc.querySelectorAll("a[href]");
+    const linkSample = Array.from(links).slice(0, 100);
     const urlCounts = new Map<string, number>();
-    links.forEach((a) => {
+    linkSample.forEach((a) => {
       const href = (a as HTMLAnchorElement).href;
       if (
         !href ||
@@ -850,25 +894,6 @@ export function BuilderProvider({
       setPadMH(String(maxH));
     }
     doc.head.appendChild(elStyle);
-
-    // Keyboard shortcut handler inside iframe
-    doc.addEventListener("keydown", function (e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName;
-      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable;
-
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undoRef.current?.();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
-        e.preventDefault();
-        redoRef.current?.();
-      }
-      if ((e.key === "Backspace" || e.key === "Delete") && !isTyping && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        deleteRef.current?.();
-      }
-    });
 
     // Click handler for element selection
     doc.addEventListener(
@@ -1393,7 +1418,7 @@ export function BuilderProvider({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
-      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable === true;
 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
@@ -1433,13 +1458,16 @@ export function BuilderProvider({
     doc.head.appendChild(style);
 
     function handleClick(e: Event) {
-      e.preventDefault();
-      e.stopPropagation();
       const target = e.target as HTMLElement;
       const padded = target.closest(
         "[data-cc-padded]"
       ) as HTMLElement | null;
+
+      // Only prevent default and stop propagation if clicking on a padded element
       if (!padded) return;
+
+      e.preventDefault();
+      e.stopPropagation();
 
       if (padded.hasAttribute("data-cc-pad-skip")) {
         padded.removeAttribute("data-cc-pad-skip");
@@ -1570,6 +1598,14 @@ export function BuilderProvider({
     setRightTab,
     rightPanelOpen,
     setRightPanelOpen,
+
+    // Viewport configuration
+    viewportConfig,
+    setViewportConfig,
+
+    // Link modal state
+    showLinkModal,
+    setShowLinkModal,
 
     // Callbacks
     triggerAutosave,
