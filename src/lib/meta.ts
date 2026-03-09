@@ -214,17 +214,13 @@ export async function listPages(): Promise<
 /**
  * Create a DCO ad creative with multiple images and copy variants.
  * All images and text go into a single asset_feed_spec — Meta tests all combinations.
- *
- * When 9:16 siblings exist, each feed/story image pair gets ad labels
- * and asset_customization_rules route them to the correct placements.
+ * No asset_customization_rules — they cause cascading issues with Instagram accounts,
+ * title limits, and placement validation. Meta handles placement optimization automatically.
  */
 export async function createAdCreative(params: {
   name: string;
-  /** All images for the creative. Each can optionally have a 9:16 sibling. */
-  images: Array<{ hash: string; hash9x16?: string }>;
-  /** All primary text variants */
+  images: Array<{ hash: string }>;
   bodies: string[];
-  /** All headline variants (optional) */
   titles?: string[];
   linkUrl: string;
   callToAction?: string;
@@ -232,52 +228,6 @@ export async function createAdCreative(params: {
 }): Promise<{ id: string }> {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
-
-  const has9x16 = params.images.some((img) => img.hash9x16);
-
-  // Build images array with ad labels for placement routing
-  const images: Array<{ hash: string; adlabels?: Array<{ name: string }> }> = [];
-
-  if (has9x16) {
-    // Use shared labels: all feed images → "feed", all story images → "story"
-    // Meta requires exactly 1 rule per placement, so we can't use per-image labels
-    for (const img of params.images) {
-      images.push({ hash: img.hash, adlabels: [{ name: "feed" }] });
-      if (img.hash9x16) {
-        images.push({ hash: img.hash9x16, adlabels: [{ name: "story" }] });
-      }
-    }
-  } else {
-    // No 9:16 variants — just list all feed hashes, no labels needed
-    for (const img of params.images) {
-      images.push({ hash: img.hash });
-    }
-  }
-
-  // Build asset_customization_rules when we have 9:16 variants
-  // Exactly 4 rules: fb feed, ig feed, fb story, ig story — each referencing shared label
-  let assetCustomizationRules: Array<Record<string, unknown>> | undefined;
-
-  if (has9x16) {
-    // Only Facebook placements — Instagram rules require an instagram_actor_id
-    // which may not be configured. Instagram placements use default image.
-    assetCustomizationRules = [
-      {
-        customization_spec: {
-          publisher_platforms: ["facebook"],
-          facebook_positions: ["feed", "marketplace", "search", "right_hand_column"],
-        },
-        image_label: { name: "feed" },
-      },
-      {
-        customization_spec: {
-          publisher_platforms: ["facebook"],
-          facebook_positions: ["story", "facebook_reels"],
-        },
-        image_label: { name: "story" },
-      },
-    ];
-  }
 
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
@@ -289,16 +239,13 @@ export async function createAdCreative(params: {
       },
       asset_feed_spec: {
         ad_formats: ["SINGLE_IMAGE"],
-        images,
+        images: params.images.map((img) => ({ hash: img.hash })),
         bodies: params.bodies.map((text) => ({ text })),
         titles: params.titles && params.titles.length > 0
-          ? (assetCustomizationRules
-              ? [{ text: params.titles[0] }]  // Rules only support 1 title per rule
-              : params.titles.map((text) => ({ text })))
+          ? params.titles.map((text) => ({ text }))
           : undefined,
         link_urls: [{ website_url: params.linkUrl }],
         call_to_action_types: [cta],
-        ...(assetCustomizationRules ? { asset_customization_rules: assetCustomizationRules } : {}),
       },
     }),
   });
@@ -393,7 +340,6 @@ export async function createAdSetFromTemplate(params: {
         // Restrict to Facebook only — Instagram requires instagram_actor_id
         // which isn't configured on the pages. Audience Network excluded too.
         publisher_platforms: ["facebook"],
-        facebook_positions: ["feed", "marketplace", "story", "search", "facebook_reels", "right_hand_column"],
       },
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
