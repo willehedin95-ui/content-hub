@@ -19,6 +19,8 @@ import {
   Image,
   MousePointerClick,
   Minus,
+  Copy,
+  Link2,
 } from "lucide-react";
 
 interface Props {
@@ -28,6 +30,7 @@ interface Props {
   onDeselect: () => void;
   onHide: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   markDirty: () => void;
   isSource?: boolean;
   languageValue: string;
@@ -44,6 +47,7 @@ export default function ElementControls({
   onDeselect,
   onHide,
   onDelete,
+  onDuplicate,
   markDirty,
   isSource,
   languageValue,
@@ -335,6 +339,27 @@ export default function ElementControls({
     markDirty();
   }
 
+  // --- Link editor state ---
+  const [linkHref, setLinkHref] = useState("");
+  const el = selectedElRef.current;
+  const linkEl = el?.tagName === "A" ? el as HTMLAnchorElement : el?.closest("a") as HTMLAnchorElement | null;
+  const isLink = !!linkEl;
+
+  // Sync link href from DOM on element selection
+  useEffect(() => {
+    if (linkEl) {
+      setLinkHref(linkEl.getAttribute("href") || "");
+    }
+  }, [linkEl, hasSelectedEl]);
+
+  function handleLinkHrefChange(newHref: string) {
+    setLinkHref(newHref);
+    if (linkEl) {
+      linkEl.setAttribute("href", newHref);
+      markDirty();
+    }
+  }
+
   if (!hasSelectedEl) return null;
 
   const isHeading = selectedElRef.current && ["H1", "H2", "H3"].includes(selectedElRef.current.tagName);
@@ -560,6 +585,25 @@ export default function ElementControls({
           </div>
         </div>
 
+        {/* Link editor — only for <a> tags */}
+        {isLink && (
+          <>
+            <div className="border-t border-indigo-100" />
+            <div className="space-y-1.5">
+              <label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Link2 className="w-3 h-3" /> Link URL
+              </label>
+              <input
+                type="text"
+                value={linkHref}
+                onChange={(e) => handleLinkHrefChange(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-white border border-gray-300 text-gray-900 rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </>
+        )}
+
         <div className="border-t border-indigo-100" />
 
         {/* Headline suggestions — only for h1/h2/h3 */}
@@ -698,17 +742,24 @@ export default function ElementControls({
 
         <div className="border-t border-indigo-100" />
 
-        {/* Hide + Delete */}
-        <div className="flex items-center gap-2">
+        {/* Duplicate + Hide + Delete */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onDuplicate}
+            className="flex-1 flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
+            title="Duplicate element"
+          >
+            <Copy className="w-3 h-3" /> Clone
+          </button>
           <button
             onClick={onHide}
-            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
           >
             <EyeOff className="w-3 h-3" /> Hide
           </button>
           <button
             onClick={onDelete}
-            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
           >
             <Trash2 className="w-3 h-3" /> Delete
           </button>

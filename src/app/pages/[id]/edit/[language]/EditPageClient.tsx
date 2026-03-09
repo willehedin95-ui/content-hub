@@ -15,6 +15,7 @@ import {
   Globe,
   Eye,
   Undo2,
+  Redo2,
   Settings,
   X,
 } from "lucide-react";
@@ -93,6 +94,14 @@ export default function EditPageClient({
   const excludeModeRef = useRef(false);
   const [layersRefreshKey, setLayersRefreshKey] = useState(0);
 
+  // Undo/redo history (innerHTML snapshots)
+  const undoStackRef = useRef<string[]>([]);
+  const redoStackRef = useRef<string[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const [redoCount, setRedoCount] = useState(0);
+  const skipSnapshotRef = useRef(false);
+  const baselineHtmlRef = useRef<string>("");
+
 
   // Quality analysis
   const [qualityScore, setQualityScore] = useState<number | null>(translation.quality_score ?? null);
@@ -158,11 +167,36 @@ export default function EditPageClient({
     }, 3000);
   }, [translation.id, isSource, pageId]);
 
+  const pushUndoSnapshot = useCallback(() => {
+    if (skipSnapshotRef.current) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    const currentHtml = doc.body.innerHTML;
+    const baseline = baselineHtmlRef.current;
+    // No change from baseline — skip
+    if (baseline === currentHtml) return;
+    // Push the pre-change state (baseline) to undo stack
+    if (baseline) {
+      const stack = undoStackRef.current;
+      if (stack.length === 0 || stack[stack.length - 1] !== baseline) {
+        stack.push(baseline);
+        if (stack.length > 50) stack.shift();
+      }
+    }
+    // Update baseline to current (post-change) state
+    baselineHtmlRef.current = currentHtml;
+    // Clear redo on new action
+    redoStackRef.current = [];
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(0);
+  }, []);
+
   const markDirty = useCallback(() => {
     setIsDirty(true);
     setLayersRefreshKey((k) => k + 1);
+    pushUndoSnapshot();
     triggerAutosave();
-  }, [triggerAutosave]);
+  }, [triggerAutosave, pushUndoSnapshot]);
 
   useEffect(() => {
     return () => {
@@ -227,11 +261,23 @@ export default function EditPageClient({
   saveRef.current = () => {
     if (!saving && !publishing && !retranslating) handleSave();
   };
+  const undoRef = useRef<(() => void) | null>(null);
+  const redoRef = useRef<(() => void) | null>(null);
+  undoRef.current = handleUndo;
+  redoRef.current = handleRedo;
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         saveRef.current?.();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current?.();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redoRef.current?.();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -308,6 +354,57 @@ export default function EditPageClient({
     }
     const doc = iframeRef.current?.contentDocument;
     if (doc) setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+    markDirty();
+  }
+
+  function handleUndo() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body || undoStackRef.current.length === 0) return;
+    // Save current baseline to redo stack
+    redoStackRef.current.push(baselineHtmlRef.current);
+    // Restore previous state — this is safe because we only store snapshots
+    // from the same sandboxed iframe that we control (no external/untrusted HTML)
+    const prev = undoStackRef.current.pop()!;
+    skipSnapshotRef.current = true;
+    doc.body.innerHTML = prev; // eslint-disable-line no-unsanitized/property -- trusted iframe-local snapshots
+    skipSnapshotRef.current = false;
+    baselineHtmlRef.current = prev;
+    // Deselect — element refs are now stale after DOM replacement
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+    setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    setLayersRefreshKey((k) => k + 1);
+    setIsDirty(true);
+    triggerAutosave();
+  }
+
+  function handleRedo() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body || redoStackRef.current.length === 0) return;
+    undoStackRef.current.push(baselineHtmlRef.current);
+    const next = redoStackRef.current.pop()!;
+    skipSnapshotRef.current = true;
+    doc.body.innerHTML = next; // eslint-disable-line no-unsanitized/property -- trusted iframe-local snapshots
+    skipSnapshotRef.current = false;
+    baselineHtmlRef.current = next;
+    selectedElRef.current = null;
+    setHasSelectedEl(false);
+    setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    setLayersRefreshKey((k) => k + 1);
+    setIsDirty(true);
+    triggerAutosave();
+  }
+
+  function handleDuplicateElement() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.removeAttribute("data-cc-selected");
+    el.parentNode?.insertBefore(clone, el.nextSibling);
     markDirty();
   }
 
@@ -452,6 +549,13 @@ export default function EditPageClient({
     // Trigger layers panel rebuild now that iframe DOM is ready
     setLayersRefreshKey((k) => k + 1);
 
+    // Initialize undo stack with clean state
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    baselineHtmlRef.current = doc.body.innerHTML;
+    setUndoCount(0);
+    setRedoCount(0);
+
     // Inject element selection styles
     const elStyle = doc.createElement("style");
     elStyle.setAttribute("data-cc-el-toolbar", "true");
@@ -504,6 +608,18 @@ export default function EditPageClient({
       setPadMH(String(maxH));
     }
     doc.head.appendChild(elStyle);
+
+    // Keyboard shortcut handler inside iframe (for undo/redo when iframe is focused)
+    doc.addEventListener("keydown", function (e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current?.();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redoRef.current?.();
+      }
+    });
 
     // Click handler for element selection (bubble phase — runs after iframe script)
     doc.addEventListener("click", function (e: Event) {
@@ -1097,6 +1213,24 @@ export default function EditPageClient({
               {excludeMode ? "Click elements to exclude from padding" : "Click any text to edit"}
             </span>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={handleUndo}
+                  disabled={undoCount === 0}
+                  className="p-1.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-default transition-colors"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={redoCount === 0}
+                  className="p-1.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:cursor-default transition-colors"
+                  title="Redo (Ctrl+Shift+Z)"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
               <div className="flex items-center bg-gray-100 rounded-lg border border-gray-200 p-0.5">
                 <button
                   onClick={() => setViewMode("desktop")}
@@ -1201,6 +1335,7 @@ export default function EditPageClient({
                 }}
                 onHide={handleHideElement}
                 onDelete={handleDeleteElement}
+                onDuplicate={handleDuplicateElement}
                 markDirty={markDirty}
                 isSource={isSource}
                 languageValue={language.value}
