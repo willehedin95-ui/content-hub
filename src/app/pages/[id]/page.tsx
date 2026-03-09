@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus, Pencil } from "luci
 import { createServerSupabase } from "@/lib/supabase";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
+import AngleSelector from "@/components/pages/AngleSelector";
 import TranslationPanel from "@/components/pages/TranslationPanel";
 import ImportProgressPanel from "@/components/pages/ImportProgressPanel";
 import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
@@ -106,6 +107,9 @@ export default async function PageDetailPage({
           </div>
           <div className="mt-2">
             <EditableTags entityId={p.id} entityType="page" initialTags={p.tags ?? []} />
+          </div>
+          <div className="mt-2">
+            <AngleSelector pageId={p.id} initialAngle={p.angle ?? "neutral"} />
           </div>
         </div>
         <div className="flex items-center gap-2">
