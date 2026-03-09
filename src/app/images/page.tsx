@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, List, Dna, Loader2, CheckSquare, Square, MinusSquare } from "lucide-react";
-import { ImageJob, LANGUAGES, PRODUCTS, COUNTRY_MAP } from "@/types";
+import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore } from "lucide-react";
+import { ImageJob, PRODUCTS, COUNTRY_MAP } from "@/types";
 import { cn } from "@/lib/utils";
-import { getLanguageStatus, getMarketStatus, getWizardStep, getOverallStatus, COUNTRY_FLAGS } from "@/lib/concept-status";
+import { getMarketStatus, getWizardStep, getConceptThumbnail, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
-import ConceptBoard from "@/components/images/ConceptBoard";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { TagBadge, getTagColor } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
@@ -19,9 +18,6 @@ function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase();
 }
-
-// All possible countries for the Markets column
-const ALL_COUNTRIES = Object.values(COUNTRY_MAP);
 
 type SortField = "concept_number" | "name" | "status" | "created_at";
 type SortDir = "asc" | "desc";
@@ -36,6 +32,16 @@ const STATUS_FILTERS = [
   { value: "Published", label: "Published" },
 ] as const;
 
+const STATUS_PRIORITY: Record<string, number> = {
+  "New": 0,
+  "Importing": 0,
+  "Step 1/3 \u00B7 Images": 1,
+  "Step 2/3 \u00B7 Ad Copy": 2,
+  "Step 3/3 \u00B7 Preview": 3,
+  "Ready": 4,
+  "Published": 5,
+};
+
 export default function ImagesPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<ImageJob[]>([]);
@@ -46,26 +52,20 @@ export default function ImagesPage() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // View mode
-  const [viewMode, setViewMode] = useState<"table" | "board">(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("concepts-view") as "table" | "board") || "table";
-    }
-    return "table";
-  });
-
   // Filter & sort state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [productFilter, setProductFilter] = useState<string>("all");
   const [tagFilter, setTagFilter] = useState<string>("all");
   const { tags: allTags } = useAllTags();
-  const [sortField, setSortField] = useState<SortField>("concept_number");
+  const [sortField, setSortField] = useState<SortField>("status");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -85,7 +85,12 @@ export default function ImagesPage() {
     switch (sortField) {
       case "concept_number": return ((a.concept_number ?? Infinity) - (b.concept_number ?? Infinity)) * dir;
       case "name": return a.name.localeCompare(b.name) * dir;
-      case "status": return getOverallStatus(a).label.localeCompare(getOverallStatus(b).label) * dir;
+      case "status": {
+        const aPri = STATUS_PRIORITY[getWizardStep(a).label] ?? 99;
+        const bPri = STATUS_PRIORITY[getWizardStep(b).label] ?? 99;
+        if (aPri !== bPri) return (aPri - bPri) * dir;
+        return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
+      }
       case "created_at": return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
       default: return 0;
     }
@@ -107,7 +112,8 @@ export default function ImagesPage() {
 
   const fetchJobs = useCallback(async (p = page) => {
     try {
-      const res = await fetch(`/api/image-jobs?page=${p}&limit=${PAGE_SIZE}`);
+      const archiveParam = showArchived ? "&archived=true" : "";
+      const res = await fetch(`/api/image-jobs?page=${p}&limit=${PAGE_SIZE}${archiveParam}`);
       if (res.ok) {
         const data = await res.json();
         setJobs(data.jobs ?? data);
@@ -116,7 +122,7 @@ export default function ImagesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, showArchived]);
 
   async function handleBackfillDna() {
     setBackfillLoading(true);
@@ -194,34 +200,35 @@ export default function ImagesPage() {
     setBulkDeleting(false);
   }
 
+  async function handleArchive(ids: string[], action: "archive" | "unarchive") {
+    setArchiving(true);
+    try {
+      const res = await fetch("/api/image-jobs/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action }),
+      });
+      if (res.ok) {
+        setJobs((prev) => prev.filter((j) => !ids.includes(j.id)));
+        setTotalCount((n) => Math.max(0, n - ids.length));
+        setSelected(new Set());
+      }
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   function handleCreated(jobId: string) {
     setShowModal(false);
     router.push(`/images/${jobId}`);
   }
 
   return (
-    <div className={`p-8 ${viewMode === "board" ? "max-w-[1400px]" : "max-w-6xl"}`}>
+    <div className="p-8 max-w-6xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-gray-900">Concepts</h1>
         <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-            <button
-              onClick={() => { setViewMode("table"); localStorage.setItem("concepts-view", "table"); }}
-              className={`p-2 transition-colors ${viewMode === "table" ? "bg-gray-100 text-gray-800" : "text-gray-400 hover:text-gray-600"}`}
-              title="Table view"
-            >
-              <List className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => { setViewMode("board"); localStorage.setItem("concepts-view", "board"); }}
-              className={`p-2 transition-colors ${viewMode === "board" ? "bg-gray-100 text-gray-800" : "text-gray-400 hover:text-gray-600"}`}
-              title="Board view"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-          </div>
           <button
             onClick={handleBackfillDna}
             disabled={backfillLoading}
@@ -248,6 +255,18 @@ export default function ImagesPage() {
       {/* Filters */}
       {!loading && jobs.length > 0 && (
         <div className="flex items-center gap-3 mb-4">
+          {/* Archive toggle */}
+          <button
+            onClick={() => { setShowArchived((v) => !v); setPage(1); }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+              showArchived
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : "text-gray-400 hover:text-gray-600 border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            {showArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+            {showArchived ? "Showing archived" : "Archived"}
+          </button>
           {/* Search */}
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -350,6 +369,14 @@ export default function ImagesPage() {
             {bulkDeleting ? "Deleting..." : "Delete"}
           </button>
           <button
+            onClick={() => handleArchive([...selected], showArchived ? "unarchive" : "archive")}
+            disabled={archiving}
+            className="flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 bg-white border border-amber-200 hover:border-amber-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {archiving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
+            {showArchived ? "Unarchive" : "Archive"}
+          </button>
+          <button
             onClick={() => setSelected(new Set())}
             className="text-sm text-gray-500 hover:text-gray-700 ml-auto transition-colors"
           >
@@ -382,13 +409,11 @@ export default function ImagesPage() {
             Click &quot;+ New Ad Concept&quot; to create your first batch
           </p>
         </div>
-      ) : viewMode === "board" ? (
-        <ConceptBoard jobs={filteredJobs} getWizardStep={getWizardStep} />
       ) : (
         <>
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[32px_48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <div className="grid grid-cols-[32px_48px_48px_1fr_80px_140px_100px_64px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
             <button
               onClick={toggleSelectAll}
               className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
@@ -402,15 +427,15 @@ export default function ImagesPage() {
             <button onClick={() => toggleSort("concept_number")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
               # <SortIcon field="concept_number" />
             </button>
+            <div></div>
             <button onClick={() => toggleSort("name")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors text-left">
               Name <SortIcon field="name" />
             </button>
             <div>Product</div>
-            <div>Translations</div>
-            <div>Markets</div>
             <button onClick={() => toggleSort("status")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
               Status <SortIcon field="status" />
             </button>
+            <div>Markets</div>
             <button onClick={() => toggleSort("created_at")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
               Created <SortIcon field="created_at" />
             </button>
@@ -423,7 +448,6 @@ export default function ImagesPage() {
               No concepts match your filters
             </div>
           ) : filteredJobs.map((job) => {
-            const langStatus = getLanguageStatus(job);
             const marketStatus = getMarketStatus(job);
             const status = getWizardStep(job);
             const conceptNum = job.concept_number;
@@ -433,7 +457,7 @@ export default function ImagesPage() {
                 key={job.id}
                 href={`/images/${job.id}`}
                 className={cn(
-                  "grid grid-cols-[32px_48px_1fr_72px_120px_120px_96px_72px_40px] items-center gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group",
+                  "grid grid-cols-[32px_48px_48px_1fr_80px_140px_100px_64px_40px] items-center gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group",
                   selected.has(job.id) && "bg-indigo-50/50"
                 )}
               >
@@ -449,13 +473,27 @@ export default function ImagesPage() {
 
                 {/* # */}
                 <span className="text-xs font-mono text-gray-400">
-                  {conceptNum ? String(conceptNum).padStart(3, "0") : "—"}
+                  {conceptNum ? String(conceptNum).padStart(3, "0") : "\u2014"}
                 </span>
+
+                {/* Thumbnail */}
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                  {(() => {
+                    const thumbUrl = getConceptThumbnail(job);
+                    return thumbUrl ? (
+                      <img src={thumbUrl} alt={job.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4 text-gray-300" />
+                      </div>
+                    );
+                  })()}
+                </div>
 
                 {/* Name + Tags */}
                 <div className="min-w-0">
                   <span className="text-sm font-medium text-gray-800 truncate block">{job.name}</span>
-                  {((job.tags ?? []).length > 0 || job.cash_dna?.angle || job.cash_dna?.style) && (
+                  {(job.tags ?? []).length > 0 && (
                     <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                       {(job.tags ?? []).slice(0, 3).map((tag) => (
                         <TagBadge key={tag} tag={tag} />
@@ -463,43 +501,19 @@ export default function ImagesPage() {
                       {(job.tags ?? []).length > 3 && (
                         <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 3}</span>
                       )}
-                      {job.cash_dna?.angle && (
-                        <span className="text-[10px] text-violet-600 bg-violet-50 px-1 py-0.5 rounded border border-violet-200">
-                          {job.cash_dna.angle}
-                        </span>
-                      )}
-                      {job.cash_dna?.style && (
-                        <span className="text-[10px] text-fuchsia-600 bg-fuchsia-50 px-1 py-0.5 rounded border border-fuchsia-200">
-                          {job.cash_dna.style}
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
 
                 {/* Product */}
                 <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full text-center truncate">
-                  {job.product ? (PRODUCTS.find((p) => p.value === job.product)?.label ?? job.product) : "—"}
+                  {job.product ? (PRODUCTS.find((p) => p.value === job.product)?.label ?? job.product) : "\u2014"}
                 </span>
 
-                {/* Translations (language flags with status dots) */}
-                <div className="flex items-center gap-1.5">
-                  {job.target_languages.map((lang) => {
-                    const langInfo = LANGUAGES.find((l) => l.value === lang);
-                    const info = langStatus.get(lang) ?? { status: "none", completed: 0, total: 0 };
-                    const tooltip = info.total > 0
-                      ? `${langInfo?.label}: ${info.completed}/${info.total} translated`
-                      : `${langInfo?.label}: not started`;
-                    return (
-                      <span key={lang} className="relative inline-flex items-center" title={tooltip}>
-                        <span className="text-sm" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
-                          info.status === "done" ? "bg-emerald-500" : info.status === "partial" ? "bg-amber-400" : "bg-gray-300"
-                        }`} />
-                      </span>
-                    );
-                  })}
-                </div>
+                {/* Status badge */}
+                <span className={`text-xs font-medium px-2 py-1 rounded-full text-center ${status.color}`}>
+                  {status.label}
+                </span>
 
                 {/* Markets (deployment status per country) */}
                 <div className="flex items-center gap-1.5">
@@ -519,16 +533,22 @@ export default function ImagesPage() {
                   })}
                 </div>
 
-                {/* Status badge */}
-                <span className={`text-xs font-medium px-2 py-1 rounded-full text-center ${status.color}`}>
-                  {status.label}
-                </span>
-
                 {/* Created */}
                 <span className="text-xs text-gray-400">{formatDate(job.created_at)}</span>
 
                 {/* Actions */}
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-end gap-0.5">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleArchive([job.id], showArchived ? "unarchive" : "archive");
+                    }}
+                    className="text-gray-300 hover:text-amber-500 p-1 transition-colors opacity-0 group-hover:opacity-100"
+                    title={showArchived ? "Unarchive" : "Archive"}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(job.id); }}
                     className="text-gray-300 hover:text-red-500 p-1 transition-colors opacity-0 group-hover:opacity-100"
