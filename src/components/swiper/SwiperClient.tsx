@@ -28,6 +28,7 @@ export default function SwiperClient({ products }: Props) {
   );
   const [selectedAngle, setSelectedAngle] = useState("auto-detect");
   const [sourceLanguage, setSourceLanguage] = useState("en");
+  const [customInstructions, setCustomInstructions] = useState("");
   const [pageName, setPageName] = useState("");
   const [pageSlug, setPageSlug] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -110,6 +111,7 @@ export default function SwiperClient({ products }: Props) {
           name,
           slug,
           pageType: "advertorial",
+          customInstructions: customInstructions.trim() || undefined,
         }),
       });
 
@@ -229,6 +231,20 @@ export default function SwiperClient({ products }: Props) {
             <option value="de">German</option>
           </select>
           <p className="text-xs text-gray-400 mt-1">Auto-detected from page. Override if needed.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Custom Instructions <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <textarea
+            value={customInstructions}
+            onChange={(e) => setCustomInstructions(e.target.value)}
+            placeholder="E.g. Use &quot;Hälsobladet&quot; as brand name instead of SwedishBalance. Don't mention the product name HappySleep — keep it curiosity-driven."
+            rows={3}
+            className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+            disabled={submitting}
+          />
         </div>
 
         {/* Optional: override name/slug before import */}

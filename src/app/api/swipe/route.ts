@@ -13,7 +13,7 @@ import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { html, productId, sourceUrl, sourceLanguage, angle } = body;
+  const { html, productId, sourceUrl, sourceLanguage, angle, customInstructions } = body;
 
   if (!html || !productId) {
     return NextResponse.json(
@@ -74,7 +74,8 @@ export async function POST(req: NextRequest) {
     references,
     sourceLanguage || "en",
     swiperAngle,
-    productBrief
+    productBrief,
+    customInstructions?.trim() || undefined
   );
 
   // Insert job into swipe_jobs

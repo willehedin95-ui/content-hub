@@ -206,14 +206,15 @@ export function buildRewritePrompts(
   references: ReferencePage[],
   sourceLanguage: string = "en",
   angle?: SwiperAngle,
-  productBrief?: string
+  productBrief?: string,
+  customInstructions?: string
 ): { systemPrompt: string; userPrompt: string } {
   const systemPrompt = productBrief && angle
     ? buildSwiperPrompt(product.name, productBrief)
     : buildSystemPrompt(product, guidelines, references);
 
   const userPrompt = productBrief && angle
-    ? buildSwiperUserPrompt(bodyHtml, product.name, angle, sourceLanguage)
+    ? buildSwiperUserPrompt(bodyHtml, product.name, angle, sourceLanguage, customInstructions)
     : `Rewrite the competitor landing page HTML below so it promotes ${product.name} instead.
 
 RULES:
