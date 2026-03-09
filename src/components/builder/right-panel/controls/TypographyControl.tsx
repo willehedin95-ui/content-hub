@@ -125,7 +125,15 @@ export default function TypographyControl() {
               value={fontSize}
               onChange={(e) => {
                 setFontSize(e.target.value);
-                if (e.target.value) applyStyle("font-size", `${e.target.value}px`);
+                const el = selectedElRef.current;
+                if (!el) return;
+                pushUndoSnapshot();
+                if (e.target.value === "") {
+                  el.style.removeProperty("font-size");
+                } else {
+                  el.style.setProperty("font-size", `${e.target.value}px`);
+                }
+                markDirty();
               }}
               className={inputClass}
               min={1}
@@ -171,7 +179,8 @@ export default function TypographyControl() {
             onChange={(e) => {
               const v = e.target.value;
               setTextColor(v);
-              if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+              // Support both 3-digit (#rgb) and 6-digit (#rrggbb) hex colors
+              if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
                 applyStyle("color", v);
               }
             }}
@@ -234,7 +243,15 @@ export default function TypographyControl() {
             min={0}
             onChange={(e) => {
               setLineHeight(e.target.value);
-              if (e.target.value) applyStyle("line-height", e.target.value);
+              const el = selectedElRef.current;
+              if (!el) return;
+              pushUndoSnapshot();
+              if (e.target.value === "") {
+                el.style.removeProperty("line-height");
+              } else {
+                el.style.setProperty("line-height", e.target.value);
+              }
+              markDirty();
             }}
             className={inputClass}
           />

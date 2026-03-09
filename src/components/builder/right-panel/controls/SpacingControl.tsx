@@ -8,6 +8,13 @@ function parsePx(v: string): string {
   return isNaN(n) ? "0" : String(n);
 }
 
+function validateNumber(value: string): string {
+  // Remove non-numeric characters except minus sign
+  const cleaned = value.replace(/[^0-9-]/g, "");
+  const num = parseInt(cleaned);
+  return isNaN(num) ? "" : String(num);
+}
+
 export default function SpacingControl() {
   const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
 
@@ -50,14 +57,16 @@ export default function SpacingControl() {
   function applyStyle(prop: string, value: string) {
     const el = selectedElRef.current;
     if (!el) return;
-    pushUndoSnapshot();
     el.style.setProperty(prop, value);
-    markDirty();
   }
 
   function handleMarginChange(side: "top" | "right" | "bottom" | "left", value: string) {
-    const px = value === "" ? "0" : value;
+    const validated = validateNumber(value);
+    const px = validated === "" ? "0" : validated;
     const val = `${px}px`;
+
+    // Push single undo snapshot for the entire operation
+    pushUndoSnapshot();
 
     if (side === "top") {
       setMarginTop(px);
@@ -88,11 +97,18 @@ export default function SpacingControl() {
         applyStyle("margin-left", val);
       }
     }
+
+    // Mark dirty once after all changes
+    markDirty();
   }
 
   function handlePaddingChange(side: "top" | "right" | "bottom" | "left", value: string) {
-    const px = value === "" ? "0" : value;
+    const validated = validateNumber(value);
+    const px = validated === "" ? "0" : validated;
     const val = `${px}px`;
+
+    // Push single undo snapshot for the entire operation
+    pushUndoSnapshot();
 
     if (side === "top") {
       setPaddingTop(px);
@@ -123,6 +139,9 @@ export default function SpacingControl() {
         applyStyle("padding-left", val);
       }
     }
+
+    // Mark dirty once after all changes
+    markDirty();
   }
 
   const inputClass =

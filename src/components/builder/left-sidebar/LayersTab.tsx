@@ -151,10 +151,11 @@ function getSmartLabel(el: HTMLElement): string {
   }
 
   // For elements with a useful class name, use that
-  const className = el.className;
-  if (typeof className === "string" && className.trim()) {
+  // Use classList.toString() to handle both string className and DOMTokenList
+  const classString = el.classList.toString();
+  if (classString.trim()) {
     // Pick the first meaningful class (skip utility classes)
-    const classes = className.split(/\s+/).filter((c) => c.length > 2 && !c.startsWith("data-"));
+    const classes = classString.split(/\s+/).filter((c) => c.length > 2 && !c.startsWith("data-"));
     if (classes.length > 0) {
       // Use the first class, humanize it
       const cls = classes[0].replace(/[-_]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -207,8 +208,9 @@ function buildTree(
     if (isContainer && !hasContent && children.length === 0) continue;
 
     // For DIV containers with a single child layer and no direct text, flatten
+    // Keep original depth for children to maintain proper indentation
     if (isContainer && children.length === 1 && !getSmartLabel(el)) {
-      nodes.push(...children.map((c) => ({ ...c, depth })));
+      nodes.push(...children);
       continue;
     }
 
@@ -464,6 +466,7 @@ export default function LayersTab() {
 
   const [layers, setLayers] = useState<LayerNode[]>([]);
   const [search, setSearch] = useState("");
+  const [depthTruncated, setDepthTruncated] = useState(false);
   const dragSourceRef = useRef<HTMLElement | null>(null);
   const [dragOverEl, setDragOverEl] = useState<HTMLElement | null>(null);
 
@@ -471,10 +474,22 @@ export default function LayersTab() {
     const doc = iframeRef.current?.contentDocument;
     if (!doc?.body) {
       setLayers([]);
+      setDepthTruncated(false);
       return;
     }
-    const tree = buildTree(doc.body, 0, 8);
+    const MAX_DEPTH = 8;
+    const tree = buildTree(doc.body, 0, MAX_DEPTH);
     setLayers(tree);
+
+    // Check if depth was truncated
+    const checkDepth = (node: Element, depth: number): boolean => {
+      if (depth >= MAX_DEPTH) return true;
+      for (const child of Array.from(node.children)) {
+        if (checkDepth(child, depth + 1)) return true;
+      }
+      return false;
+    };
+    setDepthTruncated(checkDepth(doc.body, 0));
   }, [iframeRef, layersRefreshKey, hasSelectedEl]);
 
   const filteredLayers = useMemo(
@@ -485,7 +500,8 @@ export default function LayersTab() {
   const handleSelect = useCallback(
     (el: HTMLElement) => {
       selectElementInIframe(el);
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Use instant scroll to avoid competing with layers panel auto-scroll
+      el.scrollIntoView({ behavior: "instant", block: "center" });
     },
     [selectElementInIframe]
   );
@@ -532,6 +548,15 @@ export default function LayersTab() {
           </button>
         )}
       </div>
+
+      {/* Depth truncation warning */}
+      {depthTruncated && (
+        <div className="mb-2 mx-3 px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md">
+          <span className="text-[11px] font-medium text-blue-700">
+            Deep nesting detected — showing first 8 levels only
+          </span>
+        </div>
+      )}
 
       {/* Hidden elements banner */}
       {hiddenCount > 0 && (
