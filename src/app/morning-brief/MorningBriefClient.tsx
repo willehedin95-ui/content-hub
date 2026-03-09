@@ -190,6 +190,9 @@ interface ActionCard {
   days_running?: number | null;
   adset_roas?: number | null;
   be_roas?: number | null;
+  tier?: "do_now" | "review_today" | "fyi";
+  what_happens?: string;
+  cost_of_inaction?: string;
 }
 
 // ── Action card visual config per type ──
@@ -289,6 +292,21 @@ interface MorningBriefData {
     ad_diagnostics: AdDiagnostic[];
   };
   action_cards: ActionCard[];
+  automation_summary?: {
+    auto_paused_count: number;
+    auto_paused_ads: Array<{
+      ad_name: string | null;
+      campaign_name: string | null;
+      total_spend: number | null;
+      days_bleeding: number | null;
+    }>;
+    daily_savings: number;
+    killed_concepts_count: number;
+    killed_concepts: Array<{
+      market_id: string;
+      signal: string | null;
+    }>;
+  };
 }
 
 // ── Helpers ──
@@ -329,6 +347,251 @@ function TrendBadge({ direction, label }: { direction: string; label?: string })
 function changePct(current: number, previous: number): number | null {
   if (previous === 0) return null;
   return ((current - previous) / previous) * 100;
+}
+
+// ── Automation Summary ──
+
+function AutomationSummary({ summary }: { summary: NonNullable<MorningBriefData["automation_summary"]> }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasContent = summary.auto_paused_count > 0 || summary.killed_concepts_count > 0;
+  if (!hasContent) return null;
+
+  return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-5 py-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span className="text-sm text-emerald-800">
+            <span className="font-medium">While you were away</span>
+            {" — "}
+            {[
+              summary.auto_paused_count > 0 && `Auto-paused ${summary.auto_paused_count} bleeding ad${summary.auto_paused_count !== 1 ? "s" : ""}${summary.daily_savings > 0 ? ` (saved ~${Math.round(summary.daily_savings)} kr/day)` : ""}`,
+              summary.killed_concepts_count > 0 && `Killed ${summary.killed_concepts_count} concept${summary.killed_concepts_count !== 1 ? "s" : ""}`,
+            ].filter(Boolean).join(". ")}
+          </span>
+        </div>
+        <ChevronDown className={cn("w-4 h-4 text-emerald-600 transition-transform", expanded && "rotate-180")} />
+      </button>
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-emerald-200 space-y-1.5">
+          {summary.auto_paused_ads.map((ad, i) => (
+            <div key={i} className="text-xs text-emerald-700 flex items-center gap-2">
+              <Ban className="w-3 h-3 shrink-0" />
+              <span>
+                Paused &ldquo;{ad.ad_name || "unnamed"}&rdquo;
+                {ad.campaign_name && <span className="text-emerald-600"> ({ad.campaign_name})</span>}
+                {ad.days_bleeding && <span> — {ad.days_bleeding}d bleeding</span>}
+                {ad.total_spend && <span>, {Math.round(ad.total_spend)} kr wasted</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Action Card Component ──
+
+function ActionCardComponent({
+  card,
+  actionState,
+  onApply,
+  onDismiss,
+}: {
+  card: ActionCard;
+  actionState: { loading: string | null; results: Record<string, { ok: boolean; message: string }> };
+  onApply: (card: ActionCard) => void;
+  onDismiss: (cardId: string) => void;
+}) {
+  const config = ACTION_CONFIG[card.type] ?? ACTION_CONFIG.pause;
+  const result = actionState.results[card.id];
+  const isLoading = actionState.loading === card.id;
+  const TypeIcon = config.Icon;
+
+  return (
+    <div
+      className={cn(
+        "bg-white border border-gray-200 rounded-lg overflow-hidden",
+        config.borderColor
+      )}
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", config.iconBg)}>
+          <TypeIcon className={cn("w-5 h-5", config.iconColor)} />
+        </div>
+
+        {card.image_url && (
+          <img src={card.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 border border-gray-200" />
+        )}
+
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-gray-900">{card.title}</h3>
+          <p className="text-xs text-gray-600 mt-1">{card.why}</p>
+
+          {card.what_happens && !result && (
+            <div className="mt-2 text-xs text-gray-500 space-y-1.5">
+              <div>
+                <span className="font-medium text-gray-700">What happens when you click: </span>
+                {card.what_happens}
+              </div>
+              {card.cost_of_inaction && (
+                <div>
+                  <span className="font-medium text-gray-700">Doing nothing costs: </span>
+                  {card.cost_of_inaction}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {card.campaign_name && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 truncate max-w-[200px]">
+                {card.campaign_name}
+              </span>
+            )}
+            {card.days_running != null && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                {card.days_running}d running
+              </span>
+            )}
+            {card.adset_roas != null && card.adset_roas > 0 && (
+              <span className={cn(
+                "text-[11px] px-2 py-0.5 rounded-full font-medium",
+                card.adset_roas >= (card.be_roas ?? 1.5) ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+              )}>
+                {card.adset_roas}x ROAS
+              </span>
+            )}
+            {typeof card.action_data?.market === "string" && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                {card.action_data.market}
+              </span>
+            )}
+            <span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", config.tagColor)}>
+              {card.category}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {result ? (
+            <span className={cn("text-xs font-medium px-3 py-2 rounded-md", result.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>
+              {result.ok ? (<><CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />Done</>) : result.message}
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={() => onDismiss(card.id)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              {card.action_data && (
+                <button
+                  onClick={() => onApply(card)}
+                  disabled={!!actionState.loading}
+                  className={cn("px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap", config.buttonColor)}
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (card.button_label || config.buttonLabel)}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tier Section ──
+
+function TierSection({
+  title,
+  subtitle,
+  cards,
+  accentColor,
+  defaultOpen,
+  actionState,
+  handledCards,
+  onApply,
+  onDismiss,
+}: {
+  title: string;
+  subtitle: string;
+  cards: ActionCard[];
+  accentColor: "red" | "amber" | "gray";
+  defaultOpen: boolean;
+  actionState: { loading: string | null; results: Record<string, { ok: boolean; message: string }> };
+  handledCards: Record<string, string>;
+  onApply: (card: ActionCard) => void;
+  onDismiss: (cardId: string) => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const visibleCards = cards.filter((c) => !handledCards[c.id]);
+
+  if (visibleCards.length === 0) return null;
+
+  const colorMap = {
+    red: {
+      bg: "bg-red-50",
+      border: "border-red-200",
+      text: "text-red-800",
+      badge: "bg-red-100 text-red-700",
+      dot: "bg-red-500",
+    },
+    amber: {
+      bg: "bg-amber-50",
+      border: "border-amber-200",
+      text: "text-amber-800",
+      badge: "bg-amber-100 text-amber-700",
+      dot: "bg-amber-500",
+    },
+    gray: {
+      bg: "bg-gray-50",
+      border: "border-gray-200",
+      text: "text-gray-700",
+      badge: "bg-gray-200 text-gray-600",
+      dot: "bg-gray-400",
+    },
+  };
+  const colors = colorMap[accentColor];
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className={cn("w-full flex items-center justify-between px-3 py-2 rounded-lg", colors.bg)}
+      >
+        <div className="flex items-center gap-2">
+          <span className={cn("w-2 h-2 rounded-full", colors.dot)} />
+          <span className={cn("text-sm font-semibold", colors.text)}>{title}</span>
+          <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", colors.badge)}>
+            {visibleCards.length}
+          </span>
+          <span className="text-xs text-gray-500">{subtitle}</span>
+        </div>
+        <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          {visibleCards.map((card) => (
+            <ActionCardComponent
+              key={card.id}
+              card={card}
+              actionState={actionState}
+              onApply={onApply}
+              onDismiss={onDismiss}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Main Component ──
@@ -556,6 +819,18 @@ export default function MorningBriefClient() {
               minute: "2-digit",
             })}
           </p>
+          {data && visibleActions && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              {visibleActions.filter(c => c.tier === "do_now").length > 0
+                ? `${visibleActions.filter(c => c.tier === "do_now").length} critical`
+                : "No critical actions"
+              }
+              {" · "}
+              {visibleActions.filter(c => c.tier === "review_today").length} to review
+              {" · "}
+              {visibleActions.filter(c => c.tier === "fyi" || !c.tier).length} FYI
+            </p>
+          )}
         </div>
         <button
           onClick={fetchBrief}
@@ -603,14 +878,13 @@ export default function MorningBriefClient() {
         </div>
       </div>
 
-      {/* 3. Action Cards — single column, Madgicx-style */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-semibold text-gray-700">
-            {visibleActions.length} action{visibleActions.length !== 1 ? "s" : ""} today
-          </h2>
-        </div>
+      {/* Automation summary */}
+      {data.automation_summary && (
+        <AutomationSummary summary={data.automation_summary} />
+      )}
 
+      {/* 3. Action Cards — Priority Tiers */}
+      <section className="space-y-4">
         {visibleActions.length === 0 ? (
           <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center">
             <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
@@ -620,156 +894,41 @@ export default function MorningBriefClient() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {visibleActions.map((card) => {
-              const config = ACTION_CONFIG[card.type];
-              const result = actionState.results[card.id];
-              const isLoading = actionState.loading === card.id;
-              const TypeIcon = config.Icon;
-
-              return (
-                <div
-                  key={card.id}
-                  className={cn(
-                    "bg-white border border-gray-200 rounded-lg overflow-hidden",
-                    config.borderColor
-                  )}
-                >
-                  {/* Main row */}
-                  <div className="flex items-center gap-4 p-4">
-                    {/* Type icon */}
-                    <div
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
-                        config.iconBg
-                      )}
-                    >
-                      <TypeIcon className={cn("w-5 h-5", config.iconColor)} />
-                    </div>
-
-                    {/* Ad image */}
-                    {card.image_url && (
-                      <img
-                        src={card.image_url}
-                        alt=""
-                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-gray-200"
-                      />
-                    )}
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        {card.title}
-                      </h3>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                        {card.why}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {card.campaign_name && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 truncate max-w-[200px]">
-                            {card.campaign_name}
-                          </span>
-                        )}
-                        {card.days_running != null && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                            {card.days_running}d running
-                          </span>
-                        )}
-                        {card.adset_roas != null && card.adset_roas > 0 && (
-                          <span className={cn(
-                            "text-[11px] px-2 py-0.5 rounded-full font-medium",
-                            card.adset_roas >= (card.be_roas ?? 1.5)
-                              ? "bg-green-50 text-green-700"
-                              : "bg-red-50 text-red-700"
-                          )}>
-                            {card.adset_roas}x ROAS
-                          </span>
-                        )}
-                        {typeof card.action_data?.market === "string" && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
-                            {card.action_data.market}
-                          </span>
-                        )}
-                        <span
-                          className={cn(
-                            "text-[11px] px-2 py-0.5 rounded-full font-medium",
-                            config.tagColor
-                          )}
-                        >
-                          {card.category}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {result ? (
-                        <span
-                          className={cn(
-                            "text-xs font-medium px-3 py-2 rounded-md",
-                            result.ok
-                              ? "bg-green-50 text-green-700"
-                              : "bg-red-50 text-red-700"
-                          )}
-                        >
-                          {result.ok ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
-                              Done
-                            </>
-                          ) : (
-                            result.message
-                          )}
-                        </span>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => logAction(card.id, "dismissed")}
-                            className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
-                            title="Dismiss"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleApply(card)}
-                            disabled={!!actionState.loading}
-                            className={cn(
-                              "px-4 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap",
-                              config.buttonColor
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              card.button_label || config.buttonLabel
-                            )}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expandable guidance */}
-                  {card.guidance && !result && (
-                    <details className="border-t border-gray-100 group">
-                      <summary className="px-4 py-2 text-xs text-indigo-600 cursor-pointer hover:bg-gray-50 select-none flex items-center gap-1">
-                        <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
-                        Why should I do this?
-                      </summary>
-                      <div className="px-4 pb-3 text-xs text-gray-600 leading-relaxed pl-8">
-                        {card.guidance}
-                        {card.expected_impact && (
-                          <p className="mt-1.5 font-medium text-gray-700">
-                            Expected impact: {card.expected_impact}
-                          </p>
-                        )}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <>
+            <TierSection
+              title="Do Now"
+              subtitle="Actively losing money"
+              cards={visibleActions.filter((c) => c.tier === "do_now")}
+              accentColor="red"
+              defaultOpen={true}
+              actionState={actionState}
+              handledCards={handledCards}
+              onApply={handleApply}
+              onDismiss={(cardId) => logAction(cardId, "dismissed")}
+            />
+            <TierSection
+              title="Review Today"
+              subtitle="Worth looking at, no rush"
+              cards={visibleActions.filter((c) => c.tier === "review_today")}
+              accentColor="amber"
+              defaultOpen={true}
+              actionState={actionState}
+              handledCards={handledCards}
+              onApply={handleApply}
+              onDismiss={(cardId) => logAction(cardId, "dismissed")}
+            />
+            <TierSection
+              title="FYI"
+              subtitle="Nice to know"
+              cards={visibleActions.filter((c) => c.tier === "fyi" || !c.tier)}
+              accentColor="gray"
+              defaultOpen={false}
+              actionState={actionState}
+              handledCards={handledCards}
+              onApply={handleApply}
+              onDismiss={(cardId) => logAction(cardId, "dismissed")}
+            />
+          </>
         )}
       </section>
 
