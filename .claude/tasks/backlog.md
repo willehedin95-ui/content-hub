@@ -1,8 +1,8 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-09
+Updated: 2026-03-09 (evening)
 
 ## P0 — Blockers
-- (none)
+- [ ] Merge `feat/page-builder-redesign` to main and push — 21 new builder files, full Replo-inspired redesign. Build passes, TypeScript clean. (added 2026-03-09)
 
 ## P1 — Do Next
 - [ ] Test competitor ad flow end-to-end — upload real competitor image, verify Claude analysis + Nano Banana generation (added 2026-03-04)
@@ -50,6 +50,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Page Builder Redesign (Replo-inspired)** — full-screen builder, BuilderContext (React Context), 4-zone layout, left sidebar (Layers/Components/Settings), right panel (Design/Config/AI), 7 design controls, QualityPanel, zoom, collapsible panels. 21 files, 5,355 lines. Branch: `feat/page-builder-redesign`. (done 2026-03-09)
 - [x] Page builder enhancements — extracted components, text styling, layers panel, asset bank, content blocks, undo/redo, duplicate, link editor, video/media support (done 2026-03-09)
 - [x] Fixed AB tests build blocker — missing route modules for /ab-tests and /api/ab-tests/[id]/winner (done 2026-03-09)
 - [x] Source page editor + swiper language detection (done 2026-03-09)
