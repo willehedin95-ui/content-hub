@@ -1,6 +1,6 @@
 "use client";
 
-import { useBuilder } from "./BuilderContext";
+import { useBuilder, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT } from "./BuilderContext";
 
 export default function BuilderCanvas() {
   const {
@@ -17,8 +17,8 @@ export default function BuilderCanvas() {
   const previewUrl = `/api/preview/${previewId}?v=${iframeKey}`;
 
   const isFixedViewport = viewportConfig.device !== "desktop";
-  const width = viewportConfig.width || 375;
-  const height = viewportConfig.height || 812;
+  const width = viewportConfig.width || DEFAULT_VIEWPORT_WIDTH;
+  const height = viewportConfig.height || DEFAULT_VIEWPORT_HEIGHT;
 
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-gray-100 overflow-hidden">

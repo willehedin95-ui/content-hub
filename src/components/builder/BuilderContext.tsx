@@ -36,6 +36,9 @@ export type ViewportConfig = {
   height: number | null;
 };
 
+export const DEFAULT_VIEWPORT_WIDTH = 375;
+export const DEFAULT_VIEWPORT_HEIGHT = 812;
+
 export interface ClickedMedia {
   src: string;
   index: number;
