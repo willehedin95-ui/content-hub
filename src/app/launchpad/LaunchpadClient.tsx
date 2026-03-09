@@ -14,6 +14,8 @@ import {
   TrendingUp,
   Play,
   Film,
+  CheckCircle2,
+  CircleDot,
 } from "lucide-react";
 import type { PipelineStage } from "@/types";
 
@@ -65,6 +67,12 @@ interface LaunchpadData {
   budgets: Record<string, BudgetInfo>;
 }
 
+interface PushResult {
+  conceptName: string;
+  success: boolean;
+  details: string;
+}
+
 // ── Constants ────────────────────────────────────────────────
 
 type TypeFilter = "all" | "image" | "video";
@@ -110,16 +118,19 @@ function budgetTextClass(canPush: number): string {
   return "text-red-700";
 }
 
-function stageDisplay(stage: PipelineStage): { label: string; className: string } {
-  switch (stage) {
-    case "launchpad":
-      return { label: "Waiting", className: "text-amber-600" };
-    case "testing":
-    case "active":
-      return { label: "Live", className: "text-emerald-600" };
-    default:
-      return { label: stage, className: "text-gray-500" };
-  }
+/** Check if a concept has any markets still waiting to be pushed */
+function hasWaitingMarkets(concept: LaunchpadConcept): boolean {
+  return concept.markets.some((m) => m.stage === "launchpad");
+}
+
+/** Get the waiting markets for a concept */
+function getWaitingMarkets(concept: LaunchpadConcept): LaunchpadMarket[] {
+  return concept.markets.filter((m) => m.stage === "launchpad");
+}
+
+/** Get the live markets for a concept */
+function getLiveMarkets(concept: LaunchpadConcept): LaunchpadMarket[] {
+  return concept.markets.filter((m) => m.stage === "testing" || m.stage === "active");
 }
 
 // ── Main Component ───────────────────────────────────────────
@@ -133,6 +144,7 @@ export default function LaunchpadClient() {
   const [reordering, setReordering] = useState(false);
   const [increasingBudget, setIncreasingBudget] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [pushResult, setPushResult] = useState<PushResult | null>(null);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -154,25 +166,64 @@ export default function LaunchpadClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-dismiss push result after 8 seconds
+  useEffect(() => {
+    if (!pushResult) return;
+    const timer = setTimeout(() => setPushResult(null), 8000);
+    return () => clearTimeout(timer);
+  }, [pushResult]);
+
   // ── Actions ──────────────────────────────────────────────
 
   async function handlePush(concept: LaunchpadConcept) {
     setPushingId(concept.conceptId);
     setError(null);
+    setPushResult(null);
     try {
       const res = await fetch("/api/launchpad/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conceptId: concept.conceptId, type: concept.type }),
       });
+      const json = await res.json();
       if (!res.ok) {
-        const json = await res.json();
         throw new Error(json.error || "Push failed");
       }
+      // Build success message from results
+      const results = json.results ?? [];
+      const pushed = results.filter((r: { status: string }) => r.status === "pushed");
+      const skipped = results.filter((r: { status: string }) => r.status === "skipped" || r.status === "already_pushed");
+      const failed = results.filter((r: { status: string }) => r.status !== "pushed" && r.status !== "skipped" && r.status !== "already_pushed");
+
+      let details = "";
+      if (pushed.length > 0) {
+        details += `Pushed to ${pushed.map((r: { language: string }) => r.language?.toUpperCase()).join(", ")}`;
+      }
+      if (skipped.length > 0) {
+        details += details ? ". " : "";
+        details += `Skipped ${skipped.map((r: { language: string }) => r.language?.toUpperCase()).join(", ")} (already live)`;
+      }
+      if (failed.length > 0) {
+        details += details ? ". " : "";
+        details += `Failed: ${failed.map((r: { language: string; error?: string }) => `${r.language?.toUpperCase()}${r.error ? ` (${r.error})` : ""}`).join(", ")}`;
+      }
+
+      setPushResult({
+        conceptName: concept.name,
+        success: pushed.length > 0 && failed.length === 0,
+        details: details || "Push completed",
+      });
+
       await fetchData();
     } catch (err) {
       console.error("Push error:", err);
-      setError(err instanceof Error ? err.message : "Failed to push concept");
+      const msg = err instanceof Error ? err.message : "Failed to push concept";
+      setError(msg);
+      setPushResult({
+        conceptName: concept.name,
+        success: false,
+        details: msg,
+      });
     } finally {
       setPushingId(null);
     }
@@ -271,13 +322,15 @@ export default function LaunchpadClient() {
   }
 
   const allConcepts = data?.concepts ?? [];
+  // Filter out concepts that are fully live (no waiting markets left)
+  const activeConcepts = allConcepts.filter((c) => hasWaitingMarkets(c));
   const concepts = typeFilter === "all"
-    ? allConcepts
-    : allConcepts.filter((c) => c.type === typeFilter);
+    ? activeConcepts
+    : activeConcepts.filter((c) => c.type === typeFilter);
   const budgets = data?.budgets ?? {};
 
-  const imageCount = allConcepts.filter((c) => c.type === "image").length;
-  const videoCount = allConcepts.filter((c) => c.type === "video").length;
+  const imageCount = activeConcepts.filter((c) => c.type === "image").length;
+  const videoCount = activeConcepts.filter((c) => c.type === "video").length;
 
   return (
     <div className="max-w-[900px] pl-8">
@@ -286,7 +339,7 @@ export default function LaunchpadClient() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Launch Pad</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Concepts ready to push to Meta. Auto-pushes daily at 04:00 CET based on budget, or click Push Now.
+            Concepts waiting to be pushed to Meta. Auto-pushes daily at 04:00 CET, or click Push Now.
           </p>
         </div>
         <button
@@ -298,8 +351,35 @@ export default function LaunchpadClient() {
         </button>
       </div>
 
+      {/* Push result banner */}
+      {pushResult && (
+        <div
+          className={`flex items-center justify-between rounded-lg px-4 py-3 mb-4 text-sm ${
+            pushResult.success
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+              : "bg-red-50 border border-red-200 text-red-700"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {pushResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+            )}
+            <div>
+              <span className="font-medium">{pushResult.conceptName}</span>
+              <span className="mx-1.5 text-gray-400">—</span>
+              <span>{pushResult.details}</span>
+            </div>
+          </div>
+          <button onClick={() => setPushResult(null)} className="text-gray-400 hover:text-gray-600 ml-2">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Error banner */}
-      {error && (
+      {error && !pushResult && (
         <div className="flex items-center justify-between bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 mb-4 text-sm">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
@@ -309,11 +389,11 @@ export default function LaunchpadClient() {
       )}
 
       {/* Type filter tabs */}
-      {allConcepts.length > 0 && (
+      {activeConcepts.length > 0 && (
         <div className="flex items-center gap-1 mb-4">
           {(
             [
-              { key: "all" as TypeFilter, label: "All", count: allConcepts.length },
+              { key: "all" as TypeFilter, label: "All", count: activeConcepts.length },
               { key: "image" as TypeFilter, label: "Images", count: imageCount },
               { key: "video" as TypeFilter, label: "Videos", count: videoCount },
             ] as const
@@ -351,7 +431,7 @@ export default function LaunchpadClient() {
             }
 
             // Count queued concepts for this market
-            const queuedForMarket = allConcepts.filter((c) =>
+            const queuedForMarket = activeConcepts.filter((c) =>
               c.markets.some((m) => m.market === market && m.stage === "launchpad")
             ).length;
             const effectiveCanPush = Math.min(budget.canPush, MAX_CONCEPTS_PER_BATCH);
@@ -367,32 +447,37 @@ export default function LaunchpadClient() {
                 key={market}
                 className={`border rounded-xl p-4 ${budgetColorClass(budget.canPush)}`}
               >
-                <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${budgetTextClass(budget.canPush)}`}>
-                  {market}
-                </p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${budgetTextClass(budget.canPush)}`}>
+                    {market}
+                  </p>
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    {budget.campaignBudget} {budget.currency}/day
+                  </span>
+                </div>
                 {budget.canPush > 0 ? (
                   <div>
-                    <p className={`text-sm font-medium ${budgetTextClass(budget.canPush)}`}>
-                      {budget.available} {budget.currency} available for testing
+                    <p className={`text-lg font-bold ${budgetTextClass(budget.canPush)}`}>
+                      {effectiveCanPush} new concept{effectiveCanPush !== 1 ? "s" : ""}/day
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {budget.campaignBudget} {budget.currency}/day &middot; {budget.activeAdSets} active &middot; ~{effectiveCanPush} per batch (max {MAX_CONCEPTS_PER_BATCH})
+                      {budget.available} {budget.currency} compressible from {budget.activeAdSets} active ad set{budget.activeAdSets !== 1 ? "s" : ""}
                     </p>
                     {/* Per-format breakdown if both formats have campaigns */}
                     {hasImageBudget && hasVideoBudget && (
                       <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
-                        <span>Img: {budget.image.canPush} slots</span>
-                        <span>Vid: {budget.video.canPush} slots</span>
+                        <span>Images: {budget.image.canPush}</span>
+                        <span>Videos: {budget.video.canPush}</span>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div>
-                    <p className="text-sm font-medium text-red-700">
-                      Winners consuming full budget
+                    <p className="text-sm font-bold text-red-700">
+                      0 new concepts/day
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {budget.campaignBudget} {budget.currency}/day &middot; {budget.activeAdSets} active
+                      Winners consuming full budget across {budget.activeAdSets} ad set{budget.activeAdSets !== 1 ? "s" : ""}
                     </p>
                   </div>
                 )}
@@ -407,7 +492,7 @@ export default function LaunchpadClient() {
                     ) : (
                       <TrendingUp className="w-3.5 h-3.5" />
                     )}
-                    +{extraBudget} {budget.currency}/day for {conceptsNeeded} concept{conceptsNeeded !== 1 ? "s" : ""}
+                    +{extraBudget} {budget.currency}/day for {conceptsNeeded} more concept{conceptsNeeded !== 1 ? "s" : ""}
                   </button>
                 )}
               </div>
@@ -421,9 +506,9 @@ export default function LaunchpadClient() {
         <div className="text-center py-16 bg-gray-50 border border-dashed border-gray-200 rounded-xl">
           <Rocket className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <h3 className="text-sm font-medium text-gray-600 mb-1">
-            {typeFilter !== "all" && allConcepts.length > 0
-              ? `No ${typeFilter} concepts on launch pad`
-              : "No concepts on launch pad"}
+            {typeFilter !== "all" && activeConcepts.length > 0
+              ? `No ${typeFilter} concepts waiting to push`
+              : "No concepts waiting to push"}
           </h3>
           <p className="text-xs text-gray-400">
             Add concepts from the Concepts or Video Ads page.
@@ -436,6 +521,10 @@ export default function LaunchpadClient() {
         <div className="space-y-3">
           {concepts.map((concept, index) => {
             const typeBadge = TYPE_BADGE[concept.type];
+            const waitingMarkets = getWaitingMarkets(concept);
+            const liveMarkets = getLiveMarkets(concept);
+            const allIndex = activeConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type);
+
             return (
               <div
                 key={`${concept.type}-${concept.conceptId}`}
@@ -443,34 +532,34 @@ export default function LaunchpadClient() {
               >
                 <div className="flex items-start gap-3">
                   {/* Priority number */}
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-1">
                     <span className="text-sm font-bold text-indigo-600 tabular-nums">{index + 1}</span>
                   </div>
 
-                  {/* Thumbnail */}
+                  {/* Thumbnail — bigger for better recognition */}
                   <div className="relative shrink-0">
                     {concept.thumbnailUrl ? (
                       <Image
                         src={concept.thumbnailUrl}
-                        alt=""
-                        width={48}
-                        height={48}
-                        className="w-12 h-12 rounded-lg object-cover"
+                        alt={concept.name}
+                        width={64}
+                        height={64}
+                        className="w-16 h-16 rounded-lg object-cover"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
                         {concept.type === "video" ? (
-                          <Film className="w-5 h-5 text-gray-300" />
+                          <Film className="w-6 h-6 text-gray-300" />
                         ) : (
-                          <ImageIcon className="w-5 h-5 text-gray-300" />
+                          <ImageIcon className="w-6 h-6 text-gray-300" />
                         )}
                       </div>
                     )}
                     {/* Play icon overlay for video */}
                     {concept.type === "video" && concept.thumbnailUrl && (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
-                          <Play className="w-3 h-3 text-white ml-0.5" fill="white" />
+                        <div className="w-7 h-7 rounded-full bg-black/50 flex items-center justify-center">
+                          <Play className="w-3.5 h-3.5 text-white ml-0.5" fill="white" />
                         </div>
                       </div>
                     )}
@@ -478,45 +567,48 @@ export default function LaunchpadClient() {
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">{concept.name}</p>
-                    </div>
-
-                    {/* Badges */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {/* Type badge */}
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${typeBadge.className}`}>
+                    {/* Name + meta badges */}
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{concept.name}</p>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${typeBadge.className}`}>
                         {typeBadge.label}
                       </span>
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${sourceBadgeColors(concept.source)}`}>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${sourceBadgeColors(concept.source)}`}>
                         {sourceBadge(concept.source, concept.conceptNumber)}
                       </span>
                       {concept.product && (
-                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"}`}>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"}`}>
                           {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Hydro13" : concept.product}
                         </span>
                       )}
-                      {/* Market flags with status */}
-                      {concept.markets.length > 0 && (
-                        <>
-                          <span className="text-gray-300 mx-0.5">|</span>
-                          {concept.markets.map((m) => {
-                            const flag = MARKET_FLAG[m.market] ?? m.market;
-                            const isLive = m.stage === "testing" || m.stage === "active";
-                            return (
-                              <span
-                                key={m.imageJobMarketId}
-                                className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                                  isLive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"
-                                }`}
-                                title={`${m.market}: ${m.stage}`}
-                              >
-                                {flag} {isLive ? "Live" : "Queued"}
-                              </span>
-                            );
-                          })}
-                        </>
-                      )}
+                    </div>
+
+                    {/* Market status — big and clear */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {waitingMarkets.map((m) => {
+                        const flag = MARKET_FLAG[m.market] ?? m.market;
+                        return (
+                          <span
+                            key={m.imageJobMarketId}
+                            className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200"
+                          >
+                            <CircleDot className="w-3 h-3" />
+                            {flag} Ready to push
+                          </span>
+                        );
+                      })}
+                      {liveMarkets.map((m) => {
+                        const flag = MARKET_FLAG[m.market] ?? m.market;
+                        return (
+                          <span
+                            key={m.imageJobMarketId}
+                            className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            {flag} Live
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -524,35 +616,37 @@ export default function LaunchpadClient() {
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Reorder buttons */}
                     <button
-                      onClick={() => handleReorder(allConcepts, allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type), "up")}
-                      disabled={allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type) === 0 || reordering}
+                      onClick={() => handleReorder(activeConcepts, allIndex, "up")}
+                      disabled={allIndex === 0 || reordering}
                       className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                       title="Move up"
                     >
                       <ChevronUp className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleReorder(allConcepts, allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type), "down")}
-                      disabled={allConcepts.findIndex((c) => c.conceptId === concept.conceptId && c.type === concept.type) === allConcepts.length - 1 || reordering}
+                      onClick={() => handleReorder(activeConcepts, allIndex, "down")}
+                      disabled={allIndex === activeConcepts.length - 1 || reordering}
                       className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                       title="Move down"
                     >
                       <ChevronDown className="w-4 h-4" />
                     </button>
 
-                    {/* Push button */}
+                    {/* Push button — shows which markets */}
                     <button
                       onClick={() => handlePush(concept)}
                       disabled={pushingId !== null}
-                      className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ml-1"
-                      title="Push to Meta now"
+                      className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors ml-1"
+                      title={`Push to ${waitingMarkets.map((m) => m.market).join(", ")}`}
                     >
                       {pushingId === concept.conceptId ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Zap className="w-3.5 h-3.5" />
                       )}
-                      {pushingId === concept.conceptId ? "Pushing..." : "Push Now"}
+                      {pushingId === concept.conceptId
+                        ? "Pushing..."
+                        : `Push ${waitingMarkets.map((m) => m.market).join(", ")}`}
                     </button>
 
                     {/* Remove button */}

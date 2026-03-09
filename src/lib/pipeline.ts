@@ -1678,16 +1678,16 @@ export async function getLaunchpadConcepts(): Promise<
   const { data: sourceImages } = imageJobIds.length > 0
     ? await db
         .from("source_images")
-        .select("image_job_id, thumbnail_url, original_url")
-        .in("image_job_id", imageJobIds)
+        .select("job_id, thumbnail_url, original_url")
+        .in("job_id", imageJobIds)
         .order("created_at", { ascending: true })
-    : { data: [] as { image_job_id: string; thumbnail_url: string | null; original_url: string }[] };
+    : { data: [] as { job_id: string; thumbnail_url: string | null; original_url: string }[] };
 
   const imageThumbMap = new Map<string, string>();
   for (const img of sourceImages ?? []) {
-    if (!imageThumbMap.has(img.image_job_id)) {
+    if (!imageThumbMap.has(img.job_id)) {
       const url = img.thumbnail_url ?? img.original_url;
-      if (url) imageThumbMap.set(img.image_job_id, url);
+      if (url) imageThumbMap.set(img.job_id, url);
     }
   }
 
