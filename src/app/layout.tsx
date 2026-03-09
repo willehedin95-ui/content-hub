@@ -8,6 +8,7 @@ import { createAuthServerClient } from "@/lib/supabase-server";
 export const metadata: Metadata = {
   title: "Content Hub — Hälsobladet",
   description: "Translation dashboard for advertorials and listicles",
+  icons: { icon: "/icon.svg" },
 };
 
 export default async function RootLayout({
