@@ -9,6 +9,8 @@ import RightPanel from "./right-panel/RightPanel";
 import QualityPanel from "./QualityPanel";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import ContextMenu from "./menus/ContextMenu";
+import SaveComponentModal from "./menus/SaveComponentModal";
 
 function BuilderShellInner() {
   const {
@@ -20,6 +22,11 @@ function BuilderShellInner() {
     translation,
     router,
     pageId,
+    pageProduct,
+    showSaveComponentModal,
+    setShowSaveComponentModal,
+    saveComponentHtml,
+    setSavedComponents,
   } = useBuilder();
 
   return (
@@ -32,6 +39,20 @@ function BuilderShellInner() {
         <RightPanel />
       </div>
       <BuilderStatusBar />
+
+      {/* Context menu (right-click) */}
+      <ContextMenu />
+
+      {/* Save as Component modal */}
+      <SaveComponentModal
+        show={showSaveComponentModal}
+        html={saveComponentHtml}
+        product={pageProduct}
+        onClose={() => setShowSaveComponentModal(false)}
+        onSaved={(component) => {
+          setSavedComponents((prev) => [component, ...prev]);
+        }}
+      />
 
       {/* Publish progress modal */}
       <PublishModal

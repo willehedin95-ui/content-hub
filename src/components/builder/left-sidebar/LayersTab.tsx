@@ -382,8 +382,12 @@ function LayerItem({
   onDragStart,
   onDragOver,
   onDrop,
+  onContextMenu,
   dragOverEl,
   forceExpand,
+  renamingEl,
+  onRename,
+  onCancelRename,
 }: {
   node: LayerNode;
   selectedEl: HTMLElement | null;
@@ -392,13 +396,19 @@ function LayerItem({
   onDragStart: (el: HTMLElement) => void;
   onDragOver: (e: React.DragEvent, el: HTMLElement) => void;
   onDrop: (el: HTMLElement) => void;
+  onContextMenu: (el: HTMLElement, x: number, y: number) => void;
   dragOverEl: HTMLElement | null;
   forceExpand: boolean;
+  renamingEl: HTMLElement | null;
+  onRename: (newName: string) => void;
+  onCancelRename: () => void;
 }) {
   const isSelected = node.el === selectedEl;
   const hasChildren = node.children.length > 0;
   const tagLabel = TAG_LABELS[node.tag] || node.tag;
+  const displayName = node.el.getAttribute("data-cc-name") || tagLabel;
   const isDragOver = dragOverEl === node.el;
+  const isRenaming = renamingEl === node.el;
   const isContainer =
     node.tag === "DIV" || node.tag === "SPAN";
   const itemRef = useRef<HTMLDivElement>(null);
@@ -444,6 +454,11 @@ function LayerItem({
           onDrop(node.el);
         }}
         onClick={() => onSelect(node.el)}
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(node.el, e.clientX, e.clientY);
+        }}
         className={`group flex items-center h-9 pr-2 cursor-pointer transition-colors border-l-2 ${
           isDragOver
             ? "bg-indigo-100 border-l-indigo-400"
@@ -479,27 +494,44 @@ function LayerItem({
           <TagIcon tag={node.tag} className="w-4 h-4" />
         </span>
 
-        {/* Tag label + text preview */}
+        {/* Tag label + text preview (or inline rename input) */}
         <span className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-          <span
-            className={`text-[13px] font-medium shrink-0 ${
-              isSelected
-                ? "text-indigo-700"
-                : isContainer
-                  ? "text-gray-500"
-                  : "text-gray-700"
-            }`}
-          >
-            {tagLabel}
-          </span>
-          {node.label && (
-            <span
-              className={`text-[11px] truncate ${
-                isSelected ? "text-indigo-500" : "text-gray-500"
-              }`}
-            >
-              {node.label}
-            </span>
+          {isRenaming ? (
+            <input
+              autoFocus
+              defaultValue={node.el.getAttribute("data-cc-name") || ""}
+              placeholder={tagLabel}
+              onBlur={(e) => onRename(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRename((e.target as HTMLInputElement).value);
+                if (e.key === "Escape") onCancelRename();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="text-[13px] bg-white border border-indigo-300 rounded px-1 py-0 w-24 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            />
+          ) : (
+            <>
+              <span
+                className={`text-[13px] font-medium shrink-0 ${
+                  isSelected
+                    ? "text-indigo-700"
+                    : isContainer
+                      ? "text-gray-500"
+                      : "text-gray-700"
+                }`}
+              >
+                {displayName}
+              </span>
+              {node.label && (
+                <span
+                  className={`text-[11px] truncate ${
+                    isSelected ? "text-indigo-500" : "text-gray-500"
+                  }`}
+                >
+                  {node.label}
+                </span>
+              )}
+            </>
           )}
         </span>
 
@@ -541,8 +573,12 @@ function LayerItem({
               onDragStart={onDragStart}
               onDragOver={onDragOver}
               onDrop={onDrop}
+              onContextMenu={onContextMenu}
               dragOverEl={dragOverEl}
               forceExpand={false}
+              renamingEl={renamingEl}
+              onRename={onRename}
+              onCancelRename={onCancelRename}
             />
           ))}
         </div>
@@ -568,6 +604,10 @@ export default function LayersTab() {
     selectElementInIframe,
     pushUndoSnapshot,
     markDirty,
+    openContextMenu,
+    renamingEl,
+    setRenamingEl,
+    handleRenameElement,
   } = useBuilder();
 
   const [layers, setLayers] = useState<LayerNode[]>([]);
@@ -763,8 +803,12 @@ export default function LayersTab() {
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
+              onContextMenu={openContextMenu}
               dragOverEl={dragOverEl}
               forceExpand={false}
+              renamingEl={renamingEl}
+              onRename={handleRenameElement}
+              onCancelRename={() => setRenamingEl(null)}
             />
           ))}
         </div>

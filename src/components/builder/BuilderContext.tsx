@@ -65,6 +65,16 @@ export interface ConfirmAction {
   action: () => void;
 }
 
+export interface SavedComponent {
+  id: string;
+  name: string;
+  html: string;
+  thumbnail_url: string | null;
+  product: string | null;
+  category: string;
+  created_at: string;
+}
+
 export interface BuilderContextValue {
   // --- Props (passed through) ---
   pageId: string;
@@ -213,6 +223,34 @@ export interface BuilderContextValue {
   handleCopyStyles: () => void;
   handlePasteStyles: () => void;
   hasCopiedStyles: boolean;
+
+  // --- Context menu ---
+  contextMenu: { x: number; y: number; targetEl: HTMLElement } | null;
+  openContextMenu: (el: HTMLElement, x: number, y: number) => void;
+  closeContextMenu: () => void;
+
+  // --- Clipboard (copy/paste elements) ---
+  copiedHtmlRef: RefObject<string | null>;
+  handleCopyElement: () => void;
+  handlePasteElement: () => void;
+
+  // --- Group ---
+  handleGroupElement: () => void;
+
+  // --- Rename ---
+  renamingEl: HTMLElement | null;
+  setRenamingEl: (el: HTMLElement | null) => void;
+  startRenameElement: () => void;
+  handleRenameElement: (newName: string) => void;
+
+  // --- Save as component ---
+  showSaveComponentModal: boolean;
+  setShowSaveComponentModal: (v: boolean) => void;
+  saveComponentHtml: string;
+  handleSaveAsComponent: () => void;
+  savedComponents: SavedComponent[];
+  setSavedComponents: React.Dispatch<React.SetStateAction<SavedComponent[]>>;
+  insertSavedComponent: (html: string) => void;
 
   // --- Convenience methods ---
   selectElementInIframe: (el: HTMLElement) => void;
@@ -397,6 +435,22 @@ export function BuilderProvider({
 
   // Link modal state
   const [showLinkModal, setShowLinkModal] = useState(false);
+
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetEl: HTMLElement } | null>(null);
+
+  // Clipboard (element HTML string)
+  const copiedHtmlRef = useRef<string | null>(null);
+
+  // Rename state (which element is being renamed in layers)
+  const [renamingEl, setRenamingEl] = useState<HTMLElement | null>(null);
+
+  // Save component modal
+  const [showSaveComponentModal, setShowSaveComponentModal] = useState(false);
+  const [saveComponentHtml, setSaveComponentHtml] = useState("");
+
+  // Saved components list (fetched from API on mount)
+  const [savedComponents, setSavedComponents] = useState<SavedComponent[]>([]);
 
   // -----------------------------------------------------------------------
   // Derived
@@ -936,6 +990,17 @@ export function BuilderProvider({
       },
       false
     );
+
+    // Context menu handler for right-click in iframe
+    doc.addEventListener("contextmenu", function (e: MouseEvent) {
+      e.preventDefault();
+      const target = e.target as HTMLElement;
+      if (!target || target === doc.body || target === doc.documentElement) return;
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const rect = iframe.getBoundingClientRect();
+      openContextMenuRef.current(target, rect.left + e.clientX, rect.top + e.clientY);
+    });
   }
 
   function syncPaddingToIframe(
@@ -1282,6 +1347,116 @@ export function BuilderProvider({
   }
 
   // -----------------------------------------------------------------------
+  // Context menu + clipboard + group + rename + save-as-component
+  // -----------------------------------------------------------------------
+
+  function openContextMenu(el: HTMLElement, x: number, y: number) {
+    selectElementInIframe(el);
+    setContextMenu({ x, y, targetEl: el });
+  }
+
+  function closeContextMenu() {
+    setContextMenu(null);
+  }
+
+  function handleCopyElement() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    copiedHtmlRef.current = el.outerHTML;
+  }
+
+  function handlePasteElement() {
+    const el = selectedElRef.current;
+    const html = copiedHtmlRef.current;
+    if (!el || !html) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    pushUndoSnapshot();
+    const temp = doc.createElement("div");
+    // Trusted internal clipboard HTML (from our own copy operation) — safe to restore
+    // eslint-disable-next-line no-unsanitized/property
+    temp.innerHTML = html;
+    const newEl = temp.firstElementChild as HTMLElement;
+    if (!newEl) return;
+    el.parentNode?.insertBefore(newEl, el.nextSibling);
+    selectElementInIframe(newEl);
+    markDirty();
+  }
+
+  function handleGroupElement() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    pushUndoSnapshot();
+    const wrapper = doc.createElement("div");
+    wrapper.style.padding = "16px";
+    el.parentNode?.insertBefore(wrapper, el);
+    wrapper.appendChild(el);
+    selectElementInIframe(wrapper);
+    markDirty();
+  }
+
+  function startRenameElement() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    setRenamingEl(el);
+    closeContextMenu();
+  }
+
+  function handleRenameElement(newName: string) {
+    const el = renamingEl;
+    if (!el) return;
+    pushUndoSnapshot();
+    if (newName.trim()) {
+      el.setAttribute("data-cc-name", newName.trim());
+    } else {
+      el.removeAttribute("data-cc-name");
+    }
+    setRenamingEl(null);
+    markDirty();
+  }
+
+  function handleSaveAsComponent() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    // Clean editor attributes
+    const clone = el.cloneNode(true) as HTMLElement;
+    const editorAttrs = ["data-cc-selected", "data-cc-editable", "contenteditable",
+      "data-cc-img-highlight", "data-cc-media-highlight", "data-cc-video-placeholder",
+      "data-cc-padded", "data-cc-pad-skip", "data-cc-hidden"];
+    function cleanNode(node: Element) {
+      editorAttrs.forEach(attr => node.removeAttribute(attr));
+      node.querySelectorAll("*").forEach(child => {
+        editorAttrs.forEach(attr => child.removeAttribute(attr));
+      });
+    }
+    cleanNode(clone);
+    setSaveComponentHtml(clone.outerHTML);
+    setShowSaveComponentModal(true);
+    closeContextMenu();
+  }
+
+  function insertSavedComponent(html: string) {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    pushUndoSnapshot();
+    const temp = doc.createElement("div");
+    // Trusted saved-component HTML (from our own API) — safe to insert
+    // eslint-disable-next-line no-unsanitized/property
+    temp.innerHTML = html;
+    const newEl = temp.firstElementChild as HTMLElement;
+    if (!newEl) return;
+    if (hasSelectedEl && selectedElRef.current) {
+      selectedElRef.current.parentNode?.insertBefore(newEl, selectedElRef.current.nextSibling);
+    } else {
+      doc.body.appendChild(newEl);
+    }
+    selectElementInIframe(newEl);
+    markDirty();
+  }
+
+  // -----------------------------------------------------------------------
   // Convenience methods
   // -----------------------------------------------------------------------
 
@@ -1333,6 +1508,14 @@ export function BuilderProvider({
     fetch("/api/market-urls")
       .then((r) => (r.ok ? r.json() : []))
       .then(setMarketUrls);
+  }, []);
+
+  // Fetch saved components on mount
+  useEffect(() => {
+    fetch("/api/saved-components")
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setSavedComponents(data); })
+      .catch(console.error);
   }, []);
 
   // Auto-detect URL mode when market URLs load and linkUrl is set
@@ -1398,7 +1581,7 @@ export function BuilderProvider({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isDirty, bgImageTranslating]);
 
-  // Keyboard shortcuts (Ctrl+S, Ctrl+Z, Ctrl+Shift+Z, Backspace/Delete)
+  // Keyboard shortcuts (Ctrl+S, Ctrl+Z, Ctrl+Shift+Z, Backspace/Delete, Ctrl+C/V/D/G, Ctrl+Shift+S)
   const saveRef = useRef<(() => void) | null>(null);
   saveRef.current = () => {
     if (!saving && !publishing && !retranslating) handleSave();
@@ -1410,10 +1593,67 @@ export function BuilderProvider({
   redoRef.current = handleRedo;
   deleteRef.current = handleDeleteElement;
 
+  // Refs for new callbacks (avoid stale closures in event listeners)
+  const handleCopyElementRef = useRef(handleCopyElement);
+  useEffect(() => { handleCopyElementRef.current = handleCopyElement; });
+  const handlePasteElementRef = useRef(handlePasteElement);
+  useEffect(() => { handlePasteElementRef.current = handlePasteElement; });
+  const handleDuplicateElementRef = useRef(handleDuplicateElement);
+  useEffect(() => { handleDuplicateElementRef.current = handleDuplicateElement; });
+  const handleGroupElementRef = useRef(handleGroupElement);
+  useEffect(() => { handleGroupElementRef.current = handleGroupElement; });
+  const handleSaveAsComponentRef = useRef(handleSaveAsComponent);
+  useEffect(() => { handleSaveAsComponentRef.current = handleSaveAsComponent; });
+
+  // Context menu ref for keydown handler
+  const contextMenuRef = useRef(contextMenu);
+  useEffect(() => { contextMenuRef.current = contextMenu; });
+
+  // Ref for openContextMenu (used in iframe listener)
+  const openContextMenuRef = useRef(openContextMenu);
+  useEffect(() => { openContextMenuRef.current = openContextMenu; });
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
       const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable === true;
+
+      // Escape -> close context menu
+      if (e.key === "Escape" && contextMenuRef.current) {
+        closeContextMenu();
+        return;
+      }
+
+      // Ctrl/Cmd+C -> copy element (when not typing)
+      if ((e.metaKey || e.ctrlKey) && e.key === "c" && !isTyping) {
+        handleCopyElementRef.current();
+        // Don't preventDefault — allow normal text copy too
+      }
+
+      // Ctrl/Cmd+V -> paste element (when not typing, only if we have copied HTML)
+      if ((e.metaKey || e.ctrlKey) && e.key === "v" && !isTyping && copiedHtmlRef.current && selectedElRef.current) {
+        e.preventDefault();
+        handlePasteElementRef.current();
+      }
+
+      // Ctrl/Cmd+D -> duplicate (when not typing)
+      if ((e.metaKey || e.ctrlKey) && e.key === "d" && !isTyping) {
+        e.preventDefault();
+        handleDuplicateElementRef.current();
+      }
+
+      // Ctrl/Cmd+G -> group into container
+      if ((e.metaKey || e.ctrlKey) && e.key === "g" && !isTyping) {
+        e.preventDefault();
+        handleGroupElementRef.current();
+      }
+
+      // Ctrl/Cmd+Shift+S -> save as component (when not typing)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "s" && !isTyping && selectedElRef.current) {
+        e.preventDefault();
+        handleSaveAsComponentRef.current();
+        return; // Don't fall through to regular Ctrl+S
+      }
 
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
@@ -1630,6 +1870,34 @@ export function BuilderProvider({
     handleCopyStyles,
     handlePasteStyles,
     hasCopiedStyles,
+
+    // Context menu
+    contextMenu,
+    openContextMenu,
+    closeContextMenu,
+
+    // Clipboard (copy/paste elements)
+    copiedHtmlRef,
+    handleCopyElement,
+    handlePasteElement,
+
+    // Group
+    handleGroupElement,
+
+    // Rename
+    renamingEl,
+    setRenamingEl,
+    startRenameElement,
+    handleRenameElement,
+
+    // Save as component
+    showSaveComponentModal,
+    setShowSaveComponentModal,
+    saveComponentHtml,
+    handleSaveAsComponent,
+    savedComponents,
+    setSavedComponents,
+    insertSavedComponent,
 
     // Convenience methods
     selectElementInIframe,
