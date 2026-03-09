@@ -7,20 +7,41 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  if (!isValidUUID(id)) {
-    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-  }
   const origin = new URL(_req.url).origin;
   const db = createServerSupabase();
 
-  const { data: translation, error } = await db
-    .from("translations")
-    .select(`translated_html, pages (source_url)`)
-    .eq("id", id)
-    .single();
+  // Handle source preview: synthetic ID format "source_<pageId>"
+  const isSourcePreview = id.startsWith("source_");
+  const realId = isSourcePreview ? id.slice("source_".length) : id;
 
-  if (error || !translation?.translated_html) {
-    return new NextResponse("Not found", { status: 404 });
+  if (!isValidUUID(realId)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
+  let html: string;
+
+  if (isSourcePreview) {
+    const { data: page, error } = await db
+      .from("pages")
+      .select("original_html, source_url")
+      .eq("id", realId)
+      .single();
+
+    if (error || !page?.original_html) {
+      return new NextResponse("Not found", { status: 404 });
+    }
+    html = page.original_html;
+  } else {
+    const { data: translation, error } = await db
+      .from("translations")
+      .select(`translated_html, pages (source_url)`)
+      .eq("id", id)
+      .single();
+
+    if (error || !translation?.translated_html) {
+      return new NextResponse("Not found", { status: 404 });
+    }
+    html = translation.translated_html as string;
   }
 
   // Inject contentEditable editing script so users can click and edit text inline
@@ -122,10 +143,9 @@ export async function GET(
 </script>`;
 
   // HTML was already sanitized when saved — no need to re-sanitize for preview
-  const rawHtml = translation.translated_html as string;
-  const html = rawHtml.replace(/<\/body>/i, editorScript + "</body>");
+  const finalHtml = html.replace(/<\/body>/i, editorScript + "</body>");
 
-  return new NextResponse(html, {
+  return new NextResponse(finalHtml, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "X-Frame-Options": "SAMEORIGIN",
