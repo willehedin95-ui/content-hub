@@ -120,11 +120,39 @@ export default function BrainstormGenerate() {
   const [segments, setSegments] = useState<ProductSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
   const [selectedTemplates, setSelectedTemplates] = useState<AdTemplate[]>([]);
-  const [competitorImage, setCompetitorImage] = useState<File | null>(null);
-  const [competitorImagePreview, setCompetitorImagePreview] = useState<string>("");
-  const [competitorImageUrl, setCompetitorImageUrl] = useState<string>("");
+  const [competitorImages, setCompetitorImages] = useState<File[]>([]);
+  const [competitorImagePreviews, setCompetitorImagePreviews] = useState<string[]>([]);
+  const [competitorImageUrls, setCompetitorImageUrls] = useState<string[]>([]);
+  const [variationsPerImage, setVariationsPerImage] = useState(1);
+  const [urlInput, setUrlInput] = useState("");
   const [competitorAdCopy, setCompetitorAdCopy] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_COMPETITOR_IMAGES = 10;
+  const totalCompetitorImages = competitorImages.length + competitorImageUrls.length;
+
+  function addCompetitorFile(file: File) {
+    if (totalCompetitorImages >= MAX_COMPETITOR_IMAGES) return;
+    setCompetitorImages((prev) => [...prev, file]);
+    setCompetitorImagePreviews((prev) => [...prev, URL.createObjectURL(file)]);
+  }
+
+  function addCompetitorUrl(url: string) {
+    if (!url.trim() || totalCompetitorImages >= MAX_COMPETITOR_IMAGES) return;
+    setCompetitorImageUrls((prev) => [...prev, url.trim()]);
+  }
+
+  function removeCompetitorImage(index: number, type: "file" | "url") {
+    if (type === "file") {
+      setCompetitorImagePreviews((prev) => {
+        URL.revokeObjectURL(prev[index]);
+        return prev.filter((_, i) => i !== index);
+      });
+      setCompetitorImages((prev) => prev.filter((_, i) => i !== index));
+    } else {
+      setCompetitorImageUrls((prev) => prev.filter((_, i) => i !== index));
+    }
+  }
 
   // Pixar animation state
   const [direction, setDirection] = useState("");
@@ -260,39 +288,36 @@ export default function BrainstormGenerate() {
     setProgressSteps([]);
 
     try {
-      // Competitor ad flow: upload image → stream NDJSON progress → redirect to image job
-      if (mode === "from_competitor_ad" && (competitorImage || competitorImageUrl)) {
-        let imageUrl = competitorImageUrl;
+      // Competitor ad flow: upload images → stream NDJSON progress → redirect to image job
+      if (mode === "from_competitor_ad" && totalCompetitorImages > 0) {
+        const allImageUrls: string[] = [...competitorImageUrls];
 
-        // Initialize progress steps
         setProgressSteps([
-          { step: "uploading", message: "Uploading competitor image...", done: false },
+          { step: "uploading", message: "Uploading competitor images...", done: false },
         ]);
 
-        // If user uploaded a file, upload it to temp storage first
-        if (competitorImage) {
+        // Upload each file to temp storage
+        for (const file of competitorImages) {
           const formData = new FormData();
-          formData.append("file", competitorImage);
+          formData.append("file", file);
           const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
           if (!uploadRes.ok) throw new Error("Failed to upload image");
           const uploadData = await uploadRes.json();
-          imageUrl = uploadData.url;
+          allImageUrls.push(uploadData.url);
         }
 
-        // Mark upload done
         setProgressSteps((prev) =>
-          prev.map((s) => (s.step === "uploading" ? { ...s, done: true, message: "Image uploaded" } : s))
+          prev.map((s) => (s.step === "uploading" ? { ...s, done: true, message: `${allImageUrls.length} image${allImageUrls.length !== 1 ? "s" : ""} uploaded` } : s))
         );
 
-        // Call brainstorm API — reads NDJSON stream for real-time progress
         const res = await fetch("/api/brainstorm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             mode,
             product,
-            count,
-            competitor_image_url: imageUrl,
+            count: variationsPerImage,
+            competitor_image_urls: allImageUrls,
             competitor_ad_copy: competitorAdCopy || undefined,
           }),
         });
@@ -821,109 +846,173 @@ export default function BrainstormGenerate() {
               {/* Image input area */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Competitor Ad Image
+                  Competitor Ad Images
                 </label>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setCompetitorImage(file);
-                      setCompetitorImageUrl("");
-                      setCompetitorImagePreview(URL.createObjectURL(file));
+                    const files = e.target.files;
+                    if (files) {
+                      for (const file of Array.from(files)) {
+                        addCompetitorFile(file);
+                      }
                     }
                     e.target.value = "";
                   }}
                 />
-                {!competitorImage && !competitorImageUrl ? (
-                  <div className="space-y-3">
-                    {/* Upload / paste drop zone */}
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      onPaste={(e) => {
-                        const items = e.clipboardData?.items;
-                        if (!items) return;
-                        for (const item of Array.from(items)) {
-                          if (item.type.startsWith("image/")) {
-                            e.preventDefault();
-                            const file = item.getAsFile();
-                            if (file) {
-                              setCompetitorImage(file);
-                              setCompetitorImageUrl("");
-                              setCompetitorImagePreview(URL.createObjectURL(file));
-                            }
-                            return;
+
+                {/* Thumbnail grid of added images */}
+                {totalCompetitorImages > 0 && (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {competitorImagePreviews.map((preview, i) => (
+                      <div key={`file-${i}`} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={preview}
+                          alt={`Competitor ad ${i + 1}`}
+                          className="w-20 h-20 rounded-lg border border-gray-200 object-cover"
+                        />
+                        <button
+                          onClick={() => removeCompetitorImage(i, "file")}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {competitorImageUrls.map((url, i) => (
+                      <div key={`url-${i}`} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Competitor ad URL ${i + 1}`}
+                          className="w-20 h-20 rounded-lg border border-gray-200 object-cover"
+                        />
+                        <button
+                          onClick={() => removeCompetitorImage(i, "url")}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {/* Upload / paste drop zone */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onPaste={(e) => {
+                      const items = e.clipboardData?.items;
+                      if (!items) return;
+                      for (const item of Array.from(items)) {
+                        if (item.type.startsWith("image/")) {
+                          e.preventDefault();
+                          const file = item.getAsFile();
+                          if (file) {
+                            addCompetitorFile(file);
+                          }
+                          return;
+                        }
+                      }
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const files = e.dataTransfer.files;
+                      if (files) {
+                        for (const file of Array.from(files)) {
+                          if (file.type.startsWith("image/")) {
+                            addCompetitorFile(file);
                           }
                         }
-                      }}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file && file.type.startsWith("image/")) {
-                          setCompetitorImage(file);
-                          setCompetitorImageUrl("");
-                          setCompetitorImagePreview(URL.createObjectURL(file));
-                        }
-                      }}
-                      tabIndex={0}
-                      className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    >
-                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-500">
-                        Click to upload, drag & drop, or paste from clipboard
-                      </span>
-                      <span className="text-xs text-gray-400 mt-1">
-                        PNG, JPG, or WebP
-                      </span>
-                    </div>
-
-                    {/* OR divider */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-px bg-gray-200" />
-                      <span className="text-xs text-gray-400">or paste image URL</span>
-                      <div className="flex-1 h-px bg-gray-200" />
-                    </div>
-
-                    {/* URL input */}
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="url"
-                          value={competitorImageUrl}
-                          onChange={(e) => setCompetitorImageUrl(e.target.value)}
-                          placeholder="https://example.com/ad-image.jpg"
-                          className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-                        />
-                      </div>
-                    </div>
+                      }
+                    }}
+                    tabIndex={0}
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  >
+                    <Upload className="w-7 h-7 text-gray-400 mb-1.5" />
+                    <span className="text-sm text-gray-500">
+                      Click to upload, drag & drop, or paste from clipboard
+                    </span>
+                    <span className="text-xs text-gray-400 mt-1">
+                      PNG, JPG, or WebP &mdash; multiple files supported
+                    </span>
                   </div>
-                ) : (
-                  <div className="relative inline-block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={competitorImagePreview || competitorImageUrl}
-                      alt="Competitor ad preview"
-                      className="max-h-64 rounded-xl border border-gray-200 object-contain"
-                    />
+
+                  {/* OR divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs text-gray-400">or paste image URL</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+
+                  {/* URL input with Add button */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="url"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && urlInput.trim()) {
+                            addCompetitorUrl(urlInput);
+                            setUrlInput("");
+                          }
+                        }}
+                        placeholder="https://example.com/ad-image.jpg"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                      />
+                    </div>
                     <button
                       onClick={() => {
-                        if (competitorImagePreview) {
-                          URL.revokeObjectURL(competitorImagePreview);
+                        if (urlInput.trim()) {
+                          addCompetitorUrl(urlInput);
+                          setUrlInput("");
                         }
-                        setCompetitorImage(null);
-                        setCompetitorImagePreview("");
-                        setCompetitorImageUrl("");
                       }}
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                      disabled={!urlInput.trim()}
+                      className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      Add
                     </button>
+                  </div>
+                </div>
+
+                {/* Variations per image stepper */}
+                {totalCompetitorImages > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium text-gray-700">Variations per image</label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setVariationsPerImage((v) => Math.max(1, v - 1))}
+                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >-</button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={variationsPerImage}
+                          onChange={(e) => setVariationsPerImage(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+                          className="w-12 text-center rounded-lg border border-gray-200 py-1 text-sm"
+                        />
+                        <button
+                          onClick={() => setVariationsPerImage((v) => Math.min(10, v + 1))}
+                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >+</button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-600">
+                      {totalCompetitorImages} image{totalCompetitorImages !== 1 ? "s" : ""} &times; {variationsPerImage} variation{variationsPerImage !== 1 ? "s" : ""} = {totalCompetitorImages * variationsPerImage} total
+                    </p>
                   </div>
                 )}
               </div>
@@ -1382,7 +1471,7 @@ export default function BrainstormGenerate() {
             disabled={
               (mode === "from_organic" && !organicText.trim()) ||
               (mode === "from_research" && !researchText.trim()) ||
-              (mode === "from_competitor_ad" && !competitorImage && !competitorImageUrl.trim())
+              (mode === "from_competitor_ad" && totalCompetitorImages === 0)
             }
             className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
