@@ -23,17 +23,24 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "20", 10)));
   const offset = (page - 1) * limit;
+  const showArchived = url.searchParams.get("archived") === "true";
 
   // List page only needs translation status, not full version history
   const [jobsResult, countResult, campaignsResult] = await Promise.all([
-    db
-      .from("image_jobs")
-      .select(`*, source_images(id, filename, original_url, skip_translation, image_translations(id, language, status, aspect_ratio, translated_url, active_version_id, updated_at))`)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1),
-    db
-      .from("image_jobs")
-      .select("id", { count: "exact", head: true }),
+    (() => {
+      const q = db
+        .from("image_jobs")
+        .select(`*, source_images(id, filename, original_url, skip_translation, image_translations(id, language, status, aspect_ratio, translated_url, active_version_id, updated_at))`)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      return showArchived ? q.not("archived_at", "is", null) : q.is("archived_at", null);
+    })(),
+    (() => {
+      const q = db
+        .from("image_jobs")
+        .select("id", { count: "exact", head: true });
+      return showArchived ? q.not("archived_at", "is", null) : q.is("archived_at", null);
+    })(),
     db
       .from("meta_campaigns")
       .select("image_job_id, countries, language, status")
