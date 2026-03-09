@@ -1,8 +1,8 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-05
+Updated: 2026-03-09
 
 ## P0 — Blockers
-- [ ] Fix AB test build failure — missing route modules `/ab-tests` page and `/api/ab-tests/[id]/winner` route (pre-existing, blocks production build)
+- (none)
 
 ## P1 — Do Next
 - [ ] Test competitor ad flow end-to-end — upload real competitor image, verify Claude analysis + Nano Banana generation (added 2026-03-04)
@@ -43,12 +43,16 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Creative Testing Learnings — concept_learnings table, AI-generated learnings on kill/promotion, /learnings page, brainstorm injection, backfill script (done 2026-03-05)
 
 ## P3 — Backlog
+- [ ] **Animated Ads Pipeline** — Franky Shaw-style animated ad generation: brainstorm → 18 NanoBananaPro images → 9 Kling 3.0 video transitions → ElevenLabs voiceover → Suno music → download for CapCut editing. ~$9-10/ad. Design + plan ready at `docs/plans/2026-03-08-animated-ads-design.md` and `docs/plans/2026-03-08-animated-ads-plan.md`. 15 tasks, needs `ELEVENLABS_API_KEY` env var. (added 2026-03-08)
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
 - [ ] Google Ads integration (added 2025-02-25)
 - [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] Page builder enhancements — extracted components, text styling, layers panel, asset bank, content blocks, undo/redo, duplicate, link editor, video/media support (done 2026-03-09)
+- [x] Fixed AB tests build blocker — missing route modules for /ab-tests and /api/ab-tests/[id]/winner (done 2026-03-09)
+- [x] Source page editor + swiper language detection (done 2026-03-09)
 - [x] Real-time progress checklists — NDJSON streaming for brainstorm, step-based progress for swiper + publish modal, deferred competitor image gen with polling (done 2026-03-05)
 - [x] Competitor ad text adaptation — Nano Banana prompts now adapt in-image text for target product (done 2026-03-05)
 - [x] Creative Testing Learnings feedback loop — AI auto-generates structured learnings on ad kill/promotion, feeds back into brainstorm prompts (done 2026-03-05)
@@ -60,22 +64,3 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] Rename Static Ads → Concepts everywhere (done 2026-03-04)
 - [x] Template-based brainstorm mode — 14 ad templates from Copy Blocks (done 2026-02-28)
 - [x] Wire deep Copy Blocks framework into brainstorm prompts (done 2026-02-28)
-- [x] Write copy-blocks-deep.md — unified framework document (done 2026-02-28)
-- [x] Poll-based streaming — images appear in grid as they complete (done 2026-02-27)
-- [x] Switch to nano-banana-2 at 1K resolution for faster/cheaper generation (done 2026-02-27)
-- [x] Parallel image generation via Promise.allSettled (done 2026-02-27)
-- [x] Error feedback — show full summary when images fail (done 2026-02-27)
-- [x] Regenerate missing styles after partial failure (done 2026-02-27)
-- [x] Per-image skip/translate toggle for source images (done 2026-02-26)
-- [x] Skeleton loading placeholders during static ad generation (done 2026-02-26)
-- [x] Anthropic prompt caching on brainstorm API (done 2026-02-26)
-- [x] Collapsible "Ads" sidebar group (Brainstorm, Ad Concepts) (done 2026-02-26)
-- [x] Fix style selector resetting on unaware concepts (done 2026-02-26)
-- [x] Fix brainstorm generating identical concepts (anti-copying instructions) (done 2026-02-26)
-- [x] Populate HappySleep product data + Hydro13 audience segments (done 2026-02-26)
-- [x] Preview thumbnails on style chips (done 2026-02-26)
-- [x] Re-roll individual briefs with diversity protection (done 2026-02-26)
-- [x] Concept diversity / dislike feature — reject concepts to avoid similar ones (done 2025-02-25)
-- [x] Style picker for static ad generation (done 2025-02-25)
-- [x] Prompt visibility — show Kie AI prompts per image (done 2025-02-25)
-- [x] Phase 12: Native/ugly ads pipeline — 3 native styles (done 2025-02-25)
