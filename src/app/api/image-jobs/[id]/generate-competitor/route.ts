@@ -42,15 +42,17 @@ export async function POST(
     );
   }
 
-  const {
-    image_prompts,
-    competitor_image_url,
-    product_hero_urls,
-  } = job.pending_competitor_gen as {
-    image_prompts: Array<{ prompt: string; hook_text: string; headline_text: string }>;
-    competitor_image_url: string;
+  const pendingGen = job.pending_competitor_gen as {
+    image_prompts: Array<{ source_index?: number; prompt: string; hook_text: string; headline_text: string }>;
+    competitor_image_urls?: string[];
+    competitor_image_url?: string; // legacy single-URL support
     product_hero_urls: string[];
   };
+
+  const image_prompts = pendingGen.image_prompts;
+  const competitorImageUrls = pendingGen.competitor_image_urls
+    ?? (pendingGen.competitor_image_url ? [pendingGen.competitor_image_url] : []);
+  const product_hero_urls = pendingGen.product_hero_urls;
 
   // Clear pending data immediately so a retry won't double-generate
   await db
@@ -59,7 +61,6 @@ export async function POST(
     .eq("id", id);
 
   const jobId = job.id;
-  const referenceUrls = [competitor_image_url, ...product_hero_urls];
 
   let generated = 0;
   let failed = 0;
@@ -69,6 +70,11 @@ export async function POST(
   for (let index = 0; index < image_prompts.length; index++) {
     const imgPrompt = image_prompts[index];
     try {
+      // Use source_index to pick the correct competitor image as reference
+      const sourceIdx = imgPrompt.source_index ?? 0;
+      const competitorRef = competitorImageUrls[sourceIdx] ?? competitorImageUrls[0];
+      const referenceUrls = [competitorRef, ...product_hero_urls];
+
       const { urls: resultUrls, costTimeMs } = await generateImage(
         imgPrompt.prompt,
         referenceUrls,
