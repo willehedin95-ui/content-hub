@@ -30,6 +30,12 @@ export type RightTab = "design" | "config" | "ai";
 export type AutoSaveStatus = "idle" | "saving" | "saved";
 export type BlockType = "text" | "image" | "cta" | "divider" | "video";
 
+export type ViewportConfig = {
+  device: "desktop" | "iphone-13" | "ipad" | "custom";
+  width: number | null;
+  height: number | null;
+};
+
 export interface ClickedMedia {
   src: string;
   index: number;
@@ -165,16 +171,8 @@ export interface BuilderContextValue {
   setRightPanelOpen: (v: boolean) => void;
 
   // --- Viewport configuration ---
-  viewportConfig: {
-    device: "desktop" | "iphone-13" | "ipad" | "custom";
-    width: number | null;
-    height: number | null;
-  };
-  setViewportConfig: React.Dispatch<React.SetStateAction<{
-    device: "desktop" | "iphone-13" | "ipad" | "custom";
-    width: number | null;
-    height: number | null;
-  }>>;
+  viewportConfig: ViewportConfig;
+  setViewportConfig: React.Dispatch<React.SetStateAction<ViewportConfig>>;
 
   // --- Link modal state ---
   showLinkModal: boolean;
@@ -388,12 +386,6 @@ export function BuilderProvider({
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   // Viewport configuration
-  type ViewportConfig = {
-    device: "desktop" | "iphone-13" | "ipad" | "custom";
-    width: number | null;
-    height: number | null;
-  };
-
   const [viewportConfig, setViewportConfig] = useState<ViewportConfig>({
     device: "desktop",
     width: null,
