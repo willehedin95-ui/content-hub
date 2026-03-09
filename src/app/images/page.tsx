@@ -3,16 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Clock, Image as ImageIcon, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
 import { ImageJob, PRODUCTS, COUNTRY_MAP } from "@/types";
 import { cn } from "@/lib/utils";
 import { getMarketStatus, getWizardStep, getConceptThumbnail, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import { TagBadge, getTagColor } from "@/components/ui/tag-input";
+import { TagBadge } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 200;
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -49,7 +49,6 @@ export default function ImagesPage() {
   const [showModal, setShowModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [avgSeconds, setAvgSeconds] = useState(75);
-  const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
   // Filter & sort state
@@ -67,7 +66,6 @@ export default function ImagesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   // Filter and sort jobs client-side
   const filteredJobs = jobs.filter((job) => {
@@ -110,10 +108,10 @@ export default function ImagesPage() {
     return sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
   }
 
-  const fetchJobs = useCallback(async (p = page) => {
+  const fetchJobs = useCallback(async () => {
     try {
       const archiveParam = showArchived ? "&archived=true" : "";
-      const res = await fetch(`/api/image-jobs?page=${p}&limit=${PAGE_SIZE}${archiveParam}`);
+      const res = await fetch(`/api/image-jobs?page=1&limit=${PAGE_SIZE}${archiveParam}`);
       if (res.ok) {
         const data = await res.json();
         setJobs(data.jobs ?? data);
@@ -122,7 +120,7 @@ export default function ImagesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, showArchived]);
+  }, [showArchived]);
 
   async function handleBackfillDna() {
     setBackfillLoading(true);
@@ -257,7 +255,7 @@ export default function ImagesPage() {
         <div className="flex items-center gap-3 mb-4">
           {/* Archive toggle */}
           <button
-            onClick={() => { setShowArchived((v) => !v); setPage(1); }}
+            onClick={() => setShowArchived((v) => !v)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
               showArchived
                 ? "bg-amber-50 text-amber-700 border-amber-200"
@@ -320,35 +318,24 @@ export default function ImagesPage() {
               </button>
             ))}
           </div>
-          {/* Tag filter */}
+          {/* Tag filter dropdown */}
           {allTags.length > 0 && (
-            <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
-              <button
-                onClick={() => setTagFilter("all")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  tagFilter === "all"
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+            <div className="relative border-l border-gray-200 pl-3">
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className={`appearance-none pl-2.5 pr-7 py-1 rounded-lg text-xs font-medium transition-colors border cursor-pointer ${
+                  tagFilter !== "all"
+                    ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                    : "text-gray-400 hover:text-gray-600 border-gray-200 hover:border-gray-300"
                 }`}
               >
-                All Tags
-              </button>
-              {allTags.map((tag) => {
-                const color = getTagColor(tag);
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => setTagFilter(tag)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
-                      tagFilter === tag
-                        ? `${color.bg} ${color.text} ${color.border}`
-                        : "text-gray-400 hover:text-gray-700 hover:bg-gray-100 border-transparent"
-                    }`}
-                  >
-                    {tag}
-                  </button>
-                );
-              })}
+                <option value="all">All Tags</option>
+                {[...new Set(allTags)].map((tag) => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
             </div>
           )}
         </div>
@@ -561,35 +548,10 @@ export default function ImagesPage() {
           })}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4">
-            <p className="text-xs text-gray-400">
-              {totalCount} concepts
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setPage((p) => p - 1); fetchJobs(page - 1); }}
-                disabled={page <= 1}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Prev
-              </button>
-              <span className="text-xs text-gray-500 tabular-nums">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => { setPage((p) => p + 1); fetchJobs(page + 1); }}
-                disabled={page >= totalPages}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-              >
-                Next
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Concept count */}
+        <p className="text-xs text-gray-400 mt-3">
+          {filteredJobs.length} concept{filteredJobs.length !== 1 ? "s" : ""}
+        </p>
         </>
       )}
 
