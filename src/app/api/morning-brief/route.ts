@@ -861,6 +861,66 @@ export async function GET(req: NextRequest) {
     stats.roas_7d = stats.spend_7d > 0 ? round(stats.revenue_7d / stats.spend_7d) : 0;
   }
 
+  // ── Filter: already-handled by automation ──
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo_auto = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Ads auto-paused in the last 7 days (for filtering action cards)
+  const { data: autoPausedRows } = await db
+    .from("auto_paused_ads")
+    .select("meta_ad_id, ad_name, campaign_name, reason, days_bleeding, total_spend, created_at")
+    .gte("created_at", sevenDaysAgo_auto)
+    .order("created_at", { ascending: false });
+
+  const autoPausedAdIds = new Set((autoPausedRows ?? []).map((r: { meta_ad_id: string }) => r.meta_ad_id));
+
+  // Concepts killed by pipeline (for filtering action cards)
+  const { data: killedConcepts } = await db
+    .from("concept_lifecycle")
+    .select("image_job_market_id, signal, created_at")
+    .eq("stage", "killed")
+    .gte("created_at", sevenDaysAgo_auto)
+    .order("created_at", { ascending: false });
+
+  // Map killed concept IDs to their ad set IDs via meta_campaigns
+  const killedMarketIds = new Set((killedConcepts ?? []).map((r: { image_job_market_id: string }) => r.image_job_market_id));
+  let killedAdsetIds = new Set<string>();
+  if (killedMarketIds.size > 0) {
+    const { data: killedCampaigns } = await db
+      .from("meta_campaigns")
+      .select("adset_id")
+      .in("image_job_market_id", [...killedMarketIds])
+      .not("adset_id", "is", null);
+    killedAdsetIds = new Set((killedCampaigns ?? []).map((r: { adset_id: string }) => r.adset_id));
+  }
+
+  // Build automation summary (last 24h for the banner)
+  const recentAutoPaused = (autoPausedRows ?? []).filter(
+    (r: { created_at: string }) => r.created_at >= oneDayAgo
+  );
+  const recentKills = (killedConcepts ?? []).filter(
+    (r: { created_at: string }) => r.created_at >= oneDayAgo
+  );
+  const automationSummary = {
+    auto_paused_count: recentAutoPaused.length,
+    auto_paused_ads: recentAutoPaused.map((r: { ad_name: string | null; campaign_name: string | null; total_spend: number | null; days_bleeding: number | null }) => ({
+      ad_name: r.ad_name,
+      campaign_name: r.campaign_name,
+      total_spend: r.total_spend,
+      days_bleeding: r.days_bleeding,
+    })),
+    daily_savings: recentAutoPaused.reduce((sum: number, r: { total_spend: number | null; days_bleeding: number | null }) => {
+      const spend = r.total_spend ?? 0;
+      const days = r.days_bleeding ?? 1;
+      return sum + (days > 0 ? spend / days : 0);
+    }, 0),
+    killed_concepts_count: recentKills.length,
+    killed_concepts: recentKills.map((r: { image_job_market_id: string; signal: string | null }) => ({
+      market_id: r.image_job_market_id,
+      signal: r.signal,
+    })),
+  };
+
   // ── Synthesize Action Cards ──
   interface ActionCard {
     id: string;
@@ -894,11 +954,23 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Bleeders → pause cards (priority 1) — grouped by ad set ──
-  const bleedersByAdset = new Map<string, typeof bleeders>();
-  for (const b of bleeders) {
+  // Filter out already auto-paused bleeders
+  const activeBleeders = bleeders.filter(
+    (b) => !autoPausedAdIds.has(b.ad_id)
+  );
+
+  const bleedersByAdset = new Map<string, typeof activeBleeders>();
+  for (const b of activeBleeders) {
     const key = b.adset_id ?? `solo_${b.ad_id}`;
     if (!bleedersByAdset.has(key)) bleedersByAdset.set(key, []);
     bleedersByAdset.get(key)!.push(b);
+  }
+
+  // Remove ad sets that belong to killed concepts
+  for (const [key] of bleedersByAdset) {
+    if (!key.startsWith("solo_") && killedAdsetIds.has(key)) {
+      bleedersByAdset.delete(key);
+    }
   }
 
   for (const [groupKey, adsetBleeders] of bleedersByAdset) {
@@ -1147,6 +1219,9 @@ export async function GET(req: NextRequest) {
   // ── Critical fatigue → iterate (profitable) or kill (unprofitable) ──
   // Uses per-product/market BE-ROAS from pipeline_settings instead of hardcoded threshold
   for (const f of fatigueSignals.critical) {
+    if (f.adset_id && killedAdsetIds.has(f.adset_id)) continue;
+    if (autoPausedAdIds.has(f.ad_id)) continue;
+
     const enrichment = f.adset_id ? adsetEnrichment.get(f.adset_id) : null;
     const stats = f.adset_id ? adsetStatsMap.get(f.adset_id) : null;
     const conceptName = enrichment?.concept_name;
@@ -1246,6 +1321,8 @@ export async function GET(req: NextRequest) {
   // ── Ad diagnostics → action cards ──
   for (const diag of adDiagnostics) {
     if (diag.bucket === "winner") continue; // already handled by existing winner detection
+    if (diag.adset_id && killedAdsetIds.has(diag.adset_id)) continue;
+    if (autoPausedAdIds.has(diag.ad_id)) continue;
 
     const enrichment = diag.adset_id ? adsetEnrichment.get(diag.adset_id) : null;
     const adLabel = enrichment?.concept_name || diag.ad_name || "unnamed ad";
@@ -1369,6 +1446,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     generated_at: new Date().toISOString(),
     data_date: latestDate,
+    automation_summary: automationSummary,
     pipeline_thresholds: {
       be_roas_map: Object.fromEntries(beRoasMap),
       target_cpa_map: Object.fromEntries(targetCpaMap),
