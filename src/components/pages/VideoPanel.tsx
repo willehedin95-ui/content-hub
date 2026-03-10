@@ -96,12 +96,40 @@ export default function VideoPanel({
     onVideoReplaced();
   }
 
-  /** Upload video file */
+  /** Replace a <video> element with an <img> in the iframe */
+  function replaceVideoWithImage(videoIndex: number, imageUrl: string) {
+    const doc = iframeRef.current?.contentDocument;
+    if (doc) {
+      const videos = doc.querySelectorAll("video");
+      const video = videos[videoIndex];
+      if (video) {
+        const img = doc.createElement("img");
+        img.src = imageUrl;
+        img.style.width = video.style.width || "100%";
+        img.style.maxWidth = video.style.maxWidth || "";
+        img.style.display = "block";
+        video.parentElement?.replaceChild(img, video);
+      }
+    }
+    onVideoReplaced();
+  }
+
+  function isImageFile(file: File): boolean {
+    return file.type.startsWith("image/") && !file.type.includes("gif") && !file.type.includes("webp");
+  }
+
+  function isImageUrl(url: string): boolean {
+    const lower = url.toLowerCase();
+    return /\.(jpe?g|png|svg|bmp|tiff?)(\?|$)/.test(lower);
+  }
+
+  /** Upload video or image file */
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !clickedVideo) return;
     e.target.value = "";
 
+    const uploadingImage = isImageFile(file);
     setUploading(true);
     setError("");
 
@@ -121,7 +149,11 @@ export default function VideoPanel({
       }
 
       const { imageUrl } = await res.json();
-      swapVideoInIframe(clickedVideo.index, imageUrl);
+      if (uploadingImage) {
+        replaceVideoWithImage(clickedVideo.index, imageUrl);
+      } else {
+        swapVideoInIframe(clickedVideo.index, imageUrl);
+      }
       onClickedVideoClear();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -135,7 +167,12 @@ export default function VideoPanel({
 
   function handleUseUrl() {
     if (!clickedVideo || !urlInput.trim()) return;
-    swapVideoInIframe(clickedVideo.index, urlInput.trim());
+    const url = urlInput.trim();
+    if (isImageUrl(url)) {
+      replaceVideoWithImage(clickedVideo.index, url);
+    } else {
+      swapVideoInIframe(clickedVideo.index, url);
+    }
     onClickedVideoClear();
   }
 
@@ -180,7 +217,7 @@ export default function VideoPanel({
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.gif,.webp"
+        accept="video/mp4,video/webm,video/quicktime,image/*,.mp4,.webm,.mov,.gif,.webp,.jpg,.jpeg,.png"
         onChange={handleFileSelected}
         className="hidden"
       />
@@ -195,7 +232,7 @@ export default function VideoPanel({
           </>
         ) : (
           <>
-            <Upload className="w-3.5 h-3.5" /> Upload Video / GIF
+            <Upload className="w-3.5 h-3.5" /> Upload File
           </>
         )}
       </button>
@@ -203,7 +240,7 @@ export default function VideoPanel({
       {/* URL input */}
       <div className="space-y-1.5">
         <label className="text-xs text-gray-400 uppercase tracking-wider">
-          Or paste video URL
+          Or paste URL
         </label>
         <div className="flex gap-1.5">
           <input
@@ -224,7 +261,8 @@ export default function VideoPanel({
       </div>
 
       <p className="text-[10px] text-gray-400">
-        Supported: MP4, WebM, MOV, GIF, animated WebP (max 200 MB)
+        Images (JPG, PNG, WebP) replace the video with a static image.
+        Videos: MP4, WebM, MOV, GIF (max 200 MB).
       </p>
     </div>
   );

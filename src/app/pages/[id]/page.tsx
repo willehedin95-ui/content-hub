@@ -138,7 +138,7 @@ export default async function PageDetailPage({
 
       {/* Importing state — show progress panel */}
       {p.status === "importing" && p.swipe_job_id ? (
-        <ImportProgressPanel swipeJobId={p.swipe_job_id} pageId={p.id} />
+        <ImportProgressPanel swipeJobId={p.swipe_job_id} pageId={p.id} product={p.product} />
       ) : (
         <>
           {/* Translation cards */}

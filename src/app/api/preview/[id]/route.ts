@@ -110,7 +110,7 @@ export async function GET(
   document.addEventListener('click', function(e) {
     // Image click — send to parent for image panel
     var img = e.target.closest('img');
-    if (img && img.src && !img.src.startsWith('data:')) {
+    if (img && img.src) {
       e.preventDefault();
       e.stopPropagation();
       var allImgs = Array.from(document.querySelectorAll('img'));
