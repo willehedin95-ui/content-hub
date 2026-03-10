@@ -12,6 +12,7 @@ import {
   Video,
   Download,
   XCircle,
+  Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -26,7 +27,7 @@ import { PRODUCTS, type Product } from "@/types";
 // Types
 // ---------------------------------------------------------------------------
 
-type Phase = "upload" | "extracting" | "analyzing" | "generating" | "done";
+type Phase = "upload" | "extracting" | "analyzing" | "keyframing" | "generating" | "done";
 
 interface TaskInfo {
   scene_number: number;
@@ -75,6 +76,8 @@ export default function VideoSwiperClient() {
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
   const [taskStatuses, setTaskStatuses] = useState<Record<string, TaskStatus>>({});
   const [claudeCost, setClaudeCost] = useState<number>(0);
+  const [keyframeUrls, setKeyframeUrls] = useState<Record<number, string>>({});
+  const [keyframeCount, setKeyframeCount] = useState({ done: 0, total: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Poll Kling task statuses
@@ -222,6 +225,19 @@ export default function VideoSwiperClient() {
           if (event.message) setStatusMessage(event.message);
           if (event.analysis) setAnalysis(event.analysis as Analysis);
 
+          if (event.step === "generating_keyframes") {
+            setPhase("keyframing");
+          }
+
+          if (event.step === "analyzed" && event.prompt_count) {
+            setKeyframeCount((prev) => ({ ...prev, total: event.prompt_count }));
+          }
+
+          if (event.step === "keyframe_completed" && event.keyframe_url) {
+            setKeyframeUrls((prev) => ({ ...prev, [event.scene_number]: event.keyframe_url }));
+            setKeyframeCount((prev) => ({ ...prev, done: prev.done + 1 }));
+          }
+
           if (event.step === "generating_started") {
             setTasks(event.tasks as TaskInfo[]);
             setClaudeCost(event.claude_cost || 0);
@@ -254,6 +270,8 @@ export default function VideoSwiperClient() {
     setUploadProgress({ current: 0, total: 0 });
     setStatusMessage("");
     setClaudeCost(0);
+    setKeyframeUrls({});
+    setKeyframeCount({ done: 0, total: 0 });
   }, [videoUrl]);
 
   // Helpers
@@ -450,6 +468,60 @@ export default function VideoSwiperClient() {
       )}
 
       {/* ================================================================== */}
+      {/* KEYFRAMING (Nano Banana)                                           */}
+      {/* ================================================================== */}
+      {phase === "keyframing" && (
+        <div className="space-y-6">
+          {analysis && (
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                <span className="text-sm font-medium text-gray-900">Video analyzed</span>
+              </div>
+              <p className="text-sm text-gray-600">{analysis.description}</p>
+              <div className="flex gap-2 mt-2">
+                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.video_type}</span>
+                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.duration_estimate}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center">
+                <Image className="w-8 h-8 text-amber-600 animate-pulse" />
+              </div>
+              <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
+              <p className="text-xs text-gray-400">
+                Generating keyframe{keyframeCount.total > 1 ? "s" : ""} with product reference image
+                {keyframeCount.total > 0 && ` (${keyframeCount.done}/${keyframeCount.total})`}
+              </p>
+              {keyframeCount.total > 0 && (
+                <div className="w-48 bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-amber-500 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${(keyframeCount.done / keyframeCount.total) * 100}%` }}
+                  />
+                </div>
+              )}
+              {Object.keys(keyframeUrls).length > 0 && (
+                <div className="flex gap-2 mt-2">
+                  {Object.entries(keyframeUrls).map(([sceneNum, url]) => (
+                    <img
+                      key={sceneNum}
+                      src={url}
+                      alt={`Keyframe Scene ${sceneNum}`}
+                      className="h-20 rounded border border-gray-200 object-cover"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
       {/* GENERATING (Kling polling)                                         */}
       {/* ================================================================== */}
       {phase === "generating" && (
@@ -461,6 +533,19 @@ export default function VideoSwiperClient() {
                 <span className="text-sm font-medium text-gray-900">Video analyzed</span>
                 <span className="text-xs text-gray-400 ml-auto">${claudeCost.toFixed(4)}</span>
               </div>
+              {Object.keys(keyframeUrls).length > 0 && (
+                <div className="flex gap-2 mb-2">
+                  {Object.entries(keyframeUrls).map(([sceneNum, url]) => (
+                    <img
+                      key={sceneNum}
+                      src={url}
+                      alt={`Keyframe ${sceneNum}`}
+                      className="h-16 rounded border border-gray-200 object-cover"
+                      title={`Keyframe for Scene ${sceneNum}`}
+                    />
+                  ))}
+                </div>
+              )}
               <p className="text-sm text-gray-600">{analysis.description}</p>
               <div className="flex gap-2 mt-2">
                 <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.video_type}</span>

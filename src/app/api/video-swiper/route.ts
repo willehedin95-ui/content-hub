@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase";
 import { CLAUDE_MODEL } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
-import { createKlingTask } from "@/lib/kie";
+import { createImageTask, pollTaskResult, createKlingTask } from "@/lib/kie";
 import {
   buildVideoSwiperSystemPrompt,
   buildVideoSwiperUserPrompt,
@@ -15,6 +15,7 @@ export const maxDuration = 300;
 interface PromptItem {
   scene_number: number;
   description: string;
+  keyframe_prompt: string;
   kling_prompt: string;
 }
 
@@ -81,6 +82,16 @@ export async function POST(req: NextRequest) {
     .order("sort_order", { ascending: true });
 
   const segments = (segmentsData ?? []) as ProductSegment[];
+
+  // Fetch product hero images for Nano Banana reference
+  const { data: productImages } = await db
+    .from("product_images")
+    .select("url")
+    .eq("product_id", product.id)
+    .eq("category", "hero")
+    .order("sort_order", { ascending: true });
+
+  const productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
 
   // Build prompts
   const systemPrompt = buildVideoSwiperSystemPrompt(
@@ -197,15 +208,110 @@ export async function POST(req: NextRequest) {
         prompt_count: parsed.prompts.length,
       });
 
-      // --- Step 2: Kick off Kling generation for each prompt ---
-      await emit({ step: "generating", message: "Starting Kling 3.0 video generation..." });
+      // --- Step 2: Generate keyframes with Nano Banana ---
+      await emit({
+        step: "generating_keyframes",
+        message: `Generating keyframe${parsed.prompts.length > 1 ? "s" : ""} with product reference...`,
+      });
 
-      const tasks: Array<{ scene_number: number; description: string; task_id: string; prompt: string }> = [];
+      const keyframeResults: Array<{
+        scene_number: number;
+        keyframe_url: string | null;
+        error: string | null;
+      }> = [];
 
       for (const p of parsed.prompts) {
+        const keyframePrompt = p.keyframe_prompt || p.kling_prompt;
+        try {
+          await emit({
+            step: "keyframe_generating",
+            message: `Generating keyframe for Scene ${p.scene_number}...`,
+            scene_number: p.scene_number,
+          });
+
+          const imageTaskId = await createImageTask(
+            keyframePrompt,
+            productHeroUrls,
+            "16:9",
+            "1K"
+          );
+
+          // Poll until keyframe is ready (typically 10-30s)
+          const result = await pollTaskResult(imageTaskId);
+
+          if (result.urls.length > 0) {
+            keyframeResults.push({
+              scene_number: p.scene_number,
+              keyframe_url: result.urls[0],
+              error: null,
+            });
+
+            await emit({
+              step: "keyframe_completed",
+              message: `Keyframe for Scene ${p.scene_number} ready`,
+              scene_number: p.scene_number,
+              keyframe_url: result.urls[0],
+            });
+          } else {
+            keyframeResults.push({
+              scene_number: p.scene_number,
+              keyframe_url: null,
+              error: "No image URL returned",
+            });
+          }
+
+          // Log Nano Banana usage
+          await db.from("usage_logs").insert({
+            type: "video_swiper_keyframe",
+            model: "nano-banana-2",
+            cost_usd: 0,
+            metadata: {
+              product: productSlug,
+              scene_number: p.scene_number,
+              task_id: imageTaskId,
+              has_product_ref: productHeroUrls.length > 0,
+            },
+          });
+
+          // Brief delay between API calls
+          if (parsed.prompts.length > 1) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[video-swiper] Keyframe generation failed for scene ${p.scene_number}:`, msg);
+          keyframeResults.push({
+            scene_number: p.scene_number,
+            keyframe_url: null,
+            error: msg,
+          });
+          await emit({
+            step: "keyframe_error",
+            message: `Keyframe for Scene ${p.scene_number} failed: ${msg}`,
+            scene_number: p.scene_number,
+          });
+        }
+      }
+
+      // --- Step 3: Kick off Kling generation with keyframes as start frames ---
+      await emit({ step: "generating", message: "Starting Kling 3.0 video generation..." });
+
+      const tasks: Array<{
+        scene_number: number;
+        description: string;
+        task_id: string;
+        prompt: string;
+        keyframe_url: string | null;
+      }> = [];
+
+      for (const p of parsed.prompts) {
+        const keyframe = keyframeResults.find((k) => k.scene_number === p.scene_number);
+        const keyframeUrl = keyframe?.keyframe_url ?? null;
+
         try {
           const taskId = await createKlingTask({
             prompt: p.kling_prompt,
+            imageUrls: keyframeUrl ? [keyframeUrl] : [],
             sound: false,
             duration: 10,
             aspectRatio: "16:9",
@@ -217,11 +323,12 @@ export async function POST(req: NextRequest) {
             description: p.description,
             task_id: taskId,
             prompt: p.kling_prompt,
+            keyframe_url: keyframeUrl,
           });
 
           await emit({
             step: "task_started",
-            message: `Scene ${p.scene_number} generation started`,
+            message: `Scene ${p.scene_number} video generation started${keyframeUrl ? " (with keyframe)" : ""}`,
             scene_number: p.scene_number,
             task_id: taskId,
           });
@@ -235,6 +342,7 @@ export async function POST(req: NextRequest) {
               product: productSlug,
               scene_number: p.scene_number,
               task_id: taskId,
+              has_keyframe: !!keyframeUrl,
             },
           });
 

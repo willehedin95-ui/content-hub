@@ -75,6 +75,17 @@ Write prompts that are:
 
 Prefer **single** when possible — it produces more cohesive results.
 
+## KEYFRAME PROMPT
+
+For each scene, you must also write a **keyframe_prompt** — a description of the FIRST FRAME of that scene as a still image. This is used to generate a reference keyframe with our product before the video is created.
+
+keyframe_prompt rules:
+- Describe a STATIC scene — no motion, no camera movement, no "zooms" or "pans"
+- Include our product (${product.name}) clearly visible in the composition
+- Match the exact lighting, angle, and composition of the first frame of the scene
+- Include all visual elements: text overlays, split-screen layout, background, props
+- 1-2 sentences, very specific about what the image looks like
+
 ## OUTPUT FORMAT
 
 Return valid JSON only (no markdown fences):
@@ -90,6 +101,7 @@ Return valid JSON only (no markdown fences):
     {
       "scene_number": 1,
       "description": "Brief description of what this scene shows",
+      "keyframe_prompt": "Static image description of the first frame — used to generate a reference keyframe with our product",
       "kling_prompt": "The full Kling 3.0 prompt with all visual details, effects, text, icons included"
     }
   ]
@@ -98,6 +110,7 @@ Return valid JSON only (no markdown fences):
 CRITICAL:
 - Return ONLY valid JSON, no markdown fences
 - Include ALL visual elements directly in the kling_prompt (text, icons, effects — Kling renders everything)
+- The keyframe_prompt must describe a STILL IMAGE (no motion words), the kling_prompt describes the VIDEO (with motion)
 - Describe ${product.name} accurately: contoured butterfly-shaped ergonomic memory foam pillow, light blue
 - NEVER invent medical claims — only use claims from the product brief
 - NEVER include the competitor's brand name in prompts`;
