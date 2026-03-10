@@ -42,7 +42,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [competitorImageFile, setCompetitorImageFile] = useState<File | null>(null);
   const [competitorImageUrl, setCompetitorImageUrl] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
-  const [product, setProduct] = useState<Product>("happysleep");
+  const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,7 +138,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image_url: imageUrl,
-          product,
+          ...(product && { product }),
           notes: notes.trim() || undefined,
         }),
       });
@@ -209,9 +209,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       // Upload via assets API
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("name", `Image Swiper - ${product} - ${new Date().toLocaleDateString()}`);
+      formData.append("name", `Image Swiper${product ? ` - ${product}` : ""} - ${new Date().toLocaleDateString()}`);
       formData.append("category", "lifestyle");
-      formData.append("product", product);
+      if (product) formData.append("product", product);
       formData.append("media_type", "image");
 
       const uploadRes = await fetch("/api/assets", {
@@ -337,12 +337,14 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Adapt for product</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Adapt for product <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
             <div className="flex gap-2">
               {PRODUCTS.map((p) => (
                 <button
                   key={p.value}
-                  onClick={() => setProduct(p.value)}
+                  onClick={() => setProduct(prev => prev === p.value ? null : p.value)}
                   className={cn(
                     "px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
                     product === p.value
@@ -481,11 +483,11 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Generated ({product === "happysleep" ? "HappySleep" : "Hydro13"})
+                    Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Hydro13"})` : "(Style)"}
                   </p>
                   <a
                     href={generatedImageUrl}
-                    download={`image-swiper-${product}-${Date.now()}.png`}
+                    download={`image-swiper-${product || "style"}-${Date.now()}.png`}
                     className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
                   >
                     <Download className="w-3.5 h-3.5" />
