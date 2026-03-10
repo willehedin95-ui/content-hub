@@ -19,6 +19,7 @@ import {
   MarketProductUrl,
   PageQualityAnalysis,
 } from "@/types";
+import { BLOCKS_MAP } from "./block-definitions";
 
 // ---------------------------------------------------------------------------
 // Types & Interfaces
@@ -150,6 +151,8 @@ export interface BuilderContextValue {
   // --- Element selection ---
   hasSelectedEl: boolean;
   setHasSelectedEl: (v: boolean) => void;
+  selectedElsRef: RefObject<Set<HTMLElement>>;
+  multiSelectCount: number;
   hiddenCount: number;
   revealHidden: boolean;
   layersRefreshKey: number;
@@ -252,6 +255,16 @@ export interface BuilderContextValue {
   setSavedComponents: React.Dispatch<React.SetStateAction<SavedComponent[]>>;
   insertSavedComponent: (html: string) => void;
 
+  // --- Drag from components tab ---
+  dragComponentRef: React.RefObject<{ type: "block"; blockId: string } | { type: "saved"; html: string } | null>;
+  isDraggingFromComponents: boolean;
+  setIsDraggingFromComponents: (v: boolean) => void;
+  insertAtPosition: (
+    target: HTMLElement,
+    position: "before" | "after",
+    payload: { type: "block"; blockId: string } | { type: "saved"; html: string }
+  ) => void;
+
   // --- Convenience methods ---
   selectElementInIframe: (el: HTMLElement) => void;
   deselectElement: () => void;
@@ -343,6 +356,7 @@ export function BuilderProvider({
   // -----------------------------------------------------------------------
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const selectedElRef = useRef<HTMLElement | null>(null);
+  const selectedElsRef = useRef<Set<HTMLElement>>(new Set());
   const undoStackRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
   const skipSnapshotRef = useRef(false);
@@ -386,6 +400,7 @@ export function BuilderProvider({
 
   // Element-level editing
   const [hasSelectedEl, setHasSelectedEl] = useState(false);
+  const [multiSelectCount, setMultiSelectCount] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [revealHidden, setRevealHidden] = useState(false);
   const [layersRefreshKey, setLayersRefreshKey] = useState(0);
@@ -679,6 +694,8 @@ export function BuilderProvider({
     skipSnapshotRef.current = false;
     baselineHtmlRef.current = prev;
     selectedElRef.current = null;
+    selectedElsRef.current.clear();
+    setMultiSelectCount(0);
     setHasSelectedEl(false);
     setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
     setUndoCount(undoStackRef.current.length);
@@ -700,6 +717,8 @@ export function BuilderProvider({
     skipSnapshotRef.current = false;
     baselineHtmlRef.current = next;
     selectedElRef.current = null;
+    selectedElsRef.current.clear();
+    setMultiSelectCount(0);
     setHasSelectedEl(false);
     setHiddenCount(doc.querySelectorAll("[data-cc-hidden]").length);
     setUndoCount(undoStackRef.current.length);
@@ -710,6 +729,18 @@ export function BuilderProvider({
   }
 
   function handleDuplicateElement() {
+    if (selectedElsRef.current.size > 1) {
+      pushUndoSnapshot();
+      const newEls: HTMLElement[] = [];
+      selectedElsRef.current.forEach(el => {
+        const clone = el.cloneNode(true) as HTMLElement;
+        clone.removeAttribute("data-cc-selected");
+        el.parentNode?.insertBefore(clone, el.nextSibling);
+        newEls.push(clone);
+      });
+      markDirty();
+      return;
+    }
     const el = selectedElRef.current;
     if (!el) return;
     const clone = el.cloneNode(true) as HTMLElement;
@@ -719,11 +750,23 @@ export function BuilderProvider({
   }
 
   function handleDeleteElement() {
+    if (selectedElsRef.current.size > 1) {
+      pushUndoSnapshot();
+      selectedElsRef.current.forEach(el => el.remove());
+      selectedElsRef.current.clear();
+      selectedElRef.current = null;
+      setMultiSelectCount(0);
+      setHasSelectedEl(false);
+      markDirty();
+      return;
+    }
     const el = selectedElRef.current;
     if (!el) return;
     pushUndoSnapshot();
     el.remove();
     selectedElRef.current = null;
+    selectedElsRef.current.clear();
+    setMultiSelectCount(0);
     setHasSelectedEl(false);
     markDirty();
   }
@@ -944,11 +987,12 @@ export function BuilderProvider({
     }
     doc.head.appendChild(elStyle);
 
-    // Click handler for element selection
+    // Click handler for element selection (supports multi-select via shift/meta/ctrl)
     doc.addEventListener(
       "click",
       function (e: Event) {
-        const target = (e as MouseEvent).target as HTMLElement;
+        const me = e as MouseEvent;
+        const target = me.target as HTMLElement;
         const SKIP = ["SCRIPT", "STYLE", "NOSCRIPT", "BR", "HR"];
         if (SKIP.includes(target.tagName)) return;
 
@@ -964,28 +1008,72 @@ export function BuilderProvider({
           return;
         }
 
-        // Clicking body/html — deselect
+        // Clicking body/html — deselect ALL
         if (target === body || target.tagName === "HTML") {
           if (selectedElRef.current) {
             selectedElRef.current.removeAttribute("data-cc-selected");
             selectedElRef.current = null;
-            setHasSelectedEl(false);
           }
+          selectedElsRef.current.forEach(el => el.removeAttribute("data-cc-selected"));
+          selectedElsRef.current.clear();
+          setMultiSelectCount(0);
+          setHasSelectedEl(false);
+          setLayersRefreshKey((k) => k + 1);
           return;
         }
 
         // Skip in exclude mode
         if (excludeModeRef.current) return;
 
-        // Deselect previous
-        if (selectedElRef.current) {
-          selectedElRef.current.removeAttribute("data-cc-selected");
-        }
+        const isMulti = me.shiftKey || me.metaKey || me.ctrlKey;
 
-        // Select new element
-        target.setAttribute("data-cc-selected", "");
-        selectedElRef.current = target;
-        setHasSelectedEl(true);
+        if (isMulti) {
+          // MULTI-SELECT
+          if (selectedElsRef.current.has(target)) {
+            // Remove from selection
+            target.removeAttribute("data-cc-selected");
+            selectedElsRef.current.delete(target);
+            // If removed primary, promote next
+            if (selectedElRef.current === target) {
+              const remaining = Array.from(selectedElsRef.current);
+              if (remaining.length > 0) {
+                selectedElRef.current = remaining[0];
+              } else {
+                selectedElRef.current = null;
+                setHasSelectedEl(false);
+              }
+            }
+          } else {
+            // Add to selection
+            target.setAttribute("data-cc-selected", "");
+            selectedElsRef.current.add(target);
+            if (!selectedElRef.current) {
+              selectedElRef.current = target;
+              setHasSelectedEl(true);
+            }
+            // Ensure primary is in set
+            if (selectedElRef.current && !selectedElsRef.current.has(selectedElRef.current)) {
+              selectedElsRef.current.add(selectedElRef.current);
+              selectedElRef.current.setAttribute("data-cc-selected", "");
+            }
+          }
+          setMultiSelectCount(selectedElsRef.current.size);
+        } else {
+          // SINGLE SELECT (existing behavior)
+          // Clear multi-select
+          selectedElsRef.current.forEach(el => el.removeAttribute("data-cc-selected"));
+          selectedElsRef.current.clear();
+          // Deselect previous primary
+          if (selectedElRef.current) {
+            selectedElRef.current.removeAttribute("data-cc-selected");
+          }
+          // Select new
+          target.setAttribute("data-cc-selected", "");
+          selectedElRef.current = target;
+          selectedElsRef.current.add(target);
+          setMultiSelectCount(1);
+          setHasSelectedEl(true);
+        }
         setLayersRefreshKey((k) => k + 1);
       },
       false
@@ -1360,6 +1448,12 @@ export function BuilderProvider({
   }
 
   function handleCopyElement() {
+    if (selectedElsRef.current.size > 1) {
+      copiedHtmlRef.current = Array.from(selectedElsRef.current)
+        .map(el => el.outerHTML)
+        .join("<!--cc-multi-->");
+      return;
+    }
     const el = selectedElRef.current;
     if (!el) return;
     copiedHtmlRef.current = el.outerHTML;
@@ -1372,18 +1466,41 @@ export function BuilderProvider({
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
     pushUndoSnapshot();
-    const temp = doc.createElement("div");
-    // Trusted internal clipboard HTML (from our own copy operation) — safe to restore
-    // eslint-disable-next-line no-unsanitized/property
-    temp.innerHTML = html;
-    const newEl = temp.firstElementChild as HTMLElement;
-    if (!newEl) return;
-    el.parentNode?.insertBefore(newEl, el.nextSibling);
-    selectElementInIframe(newEl);
+
+    const fragments = html.split("<!--cc-multi-->");
+    let insertAfter = el;
+
+    for (const fragment of fragments) {
+      const temp = doc.createElement("div");
+      // Trusted internal clipboard HTML (from our own copy operation) — safe to restore
+      // eslint-disable-next-line no-unsanitized/property
+      temp.innerHTML = fragment;
+      const newEl = temp.firstElementChild as HTMLElement;
+      if (!newEl) continue;
+      insertAfter.parentNode?.insertBefore(newEl, insertAfter.nextSibling);
+      insertAfter = newEl;
+    }
+
     markDirty();
   }
 
   function handleGroupElement() {
+    const els = Array.from(selectedElsRef.current);
+    if (els.length > 1) {
+      pushUndoSnapshot();
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc) return;
+      const wrapper = doc.createElement("div");
+      wrapper.style.padding = "8px";
+      // Insert wrapper before first selected element
+      els[0].parentNode?.insertBefore(wrapper, els[0]);
+      // Move all selected into wrapper
+      els.forEach(el => wrapper.appendChild(el));
+      // Select the wrapper
+      selectElementInIframe(wrapper);
+      markDirty();
+      return;
+    }
     const el = selectedElRef.current;
     if (!el) return;
     const doc = iframeRef.current?.contentDocument;
@@ -1457,16 +1574,67 @@ export function BuilderProvider({
   }
 
   // -----------------------------------------------------------------------
+  // Drag from components tab
+  // -----------------------------------------------------------------------
+
+  const dragComponentRef = useRef<
+    | { type: "block"; blockId: string }
+    | { type: "saved"; html: string }
+    | null
+  >(null);
+  const [isDraggingFromComponents, setIsDraggingFromComponents] =
+    useState(false);
+
+  function insertAtPosition(
+    target: HTMLElement,
+    position: "before" | "after",
+    payload:
+      | { type: "block"; blockId: string }
+      | { type: "saved"; html: string }
+  ) {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    pushUndoSnapshot();
+
+    let newEl: HTMLElement;
+    if (payload.type === "block") {
+      const block = BLOCKS_MAP[payload.blockId];
+      if (!block) return;
+      newEl = block.insert(doc);
+    } else {
+      const temp = doc.createElement("div");
+      // eslint-disable-next-line no-unsanitized/property
+      temp.innerHTML = payload.html;
+      newEl = temp.firstElementChild as HTMLElement;
+      if (!newEl) return;
+    }
+
+    if (position === "before") {
+      target.parentNode?.insertBefore(newEl, target);
+    } else {
+      target.parentNode?.insertBefore(newEl, target.nextSibling);
+    }
+
+    selectElementInIframe(newEl);
+    markDirty();
+  }
+
+  // -----------------------------------------------------------------------
   // Convenience methods
   // -----------------------------------------------------------------------
 
   function selectElementInIframe(el: HTMLElement) {
-    // Deselect previous
+    // Clear multi-select
+    selectedElsRef.current.forEach(e => e.removeAttribute("data-cc-selected"));
+    selectedElsRef.current.clear();
+    // Deselect previous primary
     if (selectedElRef.current) {
       selectedElRef.current.removeAttribute("data-cc-selected");
     }
     el.setAttribute("data-cc-selected", "");
     selectedElRef.current = el;
+    selectedElsRef.current.add(el);
+    setMultiSelectCount(1);
     setHasSelectedEl(true);
     setLayersRefreshKey((k) => k + 1);
   }
@@ -1476,6 +1644,9 @@ export function BuilderProvider({
       selectedElRef.current.removeAttribute("data-cc-selected");
       selectedElRef.current = null;
     }
+    selectedElsRef.current.forEach(el => el.removeAttribute("data-cc-selected"));
+    selectedElsRef.current.clear();
+    setMultiSelectCount(0);
     setHasSelectedEl(false);
   }
 
@@ -1801,6 +1972,8 @@ export function BuilderProvider({
     // Element selection
     hasSelectedEl,
     setHasSelectedEl,
+    selectedElsRef,
+    multiSelectCount,
     hiddenCount,
     revealHidden,
     layersRefreshKey,
@@ -1898,6 +2071,12 @@ export function BuilderProvider({
     savedComponents,
     setSavedComponents,
     insertSavedComponent,
+
+    // Drag from components tab
+    dragComponentRef,
+    isDraggingFromComponents,
+    setIsDraggingFromComponents,
+    insertAtPosition,
 
     // Convenience methods
     selectElementInIframe,

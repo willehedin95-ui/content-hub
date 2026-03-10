@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useBuilder } from "../../BuilderContext";
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify } from "lucide-react";
+import ColorPicker, { rgbToHex } from "./ColorPicker";
 
 const WEIGHT_OPTIONS = [
   { value: "100", label: "100 - Thin" },
@@ -16,12 +17,6 @@ const WEIGHT_OPTIONS = [
   { value: "900", label: "900 - Black" },
 ];
 
-const COLOR_PRESETS = [
-  "#000000", "#ffffff", "#1f2937", "#374151", "#6b7280",
-  "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e",
-];
-
 const DECORATION_OPTIONS = ["none", "underline", "line-through", "overline"];
 const TRANSFORM_OPTIONS = ["none", "uppercase", "lowercase", "capitalize"];
 
@@ -31,18 +26,6 @@ const ALIGN_BUTTONS = [
   { value: "right", icon: AlignRight },
   { value: "justify", icon: AlignJustify },
 ];
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) return "#000000";
-  const r = parseInt(match[1]);
-  const g = parseInt(match[2]);
-  const b = parseInt(match[3]);
-  return (
-    "#" +
-    [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")
-  );
-}
 
 export default function TypographyControl() {
   const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
@@ -163,49 +146,13 @@ export default function TypographyControl() {
       {/* Text Color */}
       <div>
         <label className={labelClass}>Text Color</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={textColor}
-            onChange={(e) => {
-              setTextColor(e.target.value);
-              applyStyle("color", e.target.value);
-            }}
-            className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0"
-          />
-          <input
-            type="text"
-            value={textColor}
-            onChange={(e) => {
-              const v = e.target.value;
-              setTextColor(v);
-              // Support both 3-digit (#rgb) and 6-digit (#rrggbb) hex colors
-              if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
-                applyStyle("color", v);
-              }
-            }}
-            className={`${inputClass} flex-1`}
-            placeholder="#000000"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {COLOR_PRESETS.map((c) => (
-            <button
-              key={c}
-              onClick={() => {
-                setTextColor(c);
-                applyStyle("color", c);
-              }}
-              className={`w-5 h-5 rounded-sm border transition-all ${
-                textColor === c
-                  ? "border-indigo-500 ring-1 ring-indigo-300"
-                  : "border-gray-200 hover:border-gray-400"
-              }`}
-              style={{ backgroundColor: c }}
-              title={c}
-            />
-          ))}
-        </div>
+        <ColorPicker
+          value={textColor}
+          onChange={(hex) => {
+            setTextColor(hex);
+            applyStyle("color", hex);
+          }}
+        />
       </div>
 
       {/* Text Alignment */}

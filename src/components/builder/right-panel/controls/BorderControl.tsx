@@ -2,17 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useBuilder } from "../../BuilderContext";
+import ColorPicker, { rgbToHex } from "./ColorPicker";
 
 const BORDER_STYLES = ["none", "solid", "dashed", "dotted"];
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) return "#000000";
-  const r = parseInt(match[1]);
-  const g = parseInt(match[2]);
-  const b = parseInt(match[3]);
-  return "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
-}
 
 function parsePx(v: string): string {
   const n = parseFloat(v);
@@ -207,28 +199,13 @@ export default function BorderControl() {
       {/* Border Color */}
       <div>
         <label className={labelClass}>Border Color</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={borderColor}
-            onChange={(e) => {
-              setBorderColor(e.target.value);
-              applyStyle("border-color", e.target.value);
-            }}
-            className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0"
-          />
-          <input
-            type="text"
-            value={borderColor}
-            onChange={(e) => {
-              setBorderColor(e.target.value);
-              if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
-                applyStyle("border-color", e.target.value);
-              }
-            }}
-            className={`${inputClass} flex-1`}
-          />
-        </div>
+        <ColorPicker
+          value={borderColor}
+          onChange={(hex) => {
+            setBorderColor(hex);
+            applyStyle("border-color", hex);
+          }}
+        />
       </div>
 
       {/* Border Radius */}

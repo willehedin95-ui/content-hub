@@ -10,6 +10,7 @@ import BackgroundControl from "./controls/BackgroundControl";
 import BorderControl from "./controls/BorderControl";
 import EffectsControl from "./controls/EffectsControl";
 import LayoutControl from "./controls/LayoutControl";
+import PositionControl from "./controls/PositionControl";
 import TextEditorControl from "./controls/TextEditorControl";
 
 function Section({
@@ -88,6 +89,9 @@ export default function DesignTab() {
 
       <Section title="Layout" defaultOpen={false}>
         <LayoutControl />
+      </Section>
+      <Section title="Position" defaultOpen={false}>
+        <PositionControl />
       </Section>
       <Section title="Size">
         <SizeControl />

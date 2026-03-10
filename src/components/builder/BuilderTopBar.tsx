@@ -38,6 +38,8 @@ export default function BuilderTopBar() {
     showQualityDetails,
     setShowQualityDetails,
     saving,
+    saved,
+    saveError,
     publishing,
     retranslating,
     handleSave,
@@ -147,14 +149,22 @@ export default function BuilderTopBar() {
         <button
           onClick={handleSave}
           disabled={saving || publishing || retranslating}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+            saved
+              ? "bg-green-50 text-green-700 border border-green-300"
+              : saveError
+                ? "bg-red-50 text-red-700 border border-red-300"
+                : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+          }`}
         >
           {saving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : saved ? (
+            <Check className="w-4 h-4" />
           ) : (
             <Save className="w-4 h-4" />
           )}
-          Save
+          {saving ? "Saving..." : saved ? "Saved!" : saveError ? "Error" : "Save"}
         </button>
 
         {/* Publish button — only for translations, not source */}

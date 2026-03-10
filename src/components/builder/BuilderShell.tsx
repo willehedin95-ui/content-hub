@@ -7,6 +7,7 @@ import BuilderStatusBar from "./BuilderStatusBar";
 import LeftSidebar from "./left-sidebar/LeftSidebar";
 import RightPanel from "./right-panel/RightPanel";
 import QualityPanel from "./QualityPanel";
+import BreadcrumbBar from "./BreadcrumbBar";
 import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import ContextMenu from "./menus/ContextMenu";
@@ -33,6 +34,7 @@ function BuilderShellInner() {
     <div className="flex flex-col h-full">
       <BuilderTopBar />
       {showQualityDetails && <QualityPanel />}
+      <BreadcrumbBar />
       <div className="flex flex-1 min-h-0">
         <LeftSidebar />
         <BuilderCanvas />

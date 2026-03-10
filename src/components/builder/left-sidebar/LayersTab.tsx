@@ -20,6 +20,7 @@ import {
   ListTree,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
+import { TAG_LABELS, SKIP_TAGS } from "../constants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,69 +42,6 @@ const LAYERS_MODE_KEY = "content-hub-layers-mode";
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const TAG_LABELS: Record<string, string> = {
-  SECTION: "Section",
-  DIV: "Container",
-  HEADER: "Header",
-  FOOTER: "Footer",
-  NAV: "Nav",
-  MAIN: "Main",
-  ARTICLE: "Article",
-  ASIDE: "Aside",
-  H1: "Heading 1",
-  H2: "Heading 2",
-  H3: "Heading 3",
-  H4: "Heading 4",
-  H5: "Heading 5",
-  P: "Paragraph",
-  SPAN: "Span",
-  IMG: "Image",
-  A: "Link",
-  BUTTON: "Button",
-  UL: "List",
-  OL: "List",
-  LI: "List Item",
-  FORM: "Form",
-  INPUT: "Input",
-  FIGURE: "Figure",
-  FIGCAPTION: "Caption",
-  BLOCKQUOTE: "Quote",
-  VIDEO: "Video",
-  TABLE: "Table",
-  TR: "Row",
-  TD: "Cell",
-  TH: "Header Cell",
-  LABEL: "Label",
-  SELECT: "Select",
-  TEXTAREA: "Text Area",
-  PICTURE: "Picture",
-  SOURCE: "Source",
-};
-
-// Tags to always skip in the layer tree
-const SKIP_TAGS = new Set([
-  "SCRIPT",
-  "STYLE",
-  "LINK",
-  "NOSCRIPT",
-  "META",
-  "HEAD",
-  "BR",
-  "HR",
-  "SVG",
-  "PATH",
-  "CIRCLE",
-  "RECT",
-  "LINE",
-  "POLYGON",
-  "POLYLINE",
-  "G",
-  "DEFS",
-  "CLIPPATH",
-  "USE",
-  "SYMBOL",
-]);
 
 // Tags kept in simplified mode (content + semantic containers)
 const SIMPLIFIED_KEEP_TAGS = new Set([
@@ -377,6 +315,7 @@ function collectElements(nodes: LayerNode[], set: Set<HTMLElement>) {
 function LayerItem({
   node,
   selectedEl,
+  selectedEls,
   onSelect,
   onToggleVisibility,
   onDragStart,
@@ -391,6 +330,7 @@ function LayerItem({
 }: {
   node: LayerNode;
   selectedEl: HTMLElement | null;
+  selectedEls: Set<HTMLElement>;
   onSelect: (el: HTMLElement) => void;
   onToggleVisibility: (el: HTMLElement) => void;
   onDragStart: (el: HTMLElement) => void;
@@ -403,7 +343,7 @@ function LayerItem({
   onRename: (newName: string) => void;
   onCancelRename: () => void;
 }) {
-  const isSelected = node.el === selectedEl;
+  const isSelected = node.el === selectedEl || selectedEls.has(node.el);
   const hasChildren = node.children.length > 0;
   const tagLabel = TAG_LABELS[node.tag] || node.tag;
   const displayName = node.el.getAttribute("data-cc-name") || tagLabel;
@@ -417,7 +357,8 @@ function LayerItem({
   // Auto-expand if selected element is inside this node
   const shouldAutoExpand =
     forceExpand ||
-    (selectedEl && hasChildren && containsElement(node, selectedEl));
+    (selectedEl && hasChildren && containsElement(node, selectedEl)) ||
+    (selectedEls.size > 1 && hasChildren && Array.from(selectedEls).some(sel => sel !== selectedEl && containsElement(node, sel)));
 
   // NAV and LIST start collapsed unless they contain selection
   const defaultExpanded = !(
@@ -568,6 +509,7 @@ function LayerItem({
               key={i}
               node={child}
               selectedEl={selectedEl}
+              selectedEls={selectedEls}
               onSelect={onSelect}
               onToggleVisibility={onToggleVisibility}
               onDragStart={onDragStart}
@@ -595,6 +537,8 @@ export default function LayersTab() {
   const {
     iframeRef,
     selectedElRef,
+    selectedElsRef,
+    multiSelectCount,
     hasSelectedEl,
     layersRefreshKey,
     hiddenCount,
@@ -637,7 +581,7 @@ export default function LayersTab() {
       setDepthTruncated(false);
       return;
     }
-    const MAX_DEPTH = 8;
+    const MAX_DEPTH = 20;
     const tree = buildTree(doc.body, 0, MAX_DEPTH);
     setLayers(tree);
 
@@ -678,6 +622,10 @@ export default function LayersTab() {
     }
     return null;
   }, [rawSelectedEl, visibleElements]);
+
+  // Snapshot multi-select set for rendering (re-derived when multiSelectCount changes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const selectedEls = useMemo(() => new Set(selectedElsRef.current), [multiSelectCount]);
 
   const handleSelect = useCallback(
     (el: HTMLElement) => {
@@ -798,6 +746,7 @@ export default function LayersTab() {
               key={i}
               node={node}
               selectedEl={effectiveSelectedEl}
+              selectedEls={selectedEls}
               onSelect={handleSelect}
               onToggleVisibility={handleToggleLayerVisibility}
               onDragStart={handleDragStart}

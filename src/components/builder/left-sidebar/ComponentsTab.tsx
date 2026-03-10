@@ -2,12 +2,6 @@
 
 import { useState } from "react";
 import {
-  Type,
-  Image,
-  Video,
-  MousePointer,
-  Minus,
-  Square,
   Search,
   MoreHorizontal,
   Pencil,
@@ -15,103 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
-
-// ---------------------------------------------------------------------------
-// Block definitions (basic elements)
-// ---------------------------------------------------------------------------
-
-interface BlockDef {
-  id: string;
-  label: string;
-  icon: typeof Type;
-  insert: (doc: Document) => HTMLElement;
-}
-
-const PLACEHOLDER_SVG =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' fill='%23e5e7eb'%3E%3Crect width='400' height='300'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='16' font-family='sans-serif'%3EImage%3C/text%3E%3C/svg%3E";
-
-const BLOCKS: BlockDef[] = [
-  {
-    id: "text",
-    label: "Text",
-    icon: Type,
-    insert: (doc) => {
-      const el = doc.createElement("p");
-      el.setAttribute("contenteditable", "true");
-      el.style.padding = "8px 0";
-      el.textContent = "New text block";
-      return el;
-    },
-  },
-  {
-    id: "image",
-    label: "Image",
-    icon: Image,
-    insert: (doc) => {
-      const el = doc.createElement("img");
-      el.src = PLACEHOLDER_SVG;
-      el.alt = "Placeholder image";
-      el.style.width = "100%";
-      el.style.maxWidth = "400px";
-      el.style.display = "block";
-      return el;
-    },
-  },
-  {
-    id: "video",
-    label: "Video",
-    icon: Video,
-    insert: (doc) => {
-      const el = doc.createElement("video");
-      el.setAttribute("controls", "");
-      el.style.width = "100%";
-      el.style.maxWidth = "640px";
-      el.style.display = "block";
-      return el;
-    },
-  },
-  {
-    id: "cta",
-    label: "CTA Button",
-    icon: MousePointer,
-    insert: (doc) => {
-      const el = doc.createElement("a");
-      el.href = "#";
-      el.textContent = "Click Here";
-      el.style.display = "inline-block";
-      el.style.padding = "12px 24px";
-      el.style.backgroundColor = "#4f46e5";
-      el.style.color = "#ffffff";
-      el.style.borderRadius = "6px";
-      el.style.textDecoration = "none";
-      el.style.fontWeight = "600";
-      el.style.fontSize = "16px";
-      return el;
-    },
-  },
-  {
-    id: "divider",
-    label: "Divider",
-    icon: Minus,
-    insert: (doc) => {
-      const el = doc.createElement("hr");
-      el.style.margin = "16px 0";
-      return el;
-    },
-  },
-  {
-    id: "container",
-    label: "Container",
-    icon: Square,
-    insert: (doc) => {
-      const el = doc.createElement("div");
-      el.style.padding = "16px";
-      el.style.minHeight = "80px";
-      el.style.border = "2px dashed #d1d5db";
-      return el;
-    },
-  },
-];
+import { BLOCKS, type BlockDef } from "../block-definitions";
 
 // ---------------------------------------------------------------------------
 // ComponentsTab
@@ -127,6 +25,8 @@ export default function ComponentsTab() {
     savedComponents,
     setSavedComponents,
     insertSavedComponent,
+    dragComponentRef,
+    setIsDraggingFromComponents,
   } = useBuilder();
 
   const [search, setSearch] = useState("");
@@ -225,7 +125,20 @@ export default function ComponentsTab() {
             </h4>
             <div className="grid grid-cols-2 gap-2 mb-4">
               {filteredSaved.map((comp) => (
-                <div key={comp.id} className="group relative">
+                <div
+                  key={comp.id}
+                  className="group relative"
+                  draggable
+                  onDragStart={(e) => {
+                    dragComponentRef.current = { type: "saved", html: comp.html };
+                    e.dataTransfer.effectAllowed = "copy";
+                    setIsDraggingFromComponents(true);
+                  }}
+                  onDragEnd={() => {
+                    dragComponentRef.current = null;
+                    setIsDraggingFromComponents(false);
+                  }}
+                >
                   <button
                     onClick={() => insertSavedComponent(comp.html)}
                     className="w-full flex flex-col rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors overflow-hidden text-left"
@@ -329,8 +242,18 @@ export default function ComponentsTab() {
               {filteredBlocks.map((block) => (
                 <button
                   key={block.id}
+                  draggable
+                  onDragStart={(e) => {
+                    dragComponentRef.current = { type: "block", blockId: block.id };
+                    e.dataTransfer.effectAllowed = "copy";
+                    setIsDraggingFromComponents(true);
+                  }}
+                  onDragEnd={() => {
+                    dragComponentRef.current = null;
+                    setIsDraggingFromComponents(false);
+                  }}
                   onClick={() => handleInsert(block)}
-                  className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-gray-600 hover:text-gray-900"
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-gray-600 hover:text-gray-900 cursor-grab active:cursor-grabbing"
                 >
                   <block.icon className="w-5 h-5" />
                   <span className="text-[11px] font-medium">{block.label}</span>

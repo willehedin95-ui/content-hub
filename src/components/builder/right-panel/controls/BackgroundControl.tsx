@@ -2,12 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useBuilder } from "../../BuilderContext";
-
-const COLOR_PRESETS = [
-  "#ffffff", "#000000", "#f3f4f6", "#e5e7eb", "#1f2937",
-  "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e",
-];
+import ColorPicker, { rgbToHex } from "./ColorPicker";
 
 const SIZE_OPTIONS = ["cover", "contain", "auto"];
 const POSITION_OPTIONS = [
@@ -22,15 +17,6 @@ const POSITION_OPTIONS = [
   "bottom right",
 ];
 const REPEAT_OPTIONS = ["no-repeat", "repeat", "repeat-x", "repeat-y"];
-
-function rgbToHex(rgb: string): string {
-  const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) return "#ffffff";
-  const r = parseInt(match[1]);
-  const g = parseInt(match[2]);
-  const b = parseInt(match[3]);
-  return "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
-}
 
 function extractOpacity(bg: string): number {
   const match = bg.match(/rgba?\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
@@ -110,54 +96,12 @@ export default function BackgroundControl() {
       {/* Background Color */}
       <div>
         <label className={labelClass}>Background Color</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={bgColor}
-            onChange={(e) => handleColorChange(e.target.value, bgOpacity)}
-            className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0"
-          />
-          <input
-            type="text"
-            value={bgColor}
-            onChange={(e) => {
-              const v = e.target.value;
-              setBgColor(v);
-              if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-                handleColorChange(v, bgOpacity);
-              }
-            }}
-            className={`${inputClass} flex-1`}
-            placeholder="#ffffff"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {COLOR_PRESETS.map((c) => (
-            <button
-              key={c}
-              onClick={() => handleColorChange(c, bgOpacity)}
-              className={`w-5 h-5 rounded-sm border transition-all ${
-                bgColor === c
-                  ? "border-indigo-500 ring-1 ring-indigo-300"
-                  : "border-gray-200 hover:border-gray-400"
-              }`}
-              style={{ backgroundColor: c }}
-              title={c}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Opacity */}
-      <div>
-        <label className={labelClass}>Opacity ({bgOpacity}%)</label>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={bgOpacity}
-          onChange={(e) => handleColorChange(bgColor, parseInt(e.target.value))}
-          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+        <ColorPicker
+          value={bgColor}
+          onChange={(hex) => handleColorChange(hex, bgOpacity)}
+          showOpacity
+          opacity={bgOpacity}
+          onOpacityChange={(v) => handleColorChange(bgColor, v)}
         />
       </div>
 
