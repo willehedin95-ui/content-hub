@@ -99,14 +99,22 @@ function normalizeUrlForDedup(url: string): string {
 function extractMedia(html: string): ExtractedImage[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
+
+  // Strip <noscript> elements — they contain fallback duplicates of lazy-loaded images
+  doc.querySelectorAll("noscript").forEach((el) => el.remove());
+
   const results: ExtractedImage[] = [];
   const seenSrcs = new Set<string>();
 
   // Extract images
   const imgs = doc.querySelectorAll("img");
   imgs.forEach((img, index) => {
-    const src = img.getAttribute("src") || "";
-    if (!src || src.startsWith("data:image/svg")) return;
+    let src = img.getAttribute("src") || "";
+    // Use data-src fallback for lazy-loaded images with placeholder src
+    if ((!src || src.startsWith("data:")) && img.getAttribute("data-src")) {
+      src = img.getAttribute("data-src")!;
+    }
+    if (!src || src.startsWith("data:")) return;
 
     const normalized = normalizeUrlForDedup(src);
     if (seenSrcs.has(normalized)) return;
@@ -653,6 +661,9 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     // --- Replace media in HTML ---
     const parser = new DOMParser();
     const doc = parser.parseFromString(rewrittenHtml, "text/html");
+
+    // Strip <noscript> elements (same as extraction step) so indices match
+    doc.querySelectorAll("noscript").forEach((el) => el.remove());
 
     const imageReplacements = new Map<string, string>();
     const videoToImageReplacements = new Map<number, string>();
