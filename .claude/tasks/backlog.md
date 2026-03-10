@@ -1,12 +1,11 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-10 (session 3)
+Updated: 2026-03-10 (session 4)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Push & test all unpushed work** — 6 commits ahead of origin: context-aware image gen, swiper image selection, video→image replace, placeholder clicks, video-swiper keyframes, general angle (added 2026-03-10)
-- [ ] Live-test competitor swipe: upload real competitor ad (2-3 images), verify multi-image + variation count end-to-end (added 2026-03-09)
+- [ ] Live-test competitor swipe end-to-end: import real page → generate images/videos → apply → publish (added 2026-03-09, updated 2026-03-10)
 - [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
@@ -56,6 +55,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Swiper image generation polish** — video thumbnails, dedup fix (URL normalization), aspect ratio fix (CSS parsing), video gen via Kling, smart product prompts, text-only fallback. Commits `e6c03b5`→`0f2070f`. (done 2026-03-10 session 4)
 - [x] **Swiper image selection step** — after rewrite, image grid with checkboxes for bulk product-adapted generation. Commit `cb52afe`. (done 2026-03-10)
 - [x] **Context-aware image generation** — one-click "Generate for HappySleep" in builder, GPT-4o Vision + surrounding text → Nano Banana Pro. Commits `d6f2184`, `89aada1`. (done 2026-03-10)
 - [x] **Video→image replace + placeholder clicks** — VideoPanel accepts image uploads; placeholder images now clickable. Commit `cb52afe`. (done 2026-03-10)
