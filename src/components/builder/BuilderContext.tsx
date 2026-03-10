@@ -367,7 +367,7 @@ export function BuilderProvider({
   const savingRef = useRef(false);
   const prevLinkUrl = useRef("");
   const excludeModeRef = useRef(false);
-  const selectionDepthRef = useRef<number>(0);
+  const enteredContainerRef = useRef<HTMLElement | null>(null);
   const copiedStylesRef = useRef<Record<string, string> | null>(null);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -534,6 +534,9 @@ export function BuilderProvider({
     });
     clone.querySelectorAll("[data-cc-hover]").forEach((el) => {
       el.removeAttribute("data-cc-hover");
+    });
+    clone.querySelectorAll("[data-cc-entered]").forEach((el) => {
+      el.removeAttribute("data-cc-entered");
     });
     clone.querySelectorAll("[data-cc-hover-label]").forEach((el) => {
       el.remove();
@@ -933,6 +936,7 @@ export function BuilderProvider({
     elStyle.setAttribute("data-cc-el-toolbar", "true");
     elStyle.textContent = `
       [data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }
+      [data-cc-entered] { outline: 1px dashed rgba(99,102,241,0.35) !important; outline-offset: 4px; }
       [data-cc-hover]:not([data-cc-selected]) { outline: 1px solid rgba(99,102,241,0.4) !important; outline-offset: 1px; }
       [data-cc-hover-label] {
         position: fixed; pointer-events: none; z-index: 99999;
@@ -1002,15 +1006,26 @@ export function BuilderProvider({
     }
     doc.head.appendChild(elStyle);
 
-    // Build ancestry chain from body's direct child down to target
-    function buildAncestryChain(el: HTMLElement): HTMLElement[] {
-      const chain: HTMLElement[] = [];
-      let current: HTMLElement | null = el;
-      while (current && current !== body && current.tagName !== "HTML") {
-        chain.unshift(current);
+    // Set the entered container, managing the visual data-cc-entered attribute
+    function setEnteredContainer(el: HTMLElement | null) {
+      const prev = enteredContainerRef.current;
+      if (prev) prev.removeAttribute("data-cc-entered");
+      enteredContainerRef.current = el;
+      if (el) el.setAttribute("data-cc-entered", "");
+    }
+
+    // Resolve a target element to the direct child of a container that
+    // is an ancestor of (or equal to) the target. Returns null if target
+    // is not inside the container.
+    function resolveToDirectChild(target: HTMLElement, container: HTMLElement): HTMLElement | null {
+      if (target === container) return null; // container itself is not a "child"
+      let current: HTMLElement | null = target;
+      while (current) {
+        if (current.parentElement === container) return current;
         current = current.parentElement;
+        if (!current || current === doc?.documentElement) return null;
       }
-      return chain; // chain[0] = direct child of body, chain[last] = deepest target
+      return null;
     }
 
     // Helper to select an element (clears previous, sets state)
@@ -1031,7 +1046,7 @@ export function BuilderProvider({
     // Flag to suppress click after double-click
     let suppressNextClick = false;
 
-    // Click handler for element selection (container-first + multi-select)
+    // Click handler — Figma-style entered-container model
     doc.addEventListener(
       "click",
       function (e: Event) {
@@ -1054,7 +1069,7 @@ export function BuilderProvider({
           return;
         }
 
-        // Clicking body/html — deselect ALL, reset depth
+        // Clicking body/html — deselect ALL, reset entered container
         if (target === body || target.tagName === "HTML") {
           if (selectedElRef.current) {
             selectedElRef.current.removeAttribute("data-cc-selected");
@@ -1065,7 +1080,7 @@ export function BuilderProvider({
           setMultiSelectCount(0);
           setHasSelectedEl(false);
           setLayersRefreshKey((k) => k + 1);
-          selectionDepthRef.current = 0;
+          setEnteredContainer(null);
           return;
         }
 
@@ -1075,17 +1090,34 @@ export function BuilderProvider({
         const isMulti = me.shiftKey;
         const isBypass = me.metaKey || me.ctrlKey;
 
-        if (isMulti) {
-          // MULTI-SELECT — use container-first resolved target
-          const chain = buildAncestryChain(target);
-          const depth = selectionDepthRef.current;
-          const resolvedTarget = isBypass ? target : chain[Math.min(depth, chain.length - 1)];
+        // Resolve target relative to the entered container (or body)
+        const container = enteredContainerRef.current || body;
+        let resolved: HTMLElement | null;
 
-          if (selectedElsRef.current.has(resolvedTarget)) {
-            // Remove from selection
-            resolvedTarget.removeAttribute("data-cc-selected");
-            selectedElsRef.current.delete(resolvedTarget);
-            if (selectedElRef.current === resolvedTarget) {
+        if (isBypass) {
+          // Cmd/Ctrl+click: bypass container-first, select deepest directly
+          // Also set entered container to the target's parent so subsequent
+          // clicks are contextual
+          resolved = target;
+          const parent = target.parentElement;
+          setEnteredContainer((parent && parent !== body) ? parent : null);
+        } else {
+          resolved = resolveToDirectChild(target, container);
+          if (!resolved) {
+            // Clicked outside the entered container — reset to body level
+            setEnteredContainer(null);
+            resolved = resolveToDirectChild(target, body);
+          }
+        }
+
+        if (!resolved) return;
+
+        if (isMulti) {
+          // MULTI-SELECT — toggle in/out of selection
+          if (selectedElsRef.current.has(resolved)) {
+            resolved.removeAttribute("data-cc-selected");
+            selectedElsRef.current.delete(resolved);
+            if (selectedElRef.current === resolved) {
               const remaining = Array.from(selectedElsRef.current);
               if (remaining.length > 0) {
                 selectedElRef.current = remaining[0];
@@ -1095,11 +1127,10 @@ export function BuilderProvider({
               }
             }
           } else {
-            // Add to selection
-            resolvedTarget.setAttribute("data-cc-selected", "");
-            selectedElsRef.current.add(resolvedTarget);
+            resolved.setAttribute("data-cc-selected", "");
+            selectedElsRef.current.add(resolved);
             if (!selectedElRef.current) {
-              selectedElRef.current = resolvedTarget;
+              selectedElRef.current = resolved;
               setHasSelectedEl(true);
             }
             if (selectedElRef.current && !selectedElsRef.current.has(selectedElRef.current)) {
@@ -1110,27 +1141,13 @@ export function BuilderProvider({
           setMultiSelectCount(selectedElsRef.current.size);
           setLayersRefreshKey((k) => k + 1);
         } else {
-          // SINGLE SELECT — container-first
-          const chain = buildAncestryChain(target);
-          const depth = selectionDepthRef.current;
-
-          let selectTarget: HTMLElement;
-          if (isBypass) {
-            // Cmd/Ctrl+click: bypass, select deepest child directly
-            selectTarget = target;
-            selectionDepthRef.current = chain.indexOf(target);
-          } else {
-            // Normal click: select at current depth
-            selectTarget = chain[Math.min(depth, chain.length - 1)];
-          }
-
-          selectElement(selectTarget);
+          selectElement(resolved);
         }
       },
       false
     );
 
-    // Double-click to drill one level deeper
+    // Double-click — enter the container and select child within it
     doc.addEventListener(
       "dblclick",
       function (e: Event) {
@@ -1142,11 +1159,28 @@ export function BuilderProvider({
         e.preventDefault();
         suppressNextClick = true;
 
-        const chain = buildAncestryChain(target);
-        const newDepth = Math.min(selectionDepthRef.current + 1, chain.length - 1);
-        selectionDepthRef.current = newDepth;
+        const container = enteredContainerRef.current || body;
+        // Find which direct child of the current container was clicked
+        const containerChild = resolveToDirectChild(target, container);
+        if (!containerChild) return;
 
-        selectElement(chain[newDepth]);
+        if (containerChild.children.length > 0) {
+          // Enter the container child
+          setEnteredContainer(containerChild);
+          if (containerChild !== target) {
+            // Select the direct child of the newly entered container
+            const innerChild = resolveToDirectChild(target, containerChild);
+            if (innerChild) {
+              selectElement(innerChild);
+            }
+          } else {
+            // Double-clicked on the container itself (e.g. padding area)
+            // Enter it and select first child
+            const firstChild = containerChild.children[0] as HTMLElement;
+            if (firstChild) selectElement(firstChild);
+          }
+        }
+        // If no children, it's a leaf — nothing to enter
       },
       false
     );
@@ -1179,10 +1213,16 @@ export function BuilderProvider({
       if (isBypass) {
         hoverTarget = target;
       } else {
-        // Container-first: hover at current selection depth
-        const chain = buildAncestryChain(target);
-        const depth = selectionDepthRef.current;
-        hoverTarget = chain[Math.min(depth, chain.length - 1)];
+        // Resolve to direct child of entered container (like click would)
+        const container = enteredContainerRef.current || body;
+        const resolved = resolveToDirectChild(target, container);
+        if (resolved) {
+          hoverTarget = resolved;
+        } else {
+          // Outside entered container — resolve to body-level child
+          const topLevel = resolveToDirectChild(target, body);
+          hoverTarget = topLevel || target;
+        }
       }
 
       // Remove previous hover
@@ -1772,6 +1812,15 @@ export function BuilderProvider({
     setMultiSelectCount(1);
     setHasSelectedEl(true);
     setLayersRefreshKey((k) => k + 1);
+    // Update entered container to match — set to the element's parent so
+    // subsequent canvas clicks resolve correctly relative to this element
+    const body = iframeRef.current?.contentDocument?.body;
+    const parent = el.parentElement;
+    const prev = enteredContainerRef.current;
+    if (prev) prev.removeAttribute("data-cc-entered");
+    const newContainer = (parent && parent !== body) ? parent : null;
+    enteredContainerRef.current = newContainer;
+    if (newContainer) newContainer.setAttribute("data-cc-entered", "");
   }
 
   function deselectElement() {
@@ -1783,6 +1832,10 @@ export function BuilderProvider({
     selectedElsRef.current.clear();
     setMultiSelectCount(0);
     setHasSelectedEl(false);
+    if (enteredContainerRef.current) {
+      enteredContainerRef.current.removeAttribute("data-cc-entered");
+    }
+    enteredContainerRef.current = null;
   }
 
   function reloadIframe() {
@@ -1933,34 +1986,26 @@ export function BuilderProvider({
         // Go up one level in container hierarchy, or deselect
         if (!isTyping && selectedElRef.current) {
           e.preventDefault();
-          const depth = selectionDepthRef.current;
-          if (depth > 0) {
-            // Go up one level — find parent at depth-1
-            const doc = iframeRef.current?.contentDocument;
-            const body = doc?.body;
-            if (body) {
-              // Walk up from selected element to build chain
-              const chain: HTMLElement[] = [];
-              let cur: HTMLElement | null = selectedElRef.current;
-              while (cur && cur !== body && cur.tagName !== "HTML") {
-                chain.unshift(cur);
-                cur = cur.parentElement;
-              }
-              selectionDepthRef.current = depth - 1;
-              const parentTarget = chain[Math.min(depth - 1, chain.length - 1)];
-              if (parentTarget) {
-                // Select parent
-                selectedElsRef.current.forEach(el => el.removeAttribute("data-cc-selected"));
-                selectedElsRef.current.clear();
-                selectedElRef.current.removeAttribute("data-cc-selected");
-                parentTarget.setAttribute("data-cc-selected", "");
-                selectedElRef.current = parentTarget;
-                selectedElsRef.current.add(parentTarget);
-                setMultiSelectCount(1);
-                setHasSelectedEl(true);
-                setLayersRefreshKey((k) => k + 1);
-              }
-            }
+          const container = enteredContainerRef.current;
+          const doc = iframeRef.current?.contentDocument;
+          const body = doc?.body;
+          if (container && body) {
+            // Exit entered container — select the container itself, go up
+            container.removeAttribute("data-cc-entered");
+            const parentOfContainer = container.parentElement;
+            const newContainer = (parentOfContainer && parentOfContainer !== body) ? parentOfContainer : null;
+            enteredContainerRef.current = newContainer;
+            if (newContainer) newContainer.setAttribute("data-cc-entered", "");
+            // Select the container we just exited
+            selectedElsRef.current.forEach(el => el.removeAttribute("data-cc-selected"));
+            selectedElsRef.current.clear();
+            selectedElRef.current.removeAttribute("data-cc-selected");
+            container.setAttribute("data-cc-selected", "");
+            selectedElRef.current = container;
+            selectedElsRef.current.add(container);
+            setMultiSelectCount(1);
+            setHasSelectedEl(true);
+            setLayersRefreshKey((k) => k + 1);
           } else {
             // At top level — deselect entirely
             selectedElRef.current.removeAttribute("data-cc-selected");
@@ -1970,7 +2015,10 @@ export function BuilderProvider({
             setMultiSelectCount(0);
             setHasSelectedEl(false);
             setLayersRefreshKey((k) => k + 1);
-            selectionDepthRef.current = 0;
+            if (enteredContainerRef.current) {
+              enteredContainerRef.current.removeAttribute("data-cc-entered");
+            }
+            enteredContainerRef.current = null;
           }
           return;
         }
