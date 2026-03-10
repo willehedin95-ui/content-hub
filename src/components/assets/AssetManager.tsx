@@ -19,10 +19,12 @@ interface Props {
 }
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  logo: "Logos",
-  icon: "Icons",
-  badge: "Badges",
-  background: "Backgrounds",
+  product: "Product",
+  model: "Model",
+  lifestyle: "Lifestyle",
+  graphic: "Graphic",
+  logo: "Logo",
+  before_after: "Before/After",
   other: "Other",
 };
 
