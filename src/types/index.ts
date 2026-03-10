@@ -1172,23 +1172,33 @@ export interface PixarAnimationProposal {
 }
 
 // ── Asset Bank ──────────────────────────────────────────────
-export type AssetCategory = "logo" | "icon" | "badge" | "background" | "other";
+export type AssetCategory = "product" | "model" | "lifestyle" | "graphic" | "logo" | "before_after" | "other";
 
 export const ASSET_CATEGORIES: AssetCategory[] = [
+  "product",
+  "model",
+  "lifestyle",
+  "graphic",
   "logo",
-  "icon",
-  "badge",
-  "background",
+  "before_after",
   "other",
 ];
+
+export type MediaType = "image" | "video";
 
 export interface Asset {
   id: string;
   name: string;
   category: AssetCategory;
+  media_type: MediaType;
+  product: Product | null;
   tags: string[];
   url: string;
   alt_text: string | null;
   description: string | null;
+  file_size: number | null;
+  dimensions: string | null;
+  duration: number | null;
+  source_url: string | null;
   created_at: string;
 }
