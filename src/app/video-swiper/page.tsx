@@ -1,5 +1,5 @@
-import VideoSwiperClient from "@/components/video-swiper/VideoSwiperClient";
+import { redirect } from "next/navigation";
 
 export default function VideoSwiperPage() {
-  return <VideoSwiperClient />;
+  redirect("/assets?view=swipe-video");
 }
