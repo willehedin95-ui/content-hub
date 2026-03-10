@@ -586,7 +586,7 @@ export async function buildLearningsContext(product: string): Promise<string> {
 // Prompt builders
 // ---------------------------------------------------------------------------
 
-function buildProductContext(
+export function buildProductContext(
   product: ProductFull,
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
