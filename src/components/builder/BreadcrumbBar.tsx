@@ -91,29 +91,49 @@ export default function BreadcrumbBar() {
     <div className="h-8 px-3 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between shrink-0">
       {/* Left: breadcrumb path */}
       <div className="overflow-x-auto whitespace-nowrap flex items-center gap-0.5 min-w-0 flex-1 [&::-webkit-scrollbar]:hidden">
-        {ancestors.map((item, i) => (
-          <Fragment key={i}>
-            {i > 0 && (
-              <ChevronRight className="w-3 h-3 text-gray-300 shrink-0" />
-            )}
-            <button
-              onClick={() => {
-                selectElementInIframe(item.el);
-                item.el.scrollIntoView({
-                  behavior: "instant",
-                  block: "center",
-                });
-              }}
-              className={`text-xs px-1 py-0.5 rounded transition-colors shrink-0 ${
-                i === ancestors.length - 1
-                  ? "text-indigo-600 font-medium bg-indigo-50"
-                  : "text-gray-500 hover:text-indigo-600 hover:bg-indigo-50"
-              }`}
-            >
-              {item.label}
-            </button>
-          </Fragment>
-        ))}
+        {(() => {
+          // Truncate deep nesting: show first 2 + "..." + last 2
+          const shouldTruncate = ancestors.length > 5;
+          const visible = shouldTruncate
+            ? [...ancestors.slice(0, 2), null, ...ancestors.slice(-2)]
+            : ancestors;
+          const collapsedLabels = shouldTruncate
+            ? ancestors.slice(2, -2).map((a) => a.label).join(" > ")
+            : "";
+
+          return visible.map((item, i) => (
+            <Fragment key={i}>
+              {i > 0 && (
+                <ChevronRight className="w-3 h-3 text-gray-300 shrink-0" />
+              )}
+              {item === null ? (
+                <span
+                  className="text-xs px-1 py-0.5 text-gray-400 cursor-default"
+                  title={collapsedLabels}
+                >
+                  &hellip;
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    selectElementInIframe(item.el);
+                    item.el.scrollIntoView({
+                      behavior: "instant",
+                      block: "center",
+                    });
+                  }}
+                  className={`text-xs px-1 py-0.5 rounded transition-colors shrink-0 ${
+                    item === ancestors[ancestors.length - 1]
+                      ? "text-indigo-600 font-medium bg-indigo-50"
+                      : "text-gray-500 hover:text-indigo-600 hover:bg-indigo-50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              )}
+            </Fragment>
+          ));
+        })()}
       </div>
 
       {/* Right: element info */}

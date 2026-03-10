@@ -177,7 +177,7 @@ export interface BuilderContextValue {
 
   // --- New builder layout state ---
   zoom: number;
-  setZoom: (v: number) => void;
+  setZoom: (v: number | ((prev: number) => number)) => void;
   leftTab: LeftTab;
   setLeftTab: (v: LeftTab) => void;
   leftSidebarOpen: boolean;
@@ -246,6 +246,10 @@ export interface BuilderContextValue {
   setRenamingEl: (el: HTMLElement | null) => void;
   startRenameElement: () => void;
   handleRenameElement: (newName: string) => void;
+
+  // --- Shortcuts modal ---
+  showShortcutsModal: boolean;
+  setShowShortcutsModal: (v: boolean) => void;
 
   // --- Save as component ---
   showSaveComponentModal: boolean;
@@ -462,6 +466,9 @@ export function BuilderProvider({
   // Rename state (which element is being renamed in layers)
   const [renamingEl, setRenamingEl] = useState<HTMLElement | null>(null);
 
+  // Shortcuts modal
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+
   // Save component modal
   const [showSaveComponentModal, setShowSaveComponentModal] = useState(false);
   const [saveComponentHtml, setSaveComponentHtml] = useState("");
@@ -551,6 +558,10 @@ export function BuilderProvider({
     });
     clone.querySelectorAll("[data-cc-hidden]").forEach((el) => {
       el.removeAttribute("data-cc-hidden");
+    });
+    // Remove unsaved placeholder text blocks entirely; strip attr from edited ones
+    clone.querySelectorAll("[data-cc-placeholder]").forEach((el) => {
+      el.remove();
     });
 
     // Rewrite the data-cc-custom style tag to clean selectors
@@ -1003,8 +1014,25 @@ export function BuilderProvider({
     }
     doc.head.appendChild(elStyle);
 
+    // Clear placeholder styling when user focuses a placeholder element
+    doc.addEventListener("focusin", (e) => {
+      const target = e.target as HTMLElement;
+      if (target?.hasAttribute("data-cc-placeholder")) {
+        target.removeAttribute("data-cc-placeholder");
+        target.style.color = "";
+        target.style.fontStyle = "";
+        target.textContent = "";
+        markDirty();
+      }
+    }, true);
+
     // Helper to select an element (clears previous, sets state)
     function selectElement(el: HTMLElement) {
+      // Clear media panels when selecting via direct click (images/videos
+      // are intercepted by the iframe script and never reach here)
+      setClickedImage(null);
+      setClickedVideo(null);
+
       selectedElsRef.current.forEach(e => e.removeAttribute("data-cc-selected"));
       selectedElsRef.current.clear();
       if (selectedElRef.current) {
@@ -1041,6 +1069,8 @@ export function BuilderProvider({
 
         // Clicking body/html — deselect ALL
         if (target === body || target.tagName === "HTML") {
+          setClickedImage(null);
+          setClickedVideo(null);
           if (selectedElRef.current) {
             selectedElRef.current.removeAttribute("data-cc-selected");
             selectedElRef.current = null;
@@ -1707,6 +1737,8 @@ export function BuilderProvider({
   }
 
   function deselectElement() {
+    setClickedImage(null);
+    setClickedVideo(null);
     if (selectedElRef.current) {
       selectedElRef.current.removeAttribute("data-cc-selected");
       selectedElRef.current = null;
@@ -1941,6 +1973,11 @@ export function BuilderProvider({
         e.preventDefault();
         deleteRef.current?.();
       }
+
+      // ? -> toggle shortcuts modal (when not typing)
+      if (e.key === "?" && !isTyping) {
+        setShowShortcutsModal((prev) => !prev);
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -2161,6 +2198,10 @@ export function BuilderProvider({
     setRenamingEl,
     startRenameElement,
     handleRenameElement,
+
+    // Shortcuts modal
+    showShortcutsModal,
+    setShowShortcutsModal,
 
     // Save as component
     showSaveComponentModal,

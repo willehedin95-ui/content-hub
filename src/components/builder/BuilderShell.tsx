@@ -12,6 +12,7 @@ import PublishModal from "@/components/pages/PublishModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import ContextMenu from "./menus/ContextMenu";
 import SaveComponentModal from "./menus/SaveComponentModal";
+import ShortcutsModal from "./modals/ShortcutsModal";
 
 function BuilderShellInner() {
   const {
@@ -28,6 +29,8 @@ function BuilderShellInner() {
     setShowSaveComponentModal,
     saveComponentHtml,
     setSavedComponents,
+    showShortcutsModal,
+    setShowShortcutsModal,
   } = useBuilder();
 
   return (
@@ -67,6 +70,12 @@ function BuilderShellInner() {
             router.refresh();
           }
         }}
+      />
+
+      {/* Keyboard shortcuts modal */}
+      <ShortcutsModal
+        open={showShortcutsModal}
+        onClose={() => setShowShortcutsModal(false)}
       />
 
       {/* Confirm dialog */}

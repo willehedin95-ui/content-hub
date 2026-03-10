@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useBuilder, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT } from "./BuilderContext";
 
 // Inline tags that should be skipped when finding a drop target
@@ -25,10 +25,13 @@ export default function BuilderCanvas() {
     setIsDraggingFromComponents,
     dragComponentRef,
     insertAtPosition,
+    zoom,
+    setZoom,
   } = useBuilder();
 
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
   const dropTargetRef = useRef<DropTarget | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const previewId = isSource ? `source_${pageId}` : translation.id;
   const previewUrl = `/api/preview/${previewId}?v=${iframeKey}`;
@@ -36,6 +39,21 @@ export default function BuilderCanvas() {
   const isFixedViewport = viewportConfig.device !== "desktop";
   const width = viewportConfig.width || DEFAULT_VIEWPORT_WIDTH;
   const height = viewportConfig.height || DEFAULT_VIEWPORT_HEIGHT;
+  const scale = zoom / 100;
+
+  // Ctrl/Cmd + scroll wheel to zoom
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    function handleWheel(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      setZoom((prev: number) => Math.max(50, Math.min(200, prev + delta)));
+    }
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [setZoom]);
 
   // Walk up from an element to find the nearest block-level ancestor
   const findBlockAncestor = useCallback((el: HTMLElement, body: HTMLElement): HTMLElement | null => {
@@ -58,9 +76,9 @@ export default function BuilderCanvas() {
       if (!iframeDoc?.body) return;
 
       const iframeRect = iframe.getBoundingClientRect();
-      // Translate mouse position to iframe coordinate space
-      const x = e.clientX - iframeRect.left;
-      const y = e.clientY - iframeRect.top;
+      // Translate mouse position to iframe coordinate space, accounting for zoom
+      const x = (e.clientX - iframeRect.left) / scale;
+      const y = (e.clientY - iframeRect.top) / scale;
 
       const targetEl = iframeDoc.elementFromPoint(x, y) as HTMLElement | null;
       if (!targetEl) {
@@ -77,9 +95,9 @@ export default function BuilderCanvas() {
           dropTargetRef.current = { el: lastChild, position: "after" };
           const lastRect = lastChild.getBoundingClientRect();
           setDropIndicator({
-            top: iframeRect.top + lastRect.bottom,
-            left: iframeRect.left + lastRect.left,
-            width: lastRect.width,
+            top: iframeRect.top + lastRect.bottom * scale,
+            left: iframeRect.left + lastRect.left * scale,
+            width: lastRect.width * scale,
           });
         }
         return;
@@ -95,16 +113,16 @@ export default function BuilderCanvas() {
       // Position the indicator line (viewport-relative for fixed positioning)
       const indicatorY =
         position === "before"
-          ? iframeRect.top + blockRect.top
-          : iframeRect.top + blockRect.bottom;
+          ? iframeRect.top + blockRect.top * scale
+          : iframeRect.top + blockRect.bottom * scale;
 
       setDropIndicator({
         top: indicatorY,
-        left: iframeRect.left + blockRect.left,
-        width: blockRect.width,
+        left: iframeRect.left + blockRect.left * scale,
+        width: blockRect.width * scale,
       });
     },
-    [iframeRef, findBlockAncestor]
+    [iframeRef, findBlockAncestor, scale]
   );
 
   const handleDrop = useCallback(
@@ -140,6 +158,7 @@ export default function BuilderCanvas() {
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-gray-100 overflow-hidden">
       <div
+        ref={scrollContainerRef}
         className={`flex-1 overflow-auto relative ${
           isFixedViewport ? "flex justify-center items-start p-8" : ""
         }`}
@@ -151,23 +170,42 @@ export default function BuilderCanvas() {
           2. Content is user's own authenticated pages
           3. No external/untrusted content is loaded
         */}
-        <iframe
-          ref={iframeRef}
-          key={iframeKey}
-          src={previewUrl}
-          className={
-            isFixedViewport
-              ? `border border-gray-300 rounded-lg shadow-lg bg-white shrink-0`
-              : "w-full h-full border-0"
-          }
-          style={
-            isFixedViewport
-              ? { width: `${width}px`, height: `${height}px` }
-              : undefined
-          }
-          sandbox="allow-scripts allow-same-origin"
-          onLoad={handleIframeLoad}
-        />
+        <div
+          style={zoom !== 100 ? {
+            transform: `scale(${scale})`,
+            transformOrigin: isFixedViewport ? "top center" : "0 0",
+            ...(isFixedViewport ? {
+              // Compensate layout for mobile: adjust margins so parent flexbox
+              // centers the visual size correctly
+              width: `${width}px`,
+              height: `${height}px`,
+              marginRight: `${width * (scale - 1)}px`,
+              marginBottom: `${height * (scale - 1)}px`,
+            } : {
+              // Desktop: fill container, let transform handle visual scaling
+              width: "100%",
+              height: "100%",
+            }),
+          } : (isFixedViewport ? undefined : { width: "100%", height: "100%" })}
+        >
+          <iframe
+            ref={iframeRef}
+            key={iframeKey}
+            src={previewUrl}
+            className={
+              isFixedViewport
+                ? "border border-gray-300 rounded-lg shadow-lg bg-white shrink-0"
+                : "w-full h-full border-0"
+            }
+            style={
+              isFixedViewport
+                ? { width: `${width}px`, height: `${height}px` }
+                : undefined
+            }
+            sandbox="allow-scripts allow-same-origin"
+            onLoad={handleIframeLoad}
+          />
+        </div>
 
         {/* Transparent overlay to catch drag events over the iframe */}
         {isDraggingFromComponents && (

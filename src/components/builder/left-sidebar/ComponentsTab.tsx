@@ -9,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
-import { BLOCKS, type BlockDef } from "../block-definitions";
+import { BLOCKS, SECTION_TEMPLATES, type BlockDef } from "../block-definitions";
 
 // ---------------------------------------------------------------------------
 // ComponentsTab
@@ -42,6 +42,28 @@ export default function ComponentsTab() {
   const filteredBlocks = BLOCKS.filter((b) =>
     b.label.toLowerCase().includes(q)
   );
+  const filteredTemplates = SECTION_TEMPLATES.filter((t) =>
+    t.label.toLowerCase().includes(q)
+  );
+
+  function handleInsertTemplate(templateHtml: string) {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+
+    pushUndoSnapshot();
+    // Templates are hardcoded HTML from SECTION_TEMPLATES, not user input
+    const wrapper = doc.createElement("template");
+    wrapper.innerHTML = templateHtml; // eslint-disable-line -- safe: hardcoded templates
+    const newEl = wrapper.content.firstElementChild as HTMLElement;
+    if (!newEl) return;
+
+    if (hasSelectedEl && selectedElRef.current) {
+      selectedElRef.current.parentNode?.insertBefore(newEl, selectedElRef.current.nextSibling);
+    } else {
+      doc.body.appendChild(newEl);
+    }
+    markDirty();
+  }
 
   function handleInsert(block: BlockDef) {
     const doc = iframeRef.current?.contentDocument;
@@ -263,8 +285,39 @@ export default function ComponentsTab() {
           </>
         )}
 
+        {/* Section Templates */}
+        {filteredTemplates.length > 0 && (
+          <>
+            <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">
+              Section Templates
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {filteredTemplates.map((tmpl) => (
+                <button
+                  key={tmpl.id}
+                  draggable
+                  onDragStart={(e) => {
+                    dragComponentRef.current = { type: "saved", html: tmpl.html };
+                    e.dataTransfer.effectAllowed = "copy";
+                    setIsDraggingFromComponents(true);
+                  }}
+                  onDragEnd={() => {
+                    dragComponentRef.current = null;
+                    setIsDraggingFromComponents(false);
+                  }}
+                  onClick={() => handleInsertTemplate(tmpl.html)}
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-gray-600 hover:text-gray-900 cursor-grab active:cursor-grabbing"
+                >
+                  <tmpl.icon className="w-5 h-5" />
+                  <span className="text-[11px] font-medium">{tmpl.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Empty state */}
-        {filteredSaved.length === 0 && filteredBlocks.length === 0 && (
+        {filteredSaved.length === 0 && filteredBlocks.length === 0 && filteredTemplates.length === 0 && (
           <p className="text-xs text-gray-400 text-center py-8">
             No components match &ldquo;{search}&rdquo;
           </p>

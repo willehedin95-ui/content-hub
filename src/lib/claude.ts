@@ -77,7 +77,7 @@ Use the angle specified in the prompt. If none is specified, match the angle to 
 - Mechanism/how-it-works → use the UMP from the product brief, framed for the selected angle
 - Statistics and proof → use ONLY stats from the product brief proof stack
 - Testimonials → adapt using testimonial highlights from the brief. Keep names realistic for the target market (Swedish/Scandinavian names)
-- Pricing → use actual pricing from the product brief
+- Pricing → REMOVE all pricing mentions entirely (see DO NOT rules below)
 - Guarantee → use 100-night money-back guarantee
 - CTAs → reference ${productName} with appropriate urgency
 
@@ -96,6 +96,7 @@ Use the angle specified in the prompt. If none is specified, match the angle to 
 - Remove or modify <img> tags in any way
 - Use words like "cure", "treat", or "medical device" (regulatory)
 - Make the copy hypey or salesy — Scandinavian audiences reject this
+- NEVER mention specific product prices or monetary amounts (e.g. "only 599 kr", "was 999 kr now 499 kr"). Remove any pricing from the competitor source. Mentioning discounts or offers in general terms (e.g. "limited-time discount", "special offer") is fine — just never include actual numbers. Pricing is handled separately on the product page
 
 ### Step 4: Output
 

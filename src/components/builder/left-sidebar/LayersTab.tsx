@@ -162,26 +162,16 @@ function TagIcon({ tag, className }: { tag: string; className?: string }) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Detect CSS-in-JS generated class names (css-*, sc-*, emotion-*, random hashes)
+const CSS_HASH_RE = /^(css|sc|emotion|styled)-|^[a-z]{1,3}[0-9a-z]{5,}$|^_[a-z0-9]{6,}$/i;
+
 function getSmartLabel(el: HTMLElement): string {
   // For images, show alt text
   if (el.tagName === "IMG") {
     return (el as HTMLImageElement).alt || "";
   }
 
-  // For elements with a useful class name, use that
-  // Use classList.toString() to handle both string className and DOMTokenList
-  const classString = el.classList.toString();
-  if (classString.trim()) {
-    // Pick the first meaningful class (skip utility classes)
-    const classes = classString.split(/\s+/).filter((c) => c.length > 2 && !c.startsWith("data-"));
-    if (classes.length > 0) {
-      // Use the first class, humanize it
-      const cls = classes[0].replace(/[-_]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
-      if (cls.length <= 25) return cls;
-    }
-  }
-
-  // For text elements, show direct text preview
+  // Prioritize text content — more meaningful than class names
   let directText = "";
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType === 3) directText += node.textContent || "";
@@ -189,6 +179,18 @@ function getSmartLabel(el: HTMLElement): string {
   directText = directText.trim();
   if (directText) {
     return directText.slice(0, 25) + (directText.length > 25 ? "..." : "");
+  }
+
+  // Fall back to class names, filtering out CSS-in-JS hashes
+  const classString = el.classList.toString();
+  if (classString.trim()) {
+    const classes = classString
+      .split(/\s+/)
+      .filter((c) => c.length > 2 && !c.startsWith("data-") && !CSS_HASH_RE.test(c));
+    if (classes.length > 0) {
+      const cls = classes[0].replace(/[-_]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+      if (cls.length <= 25) return cls;
+    }
   }
 
   return "";

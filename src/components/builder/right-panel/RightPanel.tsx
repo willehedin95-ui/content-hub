@@ -1,7 +1,7 @@
 "use client";
 
 import { useBuilder } from "../BuilderContext";
-import { Paintbrush, Settings2, Sparkles } from "lucide-react";
+import { Paintbrush, Settings2, Sparkles, MousePointer } from "lucide-react";
 import DesignTab from "./DesignTab";
 import ConfigTab from "./ConfigTab";
 import AITab from "./AITab";
@@ -109,8 +109,23 @@ export default function RightPanel() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {!hasSelectedEl ? (
-          <div className="p-6 text-center text-sm text-gray-400">
-            Click an element on the canvas to edit its properties
+          <div className="p-6 flex flex-col items-center text-center">
+            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+              <MousePointer className="w-5 h-5 text-gray-400" />
+            </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">No element selected</p>
+            <p className="text-xs text-gray-400 mb-4">Click an element on the canvas to edit its styles and properties</p>
+            <div className="w-full text-left bg-gray-50 rounded-lg p-3">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Quick shortcuts</p>
+              <div className="grid grid-cols-2 gap-y-1.5 text-[11px] text-gray-500">
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Ctrl+S</kbd> Save</span>
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Ctrl+Z</kbd> Undo</span>
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Ctrl+D</kbd> Duplicate</span>
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Del</kbd> Delete</span>
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Esc</kbd> Deselect</span>
+                <span><kbd className="px-1 py-0.5 bg-white border border-gray-200 rounded text-[10px] font-mono">Ctrl+G</kbd> Group</span>
+              </div>
+            </div>
           </div>
         ) : (
           <>

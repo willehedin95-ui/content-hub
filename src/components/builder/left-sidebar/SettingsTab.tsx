@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ChevronDown,
   Loader2,
@@ -32,6 +32,40 @@ const inputClass =
 
 const numInputClass =
   "w-full bg-white border border-gray-300 text-gray-900 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+// ---------------------------------------------------------------------------
+// CollapsibleSection
+// ---------------------------------------------------------------------------
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full py-1"
+      >
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          {title}
+        </p>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-gray-400 transition-transform ${
+            open ? "" : "-rotate-90"
+          }`}
+        />
+      </button>
+      {open && <div className="mt-2 space-y-2.5">{children}</div>}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // SettingsTab
@@ -69,18 +103,10 @@ export default function SettingsTab() {
     excludeCount,
   } = useBuilder();
 
-  const [paddingOpen, setPaddingOpen] = useState(true);
-
   return (
-    <div className="px-3 py-3 space-y-4">
-      {/* --------------------------------------------------------------- */}
-      {/* SEO Section */}
-      {/* --------------------------------------------------------------- */}
-      <div className="space-y-2.5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          SEO
-        </p>
-
+    <div className="px-3 py-3 space-y-3">
+      {/* SEO Section — default open */}
+      <CollapsibleSection title="SEO" defaultOpen>
         {/* SEO Title */}
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -136,16 +162,10 @@ export default function SettingsTab() {
             className={inputClass}
           />
         </div>
-      </div>
+      </CollapsibleSection>
 
-      {/* --------------------------------------------------------------- */}
-      {/* Destination URL Section */}
-      {/* --------------------------------------------------------------- */}
-      <div className="space-y-2.5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Destination URL
-        </p>
-
+      {/* Destination URL — default open */}
+      <CollapsibleSection title="Destination URL" defaultOpen>
         {filteredUrls.length > 0 ? (
           <>
             {urlMode === "saved" ? (
@@ -195,13 +215,11 @@ export default function SettingsTab() {
             className={inputClass}
           />
         )}
-      </div>
+      </CollapsibleSection>
 
-      {/* --------------------------------------------------------------- */}
-      {/* Re-translate Section */}
-      {/* --------------------------------------------------------------- */}
+      {/* Translation — default closed */}
       {!isSource && (
-        <div>
+        <CollapsibleSection title="Translation" defaultOpen={false}>
           <button
             onClick={requestRetranslate}
             disabled={retranslating}
@@ -212,94 +230,74 @@ export default function SettingsTab() {
             )}
             Re-translate
           </button>
-        </div>
+        </CollapsibleSection>
       )}
 
-      {/* --------------------------------------------------------------- */}
-      {/* Global Padding Section (collapsible) */}
-      {/* --------------------------------------------------------------- */}
-      <div>
-        <button
-          onClick={() => setPaddingOpen(!paddingOpen)}
-          className="flex items-center justify-between w-full"
-        >
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Padding
-          </p>
-          <ChevronDown
-            className={`w-3.5 h-3.5 text-gray-400 transition-transform ${
-              paddingOpen ? "" : "-rotate-90"
+      {/* Padding — default closed */}
+      <CollapsibleSection title="Padding" defaultOpen={false}>
+        {/* Desktop / Mobile toggle */}
+        <div className="flex items-center bg-gray-100 rounded-md border border-gray-200 p-0.5 w-fit">
+          <button
+            onClick={() => setViewMode("desktop")}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
+              viewMode === "desktop"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-400 hover:text-gray-700"
             }`}
-          />
-        </button>
+          >
+            <Monitor className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setViewMode("mobile")}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
+              viewMode === "mobile"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-400 hover:text-gray-700"
+            }`}
+          >
+            <Smartphone className="w-3 h-3" />
+          </button>
+        </div>
 
-        {paddingOpen && (
-          <div className="mt-2 space-y-2">
-            {/* Desktop / Mobile toggle */}
-            <div className="flex items-center bg-gray-100 rounded-md border border-gray-200 p-0.5 w-fit">
-              <button
-                onClick={() => setViewMode("desktop")}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
-                  viewMode === "desktop"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-400 hover:text-gray-700"
-                }`}
-              >
-                <Monitor className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => setViewMode("mobile")}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
-                  viewMode === "mobile"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-400 hover:text-gray-700"
-                }`}
-              >
-                <Smartphone className="w-3 h-3" />
-              </button>
-            </div>
-
-            {/* H / V inputs */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 flex-1">
-                <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                <input
-                  type="number"
-                  min="0"
-                  value={viewMode === "desktop" ? padDH : padMH}
-                  onChange={(e) => handlePaddingChange("h", e.target.value)}
-                  placeholder="--"
-                  className={numInputClass}
-                />
-              </div>
-              <div className="flex items-center gap-1.5 flex-1">
-                <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                <input
-                  type="number"
-                  min="0"
-                  value={viewMode === "desktop" ? padDV : padMV}
-                  onChange={(e) => handlePaddingChange("v", e.target.value)}
-                  placeholder="--"
-                  className={numInputClass}
-                />
-              </div>
-            </div>
-
-            {/* Exclude toggle */}
-            <button
-              onClick={() => setExcludeMode(!excludeMode)}
-              className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
-                excludeMode
-                  ? "bg-amber-50 border-amber-300 text-amber-700"
-                  : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
-              }`}
-            >
-              <MousePointerClick className="w-3 h-3" />
-              Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
-            </button>
+        {/* H / V inputs */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-1">
+            <MoveHorizontal className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <input
+              type="number"
+              min="0"
+              value={viewMode === "desktop" ? padDH : padMH}
+              onChange={(e) => handlePaddingChange("h", e.target.value)}
+              placeholder="--"
+              className={numInputClass}
+            />
           </div>
-        )}
-      </div>
+          <div className="flex items-center gap-1.5 flex-1">
+            <MoveVertical className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <input
+              type="number"
+              min="0"
+              value={viewMode === "desktop" ? padDV : padMV}
+              onChange={(e) => handlePaddingChange("v", e.target.value)}
+              placeholder="--"
+              className={numInputClass}
+            />
+          </div>
+        </div>
+
+        {/* Exclude toggle */}
+        <button
+          onClick={() => setExcludeMode(!excludeMode)}
+          className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md border transition-colors ${
+            excludeMode
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "bg-white border-gray-200 text-gray-400 hover:text-gray-700"
+          }`}
+        >
+          <MousePointerClick className="w-3 h-3" />
+          Exclude{excludeCount > 0 ? ` (${excludeCount})` : ""}
+        </button>
+      </CollapsibleSection>
     </div>
   );
 }

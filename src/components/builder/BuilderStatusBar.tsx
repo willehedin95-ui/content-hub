@@ -1,6 +1,6 @@
 "use client";
 
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut, Keyboard } from "lucide-react";
 import { useBuilder } from "./BuilderContext";
 
 export default function BuilderStatusBar() {
@@ -11,6 +11,7 @@ export default function BuilderStatusBar() {
     zoom,
     setZoom,
     viewMode,
+    setShowShortcutsModal,
   } = useBuilder();
 
   const qualityColor =
@@ -88,6 +89,15 @@ export default function BuilderStatusBar() {
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Keyboard shortcuts button */}
+      <button
+        onClick={() => setShowShortcutsModal(true)}
+        className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+        title="Keyboard shortcuts (?)"
+      >
+        <Keyboard className="w-3.5 h-3.5" />
+      </button>
 
       {/* View mode indicator */}
       <span className="text-gray-400">

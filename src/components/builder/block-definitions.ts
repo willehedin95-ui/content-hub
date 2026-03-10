@@ -5,6 +5,10 @@ import {
   MousePointer,
   Minus,
   Square,
+  MessageSquareQuote,
+  HelpCircle,
+  Columns2,
+  LayoutTemplate,
 } from "lucide-react";
 
 export interface BlockDef {
@@ -26,7 +30,10 @@ export const BLOCKS: BlockDef[] = [
       const el = doc.createElement("p");
       el.setAttribute("contenteditable", "true");
       el.style.padding = "8px 0";
-      el.textContent = "New text block";
+      el.textContent = "Type your text here...";
+      el.style.color = "#9ca3af";
+      el.style.fontStyle = "italic";
+      el.setAttribute("data-cc-placeholder", "true");
       return el;
     },
   },
@@ -103,3 +110,41 @@ export const BLOCKS: BlockDef[] = [
 export const BLOCKS_MAP: Record<string, BlockDef> = Object.fromEntries(
   BLOCKS.map((b) => [b.id, b])
 );
+
+// ---------------------------------------------------------------------------
+// Section Templates — pre-built multi-element sections
+// ---------------------------------------------------------------------------
+
+export interface SectionTemplate {
+  id: string;
+  label: string;
+  icon: typeof Type;
+  html: string;
+}
+
+export const SECTION_TEMPLATES: SectionTemplate[] = [
+  {
+    id: "testimonial",
+    label: "Testimonial",
+    icon: MessageSquareQuote,
+    html: `<div style="padding:24px;background:#f9fafb;border-radius:8px;border-left:4px solid #6366f1;margin:16px 0"><p style="font-style:italic;color:#374151;font-size:16px;line-height:1.6;margin:0 0 12px 0">&ldquo;This product changed my life. I can&rsquo;t recommend it enough!&rdquo;</p><p style="font-weight:600;color:#6366f1;font-size:14px;margin:0">&mdash; Happy Customer</p></div>`,
+  },
+  {
+    id: "faq-item",
+    label: "FAQ Item",
+    icon: HelpCircle,
+    html: `<div style="padding:16px 0;border-bottom:1px solid #e5e7eb;margin:0"><p style="font-weight:600;color:#111827;font-size:16px;margin:0 0 8px 0">Frequently asked question?</p><p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0">Answer to the question goes here. Explain the details clearly and concisely.</p></div>`,
+  },
+  {
+    id: "two-columns",
+    label: "Two Columns",
+    icon: Columns2,
+    html: `<div style="display:flex;gap:24px;margin:16px 0"><div style="flex:1;padding:16px;background:#f9fafb;border-radius:8px"><p style="font-weight:600;color:#111827;margin:0 0 8px 0">Left Column</p><p style="color:#6b7280;font-size:14px;margin:0">Content for the left side.</p></div><div style="flex:1;padding:16px;background:#f9fafb;border-radius:8px"><p style="font-weight:600;color:#111827;margin:0 0 8px 0">Right Column</p><p style="color:#6b7280;font-size:14px;margin:0">Content for the right side.</p></div></div>`,
+  },
+  {
+    id: "hero-section",
+    label: "Hero Section",
+    icon: LayoutTemplate,
+    html: `<div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:8px;margin:16px 0"><h2 style="color:#ffffff;font-size:28px;font-weight:700;margin:0 0 12px 0">Your Headline Here</h2><p style="color:rgba(255,255,255,0.9);font-size:16px;max-width:480px;margin:0 auto 20px auto;line-height:1.6">A compelling subheadline that explains the value proposition.</p><a href="#" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#667eea;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px">Get Started</a></div>`,
+  },
+];

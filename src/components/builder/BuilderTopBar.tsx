@@ -42,6 +42,8 @@ export default function BuilderTopBar() {
     retranslating,
     handleSave,
     setShowPublishModal,
+    autoSaveStatus,
+    isDirty,
   } = useBuilder();
 
   const qualityColor =
@@ -132,6 +134,25 @@ export default function BuilderTopBar() {
           >
             {qualityScore}
           </button>
+        )}
+
+        {/* Auto-save status */}
+        {(autoSaveStatus === "saving" || autoSaveStatus === "saved" || isDirty) && (
+          <span
+            className={`text-xs ${
+              autoSaveStatus === "saving"
+                ? "text-yellow-600"
+                : autoSaveStatus === "saved"
+                  ? "text-green-600"
+                  : "text-orange-500"
+            }`}
+          >
+            {autoSaveStatus === "saving"
+              ? "Saving..."
+              : autoSaveStatus === "saved"
+                ? "Auto-saved"
+                : "Unsaved"}
+          </span>
         )}
 
         {/* Save button */}
