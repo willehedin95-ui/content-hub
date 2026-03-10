@@ -6,6 +6,7 @@ import AssetsSidebar, { type AssetView } from "./AssetsSidebar";
 import AssetGrid from "./AssetGrid";
 import UrlImportModal from "./UrlImportModal";
 import VideoSwiper from "./VideoSwiper";
+import ImageSwiper from "./ImageSwiper";
 
 interface Props {
   initialAssets: Asset[];
@@ -62,9 +63,7 @@ export default function AssetManager({ initialAssets }: Props) {
             />
           )}
           {activeView === "swipe-image" && (
-            <div className="text-gray-400 text-center py-20">
-              Image Swiper — coming soon
-            </div>
+            <ImageSwiper onAssetCreated={(asset) => setAssets(prev => [asset, ...prev])} />
           )}
           {activeView === "swipe-video" && (
             <VideoSwiper />
