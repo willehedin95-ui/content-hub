@@ -175,7 +175,7 @@ function extractMedia(html: string): ExtractedImage[] {
       surroundingText,
       selected: true,
       mediaType: "video",
-      generateAsVideo: true, // default: generate video replacement (not static image)
+      generateAsVideo: false, // default: generate static image (faster); user can toggle to video
     });
   });
 
