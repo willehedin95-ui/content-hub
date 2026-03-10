@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Sparkles,
   SkipForward,
+  Play,
 } from "lucide-react";
 
 interface Props {
@@ -26,32 +27,36 @@ type Substep = "fetching" | "rewriting" | "restoring" | "image_selection" | "gen
 
 interface ExtractedImage {
   src: string;
-  index: number; // index among all <img> tags in the HTML
+  index: number; // index among all <img> or <video> tags in the HTML
   width: number;
   height: number;
   surroundingText: string;
   selected: boolean;
+  mediaType: "image" | "video";
 }
 
 type ImageGenStatus = "pending" | "generating" | "done" | "error";
 
-/** Extract images from HTML, filter out icons/tiny images */
-function extractImages(html: string): ExtractedImage[] {
+/** Extract images and videos from HTML, filter out icons/tiny images, deduplicate by src */
+function extractMedia(html: string): ExtractedImage[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  const imgs = doc.querySelectorAll("img");
   const results: ExtractedImage[] = [];
+  const seenSrcs = new Set<string>();
 
+  // Extract images
+  const imgs = doc.querySelectorAll("img");
   imgs.forEach((img, index) => {
     const src = img.getAttribute("src") || "";
     if (!src || src.startsWith("data:image/svg")) return;
 
-    // Filter out tiny images (icons, spacers, tracking pixels)
+    if (seenSrcs.has(src)) return;
+    seenSrcs.add(src);
+
     const w = parseInt(img.getAttribute("width") || "0", 10);
     const h = parseInt(img.getAttribute("height") || "0", 10);
     if ((w > 0 && w < MIN_IMAGE_DIMENSION) || (h > 0 && h < MIN_IMAGE_DIMENSION)) return;
 
-    // Filter common icon/logo patterns
     const alt = (img.getAttribute("alt") || "").toLowerCase();
     const srcLower = src.toLowerCase();
     if (
@@ -64,7 +69,6 @@ function extractImages(html: string): ExtractedImage[] {
       alt.includes("icon")
     ) return;
 
-    // Extract surrounding text
     const surroundingText = getSurroundingTextFromDom(img);
 
     results.push({
@@ -73,7 +77,35 @@ function extractImages(html: string): ExtractedImage[] {
       width: w || 400,
       height: h || 400,
       surroundingText,
-      selected: true, // default all selected
+      selected: true,
+      mediaType: "image",
+    });
+  });
+
+  // Extract videos
+  const videos = doc.querySelectorAll("video");
+  videos.forEach((video, index) => {
+    const src = video.getAttribute("src")
+      || video.querySelector("source")?.getAttribute("src")
+      || "";
+    if (!src) return;
+
+    if (seenSrcs.has(src)) return;
+    seenSrcs.add(src);
+
+    const poster = video.getAttribute("poster") || "";
+    const w = parseInt(video.getAttribute("width") || "0", 10);
+    const h = parseInt(video.getAttribute("height") || "0", 10);
+    const surroundingText = getSurroundingTextFromDom(video);
+
+    results.push({
+      src: poster || src, // use poster for thumbnail, fallback to video src
+      index,
+      width: w || 640,
+      height: h || 360,
+      surroundingText,
+      selected: true,
+      mediaType: "video",
     });
   });
 
@@ -211,7 +243,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       }
 
       // Extract images from rewritten HTML
-      const images = extractImages(html);
+      const images = extractMedia(html);
       if (images.length === 0) {
         await saveAndRefresh(html);
         return;
@@ -363,11 +395,15 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
         setImageGenStatuses((prev) => ({ ...prev, [img.index]: "generating" }));
 
         try {
+          // For videos: pass poster as imageSrc if available, otherwise text-only
+          const isVideo = img.mediaType === "video";
+          const hasPoster = isVideo && img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") && !img.src.includes(".mov");
+
           const res = await fetch("/api/builder/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              imageSrc: img.src,
+              ...((!isVideo || hasPoster) && { imageSrc: img.src }),
               surroundingText: img.surroundingText,
               productId,
               aspectRatio: computeAspectRatio(img.width, img.height),
@@ -395,22 +431,54 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     );
     await Promise.all(workers);
 
-    // Replace image URLs in HTML
-    let updatedHtml = rewrittenHtml;
+    // Replace media in HTML
     const parser = new DOMParser();
-    const doc = parser.parseFromString(updatedHtml, "text/html");
-    const imgs = doc.querySelectorAll("img");
+    const doc = parser.parseFromString(rewrittenHtml, "text/html");
+
+    // Separate image and video replacements
+    const imageReplacements = new Map<string, string>(); // origSrc → newUrl
+    const videoReplacements = new Map<number, string>(); // videoIndex → newUrl
+
+    const allImgs = doc.querySelectorAll("img");
+    const allVideos = doc.querySelectorAll("video");
 
     for (const [indexStr, newUrl] of Object.entries(replacements)) {
       const idx = parseInt(indexStr, 10);
-      const img = imgs[idx];
-      if (img) {
-        img.setAttribute("src", newUrl);
-        img.removeAttribute("srcset");
+      const item = selected.find((s) => s.index === idx);
+      if (!item) continue;
+
+      if (item.mediaType === "video") {
+        videoReplacements.set(idx, newUrl);
+      } else {
+        const origSrc = allImgs[idx]?.getAttribute("src");
+        if (origSrc) imageReplacements.set(origSrc, newUrl);
       }
     }
 
-    updatedHtml = doc.documentElement.outerHTML;
+    // Replace ALL img tags that share the same src (handles duplicates)
+    allImgs.forEach((img) => {
+      const src = img.getAttribute("src") || "";
+      const newUrl = imageReplacements.get(src);
+      if (newUrl) {
+        img.setAttribute("src", newUrl);
+        img.removeAttribute("srcset");
+      }
+    });
+
+    // Replace video elements with img elements
+    videoReplacements.forEach((newUrl, videoIdx) => {
+      const video = allVideos[videoIdx];
+      if (video && video.parentElement) {
+        const img = doc.createElement("img");
+        img.setAttribute("src", newUrl);
+        img.style.width = video.style.width || "100%";
+        img.style.maxWidth = video.style.maxWidth || "";
+        img.style.display = "block";
+        video.parentElement.replaceChild(img, video);
+      }
+    });
+
+    const updatedHtml = doc.documentElement.outerHTML;
     await saveAndRefresh(updatedHtml);
   }
 
@@ -456,7 +524,10 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           </h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Rewrite complete! Select which images to replace with {productLabel}-specific AI-generated images.
+          Rewrite complete! Select which {extractedImages.some((i) => i.mediaType === "video") ? "images and videos" : "images"} to replace with {productLabel}-specific AI-generated images.{" "}
+          {extractedImages.some((i) => i.mediaType === "video") && (
+            <span className="text-gray-400">Videos will be replaced with static images.</span>
+          )}
         </p>
 
         {/* Select all toggle */}
@@ -472,11 +543,11 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           </span>
         </div>
 
-        {/* Image grid */}
+        {/* Media grid */}
         <div className="grid grid-cols-3 gap-2 mb-4 max-h-[400px] overflow-y-auto">
           {extractedImages.map((img) => (
             <button
-              key={img.index}
+              key={`${img.mediaType}-${img.index}`}
               onClick={() => toggleImage(img.index)}
               className={`relative rounded-lg overflow-hidden border-2 transition-all ${
                 img.selected
@@ -484,12 +555,29 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                   : "border-gray-200 opacity-60 hover:opacity-80"
               }`}
             >
-              <img
-                src={img.src}
-                alt={`Image ${img.index + 1}`}
-                className="w-full aspect-square object-cover"
-                loading="lazy"
-              />
+              {img.mediaType === "video" ? (
+                <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
+                  {img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") ? (
+                    <img src={img.src} alt="Video poster" className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <Play className="w-8 h-8 text-gray-400" />
+                  )}
+                </div>
+              ) : (
+                <img
+                  src={img.src}
+                  alt={`Image ${img.index + 1}`}
+                  className="w-full aspect-square object-cover"
+                  loading="lazy"
+                />
+              )}
+              {/* Video badge */}
+              {img.mediaType === "video" && (
+                <div className="absolute bottom-1.5 left-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <Play className="w-2.5 h-2.5" />
+                  VIDEO
+                </div>
+              )}
               {/* Checkbox overlay */}
               <div
                 className={`absolute top-1.5 right-1.5 w-5 h-5 rounded flex items-center justify-center ${
@@ -563,15 +651,21 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
               const status = imageGenStatuses[img.index];
               return (
                 <div
-                  key={img.index}
+                  key={`${img.mediaType}-${img.index}`}
                   className="relative rounded-lg overflow-hidden border border-gray-200"
                 >
-                  <img
-                    src={img.src}
-                    alt={`Image ${img.index + 1}`}
-                    className="w-full aspect-square object-cover"
-                    loading="lazy"
-                  />
+                  {img.mediaType === "video" && (img.src.includes(".mp4") || img.src.includes(".webm") || img.src.includes(".mov") || !img.src) ? (
+                    <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
+                      <Play className="w-8 h-8 text-gray-400" />
+                    </div>
+                  ) : (
+                    <img
+                      src={img.src}
+                      alt={`${img.mediaType === "video" ? "Video" : "Image"} ${img.index + 1}`}
+                      className="w-full aspect-square object-cover"
+                      loading="lazy"
+                    />
+                  )}
                   <div
                     className={`absolute inset-0 flex items-center justify-center ${
                       status === "generating"

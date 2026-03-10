@@ -14,7 +14,46 @@ function getOpenAI(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-function buildSystemPrompt(productName: string, productBrief: string): string {
+function buildSystemPrompt(productName: string, productBrief: string, hasImage: boolean): string {
+  if (!hasImage) {
+    // Text-only mode — no competitor image to analyze (e.g. replacing a video)
+    return `You are an expert visual designer who creates image generation prompts for ecommerce landing pages.
+
+You will receive:
+1. The surrounding text from a landing page section (already rewritten for ${productName})
+2. Product information about ${productName}
+
+Your job is to write a Nano Banana Pro image generation prompt that creates an image for this page section.
+
+## STEP 1: CONTENT FROM SURROUNDING TEXT
+
+Read the surrounding text carefully. This text has been rewritten for ${productName} — it tells you what this section of the page is about.
+
+Use the surrounding text as the PRIMARY guide for what the image should depict.
+
+## STEP 2: PRODUCT KNOWLEDGE
+
+${productBrief}
+
+## STEP 3: WRITE THE PROMPT
+
+Create an image generation prompt that:
+- Depicts content relevant to ${productName} based on the surrounding text
+- Choose an appropriate visual style: lifestyle photo, product shot, infographic, testimonial card, etc.
+- Uses product-accurate details (it's a white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+- Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
+- NEVER mentions or visually references any competitor product
+
+## OUTPUT FORMAT
+
+Return JSON with exactly these fields:
+{
+  "visual_structure": "One sentence describing the visual style you chose and why",
+  "content_match": "One sentence describing what the image should show based on surrounding text",
+  "prompt": "The full Nano Banana Pro image generation prompt"
+}`;
+  }
+
   return `You are an expert visual designer who creates image generation prompts for ecommerce landing pages.
 
 You will receive:
@@ -67,16 +106,23 @@ Return JSON with exactly these fields:
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { imageSrc, surroundingText, productId, pageId, aspectRatio } = body as {
-    imageSrc: string;
+    imageSrc?: string;
     surroundingText: string;
     productId: string;
     aspectRatio?: string;
     pageId?: string;
   };
 
-  if (!imageSrc || !productId) {
+  if (!productId) {
     return NextResponse.json(
-      { error: "imageSrc and productId are required" },
+      { error: "productId is required" },
+      { status: 400 }
+    );
+  }
+
+  if (!imageSrc && !surroundingText?.trim()) {
+    return NextResponse.json(
+      { error: "Either imageSrc or surroundingText is required" },
       { status: 400 }
     );
   }
@@ -121,21 +167,27 @@ export async function POST(req: NextRequest) {
   );
 
   try {
-    // Step 1: GPT-4o Vision — analyze image + surrounding text → Nano Banana prompt
+    const hasImage = !!imageSrc;
+
+    // Step 1: GPT — analyze image (if provided) + surrounding text → Nano Banana prompt
     const userParts: Array<
       | { type: "text"; text: string }
       | { type: "image_url"; image_url: { url: string; detail: "high" | "low" } }
     > = [];
 
-    let textContent = `Analyze this competitor image and create a replacement prompt for ${productName}.`;
+    let textContent = hasImage
+      ? `Analyze this competitor image and create a replacement prompt for ${productName}.`
+      : `Create an image prompt for a landing page section about ${productName}.`;
     if (surroundingText?.trim()) {
       textContent += `\n\n**Surrounding text on the page (already rewritten for ${productName}):**\n${surroundingText.trim()}`;
     }
     userParts.push({ type: "text", text: textContent });
-    userParts.push({
-      type: "image_url",
-      image_url: { url: imageSrc, detail: "high" },
-    });
+    if (hasImage) {
+      userParts.push({
+        type: "image_url",
+        image_url: { url: imageSrc, detail: "high" },
+      });
+    }
 
     const visionResponse = await openai.chat.completions.create({
       model: OPENAI_MODEL,
@@ -144,7 +196,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: buildSystemPrompt(productName, productBrief),
+          content: buildSystemPrompt(productName, productBrief, hasImage),
         },
         { role: "user", content: userParts },
       ],
@@ -210,7 +262,7 @@ export async function POST(req: NextRequest) {
       cost_usd: 0.12,
       metadata: {
         source: "builder",
-        original_src: imageSrc,
+        original_src: imageSrc || "text-only",
         has_surrounding_text: !!surroundingText?.trim(),
         generation_time_ms: costTimeMs,
         reference_count: referenceImages.length,
