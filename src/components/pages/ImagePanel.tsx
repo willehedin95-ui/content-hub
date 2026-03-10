@@ -12,6 +12,7 @@ import {
   Wand2,
   Check,
   ImagePlus,
+  Sparkles,
 } from "lucide-react";
 import type { ProductImage, Asset } from "@/types";
 
@@ -20,6 +21,7 @@ interface ClickedImage {
   index: number;
   width: number;
   height: number;
+  surroundingText?: string;
 }
 
 interface Props {
@@ -73,6 +75,8 @@ export default function ImagePanel({
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [smartGenerating, setSmartGenerating] = useState(false);
+  const [smartPhase, setSmartPhase] = useState<"analyzing" | "generating">("analyzing");
   const [pickingFromBank, setPickingFromBank] = useState(false);
   const [pickingFromAssets, setPickingFromAssets] = useState(false);
   const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
@@ -275,6 +279,50 @@ export default function ImagePanel({
     }
   }
 
+  /** One-click: analyze context + generate replacement in one call */
+  async function handleSmartGenerate() {
+    if (!clickedImage || !productData) return;
+
+    const imageToProcess = { ...clickedImage };
+
+    setError("");
+    setSmartGenerating(true);
+    setSmartPhase("analyzing");
+    onImageTranslating?.(true);
+
+    try {
+      const phaseTimer = setTimeout(() => setSmartPhase("generating"), 8000);
+
+      const res = await fetch("/api/builder/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageSrc: imageToProcess.src,
+          surroundingText: imageToProcess.surroundingText || "",
+          productId: productData.id,
+        }),
+      });
+
+      clearTimeout(phaseTimer);
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Generation failed");
+      }
+
+      const { imageUrl, prompt: usedPrompt } = await res.json();
+      setPrompt(usedPrompt);
+      swapImageInIframe(imageToProcess.index, imageUrl);
+      onClickedImageClear();
+    } catch (err) {
+      console.error("Smart image generation failed:", err);
+      setError(err instanceof Error ? err.message : "Image generation failed");
+    } finally {
+      setSmartGenerating(false);
+      onImageTranslating?.(false);
+    }
+  }
+
   /** Generate replacement image via Kie AI — keeps panel open during generation */
   async function handleReplace() {
     if (!clickedImage || !prompt.trim()) return;
@@ -449,6 +497,35 @@ export default function ImagePanel({
         </div>
       )}
 
+      {/* Smart one-click generate (only in replace mode or source editor) */}
+      {(mode === "replace" || isSource) && productData && (
+        <>
+          <button
+            onClick={handleSmartGenerate}
+            disabled={uploading || generating || analyzing || smartGenerating}
+            className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-3 rounded-lg transition-all shadow-sm"
+          >
+            {smartGenerating ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {smartPhase === "analyzing" ? "Analyzing image..." : "Generating replacement..."}
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate for {pageProduct === "happysleep" ? "HappySleep" : pageProduct === "hydro13" ? "Hydro13" : "Product"}
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center gap-2 text-[10px] text-gray-300 uppercase tracking-wider">
+            <div className="flex-1 border-t border-gray-200" />
+            or edit manually
+            <div className="flex-1 border-t border-gray-200" />
+          </div>
+        </>
+      )}
+
       {/* Prompt area */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -458,7 +535,7 @@ export default function ImagePanel({
           {mode === "replace" && productData && (
             <button
               onClick={handleAnalyze}
-              disabled={analyzing}
+              disabled={analyzing || smartGenerating}
               className="flex items-center gap-1 text-[10px] font-medium text-violet-600 hover:text-violet-800 transition-colors disabled:opacity-50"
             >
               {analyzing ? (
@@ -501,7 +578,7 @@ export default function ImagePanel({
       ) : (
         <button
           onClick={handleReplace}
-          disabled={uploading || generating || analyzing || !prompt.trim()}
+          disabled={uploading || generating || analyzing || smartGenerating || !prompt.trim()}
           className="w-full flex items-center justify-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium py-2.5 rounded-lg transition-colors"
         >
           {generating ? (

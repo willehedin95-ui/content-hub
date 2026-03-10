@@ -72,6 +72,40 @@ export async function GET(
   ].join('\\n');
   document.head.appendChild(style);
 
+  // Extract surrounding text for context-aware image generation
+  function getSurroundingText(img) {
+    var sectionTags = ['SECTION', 'ARTICLE', 'MAIN'];
+    var sectionClasses = /section|block|container|wrapper|row|col/i;
+    var el = img.parentElement;
+    var container = null;
+    var depth = 0;
+    while (el && depth < 5) {
+      if (sectionTags.indexOf(el.tagName) !== -1 || sectionClasses.test(el.className || '')) {
+        container = el;
+        break;
+      }
+      el = el.parentElement;
+      depth++;
+    }
+    if (!container) {
+      container = img.parentElement && img.parentElement.parentElement
+        ? img.parentElement.parentElement : img.parentElement;
+    }
+    if (!container) return '';
+    var textEls = container.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,span,td,th');
+    var texts = [];
+    var wordCount = 0;
+    for (var i = 0; i < textEls.length; i++) {
+      var t = (textEls[i].textContent || '').trim();
+      if (!t) continue;
+      var words = t.split(/\\s+/).length;
+      if (wordCount + words > 500) break;
+      texts.push(t);
+      wordCount += words;
+    }
+    return texts.join(' \\n ');
+  }
+
   // Handle clicks: image/video selection only (text editing handled via right panel)
   document.addEventListener('click', function(e) {
     // Image click — send to parent for image panel
@@ -85,7 +119,8 @@ export async function GET(
         src: img.src,
         index: allImgs.indexOf(img),
         width: img.naturalWidth || img.offsetWidth || 200,
-        height: img.naturalHeight || img.offsetHeight || 200
+        height: img.naturalHeight || img.offsetHeight || 200,
+        surroundingText: getSurroundingText(img)
       }, ORIGIN);
       return;
     }

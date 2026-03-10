@@ -45,6 +45,7 @@ export interface ClickedMedia {
   index: number;
   width: number;
   height: number;
+  surroundingText?: string;
 }
 
 export interface BuilderProps {
@@ -1777,6 +1778,7 @@ export function BuilderProvider({
           index: e.data.index,
           width: e.data.width,
           height: e.data.height,
+          surroundingText: e.data.surroundingText || "",
         });
         // Also select the image element so it highlights in canvas + layers
         const doc = iframeRef.current?.contentDocument;
