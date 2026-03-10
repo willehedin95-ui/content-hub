@@ -87,6 +87,9 @@ export default function DesignTab() {
         <TextEditorControl />
       </div>
 
+      <Section title="Typography">
+        <TypographyControl />
+      </Section>
       <Section title="Layout" defaultOpen={false}>
         <LayoutControl />
       </Section>
@@ -98,9 +101,6 @@ export default function DesignTab() {
       </Section>
       <Section title="Spacing">
         <SpacingControl />
-      </Section>
-      <Section title="Typography">
-        <TypographyControl />
       </Section>
       <Section title="Background" defaultOpen={false}>
         <BackgroundControl />
