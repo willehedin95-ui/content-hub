@@ -1,13 +1,10 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-09 (session 5)
+Updated: 2026-03-09 (session 7)
 
 ## P0 — Blockers
-- [ ] Merge `feat/page-builder-redesign` to main and push — 21 new builder files, full Replo-inspired redesign. Build passes, TypeScript clean. (added 2026-03-09)
-- [ ] Merge `feat/launchpad-market-tabs` to main and push — per-market tabs, SEK currency fix, budget confirmation dialog. Build passes, TypeScript clean. (added 2026-03-09)
-- [ ] Push all local commits (7 ahead of origin) — includes competitor swipe multi-image + page builder UX overhaul. Build passes. (updated 2026-03-09)
+(none)
 
 ## P1 — Do Next
-- [ ] Live-test page builder changes: test layers panel, rich text editor, backspace delete, image selection in browser (added 2026-03-09)
 - [ ] Live-test competitor swipe: upload real competitor ad (2-3 images), verify multi-image + variation count end-to-end (added 2026-03-09)
 - [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
@@ -47,14 +44,18 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 
 ## P3 — Backlog
 - [ ] **Animated Ads Pipeline** — Franky Shaw-style animated ad generation: brainstorm → 18 NanoBananaPro images → 9 Kling 3.0 video transitions → ElevenLabs voiceover → Suno music → download for CapCut editing. ~$9-10/ad. Design + plan ready at `docs/plans/2026-03-08-animated-ads-design.md` and `docs/plans/2026-03-08-animated-ads-plan.md`. 15 tasks, needs `ELEVENLABS_API_KEY` env var. (added 2026-03-08)
-- [ ] Page builder: add "simplified"/"all elements" toggle for layers panel (idea from session 5)
+- [x] ~~Page builder: add "simplified"/"all elements" toggle for layers panel~~ (done session 6)
 - [ ] Page builder: upgrade from `document.execCommand()` to Selection/Range API for rich text (future-proof)
+- [ ] Page builder: multi-select alignment toolbar (flexbox align/distribute selected elements) (idea from session 7)
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
 - [ ] Google Ads integration (added 2025-02-25)
 - [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Page Builder Polish** — breadcrumb bar (ancestry path, click-to-navigate), reusable color picker (presets, recent colors, opacity), multi-select (shift/cmd+click, batch delete/copy/paste/duplicate/group), drag-to-insert, position control, save feedback, layers depth fix, shared constants. Commit `239e210`. (done 2026-03-09)
+- [x] **Page Builder Saved Components + Context Menu** — right-click context menu, save as component, drag-to-insert, keyboard shortcuts, thumbnail generation. (done 2026-03-09)
+- [x] **Page Builder Link Modal + Viewport Selector** — replaced window.prompt with proper Link Modal (URL validation, ESC/backdrop close, selection preservation), added viewport selector dropdown (Desktop/iPhone 13/iPad/Custom), iframe resizes dynamically. 6 commits, browser-tested. (done 2026-03-09)
 - [x] **Page Builder UX Overhaul** — 8 improvements: no confirm on delete, backspace key, font size bug fix, Freshchat script stripping, image selection fix, Figma-like layers panel, AI image panel fix, rich text editor in Design tab. (done 2026-03-09)
 - [x] **Competitor Swipe Multi-Image + Variations** — upload multiple competitor images, pick 1-10 variations per image, `source_index` for per-image Nano Banana reference. Backward compatible. (done 2026-03-09)
 - [x] **Launchpad Market Tabs** — per-market NO/DK/SE tabs, independent priority ordering, SEK currency, budget confirmation dialog, per-market reorder/push. Branch: `feat/launchpad-market-tabs`. (done 2026-03-09)
