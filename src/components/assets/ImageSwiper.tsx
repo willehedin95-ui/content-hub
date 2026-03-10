@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Download,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PRODUCTS, type Product, type Asset } from "@/types";
@@ -51,6 +52,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   // File selection
   const handleFileSelect = useCallback((file: File) => {
@@ -234,6 +236,47 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(`Save failed: ${msg}`);
     }
   }, [generatedImageUrl, product, onAssetCreated]);
+
+  // Retry — regenerate with same prompt, skip analysis
+  const handleRetry = useCallback(async () => {
+    if (!promptUsed) return;
+    setRetrying(true);
+    setError(null);
+
+    // Parse aspect ratio from the JSON prompt
+    let aspectRatio = "4:5";
+    try {
+      const parsed = JSON.parse(promptUsed);
+      const raw = parsed?.composition?.aspect_ratio ?? "";
+      const valid = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
+      if (valid.includes(raw)) aspectRatio = raw;
+    } catch { /* use default */ }
+
+    try {
+      const res = await fetch("/api/assets/image-swiper/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: promptUsed,
+          ...(product && { product }),
+          aspect_ratio: aspectRatio,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Retry failed: ${res.status}`);
+      }
+
+      const { image_url } = await res.json();
+      setGeneratedImageUrl(image_url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    } finally {
+      setRetrying(false);
+    }
+  }, [promptUsed, product]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -455,13 +498,23 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               <CheckCircle2 className="w-5 h-5 text-green-500" />
               <span className="text-sm font-medium text-gray-900">Image generated</span>
             </div>
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Start Over
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", retrying && "animate-spin")} />
+                {retrying ? "Regenerating..." : "Retry"}
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Start Over
+              </button>
+            </div>
           </div>
 
           {/* Side by side: competitor + generated */}
