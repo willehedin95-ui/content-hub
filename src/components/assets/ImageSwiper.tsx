@@ -303,16 +303,16 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       {/* UPLOAD                                                             */}
       {/* ================================================================== */}
       {phase === "upload" && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             className={cn(
-              "border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors",
+              "border-2 border-dashed rounded-xl text-center cursor-pointer transition-colors",
               competitorImageUrl
-                ? "border-indigo-300 bg-indigo-50/50"
-                : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
+                ? "border-indigo-300 bg-indigo-50/50 p-3"
+                : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50 p-8"
             )}
           >
             <input
@@ -326,84 +326,93 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               }}
             />
             {competitorImageUrl ? (
-              <div className="space-y-3">
+              <div className="flex items-center gap-3">
                 <img
                   src={competitorImageUrl}
                   alt="Competitor"
-                  className="max-h-48 mx-auto rounded border border-gray-200"
+                  className="h-20 rounded border border-gray-200"
                 />
-                <p className="text-xs text-indigo-600">Click to change</p>
+                <div className="text-left">
+                  <p className="text-xs font-medium text-gray-700">Competitor image loaded</p>
+                  <p className="text-xs text-indigo-600 mt-0.5">Click to change</p>
+                </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto" />
+              <div className="space-y-2">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto" />
                 <p className="text-sm font-medium text-gray-700">Drop a competitor image or click to browse</p>
                 <p className="text-xs text-gray-400">JPG, PNG, or WebP</p>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400 uppercase tracking-wider">or paste url</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
+          {!competitorImageUrl && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400 uppercase tracking-wider">or paste url</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
 
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              onPaste={handlePaste}
-              placeholder="https://example.com/image.jpg"
-              className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-            />
-            <button
-              onClick={handleUrlSubmit}
-              disabled={!urlInput.trim()}
-              className={cn(
-                "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                urlInput.trim()
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              )}
-            >
-              Load
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Adapt for product <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <div className="flex gap-2">
-              {PRODUCTS.map((p) => (
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onPaste={handlePaste}
+                  placeholder="https://example.com/image.jpg"
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                />
                 <button
-                  key={p.value}
-                  onClick={() => setProduct(prev => prev === p.value ? null : p.value)}
+                  onClick={handleUrlSubmit}
+                  disabled={!urlInput.trim()}
                   className={cn(
-                    "px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    product === p.value
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                    urlInput.trim()
+                      ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed"
                   )}
                 >
-                  {p.label}
+                  Load
                 </button>
-              ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Product <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex gap-2">
+                {PRODUCTS.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setProduct(prev => prev === p.value ? null : p.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                      product === p.value
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                        : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Notes <span className="text-gray-400 font-normal">(optional)</span>
             </label>
-            <textarea
+            <input
+              type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. 'Use a different background color' or 'Show the product more prominently'"
-              rows={2}
-              className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+              placeholder="e.g. 'Use a different background color'"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
             />
           </div>
 
@@ -411,7 +420,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             onClick={handleAnalyze}
             disabled={!competitorImageUrl}
             className={cn(
-              "w-full py-3 rounded-lg text-sm font-semibold transition-colors",
+              "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors",
               competitorImageUrl
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
