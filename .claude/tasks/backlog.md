@@ -1,16 +1,18 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-09 (session 7)
+Updated: 2026-03-10 (session 2)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
+- [ ] **Push & test all unpushed work** — push `316caed` through `3201205` to Vercel, browser-test builder redesign + video swiper + general angle (added 2026-03-10)
 - [ ] Live-test competitor swipe: upload real competitor ad (2-3 images), verify multi-image + variation count end-to-end (added 2026-03-09)
 - [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
 
 ## P2 — Important
+- [ ] **Per-breakpoint responsive styles** — mobile vs desktop style editing via media queries (viewMode toggle exists, needs to write @media rules) (added 2026-03-10)
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
 - [ ] Telegram notifications — Hub messages when concepts ready for review (added 2025-02-25)
 
@@ -44,7 +46,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 
 ## P3 — Backlog
 - [ ] **Animated Ads Pipeline** — Franky Shaw-style animated ad generation: brainstorm → 18 NanoBananaPro images → 9 Kling 3.0 video transitions → ElevenLabs voiceover → Suno music → download for CapCut editing. ~$9-10/ad. Design + plan ready at `docs/plans/2026-03-08-animated-ads-design.md` and `docs/plans/2026-03-08-animated-ads-plan.md`. 15 tasks, needs `ELEVENLABS_API_KEY` env var. (added 2026-03-08)
-- [x] ~~Page builder: add "simplified"/"all elements" toggle for layers panel~~ (done session 6)
+- [ ] **Section templates / blocks** — quick-insert pre-built landing page sections into builder (added 2026-03-10)
+- [ ] **Element dimensions tooltip** — show W×H on hover in builder canvas (added 2026-03-10)
 - [ ] Page builder: upgrade from `document.execCommand()` to Selection/Range API for rich text (future-proof)
 - [ ] Page builder: multi-select alignment toolbar (flexbox align/distribute selected elements) (idea from session 7)
 - [ ] Auto-scheduling — AI picks optimal publish time (added 2025-02-25)
@@ -53,6 +56,9 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **General / Listicle swiper angle** — neutral advertising angle for page swiper, broad multi-benefit approach inspired by competitor listicles. Commit `3201205`. (done 2026-03-10)
+- [x] **Video Swiper** — new feature committed (`b593346`), sidebar link added. (done 2026-03-10)
+- [x] **Builder Sidebar Redesign + Container-First Selection** — Replo/Figma-style LayoutControl (3×3 alignment grid), SpacingControl (nested margin+padding box), SizeControl (Fill/Wrap/Fixed presets), DesignTab reorder, container-first hover/selection, Figma-style hidden layers. Commit `316caed`. (done 2026-03-10)
 - [x] **Page Builder Polish** — breadcrumb bar (ancestry path, click-to-navigate), reusable color picker (presets, recent colors, opacity), multi-select (shift/cmd+click, batch delete/copy/paste/duplicate/group), drag-to-insert, position control, save feedback, layers depth fix, shared constants. Commit `239e210`. (done 2026-03-09)
 - [x] **Page Builder Saved Components + Context Menu** — right-click context menu, save as component, drag-to-insert, keyboard shortcuts, thumbnail generation. (done 2026-03-09)
 - [x] **Page Builder Link Modal + Viewport Selector** — replaced window.prompt with proper Link Modal (URL validation, ESC/backdrop close, selection preservation), added viewport selector dropdown (Desktop/iPhone 13/iPad/Custom), iframe resizes dynamically. 6 commits, browser-tested. (done 2026-03-09)
@@ -60,9 +66,3 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [x] **Competitor Swipe Multi-Image + Variations** — upload multiple competitor images, pick 1-10 variations per image, `source_index` for per-image Nano Banana reference. Backward compatible. (done 2026-03-09)
 - [x] **Launchpad Market Tabs** — per-market NO/DK/SE tabs, independent priority ordering, SEK currency, budget confirmation dialog, per-market reorder/push. Branch: `feat/launchpad-market-tabs`. (done 2026-03-09)
 - [x] **Page Builder Redesign (Replo-inspired)** — full-screen builder, BuilderContext (React Context), 4-zone layout, left sidebar (Layers/Components/Settings), right panel (Design/Config/AI), 7 design controls, QualityPanel, zoom, collapsible panels. 21 files, 5,355 lines. Branch: `feat/page-builder-redesign`. (done 2026-03-09)
-- [x] Page builder enhancements — extracted components, text styling, layers panel, asset bank, content blocks, undo/redo, duplicate, link editor, video/media support (done 2026-03-09)
-- [x] Fixed AB tests build blocker — missing route modules for /ab-tests and /api/ab-tests/[id]/winner (done 2026-03-09)
-- [x] Source page editor + swiper language detection (done 2026-03-09)
-- [x] Real-time progress checklists — NDJSON streaming for brainstorm, step-based progress for swiper + publish modal, deferred competitor image gen with polling (done 2026-03-05)
-- [x] Competitor ad text adaptation — Nano Banana prompts now adapt in-image text for target product (done 2026-03-05)
-- [x] Creative Testing Learnings feedback loop — AI auto-generates structured learnings on ad kill/promotion, feeds back into brainstorm prompts (done 2026-03-05)
