@@ -40,7 +40,8 @@ ${productBrief}
 Create an image generation prompt that:
 - Depicts content relevant to ${productName} based on the surrounding text
 - Choose an appropriate visual style: lifestyle photo, product shot, infographic, testimonial card, etc.
-- Uses product-accurate details (it's a white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+- IMPORTANT: Only include the physical product in the image when the surrounding text is specifically about the product itself (features, unboxing, close-up). For lifestyle, emotional, or benefit-focused sections (e.g. "wake up pain-free", "better sleep"), show the SCENE or FEELING — a person sleeping peacefully, a cozy bedroom, someone stretching happily — WITHOUT the pillow being the focal point. Variety is key.
+- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
 - Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
 - NEVER mentions or visually references any competitor product
 
@@ -50,6 +51,7 @@ Return JSON with exactly these fields:
 {
   "visual_structure": "One sentence describing the visual style you chose and why",
   "content_match": "One sentence describing what the image should show based on surrounding text",
+  "shows_product": true or false,
   "prompt": "The full Nano Banana Pro image generation prompt"
 }`;
   }
@@ -87,7 +89,8 @@ ${productBrief}
 Create an image generation prompt that:
 - Recreates the SAME visual structure/layout from Step 1 (if the original was an infographic with callouts, make an infographic with callouts; if lifestyle, make lifestyle)
 - Depicts content relevant to ${productName} based on the surrounding text
-- Uses product-accurate details (it's a white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+- IMPORTANT: Match the competitor image's approach to product visibility. If the competitor image shows their product prominently, show ${productName} prominently. If the competitor image shows a lifestyle scene, person, or emotional moment WITHOUT their product visible, do the SAME — show the scene/feeling without making ${productName} the focal point. Don't force the product into every image.
+- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
 - Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
 - NEVER mentions or visually references the competitor's product
 

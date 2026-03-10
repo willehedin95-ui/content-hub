@@ -10,6 +10,8 @@ import {
   Sparkles,
   SkipForward,
   Play,
+  Film,
+  ImageIcon,
 } from "lucide-react";
 
 interface Props {
@@ -35,9 +37,63 @@ interface ExtractedImage {
   mediaType: "image" | "video";
   videoSrc?: string; // original video URL (for thumbnail generation)
   thumbnail?: string; // data URL of first frame
+  generateAsVideo?: boolean; // for video items: generate replacement video (true) or static image (false)
 }
 
-type ImageGenStatus = "pending" | "generating" | "done" | "error";
+type ImageGenStatus = "pending" | "generating" | "done" | "error" | "keyframe" | "video_polling";
+
+/** Parse display dimensions from an element's attributes and inline styles */
+function parseDisplayDimensions(el: Element): { width: number; height: number } {
+  const attrW = parseInt(el.getAttribute("width") || "0", 10);
+  const attrH = parseInt(el.getAttribute("height") || "0", 10);
+  const style = el.getAttribute("style") || "";
+
+  // Check for aspect-ratio in inline style (e.g. "aspect-ratio: 1/1" or "aspect-ratio: 1")
+  const arMatch = style.match(/aspect-ratio\s*:\s*(\d+(?:\.\d+)?)\s*(?:\/\s*(\d+(?:\.\d+)?))?/);
+  if (arMatch) {
+    const arW = parseFloat(arMatch[1]);
+    const arH = arMatch[2] ? parseFloat(arMatch[2]) : arW; // "1" means "1/1"
+    // Use attribute width if available, otherwise estimate
+    const baseSize = attrW || 400;
+    return { width: baseSize, height: Math.round(baseSize * (arH / arW)) };
+  }
+
+  // Check parent and grandparent for aspect-ratio too
+  for (const parent of [el.parentElement, el.parentElement?.parentElement]) {
+    if (!parent) continue;
+    const parentStyle = parent.getAttribute("style") || "";
+    const parentAr = parentStyle.match(/aspect-ratio\s*:\s*(\d+(?:\.\d+)?)\s*(?:\/\s*(\d+(?:\.\d+)?))?/);
+    if (parentAr) {
+      const arW = parseFloat(parentAr[1]);
+      const arH = parentAr[2] ? parseFloat(parentAr[2]) : arW;
+      const baseSize = attrW || 400;
+      return { width: baseSize, height: Math.round(baseSize * (arH / arW)) };
+    }
+  }
+
+  // Parse width/height from inline style
+  const styleW = style.match(/(?:^|;)\s*width\s*:\s*(\d+)px/);
+  const styleH = style.match(/(?:^|;)\s*height\s*:\s*(\d+)px/);
+  const w = (styleW ? parseInt(styleW[1], 10) : 0) || attrW;
+  const h = (styleH ? parseInt(styleH[1], 10) : 0) || attrH;
+
+  return { width: w, height: h };
+}
+
+/** Normalize URL for deduplication — strip query params, hash, and resize suffixes */
+function normalizeUrlForDedup(url: string): string {
+  try {
+    const u = new URL(url);
+    // Strip query params and hash
+    let path = u.origin + u.pathname;
+    // Strip common resize suffixes like -300x200, _thumb, etc.
+    path = path.replace(/-\d+x\d+(?=\.\w+$)/, "");
+    return path.toLowerCase();
+  } catch {
+    // If not a valid URL, just strip query string
+    return url.split("?")[0].split("#")[0].toLowerCase();
+  }
+}
 
 /** Extract images and videos from HTML, filter out icons/tiny images, deduplicate by src */
 function extractMedia(html: string): ExtractedImage[] {
@@ -52,11 +108,13 @@ function extractMedia(html: string): ExtractedImage[] {
     const src = img.getAttribute("src") || "";
     if (!src || src.startsWith("data:image/svg")) return;
 
-    if (seenSrcs.has(src)) return;
-    seenSrcs.add(src);
+    const normalized = normalizeUrlForDedup(src);
+    if (seenSrcs.has(normalized)) return;
+    seenSrcs.add(normalized);
 
-    const w = parseInt(img.getAttribute("width") || "0", 10);
-    const h = parseInt(img.getAttribute("height") || "0", 10);
+    const dims = parseDisplayDimensions(img);
+    const w = dims.width;
+    const h = dims.height;
     if ((w > 0 && w < MIN_IMAGE_DIMENSION) || (h > 0 && h < MIN_IMAGE_DIMENSION)) return;
 
     const alt = (img.getAttribute("alt") || "").toLowerCase();
@@ -92,23 +150,24 @@ function extractMedia(html: string): ExtractedImage[] {
       || "";
     if (!src) return;
 
-    if (seenSrcs.has(src)) return;
-    seenSrcs.add(src);
+    const normalizedVid = normalizeUrlForDedup(src);
+    if (seenSrcs.has(normalizedVid)) return;
+    seenSrcs.add(normalizedVid);
 
     const poster = video.getAttribute("poster") || "";
-    const w = parseInt(video.getAttribute("width") || "0", 10);
-    const h = parseInt(video.getAttribute("height") || "0", 10);
+    const dims = parseDisplayDimensions(video);
     const surroundingText = getSurroundingTextFromDom(video);
 
     results.push({
       src: poster || src, // use poster for thumbnail display, fallback to video src
       videoSrc: src, // always keep the actual video URL
       index,
-      width: w || 640,
-      height: h || 360,
+      width: dims.width || 640,
+      height: dims.height || 360,
       surroundingText,
       selected: true,
       mediaType: "video",
+      generateAsVideo: true, // default: generate video replacement (not static image)
     });
   });
 
@@ -443,7 +502,39 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     await saveAndRefresh(rewrittenHtml);
   }
 
-  /** Generate replacement images for selected ones */
+  function toggleVideoMode(index: number) {
+    setExtractedImages((prev) =>
+      prev.map((img) =>
+        img.index === index && img.mediaType === "video"
+          ? { ...img, generateAsVideo: !img.generateAsVideo }
+          : img
+      )
+    );
+  }
+
+  /** Poll Kling video task until complete or failed */
+  async function pollVideoTask(taskId: string, product: string): Promise<string | null> {
+    const maxAttempts = 60; // 5 min at 5s intervals
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const res = await fetch(
+          `/api/video-swiper/status?tasks=${taskId}&product=${product}`
+        );
+        if (!res.ok) continue;
+        const data = await res.json();
+        const task = data.tasks?.[0];
+        if (!task) continue;
+        if (task.status === "completed" && task.video_url) return task.video_url;
+        if (task.status === "failed") return null;
+      } catch {
+        // continue polling
+      }
+    }
+    return null;
+  }
+
+  /** Generate replacement images/videos for selected items */
   async function handleGenerateImages() {
     if (!rewrittenHtml || !productId) return;
 
@@ -462,22 +553,29 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     });
     setImageGenStatuses(initialStatuses);
 
-    // Track new URLs for replacement
-    const replacements: Record<number, string> = {};
+    // Track new URLs for replacement: { index: { url, type } }
+    const replacements: Record<number, { url: string; asVideo: boolean }> = {};
 
-    // Generate in parallel (max 3 concurrent)
+    // Split: images + videos-as-image first (parallel), then videos-as-video (sequential, slow)
+    const imageItems = selected.filter(
+      (img) => img.mediaType === "image" || !img.generateAsVideo
+    );
+    const videoItems = selected.filter(
+      (img) => img.mediaType === "video" && img.generateAsVideo
+    );
+
+    // --- Phase 1: Generate images (parallel, max 3 concurrent) ---
     const CONCURRENCY = 3;
-    let i = 0;
+    let idx = 0;
 
-    async function processNext(): Promise<void> {
-      while (i < selected.length) {
-        const img = selected[i++];
+    async function processImageNext(): Promise<void> {
+      while (idx < imageItems.length) {
+        const img = imageItems[idx++];
         if (!img) break;
 
         setImageGenStatuses((prev) => ({ ...prev, [img.index]: "generating" }));
 
         try {
-          // For videos: pass poster as imageSrc if available, otherwise text-only
           const isVideo = img.mediaType === "video";
           const hasPoster = isVideo && img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") && !img.src.includes(".mov");
 
@@ -499,7 +597,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           }
 
           const { imageUrl } = await res.json();
-          replacements[img.index] = imageUrl;
+          replacements[img.index] = { url: imageUrl, asVideo: false };
           setImageGenStatuses((prev) => ({ ...prev, [img.index]: "done" }));
         } catch {
           setImageGenStatuses((prev) => ({ ...prev, [img.index]: "error" }));
@@ -507,37 +605,80 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       }
     }
 
-    // Run concurrent workers
-    const workers = Array.from({ length: Math.min(CONCURRENCY, selected.length) }, () =>
-      processNext()
+    const imageWorkers = Array.from(
+      { length: Math.min(CONCURRENCY, imageItems.length) },
+      () => processImageNext()
     );
-    await Promise.all(workers);
+    await Promise.all(imageWorkers);
 
-    // Replace media in HTML
+    // --- Phase 2: Generate videos (one at a time — each takes ~2 min) ---
+    for (const vid of videoItems) {
+      setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "keyframe" }));
+
+      try {
+        // Step 1: Start video generation (keyframe + Kling)
+        const res = await fetch("/api/builder/generate-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surroundingText: vid.surroundingText,
+            productId,
+            aspectRatio: computeAspectRatio(vid.width, vid.height),
+            pageId,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Video generation failed");
+        }
+
+        const { taskId } = await res.json();
+
+        // Step 2: Poll Kling for completion
+        setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "video_polling" }));
+
+        const videoUrl = await pollVideoTask(taskId, product || "happysleep");
+        if (videoUrl) {
+          replacements[vid.index] = { url: videoUrl, asVideo: true };
+          setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "done" }));
+        } else {
+          setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "error" }));
+        }
+      } catch {
+        setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "error" }));
+      }
+    }
+
+    // --- Replace media in HTML ---
     const parser = new DOMParser();
     const doc = parser.parseFromString(rewrittenHtml, "text/html");
 
-    // Separate image and video replacements
-    const imageReplacements = new Map<string, string>(); // origSrc → newUrl
-    const videoReplacements = new Map<number, string>(); // videoIndex → newUrl
+    const imageReplacements = new Map<string, string>();
+    const videoToImageReplacements = new Map<number, string>();
+    const videoToVideoReplacements = new Map<number, string>();
 
     const allImgs = doc.querySelectorAll("img");
     const allVideos = doc.querySelectorAll("video");
 
-    for (const [indexStr, newUrl] of Object.entries(replacements)) {
-      const idx = parseInt(indexStr, 10);
-      const item = selected.find((s) => s.index === idx);
+    for (const [indexStr, { url, asVideo }] of Object.entries(replacements)) {
+      const i = parseInt(indexStr, 10);
+      const item = selected.find((s) => s.index === i);
       if (!item) continue;
 
       if (item.mediaType === "video") {
-        videoReplacements.set(idx, newUrl);
+        if (asVideo) {
+          videoToVideoReplacements.set(i, url);
+        } else {
+          videoToImageReplacements.set(i, url);
+        }
       } else {
-        const origSrc = allImgs[idx]?.getAttribute("src");
-        if (origSrc) imageReplacements.set(origSrc, newUrl);
+        const origSrc = allImgs[i]?.getAttribute("src");
+        if (origSrc) imageReplacements.set(origSrc, url);
       }
     }
 
-    // Replace ALL img tags that share the same src (handles duplicates)
+    // Replace ALL img tags that share the same src
     allImgs.forEach((img) => {
       const src = img.getAttribute("src") || "";
       const newUrl = imageReplacements.get(src);
@@ -547,9 +688,9 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       }
     });
 
-    // Replace video elements with img elements
-    videoReplacements.forEach((newUrl, videoIdx) => {
-      const video = allVideos[videoIdx];
+    // Replace video → img (for videos generated as static images)
+    videoToImageReplacements.forEach((newUrl, vidIdx) => {
+      const video = allVideos[vidIdx];
       if (video && video.parentElement) {
         const img = doc.createElement("img");
         img.setAttribute("src", newUrl);
@@ -557,6 +698,17 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
         img.style.maxWidth = video.style.maxWidth || "";
         img.style.display = "block";
         video.parentElement.replaceChild(img, video);
+      }
+    });
+
+    // Replace video src (for videos generated as actual videos)
+    videoToVideoReplacements.forEach((newUrl, vidIdx) => {
+      const video = allVideos[vidIdx];
+      if (video) {
+        video.setAttribute("src", newUrl);
+        video.removeAttribute("poster");
+        // Remove <source> children too
+        video.querySelectorAll("source").forEach((s) => s.remove());
       }
     });
 
@@ -606,10 +758,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           </h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Rewrite complete! Select which {extractedImages.some((i) => i.mediaType === "video") ? "images and videos" : "images"} to replace with {productLabel}-specific AI-generated images.{" "}
-          {extractedImages.some((i) => i.mediaType === "video") && (
-            <span className="text-gray-400">Videos will be replaced with static images.</span>
-          )}
+          Rewrite complete! Select which {extractedImages.some((i) => i.mediaType === "video") ? "images and videos" : "images"} to replace with {productLabel}-specific AI-generated content.
         </p>
 
         {/* Select all toggle */}
@@ -658,8 +807,21 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                   loading="lazy"
                 />
               )}
-              {/* Video badge */}
-              {img.mediaType === "video" && (
+              {/* Video mode toggle */}
+              {img.mediaType === "video" && img.selected && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleVideoMode(img.index); }}
+                  className="absolute bottom-1.5 left-1.5 bg-black/80 hover:bg-black/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                  title={img.generateAsVideo ? "Click to generate as static image instead" : "Click to generate as video"}
+                >
+                  {img.generateAsVideo ? (
+                    <><Film className="w-2.5 h-2.5" /> VIDEO</>
+                  ) : (
+                    <><ImageIcon className="w-2.5 h-2.5" /> IMAGE</>
+                  )}
+                </button>
+              )}
+              {img.mediaType === "video" && !img.selected && (
                 <div className="absolute bottom-1.5 left-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
                   <Play className="w-2.5 h-2.5" />
                   VIDEO
@@ -689,7 +851,12 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
             className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 text-white text-sm font-semibold py-3 rounded-lg transition-all shadow-sm"
           >
             <Sparkles className="w-4 h-4" />
-            Generate {selectedCount} {selectedCount === 1 ? "Image" : "Images"} for {productLabel}
+            Generate {selectedCount} {selectedCount === 1 ? "item" : "items"} for {productLabel}
+            {extractedImages.some((i) => i.selected && i.generateAsVideo) && (
+              <span className="text-violet-200 font-normal ml-1">
+                (incl. {extractedImages.filter((i) => i.selected && i.generateAsVideo).length} video{extractedImages.filter((i) => i.selected && i.generateAsVideo).length > 1 ? "s" : ""})
+              </span>
+            )}
           </button>
           <button
             onClick={handleSkip}
@@ -709,17 +876,24 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     const doneCount = genEntries.filter(([, s]) => s === "done").length;
     const errorCount = genEntries.filter(([, s]) => s === "error").length;
     const totalCount = genEntries.length;
+    const hasVideos = genEntries.some(([, s]) => s === "keyframe" || s === "video_polling");
+    const allDone = doneCount + errorCount === totalCount;
 
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-2">
-          <Loader2 className="w-5 h-5 animate-spin text-violet-600 shrink-0" />
+          {allDone ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <Loader2 className="w-5 h-5 animate-spin text-violet-600 shrink-0" />
+          )}
           <h2 className="text-sm font-semibold text-gray-900">
-            Generating Images...
+            {allDone ? "Generation Complete" : "Generating..."}
           </h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
           {doneCount + errorCount} of {totalCount} complete
+          {hasVideos && <span className="text-gray-400"> — videos take 1-3 min each</span>}
         </p>
 
         {/* Progress bar */}
@@ -754,18 +928,32 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                     </div>
                   )}
                   <div
-                    className={`absolute inset-0 flex items-center justify-center ${
-                      status === "generating"
+                    className={`absolute inset-0 flex flex-col items-center justify-center ${
+                      status === "generating" || status === "keyframe"
                         ? "bg-black/40"
-                        : status === "done"
-                          ? "bg-emerald-600/30"
-                          : status === "error"
-                            ? "bg-red-600/30"
-                            : "bg-black/20"
+                        : status === "video_polling"
+                          ? "bg-indigo-600/30"
+                          : status === "done"
+                            ? "bg-emerald-600/30"
+                            : status === "error"
+                              ? "bg-red-600/30"
+                              : "bg-black/20"
                     }`}
                   >
-                    {status === "generating" && (
-                      <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    {(status === "generating" || status === "keyframe") && (
+                      <>
+                        <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        {status === "keyframe" && (
+                          <span className="text-[9px] text-white mt-1">Keyframe...</span>
+                        )}
+                      </>
+                    )}
+                    {status === "video_polling" && (
+                      <>
+                        <Film className="w-5 h-5 text-white" />
+                        <Loader2 className="w-4 h-4 text-white animate-spin mt-1" />
+                        <span className="text-[9px] text-white mt-0.5">Generating video...</span>
+                      </>
                     )}
                     {status === "done" && (
                       <CheckCircle2 className="w-6 h-6 text-white" />
