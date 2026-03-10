@@ -170,59 +170,73 @@ export async function POST(req: NextRequest) {
   );
 
   try {
-    const hasImage = !!imageSrc;
-
-    // Step 1: GPT — analyze image (if provided) + surrounding text → Nano Banana prompt
-    const userParts: Array<
-      | { type: "text"; text: string }
-      | { type: "image_url"; image_url: { url: string; detail: "high" | "low" } }
-    > = [];
-
-    let textContent = hasImage
-      ? `Analyze this competitor image and create a replacement prompt for ${productName}.`
-      : `Create an image prompt for a landing page section about ${productName}.`;
-    if (surroundingText?.trim()) {
-      textContent += `\n\n**Surrounding text on the page (already rewritten for ${productName}):**\n${surroundingText.trim()}`;
-    }
-    userParts.push({ type: "text", text: textContent });
-    if (hasImage) {
-      userParts.push({
-        type: "image_url",
-        image_url: { url: imageSrc, detail: "high" },
-      });
-    }
-
-    const visionResponse = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      max_completion_tokens: 1000,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt(productName, productBrief, hasImage),
-        },
-        { role: "user", content: userParts },
-      ],
-    });
-
-    const visionContent = visionResponse.choices[0]?.message?.content;
-    if (!visionContent) throw new Error("No response from image analysis");
-
-    let parsed: {
+    // Helper: call GPT to get a Nano Banana prompt
+    async function getPromptFromGPT(useImage: boolean): Promise<{
       visual_structure: string;
       content_match: string;
       prompt: string;
-    };
-    try {
-      const cleaned = visionContent
-        .replace(/^```json\s*\n?|\n?```$/g, "")
-        .trim();
-      parsed = JSON.parse(cleaned);
-    } catch {
-      throw new Error("Failed to parse AI response as JSON");
+    }> {
+      const userParts: Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string; detail: "high" | "low" } }
+      > = [];
+
+      let textContent = useImage
+        ? `Analyze this competitor image and create a replacement prompt for ${productName}.`
+        : `Create an image prompt for a landing page section about ${productName}.`;
+      if (surroundingText?.trim()) {
+        textContent += `\n\n**Surrounding text on the page (already rewritten for ${productName}):**\n${surroundingText.trim()}`;
+      }
+      userParts.push({ type: "text", text: textContent });
+      if (useImage && imageSrc) {
+        userParts.push({
+          type: "image_url",
+          image_url: { url: imageSrc, detail: "high" },
+        });
+      }
+
+      const resp = await openai.chat.completions.create({
+        model: OPENAI_MODEL,
+        max_completion_tokens: 1000,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: buildSystemPrompt(productName, productBrief, useImage),
+          },
+          { role: "user", content: userParts },
+        ],
+      });
+
+      const content = resp.choices[0]?.message?.content;
+      if (!content) throw new Error("No response from AI");
+
+      const cleaned = content.replace(/^```json\s*\n?|\n?```$/g, "").trim();
+      const result = JSON.parse(cleaned);
+      if (!result.prompt) throw new Error("AI response missing prompt field");
+      return result;
     }
 
-    if (!parsed.prompt) throw new Error("AI response missing prompt field");
+    const hasImage = !!imageSrc;
+    let parsed: { visual_structure: string; content_match: string; prompt: string };
+
+    if (hasImage) {
+      // Try with image first; if the source image is broken/CORS/404, fall back to text-only
+      try {
+        parsed = await getPromptFromGPT(true);
+      } catch (imgErr) {
+        console.warn(
+          "[Builder Generate Image] Image analysis failed, falling back to text-only:",
+          imgErr instanceof Error ? imgErr.message : imgErr
+        );
+        if (!surroundingText?.trim()) {
+          throw imgErr; // no text to fall back on
+        }
+        parsed = await getPromptFromGPT(false);
+      }
+    } else {
+      parsed = await getPromptFromGPT(false);
+    }
 
     // Step 2: Generate image via Kie.ai
     const { urls, costTimeMs } = await generateImage(
