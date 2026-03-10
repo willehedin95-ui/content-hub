@@ -192,48 +192,40 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   }, [competitorImageUrl, competitorImageFile, product, notes]);
 
   // Save to assets
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const handleSaveToAssets = useCallback(async () => {
     if (!generatedImageUrl) return;
+    setSaving(true);
+    setError(null);
 
     try {
-      setStatusMessage("Downloading image...");
-
-      // Download the generated image
-      const response = await fetch(generatedImageUrl);
-      if (!response.ok) throw new Error("Failed to download image");
-      const blob = await response.blob();
-
-      // Create a file from the blob
-      const file = new File([blob], `image-swiper-${Date.now()}.png`, { type: blob.type });
-
-      setStatusMessage("Uploading to assets...");
-
-      // Upload via assets API
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("name", `Image Swiper${product ? ` - ${product}` : ""} - ${new Date().toLocaleDateString()}`);
-      formData.append("category", "lifestyle");
-      if (product) formData.append("product", product);
-      formData.append("media_type", "image");
-
-      const uploadRes = await fetch("/api/assets", {
+      // Use import-url endpoint to let the server fetch the image (avoids CORS)
+      const res = await fetch("/api/assets/import-url", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: generatedImageUrl,
+          name: `Image Swiper${product ? ` - ${product}` : ""} - ${new Date().toLocaleDateString()}`,
+          category: "lifestyle",
+          product: product || undefined,
+          media_type: "image",
+        }),
       });
 
-      if (!uploadRes.ok) {
-        const errBody = await uploadRes.json().catch(() => ({}));
-        throw new Error(errBody.error || "Failed to upload asset");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to save asset");
       }
 
-      const asset = await uploadRes.json();
+      const asset = await res.json();
       if (onAssetCreated) onAssetCreated(asset);
-
-      setStatusMessage("Saved to assets!");
-      setTimeout(() => setStatusMessage(""), 2000);
+      setSaved(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Save failed: ${msg}`);
+    } finally {
+      setSaving(false);
     }
   }, [generatedImageUrl, product, onAssetCreated]);
 
@@ -242,6 +234,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     if (!promptUsed) return;
     setRetrying(true);
     setError(null);
+    setSaved(false);
 
     // Parse aspect ratio from the JSON prompt
     let aspectRatio = "4:5";
@@ -501,11 +494,30 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRetry}
-                disabled={retrying}
+                disabled={retrying || saving}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={cn("w-3.5 h-3.5", retrying && "animate-spin")} />
                 {retrying ? "Regenerating..." : "Retry"}
+              </button>
+              <button
+                onClick={handleSaveToAssets}
+                disabled={saving || saved}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50",
+                  saved
+                    ? "bg-green-50 text-green-700"
+                    : "bg-indigo-600 text-white hover:bg-indigo-700"
+                )}
+              >
+                {saving ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                {saving ? "Saving..." : saved ? "Saved!" : "Save to Assets"}
               </button>
               <button
                 onClick={handleReset}
@@ -575,13 +587,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             </div>
           )}
 
-          {/* Save to assets */}
-          <button
-            onClick={handleSaveToAssets}
-            className="w-full py-3 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-          >
-            {statusMessage.includes("Saved") ? "Saved to Assets!" : "Save to Assets"}
-          </button>
         </div>
       )}
     </div>
