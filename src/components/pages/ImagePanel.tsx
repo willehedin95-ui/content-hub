@@ -77,6 +77,7 @@ export default function ImagePanel({
   const [analyzing, setAnalyzing] = useState(false);
   const [smartGenerating, setSmartGenerating] = useState(false);
   const [smartPhase, setSmartPhase] = useState<"analyzing" | "generating">("analyzing");
+  const [forceProduct, setForceProduct] = useState(false);
   const [pickingFromBank, setPickingFromBank] = useState(false);
   const [pickingFromAssets, setPickingFromAssets] = useState(false);
   const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
@@ -301,6 +302,7 @@ export default function ImagePanel({
           surroundingText: imageToProcess.surroundingText || "",
           productId: productData.id,
           aspectRatio: computeAspectRatio(imageToProcess.width, imageToProcess.height),
+          forceProduct,
         }),
       });
 
@@ -518,6 +520,28 @@ export default function ImagePanel({
               </>
             )}
           </button>
+
+          {/* Force product toggle */}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={forceProduct}
+              onClick={() => setForceProduct((v) => !v)}
+              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                forceProduct ? "bg-violet-600" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+                  forceProduct ? "translate-x-3.5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+            <span className="text-[11px] text-gray-500">
+              Include {pageProduct === "happysleep" ? "HappySleep pillow" : pageProduct === "hydro13" ? "Hydro13" : "product"} in image
+            </span>
+          </label>
 
           <div className="flex items-center gap-2 text-[10px] text-gray-300 uppercase tracking-wider">
             <div className="flex-1 border-t border-gray-200" />

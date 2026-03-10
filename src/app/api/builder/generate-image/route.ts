@@ -14,7 +14,7 @@ function getOpenAI(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-function buildSystemPrompt(productName: string, productBrief: string, hasImage: boolean): string {
+function buildSystemPrompt(productName: string, productBrief: string, hasImage: boolean, forceProduct?: boolean): string {
   if (!hasImage) {
     // Text-only mode — no competitor image to analyze (e.g. replacing a video)
     return `You are an expert visual designer who creates image generation prompts for ecommerce landing pages.
@@ -40,8 +40,10 @@ ${productBrief}
 Create an image generation prompt that:
 - Depicts content relevant to ${productName} based on the surrounding text
 - Choose an appropriate visual style: lifestyle photo, product shot, infographic, testimonial card, etc.
-- IMPORTANT: Only include the physical product in the image when the surrounding text is specifically about the product itself (features, unboxing, close-up). For lifestyle, emotional, or benefit-focused sections (e.g. "wake up pain-free", "better sleep"), show the SCENE or FEELING — a person sleeping peacefully, a cozy bedroom, someone stretching happily — WITHOUT the pillow being the focal point. Variety is key.
-- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+${forceProduct
+  ? `- MANDATORY: The ${productName} product MUST be clearly visible in the image. Show the physical product (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges) prominently — on a bed, held by a person, or as the focal point. The product should be unmistakably present.`
+  : `- IMPORTANT: Only include the physical product in the image when the surrounding text is specifically about the product itself (features, unboxing, close-up). For lifestyle, emotional, or benefit-focused sections (e.g. "wake up pain-free", "better sleep"), show the SCENE or FEELING — a person sleeping peacefully, a cozy bedroom, someone stretching happily — WITHOUT the pillow being the focal point. Variety is key.
+- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)`}
 - Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
 - NEVER mentions or visually references any competitor product
 
@@ -89,8 +91,10 @@ ${productBrief}
 Create an image generation prompt that:
 - Recreates the SAME visual structure/layout from Step 1 (if the original was an infographic with callouts, make an infographic with callouts; if lifestyle, make lifestyle)
 - Depicts content relevant to ${productName} based on the surrounding text
-- IMPORTANT: Match the competitor image's approach to product visibility. If the competitor image shows their product prominently, show ${productName} prominently. If the competitor image shows a lifestyle scene, person, or emotional moment WITHOUT their product visible, do the SAME — show the scene/feeling without making ${productName} the focal point. Don't force the product into every image.
-- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+${forceProduct
+  ? `- MANDATORY: The ${productName} product MUST be clearly visible in the image. Show the physical product (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges) prominently — on a bed, held by a person, or as the focal point. The product should be unmistakably present, regardless of what the competitor image shows.`
+  : `- IMPORTANT: Match the competitor image's approach to product visibility. If the competitor image shows their product prominently, show ${productName} prominently. If the competitor image shows a lifestyle scene, person, or emotional moment WITHOUT their product visible, do the SAME — show the scene/feeling without making ${productName} the focal point. Don't force the product into every image.
+- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)`}
 - Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
 - NEVER mentions or visually references the competitor's product
 
@@ -108,12 +112,13 @@ Return JSON with exactly these fields:
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { imageSrc, surroundingText, productId, pageId, aspectRatio } = body as {
+  const { imageSrc, surroundingText, productId, pageId, aspectRatio, forceProduct } = body as {
     imageSrc?: string;
     surroundingText: string;
     productId: string;
     aspectRatio?: string;
     pageId?: string;
+    forceProduct?: boolean;
   };
 
   if (!productId) {
@@ -202,7 +207,7 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: "system",
-            content: buildSystemPrompt(productName, productBrief, useImage),
+            content: buildSystemPrompt(productName, productBrief, useImage, forceProduct),
           },
           { role: "user", content: userParts },
         ],
