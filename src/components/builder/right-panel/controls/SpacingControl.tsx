@@ -27,9 +27,6 @@ export default function SpacingControl() {
   const [paddingBottom, setPaddingBottom] = useState("");
   const [paddingLeft, setPaddingLeft] = useState("");
 
-  const [marginHV, setMarginHV] = useState(false);
-  const [paddingHV, setPaddingHV] = useState(false);
-
   const getComputedValue = useCallback(
     (prop: string): string => {
       const el = selectedElRef.current;
@@ -65,40 +62,22 @@ export default function SpacingControl() {
     const px = validated === "" ? "0" : validated;
     const val = `${px}px`;
 
-    // Push single undo snapshot for the entire operation
     pushUndoSnapshot();
 
     if (side === "top") {
       setMarginTop(px);
       applyStyle("margin-top", val);
-      if (marginHV) {
-        setMarginBottom(px);
-        applyStyle("margin-bottom", val);
-      }
     } else if (side === "bottom") {
       setMarginBottom(px);
       applyStyle("margin-bottom", val);
-      if (marginHV) {
-        setMarginTop(px);
-        applyStyle("margin-top", val);
-      }
     } else if (side === "left") {
       setMarginLeft(px);
       applyStyle("margin-left", val);
-      if (marginHV) {
-        setMarginRight(px);
-        applyStyle("margin-right", val);
-      }
     } else {
       setMarginRight(px);
       applyStyle("margin-right", val);
-      if (marginHV) {
-        setMarginLeft(px);
-        applyStyle("margin-left", val);
-      }
     }
 
-    // Mark dirty once after all changes
     markDirty();
   }
 
@@ -107,146 +86,147 @@ export default function SpacingControl() {
     const px = validated === "" ? "0" : validated;
     const val = `${px}px`;
 
-    // Push single undo snapshot for the entire operation
     pushUndoSnapshot();
 
     if (side === "top") {
       setPaddingTop(px);
       applyStyle("padding-top", val);
-      if (paddingHV) {
-        setPaddingBottom(px);
-        applyStyle("padding-bottom", val);
-      }
     } else if (side === "bottom") {
       setPaddingBottom(px);
       applyStyle("padding-bottom", val);
-      if (paddingHV) {
-        setPaddingTop(px);
-        applyStyle("padding-top", val);
-      }
     } else if (side === "left") {
       setPaddingLeft(px);
       applyStyle("padding-left", val);
-      if (paddingHV) {
-        setPaddingRight(px);
-        applyStyle("padding-right", val);
-      }
     } else {
       setPaddingRight(px);
       applyStyle("padding-right", val);
-      if (paddingHV) {
-        setPaddingLeft(px);
-        applyStyle("padding-left", val);
-      }
     }
 
-    // Mark dirty once after all changes
     markDirty();
   }
 
   const inputClass =
-    "w-12 text-center text-[10px] border border-gray-200 rounded py-0.5 bg-white text-gray-700 focus:outline-none focus:border-indigo-400";
+    "w-10 text-center text-[10px] border-0 bg-transparent text-gray-600 focus:outline-none focus:bg-white focus:border focus:border-indigo-300 focus:rounded";
 
   return (
-    <div className="space-y-3">
-      {/* Margin */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-medium text-gray-500 uppercase">Margin</span>
-          <label className="flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={marginHV}
-              onChange={(e) => setMarginHV(e.target.checked)}
-              className="w-3 h-3 rounded"
-            />
-            HV
-          </label>
-        </div>
-        <div className="flex flex-col items-center gap-1">
+    <div>
+      {/* Outer box — Margin */}
+      <div className="bg-amber-50/50 border border-dashed border-amber-200/60 rounded-lg relative px-1 py-1.5">
+        {/* M label */}
+        <span className="absolute top-1 left-2 text-[8px] text-amber-400 font-semibold select-none">
+          M
+        </span>
+
+        {/* Margin top */}
+        <div className="flex justify-center pt-1 pb-1">
           <input
             type="number"
             value={marginTop}
             onChange={(e) => handleMarginChange("top", e.target.value)}
             className={inputClass}
+            placeholder="0"
             title="margin-top"
           />
-          <div className="flex items-center gap-1">
+        </div>
+
+        {/* Middle row: margin-left | padding box | margin-right */}
+        <div className="flex items-center">
+          {/* Margin left */}
+          <div className="flex items-center justify-center w-10 shrink-0">
             <input
               type="number"
               value={marginLeft}
               onChange={(e) => handleMarginChange("left", e.target.value)}
               className={inputClass}
+              placeholder="0"
               title="margin-left"
             />
-            <div className="w-16 h-10 rounded border border-dashed border-gray-300 flex items-center justify-center text-[9px] text-gray-300">
-              element
+          </div>
+
+          {/* Inner box — Padding */}
+          <div className="bg-indigo-50/50 border border-dashed border-indigo-200/60 rounded relative flex-1 px-1 py-1">
+            {/* P label */}
+            <span className="absolute top-0.5 left-1.5 text-[8px] text-indigo-400 font-semibold select-none">
+              P
+            </span>
+
+            {/* Padding top */}
+            <div className="flex justify-center pt-0.5 pb-0.5">
+              <input
+                type="number"
+                value={paddingTop}
+                onChange={(e) => handlePaddingChange("top", e.target.value)}
+                className={inputClass}
+                placeholder="0"
+                title="padding-top"
+              />
             </div>
+
+            {/* Padding middle row: pl | content | pr */}
+            <div className="flex items-center">
+              <div className="flex items-center justify-center w-10 shrink-0">
+                <input
+                  type="number"
+                  value={paddingLeft}
+                  onChange={(e) => handlePaddingChange("left", e.target.value)}
+                  className={inputClass}
+                  placeholder="0"
+                  title="padding-left"
+                />
+              </div>
+
+              {/* Content block */}
+              <div className="flex-1 min-h-[24px] bg-white rounded border border-gray-200 flex items-center justify-center">
+                <span className="text-[8px] text-gray-300 select-none">content</span>
+              </div>
+
+              <div className="flex items-center justify-center w-10 shrink-0">
+                <input
+                  type="number"
+                  value={paddingRight}
+                  onChange={(e) => handlePaddingChange("right", e.target.value)}
+                  className={inputClass}
+                  placeholder="0"
+                  title="padding-right"
+                />
+              </div>
+            </div>
+
+            {/* Padding bottom */}
+            <div className="flex justify-center pt-0.5 pb-0.5">
+              <input
+                type="number"
+                value={paddingBottom}
+                onChange={(e) => handlePaddingChange("bottom", e.target.value)}
+                className={inputClass}
+                placeholder="0"
+                title="padding-bottom"
+              />
+            </div>
+          </div>
+
+          {/* Margin right */}
+          <div className="flex items-center justify-center w-10 shrink-0">
             <input
               type="number"
               value={marginRight}
               onChange={(e) => handleMarginChange("right", e.target.value)}
               className={inputClass}
+              placeholder="0"
               title="margin-right"
             />
           </div>
+        </div>
+
+        {/* Margin bottom */}
+        <div className="flex justify-center pt-1 pb-1">
           <input
             type="number"
             value={marginBottom}
             onChange={(e) => handleMarginChange("bottom", e.target.value)}
             className={inputClass}
+            placeholder="0"
             title="margin-bottom"
-          />
-        </div>
-      </div>
-
-      {/* Padding */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-medium text-gray-500 uppercase">Padding</span>
-          <label className="flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={paddingHV}
-              onChange={(e) => setPaddingHV(e.target.checked)}
-              className="w-3 h-3 rounded"
-            />
-            HV
-          </label>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <input
-            type="number"
-            value={paddingTop}
-            onChange={(e) => handlePaddingChange("top", e.target.value)}
-            className={inputClass}
-            title="padding-top"
-          />
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={paddingLeft}
-              onChange={(e) => handlePaddingChange("left", e.target.value)}
-              className={inputClass}
-              title="padding-left"
-            />
-            <div className="w-16 h-10 rounded bg-indigo-50 border border-indigo-200 flex items-center justify-center text-[9px] text-indigo-300">
-              content
-            </div>
-            <input
-              type="number"
-              value={paddingRight}
-              onChange={(e) => handlePaddingChange("right", e.target.value)}
-              className={inputClass}
-              title="padding-right"
-            />
-          </div>
-          <input
-            type="number"
-            value={paddingBottom}
-            onChange={(e) => handlePaddingChange("bottom", e.target.value)}
-            className={inputClass}
-            title="padding-bottom"
           />
         </div>
       </div>

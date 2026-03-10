@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ChevronDown, ChevronRight, Monitor, Smartphone } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
 import SpacingControl from "./controls/SpacingControl";
@@ -42,7 +42,27 @@ function Section({
 }
 
 export default function DesignTab() {
-  const { viewMode, setViewMode } = useBuilder();
+  const { viewMode, setViewMode, selectedElRef, iframeRef, hasSelectedEl, layersRefreshKey } = useBuilder();
+
+  // Detect if selected element is flex/grid for dynamic section title
+  const [isFlexOrGrid, setIsFlexOrGrid] = useState(false);
+
+  const getComputedValue = useCallback(
+    (prop: string): string => {
+      const el = selectedElRef.current;
+      if (!el) return "";
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc?.defaultView) return "";
+      return doc.defaultView.getComputedStyle(el).getPropertyValue(prop);
+    },
+    [selectedElRef, iframeRef]
+  );
+
+  useEffect(() => {
+    if (!hasSelectedEl) { setIsFlexOrGrid(false); return; }
+    const d = getComputedValue("display");
+    setIsFlexOrGrid(d === "flex" || d === "inline-flex" || d === "grid");
+  }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   return (
     <div>
@@ -87,20 +107,17 @@ export default function DesignTab() {
         <TextEditorControl />
       </div>
 
-      <Section title="Typography">
-        <TypographyControl />
-      </Section>
-      <Section title="Layout" defaultOpen={false}>
-        <LayoutControl />
-      </Section>
-      <Section title="Position" defaultOpen={false}>
-        <PositionControl />
-      </Section>
       <Section title="Size">
         <SizeControl />
       </Section>
+      <Section title={isFlexOrGrid ? "Auto Layout" : "Layout"} defaultOpen={isFlexOrGrid}>
+        <LayoutControl />
+      </Section>
       <Section title="Spacing">
         <SpacingControl />
+      </Section>
+      <Section title="Typography">
+        <TypographyControl />
       </Section>
       <Section title="Background" defaultOpen={false}>
         <BackgroundControl />
@@ -110,6 +127,9 @@ export default function DesignTab() {
       </Section>
       <Section title="Effects" defaultOpen={false}>
         <EffectsControl />
+      </Section>
+      <Section title="Position" defaultOpen={false}>
+        <PositionControl />
       </Section>
     </div>
   );

@@ -352,7 +352,7 @@ function LayerItem({
   const isContainer =
     node.tag === "DIV" || node.tag === "SPAN";
   const itemRef = useRef<HTMLDivElement>(null);
-  const iconColor = getIconColor(node.tag, isSelected);
+  const iconColor = node.hidden && !isSelected ? "text-gray-300" : getIconColor(node.tag, isSelected);
 
   // Auto-expand if selected element is inside this node
   const shouldAutoExpand =
@@ -456,9 +456,11 @@ function LayerItem({
                 className={`text-[13px] font-medium shrink-0 ${
                   isSelected
                     ? "text-indigo-700"
-                    : isContainer
-                      ? "text-gray-500"
-                      : "text-gray-700"
+                    : node.hidden
+                      ? "text-gray-300"
+                      : isContainer
+                        ? "text-gray-500"
+                        : "text-gray-700"
                 }`}
               >
                 {displayName}
@@ -466,7 +468,7 @@ function LayerItem({
               {node.label && (
                 <span
                   className={`text-[11px] truncate ${
-                    isSelected ? "text-indigo-500" : "text-gray-500"
+                    isSelected ? "text-indigo-500" : node.hidden ? "text-gray-300" : "text-gray-500"
                   }`}
                 >
                   {node.label}
@@ -541,9 +543,6 @@ export default function LayersTab() {
     multiSelectCount,
     hasSelectedEl,
     layersRefreshKey,
-    hiddenCount,
-    revealHidden,
-    toggleRevealHidden,
     handleToggleLayerVisibility,
     selectElementInIframe,
     pushUndoSnapshot,
@@ -703,20 +702,6 @@ export default function LayersTab() {
         </div>
       )}
 
-      {/* Hidden elements banner */}
-      {hiddenCount > 0 && (
-        <div className="flex items-center justify-between mb-2 mx-3 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-md">
-          <span className="text-[11px] font-medium text-amber-700">
-            {hiddenCount} hidden
-          </span>
-          <button
-            onClick={toggleRevealHidden}
-            className="text-[11px] font-medium text-amber-600 hover:text-amber-800 transition-colors"
-          >
-            {revealHidden ? "Hide" : "Reveal"}
-          </button>
-        </div>
-      )}
 
       {layers.length === 0 ? (
         <div className="flex items-center gap-1.5 text-xs text-gray-400 py-2 px-3">
