@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PRODUCTS, ASPECT_RATIOS, type Product, type Asset, type AspectRatio } from "@/types";
+import { PRODUCTS, type Product, type Asset } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +43,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [competitorImageUrl, setCompetitorImageUrl] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const [product, setProduct] = useState<Product>("happysleep");
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("4:5");
   const [notes, setNotes] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -141,7 +140,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           image_url: imageUrl,
           product,
           notes: notes.trim() || undefined,
-          aspect_ratio: aspectRatio,
         }),
       });
 
@@ -189,7 +187,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [competitorImageUrl, competitorImageFile, product, aspectRatio, notes]);
+  }, [competitorImageUrl, competitorImageFile, product, notes]);
 
   // Save to assets
   const handleSaveToAssets = useCallback(async () => {
@@ -353,26 +351,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                   )}
                 >
                   {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Aspect ratio</label>
-            <div className="flex gap-2">
-              {ASPECT_RATIOS.map((ar) => (
-                <button
-                  key={ar.value}
-                  onClick={() => setAspectRatio(ar.value)}
-                  className={cn(
-                    "px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    aspectRatio === ar.value
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  )}
-                >
-                  {ar.label}
                 </button>
               ))}
             </div>

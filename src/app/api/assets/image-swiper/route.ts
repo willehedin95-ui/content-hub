@@ -19,12 +19,10 @@ export async function POST(req: NextRequest) {
     image_url,
     product: productSlug,
     notes,
-    aspect_ratio = "4:5",
   } = body as {
     image_url?: string;
     product?: string;
     notes?: string;
-    aspect_ratio?: string;
   };
 
   if (!image_url) {
@@ -139,6 +137,7 @@ export async function POST(req: NextRequest) {
           colors: string;
           mood: string;
           style: string;
+          aspect_ratio: string;
         };
         nano_banana_prompt: string;
       };
@@ -179,7 +178,6 @@ export async function POST(req: NextRequest) {
         cost_usd: claudeCost,
         metadata: {
           product: productSlug,
-          aspect_ratio,
         },
       });
 
@@ -196,13 +194,13 @@ export async function POST(req: NextRequest) {
         message: "Generating adapted image...",
       });
 
-      // Map aspect ratio: 4:5 and 9:16 are native, everything else defaults to 4:5
-      const kieAspectRatio = aspect_ratio === "9:16" ? "9:16" : "4:5";
+      // Use the aspect ratio detected from the source image
+      const detectedRatio = parsed.analysis.aspect_ratio || "4:5";
 
       const imageTaskId = await createImageTask(
         parsed.nano_banana_prompt,
         productHeroUrls,
-        kieAspectRatio,
+        detectedRatio,
         "1K"
       );
 
@@ -222,7 +220,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           product: productSlug,
           task_id: imageTaskId,
-          aspect_ratio: kieAspectRatio,
+          aspect_ratio: detectedRatio,
           has_product_ref: productHeroUrls.length > 0,
         },
       });
@@ -299,6 +297,7 @@ ${guidelinesText ? `## Copywriting Guidelines\n${guidelinesText}\n` : ""}
    - Color palette (dominant colors, mood, contrast)
    - Mood and emotional tone (calm, energetic, intimate, clinical, etc.)
    - Visual style (lifestyle, studio, clinical, native ad, etc.)
+   - Aspect ratio — determine the closest standard ratio from: 1:1, 4:5, 5:4, 3:2, 2:3, 16:9, 9:16. The generated image MUST match the source image's aspect ratio.
 
 2. **Create a Nano Banana prompt** for a new image that:
    - Uses the same visual structure and approach
@@ -324,7 +323,8 @@ Return ONLY valid JSON with this structure:
     "composition": "Brief description of how elements are arranged",
     "colors": "Description of color palette and mood",
     "mood": "Emotional tone and atmosphere",
-    "style": "Visual style category (e.g., lifestyle, studio, native ad)"
+    "style": "Visual style category (e.g., lifestyle, studio, native ad)",
+    "aspect_ratio": "Closest standard ratio, e.g. 16:9, 4:5, 1:1"
   },
   "nano_banana_prompt": "2-4 sentence image generation prompt"
 }
