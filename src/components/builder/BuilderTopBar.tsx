@@ -7,17 +7,15 @@ import {
   Save,
   Upload,
   Loader2,
-  ChevronDown,
   Check,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
-import { Menu } from "@headlessui/react";
 import { useBuilder } from "./BuilderContext";
 
 const VIEWPORT_PRESETS = [
-  { label: "Desktop", device: "desktop" as const, width: null, height: null },
-  { label: "iPhone 13", device: "iphone-13" as const, width: 390, height: 844 },
-  { label: "iPad", device: "ipad" as const, width: 768, height: 1024 },
-  { label: "Custom", device: "custom" as const, width: 375, height: 812 },
+  { label: "Desktop", device: "desktop" as const, width: null, height: null, icon: Monitor },
+  { label: "Mobile", device: "iphone-13" as const, width: 390, height: 844, icon: Smartphone },
 ];
 
 export default function BuilderTopBar() {
@@ -104,35 +102,26 @@ export default function BuilderTopBar() {
 
       {/* Right section */}
       <div className="flex items-center gap-2">
-        {/* Viewport selector */}
-        <Menu as="div" className="relative">
-          <Menu.Button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
-            {VIEWPORT_PRESETS.find((p) => p.device === viewportConfig.device)?.label || "Desktop"}
-            <ChevronDown className="w-3.5 h-3.5" />
-          </Menu.Button>
-
-          <Menu.Items className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg py-1 z-10 focus:outline-none">
-            {VIEWPORT_PRESETS.map((preset) => (
-              <Menu.Item key={preset.device}>
-                {({ active }) => (
-                  <button
-                    onClick={() => setViewportConfig(preset)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm ${
-                      active ? "bg-gray-100" : ""
-                    }`}
-                  >
-                    <span className={viewportConfig.device === preset.device ? "font-medium text-gray-900" : "text-gray-700"}>
-                      {preset.label}
-                    </span>
-                    {viewportConfig.device === preset.device && (
-                      <Check className="w-4 h-4 text-indigo-600" />
-                    )}
-                  </button>
-                )}
-              </Menu.Item>
-            ))}
-          </Menu.Items>
-        </Menu>
+        {/* Viewport toggle */}
+        <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+          {VIEWPORT_PRESETS.map((preset) => {
+            const isActive = viewportConfig.device === preset.device;
+            return (
+              <button
+                key={preset.device}
+                onClick={() => setViewportConfig(preset)}
+                className={`p-1.5 rounded transition-colors ${
+                  isActive
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+                title={preset.label}
+              >
+                <preset.icon className={`${preset.device === "desktop" ? "w-5 h-5" : "w-4 h-4"}`} />
+              </button>
+            );
+          })}
+        </div>
 
         {/* Quality badge */}
         {qualityScore !== null && (
