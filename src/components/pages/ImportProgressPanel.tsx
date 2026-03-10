@@ -33,6 +33,8 @@ interface ExtractedImage {
   surroundingText: string;
   selected: boolean;
   mediaType: "image" | "video";
+  videoSrc?: string; // original video URL (for thumbnail generation)
+  thumbnail?: string; // data URL of first frame
 }
 
 type ImageGenStatus = "pending" | "generating" | "done" | "error";
@@ -99,7 +101,8 @@ function extractMedia(html: string): ExtractedImage[] {
     const surroundingText = getSurroundingTextFromDom(video);
 
     results.push({
-      src: poster || src, // use poster for thumbnail, fallback to video src
+      src: poster || src, // use poster for thumbnail display, fallback to video src
+      videoSrc: src, // always keep the actual video URL
       index,
       width: w || 640,
       height: h || 360,
@@ -159,6 +162,57 @@ function computeAspectRatio(w: number, h: number): string {
   return "2:3";
 }
 
+/** Load a video URL in a hidden element and capture the first frame as a data URL */
+function captureVideoThumbnail(videoUrl: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.crossOrigin = "anonymous";
+    video.muted = true;
+    video.preload = "metadata";
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, 8000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      video.removeAttribute("src");
+      video.load();
+    }
+
+    video.onloadeddata = () => {
+      // Seek to 0.5s for a more representative frame (avoids black frames)
+      video.currentTime = Math.min(0.5, video.duration || 0.5);
+    };
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { cleanup(); resolve(null); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        cleanup();
+        resolve(dataUrl);
+      } catch {
+        // CORS or other canvas errors
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    video.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    video.src = videoUrl;
+  });
+}
+
 export default function ImportProgressPanel({ swipeJobId, pageId, product }: Props) {
   const router = useRouter();
   const [substep, setSubstep] = useState<Substep>("rewriting");
@@ -190,6 +244,34 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       })
       .catch(() => {});
   }, [product]);
+
+  // Generate thumbnails for videos that don't have a poster
+  useEffect(() => {
+    const videos = extractedImages.filter(
+      (img) => img.mediaType === "video" && !img.thumbnail && img.videoSrc
+    );
+    if (videos.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const vid of videos) {
+        if (cancelled) break;
+        const thumb = await captureVideoThumbnail(vid.videoSrc!);
+        if (cancelled) break;
+        if (thumb) {
+          setExtractedImages((prev) =>
+            prev.map((img) =>
+              img.mediaType === "video" && img.index === vid.index
+                ? { ...img, thumbnail: thumb }
+                : img
+            )
+          );
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [extractedImages.length]); // only re-run when new items are added
 
   // Elapsed timer
   useEffect(() => {
@@ -556,11 +638,16 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
               }`}
             >
               {img.mediaType === "video" ? (
-                <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
-                  {img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") ? (
+                <div className="w-full aspect-square bg-gray-800 flex items-center justify-center relative">
+                  {img.thumbnail ? (
+                    <img src={img.thumbnail} alt="Video frame" className="w-full h-full object-cover" />
+                  ) : img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") && !img.src.includes(".mov") ? (
                     <img src={img.src} alt="Video poster" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
-                    <Play className="w-8 h-8 text-gray-400" />
+                    <>
+                      <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+                      <span className="text-[10px] text-gray-500 absolute bottom-8">Loading preview...</span>
+                    </>
                   )}
                 </div>
               ) : (
@@ -654,17 +741,17 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                   key={`${img.mediaType}-${img.index}`}
                   className="relative rounded-lg overflow-hidden border border-gray-200"
                 >
-                  {img.mediaType === "video" && (img.src.includes(".mp4") || img.src.includes(".webm") || img.src.includes(".mov") || !img.src) ? (
-                    <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
-                      <Play className="w-8 h-8 text-gray-400" />
-                    </div>
-                  ) : (
+                  {img.thumbnail || img.mediaType !== "video" ? (
                     <img
-                      src={img.src}
+                      src={img.thumbnail || img.src}
                       alt={`${img.mediaType === "video" ? "Video" : "Image"} ${img.index + 1}`}
                       className="w-full aspect-square object-cover"
                       loading="lazy"
                     />
+                  ) : (
+                    <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
+                      <Play className="w-8 h-8 text-gray-400" />
+                    </div>
                   )}
                   <div
                     className={`absolute inset-0 flex items-center justify-center ${
