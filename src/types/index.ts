@@ -603,7 +603,7 @@ export interface ProductSegment {
 
 // --- Swiper Image Generation Types ---
 
-export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "auto-detect";
+export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "general" | "auto-detect";
 
 export interface ImageAnalysis {
   subjects: string;

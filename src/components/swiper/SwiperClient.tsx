@@ -211,6 +211,7 @@ export default function SwiperClient({ products }: Props) {
             <option value="neck-pain">Neck Pain</option>
             <option value="snoring">Snoring</option>
             <option value="sleep-quality">Sleep Quality</option>
+            <option value="general">General / Listicle (multi-benefit)</option>
           </select>
         </div>
 

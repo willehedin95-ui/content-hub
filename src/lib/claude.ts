@@ -3,12 +3,13 @@ import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
 import { withRetry, isTransientError } from "./retry";
 import { CLAUDE_MODEL } from "./constants";
 
-export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "auto-detect";
+export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "general" | "auto-detect";
 
 const ANGLE_LABELS: Record<SwiperAngle, string> = {
   "neck-pain": "Neck Pain — morning stiffness, chronic pain, failed treatments",
   "snoring": "Snoring — relationship destruction, partner rage, kinked airway",
   "sleep-quality": "Sleep Quality — poor rest, fatigue, tossing and turning",
+  "general": "General / Listicle — not focused on one problem; broad product benefits (\"X reasons why\", multiple selling points, catch-all). Cover a wide range of benefits like comfort, materials, quality, value, guarantee, social proof. The page should work for any audience segment.",
   "auto-detect": "Auto-detect — match the angle to whatever problem the swiped source addresses",
 };
 
@@ -55,6 +56,7 @@ The rewrite must focus on ONE of these angles:
 - **Neck Pain** — morning stiffness, chronic pain, failed treatments
 - **Snoring** — relationship destruction, partner rage, kinked airway
 - **Sleep Quality** — poor rest, fatigue, tossing and turning
+- **General / Listicle** — NOT focused on one specific problem. Instead, cover a broad range of product benefits (comfort, materials, sleep science, quality, value, guarantee, social proof). Think "X reasons why this pillow is different" — each reason highlights a different selling point. The page should work as a catch-all that any audience segment can relate to.
 
 Use the angle specified in the prompt. If none is specified, match the angle to whatever problem the swiped source addresses.
 
