@@ -66,10 +66,11 @@ Return JSON with exactly these fields:
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { imageSrc, surroundingText, productId, pageId } = body as {
+  const { imageSrc, surroundingText, productId, pageId, aspectRatio } = body as {
     imageSrc: string;
     surroundingText: string;
     productId: string;
+    aspectRatio?: string;
     pageId?: string;
   };
 
@@ -172,7 +173,7 @@ export async function POST(req: NextRequest) {
     const { urls, costTimeMs } = await generateImage(
       parsed.prompt,
       referenceImages,
-      "4:5"
+      aspectRatio || "4:5"
     );
 
     if (!urls?.length) throw new Error("No image generated");

@@ -300,6 +300,7 @@ export default function ImagePanel({
           imageSrc: imageToProcess.src,
           surroundingText: imageToProcess.surroundingText || "",
           productId: productData.id,
+          aspectRatio: computeAspectRatio(imageToProcess.width, imageToProcess.height),
         }),
       });
 
