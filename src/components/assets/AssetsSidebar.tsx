@@ -1,6 +1,7 @@
 "use client";
 
-import { ImageIcon, Film, Sparkles, Scissors } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ImageIcon, Film, Sparkles, Scissors, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 
@@ -31,6 +32,52 @@ const PRODUCT_ITEMS: { value: Product | "all" | "general"; label: string }[] = [
   { value: "general", label: "General" },
 ];
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function StorageBar() {
+  const [usage, setUsage] = useState<{
+    total_bytes: number;
+    limit_bytes: number;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/storage/usage")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.total_bytes !== undefined) setUsage(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!usage) return null;
+
+  const pct = Math.min((usage.total_bytes / usage.limit_bytes) * 100, 100);
+  const barColor = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-blue-500";
+
+  return (
+    <div className="pt-4 border-t border-gray-200">
+      <div className="flex items-center gap-1.5 mb-2">
+        <HardDrive className="w-3.5 h-3.5 text-gray-400" />
+        <span className="text-xs text-gray-500">Storage</span>
+      </div>
+      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-[11px] text-gray-400 mt-1">
+        {formatBytes(usage.total_bytes)} of {formatBytes(usage.limit_bytes)} used
+      </p>
+    </div>
+  );
+}
+
 export default function AssetsSidebar({
   activeView,
   onViewChange,
@@ -39,7 +86,8 @@ export default function AssetsSidebar({
   counts,
 }: Props) {
   return (
-    <div className="w-52 shrink-0 border-r border-gray-200 bg-gray-50/50 p-4 space-y-6 overflow-y-auto">
+    <div className="w-52 shrink-0 border-r border-gray-200 bg-gray-50/50 p-4 flex flex-col overflow-y-auto">
+      <div className="space-y-6">
       {/* Library Section */}
       <div>
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -133,6 +181,11 @@ export default function AssetsSidebar({
           })}
         </div>
       </div>
+      </div>
+
+      {/* Spacer + Storage */}
+      <div className="flex-1" />
+      <StorageBar />
     </div>
   );
 }
