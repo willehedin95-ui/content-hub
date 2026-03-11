@@ -118,7 +118,8 @@ CRITICAL:
 - The keyframe_prompt must describe a STILL IMAGE (no motion words), the kling_prompt describes the VIDEO (with motion)
 ${hasProduct ? `- Describe ${productName} accurately: contoured butterfly-shaped ergonomic memory foam pillow, light blue` : "- Describe the product based on the visual style seen in the frames"}
 - NEVER invent medical claims${hasProduct ? " — only use claims from the product brief" : ""}
-- NEVER include the competitor's brand name in prompts`;
+- NEVER include the competitor's brand name in prompts
+- **NEVER include logos, brand tags, watermarks, or branded overlays** in prompts — the generated video must be clean with no branding`;
 }
 
 /**

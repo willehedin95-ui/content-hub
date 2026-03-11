@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Upload,
   Loader2,
@@ -102,6 +102,28 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setTimeout(() => handleUrlSubmit(), 100);
     }
   }, [handleUrlSubmit]);
+
+  // Global clipboard paste — intercept Cmd+V / Ctrl+V with image data
+  useEffect(() => {
+    if (phase !== "upload") return;
+
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) handleFileSelect(file);
+          return;
+        }
+      }
+    }
+
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [phase, handleFileSelect]);
 
   // Start the full pipeline
   const handleAnalyze = useCallback(async () => {
@@ -340,8 +362,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             ) : (
               <div className="space-y-2">
                 <Upload className="w-8 h-8 text-gray-400 mx-auto" />
-                <p className="text-sm font-medium text-gray-700">Drop a competitor image or click to browse</p>
-                <p className="text-xs text-gray-400">JPG, PNG, or WebP</p>
+                <p className="text-sm font-medium text-gray-700">Drop, paste, or click to browse</p>
+                <p className="text-xs text-gray-400">JPG, PNG, or WebP — also supports Ctrl/Cmd+V from clipboard</p>
               </div>
             )}
           </div>

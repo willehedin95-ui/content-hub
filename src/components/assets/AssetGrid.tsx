@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Upload,
   Loader2,
@@ -63,6 +63,7 @@ export default function AssetGrid({
   const [editCategory, setEditCategory] = useState<AssetCategory>("other");
   const [editProduct, setEditProduct] = useState<string>("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
 
   // Filter by media type, product, category, and search
   const filteredAssets = assets.filter((asset) => {
@@ -140,6 +141,47 @@ export default function AssetGrid({
       alert(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  function openPreview(asset: Asset) {
+    setPreviewAsset(asset);
+    setEditName(asset.name);
+    setEditCategory(asset.category);
+    setEditProduct(asset.product || "");
+  }
+
+  const closePreview = useCallback(() => {
+    setPreviewAsset(null);
+  }, []);
+
+  useEffect(() => {
+    if (!previewAsset) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closePreview();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [previewAsset, closePreview]);
+
+  async function savePreviewEdit() {
+    if (!previewAsset) return;
+    try {
+      const res = await fetch(`/api/assets/${previewAsset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          category: editCategory,
+          product: editProduct || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      const updated: Asset = await res.json();
+      onAssetsChange(assets.map((a) => (a.id === previewAsset.id ? updated : a)));
+      setPreviewAsset(updated);
+    } catch {
+      alert("Failed to update asset");
     }
   }
 
@@ -373,7 +415,10 @@ export default function AssetGrid({
                 key={asset.id}
                 className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors"
               >
-                <div className="aspect-square bg-gray-50 flex items-center justify-center p-3 relative">
+                <div
+                  className="aspect-square bg-gray-50 flex items-center justify-center p-3 relative cursor-pointer"
+                  onClick={() => openPreview(asset)}
+                >
                   {asset.media_type === "image" ? (
                     <img
                       src={asset.url}
@@ -396,13 +441,13 @@ export default function AssetGrid({
                   )}
                   <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => startEdit(asset)}
+                      onClick={(e) => { e.stopPropagation(); startEdit(asset); }}
                       className="p-1 bg-white rounded-md shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
                     <button
-                      onClick={() => handleDelete(asset.id)}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(asset.id); }}
                       disabled={deleting === asset.id}
                       className="p-1 bg-white rounded-md shadow-sm border border-gray-200 text-red-400 hover:text-red-600 disabled:opacity-50"
                     >
@@ -487,6 +532,147 @@ export default function AssetGrid({
           </div>
         )}
       </div>
+
+      {/* Preview modal */}
+      {previewAsset && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closePreview}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">
+                {previewAsset.name}
+              </h3>
+              <button
+                onClick={closePreview}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Large preview */}
+              <div className="flex-1 bg-gray-50 flex items-center justify-center p-6 min-h-[400px]">
+                {previewAsset.media_type === "image" ? (
+                  <img
+                    src={previewAsset.url}
+                    alt={previewAsset.alt_text || previewAsset.name}
+                    className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                  />
+                ) : (
+                  <video
+                    src={previewAsset.url}
+                    controls
+                    className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                  />
+                )}
+              </div>
+
+              {/* Settings panel */}
+              <div className="w-72 border-l border-gray-100 p-5 space-y-4 overflow-y-auto">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value as AssetCategory)}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  >
+                    {ASSET_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {CATEGORY_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Product
+                  </label>
+                  <select
+                    value={editProduct}
+                    onChange={(e) => setEditProduct(e.target.value)}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  >
+                    {PRODUCT_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Metadata */}
+                <div className="pt-3 border-t border-gray-100 space-y-2">
+                  {previewAsset.dimensions && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Dimensions</span>
+                      <span className="text-gray-600">
+                        {previewAsset.dimensions}
+                      </span>
+                    </div>
+                  )}
+                  {previewAsset.file_size && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Size</span>
+                      <span className="text-gray-600">
+                        {(previewAsset.file_size / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                    </div>
+                  )}
+                  {previewAsset.duration && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Duration</span>
+                      <span className="text-gray-600">{previewAsset.duration}s</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Added</span>
+                    <span className="text-gray-600">
+                      {new Date(previewAsset.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={savePreviewEdit}
+                  disabled={!editName.trim()}
+                  className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  <Check className="w-4 h-4" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => { handleDelete(previewAsset.id); closePreview(); }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white border border-red-200 text-red-500 rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Asset
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
