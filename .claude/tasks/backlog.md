@@ -1,16 +1,18 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-11 (session 1)
+Updated: 2026-03-11 (session 2)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
+- [ ] **Push Strategy Guide to deploy** — 2 commits on main (`79d8b89`, `4172d81`), not pushed. After push: trigger ad-performance-sync cron manually to populate tables, then verify `/morning-brief` strategy section (added 2026-03-11)
 - [ ] Live-test competitor swipe end-to-end: import real page → generate images/videos → apply → publish (added 2026-03-09, updated 2026-03-10)
 - [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
 
 ## P2 — Important
+- [ ] **Tune Strategy Guide thresholds** — after seeing real data, adjust constants in strategy-engine.ts (BUDGET_COOLDOWN_DAYS, MIN_BUDGET_PER_ADSET, etc.) (added 2026-03-11)
 - [ ] **Per-breakpoint responsive styles** — mobile vs desktop style editing via media queries (viewMode toggle exists, needs to write @media rules) (added 2026-03-10)
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
 - [ ] Telegram notifications — Hub messages when concepts ready for review (added 2025-02-25)
@@ -33,6 +35,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Strategy Guide for Morning Brief** — 5-phase feature: data infra (2 new tables + cron sync), strategy engine (4 rule sets, anti-panic), API integration, UI (5 components in MorningBriefClient), Telegram (strategy summary + kill button). Commits `79d8b89`, `4172d81`. (done 2026-03-11)
 - [x] **Builder image gen rewrite** — Replaced GPT-4o with Claude Vision structured extraction (same as Assets Image Swiper). Fixes headlines being copied into images. Product hero images now passed as Nano Banana references. Commit `b85813c`. (done 2026-03-11)
 - [x] **Assets Hub overhaul** — Video uploads, sidebar nav, URL import, Image Swiper, Video Swiper moved to tab, new categories, product filter, search, storage bar. DB migration + 12-task implementation. Commits `10afb94`, `be92416`, `874e569`. (done 2026-03-10 session 5)
 - [x] **Supabase Pro upgrade** — Guided user through upgrade from Free to Pro ($35/mo). Storage 100 GB, bandwidth 250 GB. (done 2026-03-10 session 5)
