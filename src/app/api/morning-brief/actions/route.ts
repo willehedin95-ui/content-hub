@@ -297,6 +297,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, paused_adset: adset_id });
     }
 
+    case "batch_pause_adsets": {
+      const { adset_ids } = body as { adset_ids: string[] };
+      if (!adset_ids?.length) {
+        return NextResponse.json(
+          { error: "adset_ids array is required" },
+          { status: 400 }
+        );
+      }
+
+      const token = process.env.META_SYSTEM_USER_TOKEN!;
+      const results: Array<{
+        adset_id: string;
+        status: "paused" | "failed";
+        error?: string;
+      }> = [];
+
+      for (const adsetId of adset_ids) {
+        try {
+          const res = await fetch(
+            `https://graph.facebook.com/v22.0/${adsetId}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ status: "PAUSED" }),
+            }
+          );
+          if (!res.ok) {
+            const err = await res.text().catch(() => "");
+            throw new Error(`Meta API error (${res.status}): ${err}`);
+          }
+          await sleep(DELAY);
+
+          await db.from("ad_learnings").insert({
+            meta_ad_id: adsetId,
+            event_type: "paused_adset",
+            detail: "Batch killed from Strategy Guide",
+            metrics: {},
+          });
+
+          results.push({ adset_id: adsetId, status: "paused" });
+        } catch (err) {
+          results.push({
+            adset_id: adsetId,
+            status: "failed",
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      return NextResponse.json({
+        ok: true,
+        paused: results.filter((r) => r.status === "paused").length,
+        failed: results.filter((r) => r.status === "failed").length,
+        results,
+      });
+    }
+
     case "increase_budget": {
       const { campaign_ids, extra_per_campaign, market, concepts_count } = body as {
         campaign_ids: string[];

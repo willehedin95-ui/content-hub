@@ -52,6 +52,29 @@ interface BriefResponse {
       target_cpa: number | null;
     }>;
   };
+  strategy?: {
+    headline: string;
+    headline_tone: "positive" | "cautious" | "warning";
+    multi_window_kpis: Array<{
+      campaign_name: string;
+      market: string;
+      w7: { roas: number; purchases: number };
+      w14: { roas: number; purchases: number };
+      w30: { roas: number; purchases: number };
+      be_roas: number;
+      daily_budget_sek: number;
+      active_adsets: number;
+    }>;
+    recommendations: Array<{
+      id: string;
+      action: string;
+      urgency: "critical" | "recommended" | "fyi";
+      title: string;
+      what_to_do: string;
+      anti_panic?: string;
+      action_data?: Record<string, unknown>;
+    }>;
+  } | null;
 }
 
 function arrow(trend: string): string {
@@ -199,6 +222,53 @@ function formatBrief(data: BriefResponse): string {
     lines.push("");
   }
 
+  // Strategy Guide
+  const strategy = data.strategy;
+  if (strategy) {
+    lines.push("");
+    const toneIcon = strategy.headline_tone === "positive" ? "🟢" : strategy.headline_tone === "cautious" ? "🟡" : "🔴";
+    lines.push(`🛡️ STRATEGY GUIDE ${toneIcon}`);
+    lines.push(`  ${strategy.headline}`);
+    lines.push("");
+
+    // Multi-window ROAS table
+    if (strategy.multi_window_kpis.length > 0) {
+      lines.push("  Campaign         | 7d    | 14d   | 30d   | BE");
+      for (const kpi of strategy.multi_window_kpis) {
+        const name = kpi.campaign_name.length > 16 ? kpi.campaign_name.slice(0, 15) + "…" : kpi.campaign_name.padEnd(16);
+        const w7 = `${kpi.w7.roas.toFixed(1)}x`.padStart(5);
+        const w14 = `${kpi.w14.roas.toFixed(1)}x`.padStart(5);
+        const w30 = `${kpi.w30.roas.toFixed(1)}x`.padStart(5);
+        const be = `${kpi.be_roas.toFixed(1)}x`.padStart(5);
+        lines.push(`  ${name} |${w7} |${w14} |${w30} |${be}`);
+      }
+      lines.push("");
+    }
+
+    // Critical + recommended actions
+    const criticalRecs = strategy.recommendations.filter((r) => r.urgency === "critical");
+    const recommendedRecs = strategy.recommendations.filter((r) => r.urgency === "recommended");
+
+    if (criticalRecs.length > 0) {
+      for (const rec of criticalRecs) {
+        lines.push(`  🔴 ${rec.title}`);
+        lines.push(`     → ${rec.what_to_do}`);
+        if (rec.anti_panic) {
+          lines.push(`     💡 ${rec.anti_panic}`);
+        }
+      }
+      lines.push("");
+    }
+
+    if (recommendedRecs.length > 0) {
+      for (const rec of recommendedRecs) {
+        lines.push(`  🟡 ${rec.title}`);
+        lines.push(`     → ${rec.what_to_do}`);
+      }
+      lines.push("");
+    }
+  }
+
   // Summary counts
   const summaryParts = [];
   if (warningCount > 0) summaryParts.push(`${warningCount} warnings`);
@@ -296,11 +366,49 @@ export async function GET(req: NextRequest) {
     winnerMessageSent = true;
   }
 
+  // Send strategy kill action if there are ad sets to kill
+  let strategyMessageSent = false;
+  const strategyData = briefData.strategy;
+  if (strategyData) {
+    const killRecs = strategyData.recommendations.filter(
+      (r: { action: string; action_data?: Record<string, unknown> }) =>
+        (r.action === "kill_deadweight" || r.action === "structure_warning") &&
+        r.action_data?.adset_ids
+    );
+    if (killRecs.length > 0) {
+      const allAdsetIds: string[] = [];
+      const killLines = ["🛡️ Strategy recommends killing weak ad sets:"];
+      for (const rec of killRecs) {
+        killLines.push(`  • ${rec.title}`);
+        const ids = rec.action_data?.adset_ids as string[] | undefined;
+        if (ids) allAdsetIds.push(...ids);
+      }
+      killLines.push("");
+      killLines.push(`Total: ${allAdsetIds.length} ad set(s) to kill.`);
+
+      // Store IDs in callback data (64 byte limit) — use a lookup approach
+      // Since callback_data is limited, just use "strategy_kill_all" and re-fetch from API
+      await sendMessageWithInlineKeyboard(
+        chatId,
+        killLines.join("\n"),
+        [
+          [
+            { text: `🗑 Kill ${allAdsetIds.length} ad sets`, callback_data: "strategy_kill_all" },
+            { text: "❌ Skip", callback_data: "strategy_skip" },
+          ],
+        ],
+        { disable_web_page_preview: true }
+      );
+      strategyMessageSent = true;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     data_date: briefData.data_date,
     message_length: message.length,
     budget_message_sent: budgetMessageSent,
     winner_message_sent: winnerMessageSent,
+    strategy_message_sent: strategyMessageSent,
   });
 }

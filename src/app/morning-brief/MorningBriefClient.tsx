@@ -21,7 +21,12 @@ import {
   ArrowLeftRight,
   Globe,
   ChevronDown,
+  ChevronRight,
   BookmarkPlus,
+  Shield,
+  Target,
+  Lightbulb,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -169,6 +174,68 @@ interface EfficiencyScore {
   recommendation: "increase" | "decrease" | "maintain";
 }
 
+// ── Strategy Guide Types ──
+
+interface WindowKpi {
+  spend: number;
+  revenue: number;
+  roas: number;
+  cpa: number | null;
+  purchases: number;
+}
+
+interface CampaignMultiWindowKpi {
+  campaign_id: string;
+  campaign_name: string;
+  market: string;
+  format: "statics" | "video";
+  daily_budget_sek: number;
+  active_adsets: number;
+  w7: WindowKpi;
+  w14: WindowKpi;
+  w30: WindowKpi;
+  be_roas: number;
+  target_cpa: number;
+}
+
+interface AdSetBreakdown {
+  adset_id: string;
+  adset_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  market: string | null;
+  spend_7d: number;
+  roas_7d: number;
+  cpa_7d: number | null;
+  purchases_7d: number;
+  days_running: number | null;
+  spend_share_pct: number;
+  status: "winning" | "testing" | "underperforming" | "zombie";
+}
+
+interface StrategyRecommendation {
+  id: string;
+  action: string;
+  urgency: "critical" | "recommended" | "fyi";
+  title: string;
+  reasoning: string;
+  context: string;
+  what_to_do: string;
+  what_happens_if_ignored: string;
+  anti_panic?: string;
+  campaign_id?: string;
+  action_data?: Record<string, unknown>;
+  button_label?: string;
+}
+
+interface StrategyGuide {
+  headline: string;
+  headline_tone: "positive" | "cautious" | "warning";
+  multi_window_kpis: CampaignMultiWindowKpi[];
+  adset_breakdown: AdSetBreakdown[];
+  recommendations: StrategyRecommendation[];
+}
+
 interface ActionCard {
   id: string;
   type: "pause" | "scale" | "refresh" | "budget" | "landing_page" | "save_copy";
@@ -292,6 +359,7 @@ interface MorningBriefData {
     ad_diagnostics: AdDiagnostic[];
   };
   action_cards: ActionCard[];
+  strategy?: StrategyGuide | null;
   automation_summary?: {
     auto_paused_count: number;
     auto_paused_ads: Array<{
@@ -594,6 +662,330 @@ function TierSection({
   );
 }
 
+// ── Strategy Guide Components ──
+
+function StrategyHeadline({ strategy }: { strategy: StrategyGuide }) {
+  const toneConfig = {
+    positive: { bg: "bg-green-50", border: "border-green-200", text: "text-green-800", icon: "text-green-600" },
+    cautious: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800", icon: "text-amber-600" },
+    warning: { bg: "bg-red-50", border: "border-red-200", text: "text-red-800", icon: "text-red-600" },
+  };
+  const colors = toneConfig[strategy.headline_tone];
+
+  return (
+    <div className={cn("rounded-lg px-5 py-3 border", colors.bg, colors.border)}>
+      <div className="flex items-start gap-3">
+        <Shield className={cn("w-5 h-5 mt-0.5 shrink-0", colors.icon)} />
+        <div>
+          <p className={cn("text-sm font-semibold", colors.text)}>Strategy Guide</p>
+          <p className={cn("text-sm mt-0.5", colors.text)}>{strategy.headline}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MultiWindowKpiTable({ kpis }: { kpis: CampaignMultiWindowKpi[] }) {
+  if (kpis.length === 0) return null;
+
+  function roasColor(roas: number, beRoas: number): string {
+    if (roas >= beRoas) return "text-green-700 bg-green-50";
+    if (roas >= beRoas * 0.8) return "text-amber-700 bg-amber-50";
+    return "text-red-700 bg-red-50";
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Target className="w-4 h-4 text-indigo-600" />
+          Multi-Window ROAS
+          <span className="text-xs font-normal text-gray-500">Don&apos;t panic on 7d alone — check the bigger picture</span>
+        </h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-500 border-b border-gray-100">
+              <th className="text-left py-2 px-4 font-medium">Campaign</th>
+              <th className="text-center py-2 px-3 font-medium">7d ROAS</th>
+              <th className="text-center py-2 px-3 font-medium">14d ROAS</th>
+              <th className="text-center py-2 px-3 font-medium">30d ROAS</th>
+              <th className="text-center py-2 px-3 font-medium">BE</th>
+              <th className="text-center py-2 px-3 font-medium">Budget</th>
+              <th className="text-center py-2 px-3 font-medium">Ad Sets</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {kpis.map((kpi) => (
+              <tr key={kpi.campaign_id} className="hover:bg-gray-50">
+                <td className="py-2.5 px-4">
+                  <div className="font-medium text-gray-900 truncate max-w-[200px]">{kpi.campaign_name}</div>
+                  <div className="text-xs text-gray-400">{kpi.market} &middot; {kpi.format}</div>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className={cn("inline-block px-2 py-0.5 rounded text-xs font-semibold", roasColor(kpi.w7.roas, kpi.be_roas))}>
+                    {kpi.w7.roas.toFixed(2)}x
+                  </span>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{kpi.w7.purchases}p</div>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className={cn("inline-block px-2 py-0.5 rounded text-xs font-semibold", roasColor(kpi.w14.roas, kpi.be_roas))}>
+                    {kpi.w14.roas.toFixed(2)}x
+                  </span>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{kpi.w14.purchases}p</div>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className={cn("inline-block px-2 py-0.5 rounded text-xs font-semibold", roasColor(kpi.w30.roas, kpi.be_roas))}>
+                    {kpi.w30.roas.toFixed(2)}x
+                  </span>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{kpi.w30.purchases}p</div>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className="text-xs font-medium text-gray-600">{kpi.be_roas}x</span>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className="text-xs text-gray-700">{kpi.daily_budget_sek} kr/d</span>
+                </td>
+                <td className="text-center py-2.5 px-3">
+                  <span className="text-xs text-gray-700">{kpi.active_adsets}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StrategyCard({
+  rec,
+  onAction,
+  actionLoading,
+}: {
+  rec: StrategyRecommendation;
+  onAction: (rec: StrategyRecommendation) => void;
+  actionLoading: string | null;
+}) {
+  const urgencyConfig = {
+    critical: { border: "border-l-red-400", bg: "bg-red-50", text: "text-red-800", badge: "bg-red-100 text-red-700" },
+    recommended: { border: "border-l-amber-400", bg: "bg-amber-50", text: "text-amber-800", badge: "bg-amber-100 text-amber-700" },
+    fyi: { border: "border-l-blue-400", bg: "bg-blue-50", text: "text-blue-800", badge: "bg-blue-100 text-blue-700" },
+  };
+  const colors = urgencyConfig[rec.urgency];
+  const isLoading = actionLoading === rec.id;
+
+  return (
+    <div className={cn("border-l-4 rounded-lg bg-white border border-gray-200 overflow-hidden", colors.border)}>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full uppercase tracking-wide", colors.badge)}>
+                {rec.urgency}
+              </span>
+            </div>
+            <h4 className="text-sm font-semibold text-gray-900">{rec.title}</h4>
+            <p className="text-xs text-gray-600 mt-1">{rec.reasoning}</p>
+
+            {rec.anti_panic && (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                <p className="text-xs text-blue-800 flex items-start gap-1.5">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{rec.anti_panic}</span>
+                </p>
+              </div>
+            )}
+
+            <div className="mt-2 text-xs text-gray-500 space-y-1">
+              <div>
+                <span className="font-medium text-gray-700">What to do: </span>
+                {rec.what_to_do}
+              </div>
+              <div>
+                <span className="font-medium text-gray-700">If ignored: </span>
+                {rec.what_happens_if_ignored}
+              </div>
+            </div>
+
+            {rec.context && (
+              <p className="text-[11px] text-gray-400 mt-2 font-mono">{rec.context}</p>
+            )}
+          </div>
+
+          {rec.button_label && (
+            <button
+              onClick={() => onAction(rec)}
+              disabled={!!actionLoading}
+              className={cn(
+                "px-3 py-2 text-xs font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap shrink-0",
+                rec.action === "increase_budget" ? "text-white bg-green-600 hover:bg-green-700" :
+                rec.action === "kill_deadweight" || rec.action === "structure_warning" ? "text-white bg-red-600 hover:bg-red-700" :
+                rec.action === "add_concepts" ? "text-white bg-indigo-600 hover:bg-indigo-700" :
+                "text-gray-700 bg-gray-100 hover:bg-gray-200"
+              )}
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : rec.button_label}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdSetBreakdownPanel({ adsets, campaignKpis }: { adsets: AdSetBreakdown[]; campaignKpis: CampaignMultiWindowKpi[] }) {
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
+
+  if (adsets.length === 0) return null;
+
+  // Group by campaign
+  const byCampaign = new Map<string, AdSetBreakdown[]>();
+  for (const a of adsets) {
+    const existing = byCampaign.get(a.campaign_id) || [];
+    existing.push(a);
+    byCampaign.set(a.campaign_id, existing);
+  }
+
+  const statusConfig = {
+    winning: { label: "Winner", color: "bg-green-100 text-green-700" },
+    testing: { label: "Testing", color: "bg-blue-100 text-blue-700" },
+    underperforming: { label: "Under", color: "bg-red-100 text-red-700" },
+    zombie: { label: "Zombie", color: "bg-gray-200 text-gray-600" },
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Lightbulb className="w-4 h-4 text-amber-500" />
+          Ad Set Breakdown
+          <span className="text-xs font-normal text-gray-500">Click a campaign to see its ad sets</span>
+        </h3>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {Array.from(byCampaign.entries()).map(([campaignId, campaignAdsets]) => {
+          const isOpen = expandedCampaigns[campaignId] ?? false;
+          const kpi = campaignKpis.find((k) => k.campaign_id === campaignId);
+          const winCount = campaignAdsets.filter((a) => a.status === "winning").length;
+          const zombieCount = campaignAdsets.filter((a) => a.status === "zombie").length;
+          const campaignName = campaignAdsets[0]?.campaign_name || "Unknown";
+
+          return (
+            <div key={campaignId}>
+              <button
+                onClick={() => setExpandedCampaigns((s) => ({ ...s, [campaignId]: !s[campaignId] }))}
+                className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChevronRight className={cn("w-4 h-4 text-gray-400 transition-transform shrink-0", isOpen && "rotate-90")} />
+                  <span className="text-sm font-medium text-gray-900 truncate">{campaignName}</span>
+                  <span className="text-xs text-gray-400">{campaignAdsets.length} ad sets</span>
+                  {winCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{winCount} winning</span>}
+                  {zombieCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{zombieCount} zombie</span>}
+                </div>
+                {kpi && (
+                  <span className="text-xs text-gray-500 shrink-0 ml-2">
+                    {kpi.daily_budget_sek > 0 ? `${Math.round(kpi.daily_budget_sek / campaignAdsets.length)} kr/set` : ""}
+                  </span>
+                )}
+              </button>
+              {isOpen && (
+                <div className="px-4 pb-3 space-y-1.5">
+                  {campaignAdsets.map((a) => {
+                    const sc = statusConfig[a.status];
+                    return (
+                      <div key={a.adset_id} className="flex items-center gap-3 py-1.5 px-3 rounded bg-gray-50 text-xs">
+                        <span className={cn("px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0", sc.color)}>
+                          {sc.label}
+                        </span>
+                        <span className="font-medium text-gray-900 truncate flex-1 min-w-0">{a.adset_name}</span>
+                        {a.days_running !== null && (
+                          <span className="text-gray-400 shrink-0">{a.days_running}d</span>
+                        )}
+                        <span className="text-gray-600 shrink-0">{a.spend_7d} kr</span>
+                        <span className={cn(
+                          "font-semibold shrink-0",
+                          kpi && a.roas_7d >= kpi.be_roas ? "text-green-700" :
+                          a.roas_7d > 0 ? "text-red-600" : "text-gray-400"
+                        )}>
+                          {a.roas_7d > 0 ? `${a.roas_7d}x` : "0x"}
+                        </span>
+                        <span className="text-gray-500 shrink-0">{a.purchases_7d}p</span>
+                        <span className="text-gray-400 shrink-0">{a.spend_share_pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StrategyGuideSection({
+  strategy,
+  onStrategyAction,
+  strategyActionLoading,
+}: {
+  strategy: StrategyGuide;
+  onStrategyAction: (rec: StrategyRecommendation) => void;
+  strategyActionLoading: string | null;
+}) {
+  const criticalRecs = strategy.recommendations.filter((r) => r.urgency === "critical");
+  const recommendedRecs = strategy.recommendations.filter((r) => r.urgency === "recommended");
+  const fyiRecs = strategy.recommendations.filter((r) => r.urgency === "fyi");
+
+  return (
+    <section className="space-y-4">
+      <StrategyHeadline strategy={strategy} />
+      <MultiWindowKpiTable kpis={strategy.multi_window_kpis} />
+
+      {criticalRecs.length > 0 && (
+        <div className="space-y-2">
+          {criticalRecs.map((rec) => (
+            <StrategyCard key={rec.id} rec={rec} onAction={onStrategyAction} actionLoading={strategyActionLoading} />
+          ))}
+        </div>
+      )}
+
+      {recommendedRecs.length > 0 && (
+        <details className="group" open>
+          <summary className="cursor-pointer text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 select-none px-1 py-1.5 hover:text-gray-700">
+            <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+            Recommended ({recommendedRecs.length})
+          </summary>
+          <div className="space-y-2 mt-1">
+            {recommendedRecs.map((rec) => (
+              <StrategyCard key={rec.id} rec={rec} onAction={onStrategyAction} actionLoading={strategyActionLoading} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {fyiRecs.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 select-none px-1 py-1.5 hover:text-gray-700">
+            <ChevronDown className="w-3.5 h-3.5 transition-transform group-open:rotate-180" />
+            FYI ({fyiRecs.length})
+          </summary>
+          <div className="space-y-2 mt-1">
+            {fyiRecs.map((rec) => (
+              <StrategyCard key={rec.id} rec={rec} onAction={onStrategyAction} actionLoading={strategyActionLoading} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      <AdSetBreakdownPanel adsets={strategy.adset_breakdown} campaignKpis={strategy.multi_window_kpis} />
+    </section>
+  );
+}
+
 // ── Main Component ──
 
 export default function MorningBriefClient() {
@@ -655,6 +1047,10 @@ export default function MorningBriefClient() {
     loading: string | null;
     results: Record<string, { ok: boolean; message: string }>;
   }>({ loading: null, results: {} });
+
+  // Strategy action state
+  const [strategyActionLoading, setStrategyActionLoading] = useState<string | null>(null);
+  const [strategyActionResults, setStrategyActionResults] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   async function handleApply(card: ActionCard) {
     if (card.type === "refresh") {
@@ -751,6 +1147,80 @@ export default function MorningBriefClient() {
           ...s.results,
           [card.id]: { ok: false, message: "Network error" },
         },
+      }));
+    }
+  }
+
+  async function handleStrategyAction(rec: StrategyRecommendation) {
+    // Navigate actions
+    if (rec.action === "add_concepts") {
+      const market = rec.action_data?.market as string | undefined;
+      window.location.href = market ? `/brainstorm?market=${market}` : "/brainstorm";
+      return;
+    }
+
+    // Acknowledge-only actions (hold_budget, pause_and_wait)
+    if (rec.action === "hold_budget" || rec.action === "pause_and_wait") {
+      setStrategyActionResults((s) => ({ ...s, [rec.id]: { ok: true, message: "Acknowledged" } }));
+      return;
+    }
+
+    // Actions that call the API
+    if (!rec.action_data) return;
+    setStrategyActionLoading(rec.id);
+
+    try {
+      // Batch pause ad sets
+      if (rec.action_data.adset_ids) {
+        const res = await fetch("/api/morning-brief/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "batch_pause_adsets",
+            adset_ids: rec.action_data.adset_ids,
+          }),
+        });
+        const result = await res.json();
+        setStrategyActionLoading(null);
+        setStrategyActionResults((s) => ({
+          ...s,
+          [rec.id]: {
+            ok: res.ok && result.ok,
+            message: result.ok ? `Paused ${result.paused} ad set(s)` : result.error || "Failed",
+          },
+        }));
+        return;
+      }
+
+      // Increase campaign budget
+      if (rec.action_data.campaign_id && rec.action_data.new_budget) {
+        const res = await fetch("/api/morning-brief/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "scale_winner",
+            campaign_id: rec.action_data.campaign_id,
+            ad_id: rec.action_data.campaign_id,
+          }),
+        });
+        const result = await res.json();
+        setStrategyActionLoading(null);
+        setStrategyActionResults((s) => ({
+          ...s,
+          [rec.id]: {
+            ok: res.ok && result.ok,
+            message: result.ok ? `Budget: ${result.old_budget} → ${result.new_budget} kr/day` : result.error || "Failed",
+          },
+        }));
+        return;
+      }
+
+      setStrategyActionLoading(null);
+    } catch {
+      setStrategyActionLoading(null);
+      setStrategyActionResults((s) => ({
+        ...s,
+        [rec.id]: { ok: false, message: "Network error" },
       }));
     }
   }
@@ -881,6 +1351,15 @@ export default function MorningBriefClient() {
       {/* Automation summary */}
       {data.automation_summary && (
         <AutomationSummary summary={data.automation_summary} />
+      )}
+
+      {/* Strategy Guide */}
+      {data.strategy && (
+        <StrategyGuideSection
+          strategy={data.strategy}
+          onStrategyAction={handleStrategyAction}
+          strategyActionLoading={strategyActionLoading}
+        />
       )}
 
       {/* 3. Action Cards — Priority Tiers */}

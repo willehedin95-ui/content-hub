@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { getAdInsightsDaily, AdInsightDailyRow } from "@/lib/meta";
+import {
+  getAdInsightsDaily,
+  AdInsightDailyRow,
+  getAdSetInsightsDaily,
+  AdSetInsightDailyRow,
+  listCampaigns,
+  getCampaignBudget,
+} from "@/lib/meta";
 
 export const maxDuration = 120;
 
@@ -136,12 +143,98 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(
-    `[Ad Perf Sync] Done: ${totalSynced} rows synced (${sinceStr} → ${untilStr})`
+    `[Ad Perf Sync] Ad-level done: ${totalSynced} rows synced (${sinceStr} → ${untilStr})`
   );
+
+  // --- Ad-set level sync ---
+  let adsetSynced = 0;
+  try {
+    const adsetRows = await getAdSetInsightsDaily(sinceStr, untilStr);
+    if (adsetRows.length > 0) {
+      const adsetDbRows = adsetRows.map((row: AdSetInsightDailyRow) => {
+        const spend = parseFloat(row.spend) || 0;
+        const purchases = extractPurchases(row.actions);
+        const purchaseValue = extractPurchaseValue(row.action_values);
+        return {
+          date: row.date_start,
+          adset_id: row.adset_id,
+          adset_name: row.adset_name || null,
+          campaign_id: row.campaign_id || null,
+          campaign_name: row.campaign_name || null,
+          impressions: parseInt(row.impressions) || 0,
+          clicks: parseInt(row.clicks) || 0,
+          spend,
+          ctr: parseFloat(row.ctr) || 0,
+          cpc: parseFloat(row.cpc) || 0,
+          cpm: parseFloat(row.cpm) || 0,
+          frequency: parseFloat(row.frequency ?? "0") || 0,
+          purchases,
+          purchase_value: purchaseValue,
+          roas: spend > 0 ? Math.round((purchaseValue / spend) * 100) / 100 : 0,
+          cpa: purchases > 0 ? Math.round((spend / purchases) * 100) / 100 : 0,
+          synced_at: new Date().toISOString(),
+        };
+      });
+
+      for (let i = 0; i < adsetDbRows.length; i += BATCH_SIZE) {
+        const batch = adsetDbRows.slice(i, i + BATCH_SIZE);
+        const { error } = await db
+          .from("meta_adset_performance")
+          .upsert(batch, { onConflict: "date,adset_id" });
+        if (error) {
+          console.error(`[Ad Perf Sync] Adset upsert error:`, error);
+        } else {
+          adsetSynced += batch.length;
+        }
+      }
+      console.log(`[Ad Perf Sync] Ad-set level: ${adsetSynced} rows synced`);
+    }
+  } catch (err) {
+    console.error("[Ad Perf Sync] Ad-set sync error (non-fatal):", err);
+  }
+
+  // --- Campaign budget snapshots ---
+  let budgetsSynced = 0;
+  try {
+    const campaigns = await listCampaigns();
+    const today = formatDate(new Date());
+    const budgetRows = [];
+
+    for (const campaign of campaigns) {
+      try {
+        const budget = await getCampaignBudget(campaign.id);
+        budgetRows.push({
+          date: today,
+          campaign_id: campaign.id,
+          campaign_name: budget.name || campaign.name,
+          daily_budget: parseInt(budget.daily_budget) || 0,
+          status: campaign.status,
+        });
+      } catch {
+        // Skip campaigns where budget fetch fails
+      }
+    }
+
+    if (budgetRows.length > 0) {
+      const { error } = await db
+        .from("campaign_budget_snapshots")
+        .upsert(budgetRows, { onConflict: "date,campaign_id" });
+      if (error) {
+        console.error("[Ad Perf Sync] Budget snapshot error:", error);
+      } else {
+        budgetsSynced = budgetRows.length;
+        console.log(`[Ad Perf Sync] Budget snapshots: ${budgetsSynced} campaigns`);
+      }
+    }
+  } catch (err) {
+    console.error("[Ad Perf Sync] Budget snapshot error (non-fatal):", err);
+  }
 
   return NextResponse.json({
     ok: true,
     rows_synced: totalSynced,
+    adset_rows_synced: adsetSynced,
+    budgets_synced: budgetsSynced,
     date_range: { since: sinceStr, until: untilStr },
     is_backfill: isBackfill,
   });

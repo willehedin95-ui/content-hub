@@ -345,6 +345,12 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
     } else if (data === "graduate_skip") {
       await answerCallbackQuery(query.id, "Winner graduation skipped");
       await editMessageText(chatId, messageId, "⭐ Winner graduation — skipped.");
+    } else if (data === "strategy_kill_all") {
+      await answerCallbackQuery(query.id, "Killing weak ad sets...");
+      await killWeakAdSets(chatId, messageId);
+    } else if (data === "strategy_skip") {
+      await answerCallbackQuery(query.id, "Strategy action skipped");
+      await editMessageText(chatId, messageId, "🛡️ Strategy kill — skipped.");
     } else if (data.startsWith("hook_product:")) {
       const parts = data.split(":");
       const hookId = parts[1];
@@ -461,6 +467,64 @@ async function applyBudgetShifts(chatId: number, messageId: number): Promise<voi
     messageId,
     `✅ Budget shifts applied:\n\n${results.join("\n")}\n\nTotal daily budget: $${(totalBudget / 100).toFixed(0)}/d`
   );
+}
+
+async function killWeakAdSets(chatId: number, messageId: number): Promise<void> {
+  // Re-fetch strategy data from morning brief to get current ad set IDs to kill
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+  const cronSecret = process.env.CRON_SECRET;
+  const briefRes = await fetch(`${baseUrl}/api/morning-brief`, {
+    headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
+  });
+
+  if (!briefRes.ok) {
+    await editMessageText(chatId, messageId, "🛡️ Kill weak ad sets — failed to fetch data.");
+    return;
+  }
+
+  const briefData = await briefRes.json();
+  const strategy = briefData.strategy;
+  if (!strategy) {
+    await editMessageText(chatId, messageId, "🛡️ No strategy data available.");
+    return;
+  }
+
+  // Collect all ad set IDs from kill/structure_warning recommendations
+  const adsetIds: string[] = [];
+  for (const rec of strategy.recommendations) {
+    if ((rec.action === "kill_deadweight" || rec.action === "structure_warning") && rec.action_data?.adset_ids) {
+      adsetIds.push(...(rec.action_data.adset_ids as string[]));
+    }
+  }
+
+  if (adsetIds.length === 0) {
+    await editMessageText(chatId, messageId, "🛡️ No weak ad sets to kill right now.");
+    return;
+  }
+
+  // Call the batch pause action
+  const actionRes = await fetch(`${baseUrl}/api/morning-brief/actions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
+    },
+    body: JSON.stringify({
+      action: "batch_pause_adsets",
+      adset_ids: adsetIds,
+    }),
+  });
+
+  const result = await actionRes.json();
+  if (result.ok) {
+    await editMessageText(
+      chatId,
+      messageId,
+      `✅ Killed ${result.paused} weak ad set(s)${result.failed > 0 ? ` (${result.failed} failed)` : ""}`
+    );
+  } else {
+    await editMessageText(chatId, messageId, `🛡️ Kill failed: ${result.error || "Unknown error"}`);
+  }
 }
 
 async function graduateWinners(chatId: number, messageId: number): Promise<void> {

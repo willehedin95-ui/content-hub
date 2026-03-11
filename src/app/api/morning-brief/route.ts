@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import type { StrategyInput, CampaignInfo, AdSetDayRow, BudgetSnapshot } from "@/lib/strategy-engine";
 
 export const maxDuration = 30;
 
@@ -1488,6 +1489,103 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── Strategy Guide (campaign-level & ad-set-level strategic recommendations) ──
+  let strategy = null;
+  try {
+    const { computeStrategyGuide } = await import("@/lib/strategy-engine");
+
+    // Fetch 30-day ad-set level data from the new table
+    const thirtyDaysAgo = new Date(latestDate);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10);
+
+    const { data: adsetRows } = await db
+      .from("meta_adset_performance")
+      .select("*")
+      .gte("date", thirtyDaysStr)
+      .lte("date", latestDate)
+      .order("date", { ascending: false });
+
+    // Fetch budget snapshots (last 7 days for cooldown detection)
+    const sevenDaysBack = new Date(latestDate);
+    sevenDaysBack.setDate(sevenDaysBack.getDate() - 6);
+    const { data: budgetSnaps } = await db
+      .from("campaign_budget_snapshots")
+      .select("date, campaign_id, daily_budget")
+      .gte("date", sevenDaysBack.toISOString().slice(0, 10))
+      .order("date", { ascending: false });
+
+    // Fetch campaign → market/format mappings
+    const { data: campaignMappings } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id, country, product, format");
+
+    if (adsetRows && adsetRows.length > 0) {
+      // Build campaign info from mappings + pipeline_settings
+      const campaignInfoMap = new Map<string, CampaignInfo>();
+      for (const m of campaignMappings ?? []) {
+        if (!m.meta_campaign_id || campaignInfoMap.has(m.meta_campaign_id)) continue;
+        const beRoas = beRoasMap.get(`${m.product}:${m.country}`) ?? 1.61;
+        const targetCpa = targetCpaMap.get(`${m.product}:${m.country}`) ?? 400;
+
+        // Get campaign name and budget from the ad-set data
+        const firstRow = adsetRows.find((r: { campaign_id: string }) => r.campaign_id === m.meta_campaign_id);
+        // Get budget from snapshots (latest snapshot)
+        const latestBudgetSnap = (budgetSnaps ?? []).find(
+          (s: { campaign_id: string }) => s.campaign_id === m.meta_campaign_id
+        );
+        const dailyBudget = latestBudgetSnap
+          ? Math.round(latestBudgetSnap.daily_budget / 100) // Meta stores in cents
+          : 0;
+
+        campaignInfoMap.set(m.meta_campaign_id, {
+          campaign_id: m.meta_campaign_id,
+          campaign_name: firstRow?.campaign_name ?? m.meta_campaign_id,
+          daily_budget_sek: dailyBudget,
+          market: m.country ?? "SE",
+          format: (m.format === "video" ? "video" : "statics") as "statics" | "video",
+          be_roas: beRoas,
+          target_cpa: targetCpa,
+        });
+      }
+
+      // Transform ad-set rows for strategy engine
+      const adsetDayData: AdSetDayRow[] = adsetRows.map((r: Record<string, unknown>) => ({
+        date: r.date as string,
+        adset_id: r.adset_id as string,
+        adset_name: (r.adset_name as string) ?? "",
+        campaign_id: (r.campaign_id as string) ?? "",
+        campaign_name: (r.campaign_name as string) ?? "",
+        spend: Number(r.spend) || 0,
+        purchases: Number(r.purchases) || 0,
+        purchase_value: Number(r.purchase_value) || 0,
+        roas: Number(r.roas) || 0,
+        cpa: Number(r.cpa) || 0,
+        impressions: Number(r.impressions) || 0,
+        clicks: Number(r.clicks) || 0,
+        ctr: Number(r.ctr) || 0,
+        frequency: Number(r.frequency) || 0,
+      }));
+
+      const budgetSnapData: BudgetSnapshot[] = (budgetSnaps ?? []).map((s: Record<string, unknown>) => ({
+        date: s.date as string,
+        campaign_id: s.campaign_id as string,
+        daily_budget: Number(s.daily_budget) || 0,
+      }));
+
+      const strategyInput: StrategyInput = {
+        adset_days: adsetDayData,
+        campaigns: Array.from(campaignInfoMap.values()),
+        budget_snapshots: budgetSnapData,
+        today: latestDate,
+      };
+
+      strategy = computeStrategyGuide(strategyInput);
+    }
+  } catch (err) {
+    console.error("[Morning Brief] Strategy engine error (non-fatal):", err);
+  }
+
   // Include pipeline settings in response so client can use data-driven thresholds
   const beRoasValues = [...beRoasMap.values()];
   const minBeRoas = beRoasValues.length > 0 ? Math.min(...beRoasValues) : null;
@@ -1529,6 +1627,7 @@ export async function GET(req: NextRequest) {
       ad_diagnostics: adDiagnostics.filter((d) => !isPausedProduct(d.adset_id)),
     },
     action_cards: actionCards.filter((c) => !isPausedProduct(c.adset_id)),
+    strategy,
   });
 }
 

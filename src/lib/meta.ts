@@ -494,6 +494,44 @@ export async function getAdInsightsDaily(
 }
 
 /**
+ * Fetch ad-set-level insights with daily breakdown (for strategy engine).
+ */
+export interface AdSetInsightDailyRow {
+  date_start: string;
+  date_stop: string;
+  adset_id: string;
+  adset_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  impressions: string;
+  clicks: string;
+  spend: string;
+  ctr: string;
+  cpc: string;
+  cpm: string;
+  frequency?: string;
+  actions?: Array<{ action_type: string; value: string }>;
+  action_values?: Array<{ action_type: string; value: string }>;
+}
+
+export async function getAdSetInsightsDaily(
+  since: string,
+  until: string
+): Promise<AdSetInsightDailyRow[]> {
+  const fields = [
+    "adset_id", "adset_name",
+    "campaign_id", "campaign_name",
+    "impressions", "clicks", "spend",
+    "ctr", "cpc", "cpm", "frequency",
+    "actions", "action_values",
+  ].join(",");
+  const timeRange = JSON.stringify({ since, until });
+  return metaJsonPaginated<AdSetInsightDailyRow>(
+    `/act_${getAdAccountId()}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=adset&time_increment=1&limit=200`
+  );
+}
+
+/**
  * Fetch ad-level insights for specific Meta ad IDs (batched, max 50 per request).
  */
 export async function getAdInsightsForIds(
