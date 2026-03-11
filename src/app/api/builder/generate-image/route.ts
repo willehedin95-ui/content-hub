@@ -1,113 +1,184 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { generateImage } from "@/lib/kie";
-import { OPENAI_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { CLAUDE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { calcClaudeCost } from "@/lib/pricing";
 import type { ProductImage } from "@/types";
 
 export const maxDuration = 300;
 
-function getOpenAI(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
-  return new OpenAI({ apiKey });
+/**
+ * Claude Vision structured extraction prompt — identical to the Assets image swiper.
+ * Extracts visual structure as JSON so Nano Banana can faithfully recreate it.
+ */
+function buildSystemPrompt(): string {
+  return `You are an expert visual analyst. Extract every visual detail from the provided image as structured JSON. This JSON will be passed directly to an image generation model, so be extremely precise and detailed.
+
+# CRITICAL: Camera Perspective & Human Actions
+
+The MOST IMPORTANT thing to get right is the camera perspective and what any people are doing. These are the #1 cause of bad generations. Ask yourself:
+
+- **Who is taking this photo?** Is it a first-person POV (photographer holding/showing something)? A selfie? A third-person shot? A tripod/studio shot?
+- **What are the hands/body ACTUALLY doing?** "Hand touching pillow" is NOT the same as "person holding pillow out in front of them over a bed, first-person POV". Be specific about the exact action and body position.
+- **Where is the camera relative to the scene?** Eye-level? Looking down at a surface? Looking up? Held at arm's length?
+
+Examples of BAD vs GOOD descriptions:
+- BAD: "Medium shot from above, bird's eye perspective looking down at bed surface"
+- GOOD: "First-person POV — person holding the pillow with one hand, arm extended forward over their bed, camera at chest height looking slightly down at the pillow and bed below"
+- BAD: "Person with hand on pillow"
+- GOOD: "Person's left hand gripping the side of the pillow, holding it up at arm's length in front of them — only the hand and forearm are visible, rest of body is behind camera"
+
+# Photo Quality & Naturalness
+
+Describe the ACTUAL quality level of the image — do NOT assume studio perfection:
+- Is it a casual phone photo with natural imperfections?
+- Slightly overexposed or underexposed?
+- Is the focus soft or slightly off?
+- Does it look like a professional shoot or a real person's photo?
+- Is the lighting natural/ambient or carefully set up?
+
+This matters because the generated image should match the same quality level — a casual UGC-style photo should NOT become a studio-perfect shot.
+
+# Structured Visual Extraction
+
+Analyze the image and extract ALL visual details into this exact JSON structure:
+
+\`\`\`json
+{
+  "scene": {
+    "setting": "Describe the environment/location",
+    "background": "Specific background elements, textures, wall colors with hex codes",
+    "lighting": "Light direction, quality (soft/hard/diffused), color temperature (warm/cool), shadow behavior. Also note if lighting looks natural/casual vs studio-controlled",
+    "atmosphere": "Overall environmental feel"
+  },
+  "composition": {
+    "camera_perspective": "CRITICAL — exactly describe the camera position and who is taking the photo. e.g. 'First-person POV, camera held at chest height' or 'Third-person, eye-level tripod shot' or 'Overhead flat-lay from directly above'",
+    "layout": "How the frame is organized (centered, rule-of-thirds, split/diptych, diagonal, etc.)",
+    "framing": "Shot type (extreme close-up, close-up, medium, wide, etc.)",
+    "focal_point": "What draws the eye and where",
+    "negative_space": "How empty space is used",
+    "aspect_ratio": "MUST be one of: 1:1, 4:5, 5:4, 3:2, 2:3, 16:9, 9:16"
+  },
+  "subjects": [
+    {
+      "type": "person | product | prop | text | graphic",
+      "description": "Detailed visual description — age, clothing, expression, material, color with hex codes",
+      "position": "Where in the frame (center, top-left, bottom-third, etc.)",
+      "action": "CRITICAL — describe EXACTLY what they are doing with their body, hands, arms. Not just 'touching' but HOW they are interacting. e.g. 'holding pillow with right hand at arm's length, palm underneath, fingers gripping the side'",
+      "visibility": "What parts are visible? Full body, upper body, just hands, etc.",
+      "is_competitor_product": false
+    }
+  ],
+  "colors": {
+    "palette": ["#hex1", "#hex2", "...at least 5 dominant colors"],
+    "dominant_tone": "warm | cool | neutral",
+    "contrast": "high | medium | low",
+    "mood": "What the color palette communicates (e.g., 'Clean clinical whites with warm wood accents')"
+  },
+  "style": {
+    "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic | before-after",
+    "feel": "Describe the overall aesthetic in one sentence",
+    "texture": "clean | grainy | soft-focus | sharp | matte | glossy",
+    "photo_quality": "Describe the actual quality — e.g. 'casual phone photo, slightly soft focus, natural imperfections' or 'professional studio shot, tack-sharp, controlled lighting'"
+  }
+}
+\`\`\`
+
+# Rules
+
+- Use specific hex color codes wherever possible (background colors, product colors, clothing colors)
+- For subjects: mark exactly ONE subject as \`"is_competitor_product": true\` — the main product being advertised
+- **camera_perspective is the MOST important field** — get this wrong and the entire generation will look nothing like the original
+- **action descriptions must be specific and physical** — describe exact hand positions, grip, arm angles, body posture
+- Be precise about lighting direction (e.g., "soft light from upper-left, no harsh shadows")
+- Be precise about composition (e.g., "product occupies lower-right third, person upper-left")
+- Describe each subject in enough visual detail that an image generator could recreate it
+- Do NOT describe the competitor product's brand name — just its physical appearance
+- **NEVER include logos, brand tags, watermarks, or branded overlays** in the extraction — skip them entirely from the subjects list. The generated image must be clean with no branding.
+
+Return ONLY the JSON object. No markdown fences, no extra text.`;
 }
 
-function buildSystemPrompt(productName: string, productBrief: string, hasImage: boolean, forceProduct?: boolean): string {
-  if (!hasImage) {
-    // Text-only mode — no competitor image to analyze (e.g. replacing a video)
-    return `You are an expert visual designer who creates image generation prompts for ecommerce landing pages.
+/**
+ * Text-only mode prompt — when there's no competitor image, just surrounding text.
+ * Uses Claude to write a Nano Banana JSON prompt from scratch.
+ */
+function buildTextOnlySystemPrompt(productName: string, productBrief: string, forceProduct?: boolean): string {
+  return `You are an expert visual designer who creates structured image generation prompts for ecommerce landing pages.
 
 You will receive:
 1. The surrounding text from a landing page section (already rewritten for ${productName})
 2. Product information about ${productName}
 
-Your job is to write a Nano Banana Pro image generation prompt that creates an image for this page section.
+Your job is to write a structured JSON prompt that an image generation model can use directly.
 
 ## STEP 1: CONTENT FROM SURROUNDING TEXT
 
-Read the surrounding text carefully. This text has been rewritten for ${productName} — it tells you what this section of the page is about.
-
-Use the surrounding text as the PRIMARY guide for what the image should depict.
+Read the surrounding text carefully. This text tells you what this section of the page is about.
+Use it to understand the THEME — do NOT copy headlines or text into the image.
 
 ## STEP 2: PRODUCT KNOWLEDGE
 
 ${productBrief}
 
-## STEP 3: WRITE THE PROMPT
+## STEP 3: CREATE THE STRUCTURED PROMPT
 
-Create an image generation prompt that:
-- Depicts content relevant to ${productName} based on the surrounding text
-- Choose an appropriate visual style: lifestyle photo, product shot, infographic, testimonial card, etc.
-${forceProduct
-  ? `- MANDATORY: The ${productName} product MUST be clearly visible in the image. Show the physical product (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges) prominently — on a bed, held by a person, or as the focal point. The product should be unmistakably present.`
-  : `- IMPORTANT: Only include the physical product in the image when the surrounding text is specifically about the product itself (features, unboxing, close-up). For lifestyle, emotional, or benefit-focused sections (e.g. "wake up pain-free", "better sleep"), show the SCENE or FEELING — a person sleeping peacefully, a cozy bedroom, someone stretching happily — WITHOUT the pillow being the focal point. Variety is key.
-- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)`}
-- Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
-- NEVER mentions or visually references any competitor product
+Create a JSON prompt matching this structure:
 
-## OUTPUT FORMAT
-
-Return JSON with exactly these fields:
+\`\`\`json
 {
-  "visual_structure": "One sentence describing the visual style you chose and why",
-  "content_match": "One sentence describing what the image should show based on surrounding text",
-  "shows_product": true or false,
-  "prompt": "The full Nano Banana Pro image generation prompt"
-}`;
-  }
+  "scene": {
+    "setting": "Environment/location",
+    "background": "Background elements with hex colors",
+    "lighting": "Light direction and quality",
+    "atmosphere": "Overall feel"
+  },
+  "composition": {
+    "camera_perspective": "Camera position and angle",
+    "layout": "Frame organization",
+    "framing": "Shot type",
+    "focal_point": "What draws the eye",
+    "negative_space": "How empty space is used",
+    "aspect_ratio": "4:5"
+  },
+  "subjects": [
+    {
+      "type": "person | product | prop",
+      "description": "Detailed visual description",
+      "position": "Where in frame",
+      "action": "What they are doing",
+      "visibility": "What parts visible"
+    }
+  ],
+  "colors": {
+    "palette": ["#hex1", "#hex2", "..."],
+    "dominant_tone": "warm | cool | neutral",
+    "contrast": "high | medium | low",
+    "mood": "What the colors communicate"
+  },
+  "style": {
+    "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic",
+    "feel": "Overall aesthetic",
+    "texture": "clean | grainy | soft-focus | sharp",
+    "photo_quality": "Quality level description"
+  },
+  "task": "generate_image",
+  "instruction": "Generate instruction here"
+}
+\`\`\`
 
-  return `You are an expert visual designer who creates image generation prompts for ecommerce landing pages.
-
-You will receive:
-1. A competitor image from an advertorial landing page
-2. The surrounding text from the page (already rewritten for ${productName})
-3. Product information about ${productName}
-
-Your job is to write a Nano Banana Pro image generation prompt that creates a replacement image.
-
-## STEP 1: VISUAL STRUCTURE ANALYSIS
-
-Analyze the competitor image's visual structure ONLY:
-- Layout type: infographic with callouts, lifestyle photo, product shot, comparison chart, diagram, testimonial card, etc.
-- Composition: centered subject, split layout, grid of items, overlaid text boxes, etc.
-- Visual style: photography, illustration, flat design, realistic render, medical diagram
-- Color palette and mood
-- Text overlay positions and style (if any)
-
-## STEP 2: CONTENT FROM SURROUNDING TEXT
-
-Read the surrounding text carefully. This text has been rewritten for ${productName} — it tells you what this section of the page is about NOW, not what the competitor's image showed.
-
-Use the surrounding text as the PRIMARY guide for what the image should depict.
-
-## STEP 3: PRODUCT KNOWLEDGE
-
-${productBrief}
-
-## STEP 4: WRITE THE PROMPT
-
-Create an image generation prompt that:
-- Recreates the SAME visual structure/layout from Step 1 (if the original was an infographic with callouts, make an infographic with callouts; if lifestyle, make lifestyle)
-- Depicts content relevant to ${productName} based on the surrounding text
+Guidelines:
+- Choose a visual style appropriate for the section theme
 ${forceProduct
-  ? `- MANDATORY: The ${productName} product MUST be clearly visible in the image. Show the physical product (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges) prominently — on a bed, held by a person, or as the focal point. The product should be unmistakably present, regardless of what the competitor image shows.`
-  : `- IMPORTANT: Match the competitor image's approach to product visibility. If the competitor image shows their product prominently, show ${productName} prominently. If the competitor image shows a lifestyle scene, person, or emotional moment WITHOUT their product visible, do the SAME — show the scene/feeling without making ${productName} the focal point. Don't force the product into every image.
-- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)`}
-- Matches Scandinavian aesthetic: clean, natural, authentic — not overly polished or American stock-photo-like
-- NEVER mentions or visually references the competitor's product
+  ? `- MANDATORY: Include ${productName} as a prominent subject in the image`
+  : `- Only include the physical product when the section text is specifically about product features. For lifestyle/benefit sections, show the SCENE or FEELING instead`}
+- Match Scandinavian aesthetic: clean, natural, authentic
+- NEVER copy page text/headlines into the image — the image should ILLUSTRATE the theme, not repeat the words
+- Use specific hex color codes
 
-If the original image had text overlays, describe what text should appear but note "Include text overlay: [text]" — the image generator handles this.
-
-## OUTPUT FORMAT
-
-Return JSON with exactly these fields:
-{
-  "visual_structure": "One sentence describing the original image's layout/composition type",
-  "content_match": "One sentence describing what the replacement should show based on surrounding text",
-  "prompt": "The full Nano Banana Pro image generation prompt"
-}`;
+Return ONLY the JSON object. No markdown fences, no extra text.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -122,32 +193,27 @@ export async function POST(req: NextRequest) {
   };
 
   if (!productId) {
-    return NextResponse.json(
-      { error: "productId is required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "productId is required" }, { status: 400 });
   }
 
   if (!imageSrc && !surroundingText?.trim()) {
-    return NextResponse.json(
-      { error: "Either imageSrc or surroundingText is required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Either imageSrc or surroundingText is required" }, { status: 400 });
   }
 
   if (!isValidUUID(productId)) {
-    return NextResponse.json(
-      { error: "Invalid product ID" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid product ID" }, { status: 400 });
   }
 
-  const openai = getOpenAI();
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not set" }, { status: 500 });
+  }
+
   const db = createServerSupabase();
 
   // Load product data
   const [productResult, imagesResult, briefResult] = await Promise.all([
-    db.from("products").select("name, slug").eq("id", productId).single(),
+    db.from("products").select("name, slug, description").eq("id", productId).single(),
     db
       .from("product_images")
       .select("*")
@@ -167,6 +233,7 @@ export async function POST(req: NextRequest) {
   }
 
   const productName = productResult.data.name;
+  const productDescription = productResult.data.description || "premium ergonomic pillow";
   const productBrief =
     briefResult.data?.content ||
     `${productName} — an ergonomic cervical pillow designed for better sleep.`;
@@ -175,89 +242,150 @@ export async function POST(req: NextRequest) {
   );
 
   try {
-    // Helper: call GPT to get a Nano Banana prompt
-    async function getPromptFromGPT(useImage: boolean): Promise<{
-      visual_structure: string;
-      content_match: string;
-      prompt: string;
-    }> {
-      const userParts: Array<
-        | { type: "text"; text: string }
-        | { type: "image_url"; image_url: { url: string; detail: "high" | "low" } }
-      > = [];
-
-      let textContent = useImage
-        ? `Analyze this competitor image and create a replacement prompt for ${productName}.`
-        : `Create an image prompt for a landing page section about ${productName}.`;
-      if (surroundingText?.trim()) {
-        textContent += `\n\n**Surrounding text on the page (already rewritten for ${productName}):**\n${surroundingText.trim()}`;
-      }
-      userParts.push({ type: "text", text: textContent });
-      if (useImage && imageSrc) {
-        userParts.push({
-          type: "image_url",
-          image_url: { url: imageSrc, detail: "high" },
-        });
-      }
-
-      const resp = await openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        max_completion_tokens: 1000,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: buildSystemPrompt(productName, productBrief, useImage, forceProduct),
-          },
-          { role: "user", content: userParts },
-        ],
-      });
-
-      const content = resp.choices[0]?.message?.content;
-      if (!content) throw new Error("No response from AI");
-
-      const cleaned = content.replace(/^```json\s*\n?|\n?```$/g, "").trim();
-      const result = JSON.parse(cleaned);
-      if (!result.prompt) throw new Error("AI response missing prompt field");
-      return result;
-    }
-
+    const client = new Anthropic({ apiKey });
     const hasImage = !!imageSrc;
-    let parsed: { visual_structure: string; content_match: string; prompt: string };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let nanaBananaJson: Record<string, any>;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheCreation = 0;
+    let cacheRead = 0;
 
     if (hasImage) {
-      // Try with image first; if the source image is broken/CORS/404, fall back to text-only
-      try {
-        parsed = await getPromptFromGPT(true);
-      } catch (imgErr) {
-        console.warn(
-          "[Builder Generate Image] Image analysis failed, falling back to text-only:",
-          imgErr instanceof Error ? imgErr.message : imgErr
-        );
-        if (!surroundingText?.trim()) {
-          throw imgErr; // no text to fall back on
-        }
-        parsed = await getPromptFromGPT(false);
+      // ── IMAGE MODE: Use Claude Vision structured extraction (same as Assets image swiper) ──
+
+      const userParts: Anthropic.Messages.ContentBlockParam[] = [
+        {
+          type: "image" as const,
+          source: { type: "url" as const, url: imageSrc! },
+        },
+        {
+          type: "text" as const,
+          text: buildUserPrompt(surroundingText, forceProduct),
+        },
+      ];
+
+      const response = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 4000,
+        temperature: 0.7,
+        system: [
+          { type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } },
+        ],
+        messages: [{ role: "user", content: userParts }],
+      });
+
+      const rawContent =
+        response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+
+      if (!rawContent) throw new Error("No response from AI");
+
+      // Parse JSON (strip markdown fences if present)
+      const cleaned = rawContent
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      const extraction = JSON.parse(cleaned);
+
+      if (!extraction.scene && !extraction.composition) {
+        throw new Error("AI response missing required extraction fields");
       }
+
+      // Build Nano Banana JSON: swap competitor product with target product
+      nanaBananaJson = structuredClone(extraction);
+      if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
+        for (const subject of nanaBananaJson.subjects) {
+          if (subject.is_competitor_product && forceProduct) {
+            // User wants product visible — swap with target product
+            subject.description = `${productName} pillow — ${productDescription}`;
+            subject.type = "product";
+            delete subject.is_competitor_product;
+          } else if (subject.is_competitor_product && !forceProduct) {
+            // User doesn't want product forced — make it generic/contextual
+            subject.description = "Generic ergonomic wellness product, neutral/white color, no branding";
+            subject.type = "product";
+            delete subject.is_competitor_product;
+          }
+        }
+      }
+
+      // Add generation task + instruction
+      nanaBananaJson.task = "generate_image";
+      let instruction = forceProduct
+        ? `Recreate this visual style featuring ${productName}. The product must match the reference images provided.`
+        : `Recreate this visual style. Adapt it for ${productName} — the image should feel thematically relevant but do NOT include any text overlays or headlines from the page.`;
+      if (surroundingText?.trim()) {
+        instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
+      }
+      nanaBananaJson.instruction = instruction;
+
+      // Track usage
+      inputTokens = response.usage.input_tokens;
+      outputTokens = response.usage.output_tokens;
+      const usage = response.usage as unknown as Record<string, number>;
+      cacheCreation = usage.cache_creation_input_tokens ?? 0;
+      cacheRead = usage.cache_read_input_tokens ?? 0;
     } else {
-      parsed = await getPromptFromGPT(false);
+      // ── TEXT-ONLY MODE: No image to analyze, generate from surrounding text ──
+
+      const response = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 4000,
+        temperature: 0.7,
+        system: [
+          { type: "text", text: buildTextOnlySystemPrompt(productName, productBrief, forceProduct), cache_control: { type: "ephemeral" } },
+        ],
+        messages: [{
+          role: "user",
+          content: `Create an image for a landing page section about ${productName}.\n\n**Section text (for thematic context only — do NOT put this text in the image):**\n${surroundingText?.trim() || "General product section"}`,
+        }],
+      });
+
+      const rawContent =
+        response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+
+      if (!rawContent) throw new Error("No response from AI");
+
+      const cleaned = rawContent
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      nanaBananaJson = JSON.parse(cleaned);
+
+      // Ensure task field exists
+      if (!nanaBananaJson.task) {
+        nanaBananaJson.task = "generate_image";
+        nanaBananaJson.instruction = `Generate an image for ${productName}. Scandinavian aesthetic, clean and authentic.`;
+      }
+
+      inputTokens = response.usage.input_tokens;
+      outputTokens = response.usage.output_tokens;
+      const usage = response.usage as unknown as Record<string, number>;
+      cacheCreation = usage.cache_creation_input_tokens ?? 0;
+      cacheRead = usage.cache_read_input_tokens ?? 0;
     }
 
-    // Step 2: Generate image via Kie.ai
+    const nanaBananaPrompt = JSON.stringify(nanaBananaJson);
+
+    // Use detected aspect ratio from extraction, or fall back to provided/default
+    const validRatios = ["1:1", "4:5", "5:4", "3:2", "2:3", "3:4", "4:3", "16:9", "9:16"];
+    const extractedRatio = (nanaBananaJson.composition?.aspect_ratio ?? "").trim();
+    const finalRatio = validRatios.includes(extractedRatio) ? extractedRatio : (aspectRatio || "4:5");
+
+    // Generate image via Nano Banana — pass product hero images as references
     const { urls, costTimeMs } = await generateImage(
-      parsed.prompt,
+      nanaBananaPrompt,
       referenceImages,
-      aspectRatio || "4:5"
+      finalRatio
     );
 
     if (!urls?.length) throw new Error("No image generated");
 
-    // Step 3: Download and upload to Supabase
+    // Download and upload to Supabase
     const imageRes = await fetch(urls[0]);
     if (!imageRes.ok) {
-      throw new Error(
-        `Failed to download generated image: ${imageRes.status}`
-      );
+      throw new Error(`Failed to download generated image: ${imageRes.status}`);
     }
     const buffer = Buffer.from(await imageRes.arrayBuffer());
 
@@ -276,12 +404,13 @@ export async function POST(req: NextRequest) {
       .getPublicUrl(filePath);
 
     // Log usage
+    const claudeCost = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
     await db.from("usage_logs").insert({
       type: "builder_image_generation",
-      model: "nano-banana-pro",
-      input_tokens: 0,
-      output_tokens: 0,
-      cost_usd: 0.12,
+      model: CLAUDE_MODEL,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cost_usd: claudeCost,
       metadata: {
         source: "builder",
         original_src: imageSrc || "text-only",
@@ -290,13 +419,14 @@ export async function POST(req: NextRequest) {
         reference_count: referenceImages.length,
         page_id: pageId || null,
         product_id: productId,
+        force_product: !!forceProduct,
       },
     });
 
     return NextResponse.json({
       imageUrl: urlData.publicUrl,
-      prompt: parsed.prompt,
-      analysis: `${parsed.visual_structure}. ${parsed.content_match}`,
+      prompt: nanaBananaPrompt,
+      analysis: `${nanaBananaJson.style?.feel || "Image analyzed"}. ${nanaBananaJson.scene?.atmosphere || ""}`,
     });
   } catch (err) {
     const message =
@@ -304,4 +434,33 @@ export async function POST(req: NextRequest) {
     console.error("[Builder Generate Image Error]", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/**
+ * Build the user prompt for Claude Vision analysis.
+ * Surrounding text is passed as thematic context only — never to be reproduced in the image.
+ */
+function buildUserPrompt(surroundingText?: string, forceProduct?: boolean): string {
+  let prompt = "Extract every visual detail from this image as structured JSON.";
+
+  if (surroundingText?.trim()) {
+    prompt += `\n\n**Thematic context** (this is the page text near this image — use it ONLY to understand the theme, do NOT include any of this text in the image or extraction):\n${surroundingText.trim()}`;
+  }
+
+  if (forceProduct) {
+    prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to identify the competitor product in the extraction.`;
+  }
+
+  return prompt;
+}
+
+/**
+ * Extract a short thematic summary from surrounding text.
+ * Keeps it brief so it doesn't overwhelm the instruction.
+ */
+function summarizeTheme(text: string): string {
+  // Take first ~100 chars, strip to last complete word
+  const trimmed = text.trim().slice(0, 150);
+  const lastSpace = trimmed.lastIndexOf(" ");
+  return lastSpace > 50 ? trimmed.slice(0, lastSpace) + "..." : trimmed;
 }
