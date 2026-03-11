@@ -180,9 +180,13 @@ export async function POST(req: NextRequest) {
       }
       // Add generation task instruction at the top level
       nanaBananaJson.task = "generate_image";
-      nanaBananaJson.instruction = product
+      let instruction = product
         ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.`
         : "Recreate this visual style with the described subjects and environment.";
+      if (notes) {
+        instruction += ` Additional instructions: ${notes}`;
+      }
+      nanaBananaJson.instruction = instruction;
 
       const nanaBananaPrompt = JSON.stringify(nanaBananaJson);
 
@@ -328,6 +332,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 - Be precise about composition (e.g., "product occupies lower-right third, person upper-left")
 - Describe each subject in enough visual detail that an image generator could recreate it
 - Do NOT describe the competitor product's brand name — just its physical appearance
+- If the user provides additional notes/instructions, APPLY them to the extraction. For example: "change 60 days to 100 days" → modify the text subject's description to say "100 days". "Remove the badge" → omit that subject entirely. "Make the background blue" → update the background and color palette accordingly.
 
 Return ONLY the JSON object. No markdown fences, no extra text.`;
 }
