@@ -22,6 +22,7 @@ import {
   Type,
   X,
 } from "lucide-react";
+import { deriveCopyGrade, gradeConfig } from "@/lib/quality-grades";
 import {
   Language,
   LANGUAGES,
@@ -84,16 +85,12 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function QualityBadge({ score }: { score: number }) {
-  const color =
-    score >= 90
-      ? "bg-emerald-50 text-emerald-700"
-      : score >= 70
-      ? "bg-amber-50 text-amber-700"
-      : "bg-red-50 text-red-700";
+function QualityBadge({ analysis }: { analysis: { fluency_issues?: string[]; grammar_issues?: string[]; context_errors?: string[] } }) {
+  const grade = deriveCopyGrade(analysis);
+  const cfg = gradeConfig(grade);
   return (
-    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${color}`}>
-      {score}
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>
+      {cfg.label}
     </span>
   );
 }
@@ -1403,8 +1400,8 @@ export default function VideoJobDetail({ initialJob }: Props) {
                             )}
                           </span>
                           {ct?.status === "completed" &&
-                            ct.quality_score != null && (
-                              <QualityBadge score={ct.quality_score} />
+                            ct.quality_analysis && (
+                              <QualityBadge analysis={ct.quality_analysis} />
                             )}
                           {ct?.status === "translating" && (
                             <span className="flex items-center gap-1 text-xs text-indigo-600">

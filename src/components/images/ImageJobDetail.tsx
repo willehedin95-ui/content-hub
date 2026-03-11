@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
+import { deriveImageGrade } from "@/lib/quality-grades";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
@@ -30,7 +31,6 @@ import SmartIterateModal from "./SmartIterateModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 const DEFAULT_MAX_VERSIONS = 5;
-const DEFAULT_QUALITY_THRESHOLD = 80;
 
 interface Props {
   initialJob: ImageJob;
@@ -883,7 +883,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   async function processOne(translation: ImageTranslation) {
     const settings = getSettings();
     const qualityEnabled = settings.static_ads_quality_enabled !== false && !settings.static_ads_economy_mode;
-    const threshold = settings.static_ads_quality_threshold ?? DEFAULT_QUALITY_THRESHOLD;
 
     let corrected_text: string | undefined;
     let visual_instructions: string | undefined;
@@ -921,7 +920,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         const analysis: QualityAnalysis = await analyzeRes.json();
 
         // Check quality — if good enough, stop
-        if (analysis.quality_score >= threshold) break;
+        if (deriveImageGrade(analysis) !== "needs_fixes") break;
 
         // Build corrective prompt for retry
         const corrections: string[] = [];

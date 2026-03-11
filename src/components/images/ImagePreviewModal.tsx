@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, RotateCcw, ChevronLeft, ChevronRight, Columns2, ZoomIn, ZoomOut, Maximize2, Loader2 } from "lucide-react";
 import { SourceImage, Version, LANGUAGES } from "@/types";
+import { deriveImageGrade, gradeConfig } from "@/lib/quality-grades";
 import QualityDetails from "./QualityDetails";
 
 interface Props {
@@ -272,12 +273,9 @@ export default function ImagePreviewModal({
                     }`}
                   >
                     v{v.version_number}
-                    {v.quality_score != null && (
-                      <span className={`ml-1 ${
-                        v.quality_score >= 80 ? "text-emerald-600" :
-                        v.quality_score >= 60 ? "text-yellow-600" : "text-red-600"
-                      }`}>
-                        {Math.round(v.quality_score)}
+                    {v.quality_analysis && (
+                      <span className={`ml-1 ${gradeConfig(deriveImageGrade(v.quality_analysis)).color}`}>
+                        {gradeConfig(deriveImageGrade(v.quality_analysis)).label}
                       </span>
                     )}
                   </button>

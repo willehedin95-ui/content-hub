@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { ImageJob, Language, LANGUAGES, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import type { CopyBankEntry, ProductSegment } from "@/types";
+import { deriveCopyGrade, gradeConfig } from "@/lib/quality-grades";
 import CopyBankPicker from "./CopyBankPicker";
 import LandingPageModal from "./LandingPageModal";
 
@@ -21,16 +22,12 @@ import LandingPageModal from "./LandingPageModal";
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function QualityBadge({ score }: { score: number }) {
-  const color =
-    score >= 90
-      ? "bg-emerald-50 text-emerald-700"
-      : score >= 70
-      ? "bg-amber-50 text-amber-700"
-      : "bg-red-50 text-red-700";
+function QualityBadge({ analysis }: { analysis: { fluency_issues?: string[]; grammar_issues?: string[]; context_errors?: string[] } }) {
+  const grade = deriveCopyGrade(analysis);
+  const cfg = gradeConfig(grade);
   return (
-    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${color}`}>
-      {score}
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>
+      {cfg.label}
     </span>
   );
 }
@@ -377,8 +374,8 @@ export default function ConceptAdCopyStep({
                     <div className="flex items-center gap-2">
                       <span className="text-base" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                       <span className="text-sm font-medium text-gray-700">{langInfo?.label}</span>
-                      {ct?.status === "completed" && ct.quality_score != null && (
-                        <QualityBadge score={ct.quality_score} />
+                      {ct?.status === "completed" && ct.quality_analysis && (
+                        <QualityBadge analysis={ct.quality_analysis} />
                       )}
                       {ct?.status === "translating" && (
                         <span className="flex items-center gap-1 text-xs text-indigo-600">
