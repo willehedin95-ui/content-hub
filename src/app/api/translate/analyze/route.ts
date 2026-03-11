@@ -4,6 +4,7 @@ import { extractReadableText } from "@/lib/html-parser";
 import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { LANGUAGES } from "@/types";
+import { derivePageGrade, gradeToNumeric } from "@/lib/quality-grades";
 import OpenAI from "openai";
 
 export const maxDuration = 60;
@@ -84,7 +85,6 @@ PERSON NAMES — character names should be KEPT EXACTLY as they appear in the or
 
 Respond with JSON:
 {
-  "quality_score": <0-100>,
   "fluency_issues": ["<short description of issue>", ...],
   "grammar_issues": ["<short description of issue>", ...],
   "context_errors": ["<short description of issue>", ...],
@@ -107,12 +107,6 @@ CRITICAL — "suggested_corrections" is the most important field:
 - Each correction applies to ALL occurrences on the page automatically.
 
 name_localization: Only include person names that were INCORRECTLY CHANGED from the English original. Do NOT include names that were kept the same. Do NOT include brand names.
-
-Scoring guide:
-- 90-100: Reads naturally as native ${langLabel} content. No grammar errors. Character names match the original.
-- 75-89: Good quality with minor issues. A few awkward phrases but generally fluent.
-- 50-74: Noticeable problems. Multiple unnatural phrases, grammar errors, or changed character names.
-- 0-49: Poor quality. Reads like a machine translation. Significant issues.
 
 Be strict about: grammar errors, unnatural phrasing, literal calques from English, names that were changed from the original.
 Do NOT penalize for: protected brand names listed above, technical terms (CPAP, memory foam), product feature names, character names that match the English source.
@@ -142,9 +136,7 @@ Applied corrections:
 ${corrList}
 
 Previously identified issues (now resolved):
-${issueList}
-
-SCORING: The previous score was ${previous_context.previous_score}. Since corrections were applied to improve quality, your score MUST be equal to or higher than ${previous_context.previous_score} — unless you find a genuinely new critical issue that is completely unrelated to the corrections above.`;
+${issueList}`;
     }
 
     const response = await openai.chat.completions.create({
@@ -174,13 +166,9 @@ SCORING: The previous score was ${previous_context.previous_score}. Since correc
       throw new Error("Quality analysis returned invalid JSON");
     }
 
-    // Enforce score floor after fix — corrections can only improve quality
-    if (previous_context?.previous_score != null && analysis.quality_score < previous_context.previous_score) {
-      console.log(
-        `[translate/analyze] Score floor: GPT returned ${analysis.quality_score}, previous was ${previous_context.previous_score} — using floor`
-      );
-      analysis.quality_score = previous_context.previous_score;
-    }
+    // Derive grade deterministically from issues, map to numeric for DB compat
+    const grade = derivePageGrade(analysis);
+    analysis.quality_score = gradeToNumeric(grade);
 
     const inputTokens = response.usage?.prompt_tokens ?? 0;
     const outputTokens = response.usage?.completion_tokens ?? 0;

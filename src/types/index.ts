@@ -60,7 +60,7 @@ export interface Translation {
 }
 
 export interface PageQualityAnalysis {
-  quality_score: number;
+  quality_score?: number;
   fluency_issues: string[];
   grammar_issues: string[];
   context_errors: string[];

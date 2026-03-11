@@ -6,6 +6,7 @@ import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL } from "@/lib/constants";
 import OpenAI from "openai";
 import { isValidUUID } from "@/lib/validation";
+import { deriveCopyGrade, gradeToNumeric } from "@/lib/quality-grades";
 
 export const maxDuration = 120;
 
@@ -134,14 +135,13 @@ No other text.`,
 
 Respond with JSON:
 {
-  "quality_score": <0-100>,
   "fluency_issues": [<list of unnatural or awkward phrasings>],
   "grammar_issues": [<list of grammar problems>],
   "context_errors": [<list of meaning changes, mistranslations, or cultural issues>],
   "overall_assessment": "<1-2 sentence summary>"
 }
 
-Be strict: any grammar error, meaning change, or awkward phrasing should reduce the score. Pay special attention to:
+List ALL issues you find. Pay special attention to:
 - Names being properly localized to ${langLabel} equivalents
 - Cultural references adapted for the target market
 - Ad copy maintaining its persuasive power
@@ -176,6 +176,10 @@ IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
         cost_usd: calcOpenAICost(aInput, aOutput),
         metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
       });
+
+      // Derive grade deterministically from issues
+      const grade = deriveCopyGrade(analysis);
+      analysis.quality_score = gradeToNumeric(grade);
 
       results[lang] = {
         primary_texts: parsed.primary_texts,

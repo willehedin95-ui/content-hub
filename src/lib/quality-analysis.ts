@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { QualityAnalysis } from "@/types";
 import { OPENAI_MODEL } from "./constants";
+import { deriveImageGrade, gradeToNumeric } from "@/lib/quality-grades";
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -27,9 +28,9 @@ export async function analyzeTranslationQuality(
       {
         role: "system",
         content: `Compare an English ad image with its ${targetLanguage} translation. Return JSON:
-{"quality_score":<0-100>,"spelling_errors":[],"grammar_issues":[],"missing_text":[],"overall_assessment":"<1-2 sentences>","extracted_text":"<all visible text in translated image>"}
+{"spelling_errors":[],"grammar_issues":[],"missing_text":[],"overall_assessment":"<1-2 sentences>","extracted_text":"<all visible text in translated image>"}
 
-Scoring: 90-100 perfect, 70-89 minor issues, 50-69 noticeable problems, 0-49 major errors. Be strict — one misspelled word reduces score.
+List ALL spelling errors, grammar issues, and missing text. Be thorough — report every issue you find.
 IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
       },
       {
@@ -66,13 +67,17 @@ IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
 
   // Ensure all fields exist with defaults
   const analysis: QualityAnalysis = {
-    quality_score: parsed.quality_score ?? 0,
+    quality_score: 0, // will be set from grade below
     spelling_errors: parsed.spelling_errors ?? [],
     grammar_issues: parsed.grammar_issues ?? [],
     missing_text: parsed.missing_text ?? [],
     overall_assessment: parsed.overall_assessment ?? "",
     extracted_text: parsed.extracted_text ?? "",
   };
+
+  // Derive grade deterministically from issues
+  const grade = deriveImageGrade(analysis);
+  analysis.quality_score = gradeToNumeric(grade);
 
   return {
     analysis,
