@@ -19,6 +19,7 @@ import {
   MarketProductUrl,
   PageQualityAnalysis,
 } from "@/types";
+import { derivePageGrade, QualityGrade } from "@/lib/quality-grades";
 import { BLOCKS_MAP } from "./block-definitions";
 
 // ---------------------------------------------------------------------------
@@ -130,7 +131,7 @@ export interface BuilderContextValue {
 
   // --- Quality ---
   fixingQuality: boolean;
-  qualityScore: number | null;
+  qualityGrade: QualityGrade | null;
   qualityAnalysis: PageQualityAnalysis | null;
   analyzing: boolean;
   showQualityDetails: boolean;
@@ -416,8 +417,8 @@ export function BuilderProvider({
   const [redoCount, setRedoCount] = useState(0);
 
   // Quality analysis
-  const [qualityScore, setQualityScore] = useState<number | null>(
-    translation.quality_score ?? null
+  const [qualityGrade, setQualityGrade] = useState<QualityGrade | null>(
+    translation.quality_analysis ? derivePageGrade(translation.quality_analysis) : null
   );
   const [qualityAnalysis, setQualityAnalysis] =
     useState<PageQualityAnalysis | null>(translation.quality_analysis ?? null);
@@ -1408,7 +1409,7 @@ export function BuilderProvider({
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        setQualityScore(data.quality_score ?? null);
+        setQualityGrade(data ? derivePageGrade(data) : null);
         setQualityAnalysis(data);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -1445,7 +1446,7 @@ export function BuilderProvider({
       router.refresh();
 
       setFixingQuality(false);
-      setQualityScore(null);
+      setQualityGrade(null);
       setQualityAnalysis(null);
       await runQualityAnalysis({
         applied_corrections: fixData.applied_corrections ?? [],
@@ -1464,7 +1465,7 @@ export function BuilderProvider({
     setConfirmAction(null);
     setRetranslating(true);
     setSaveError("");
-    setQualityScore(null);
+    setQualityGrade(null);
     setQualityAnalysis(null);
 
     try {
@@ -2086,7 +2087,7 @@ export function BuilderProvider({
 
     // Quality
     fixingQuality,
-    qualityScore,
+    qualityGrade,
     qualityAnalysis,
     analyzing,
     showQualityDetails,

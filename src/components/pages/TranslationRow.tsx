@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Translation, PageQualityAnalysis, LANGUAGES, TranslationStatus, PageImageSelection } from "@/types";
+import { derivePageGrade, gradeConfig, QualityGrade } from "@/lib/quality-grades";
 import StatusDot from "@/components/dashboard/StatusDot";
 import PublishModal from "@/components/pages/PublishModal";
 import ImageSelectionModal from "@/components/pages/ImageSelectionModal";
@@ -37,18 +38,6 @@ export const STATUS_LABELS: Record<TranslationStatus | "none", string> = {
   published: "Published",
   error: "Error",
 };
-
-function scoreColor(score: number): string {
-  if (score >= 85) return "text-emerald-600";
-  if (score >= 60) return "text-yellow-600";
-  return "text-red-600";
-}
-
-function scoreBg(score: number): string {
-  if (score >= 85) return "bg-emerald-50 border-emerald-200";
-  if (score >= 60) return "bg-yellow-50 border-yellow-200";
-  return "bg-red-50 border-red-200";
-}
 
 function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -89,9 +78,9 @@ export default function TranslationRow({
 
   // Quality states
   const [quality, setQuality] = useState<{
-    score: number | null;
+    grade: QualityGrade | null;
     analysis: PageQualityAnalysis | null;
-  }>({ score: translation?.quality_score ?? null, analysis: translation?.quality_analysis ?? null });
+  }>({ grade: translation?.quality_analysis ? derivePageGrade(translation.quality_analysis) : null, analysis: translation?.quality_analysis ?? null });
 
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -129,14 +118,13 @@ export default function TranslationRow({
 
   // Sync from props when translation changes
   useEffect(() => {
-    if (translation?.quality_score != null || translation?.quality_analysis) {
-      setQuality(prev => ({
-        ...prev,
-        ...(translation?.quality_score != null ? { score: translation.quality_score } : {}),
-        ...(translation?.quality_analysis ? { analysis: translation.quality_analysis } : {}),
-      }));
+    if (translation?.quality_analysis) {
+      setQuality({
+        grade: derivePageGrade(translation.quality_analysis),
+        analysis: translation.quality_analysis,
+      });
     }
-  }, [translation?.quality_score, translation?.quality_analysis]);
+  }, [translation?.quality_analysis]);
 
   // Register translate function for "Translate All" callback ref pattern
   useEffect(() => {
@@ -297,7 +285,7 @@ export default function TranslationRow({
   }
 
   async function translateWithQualityLoop() {
-    setQuality({ score: null, analysis: null });
+    setQuality({ grade: null, analysis: null });
     setShowDetails(false);
     setImageProgress(null);
 
@@ -354,11 +342,11 @@ export default function TranslationRow({
     }
 
     let currentAnalysis: PageQualityAnalysis = analysisResult;
-    setQuality({ score: currentAnalysis.quality_score, analysis: currentAnalysis });
+    setQuality({ grade: derivePageGrade(currentAnalysis), analysis: currentAnalysis });
 
     // Step 3: Auto-fix loop — apply corrections up to MAX_FIX_ROUNDS times
     for (let fixRound = 0; fixRound < MAX_FIX_ROUNDS; fixRound++) {
-      if (currentAnalysis.quality_score >= settings.threshold) {
+      if (derivePageGrade(currentAnalysis) !== "needs_fixes") {
         break; // Quality is good enough
       }
 
@@ -397,7 +385,7 @@ export default function TranslationRow({
       if (!newAnalysis) break;
 
       currentAnalysis = newAnalysis;
-      setQuality({ score: newAnalysis.quality_score, analysis: newAnalysis });
+      setQuality({ grade: derivePageGrade(newAnalysis), analysis: newAnalysis });
     }
 
     router.refresh();
@@ -491,7 +479,7 @@ export default function TranslationRow({
         setProgress(prev => ({ ...prev, progressLabel: "Analyzing for corrections\u2026" }));
         const freshAnalysis = await doAnalyze(translation.id);
         if (freshAnalysis) {
-          setQuality({ score: freshAnalysis.quality_score, analysis: freshAnalysis });
+          setQuality({ grade: derivePageGrade(freshAnalysis), analysis: freshAnalysis });
         }
         if (!freshAnalysis?.suggested_corrections?.length) {
           setProgress(prev => ({ ...prev, error: "Analysis found no actionable corrections" }));
@@ -520,7 +508,7 @@ export default function TranslationRow({
       setProgress(prev => ({ ...prev, progressLabel: "Re-analyzing quality\u2026" }));
       const analysis = await doAnalyze(translation.id, {
         applied_corrections: fixData.applied_corrections ?? [],
-        previous_score: fixData.previous_score ?? quality.score ?? 0,
+        previous_score: fixData.previous_score ?? 0,
         previous_issues: fixData.previous_issues ?? {
           fluency_issues: [],
           grammar_issues: [],
@@ -528,7 +516,7 @@ export default function TranslationRow({
         },
       });
       if (analysis) {
-        setQuality({ score: analysis.quality_score, analysis: analysis });
+        setQuality({ grade: derivePageGrade(analysis), analysis: analysis });
       }
 
       router.refresh();
@@ -764,28 +752,26 @@ export default function TranslationRow({
           )}
         </div>
 
-        {/* Quality score badge */}
-        {quality.score !== null && !isProcessing && (
+        {/* Quality grade badge */}
+        {quality.grade !== null && !isProcessing && (
           <div className="flex items-center gap-1.5 shrink-0">
             {progress.elapsedSeconds > 0 && (
               <span className="text-xs text-gray-400">{formatElapsed(progress.elapsedSeconds)}</span>
             )}
             <button
               onClick={() => setShowDetails((d) => !d)}
-              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${scoreBg(quality.score)}`}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${gradeConfig(quality.grade).bg} ${gradeConfig(quality.grade).color}`}
             >
-              {quality.score >= settings.threshold ? (
-                <CheckCircle2 className={`w-3.5 h-3.5 ${scoreColor(quality.score)}`} />
-              ) : null}
-              <span className={scoreColor(quality.score)}>{quality.score}%</span>
-              <span className="text-gray-400 font-normal">/ {settings.threshold}</span>
+              {quality.grade === "great" && <CheckCircle2 className="w-3.5 h-3.5" />}
+              {quality.grade === "needs_fixes" && <AlertCircle className="w-3.5 h-3.5" />}
+              <span>{gradeConfig(quality.grade).label}</span>
               {showDetails ? (
                 <ChevronUp className="w-3 h-3 text-gray-400" />
               ) : (
                 <ChevronDown className="w-3 h-3 text-gray-400" />
               )}
             </button>
-            {hasSuggestedCorrections && (
+            {quality.grade === "needs_fixes" && hasSuggestedCorrections && (
               <button
                 onClick={() => { handleFixQuality(); }}
                 disabled={progress.loading !== null}

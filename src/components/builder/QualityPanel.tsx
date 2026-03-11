@@ -2,10 +2,11 @@
 
 import { useBuilder } from "./BuilderContext";
 import { Loader2, RefreshCw, X, CheckCircle2, AlertTriangle } from "lucide-react";
+import { gradeConfig } from "@/lib/quality-grades";
 
 export default function QualityPanel() {
   const {
-    qualityScore,
+    qualityGrade,
     qualityAnalysis,
     showQualityDetails,
     setShowQualityDetails,
@@ -22,19 +23,7 @@ export default function QualityPanel() {
 
   if (!showQualityDetails || !qualityAnalysis) return null;
 
-  const scoreColor =
-    (qualityScore ?? 0) >= 85
-      ? "text-emerald-700"
-      : (qualityScore ?? 0) >= 60
-        ? "text-amber-700"
-        : "text-red-700";
-
-  const scoreBg =
-    (qualityScore ?? 0) >= 85
-      ? "bg-emerald-50"
-      : (qualityScore ?? 0) >= 60
-        ? "bg-amber-50"
-        : "bg-red-50";
+  const gc = qualityGrade ? gradeConfig(qualityGrade) : null;
 
   function applyCorrection(find: string, replace: string) {
     const doc = iframeRef.current?.contentDocument;
@@ -71,9 +60,9 @@ export default function QualityPanel() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span
-            className={`text-sm font-bold px-2 py-0.5 rounded-full ${scoreBg} ${scoreColor}`}
+            className={`text-sm font-bold px-2 py-0.5 rounded-full ${gc?.bg} ${gc?.color}`}
           >
-            {qualityScore}
+            {gc?.label}
           </span>
           <span className="text-xs font-medium text-gray-700">
             Quality Analysis

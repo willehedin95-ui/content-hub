@@ -12,6 +12,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useBuilder } from "./BuilderContext";
+import { gradeConfig } from "@/lib/quality-grades";
 
 const VIEWPORT_PRESETS = [
   { label: "Desktop", device: "desktop" as const, width: null, height: null, icon: Monitor },
@@ -32,7 +33,7 @@ export default function BuilderTopBar() {
     redoCount,
     handleUndo,
     handleRedo,
-    qualityScore,
+    qualityGrade,
     showQualityDetails,
     setShowQualityDetails,
     saving,
@@ -46,14 +47,7 @@ export default function BuilderTopBar() {
     isDirty,
   } = useBuilder();
 
-  const qualityColor =
-    qualityScore !== null
-      ? qualityScore >= 85
-        ? "bg-green-100 text-green-700"
-        : qualityScore >= 60
-          ? "bg-yellow-100 text-yellow-700"
-          : "bg-red-100 text-red-700"
-      : "";
+  const gc = qualityGrade ? gradeConfig(qualityGrade) : null;
 
   return (
     <div className="h-12 px-4 border-b border-gray-200 bg-white flex items-center shrink-0">
@@ -126,13 +120,13 @@ export default function BuilderTopBar() {
         </div>
 
         {/* Quality badge */}
-        {qualityScore !== null && (
+        {gc && (
           <button
             onClick={() => setShowQualityDetails(!showQualityDetails)}
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${qualityColor} transition-colors`}
-            title="Quality score"
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${gc.bg} ${gc.color} transition-colors`}
+            title="Translation quality"
           >
-            {qualityScore}
+            {gc.label}
           </button>
         )}
 

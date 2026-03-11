@@ -2,10 +2,11 @@
 
 import { ZoomIn, ZoomOut, Keyboard } from "lucide-react";
 import { useBuilder } from "./BuilderContext";
+import { gradeConfig } from "@/lib/quality-grades";
 
 export default function BuilderStatusBar() {
   const {
-    qualityScore,
+    qualityGrade,
     autoSaveStatus,
     isDirty,
     zoom,
@@ -14,14 +15,7 @@ export default function BuilderStatusBar() {
     setShowShortcutsModal,
   } = useBuilder();
 
-  const qualityColor =
-    qualityScore !== null
-      ? qualityScore >= 85
-        ? "bg-green-100 text-green-700"
-        : qualityScore >= 60
-          ? "bg-yellow-100 text-yellow-700"
-          : "bg-red-100 text-red-700"
-      : "";
+  const gc = qualityGrade ? gradeConfig(qualityGrade) : null;
 
   const autosaveText =
     autoSaveStatus === "saving"
@@ -42,12 +36,12 @@ export default function BuilderStatusBar() {
 
   return (
     <div className="h-8 px-4 border-t border-gray-200 bg-white flex items-center gap-4 text-xs text-gray-500 shrink-0">
-      {/* Quality score badge */}
-      {qualityScore !== null && (
+      {/* Quality grade badge */}
+      {gc && (
         <span
-          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${qualityColor}`}
+          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${gc.bg} ${gc.color}`}
         >
-          Q: {qualityScore}
+          {gc.label}
         </span>
       )}
 
