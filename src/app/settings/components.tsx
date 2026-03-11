@@ -13,9 +13,7 @@ import { Language, AspectRatio } from "@/types";
 
 export interface Settings {
   pages_quality_enabled: boolean;
-  pages_quality_threshold: number;
   static_ads_quality_enabled: boolean;
-  static_ads_quality_threshold: number;
   static_ads_economy_mode: boolean;
   static_ads_default_languages: Language[];
   static_ads_default_ratios: AspectRatio[];

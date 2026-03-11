@@ -36,9 +36,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("pages");
   const [settings, setSettings] = useState<Settings>({
     pages_quality_enabled: true,
-    pages_quality_threshold: 85,
     static_ads_quality_enabled: true,
-    static_ads_quality_threshold: 80,
     static_ads_economy_mode: false,
     static_ads_default_languages: ["sv", "da", "no", "de"],
     static_ads_default_ratios: ["4:5", "9:16"],

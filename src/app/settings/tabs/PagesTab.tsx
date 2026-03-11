@@ -3,7 +3,6 @@
 import {
   SettingsCard,
   Row,
-  RowDivider,
   SaveButton,
   ToggleSwitch,
 } from "../components";
@@ -22,26 +21,6 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
               checked={settings.pages_quality_enabled}
               onChange={(v) => setSettings((s) => ({ ...s, pages_quality_enabled: v }))}
             />
-          }
-        />
-        <RowDivider />
-        <Row
-          label="Auto-regenerate threshold"
-          description="Pages scoring below this will auto-regenerate (max 3 times)"
-          action={
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={settings.pages_quality_threshold}
-                onChange={(e) => setSettings((s) => ({ ...s, pages_quality_threshold: Number(e.target.value) }))}
-                className="w-20 accent-indigo-600"
-              />
-              <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
-                {settings.pages_quality_threshold}
-              </span>
-            </div>
           }
         />
       </SettingsCard>

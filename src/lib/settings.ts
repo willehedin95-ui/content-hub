@@ -4,7 +4,6 @@ export interface Settings {
   // Static ads
   static_ads_quality_enabled?: boolean;
   static_ads_economy_mode?: boolean;
-  static_ads_quality_threshold?: number;
   static_ads_default_languages?: Language[];
   static_ads_default_ratios?: AspectRatio[];
   static_ads_max_retries?: number;
@@ -13,7 +12,6 @@ export interface Settings {
   static_ads_notification_email?: string;
   // Pages
   pages_quality_enabled?: boolean;
-  pages_quality_threshold?: number;
   // Meta
   meta_default_daily_budget?: number;
   meta_default_objective?: string;
@@ -44,10 +42,9 @@ export function getDefaultLanguages(): Language[] {
   return ["sv", "da", "no", "de"];
 }
 
-export function getPageQualitySettings(): { enabled: boolean; threshold: number } {
+export function getPageQualitySettings(): { enabled: boolean } {
   const settings = getSettings();
   return {
     enabled: settings.pages_quality_enabled ?? true,
-    threshold: settings.pages_quality_threshold ?? 85,
   };
 }

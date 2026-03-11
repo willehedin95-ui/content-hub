@@ -28,26 +28,6 @@ export default function StaticAdsTab({ settings, setSettings, saved, handleSave 
         />
         <RowDivider />
         <Row
-          label="Auto-regenerate threshold"
-          description="Images scoring below this will auto-regenerate (max 5 times)"
-          action={
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={settings.static_ads_quality_threshold}
-                onChange={(e) => setSettings((s) => ({ ...s, static_ads_quality_threshold: Number(e.target.value) }))}
-                className="w-20 accent-indigo-600"
-              />
-              <span className="text-sm font-medium text-gray-700 w-7 text-right tabular-nums">
-                {settings.static_ads_quality_threshold}
-              </span>
-            </div>
-          }
-        />
-        <RowDivider />
-        <Row
           label="Economy mode"
           description="Skip quality analysis to save costs"
           action={
