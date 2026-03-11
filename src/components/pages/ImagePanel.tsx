@@ -78,6 +78,7 @@ export default function ImagePanel({
   const [smartGenerating, setSmartGenerating] = useState(false);
   const [smartPhase, setSmartPhase] = useState<"analyzing" | "generating">("analyzing");
   const [forceProduct, setForceProduct] = useState(false);
+  const [generationHint, setGenerationHint] = useState("");
   const [pickingFromBank, setPickingFromBank] = useState(false);
   const [pickingFromAssets, setPickingFromAssets] = useState(false);
   const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
@@ -303,6 +304,7 @@ export default function ImagePanel({
           productId: productData.id,
           aspectRatio: computeAspectRatio(imageToProcess.width, imageToProcess.height),
           forceProduct,
+          hint: generationHint.trim() || undefined,
         }),
       });
 
@@ -542,6 +544,15 @@ export default function ImagePanel({
               Include {pageProduct === "happysleep" ? "HappySleep pillow" : pageProduct === "hydro13" ? "Hydro13" : "product"} in image
             </span>
           </label>
+
+          {/* Optional hint for generation */}
+          <textarea
+            value={generationHint}
+            onChange={(e) => setGenerationHint(e.target.value)}
+            placeholder="Optional hint, e.g. &quot;use soft clouds as background&quot;"
+            rows={2}
+            className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 placeholder:text-gray-300 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 resize-none"
+          />
 
           <div className="flex items-center gap-2 text-[10px] text-gray-300 uppercase tracking-wider">
             <div className="flex-1 border-t border-gray-200" />

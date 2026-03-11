@@ -183,13 +183,14 @@ Return ONLY the JSON object. No markdown fences, no extra text.`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { imageSrc, surroundingText, productId, pageId, aspectRatio, forceProduct } = body as {
+  const { imageSrc, surroundingText, productId, pageId, aspectRatio, forceProduct, hint } = body as {
     imageSrc?: string;
     surroundingText: string;
     productId: string;
     aspectRatio?: string;
     pageId?: string;
     forceProduct?: boolean;
+    hint?: string;
   };
 
   if (!productId) {
@@ -262,7 +263,7 @@ export async function POST(req: NextRequest) {
         },
         {
           type: "text" as const,
-          text: buildUserPrompt(surroundingText, forceProduct),
+          text: buildUserPrompt(surroundingText, forceProduct, hint),
         },
       ];
 
@@ -292,33 +293,51 @@ export async function POST(req: NextRequest) {
         throw new Error("AI response missing required extraction fields");
       }
 
-      // Build Nano Banana JSON: swap competitor product with target product
+      // Build Nano Banana JSON: handle competitor product subjects
       nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
-        for (const subject of nanaBananaJson.subjects) {
-          if (subject.is_competitor_product && forceProduct) {
-            // User wants product visible — swap with target product
-            subject.description = `${productName} pillow — ${productDescription}`;
-            subject.type = "product";
-            delete subject.is_competitor_product;
-          } else if (subject.is_competitor_product && !forceProduct) {
-            // User doesn't want product forced — make it generic/contextual
-            subject.description = "Generic ergonomic wellness product, neutral/white color, no branding";
-            subject.type = "product";
-            delete subject.is_competitor_product;
+        if (forceProduct) {
+          // User wants product visible — swap competitor product with target product
+          for (const subject of nanaBananaJson.subjects) {
+            if (subject.is_competitor_product) {
+              subject.description = `${productName} pillow — ${productDescription}`;
+              subject.type = "product";
+              delete subject.is_competitor_product;
+            }
           }
+        } else {
+          // User doesn't want product — use Claude's suggested replacement subjects
+          const suggested = nanaBananaJson.suggested_replacement_subjects;
+          if (Array.isArray(suggested) && suggested.length > 0) {
+            nanaBananaJson.subjects = suggested;
+          } else {
+            // Fallback: remove competitor subjects, keep any non-product ones
+            nanaBananaJson.subjects = nanaBananaJson.subjects.filter(
+              (s: Record<string, unknown>) => !s.is_competitor_product
+            );
+          }
+          delete nanaBananaJson.suggested_replacement_subjects;
         }
       }
 
       // Add generation task + instruction
       nanaBananaJson.task = "generate_image";
-      let instruction = forceProduct
-        ? `Recreate this visual style featuring ${productName}. The product must match the reference images provided.`
-        : `Recreate this visual style. Adapt it for ${productName} — the image should feel thematically relevant but do NOT include any text overlays or headlines from the page.`;
-      if (surroundingText?.trim()) {
-        instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
+      if (forceProduct) {
+        let instruction = `Recreate this image's layout and composition featuring ${productName}. The product must match the reference images provided.`;
+        if (surroundingText?.trim()) {
+          instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
+        }
+        if (hint?.trim()) {
+          instruction += ` User direction: ${hint.trim()}`;
+        }
+        nanaBananaJson.instruction = instruction;
+      } else {
+        let instruction = `Recreate this image's layout and composition but adapted for a sleep & wellness landing page. Keep the same visual structure and arrangement of elements. Do NOT include any product, pillow, branding, or text overlays.`;
+        if (hint?.trim()) {
+          instruction += ` User direction: ${hint.trim()}`;
+        }
+        nanaBananaJson.instruction = instruction;
       }
-      nanaBananaJson.instruction = instruction;
 
       // Track usage
       inputTokens = response.usage.input_tokens;
@@ -373,10 +392,10 @@ export async function POST(req: NextRequest) {
     const extractedRatio = (nanaBananaJson.composition?.aspect_ratio ?? "").trim();
     const finalRatio = validRatios.includes(extractedRatio) ? extractedRatio : (aspectRatio || "4:5");
 
-    // Generate image via Nano Banana — pass product hero images as references
+    // Generate image via Nano Banana — only pass product hero images when forceProduct is on
     const { urls, costTimeMs } = await generateImage(
       nanaBananaPrompt,
-      referenceImages,
+      forceProduct ? referenceImages : [],
       finalRatio
     );
 
@@ -440,8 +459,8 @@ export async function POST(req: NextRequest) {
  * Build the user prompt for Claude Vision analysis.
  * Surrounding text is passed as thematic context only — never to be reproduced in the image.
  */
-function buildUserPrompt(surroundingText?: string, forceProduct?: boolean): string {
-  let prompt = "Extract every visual detail from this image as structured JSON.";
+function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?: string): string {
+  let prompt = "Extract every visual detail from this image as structured JSON. Pay special attention to the LAYOUT and COMPOSITION — how elements are arranged, layered, and sized.";
 
   if (surroundingText?.trim()) {
     prompt += `\n\n**Thematic context** (this is the page text near this image — use it ONLY to understand the theme, do NOT include any of this text in the image or extraction):\n${surroundingText.trim()}`;
@@ -449,6 +468,20 @@ function buildUserPrompt(surroundingText?: string, forceProduct?: boolean): stri
 
   if (forceProduct) {
     prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to identify the competitor product in the extraction.`;
+  } else {
+    prompt += `\n\n**Note:** The user does NOT want the product shown in the replacement image. After extracting the visual details, also add a field "suggested_replacement_subjects" — an array of 1-2 subject objects (with "description" and "type" fields) that would work in the SAME LAYOUT/COMPOSITION but adapted for a sleep & wellness landing page.
+
+Be SPECIFIC and CREATIVE about replacements. Look at what role each visual element plays in the composition, then find a sleep/wellness equivalent. Examples:
+- Sea buckthorn berries as scattered background texture → soft memory foam bubbles, cloud-like pillow filling, or cotton fibers
+- A supplement bottle in a circular frame → (leave empty if no product requested)
+- A person holding a product → a person stretching after waking up, or touching their neck in relief
+- Bold ingredient graphics → cozy bedroom scene, close-up of premium fabric texture
+
+The replacement should feel like it BELONGS on the same page — matching the section's theme and the visual energy of the original layout.`;
+  }
+
+  if (hint?.trim()) {
+    prompt += `\n\n**User hint:** "${hint.trim()}" — incorporate this direction into the suggested replacement subjects.`;
   }
 
   return prompt;
