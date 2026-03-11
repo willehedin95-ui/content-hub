@@ -1,148 +1,160 @@
-import { buildProductContext } from "@/lib/brainstorm";
-import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
+/**
+ * Video Swiper V2 prompt — Gemini video analysis + image swiper JSON extraction.
+ *
+ * Gemini watches the actual video (not static frames) so it understands motion,
+ * timing, transitions, and context. Each scene gets a full visual extraction
+ * (same schema as image swiper) plus a motion description for Kling.
+ *
+ * Flow: Gemini analyzes video → JSON per scene → product swap → Nano Banana
+ *       keyframe → Kling with start_frame + motion prompt
+ */
 
 /**
- * Build the Claude Vision system prompt for analyzing competitor product videos
- * and generating Kling AI prompts to recreate them (optionally with our product).
+ * Build the Gemini system prompt for analyzing competitor product videos.
+ * Product-agnostic — extraction only, product swap happens in the API route.
  */
-export function buildVideoSwiperSystemPrompt(
-  product: ProductFull | null,
-  productBrief: string | undefined,
-  guidelines: CopywritingGuideline[],
-  segments: ProductSegment[]
-): string {
-  const hasProduct = !!product;
+export function buildVideoSwiperSystemPrompt(): string {
+  return `You are an expert video analyst and visual extraction specialist. You watch competitor product videos and extract structured JSON describing each scene. This JSON will be used to generate keyframe images and then animate them into video clips.
 
-  const productSection = hasProduct
-    ? `## OUR PRODUCT
-${buildProductContext(product, productBrief, guidelines, segments)}`
-    : "";
+# YOUR TASK
 
-  const productName = product?.name ?? "the target product";
+Watch the entire video carefully. For each distinct scene:
+1. Identify where scene cuts happen (or determine it's a single continuous shot)
+2. Extract every visual detail of the FIRST FRAME of that scene as structured JSON
+3. Describe the MOTION that happens during that scene
 
-  const productDescription = hasProduct
-    ? `describe ${productName} as a contoured ergonomic memory foam pillow, butterfly-shaped, light blue color with raised cervical support edges`
-    : "describe the product generically based on the original video's product type";
+# CRITICAL: Scene Detection
 
-  return `You are a video production specialist and Kling AI prompt engineer. You analyze competitor product videos and write precise Kling 3.0 prompts to recreate the same video concept${hasProduct ? ` using ${productName} instead` : " in the same visual style"}.
+A "scene" is a continuous shot with no cuts. Look for:
+- Hard cuts (instant scene change)
+- Dissolves or fades
+- Major camera angle changes
+- Before/after splits that transition
 
-${productSection}
+**HARD RULE: Videos under 10 seconds = ALWAYS 1 scene. No exceptions.**
 
-## YOUR TASK
+For longer videos, PREFER FEWER SCENES. Only split when there is a clear, VISIBLE hard cut (instant scene change to a completely different shot). Continuous camera motion, zooming, panning, or animated elements appearing/disappearing are NOT scene breaks — they are motion within ONE scene.
 
-You will receive sequential frames extracted from a competitor's product video. Your goal:
-1. Understand exactly what's happening visually in the video
-2. Write Kling 3.0 prompts that recreate the SAME video concept${hasProduct ? ` but featuring ${productName}` : " with the same visual style and composition"}
+- 1 scene = one continuous shot (MANDATORY for <10s, very common for <20s)
+- 2 scenes = one clear hard cut between two distinct shots
+- 3+ scenes = very rare, only for 20s+ videos with multiple hard cuts
 
-These prompts will be sent directly to Kling 3.0 for automatic video generation. They must be production-ready.
+# CRITICAL: Understand the Video's PURPOSE
 
-## VIDEO ANALYSIS
+Before extracting details, understand what this video is trying to communicate:
+- Is it demonstrating a medical/health concept? (e.g., snoring, airway, pain relief)
+- Is it showing a before/after transformation?
+- Is it a product demo showing features?
+- Is it a lifestyle scene showing the product in use?
 
-Analyze each frame carefully:
-- **Layout**: Split screen, side by side, before/after, single shot
-- **Subjects**: People, products, body parts, props — what are they doing?
-- **Visual effects**: Glows, arrows, icons, highlights, overlays, animations
-- **Camera**: Static, zoom, pan, tracking, angle
-- **Lighting**: Studio, natural, dramatic, soft
-- **Color palette**: Warm/cool tones, specific accent colors
-- **Motion**: What moves and how — slow reveal, quick transition, gradual zoom
-- **Composition**: Where is the product placed? How big? What's in focus?
+This context is essential — a cross-section of a throat showing airway obstruction is NOT just "an anatomical illustration," it's a video demonstrating WHY snoring happens and how a product helps. Capture this intent.
 
-## KLING 3.0 PROMPT RULES
+# CRITICAL: Camera Perspective & Human Actions
 
-Kling 3.0 generates video clips from text prompts. It CAN render:
-- Visual effects (glows, highlights, color overlays)
-- Icons and simple graphics (X marks, checkmarks, arrows)
-- Text overlays and labels
-- Split-screen and side-by-side compositions
-- Before/after transitions
-- Product close-ups and demonstrations
-- People with realistic expressions and movements
+The MOST IMPORTANT thing to get right is the camera perspective and what any people are doing:
+- **Who is taking this video?** First-person POV? Third-person? Tripod? Studio?
+- **What are people/subjects ACTUALLY doing?** Be specific about exact actions and movements.
+- **Where is the camera relative to the scene?** Eye-level? Looking down? Orbiting?
 
-Write prompts that are:
-1. **Extremely visual and specific** — describe exactly what the camera sees
-2. **One continuous shot per prompt** — each prompt = one camera movement/scene
-3. **Include EVERYTHING in the prompt** — text overlays, icons, visual effects, split screens. Kling handles all of it.
-4. **Detailed about**:
-   - Camera: "static top-down shot" or "slow dolly forward" (be specific)
-   - Subject: exact appearance, position, clothing, expression, action
-   - Product: ${productDescription}
-   - Environment: bedding, lighting, background
-   - Motion: what changes during the clip
-   - Effects: any glows, highlights, icons, text that should appear
-5. **2-4 dense sentences per prompt**
-6. Camera keywords: static shot, pan left/right, tilt up/down, dolly in/out, zoom in/out, tracking shot, crane up/down, handheld, orbit, slow motion
+# Motion Description
 
-## SINGLE vs MULTI-PROMPT
+Since you can see the ACTUAL motion in the video, describe it precisely:
+- Camera movement: zoom in/out, pan left/right, dolly, tilt, tracking, orbit, static
+- Subject motion: what people/products/graphics do during the clip
+- Speed: slow, normal, fast, slow-motion
+- Any visual effects: highlights appearing, arrows animating, text fading in
+- Transitions: fades, wipes, dissolves between scenes
 
-- **single**: Simple video (one continuous shot, one scene). Write ONE prompt. This generates one 15-second clip.
-- **multi**: Complex video (multiple distinct scenes, before/after with clear cuts). Write one prompt per scene. Each becomes a separate clip that gets stitched together automatically.
+Write motion descriptions as clear, concise Kling AI prompts (2-3 sentences max). The keyframe image captures the visual setup, so focus ONLY on what changes/moves.
 
-Prefer **single** when possible — it produces more cohesive results.
-
-## KEYFRAME PROMPT
-
-For each scene, you must also write a **keyframe_prompt** — a description of the FIRST FRAME of that scene as a still image. This is used to generate a reference keyframe${hasProduct ? " with our product" : ""} before the video is created.
-
-keyframe_prompt rules:
-- Describe a STATIC scene — no motion, no camera movement, no "zooms" or "pans"
-${hasProduct ? `- Include our product (${productName}) clearly visible in the composition` : "- Include the product clearly visible in the composition"}
-- Match the exact lighting, angle, and composition of the first frame of the scene
-- Include all visual elements: text overlays, split-screen layout, background, props
-- 1-2 sentences, very specific about what the image looks like
-
-## OUTPUT FORMAT
+# OUTPUT FORMAT
 
 Return valid JSON only (no markdown fences):
 
 {
   "analysis": {
-    "video_type": "before_after | product_demo | lifestyle | comparison | testimonial | unboxing | animation | explainer",
-    "duration_estimate": "Xs",
-    "description": "One paragraph describing exactly what happens in the video"
+    "video_type": "product_demo | before_after | lifestyle | comparison | testimonial | unboxing | animation | explainer | medical_illustration",
+    "total_duration_seconds": 14,
+    "scene_count": 1,
+    "description": "One paragraph describing exactly what happens in the video and its PURPOSE/intent"
   },
-  "prompt_strategy": "single | multi",
-  "prompts": [
+  "scenes": [
     {
       "scene_number": 1,
-      "description": "Brief description of what this scene shows",
-      "keyframe_prompt": "Static image description of the first frame — used to generate a reference keyframe${hasProduct ? " with our product" : ""}",
-      "kling_prompt": "The full Kling 3.0 prompt with all visual details, effects, text, icons included"
+      "time_range": "0s - 14s",
+      "duration_seconds": 14,
+      "motion_prompt": "Slow zoom in on the anatomical cross-section. A red arrow pulses and points to the narrowed airway. The tongue subtly vibrates to illustrate snoring vibration. Camera remains steady.",
+      "extraction": {
+        "scene": {
+          "setting": "Environment/location description",
+          "background": "Background elements, textures, colors with hex codes",
+          "lighting": "Light direction, quality, color temperature, shadow behavior",
+          "atmosphere": "Overall feel and PURPOSE of the scene"
+        },
+        "composition": {
+          "camera_perspective": "CRITICAL — exact camera position and angle",
+          "layout": "Frame organization (centered, rule-of-thirds, etc.)",
+          "framing": "Shot type (close-up, medium, wide, etc.)",
+          "focal_point": "What draws the eye",
+          "negative_space": "How empty space is used",
+          "aspect_ratio": "MUST be one of: 1:1, 4:5, 5:4, 3:2, 2:3, 16:9, 9:16"
+        },
+        "subjects": [
+          {
+            "type": "person | product | prop | text | graphic | illustration",
+            "description": "Detailed visual description with hex colors. For medical/scientific illustrations, describe what is being illustrated and WHY",
+            "position": "Where in frame",
+            "action": "CRITICAL — exact physical action, movement, or function being demonstrated",
+            "visibility": "What parts visible",
+            "is_competitor_product": false
+          }
+        ],
+        "colors": {
+          "palette": ["#hex1", "#hex2", "...at least 5 colors"],
+          "dominant_tone": "warm | cool | neutral",
+          "contrast": "high | medium | low",
+          "mood": "What the color palette communicates"
+        },
+        "style": {
+          "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic | before-after | medical-illustration | 3d-render",
+          "feel": "Overall aesthetic in one sentence",
+          "texture": "clean | grainy | soft-focus | sharp | matte | glossy",
+          "photo_quality": "Actual quality level (casual phone, professional, 3D render, medical illustration, etc.)"
+        }
+      }
     }
   ]
 }
 
-CRITICAL:
+# RULES
+
 - Return ONLY valid JSON, no markdown fences
-- Include ALL visual elements directly in the kling_prompt (text, icons, effects — Kling renders everything)
-- The keyframe_prompt must describe a STILL IMAGE (no motion words), the kling_prompt describes the VIDEO (with motion)
-${hasProduct ? `- Describe ${productName} accurately: contoured butterfly-shaped ergonomic memory foam pillow, light blue` : "- Describe the product based on the visual style seen in the frames"}
-- NEVER invent medical claims${hasProduct ? " — only use claims from the product brief" : ""}
-- NEVER include the competitor's brand name in prompts
-- **NEVER include logos, brand tags, watermarks, or branded overlays** in prompts — the generated video must be clean with no branding`;
+- Use specific hex color codes wherever possible
+- Mark exactly ONE subject per scene as \`"is_competitor_product": true\` — the main product being advertised
+- **camera_perspective is the MOST important field**
+- **Capture the VIDEO's PURPOSE** — don't just describe visuals, explain what the video is communicating
+- Do NOT include the competitor's brand name — just physical appearance
+- **NEVER include logos, brand tags, watermarks, or branded overlays** in the extraction
+- The \`extraction\` describes the FIRST FRAME of the scene as a still image
+- The \`motion_prompt\` describes what CHANGES during the scene (camera + subject motion)
+- **Videos under 10 seconds = ALWAYS exactly 1 scene. No exceptions.**
+- Only create multiple scenes for clear, visible hard cuts (NOT camera motion or animated elements)
+- If user provides notes, apply them to the extraction`;
 }
 
 /**
- * Build the user prompt with frame references.
+ * Build the user prompt for Gemini video analysis.
  */
 export function buildVideoSwiperUserPrompt(
-  frameCount: number,
-  frameTimestamps: number[],
   videoDuration: number,
   notes?: string
 ): string {
-  const timestampList = frameTimestamps
-    .map((t) => `${t.toFixed(1)}s`)
-    .join(", ");
+  let prompt = `Watch this competitor product video (${Math.round(videoDuration)}s) carefully. Analyze every visual detail, understand the video's purpose and intent, identify scene cuts (if any), and extract the structured JSON for each scene.
 
-  let prompt = `Here are ${frameCount} frames extracted from a competitor's product video (${Math.round(videoDuration)}s long).
-
-Frame timestamps (in chronological order): ${timestampList}
-
-Analyze exactly what's happening visually and write Kling 3.0 prompts to recreate this video. The prompts will be sent directly to Kling for automatic generation.`;
+Remember: most short videos are a SINGLE continuous shot — only create multiple scenes if you see clear cuts.`;
 
   if (notes?.trim()) {
-    prompt += `\n\nMy notes:\n${notes.trim()}`;
+    prompt += `\n\nContext/notes from the user:\n${notes.trim()}`;
   }
 
   return prompt;

@@ -6,7 +6,11 @@ import {
   Loader2,
   Upload,
   Video,
+  ImagePlus,
+  X,
+  Check,
 } from "lucide-react";
+import type { Asset } from "@/types";
 
 interface ClickedVideo {
   src: string;
@@ -33,6 +37,19 @@ export default function VideoPanel({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pickingFromAssets, setPickingFromAssets] = useState(false);
+  const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
+  const assetsFetchedRef = useRef(false);
+
+  // Fetch asset bank data
+  useEffect(() => {
+    if (assetsFetchedRef.current) return;
+    assetsFetchedRef.current = true;
+    fetch("/api/assets")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Asset[]) => setAssetBankData(data))
+      .catch(() => {});
+  }, []);
 
   // Highlight clicked video in iframe
   useEffect(() => {
@@ -162,6 +179,18 @@ export default function VideoPanel({
     }
   }
 
+  /** Pick from asset bank */
+  function handleAssetPick(url: string) {
+    if (!clickedVideo) return;
+    if (isImageUrl(url)) {
+      replaceVideoWithImage(clickedVideo.index, url);
+    } else {
+      swapVideoInIframe(clickedVideo.index, url);
+    }
+    setPickingFromAssets(false);
+    onClickedVideoClear();
+  }
+
   /** Use a URL directly */
   const [urlInput, setUrlInput] = useState("");
 
@@ -260,10 +289,80 @@ export default function VideoPanel({
         </div>
       </div>
 
+      {/* Asset Bank button */}
+      {assetBankData.length > 0 && (
+        <button
+          onClick={() => setPickingFromAssets(true)}
+          disabled={uploading}
+          className="w-full flex items-center justify-center gap-1.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 text-xs font-medium py-2.5 rounded-lg border border-gray-200 transition-colors"
+        >
+          <ImagePlus className="w-3.5 h-3.5" />
+          Asset Bank
+        </button>
+      )}
+
       <p className="text-[10px] text-gray-400">
         Images (JPG, PNG, WebP) replace the video with a static image.
         Videos: MP4, WebM, MOV, GIF (max 200 MB).
       </p>
+
+      {/* Asset bank picker modal */}
+      {pickingFromAssets && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPickingFromAssets(false);
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-lg max-h-[80vh] overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-900">
+                Pick from Asset Bank
+              </h4>
+              <button
+                onClick={() => setPickingFromAssets(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <div className="grid grid-cols-3 gap-2">
+                {assetBankData.map((asset) => (
+                  <button
+                    key={asset.id}
+                    onClick={() => handleAssetPick(asset.url)}
+                    className="group relative rounded-lg overflow-hidden border border-gray-200 hover:border-indigo-400 transition-colors"
+                  >
+                    <div className="aspect-square bg-gray-50 flex items-center justify-center p-2">
+                      {asset.url.match(/\.(mp4|webm|mov)(\?|$)/i) ? (
+                        <video
+                          src={asset.url}
+                          className="max-w-full max-h-full object-contain"
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={asset.url}
+                          alt={asset.alt_text || asset.name}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      )}
+                    </div>
+                    <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition-colors flex items-center justify-center">
+                      <Check className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg transition-opacity" />
+                    </div>
+                    <p className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1.5 py-0.5 truncate">
+                      {asset.name}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

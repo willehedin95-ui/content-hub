@@ -183,13 +183,12 @@ Return ONLY the JSON object. No markdown fences, no extra text.`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { imageSrc, surroundingText, productId, pageId, aspectRatio, forceProduct, hint } = body as {
+  const { imageSrc, surroundingText, productId, pageId, aspectRatio, hint } = body as {
     imageSrc?: string;
     surroundingText: string;
     productId: string;
     aspectRatio?: string;
     pageId?: string;
-    forceProduct?: boolean;
     hint?: string;
   };
 
@@ -263,7 +262,7 @@ export async function POST(req: NextRequest) {
         },
         {
           type: "text" as const,
-          text: buildUserPrompt(surroundingText, forceProduct, hint, productName),
+          text: buildUserPrompt(surroundingText, hint),
         },
       ];
 
@@ -293,57 +292,23 @@ export async function POST(req: NextRequest) {
         throw new Error("AI response missing required extraction fields");
       }
 
-      // Build Nano Banana JSON: handle competitor product subjects
+      // Build Nano Banana JSON: swap competitor product with target product (same as image swiper)
       nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
-        if (forceProduct) {
-          // User wants product visible — swap competitor product with target product
-          for (const subject of nanaBananaJson.subjects) {
-            if (subject.is_competitor_product) {
-              subject.description = `${productName} pillow — ${productDescription}`;
-              subject.type = "product";
-              delete subject.is_competitor_product;
-            }
-          }
-        } else {
-          // User doesn't want product — swap each subject's description with its adapted version
-          for (const subject of nanaBananaJson.subjects) {
-            if (subject.adapted_description) {
-              subject.description = subject.adapted_description;
-              delete subject.adapted_description;
-            }
-            if (subject.is_competitor_product) {
-              delete subject.is_competitor_product;
-            }
+        for (const subject of nanaBananaJson.subjects) {
+          if (subject.is_competitor_product) {
+            subject.description = `${productName} pillow — ${productDescription}`;
+            subject.type = "product";
+            delete subject.is_competitor_product;
           }
         }
       }
 
-      // Add generation task + instruction
+      // Add generation task + instruction (same as image swiper)
       nanaBananaJson.task = "generate_image";
-      const qualityNote = nanaBananaJson.style?.photo_quality
-        ? ` CRITICAL: Match the original photo quality exactly — ${nanaBananaJson.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
-        : "";
-      const textureNote = nanaBananaJson.style?.texture && nanaBananaJson.style.texture !== "sharp" && nanaBananaJson.style.texture !== "clean"
-        ? ` Texture must be: ${nanaBananaJson.style.texture}.`
-        : "";
-      const layoutInstruction = `Recreate this image's EXACT layout and composition. Every element must be in the same position, same size, same proportions as the original. Keep all layers: background textures, overlays, circular insets, text blocks, people — only change the content described in the subjects.`;
-      if (forceProduct) {
-        let instruction = `${layoutInstruction} Replace the competitor product with ${productName} — the product must match the reference images provided. Everything else (background, text overlays, other subjects) stays in the same position and style.${qualityNote}${textureNote}`;
-        if (surroundingText?.trim()) {
-          instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
-        }
-        if (hint?.trim()) {
-          instruction += ` User direction: ${hint.trim()}`;
-        }
-        nanaBananaJson.instruction = instruction;
-      } else {
-        let instruction = `${layoutInstruction} Do NOT include any branded product or pillow. Use the adapted content described in each subject.${qualityNote}${textureNote}`;
-        if (hint?.trim()) {
-          instruction += ` User direction: ${hint.trim()}`;
-        }
-        nanaBananaJson.instruction = instruction;
-      }
+      let instruction = `Recreate this visual style featuring ${productName}. The product must match the reference images provided.`;
+      if (hint?.trim()) instruction += ` ${hint.trim()}`;
+      nanaBananaJson.instruction = instruction;
 
       // Track usage
       inputTokens = response.usage.input_tokens;
@@ -359,7 +324,7 @@ export async function POST(req: NextRequest) {
         max_tokens: 4000,
         temperature: 0.7,
         system: [
-          { type: "text", text: buildTextOnlySystemPrompt(productName, productBrief, forceProduct), cache_control: { type: "ephemeral" } },
+          { type: "text", text: buildTextOnlySystemPrompt(productName, productBrief, true), cache_control: { type: "ephemeral" } },
         ],
         messages: [{
           role: "user",
@@ -398,10 +363,10 @@ export async function POST(req: NextRequest) {
     const extractedRatio = (nanaBananaJson.composition?.aspect_ratio ?? "").trim();
     const finalRatio = validRatios.includes(extractedRatio) ? extractedRatio : (aspectRatio || "4:5");
 
-    // Generate image via Nano Banana — only pass product hero images when forceProduct is on
+    // Generate image via Nano Banana — pass product hero images as references (same as image swiper)
     const { urls, costTimeMs } = await generateImage(
       nanaBananaPrompt,
-      forceProduct ? referenceImages : [],
+      referenceImages,
       finalRatio
     );
 
@@ -444,7 +409,7 @@ export async function POST(req: NextRequest) {
         reference_count: referenceImages.length,
         page_id: pageId || null,
         product_id: productId,
-        force_product: !!forceProduct,
+        force_product: true,
       },
     });
 
@@ -465,32 +430,17 @@ export async function POST(req: NextRequest) {
  * Build the user prompt for Claude Vision analysis.
  * Surrounding text is passed as thematic context only — never to be reproduced in the image.
  */
-function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?: string, productName?: string): string {
-  let prompt = "Extract every visual detail from this image as structured JSON. Pay special attention to the LAYOUT and COMPOSITION — how elements are arranged, layered, and sized.";
+function buildUserPrompt(surroundingText?: string, hint?: string): string {
+  let prompt = "Extract every visual detail from this image as structured JSON.";
 
   if (surroundingText?.trim()) {
     prompt += `\n\n**Thematic context** (this is the page text near this image — use it ONLY to understand the theme, do NOT include any of this text in the image or extraction):\n${surroundingText.trim()}`;
   }
 
-  if (forceProduct) {
-    prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to:
-1. Identify the competitor product with \`"is_competitor_product": true\`
-2. Extract EVERY other element precisely — text overlays (exact text content, style, position), background textures, circular insets, people, graphics. ALL of these must be kept in the generated image, only the competitor product gets swapped.`;
-  } else {
-    prompt += `\n\n**Note:** The user does NOT want the product shown in the replacement image. For EACH subject you extract, add an extra field "adapted_description" with a sleep/wellness version of that element for a ${productName || "sleep pillow"} landing page. Keep EVERY subject — people, text overlays, graphics, circular insets — just adapt their content.
-
-Rules for adaptation:
-- **People**: Keep the same pose/framing but adapt context to sleep/wellness (e.g. person from behind touching belly → person from behind touching neck)
-- **Text overlays / headlines**: Rewrite for sleep/wellness. e.g. "STUDY FINDS REINDEER ORGANS BOOST TESTOSTERONE BY 40%" → "STUDY: 93% REPORT LESS NECK PAIN WITHIN 30 DAYS". Keep the same visual style (bold, capitalized, news-like, etc.)
-- **Circular insets / magnified areas**: Replace content with sleep-relevant equivalent (e.g. microscopic cells → close-up of memory foam cell structure, spinal vertebrae, or muscle fiber cross-section)
-- **Backgrounds / textures**: Find sleep/wellness equivalent with same visual energy (e.g. scattered berries → scattered foam bubbles or cotton fibers)
-- **Products marked is_competitor_product**: Replace with a generic sleep/wellness visual that fits the same position and size. Do NOT use the target product.
-
-The adapted image should feel like the SAME landing page template but for a completely different product category.`;
-  }
+  prompt += `\n\n**Note:** Make sure to identify the competitor product in the extraction with \`"is_competitor_product": true\`.`;
 
   if (hint?.trim()) {
-    prompt += `\n\n**User hint:** "${hint.trim()}" — incorporate this direction into the suggested replacement subjects.`;
+    prompt += `\n\n**Additional instructions:** ${hint.trim()}`;
   }
 
   return prompt;

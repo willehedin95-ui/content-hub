@@ -496,3 +496,95 @@ export async function generateVideo(
   const result = await pollTaskResult(taskId);
   return { ...result, taskId };
 }
+
+// --- Gemini (direct Google API via @google/genai) ---
+
+import { GoogleGenAI } from "@google/genai";
+
+function getGeminiApiKey(): string {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY environment variable is not set");
+  return key;
+}
+
+/**
+ * Analyze a video with Gemini using Google's direct API.
+ * Uploads the video via the File API (required for video input),
+ * polls until processed, then sends the analysis prompt.
+ */
+export async function callGeminiVideo(
+  videoUrl: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
+
+  // Step 1: Download video from public URL
+  console.log("[callGeminiVideo] Downloading video from:", videoUrl.slice(0, 100));
+  const videoRes = await fetch(videoUrl);
+  if (!videoRes.ok) throw new Error(`Failed to download video: ${videoRes.status}`);
+  const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+  const contentType = videoRes.headers.get("content-type") || "video/mp4";
+
+  // Step 2: Upload to Gemini File API
+  console.log("[callGeminiVideo] Uploading to Gemini File API...", `${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+  const uploadResult = await ai.files.upload({
+    file: new Blob([videoBuffer], { type: contentType }),
+    config: { mimeType: contentType },
+  });
+
+  if (!uploadResult.name) throw new Error("Gemini file upload returned no file name");
+
+  // Step 3: Poll until file is processed (ACTIVE state)
+  let fileState = uploadResult;
+  let pollAttempts = 0;
+  const maxPollAttempts = 60; // 2 minutes max
+  while (fileState.state === "PROCESSING") {
+    if (pollAttempts++ >= maxPollAttempts) {
+      throw new Error("Gemini file processing timed out after 2 minutes");
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+    fileState = await ai.files.get({ name: uploadResult.name! });
+  }
+
+  if (fileState.state !== "ACTIVE") {
+    throw new Error(`Gemini file processing failed: state=${fileState.state}`);
+  }
+  console.log("[callGeminiVideo] File ready:", fileState.name, "URI:", fileState.uri);
+
+  // Step 4: Generate content with the video
+  const result = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    config: {
+      systemInstruction: systemPrompt,
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { fileData: { fileUri: fileState.uri!, mimeType: contentType } },
+          { text: userPrompt },
+        ],
+      },
+    ],
+  });
+
+  const text = result.text ?? "";
+  const usage = result.usageMetadata;
+
+  if (!text) {
+    console.error("[callGeminiVideo] Empty response. Finish reason:", result.candidates?.[0]?.finishReason);
+  }
+
+  // Clean up uploaded file (fire-and-forget)
+  ai.files.delete({ name: uploadResult.name! }).catch(() => {});
+
+  return {
+    text,
+    usage: {
+      promptTokens: usage?.promptTokenCount ?? 0,
+      completionTokens: usage?.candidatesTokenCount ?? 0,
+      totalTokens: usage?.totalTokenCount ?? 0,
+    },
+  };
+}

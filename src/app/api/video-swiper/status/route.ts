@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkImageTaskStatus } from "@/lib/kie";
+import { checkVeoStatus, checkImageTaskStatus } from "@/lib/kie";
 import { createServerSupabase } from "@/lib/supabase";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
@@ -14,6 +14,7 @@ export const maxDuration = 60;
 export async function GET(req: NextRequest) {
   const tasksParam = req.nextUrl.searchParams.get("tasks");
   const product = req.nextUrl.searchParams.get("product") || "general";
+  const modelType = req.nextUrl.searchParams.get("model_type") || "veo"; // "veo" or "kling"
 
   if (!tasksParam) {
     return NextResponse.json({ error: "tasks parameter is required" }, { status: 400 });
@@ -34,7 +35,9 @@ export async function GET(req: NextRequest) {
 
   for (const taskId of taskIds) {
     try {
-      const status = await checkImageTaskStatus(taskId);
+      const status = modelType === "kling"
+        ? await checkImageTaskStatus(taskId)
+        : await checkVeoStatus(taskId);
 
       if (status.status === "completed" && status.urls.length > 0) {
         // Download and store the video

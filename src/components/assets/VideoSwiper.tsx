@@ -12,28 +12,31 @@ import {
   Download,
   XCircle,
   Image,
-  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  extractFrames,
-  formatDuration,
-  type ExtractedFrame,
-  type ExtractionProgress,
-} from "@/lib/video-frame-extractor";
+import { formatDuration } from "@/lib/video-frame-extractor";
 import { PRODUCTS, type Product, type Asset } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Phase = "upload" | "extracting" | "analyzing" | "keyframing" | "generating" | "done";
+type Phase = "upload" | "uploading" | "analyzing" | "keyframing" | "generating" | "done";
+
+type VideoModelOption = "veo3" | "veo3_fast" | "kling";
+const VIDEO_MODELS: { value: VideoModelOption; label: string }[] = [
+  { value: "veo3", label: "Veo 3" },
+  { value: "veo3_fast", label: "Veo 3 Fast" },
+  { value: "kling", label: "Kling 3.0" },
+];
 
 interface TaskInfo {
   scene_number: number;
   description: string;
   task_id: string;
-  prompt: string;
+  motion_prompt: string;
+  keyframe_url: string | null;
+  duration_seconds: number;
 }
 
 interface TaskStatus {
@@ -45,7 +48,8 @@ interface TaskStatus {
 
 interface Analysis {
   video_type: string;
-  duration_estimate: string;
+  total_duration_seconds: number;
+  scene_count: number;
   description: string;
 }
 
@@ -65,7 +69,9 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<string>("16:9");
   const [product, setProduct] = useState<Product | null>(null);
+  const [videoModel, setVideoModel] = useState<VideoModelOption>("veo3");
   const [notes, setNotes] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,10 +80,8 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Extraction
-  const [extractionProgress, setExtractionProgress] = useState<ExtractionProgress | null>(null);
-  const [frames, setFrames] = useState<ExtractedFrame[]>([]);
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  // Upload progress
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   // Analysis + Generation
   const [statusMessage, setStatusMessage] = useState("");
@@ -94,11 +98,12 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     if (phase !== "generating" || tasks.length === 0) return;
 
     const taskIds = tasks.map((t) => t.task_id).join(",");
+    const modelType = videoModel === "kling" ? "kling" : "veo";
 
     async function poll() {
       try {
         const res = await fetch(
-          `/api/video-swiper/status?tasks=${taskIds}${product ? `&product=${product}` : ""}`
+          `/api/video-swiper/status?tasks=${taskIds}&model_type=${modelType}${product ? `&product=${product}` : ""}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -124,7 +129,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [phase, tasks, product]);
+  }, [phase, tasks, product, videoModel]);
 
   // File selection
   const handleFileSelect = useCallback((file: File) => {
@@ -143,6 +148,18 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     tempVideo.src = url;
     tempVideo.onloadedmetadata = () => {
       setVideoDuration(tempVideo.duration);
+      // Determine actual aspect ratio from video dimensions
+      const w = tempVideo.videoWidth;
+      const h = tempVideo.videoHeight;
+      if (w && h) {
+        const ratio = w / h;
+        // Map to closest standard ratio
+        if (ratio < 0.7) setVideoAspectRatio("9:16");
+        else if (ratio < 0.9) setVideoAspectRatio("4:5");
+        else if (ratio < 1.1) setVideoAspectRatio("1:1");
+        else if (ratio < 1.4) setVideoAspectRatio("5:4");
+        else setVideoAspectRatio("16:9");
+      }
       tempVideo.remove();
     };
   }, []);
@@ -205,45 +222,38 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   const handleAnalyze = useCallback(async () => {
     if (!videoFile) return;
     setError(null);
-    setPhase("extracting");
-    setFrames([]);
+    setPhase("uploading");
+    setUploadingVideo(true);
     setTasks([]);
     setTaskStatuses({});
     setAnalysis(null);
+    setKeyframeUrls({});
+    setKeyframeCount({ done: 0, total: 0 });
 
     try {
-      // Step 1: Extract frames
-      const extractedFrames = await extractFrames(videoFile, {
-        onProgress: setExtractionProgress,
-      });
-      setFrames(extractedFrames);
-
-      // Step 2: Upload frames
-      setUploadProgress({ current: 0, total: extractedFrames.length });
-      const frameUrls: string[] = [];
-
-      for (let i = 0; i < extractedFrames.length; i++) {
-        const frame = extractedFrames[i];
-        const formData = new FormData();
-        formData.append("file", new File([frame.blob], `frame-${i}.jpg`, { type: "image/jpeg" }));
-        const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
-        if (!uploadRes.ok) throw new Error(`Failed to upload frame ${i + 1}`);
-        const { url } = await uploadRes.json();
-        frameUrls.push(url);
-        setUploadProgress({ current: i + 1, total: extractedFrames.length });
+      // Step 1: Upload the video file to get a public URL
+      const formData = new FormData();
+      formData.append("file", videoFile);
+      const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
+      if (!uploadRes.ok) {
+        const errBody = await uploadRes.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to upload video");
       }
+      const { url: publicVideoUrl } = await uploadRes.json();
+      setUploadingVideo(false);
 
-      // Step 3: Analyze + kick off Kling
+      // Step 2: Analyze with Gemini + kick off Kling
       setPhase("analyzing");
-      setStatusMessage("Analyzing video with AI...");
+      setStatusMessage("Analyzing video with Gemini...");
 
       const res = await fetch("/api/video-swiper", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          frame_urls: frameUrls,
-          frame_timestamps: extractedFrames.map((f) => f.timestamp),
+          video_url: publicVideoUrl,
           video_duration: videoDuration,
+          aspect_ratio: videoAspectRatio,
+          video_model: videoModel,
           ...(product && { product }),
           notes: notes.trim() || undefined,
         }),
@@ -278,8 +288,8 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
             setPhase("keyframing");
           }
 
-          if (event.step === "analyzed" && event.prompt_count) {
-            setKeyframeCount((prev) => ({ ...prev, total: event.prompt_count }));
+          if (event.step === "analyzed" && event.scene_count) {
+            setKeyframeCount((prev) => ({ ...prev, total: event.scene_count }));
           }
 
           if (event.step === "keyframe_completed" && event.keyframe_url) {
@@ -289,7 +299,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
 
           if (event.step === "generating_started") {
             setTasks(event.tasks as TaskInfo[]);
-            setClaudeCost(event.claude_cost || 0);
+            setClaudeCost(event.credits_consumed || 0);
             setPhase("generating");
           }
         }
@@ -299,7 +309,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [videoFile, videoDuration, product, notes]);
+  }, [videoFile, videoDuration, videoAspectRatio, videoModel, product, notes]);
 
   // Save completed video to assets
   const handleSaveToAssets = useCallback(async (videoUrlToSave: string, sceneNumber: number) => {
@@ -342,15 +352,14 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     setVideoFile(null);
     setVideoUrl(null);
     setVideoDuration(0);
+    setVideoAspectRatio("16:9");
     setNotes("");
     setUrlInput("");
     setError(null);
-    setFrames([]);
     setTasks([]);
     setTaskStatuses({});
     setAnalysis(null);
-    setExtractionProgress(null);
-    setUploadProgress({ current: 0, total: 0 });
+    setUploadingVideo(false);
     setStatusMessage("");
     setClaudeCost(0);
     setKeyframeUrls({});
@@ -460,7 +469,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
             </>
           )}
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-start gap-6">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Product <span className="text-gray-400 font-normal">(optional)</span>
@@ -478,6 +487,27 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                     )}
                   >
                     {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Video model
+              </label>
+              <div className="flex gap-2">
+                {VIDEO_MODELS.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setVideoModel(m.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                      videoModel === m.value
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                        : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                  >
+                    {m.label}
                   </button>
                 ))}
               </div>
@@ -513,54 +543,24 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       )}
 
       {/* ================================================================== */}
-      {/* EXTRACTING FRAMES                                                  */}
+      {/* UPLOADING VIDEO                                                    */}
       {/* ================================================================== */}
-      {phase === "extracting" && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
-            <span className="text-sm font-medium text-gray-900">
-              {uploadProgress.current > 0
-                ? `Uploading frames... ${uploadProgress.current}/${uploadProgress.total}`
-                : extractionProgress
-                  ? `Extracting frames... ${extractionProgress.current}/${extractionProgress.total}`
-                  : "Loading video..."}
-            </span>
+      {phase === "uploading" && (
+        <div className="bg-white rounded-lg border border-gray-200 p-8">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
+              <Upload className="w-8 h-8 text-indigo-600 animate-pulse" />
+            </div>
+            <p className="text-sm font-medium text-gray-900">
+              {uploadingVideo ? "Uploading video..." : "Preparing video..."}
+            </p>
+            <p className="text-xs text-gray-400">This may take a moment for larger files</p>
           </div>
-          {extractionProgress && (
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                style={{
-                  width: `${uploadProgress.current > 0
-                    ? (uploadProgress.current / uploadProgress.total) * 100
-                    : (extractionProgress.current / extractionProgress.total) * 100
-                  }%`,
-                }}
-              />
-            </div>
-          )}
-          {frames.length > 0 && (
-            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-10 gap-2">
-              {frames.map((frame, i) => (
-                <div key={i} className="relative">
-                  <img
-                    src={frame.dataUrl}
-                    alt={`Frame ${i}`}
-                    className="w-full aspect-video object-cover rounded border border-gray-200"
-                  />
-                  <span className="absolute bottom-0 right-0 bg-black/60 text-white text-[9px] px-1 rounded-tl">
-                    {frame.timestamp.toFixed(1)}s
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
       {/* ================================================================== */}
-      {/* ANALYZING (Claude Vision)                                          */}
+      {/* ANALYZING (Gemini Video)                                            */}
       {/* ================================================================== */}
       {phase === "analyzing" && (
         <div className="bg-white rounded-lg border border-gray-200 p-8">
@@ -569,7 +569,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               <Video className="w-8 h-8 text-indigo-600 animate-pulse" />
             </div>
             <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
-            <p className="text-xs text-gray-400">Analyzing frames and generating Kling prompts...</p>
+            <p className="text-xs text-gray-400">Gemini is watching the full video to extract visual details and detect scenes...</p>
           </div>
         </div>
       )}
@@ -588,7 +588,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               <p className="text-sm text-gray-600">{analysis.description}</p>
               <div className="flex gap-2 mt-2">
                 <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.video_type}</span>
-                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.duration_estimate}</span>
+                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.total_duration_seconds}s</span>
               </div>
             </div>
           )}
@@ -638,7 +638,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
                 <span className="text-sm font-medium text-gray-900">Video analyzed</span>
-                <span className="text-xs text-gray-400 ml-auto">${claudeCost.toFixed(4)}</span>
+                {claudeCost > 0 && <span className="text-xs text-gray-400 ml-auto">{claudeCost.toFixed(1)} credits</span>}
               </div>
               {Object.keys(keyframeUrls).length > 0 && (
                 <div className="flex gap-2 mb-2">
@@ -656,7 +656,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               <p className="text-sm text-gray-600">{analysis.description}</p>
               <div className="flex gap-2 mt-2">
                 <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.video_type}</span>
-                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.duration_estimate}</span>
+                <span className="px-2 py-0.5 text-xs bg-gray-100 rounded-full text-gray-600">{analysis.total_duration_seconds}s</span>
               </div>
             </div>
           )}
@@ -665,10 +665,10 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
             <div className="flex items-center gap-3 mb-4">
               <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
               <span className="text-sm font-medium text-gray-900">
-                Generating {tasks.length > 1 ? `${tasks.length} clips` : "video"} with Kling 3.0...
+                Generating {tasks.length > 1 ? `${tasks.length} clips` : "video"} with {VIDEO_MODELS.find(m => m.value === videoModel)?.label ?? videoModel}...
               </span>
             </div>
-            <p className="text-xs text-gray-400 mb-4">This usually takes 1-3 minutes</p>
+            <p className="text-xs text-gray-400 mb-4">This usually takes 2-4 minutes</p>
 
             <div className="space-y-3">
               {tasks.map((task) => {

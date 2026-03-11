@@ -1,62 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase";
-import { CLAUDE_MODEL } from "@/lib/constants";
-import { calcClaudeCost } from "@/lib/pricing";
-import { createImageTask, pollTaskResult, createKlingTask } from "@/lib/kie";
+import { createImageTask, pollTaskResult, createVeoTask, createKlingTask, callGeminiVideo } from "@/lib/kie";
 import {
   buildVideoSwiperSystemPrompt,
   buildVideoSwiperUserPrompt,
 } from "@/lib/video-swiper-prompt";
-import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
+import type { ProductFull } from "@/types";
 
 export const maxDuration = 300;
 
-interface PromptItem {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface SceneExtraction extends Record<string, any> {
+  scene?: Record<string, unknown>;
+  composition?: Record<string, unknown>;
+  subjects?: Array<{ is_competitor_product?: boolean; description?: string; type?: string; [k: string]: unknown }>;
+  colors?: Record<string, unknown>;
+  style?: Record<string, unknown>;
+}
+
+interface SceneItem {
   scene_number: number;
-  description: string;
-  keyframe_prompt: string;
-  kling_prompt: string;
+  time_range: string;
+  duration_seconds: number;
+  motion_prompt: string;
+  extraction: SceneExtraction;
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not set" }, { status: 500 });
-  }
-
   const body = await req.json().catch(() => ({}));
   const {
-    frame_urls,
-    frame_timestamps,
-    video_duration,
+    video_url: videoUrl,
+    video_duration: videoDuration,
     product: productSlug,
+    aspect_ratio: clientAspectRatio,
+    video_model: videoModel,
     notes,
   } = body as {
-    frame_urls?: string[];
-    frame_timestamps?: number[];
+    video_url?: string;
     video_duration?: number;
     product?: string;
+    aspect_ratio?: string;
+    video_model?: "veo3" | "veo3_fast" | "kling";
     notes?: string;
   };
 
-  if (!frame_urls?.length) {
-    return NextResponse.json({ error: "frame_urls is required" }, { status: 400 });
+  if (!videoUrl) {
+    return NextResponse.json({ error: "video_url is required" }, { status: 400 });
   }
-  if (!frame_timestamps?.length || frame_timestamps.length !== frame_urls.length) {
-    return NextResponse.json({ error: "frame_timestamps must match frame_urls length" }, { status: 400 });
-  }
-  if (!video_duration || video_duration <= 0) {
+  if (!videoDuration || videoDuration <= 0) {
     return NextResponse.json({ error: "video_duration is required" }, { status: 400 });
   }
+
   // Fetch product data (only when product is selected)
   const db = createServerSupabase();
 
   let product: ProductFull | null = null;
-  let guidelines: CopywritingGuideline[] = [];
-  let segments: ProductSegment[] = [];
   let productHeroUrls: string[] = [];
-  let productBrief: string | undefined;
 
   if (productSlug) {
     const { data: productData, error: productErr } = await db
@@ -70,23 +69,6 @@ export async function POST(req: NextRequest) {
     }
     product = productData as ProductFull;
 
-    const { data: guidelinesData } = await db
-      .from("copywriting_guidelines")
-      .select("*")
-      .or(`product_id.eq.${product.id},product_id.is.null`)
-      .order("sort_order", { ascending: true });
-
-    guidelines = (guidelinesData ?? []) as CopywritingGuideline[];
-    productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
-
-    const { data: segmentsData } = await db
-      .from("product_segments")
-      .select("*")
-      .eq("product_id", product.id)
-      .order("sort_order", { ascending: true });
-
-    segments = (segmentsData ?? []) as ProductSegment[];
-
     // Fetch product hero images for Nano Banana reference
     const { data: productImages } = await db
       .from("product_images")
@@ -99,19 +81,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Build prompts
-  const systemPrompt = buildVideoSwiperSystemPrompt(
-    product,
-    productBrief,
-    guidelines,
-    segments
-  );
-
-  const userPrompt = buildVideoSwiperUserPrompt(
-    frame_urls.length,
-    frame_timestamps,
-    video_duration,
-    notes
-  );
+  const systemPrompt = buildVideoSwiperSystemPrompt();
+  const userPrompt = buildVideoSwiperUserPrompt(videoDuration, notes);
 
   // Stream NDJSON
   const encoder = new TextEncoder();
@@ -124,45 +95,23 @@ export async function POST(req: NextRequest) {
 
   (async () => {
     try {
-      // --- Step 1: Claude Vision analysis ---
-      await emit({ step: "analyzing", message: "Analyzing video with AI..." });
+      // --- Step 1: Gemini video analysis ---
+      await emit({ step: "analyzing", message: "Analyzing video with Gemini..." });
 
-      const client = new Anthropic({ apiKey });
-
-      const response = await client.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 8000,
-        temperature: 0.7,
-        system: [
-          { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
-        ],
-        messages: [
-          {
-            role: "user",
-            content: [
-              ...frame_urls.map((url) => ({
-                type: "image" as const,
-                source: { type: "url" as const, url },
-              })),
-              { type: "text" as const, text: userPrompt },
-            ],
-          },
-        ],
-      });
-
-      const rawContent =
-        response.content[0]?.type === "text"
-          ? response.content[0].text.trim()
-          : "";
+      const geminiResult = await callGeminiVideo(videoUrl, systemPrompt, userPrompt);
+      const rawContent = geminiResult.text.trim();
 
       if (!rawContent) {
-        await emit({ step: "error", message: "No response from AI" });
-        await writer.close();
+        console.error("[video-swiper] Gemini returned empty content. Usage:", JSON.stringify(geminiResult.usage));
+        await emit({ step: "error", message: "No response from Gemini — the video may be too large or in an unsupported format. Try a shorter clip." });
         return;
       }
 
-      // Parse JSON
-      let parsed: { analysis: Record<string, unknown>; prompt_strategy: string; prompts: PromptItem[] };
+      // Parse JSON (strip markdown fences if present)
+      let parsed: {
+        analysis: { video_type: string; total_duration_seconds: number; scene_count: number; description: string };
+        scenes: SceneItem[];
+      };
       try {
         const cleaned = rawContent
           .replace(/^```(?:json)?\s*/i, "")
@@ -172,51 +121,41 @@ export async function POST(req: NextRequest) {
       } catch (parseErr) {
         const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
         console.error("[video-swiper] Parse error:", msg, "\nRaw:", rawContent.slice(0, 500));
-        await emit({ step: "error", message: `Failed to parse AI response: ${msg}` });
-        await writer.close();
+        await emit({ step: "error", message: `Failed to parse Gemini response: ${msg}` });
         return;
       }
 
-      if (!parsed.analysis || !parsed.prompts?.length) {
-        await emit({ step: "error", message: "AI response missing required fields" });
-        await writer.close();
+      if (!parsed.analysis || !parsed.scenes?.length) {
+        await emit({ step: "error", message: "Gemini response missing required fields (analysis, scenes)" });
         return;
       }
 
-      // Log Claude usage
-      const inputTokens = response.usage.input_tokens;
-      const outputTokens = response.usage.output_tokens;
-      const cacheCreation =
-        (response.usage as unknown as Record<string, number>).cache_creation_input_tokens ?? 0;
-      const cacheRead =
-        (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0;
-      const claudeCost = calcClaudeCost(inputTokens, outputTokens, cacheCreation, cacheRead);
-
+      // Log Gemini usage
       await db.from("usage_logs").insert({
         type: "video_swiper",
-        model: CLAUDE_MODEL,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cost_usd: claudeCost,
+        model: "gemini-2.5-pro",
+        input_tokens: geminiResult.usage.promptTokens,
+        output_tokens: geminiResult.usage.completionTokens,
+        cost_usd: 0, // Kie credits, not direct cost
         metadata: {
           product: productSlug || null,
-          frame_count: frame_urls.length,
-          video_duration,
-          prompt_strategy: parsed.prompt_strategy,
+          video_duration: videoDuration,
+          scene_count: parsed.scenes.length,
+          total_tokens: geminiResult.usage.totalTokens,
         },
       });
 
       await emit({
         step: "analyzed",
-        message: `Analysis complete — ${parsed.prompts.length} scene${parsed.prompts.length > 1 ? "s" : ""} identified`,
+        message: `Analysis complete — ${parsed.scenes.length} scene${parsed.scenes.length > 1 ? "s" : ""} identified`,
         analysis: parsed.analysis,
-        prompt_count: parsed.prompts.length,
+        scene_count: parsed.scenes.length,
       });
 
-      // --- Step 2: Generate keyframes with Nano Banana ---
+      // --- Step 2: Generate keyframes with Nano Banana (image swiper pattern) ---
       await emit({
         step: "generating_keyframes",
-        message: `Generating keyframe${parsed.prompts.length > 1 ? "s" : ""} with product reference...`,
+        message: `Generating keyframe${parsed.scenes.length > 1 ? "s" : ""} with Nano Banana...`,
       });
 
       const keyframeResults: Array<{
@@ -225,19 +164,54 @@ export async function POST(req: NextRequest) {
         error: string | null;
       }> = [];
 
-      for (const p of parsed.prompts) {
-        const keyframePrompt = p.keyframe_prompt || p.kling_prompt;
+      for (const scene of parsed.scenes) {
         try {
           await emit({
             step: "keyframe_generating",
-            message: `Generating keyframe for Scene ${p.scene_number}...`,
-            scene_number: p.scene_number,
+            message: `Generating keyframe for Scene ${scene.scene_number}...`,
+            scene_number: scene.scene_number,
           });
 
+          // Clone extraction and swap competitor product (same as image swiper)
+          const nanaBananaJson = structuredClone(scene.extraction);
+          if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
+            for (const subject of nanaBananaJson.subjects) {
+              if (subject.is_competitor_product && product) {
+                subject.description = `${product.name} pillow — ${product.description || "premium ergonomic pillow"}`;
+                subject.type = "product";
+                delete subject.is_competitor_product;
+              } else if (subject.is_competitor_product) {
+                subject.description = "Generic ergonomic wellness product, neutral/white color";
+                delete subject.is_competitor_product;
+              }
+            }
+          }
+
+          // Add generation instruction
+          nanaBananaJson.task = "generate_image";
+          let instruction = product
+            ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.`
+            : "Recreate this visual style with the described subjects and environment.";
+          if (notes) {
+            instruction += ` Additional instructions: ${notes}`;
+          }
+          nanaBananaJson.instruction = instruction;
+
+          const nanaBananaPrompt = JSON.stringify(nanaBananaJson);
+
+          // Use client-provided aspect ratio (from actual video dimensions), fall back to extraction
+          const validRatios = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
+          const detectedRatio = (clientAspectRatio && validRatios.includes(clientAspectRatio))
+            ? clientAspectRatio
+            : (() => {
+                const rawRatio = String(scene.extraction.composition?.aspect_ratio ?? "").trim();
+                return validRatios.includes(rawRatio) ? rawRatio : "16:9";
+              })();
+
           const imageTaskId = await createImageTask(
-            keyframePrompt,
+            nanaBananaPrompt,
             productHeroUrls,
-            "16:9",
+            detectedRatio,
             "1K"
           );
 
@@ -246,20 +220,20 @@ export async function POST(req: NextRequest) {
 
           if (result.urls.length > 0) {
             keyframeResults.push({
-              scene_number: p.scene_number,
+              scene_number: scene.scene_number,
               keyframe_url: result.urls[0],
               error: null,
             });
 
             await emit({
               step: "keyframe_completed",
-              message: `Keyframe for Scene ${p.scene_number} ready`,
-              scene_number: p.scene_number,
+              message: `Keyframe for Scene ${scene.scene_number} ready`,
+              scene_number: scene.scene_number,
               keyframe_url: result.urls[0],
             });
           } else {
             keyframeResults.push({
-              scene_number: p.scene_number,
+              scene_number: scene.scene_number,
               keyframe_url: null,
               error: "No image URL returned",
             });
@@ -272,119 +246,140 @@ export async function POST(req: NextRequest) {
             cost_usd: 0,
             metadata: {
               product: productSlug || null,
-              scene_number: p.scene_number,
+              scene_number: scene.scene_number,
               task_id: imageTaskId,
               has_product_ref: productHeroUrls.length > 0,
+              aspect_ratio: detectedRatio,
             },
           });
 
           // Brief delay between API calls
-          if (parsed.prompts.length > 1) {
+          if (parsed.scenes.length > 1) {
             await new Promise((r) => setTimeout(r, 500));
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[video-swiper] Keyframe generation failed for scene ${p.scene_number}:`, msg);
+          console.error(`[video-swiper] Keyframe generation failed for scene ${scene.scene_number}:`, msg);
           keyframeResults.push({
-            scene_number: p.scene_number,
+            scene_number: scene.scene_number,
             keyframe_url: null,
             error: msg,
           });
           await emit({
             step: "keyframe_error",
-            message: `Keyframe for Scene ${p.scene_number} failed: ${msg}`,
-            scene_number: p.scene_number,
+            message: `Keyframe for Scene ${scene.scene_number} failed: ${msg}`,
+            scene_number: scene.scene_number,
           });
         }
       }
 
-      // --- Step 3: Kick off Kling generation with keyframes as start frames ---
-      await emit({ step: "generating", message: "Starting Kling 3.0 video generation..." });
+      // --- Step 3: Kick off video generation with keyframes as start frames ---
+      const selectedModel = videoModel || "veo3";
+      const modelLabel = selectedModel === "kling" ? "Kling 3.0" : selectedModel === "veo3_fast" ? "Veo 3 Fast" : "Veo 3";
+      await emit({ step: "generating", message: `Starting ${modelLabel} video generation...` });
+
+      // Aspect ratio mapping
+      const isPortrait = clientAspectRatio === "9:16" || clientAspectRatio === "4:5";
+      const veoAspectRatio: "9:16" | "16:9" = isPortrait ? "9:16" : "16:9";
+      const klingAspectRatio = clientAspectRatio || "16:9";
 
       const tasks: Array<{
         scene_number: number;
         description: string;
         task_id: string;
-        prompt: string;
+        motion_prompt: string;
         keyframe_url: string | null;
+        duration_seconds: number;
       }> = [];
 
-      for (const p of parsed.prompts) {
-        const keyframe = keyframeResults.find((k) => k.scene_number === p.scene_number);
+      for (const scene of parsed.scenes) {
+        const keyframe = keyframeResults.find((k) => k.scene_number === scene.scene_number);
         const keyframeUrl = keyframe?.keyframe_url ?? null;
 
         try {
-          const taskId = await createKlingTask({
-            prompt: p.kling_prompt,
-            imageUrls: keyframeUrl ? [keyframeUrl] : [],
-            sound: false,
-            duration: 10,
-            aspectRatio: "16:9",
-            mode: "std",
-          });
+          let taskId: string;
+
+          if (selectedModel === "kling") {
+            taskId = await createKlingTask({
+              prompt: scene.motion_prompt,
+              ...(keyframeUrl && { imageUrls: [keyframeUrl] }),
+              aspectRatio: klingAspectRatio,
+              duration: Math.min(scene.duration_seconds || 10, 15),
+              sound: true,
+            });
+          } else {
+            taskId = await createVeoTask(scene.motion_prompt, {
+              model: selectedModel === "veo3_fast" ? "veo3_fast" : "veo3",
+              aspect_ratio: veoAspectRatio,
+              ...(keyframeUrl && {
+                generationType: "FIRST_AND_LAST_FRAMES_2_VIDEO" as const,
+                imageUrls: [keyframeUrl],
+              }),
+            });
+          }
 
           tasks.push({
-            scene_number: p.scene_number,
-            description: p.description,
+            scene_number: scene.scene_number,
+            description: `${scene.time_range} — ${scene.motion_prompt.slice(0, 100)}`,
             task_id: taskId,
-            prompt: p.kling_prompt,
+            motion_prompt: scene.motion_prompt,
             keyframe_url: keyframeUrl,
+            duration_seconds: scene.duration_seconds,
           });
 
           await emit({
             step: "task_started",
-            message: `Scene ${p.scene_number} video generation started${keyframeUrl ? " (with keyframe)" : ""}`,
-            scene_number: p.scene_number,
+            message: `Scene ${scene.scene_number} video generation started${keyframeUrl ? " (with keyframe)" : ""}`,
+            scene_number: scene.scene_number,
             task_id: taskId,
           });
 
-          // Log Kling usage
+          // Log usage
           await db.from("usage_logs").insert({
-            type: "video_swiper_kling",
-            model: "kling-3.0/video",
+            type: selectedModel === "kling" ? "video_swiper_kling" : "video_swiper_veo",
+            model: selectedModel === "kling" ? "kling-3.0" : selectedModel,
             cost_usd: 0,
             metadata: {
               product: productSlug || null,
-              scene_number: p.scene_number,
+              scene_number: scene.scene_number,
               task_id: taskId,
               has_keyframe: !!keyframeUrl,
+              aspect_ratio: selectedModel === "kling" ? klingAspectRatio : veoAspectRatio,
             },
           });
 
           // Brief delay between API calls
-          if (parsed.prompts.length > 1) {
+          if (parsed.scenes.length > 1) {
             await new Promise((r) => setTimeout(r, 500));
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await emit({
             step: "task_error",
-            message: `Failed to start Scene ${p.scene_number}: ${msg}`,
-            scene_number: p.scene_number,
+            message: `Failed to start Scene ${scene.scene_number}: ${msg}`,
+            scene_number: scene.scene_number,
           });
         }
       }
 
       if (tasks.length === 0) {
-        await emit({ step: "error", message: "Failed to start any Kling generation tasks" });
-        await writer.close();
+        await emit({ step: "error", message: `Failed to start any ${modelLabel} generation tasks` });
         return;
       }
 
       await emit({
         step: "generating_started",
-        message: `${tasks.length} video${tasks.length > 1 ? "s" : ""} generating — this takes 1-3 minutes`,
+        message: `${tasks.length} video${tasks.length > 1 ? " clips" : ""} generating — this takes 2-4 minutes`,
         tasks,
         analysis: parsed.analysis,
-        prompt_strategy: parsed.prompt_strategy,
-        claude_cost: Math.round(claudeCost * 10000) / 10000,
+        total_tokens: geminiResult.usage.totalTokens,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[video-swiper] Error:", msg);
       await emit({ step: "error", message: `Analysis failed: ${msg}` });
     } finally {
-      await writer.close();
+      try { await writer.close(); } catch { /* already closed */ }
     }
   })();
 

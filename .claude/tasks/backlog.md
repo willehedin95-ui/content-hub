@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-10 (session 5)
+Updated: 2026-03-11 (session 1)
 
 ## P0 — Blockers
 (none)
@@ -33,6 +33,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 
 ## Done (recent)
+- [x] **Builder image gen rewrite** — Replaced GPT-4o with Claude Vision structured extraction (same as Assets Image Swiper). Fixes headlines being copied into images. Product hero images now passed as Nano Banana references. Commit `b85813c`. (done 2026-03-11)
 - [x] **Assets Hub overhaul** — Video uploads, sidebar nav, URL import, Image Swiper, Video Swiper moved to tab, new categories, product filter, search, storage bar. DB migration + 12-task implementation. Commits `10afb94`, `be92416`, `874e569`. (done 2026-03-10 session 5)
 - [x] **Supabase Pro upgrade** — Guided user through upgrade from Free to Pro ($35/mo). Storage 100 GB, bandwidth 250 GB. (done 2026-03-10 session 5)
 - [x] **Swiper image generation polish** — video thumbnails, dedup fix, aspect ratio fix, video gen via Kling, smart product prompts, text-only fallback. (done 2026-03-10 session 4)
