@@ -350,31 +350,17 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
       // If Meta doesn't want to spend on it, there's no point keeping it alive.
       newStage = "killed";
       signal = "low_spend_dud";
-    } else if (targetCpa !== null && daysSincePush >= TESTING_DAYS) {
-      // Check for scale: CPA below target for 5 consecutive days with 3+ conversions
-      const sorted = [...dailyMetrics].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      let consecutiveBelowTarget = 0;
-      let totalConvsInStreak = 0;
-      for (const day of sorted) {
-        if (day.conversions > 0 && day.cpa > 0 && day.cpa <= targetCpa) {
-          consecutiveBelowTarget++;
-          totalConvsInStreak += day.conversions;
-        } else {
-          break;
-        }
-      }
-      if (consecutiveBelowTarget >= SCALE_CONSECUTIVE_DAYS && totalConvsInStreak >= SCALE_MIN_CONVERSIONS) {
-        newStage = "active";
-        signal = "cpa_below_target_sustained";
-      } else {
-        newStage = "review";
-        signal = "testing_period_complete";
-      }
-    } else if (daysSincePush >= TESTING_DAYS) {
-      newStage = "review";
-      signal = "testing_period_complete";
+    } else if (daysSincePush >= TESTING_DAYS && totalConversions === 0) {
+      // No conversions after testing period (spent between 1x-2x target, or no target).
+      // Still a loser — kill it.
+      newStage = "killed";
+      signal = "no_conversions_testing_complete";
+    } else if (daysSincePush >= TESTING_DAYS && totalConversions > 0) {
+      // Has conversions after testing — auto-promote to active (winner).
+      // If it has conversions and survived testing, it's contributing.
+      // Let Meta's CBO handle budget distribution.
+      newStage = "active";
+      signal = "has_conversions_promoted";
     } else {
       newStage = "testing";
       signal = null;

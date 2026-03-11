@@ -38,7 +38,7 @@ import type {
 
 // ── Constants ────────────────────────────────────────────────
 
-const STAGES: PipelineStage[] = ["draft", "queued", "launchpad", "testing", "review", "active", "killed"];
+const STAGES: PipelineStage[] = ["testing", "active", "review", "killed"];
 
 const STAGE_CONFIG: Record<
   PipelineStage,
@@ -67,21 +67,21 @@ const STAGE_CONFIG: Record<
   },
   testing: {
     label: "Testing",
-    description: "Running \u2014 collecting data (2\u20133 days)",
+    description: "Running \u2014 collecting data (7 days)",
     headerBg: "bg-slate-100",
     headerText: "text-slate-700",
     borderColor: "border-slate-200",
   },
   review: {
     label: "Review",
-    description: "Enough data to decide: scale or kill",
+    description: "Borderline \u2014 high CPA but has conversions",
     headerBg: "bg-amber-50",
     headerText: "text-amber-700",
     borderColor: "border-amber-200",
   },
   active: {
-    label: "Active",
-    description: "Performing well, running at full budget",
+    label: "Winners",
+    description: "Has conversions \u2014 running",
     headerBg: "bg-emerald-50",
     headerText: "text-emerald-700",
     borderColor: "border-emerald-200",
@@ -478,12 +478,10 @@ export default function PipelineClient() {
     }
   }
 
-  // When filtering by country, hide queued column (queued have no country) and show core stages
-  const visibleStages = countryFilter
-    ? (["draft", "testing", "review", "active", "killed"] as PipelineStage[]).filter(
-        (s) => conceptsByStage[s].length > 0 || s === "draft" || s === "testing" || s === "review" || s === "active"
-      )
-    : STAGES;
+  // Show core stages; hide killed column if empty
+  const visibleStages = STAGES.filter(
+    (s) => conceptsByStage[s].length > 0 || s === "testing" || s === "active"
+  );
 
   // Draft concepts (for queue picker) — concepts with stage "draft"
   const draftConcepts = allConcepts.filter((c) => c.stage === "draft");
@@ -501,18 +499,6 @@ export default function PipelineClient() {
             <span className="text-xs text-gray-400">
               Last synced: {timeAgo(pipelineData.lastSyncedAt)}
             </span>
-          )}
-          {draftConcepts.length > 0 && (
-            <button
-              onClick={() => { setQueuePickerOpen(true); setQueueSelectedIds(new Set()); }}
-              className="flex items-center gap-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add to Queue
-              <span className="bg-violet-200 text-violet-800 text-xs px-1.5 py-0.5 rounded-full ml-0.5 tabular-nums">
-                {draftConcepts.length}
-              </span>
-            </button>
           )}
           <button
             onClick={syncPipeline}
