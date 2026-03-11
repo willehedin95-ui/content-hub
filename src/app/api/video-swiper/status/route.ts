@@ -13,7 +13,7 @@ export const maxDuration = 60;
  */
 export async function GET(req: NextRequest) {
   const tasksParam = req.nextUrl.searchParams.get("tasks");
-  const product = req.nextUrl.searchParams.get("product") || "happysleep";
+  const product = req.nextUrl.searchParams.get("product") || "general";
 
   if (!tasksParam) {
     return NextResponse.json({ error: "tasks parameter is required" }, { status: 400 });

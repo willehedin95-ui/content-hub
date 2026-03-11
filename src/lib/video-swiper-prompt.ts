@@ -3,31 +3,36 @@ import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types"
 
 /**
  * Build the Claude Vision system prompt for analyzing competitor product videos
- * and generating Kling AI prompts to recreate them with our product.
+ * and generating Kling AI prompts to recreate them (optionally with our product).
  */
 export function buildVideoSwiperSystemPrompt(
-  product: ProductFull,
+  product: ProductFull | null,
   productBrief: string | undefined,
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[]
 ): string {
-  const productContext = buildProductContext(
-    product,
-    productBrief,
-    guidelines,
-    segments
-  );
+  const hasProduct = !!product;
 
-  return `You are a video production specialist and Kling AI prompt engineer. You analyze competitor product videos and write precise Kling 3.0 prompts to recreate the same video concept using ${product.name} instead.
+  const productSection = hasProduct
+    ? `## OUR PRODUCT
+${buildProductContext(product, productBrief, guidelines, segments)}`
+    : "";
 
-## OUR PRODUCT
-${productContext}
+  const productName = product?.name ?? "the target product";
+
+  const productDescription = hasProduct
+    ? `describe ${productName} as a contoured ergonomic memory foam pillow, butterfly-shaped, light blue color with raised cervical support edges`
+    : "describe the product generically based on the original video's product type";
+
+  return `You are a video production specialist and Kling AI prompt engineer. You analyze competitor product videos and write precise Kling 3.0 prompts to recreate the same video concept${hasProduct ? ` using ${productName} instead` : " in the same visual style"}.
+
+${productSection}
 
 ## YOUR TASK
 
 You will receive sequential frames extracted from a competitor's product video. Your goal:
 1. Understand exactly what's happening visually in the video
-2. Write Kling 3.0 prompts that recreate the SAME video concept but featuring ${product.name}
+2. Write Kling 3.0 prompts that recreate the SAME video concept${hasProduct ? ` but featuring ${productName}` : " with the same visual style and composition"}
 
 These prompts will be sent directly to Kling 3.0 for automatic video generation. They must be production-ready.
 
@@ -61,7 +66,7 @@ Write prompts that are:
 4. **Detailed about**:
    - Camera: "static top-down shot" or "slow dolly forward" (be specific)
    - Subject: exact appearance, position, clothing, expression, action
-   - Product: describe ${product.name} as a contoured ergonomic memory foam pillow, butterfly-shaped, light blue color with raised cervical support edges
+   - Product: ${productDescription}
    - Environment: bedding, lighting, background
    - Motion: what changes during the clip
    - Effects: any glows, highlights, icons, text that should appear
@@ -77,11 +82,11 @@ Prefer **single** when possible — it produces more cohesive results.
 
 ## KEYFRAME PROMPT
 
-For each scene, you must also write a **keyframe_prompt** — a description of the FIRST FRAME of that scene as a still image. This is used to generate a reference keyframe with our product before the video is created.
+For each scene, you must also write a **keyframe_prompt** — a description of the FIRST FRAME of that scene as a still image. This is used to generate a reference keyframe${hasProduct ? " with our product" : ""} before the video is created.
 
 keyframe_prompt rules:
 - Describe a STATIC scene — no motion, no camera movement, no "zooms" or "pans"
-- Include our product (${product.name}) clearly visible in the composition
+${hasProduct ? `- Include our product (${productName}) clearly visible in the composition` : "- Include the product clearly visible in the composition"}
 - Match the exact lighting, angle, and composition of the first frame of the scene
 - Include all visual elements: text overlays, split-screen layout, background, props
 - 1-2 sentences, very specific about what the image looks like
@@ -101,7 +106,7 @@ Return valid JSON only (no markdown fences):
     {
       "scene_number": 1,
       "description": "Brief description of what this scene shows",
-      "keyframe_prompt": "Static image description of the first frame — used to generate a reference keyframe with our product",
+      "keyframe_prompt": "Static image description of the first frame — used to generate a reference keyframe${hasProduct ? " with our product" : ""}",
       "kling_prompt": "The full Kling 3.0 prompt with all visual details, effects, text, icons included"
     }
   ]
@@ -111,8 +116,8 @@ CRITICAL:
 - Return ONLY valid JSON, no markdown fences
 - Include ALL visual elements directly in the kling_prompt (text, icons, effects — Kling renders everything)
 - The keyframe_prompt must describe a STILL IMAGE (no motion words), the kling_prompt describes the VIDEO (with motion)
-- Describe ${product.name} accurately: contoured butterfly-shaped ergonomic memory foam pillow, light blue
-- NEVER invent medical claims — only use claims from the product brief
+${hasProduct ? `- Describe ${productName} accurately: contoured butterfly-shaped ergonomic memory foam pillow, light blue` : "- Describe the product based on the visual style seen in the frames"}
+- NEVER invent medical claims${hasProduct ? " — only use claims from the product brief" : ""}
 - NEVER include the competitor's brand name in prompts`;
 }
 
@@ -133,7 +138,7 @@ export function buildVideoSwiperUserPrompt(
 
 Frame timestamps (in chronological order): ${timestampList}
 
-Analyze exactly what's happening visually and write Kling 3.0 prompts to recreate this video with our product. The prompts will be sent directly to Kling for automatic generation.`;
+Analyze exactly what's happening visually and write Kling 3.0 prompts to recreate this video. The prompts will be sent directly to Kling for automatic generation.`;
 
   if (notes?.trim()) {
     prompt += `\n\nMy notes:\n${notes.trim()}`;

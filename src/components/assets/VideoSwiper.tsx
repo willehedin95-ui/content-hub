@@ -12,6 +12,7 @@ import {
   Download,
   XCircle,
   Image,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -64,9 +65,14 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState<number>(0);
-  const [product, setProduct] = useState<Product>("happysleep");
+  const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
+  const [urlInput, setUrlInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Save to assets
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   // Extraction
   const [extractionProgress, setExtractionProgress] = useState<ExtractionProgress | null>(null);
@@ -92,7 +98,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     async function poll() {
       try {
         const res = await fetch(
-          `/api/video-swiper/status?tasks=${taskIds}&product=${product}`
+          `/api/video-swiper/status?tasks=${taskIds}${product ? `&product=${product}` : ""}`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -131,6 +137,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     const url = URL.createObjectURL(file);
     setVideoFile(file);
     setVideoUrl(url);
+    setUrlInput("");
     const tempVideo = document.createElement("video");
     tempVideo.preload = "metadata";
     tempVideo.src = url;
@@ -139,6 +146,58 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       tempVideo.remove();
     };
   }, []);
+
+  // URL submission — download and create a File object for frame extraction
+  const handleUrlSubmit = useCallback(async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    if (!url.startsWith("http")) {
+      setError("Please enter a valid URL starting with http:// or https://");
+      return;
+    }
+    setError(null);
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch video: ${res.status}`);
+      const blob = await res.blob();
+      const ext = url.split(".").pop()?.split("?")[0]?.toLowerCase() || "mp4";
+      const file = new File([blob], `imported-video.${ext}`, { type: blob.type || "video/mp4" });
+      handleFileSelect(file);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Failed to load video URL: ${msg}`);
+    }
+  }, [urlInput, handleFileSelect]);
+
+  const handleUrlPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (text.startsWith("http")) {
+      e.preventDefault();
+      setUrlInput(text);
+      // Auto-submit after paste
+      setTimeout(() => {
+        const url = text.trim();
+        if (url.startsWith("http")) {
+          setError(null);
+          fetch(url)
+            .then((res) => {
+              if (!res.ok) throw new Error(`Failed to fetch video: ${res.status}`);
+              return res.blob();
+            })
+            .then((blob) => {
+              const ext = url.split(".").pop()?.split("?")[0]?.toLowerCase() || "mp4";
+              const file = new File([blob], `imported-video.${ext}`, { type: blob.type || "video/mp4" });
+              handleFileSelect(file);
+            })
+            .catch((err) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              setError(`Failed to load video URL: ${msg}`);
+            });
+        }
+      }, 100);
+    }
+  }, [handleFileSelect]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -198,7 +257,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
           frame_urls: frameUrls,
           frame_timestamps: extractedFrames.map((f) => f.timestamp),
           video_duration: videoDuration,
-          product,
+          ...(product && { product }),
           notes: notes.trim() || undefined,
         }),
       });
@@ -255,6 +314,39 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     }
   }, [videoFile, videoDuration, product, notes]);
 
+  // Save completed video to assets
+  const handleSaveToAssets = useCallback(async (videoUrlToSave: string, sceneNumber: number) => {
+    setSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/assets/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: videoUrlToSave,
+          name: `Video Swiper${product ? ` - ${product}` : ""} - Scene ${sceneNumber} - ${new Date().toLocaleDateString()}`,
+          category: "lifestyle",
+          product: product || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || "Failed to save asset");
+      }
+
+      const asset = await res.json();
+      if (onAssetCreated) onAssetCreated(asset);
+      setSaved(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Save failed: ${msg}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [product, onAssetCreated]);
+
   // Reset
   const handleReset = useCallback(() => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
@@ -264,6 +356,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     setVideoUrl(null);
     setVideoDuration(0);
     setNotes("");
+    setUrlInput("");
     setError(null);
     setFrames([]);
     setTasks([]);
@@ -275,6 +368,8 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     setClaudeCost(0);
     setKeyframeUrls({});
     setKeyframeCount({ done: 0, total: 0 });
+    setSaving(false);
+    setSaved(false);
   }, [videoUrl]);
 
   // Helpers
@@ -302,16 +397,16 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       {/* UPLOAD                                                             */}
       {/* ================================================================== */}
       {phase === "upload" && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
             className={cn(
-              "border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors",
+              "border-2 border-dashed rounded-xl text-center cursor-pointer transition-colors",
               videoFile
-                ? "border-indigo-300 bg-indigo-50/50"
-                : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
+                ? "border-indigo-300 bg-indigo-50/50 p-3"
+                : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50 p-8"
             )}
           >
             <input
@@ -325,61 +420,93 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               }}
             />
             {videoFile ? (
-              <div className="space-y-3">
-                <Film className="w-12 h-12 text-indigo-500 mx-auto" />
-                <p className="text-sm font-medium text-gray-900">{videoFile.name}</p>
-                <p className="text-xs text-gray-500">
-                  {(videoFile.size / 1024 / 1024).toFixed(1)} MB
-                  {videoDuration > 0 && ` · ${formatDuration(videoDuration)}`}
-                </p>
-                <p className="text-xs text-indigo-600">Click to change</p>
+              <div className="flex items-center gap-3">
+                <Film className="w-8 h-8 text-indigo-500 shrink-0" />
+                <div className="text-left min-w-0">
+                  <p className="text-xs font-medium text-gray-900 truncate">{videoFile.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {(videoFile.size / 1024 / 1024).toFixed(1)} MB
+                    {videoDuration > 0 && ` · ${formatDuration(videoDuration)}`}
+                  </p>
+                </div>
+                <p className="text-xs text-indigo-600 shrink-0 ml-auto">Click to change</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto" />
+              <div className="space-y-2">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto" />
                 <p className="text-sm font-medium text-gray-700">Drop a competitor video or click to browse</p>
                 <p className="text-xs text-gray-400">MP4 or MOV, max 60 seconds</p>
               </div>
             )}
           </div>
 
-          {videoUrl && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Original video</p>
-              <video src={videoUrl} controls className="w-full max-w-lg mx-auto rounded-lg" style={{ maxHeight: 300 }} />
-            </div>
-          )}
+          {!videoFile && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400 uppercase tracking-wider">or paste url</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Recreate with</label>
-            <div className="flex gap-2">
-              {PRODUCTS.map((p) => (
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onPaste={handleUrlPaste}
+                  placeholder="https://example.com/video.mp4"
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                />
                 <button
-                  key={p.value}
-                  onClick={() => setProduct(p.value)}
+                  onClick={handleUrlSubmit}
+                  disabled={!urlInput.trim()}
                   className={cn(
-                    "px-4 py-2 rounded-lg border text-sm font-medium transition-colors",
-                    product === p.value
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                    urlInput.trim()
+                      ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed"
                   )}
                 >
-                  {p.label}
+                  Load
                 </button>
-              ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Product <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex gap-2">
+                {PRODUCTS.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setProduct(prev => prev === p.value ? null : p.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                      product === p.value
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                        : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Notes <span className="text-gray-400 font-normal">(optional)</span>
             </label>
-            <textarea
+            <input
+              type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. 'Use a man instead of a woman' or 'Make the background darker'"
-              rows={2}
-              className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
             />
           </div>
 
@@ -387,7 +514,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
             onClick={handleAnalyze}
             disabled={!videoFile}
             className={cn(
-              "w-full py-3 rounded-lg text-sm font-semibold transition-colors",
+              "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors",
               videoFile
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -486,7 +613,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               </div>
               <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
               <p className="text-xs text-gray-400">
-                Generating keyframe{keyframeCount.total > 1 ? "s" : ""} with product reference image
+                Generating keyframe{keyframeCount.total > 1 ? "s" : ""}{product ? " with product reference" : ""}
                 {keyframeCount.total > 0 && ` (${keyframeCount.done}/${keyframeCount.total})`}
               </p>
               {keyframeCount.total > 0 && (
@@ -607,13 +734,36 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                 {anyFailed && " (some failed)"}
               </span>
             </div>
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Start Over
-            </button>
+            <div className="flex items-center gap-2">
+              {completedVideos.length === 1 && completedVideos[0] && taskStatuses[completedVideos[0].task_id]?.video_url && (
+                <button
+                  onClick={() => handleSaveToAssets(taskStatuses[completedVideos[0].task_id]!.video_url!, completedVideos[0].scene_number)}
+                  disabled={saving || saved}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50",
+                    saved
+                      ? "bg-green-50 text-green-700"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  )}
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : saved ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  {saving ? "Saving..." : saved ? "Saved!" : "Save to Assets"}
+                </button>
+              )}
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Start Over
+              </button>
+            </div>
           </div>
 
           {/* Side by side: original + generated */}
@@ -637,18 +787,30 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {tasks.length > 1 ? `Scene ${task.scene_number} — ` : ""}
-                      Generated ({product === "happysleep" ? "HappySleep" : "Hydro13"})
+                      Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Hydro13"})` : "(Style)"}
                     </p>
-                    {status?.video_url && (
-                      <a
-                        href={status.video_url}
-                        download={`video-swiper-scene-${task.scene_number}.mp4`}
-                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download
-                      </a>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {status?.video_url && (
+                        <button
+                          onClick={() => handleSaveToAssets(status.video_url!, task.scene_number)}
+                          disabled={saving}
+                          className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Save to Assets
+                        </button>
+                      )}
+                      {status?.video_url && (
+                        <a
+                          href={status.video_url}
+                          download={`video-swiper-scene-${task.scene_number}.mp4`}
+                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download
+                        </a>
+                      )}
+                    </div>
                   </div>
                   {status?.video_url && (
                     <video src={status.video_url} controls className="w-full rounded-lg" />

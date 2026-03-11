@@ -49,53 +49,58 @@ export async function POST(req: NextRequest) {
   if (!video_duration || video_duration <= 0) {
     return NextResponse.json({ error: "video_duration is required" }, { status: 400 });
   }
-  if (!productSlug) {
-    return NextResponse.json({ error: "product is required" }, { status: 400 });
-  }
-
-  // Fetch product data
+  // Fetch product data (only when product is selected)
   const db = createServerSupabase();
 
-  const { data: product, error: productErr } = await db
-    .from("products")
-    .select("*")
-    .eq("slug", productSlug)
-    .single();
+  let product: ProductFull | null = null;
+  let guidelines: CopywritingGuideline[] = [];
+  let segments: ProductSegment[] = [];
+  let productHeroUrls: string[] = [];
+  let productBrief: string | undefined;
 
-  if (productErr || !product) {
-    return NextResponse.json({ error: `Product "${productSlug}" not found` }, { status: 404 });
+  if (productSlug) {
+    const { data: productData, error: productErr } = await db
+      .from("products")
+      .select("*")
+      .eq("slug", productSlug)
+      .single();
+
+    if (productErr || !productData) {
+      return NextResponse.json({ error: `Product "${productSlug}" not found` }, { status: 404 });
+    }
+    product = productData as ProductFull;
+
+    const { data: guidelinesData } = await db
+      .from("copywriting_guidelines")
+      .select("*")
+      .or(`product_id.eq.${product.id},product_id.is.null`)
+      .order("sort_order", { ascending: true });
+
+    guidelines = (guidelinesData ?? []) as CopywritingGuideline[];
+    productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
+
+    const { data: segmentsData } = await db
+      .from("product_segments")
+      .select("*")
+      .eq("product_id", product.id)
+      .order("sort_order", { ascending: true });
+
+    segments = (segmentsData ?? []) as ProductSegment[];
+
+    // Fetch product hero images for Nano Banana reference
+    const { data: productImages } = await db
+      .from("product_images")
+      .select("url")
+      .eq("product_id", product.id)
+      .eq("category", "hero")
+      .order("sort_order", { ascending: true });
+
+    productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
   }
-
-  const { data: guidelinesData } = await db
-    .from("copywriting_guidelines")
-    .select("*")
-    .or(`product_id.eq.${product.id},product_id.is.null`)
-    .order("sort_order", { ascending: true });
-
-  const guidelines = (guidelinesData ?? []) as CopywritingGuideline[];
-  const productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
-
-  const { data: segmentsData } = await db
-    .from("product_segments")
-    .select("*")
-    .eq("product_id", product.id)
-    .order("sort_order", { ascending: true });
-
-  const segments = (segmentsData ?? []) as ProductSegment[];
-
-  // Fetch product hero images for Nano Banana reference
-  const { data: productImages } = await db
-    .from("product_images")
-    .select("url")
-    .eq("product_id", product.id)
-    .eq("category", "hero")
-    .order("sort_order", { ascending: true });
-
-  const productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
 
   // Build prompts
   const systemPrompt = buildVideoSwiperSystemPrompt(
-    product as ProductFull,
+    product,
     productBrief,
     guidelines,
     segments
@@ -194,7 +199,7 @@ export async function POST(req: NextRequest) {
         output_tokens: outputTokens,
         cost_usd: claudeCost,
         metadata: {
-          product: productSlug,
+          product: productSlug || null,
           frame_count: frame_urls.length,
           video_duration,
           prompt_strategy: parsed.prompt_strategy,
@@ -266,7 +271,7 @@ export async function POST(req: NextRequest) {
             model: "nano-banana-2",
             cost_usd: 0,
             metadata: {
-              product: productSlug,
+              product: productSlug || null,
               scene_number: p.scene_number,
               task_id: imageTaskId,
               has_product_ref: productHeroUrls.length > 0,
@@ -339,7 +344,7 @@ export async function POST(req: NextRequest) {
             model: "kling-3.0/video",
             cost_usd: 0,
             metadata: {
-              product: productSlug,
+              product: productSlug || null,
               scene_number: p.scene_number,
               task_id: taskId,
               has_keyframe: !!keyframeUrl,
