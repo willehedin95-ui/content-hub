@@ -93,9 +93,9 @@ export async function GET(req: NextRequest) {
     for (const [market, budget] of Object.entries(budgets)) {
       for (const format of ["image", "video"] as const) {
         const formatBudget = budget[format];
+        // Log compression info but don't block pushing — always allow new creative
         if (formatBudget.canPush <= 0) {
-          console.log(`[Pipeline Push] ${market}/${format}: No budget for testing (${formatBudget.available} ${formatBudget.currency} available, need 150)`);
-          continue;
+          console.log(`[Pipeline Push] ${market}/${format}: Low compression headroom (${formatBudget.available} ${formatBudget.currency}), pushing anyway`);
         }
 
         const countKey = `${market}:${format}`;
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
 
         for (const concept of sortedConcepts) {
           if (concept.type !== format) continue;
-          if (pushCounts[countKey] >= Math.min(formatBudget.canPush, MAX_CONCEPTS_PER_BATCH)) break;
+          if (pushCounts[countKey] >= MAX_CONCEPTS_PER_BATCH) break;
 
           const marketEntry = concept.markets.find((m) => m.market === market);
           if (!marketEntry || marketEntry.stage !== "launchpad") continue;

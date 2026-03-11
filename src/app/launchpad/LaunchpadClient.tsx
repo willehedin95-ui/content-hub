@@ -108,13 +108,13 @@ function sourceBadgeColors(source: string): string {
 function budgetColorClass(canPush: number): string {
   if (canPush >= 2) return "border-emerald-200 bg-emerald-50";
   if (canPush === 1) return "border-amber-200 bg-amber-50";
-  return "border-red-200 bg-red-50";
+  return "border-gray-200 bg-gray-50"; // Neutral — pushing is always allowed
 }
 
 function budgetTextClass(canPush: number): string {
   if (canPush >= 2) return "text-emerald-700";
   if (canPush === 1) return "text-amber-700";
-  return "text-red-700";
+  return "text-gray-600"; // Neutral — pushing is always allowed
 }
 
 // ── Main Component ───────────────────────────────────────────
@@ -412,15 +412,15 @@ export default function LaunchpadClient() {
               {selectedBudget.campaignBudget} SEK/day
             </span>
           </div>
-          {selectedBudget.canPush > 0 ? (
-            <p className="text-xs text-gray-500">
-              {selectedBudget.available} SEK compressible from {selectedBudget.activeAdSets} active ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}
-            </p>
-          ) : (
-            <p className="text-xs text-gray-500">
-              Winners consuming full budget across {selectedBudget.activeAdSets} ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}
-            </p>
-          )}
+          <p className="text-xs text-gray-500">
+            {selectedBudget.canPush > 0 ? (
+              <>{selectedBudget.available} SEK compressible from {selectedBudget.activeAdSets} active ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}</>
+            ) : selectedBudget.activeAdSets > 0 ? (
+              <>Winners at full spend across {selectedBudget.activeAdSets} ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""} — CBO will redistribute when you push</>
+            ) : (
+              <>No active ad sets — push to start testing</>
+            )}
+          </p>
           {selectedBudget.image.campaignBudget > 0 && selectedBudget.video.campaignBudget > 0 && (
             <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
               <span>Images: {selectedBudget.image.canPush}</span>

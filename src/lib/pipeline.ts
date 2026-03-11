@@ -76,7 +76,7 @@ function computeSignals(opts: {
     });
   }
 
-  // kill: CPA > 2x target after 7+ days
+  // high CPA review: CPA > 2x target after 7+ days but has conversions — may be feeding funnel
   if (
     targetCpa !== null &&
     daysSincePush >= TESTING_DAYS &&
@@ -84,8 +84,21 @@ function computeSignals(opts: {
     cpa > KILL_CPA_MULTIPLIER * targetCpa
   ) {
     signals.push({
+      type: "review_ready",
+      reason: `CPA ${cpa.toFixed(2)} > 2x target ${targetCpa.toFixed(2)} after ${daysSincePush} days — has ${totalConversions} conversion${totalConversions !== 1 ? "s" : ""}, check if it's feeding the funnel before killing`,
+    });
+  }
+
+  // kill: low spend dud — Meta barely spent on it after 7+ days, 0 conversions
+  if (
+    targetCpa !== null &&
+    daysSincePush >= TESTING_DAYS &&
+    totalSpend < targetCpa &&
+    totalConversions === 0
+  ) {
+    signals.push({
       type: "kill",
-      reason: `CPA ${cpa.toFixed(2)} > 2x target ${targetCpa.toFixed(2)} after ${daysSincePush} days`,
+      reason: `Only ${totalSpend.toFixed(0)} SEK spent after ${daysSincePush} days (< 1x target CPA ${targetCpa.toFixed(0)}) with 0 conversions — Meta isn't spending on it`,
     });
   }
 
@@ -323,8 +336,20 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
       totalConversions > 0 &&
       cpa > KILL_CPA_MULTIPLIER * targetCpa
     ) {
+      // High CPA but has conversions — might be feeding the funnel (Ben Radack rule).
+      // Send to review instead of auto-killing so user can check if it's a funnel feeder.
+      newStage = "review";
+      signal = "high_cpa_review";
+    } else if (
+      targetCpa !== null &&
+      daysSincePush >= TESTING_DAYS &&
+      totalSpend < targetCpa &&
+      totalConversions === 0
+    ) {
+      // Low spend dud: Meta's CBO barely spent on this after 7+ days — it's dead.
+      // If Meta doesn't want to spend on it, there's no point keeping it alive.
       newStage = "killed";
-      signal = "cpa_too_high";
+      signal = "low_spend_dud";
     } else if (targetCpa !== null && daysSincePush >= TESTING_DAYS) {
       // Check for scale: CPA below target for 5 consecutive days with 3+ conversions
       const sorted = [...dailyMetrics].sort(
