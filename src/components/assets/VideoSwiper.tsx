@@ -147,19 +147,15 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
     };
   }, []);
 
-  // URL submission — download and create a File object for frame extraction
-  const handleUrlSubmit = useCallback(async () => {
-    const url = urlInput.trim();
-    if (!url) return;
-    if (!url.startsWith("http")) {
-      setError("Please enter a valid URL starting with http:// or https://");
-      return;
-    }
+  // Fetch video via server proxy (avoids CORS) and create a File object
+  const fetchVideoViaProxy = useCallback(async (url: string) => {
     setError(null);
-
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to fetch video: ${res.status}`);
+      const res = await fetch(`/api/proxy-fetch?url=${encodeURIComponent(url)}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `Failed to fetch video: ${res.status}`);
+      }
       const blob = await res.blob();
       const ext = url.split(".").pop()?.split("?")[0]?.toLowerCase() || "mp4";
       const file = new File([blob], `imported-video.${ext}`, { type: blob.type || "video/mp4" });
@@ -168,36 +164,27 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Failed to load video URL: ${msg}`);
     }
-  }, [urlInput, handleFileSelect]);
+  }, [handleFileSelect]);
+
+  // URL submission
+  const handleUrlSubmit = useCallback(async () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    if (!url.startsWith("http")) {
+      setError("Please enter a valid URL starting with http:// or https://");
+      return;
+    }
+    await fetchVideoViaProxy(url);
+  }, [urlInput, fetchVideoViaProxy]);
 
   const handleUrlPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
     const text = e.clipboardData.getData("text");
     if (text.startsWith("http")) {
       e.preventDefault();
       setUrlInput(text);
-      // Auto-submit after paste
-      setTimeout(() => {
-        const url = text.trim();
-        if (url.startsWith("http")) {
-          setError(null);
-          fetch(url)
-            .then((res) => {
-              if (!res.ok) throw new Error(`Failed to fetch video: ${res.status}`);
-              return res.blob();
-            })
-            .then((blob) => {
-              const ext = url.split(".").pop()?.split("?")[0]?.toLowerCase() || "mp4";
-              const file = new File([blob], `imported-video.${ext}`, { type: blob.type || "video/mp4" });
-              handleFileSelect(file);
-            })
-            .catch((err) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              setError(`Failed to load video URL: ${msg}`);
-            });
-        }
-      }, 100);
+      setTimeout(() => fetchVideoViaProxy(text.trim()), 100);
     }
-  }, [handleFileSelect]);
+  }, [fetchVideoViaProxy]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
