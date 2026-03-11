@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
         },
         {
           type: "text" as const,
-          text: buildUserPrompt(surroundingText, forceProduct, hint),
+          text: buildUserPrompt(surroundingText, forceProduct, hint, productName),
         },
       ];
 
@@ -306,17 +306,16 @@ export async function POST(req: NextRequest) {
             }
           }
         } else {
-          // User doesn't want product — use Claude's suggested replacement subjects
-          const suggested = nanaBananaJson.suggested_replacement_subjects;
-          if (Array.isArray(suggested) && suggested.length > 0) {
-            nanaBananaJson.subjects = suggested;
-          } else {
-            // Fallback: remove competitor subjects, keep any non-product ones
-            nanaBananaJson.subjects = nanaBananaJson.subjects.filter(
-              (s: Record<string, unknown>) => !s.is_competitor_product
-            );
+          // User doesn't want product — swap each subject's description with its adapted version
+          for (const subject of nanaBananaJson.subjects) {
+            if (subject.adapted_description) {
+              subject.description = subject.adapted_description;
+              delete subject.adapted_description;
+            }
+            if (subject.is_competitor_product) {
+              delete subject.is_competitor_product;
+            }
           }
-          delete nanaBananaJson.suggested_replacement_subjects;
         }
       }
 
@@ -338,7 +337,7 @@ export async function POST(req: NextRequest) {
         }
         nanaBananaJson.instruction = instruction;
       } else {
-        let instruction = `Recreate this image's layout and composition but adapted for a sleep & wellness landing page. Keep the same visual structure and arrangement of elements. Do NOT include any product, pillow, branding, or text overlays.${qualityNote}${textureNote}`;
+        let instruction = `Recreate this image's EXACT layout and composition adapted for a sleep & wellness landing page. Every element must be in the same position, same size, same proportions as the original. Keep all layers: background, overlays, circular insets, text blocks — just with the adapted content described in the subjects. Do NOT include any branded product or pillow.${qualityNote}${textureNote}`;
         if (hint?.trim()) {
           instruction += ` User direction: ${hint.trim()}`;
         }
@@ -465,7 +464,7 @@ export async function POST(req: NextRequest) {
  * Build the user prompt for Claude Vision analysis.
  * Surrounding text is passed as thematic context only — never to be reproduced in the image.
  */
-function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?: string): string {
+function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?: string, productName?: string): string {
   let prompt = "Extract every visual detail from this image as structured JSON. Pay special attention to the LAYOUT and COMPOSITION — how elements are arranged, layered, and sized.";
 
   if (surroundingText?.trim()) {
@@ -475,15 +474,16 @@ function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?
   if (forceProduct) {
     prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to identify the competitor product in the extraction.`;
   } else {
-    prompt += `\n\n**Note:** The user does NOT want the product shown in the replacement image. After extracting the visual details, also add a field "suggested_replacement_subjects" — an array of 1-2 subject objects (with "description" and "type" fields) that would work in the SAME LAYOUT/COMPOSITION but adapted for a sleep & wellness landing page.
+    prompt += `\n\n**Note:** The user does NOT want the product shown in the replacement image. For EACH subject you extract, add an extra field "adapted_description" with a sleep/wellness version of that element for a ${productName || "sleep pillow"} landing page. Keep EVERY subject — people, text overlays, graphics, circular insets — just adapt their content.
 
-Be SPECIFIC and CREATIVE about replacements. Look at what role each visual element plays in the composition, then find a sleep/wellness equivalent. Examples:
-- Sea buckthorn berries as scattered background texture → soft memory foam bubbles, cloud-like pillow filling, or cotton fibers
-- A supplement bottle in a circular frame → (leave empty if no product requested)
-- A person holding a product → a person stretching after waking up, or touching their neck in relief
-- Bold ingredient graphics → cozy bedroom scene, close-up of premium fabric texture
+Rules for adaptation:
+- **People**: Keep the same pose/framing but adapt context to sleep/wellness (e.g. person from behind touching belly → person from behind touching neck)
+- **Text overlays / headlines**: Rewrite for sleep/wellness. e.g. "STUDY FINDS REINDEER ORGANS BOOST TESTOSTERONE BY 40%" → "STUDY: 93% REPORT LESS NECK PAIN WITHIN 30 DAYS". Keep the same visual style (bold, capitalized, news-like, etc.)
+- **Circular insets / magnified areas**: Replace content with sleep-relevant equivalent (e.g. microscopic cells → close-up of memory foam cell structure, spinal vertebrae, or muscle fiber cross-section)
+- **Backgrounds / textures**: Find sleep/wellness equivalent with same visual energy (e.g. scattered berries → scattered foam bubbles or cotton fibers)
+- **Products marked is_competitor_product**: Replace with a generic sleep/wellness visual that fits the same position and size. Do NOT use the target product.
 
-The replacement should feel like it BELONGS on the same page — matching the section's theme and the visual energy of the original layout.`;
+The adapted image should feel like the SAME landing page template but for a completely different product category.`;
   }
 
   if (hint?.trim()) {
