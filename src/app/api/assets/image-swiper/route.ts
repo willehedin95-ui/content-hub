@@ -180,9 +180,15 @@ export async function POST(req: NextRequest) {
       }
       // Add generation task instruction at the top level
       nanaBananaJson.task = "generate_image";
+      const qualityNote = extraction.style?.photo_quality
+        ? ` CRITICAL: Match the original photo quality exactly — ${extraction.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
+        : "";
+      const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
+        ? ` Texture must be: ${extraction.style.texture}.`
+        : "";
       let instruction = product
-        ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.`
-        : "Recreate this visual style with the described subjects and environment.";
+        ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${qualityNote}${textureNote}`
+        : `Recreate this visual style with the described subjects and environment.${qualityNote}${textureNote}`;
       if (notes) {
         instruction += ` Additional instructions: ${notes}`;
       }

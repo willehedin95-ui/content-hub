@@ -322,8 +322,14 @@ export async function POST(req: NextRequest) {
 
       // Add generation task + instruction
       nanaBananaJson.task = "generate_image";
+      const qualityNote = nanaBananaJson.style?.photo_quality
+        ? ` CRITICAL: Match the original photo quality exactly — ${nanaBananaJson.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
+        : "";
+      const textureNote = nanaBananaJson.style?.texture && nanaBananaJson.style.texture !== "sharp" && nanaBananaJson.style.texture !== "clean"
+        ? ` Texture must be: ${nanaBananaJson.style.texture}.`
+        : "";
       if (forceProduct) {
-        let instruction = `Recreate this image's layout and composition featuring ${productName}. The product must match the reference images provided.`;
+        let instruction = `Recreate this image's layout and composition featuring ${productName}. The product must match the reference images provided.${qualityNote}${textureNote}`;
         if (surroundingText?.trim()) {
           instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
         }
@@ -332,7 +338,7 @@ export async function POST(req: NextRequest) {
         }
         nanaBananaJson.instruction = instruction;
       } else {
-        let instruction = `Recreate this image's layout and composition but adapted for a sleep & wellness landing page. Keep the same visual structure and arrangement of elements. Do NOT include any product, pillow, branding, or text overlays.`;
+        let instruction = `Recreate this image's layout and composition but adapted for a sleep & wellness landing page. Keep the same visual structure and arrangement of elements. Do NOT include any product, pillow, branding, or text overlays.${qualityNote}${textureNote}`;
         if (hint?.trim()) {
           instruction += ` User direction: ${hint.trim()}`;
         }
