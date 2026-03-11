@@ -327,8 +327,9 @@ export async function POST(req: NextRequest) {
       const textureNote = nanaBananaJson.style?.texture && nanaBananaJson.style.texture !== "sharp" && nanaBananaJson.style.texture !== "clean"
         ? ` Texture must be: ${nanaBananaJson.style.texture}.`
         : "";
+      const layoutInstruction = `Recreate this image's EXACT layout and composition. Every element must be in the same position, same size, same proportions as the original. Keep all layers: background textures, overlays, circular insets, text blocks, people — only change the content described in the subjects.`;
       if (forceProduct) {
-        let instruction = `Recreate this image's layout and composition featuring ${productName}. The product must match the reference images provided.${qualityNote}${textureNote}`;
+        let instruction = `${layoutInstruction} Replace the competitor product with ${productName} — the product must match the reference images provided. Everything else (background, text overlays, other subjects) stays in the same position and style.${qualityNote}${textureNote}`;
         if (surroundingText?.trim()) {
           instruction += ` The section theme is about: ${summarizeTheme(surroundingText)}`;
         }
@@ -337,7 +338,7 @@ export async function POST(req: NextRequest) {
         }
         nanaBananaJson.instruction = instruction;
       } else {
-        let instruction = `Recreate this image's EXACT layout and composition adapted for a sleep & wellness landing page. Every element must be in the same position, same size, same proportions as the original. Keep all layers: background, overlays, circular insets, text blocks — just with the adapted content described in the subjects. Do NOT include any branded product or pillow.${qualityNote}${textureNote}`;
+        let instruction = `${layoutInstruction} Do NOT include any branded product or pillow. Use the adapted content described in each subject.${qualityNote}${textureNote}`;
         if (hint?.trim()) {
           instruction += ` User direction: ${hint.trim()}`;
         }
@@ -472,7 +473,9 @@ function buildUserPrompt(surroundingText?: string, forceProduct?: boolean, hint?
   }
 
   if (forceProduct) {
-    prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to identify the competitor product in the extraction.`;
+    prompt += `\n\n**Note:** The replacement image MUST prominently feature the target product. Make sure to:
+1. Identify the competitor product with \`"is_competitor_product": true\`
+2. Extract EVERY other element precisely — text overlays (exact text content, style, position), background textures, circular insets, people, graphics. ALL of these must be kept in the generated image, only the competitor product gets swapped.`;
   } else {
     prompt += `\n\n**Note:** The user does NOT want the product shown in the replacement image. For EACH subject you extract, add an extra field "adapted_description" with a sleep/wellness version of that element for a ${productName || "sleep pillow"} landing page. Keep EVERY subject — people, text overlays, graphics, circular insets — just adapt their content.
 
