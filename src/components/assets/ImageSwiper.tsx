@@ -306,6 +306,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setGeneratedImageUrl(null);
     setPromptUsed(null);
     setStatusMessage("");
+    setSaving(false);
+    setSaved(false);
   }, [competitorImageUrl, competitorImageFile]);
 
   return (
