@@ -157,10 +157,10 @@ export async function POST(req: NextRequest) {
 
       // Derive flat analysis for UI display
       const flatAnalysis = {
-        composition: `${extraction.composition?.layout ?? "Unknown layout"}. ${extraction.composition?.framing ?? ""}. Focal point: ${extraction.composition?.focal_point ?? ""}`,
+        composition: `${extraction.composition?.camera_perspective ?? extraction.composition?.layout ?? "Unknown"}. ${extraction.composition?.framing ?? ""}. Focal point: ${extraction.composition?.focal_point ?? ""}`,
         colors: extraction.colors?.mood ?? "Unknown",
         mood: extraction.scene?.atmosphere ?? "Unknown",
-        style: `${extraction.style?.category ?? "Unknown"}. ${extraction.style?.feel ?? ""}`,
+        style: `${extraction.style?.category ?? "Unknown"}. ${extraction.style?.feel ?? ""}${extraction.style?.photo_quality ? `. Quality: ${extraction.style.photo_quality}` : ""}`,
       };
 
       // Build Nano Banana JSON prompt: swap competitor product with target product
@@ -282,6 +282,31 @@ export async function POST(req: NextRequest) {
 function buildImageSwiperSystemPrompt(): string {
   return `You are an expert visual analyst. Extract every visual detail from the provided image as structured JSON. This JSON will be passed directly to an image generation model, so be extremely precise and detailed.
 
+# CRITICAL: Camera Perspective & Human Actions
+
+The MOST IMPORTANT thing to get right is the camera perspective and what any people are doing. These are the #1 cause of bad generations. Ask yourself:
+
+- **Who is taking this photo?** Is it a first-person POV (photographer holding/showing something)? A selfie? A third-person shot? A tripod/studio shot?
+- **What are the hands/body ACTUALLY doing?** "Hand touching pillow" is NOT the same as "person holding pillow out in front of them over a bed, first-person POV". Be specific about the exact action and body position.
+- **Where is the camera relative to the scene?** Eye-level? Looking down at a surface? Looking up? Held at arm's length?
+
+Examples of BAD vs GOOD descriptions:
+- BAD: "Medium shot from above, bird's eye perspective looking down at bed surface"
+- GOOD: "First-person POV — person holding the pillow with one hand, arm extended forward over their bed, camera at chest height looking slightly down at the pillow and bed below"
+- BAD: "Person with hand on pillow"
+- GOOD: "Person's left hand gripping the side of the pillow, holding it up at arm's length in front of them — only the hand and forearm are visible, rest of body is behind camera"
+
+# Photo Quality & Naturalness
+
+Describe the ACTUAL quality level of the image — do NOT assume studio perfection:
+- Is it a casual phone photo with natural imperfections?
+- Slightly overexposed or underexposed?
+- Is the focus soft or slightly off?
+- Does it look like a professional shoot or a real person's photo?
+- Is the lighting natural/ambient or carefully set up?
+
+This matters because the generated image should match the same quality level — a casual UGC-style photo should NOT become a studio-perfect shot.
+
 # Structured Visual Extraction
 
 Analyze the image and extract ALL visual details into this exact JSON structure:
@@ -291,10 +316,11 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
   "scene": {
     "setting": "Describe the environment/location",
     "background": "Specific background elements, textures, wall colors with hex codes",
-    "lighting": "Light direction, quality (soft/hard/diffused), color temperature (warm/cool), shadow behavior",
+    "lighting": "Light direction, quality (soft/hard/diffused), color temperature (warm/cool), shadow behavior. Also note if lighting looks natural/casual vs studio-controlled",
     "atmosphere": "Overall environmental feel"
   },
   "composition": {
+    "camera_perspective": "CRITICAL — exactly describe the camera position and who is taking the photo. e.g. 'First-person POV, camera held at chest height' or 'Third-person, eye-level tripod shot' or 'Overhead flat-lay from directly above'",
     "layout": "How the frame is organized (centered, rule-of-thirds, split/diptych, diagonal, etc.)",
     "framing": "Shot type (extreme close-up, close-up, medium, wide, etc.)",
     "focal_point": "What draws the eye and where",
@@ -306,7 +332,8 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
       "type": "person | product | prop | text | graphic",
       "description": "Detailed visual description — age, clothing, expression, material, color with hex codes",
       "position": "Where in the frame (center, top-left, bottom-third, etc.)",
-      "action": "What they are doing (if applicable)",
+      "action": "CRITICAL — describe EXACTLY what they are doing with their body, hands, arms. Not just 'touching' but HOW they are interacting. e.g. 'holding pillow with right hand at arm's length, palm underneath, fingers gripping the side'",
+      "visibility": "What parts are visible? Full body, upper body, just hands, etc.",
       "is_competitor_product": false
     }
   ],
@@ -319,7 +346,8 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
   "style": {
     "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic | before-after",
     "feel": "Describe the overall aesthetic in one sentence",
-    "texture": "clean | grainy | soft-focus | sharp | matte | glossy"
+    "texture": "clean | grainy | soft-focus | sharp | matte | glossy",
+    "photo_quality": "Describe the actual quality — e.g. 'casual phone photo, slightly soft focus, natural imperfections' or 'professional studio shot, tack-sharp, controlled lighting'"
   }
 }
 \`\`\`
@@ -328,6 +356,8 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 
 - Use specific hex color codes wherever possible (background colors, product colors, clothing colors)
 - For subjects: mark exactly ONE subject as \`"is_competitor_product": true\` — the main product being advertised
+- **camera_perspective is the MOST important field** — get this wrong and the entire generation will look nothing like the original
+- **action descriptions must be specific and physical** — describe exact hand positions, grip, arm angles, body posture
 - Be precise about lighting direction (e.g., "soft light from upper-left, no harsh shadows")
 - Be precise about composition (e.g., "product occupies lower-right third, person upper-left")
 - Describe each subject in enough visual detail that an image generator could recreate it
