@@ -186,8 +186,9 @@ export async function POST(req: NextRequest) {
       const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
         ? ` Texture must be: ${extraction.style.texture}.`
         : "";
+      const noLogoNote = " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
       let instruction = product
-        ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${qualityNote}${textureNote}`
+        ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${noLogoNote}${qualityNote}${textureNote}`
         : `Recreate this visual style with the described subjects and environment.${qualityNote}${textureNote}`;
       if (notes) {
         instruction += ` Additional instructions: ${notes}`;

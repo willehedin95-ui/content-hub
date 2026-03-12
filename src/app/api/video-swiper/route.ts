@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
           // Add generation instruction
           nanaBananaJson.task = "generate_image";
           let instruction = product
-            ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.`
+            ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided. CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.`
             : "Recreate this visual style with the described subjects and environment.";
           if (notes) {
             instruction += ` Additional instructions: ${notes}`;

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     // Fetch all concepts for this product
     const { data: concepts, error } = await supabase
       .from("pipeline_concepts")
-      .select("*")
+      .select("product, target_markets, cash_dna, status, created_at")
       .eq("product", product)
       .order("created_at", { ascending: false });
 

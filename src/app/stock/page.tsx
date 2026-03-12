@@ -1,5 +1,5 @@
-import StockClient from "./StockClient";
+import { redirect } from "next/navigation";
 
 export default function StockPage() {
-  return <StockClient />;
+  redirect("/products?tab=inventory");
 }

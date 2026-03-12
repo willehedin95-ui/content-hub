@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, FlaskConical, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Warehouse, Library, BookOpen, Video, Rocket, FolderOpen } from "lucide-react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Video, Rocket, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 
@@ -37,9 +37,8 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
 
   const nav: NavEntry[] = useMemo(() => [
     { href: "/morning-brief", label: "Daily Actions", icon: Zap },
-    { href: "/", label: "Business Pulse", icon: Activity },
+    { href: "/", label: "Dashboard", icon: Activity },
     { href: "/pages", label: "Landing Pages", icon: Layers },
-    { href: "/ab-tests", label: "A/B Tests", icon: FlaskConical },
     {
       label: "Ads",
       icon: Megaphone,
@@ -49,13 +48,10 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
         { href: "/images", label: "Concepts", icon: Image },
         { href: "/video-ads", label: "Video Ads", icon: Video },
-        { href: "/hooks", label: "Hook Bank", icon: Library },
-        { href: "/learnings", label: "Learnings", icon: BookOpen },
       ],
     },
     { href: "/products", label: "Products", icon: Package },
     { href: "/assets", label: "Assets", icon: FolderOpen },
-    { href: "/stock", label: "Inventory", icon: Warehouse },
     { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
   ], [pipelineBadgeCount]);
 
@@ -76,6 +72,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   };
 
   const fetchProgress = useCallback(async () => {
+    if (document.hidden) return;
     try {
       const res = await fetch("/api/image-jobs/progress");
       if (res.ok) setProgress(await res.json());
@@ -84,17 +81,23 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     }
   }, []);
 
-  // Poll frequently while processing, slowly when idle (to detect new jobs)
+  // Only poll progress on /images (the only page that shows it)
+  const onImagesPage = pathname === "/images" || pathname.startsWith("/images/");
   useEffect(() => {
+    if (!onImagesPage) {
+      setProgress(null);
+      return;
+    }
     fetchProgress();
     const ms = progress?.processing ? 10_000 : 60_000;
     const interval = setInterval(fetchProgress, ms);
     return () => clearInterval(interval);
-  }, [fetchProgress, progress?.processing]);
+  }, [fetchProgress, progress?.processing, onImagesPage]);
 
-  // Poll pipeline badge count every 30s
+  // Poll pipeline badge count every 120s (skip when tab hidden)
   useEffect(() => {
     const fetchPipelineBadge = async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch("/api/pipeline/badge-count");
         if (res.ok) {
@@ -107,7 +110,7 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
     };
 
     fetchPipelineBadge();
-    const interval = setInterval(fetchPipelineBadge, 30000); // Poll every 30s
+    const interval = setInterval(fetchPipelineBadge, 120_000);
     return () => clearInterval(interval);
   }, []);
 

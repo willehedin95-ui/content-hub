@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
 
       // Add generation task + instruction (same as image swiper)
       nanaBananaJson.task = "generate_image";
-      let instruction = `Recreate this visual style featuring ${productName}. The product must match the reference images provided.`;
+      let instruction = `Recreate this visual style featuring ${productName}. The product must match the reference images provided. CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.`;
       if (hint?.trim()) instruction += ` ${hint.trim()}`;
       nanaBananaJson.instruction = instruction;
 

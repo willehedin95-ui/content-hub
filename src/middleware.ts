@@ -25,13 +25,10 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session (important — do NOT remove)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   // Allow auth routes without login
   if (request.nextUrl.pathname.startsWith("/auth")) {
+    // Still refresh session on auth routes
+    await supabase.auth.getSession();
     return supabaseResponse;
   }
 
@@ -46,8 +43,13 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Refresh session from cookie (no network call — reads JWT from cookie, auto-refreshes if expired)
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   // Redirect unauthenticated users to login
-  if (!user) {
+  if (!session) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);

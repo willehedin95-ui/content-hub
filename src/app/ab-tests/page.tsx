@@ -1,33 +1,5 @@
-import { createServerSupabase } from "@/lib/supabase";
-import { ABTest, LANGUAGES } from "@/types";
-import ABTestsClient from "./ABTestsClient";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function ABTestsPage() {
-  const db = createServerSupabase();
-
-  const { data: tests, error } = await db
-    .from("ab_tests")
-    .select("*")
-    .order("updated_at", { ascending: false });
-
-  if (error) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          Failed to load A/B tests: {error.message}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-8">
-      <ABTestsClient
-        tests={(tests as ABTest[]) || []}
-        languages={LANGUAGES}
-      />
-    </div>
-  );
+export default function ABTestsPage() {
+  redirect("/pages?tab=ab-tests");
 }
