@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
-import { listAdSets, listAdsInAdSet } from "@/lib/meta";
+import { listAdSets, listAdsInAdSet, setMetaConfig } from "@/lib/meta";
+import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
 
 export const maxDuration = 120;
 
@@ -58,17 +59,22 @@ function parseAdSetName(name: string): { conceptName: string; adSetNumber: strin
 export async function GET() {
   try {
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
+    const ws = await getWorkspace();
+    setMetaConfig(ws.meta_config ?? null);
 
     // Get all campaign mappings
     const { data: mappings, error: mappingsErr } = await db
       .from("meta_campaign_mappings")
-      .select("*");
+      .select("*")
+      .eq("workspace_id", workspaceId);
     if (mappingsErr) throw mappingsErr;
 
     // Get all tracked ad set IDs
     const { data: tracked, error: trackedErr } = await db
       .from("meta_campaigns")
-      .select("meta_adset_id");
+      .select("meta_adset_id")
+      .eq("workspace_id", workspaceId);
     if (trackedErr) throw trackedErr;
 
     const trackedAdSetIds = new Set(tracked?.map((t) => t.meta_adset_id) ?? []);
@@ -122,17 +128,22 @@ export async function GET() {
 export async function POST() {
   try {
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
+    const ws = await getWorkspace();
+    setMetaConfig(ws.meta_config ?? null);
 
     // Get all campaign mappings
     const { data: mappings, error: mappingsErr } = await db
       .from("meta_campaign_mappings")
-      .select("*");
+      .select("*")
+      .eq("workspace_id", workspaceId);
     if (mappingsErr) throw mappingsErr;
 
     // Get all tracked ad set IDs
     const { data: tracked, error: trackedErr } = await db
       .from("meta_campaigns")
-      .select("meta_adset_id");
+      .select("meta_adset_id")
+      .eq("workspace_id", workspaceId);
     if (trackedErr) throw trackedErr;
 
     const trackedAdSetIds = new Set(tracked?.map((t) => t.meta_adset_id) ?? []);
@@ -201,6 +212,7 @@ export async function POST() {
           status: "completed",
           target_languages: languages,
           tags: ["imported"],
+          workspace_id: workspaceId,
         })
         .select("id")
         .single();
@@ -225,6 +237,7 @@ export async function POST() {
             language: adSet.language,
             product: concept.product,
             status: "pushed",
+            workspace_id: workspaceId,
           })
           .select("id")
           .single();

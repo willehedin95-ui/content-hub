@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search, Loader2 } from "lucide-react";
-import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
+import { Page, Translation, LANGUAGES, PAGE_TYPES } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 import { TagBadge } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
 import StatusDot from "./StatusDot";
@@ -19,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const PRODUCT_MAP = Object.fromEntries(PRODUCTS.map((p) => [p.value, p.label]));
 const TYPE_MAP = Object.fromEntries(PAGE_TYPES.map((t) => [t.value, t.label]));
 
 function getTranslationStatus(
@@ -35,6 +35,8 @@ function getTranslationUrl(translations: Translation[], lang: string) {
 }
 
 export default function PagesTable({ pages, onImport }: { pages: Page[]; onImport?: () => void }) {
+  const products = useProducts();
+  const PRODUCT_MAP = useMemo(() => Object.fromEntries(products.map((p) => [p.value, p.label])), [products]);
   const router = useRouter();
   const [filter, setFilter] = useState({ product: "", type: "", search: "", tag: "" });
   const { tags: allTags } = useAllTags();
@@ -110,7 +112,7 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Products</SelectItem>
-            {PRODUCTS.map((p) => (
+            {products.map((p) => (
               <SelectItem key={p.value} value={p.value}>
                 {p.label}
               </SelectItem>

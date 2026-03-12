@@ -5,6 +5,7 @@ import { fetchOrdersSince, isShopifyConfigured, convertToUSD, getRatesToUSD } fr
 import { fetchAllGA4Metrics } from "@/lib/ga4";
 import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights } from "@/lib/google-ads";
 import { LANGUAGES } from "@/types";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 export const maxDuration = 60;
 
@@ -48,12 +49,7 @@ export async function GET(req: NextRequest) {
   const untilISO = new Date(dateStr + "T23:59:59Z").toISOString();
 
   // Get settings for GA4 property IDs
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-  const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const settings = await getWorkspaceSettings();
   const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
   const hasGA4 = Object.keys(ga4PropertyIds).length > 0;
 

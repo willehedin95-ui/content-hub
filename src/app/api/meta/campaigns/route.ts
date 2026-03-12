@@ -3,13 +3,16 @@ import { createServerSupabase } from "@/lib/supabase";
 import { isValidLanguage, isValidBudget } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { META_OBJECTIVES, COUNTRY_MAP } from "@/types";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("meta_campaigns")
     .select("*, meta_ads(*)")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -85,9 +88,11 @@ export async function POST(req: NextRequest) {
   const db = createServerSupabase();
 
   // Create campaign (ad set) record
+  const workspaceId = await getWorkspaceId();
   const { data: campaign, error: campError } = await db
     .from("meta_campaigns")
     .insert({
+      workspace_id: workspaceId,
       name: name.trim(),
       objective,
       language,

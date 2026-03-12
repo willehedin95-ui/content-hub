@@ -1,18 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { safeError } from "@/lib/api-error";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
-    .from("app_settings")
+    .from("workspaces")
     .select("settings")
-    .limit(1)
+    .eq("id", workspaceId)
     .single();
 
-  if (error && error.code !== "PGRST116") {
-    return safeError(error, "Failed to fetch settings");
+  if (error) {
+    // Fallback to legacy app_settings table
+    const { data: legacy } = await db
+      .from("app_settings")
+      .select("settings")
+      .limit(1)
+      .single();
+    return NextResponse.json(legacy?.settings ?? {});
   }
 
   return NextResponse.json(data?.settings ?? {});
@@ -21,31 +29,15 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const settings = await req.json();
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
-  // Check if a row exists
-  const { data: existing } = await db
-    .from("app_settings")
-    .select("id")
-    .limit(1)
-    .single();
+  const { error } = await db
+    .from("workspaces")
+    .update({ settings, updated_at: new Date().toISOString() })
+    .eq("id", workspaceId);
 
-  if (existing) {
-    const { error } = await db
-      .from("app_settings")
-      .update({ settings, updated_at: new Date().toISOString() })
-      .eq("id", existing.id);
-
-    if (error) {
-      return safeError(error, "Failed to update settings");
-    }
-  } else {
-    const { error } = await db
-      .from("app_settings")
-      .insert({ settings });
-
-    if (error) {
-      return safeError(error, "Failed to save settings");
-    }
+  if (error) {
+    return safeError(error, "Failed to save settings");
   }
 
   return NextResponse.json(settings);

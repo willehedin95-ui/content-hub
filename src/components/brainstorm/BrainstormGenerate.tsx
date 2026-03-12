@@ -33,11 +33,11 @@ import {
   VideoConceptProposal,
   PixarAnimationProposal,
   Product,
-  PRODUCTS,
   BrainstormMode,
   AdTemplate,
   ProductSegment,
 } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 import { BRAINSTORM_MODES, AD_TEMPLATE_META } from "@/lib/brainstorm";
 import { VIDEO_FORMATS, HOOK_TYPES } from "@/lib/constants";
 
@@ -107,6 +107,7 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 
 export default function BrainstormGenerate() {
   const router = useRouter();
+  const products = useProducts();
 
   // Phase state
   const [phase, setPhase] = useState<Phase>("configure");
@@ -690,7 +691,7 @@ export default function BrainstormGenerate() {
               Product
             </label>
             <div className="flex gap-2">
-              {PRODUCTS.map((p) => (
+              {products.map((p) => (
                 <button
                   key={p.value}
                   onClick={() => setProduct(p.value)}

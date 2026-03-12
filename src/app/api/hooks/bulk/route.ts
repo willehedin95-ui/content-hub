@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const VALID_ACTIONS = new Set(["approve", "archive"]);
 
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
   };
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("hook_library")
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .in("id", ids)
+    .eq("workspace_id", workspaceId)
     .select("id");
 
   if (error) return safeError(error, "Failed to bulk update hooks");

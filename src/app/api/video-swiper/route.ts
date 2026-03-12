@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult, createVeoTask, createKlingTask, callGeminiVideo } from "@/lib/kie";
 import {
   buildVideoSwiperSystemPrompt,
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
 
   // Fetch product data (only when product is selected)
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let product: ProductFull | null = null;
   let productHeroUrls: string[] = [];
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
       .from("products")
       .select("*")
       .eq("slug", productSlug)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (productErr || !productData) {

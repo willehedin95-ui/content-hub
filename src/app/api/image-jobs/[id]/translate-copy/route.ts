@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { Language, LANGUAGES, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import { getShortLocalizationNote } from "@/lib/localization";
 import { calcOpenAICost } from "@/lib/pricing";
@@ -30,11 +31,13 @@ export async function POST(
   const corrections = body.corrections as string | undefined;
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error } = await db
     .from("image_jobs")
     .select("id, name, product, target_languages, ad_copy_primary, ad_copy_headline, ad_copy_translations")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !job) {

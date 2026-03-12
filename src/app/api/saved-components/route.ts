@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 
@@ -39,12 +40,14 @@ function detectCategory(html: string): string {
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const url = new URL(req.url);
   const product = url.searchParams.get("product");
 
   let query = db
     .from("saved_components")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });
 
   if (product) {
@@ -62,6 +65,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const body = await req.json();
   const { name, html, product } = body as {
     name?: string;
@@ -138,6 +142,7 @@ export async function POST(req: NextRequest) {
       product: product || null,
       category,
       thumbnail_url,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

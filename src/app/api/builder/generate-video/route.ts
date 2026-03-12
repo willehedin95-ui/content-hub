@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { generateImage, createKlingTask } from "@/lib/kie";
 import { OPENAI_MODEL } from "@/lib/constants";
@@ -78,10 +79,11 @@ export async function POST(req: NextRequest) {
 
   const openai = getOpenAI();
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Load product data
   const [productResult, imagesResult, briefResult] = await Promise.all([
-    db.from("products").select("name, slug").eq("id", productId).single(),
+    db.from("products").select("name, slug").eq("id", productId).eq("workspace_id", workspaceId).single(),
     db
       .from("product_images")
       .select("*")

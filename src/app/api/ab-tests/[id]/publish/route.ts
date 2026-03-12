@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { publishABTest, ABTestAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { Language } from "@/types";
 import { isValidUUID } from "@/lib/validation";
+import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 
 export async function POST(
   _req: NextRequest,
@@ -21,12 +22,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch the A/B test
   const { data: test, error: tErr } = await db
     .from("ab_tests")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (tErr || !test) {
@@ -65,14 +68,8 @@ export async function POST(
     );
   }
 
-  // Load analytics settings from DB
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-
-  const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  // Load analytics settings
+  const appSettings = await getWorkspaceSettings();
   const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
   const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
   const analytics: ABTestAnalyticsConfig = {

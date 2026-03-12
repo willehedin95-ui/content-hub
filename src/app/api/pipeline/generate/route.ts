@@ -12,6 +12,7 @@ import {
   identifyCoverageGaps,
   generateSuggestions,
 } from "@/lib/coverage-matrix";
+import { getWorkspaceId } from "@/lib/workspace";
 import type {
   AutoPipelineGenerateRequest,
   AutoPipelineGenerateResponse,
@@ -47,12 +48,14 @@ export async function POST(request: Request) {
     }
 
     const supabase = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     // Fetch product data
     const { data: productData, error: productError } = await supabase
       .from("products")
       .select("*, copywriting_guidelines(*), segments:product_segments(*)")
       .eq("slug", product)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (productError || !productData) {
@@ -87,10 +90,10 @@ export async function POST(request: Request) {
     const productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
 
     // Fetch approved hooks for inspiration
-    const hookInspiration = await buildHookInspiration(product);
+    const hookInspiration = await buildHookInspiration(product, workspaceId);
 
     // Fetch learnings from past ad tests
-    const learningsContext = await buildLearningsContext(product);
+    const learningsContext = await buildLearningsContext(product, workspaceId);
 
     // Build prompts
     const brainstormMode = mapModeToBrainstormMode(mode);

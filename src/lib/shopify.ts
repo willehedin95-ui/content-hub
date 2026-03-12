@@ -275,17 +275,16 @@ export async function getOrdersByPage(
 
 export async function getConversionsForTest(
   testId: string,
-  since: string
+  since: string,
+  workspaceId?: string
 ): Promise<Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }>> {
   const { createServerSupabase } = await import("./supabase");
   const db = createServerSupabase();
 
   // Get the AB test slug — paths are always /{slug}/a/ and /{slug}/b/
-  const { data: test } = await db
-    .from("ab_tests")
-    .select("slug")
-    .eq("id", testId)
-    .single();
+  let query = db.from("ab_tests").select("slug").eq("id", testId);
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const { data: test } = await query.single();
 
   if (!test?.slug) return [];
 

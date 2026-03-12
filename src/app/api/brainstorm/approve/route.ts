@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // POST /api/brainstorm/approve — create image_job from approved brainstorm proposal
 export async function POST(req: NextRequest) {
@@ -26,12 +27,14 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   try {
     // Get next concept number
     const { data: lastJob } = await db
       .from("image_jobs")
       .select("concept_number")
+      .eq("workspace_id", workspaceId)
       .not("concept_number", "is", null)
       .order("concept_number", { ascending: false })
       .limit(1)
@@ -67,6 +70,7 @@ export async function POST(req: NextRequest) {
         ad_copy_primary: proposal.ad_copy_primary,
         ad_copy_headline: allHeadlines,
         visual_direction: proposal.visual_direction ?? null,
+        workspace_id: workspaceId,
       })
       .select()
       .single();

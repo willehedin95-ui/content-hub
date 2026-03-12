@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const params = req.nextUrl.searchParams;
 
   const product = params.get("product");
@@ -15,6 +17,7 @@ export async function GET(req: NextRequest) {
   let query = db
     .from("concept_learnings")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(limit);
 

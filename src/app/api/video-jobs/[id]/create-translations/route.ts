@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
 import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const anthropic = new Anthropic();
 
@@ -14,12 +15,14 @@ export async function POST(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // 1. Fetch video job with source videos
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("*, source_videos(*)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);

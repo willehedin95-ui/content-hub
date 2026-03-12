@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { X, Loader2, FolderOpen, ChevronDown, Search, Languages } from "lucide-react";
-import { Language, LANGUAGES, Product, PRODUCTS } from "@/types";
+import { Language, LANGUAGES, Product } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 import { getSettings } from "@/lib/settings";
 import TagInput from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
@@ -29,6 +30,7 @@ interface DriveFolderItem {
 }
 
 export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPerImage = 75 }: Props) {
+  const products = useProducts();
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -426,7 +428,7 @@ export default function NewConceptModal({ open, onClose, onCreated, avgSecondsPe
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Product</label>
             <div className="flex gap-2">
-              {PRODUCTS.map((p) => (
+              {products.map((p) => (
                 <button
                   key={p.value}
                   type="button"

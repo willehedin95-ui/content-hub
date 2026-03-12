@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Find all concepts without DNA
   const { data: jobs, error } = await db
     .from("image_jobs")
     .select("id, name")
+    .eq("workspace_id", workspaceId)
     .is("cash_dna", null)
     .order("created_at", { ascending: false });
 

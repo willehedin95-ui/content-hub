@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // PATCH /api/hooks/[id] — update a hook
 export async function PATCH(
@@ -34,11 +35,13 @@ export async function PATCH(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("hook_library")
     .update(updates)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .select()
     .single();
 
@@ -58,8 +61,9 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
-  const { error } = await db.from("hook_library").delete().eq("id", id);
+  const { error } = await db.from("hook_library").delete().eq("id", id).eq("workspace_id", workspaceId);
   if (error) return safeError(error, "Failed to delete hook");
 
   return NextResponse.json({ success: true });

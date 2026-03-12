@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { calcOpenAICost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
@@ -23,11 +24,13 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error } = await db
     .from("image_jobs")
     .select("id, name, product, ad_copy_primary, ad_copy_headline, tags")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !job) {

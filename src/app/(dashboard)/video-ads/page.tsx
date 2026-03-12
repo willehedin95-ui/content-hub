@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Plus, Video, Clock } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { VideoJob } from "@/types";
-import { PRODUCTS } from "@/types";
 import { VIDEO_FORMATS, HOOK_TYPES } from "@/lib/constants";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -31,17 +31,24 @@ function getHookLabel(hookType: string | null): string | null {
   return HOOK_TYPES.find((h) => h.id === hookType)?.label ?? hookType;
 }
 
-function getProductLabel(product: string): string {
-  return PRODUCTS.find((p) => p.value === product)?.label ?? product;
-}
-
 export default async function VideoAdsPage() {
   const supabase = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
-  const { data: jobs, error } = await supabase
-    .from("video_jobs")
-    .select("*, source_videos(*), video_translations(*), video_shots(*)")
-    .order("created_at", { ascending: false });
+  const [{ data: jobs, error }, { data: productsData }] = await Promise.all([
+    supabase
+      .from("video_jobs")
+      .select("*, source_videos(*), video_translations(*), video_shots(*)")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false }),
+    supabase.from("products").select("slug, name").eq("workspace_id", workspaceId),
+  ]);
+
+  const products = (productsData ?? []).map(p => ({ value: p.slug, label: p.name }));
+
+  function getProductLabel(product: string): string {
+    return products.find((p) => p.value === product)?.label ?? product;
+  }
 
   const videoJobs: VideoJob[] = error ? [] : (jobs ?? []);
 

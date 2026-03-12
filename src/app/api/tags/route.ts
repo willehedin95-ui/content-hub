@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const [pagesResult, jobsResult] = await Promise.all([
-    db.from("pages").select("tags"),
-    db.from("image_jobs").select("tags"),
+    db.from("pages").select("tags").eq("workspace_id", workspaceId),
+    db.from("image_jobs").select("tags").eq("workspace_id", workspaceId),
   ]);
 
   const allTags = new Set<string>();

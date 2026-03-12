@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function PATCH(
   req: NextRequest,
@@ -8,6 +9,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const body = await req.json();
   const { name } = body as { name?: string };
 
@@ -22,6 +24,7 @@ export async function PATCH(
     .from("saved_components")
     .update({ name })
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .select()
     .single();
 
@@ -38,12 +41,14 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch record to get thumbnail_url for cleanup
   const { data: record, error: fetchError } = await db
     .from("saved_components")
     .select("thumbnail_url")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (fetchError) {
@@ -73,7 +78,8 @@ export async function DELETE(
   const { error: deleteError } = await db
     .from("saved_components")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
 
   if (deleteError) {
     return safeError(deleteError, "Failed to delete component");

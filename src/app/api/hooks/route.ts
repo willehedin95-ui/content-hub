@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // GET /api/hooks — list hooks with optional filters
 export async function GET(req: NextRequest) {
@@ -12,10 +13,12 @@ export async function GET(req: NextRequest) {
   const source = url.searchParams.get("source");
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let query = db
     .from("hook_library")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
       : "unreviewed";
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("hook_library")
@@ -85,6 +89,7 @@ export async function POST(req: NextRequest) {
       source_url: body.source_url || null,
       notes: body.notes || null,
       status: hookStatus,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { generateIterationCopy } from "@/lib/brainstorm";
@@ -28,12 +29,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch the parent job
   const { data: parent, error: parentErr } = await db
     .from("image_jobs")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (parentErr || !parent) {
@@ -136,6 +139,7 @@ export async function POST(
   const { data: lastJob } = await db
     .from("image_jobs")
     .select("concept_number")
+    .eq("workspace_id", workspaceId)
     .not("concept_number", "is", null)
     .order("concept_number", { ascending: false })
     .limit(1)
@@ -201,6 +205,7 @@ export async function POST(
       iteration_of: id,
       iteration_type: iterationType,
       iteration_context: iterationContext,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

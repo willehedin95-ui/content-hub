@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import Anthropic from "@anthropic-ai/sdk";
@@ -43,12 +44,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch concept with full CASH DNA
   const { data: job, error: jobErr } = await db
     .from("image_jobs")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobErr || !job) {

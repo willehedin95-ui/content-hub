@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listAdSets } from "@/lib/meta";
+import { listAdSets, setMetaConfig } from "@/lib/meta";
 import { safeError } from "@/lib/api-error";
+import { getWorkspace } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const campaignId = req.nextUrl.searchParams.get("campaign_id");
@@ -13,6 +14,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const ws = await getWorkspace();
+    setMetaConfig(ws.meta_config ?? null);
     const adSets = await listAdSets(campaignId);
     return NextResponse.json(adSets);
   } catch (err) {

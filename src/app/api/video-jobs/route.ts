@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { searchParams } = new URL(req.url);
   const product = searchParams.get("product");
   const status = searchParams.get("status");
@@ -11,6 +13,7 @@ export async function GET(req: NextRequest) {
   let query = db
     .from("video_jobs")
     .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });
 
   if (product) {
@@ -31,6 +34,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const body = await req.json();
 
   const { product, concept_name } = body;
@@ -57,6 +61,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await db
     .from("video_jobs")
     .insert({
+      workspace_id: workspaceId,
       product,
       concept_name,
       hook_type: body.hook_type || null,

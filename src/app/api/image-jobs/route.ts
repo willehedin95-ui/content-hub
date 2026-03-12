@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { Language, MetaCampaignStatus } from "@/types";
 import { isValidLanguage, isValidAspectRatio } from "@/lib/validation";
 import { computeCounts } from "@/lib/image-utils";
@@ -7,6 +8,7 @@ import { safeError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const url = new URL(req.url);
   // V3.4: If iteration_of filter provided, return lightweight child list
   const iterationOf = url.searchParams.get("iteration_of");
@@ -14,6 +16,7 @@ export async function GET(req: NextRequest) {
     const { data, error: iterErr } = await db
       .from("image_jobs")
       .select("id, name, iteration_type, iteration_of, created_at")
+      .eq("workspace_id", workspaceId)
       .eq("iteration_of", iterationOf)
       .order("created_at", { ascending: true });
     if (iterErr) return safeError(iterErr, "Failed to fetch iterations");
@@ -31,6 +34,7 @@ export async function GET(req: NextRequest) {
       const q = db
         .from("image_jobs")
         .select(`*, source_images(id, filename, original_url, skip_translation, image_translations(id, language, status, aspect_ratio, translated_url, active_version_id, updated_at))`)
+        .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       return showArchived ? q.not("archived_at", "is", null) : q.is("archived_at", null);
@@ -38,7 +42,8 @@ export async function GET(req: NextRequest) {
     (() => {
       const q = db
         .from("image_jobs")
-        .select("id", { count: "exact", head: true });
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId);
       return showArchived ? q.not("archived_at", "is", null) : q.is("archived_at", null);
     })(),
     db
@@ -95,6 +100,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Extract concept number from name like "#002 Bold Text" or "#019 - Swipes 2"
   const trimmedName = name.trim();
@@ -111,12 +117,14 @@ export async function POST(req: NextRequest) {
     product?: string;
     concept_number?: number;
     source: string;
+    workspace_id: string;
   } = {
     name: cleanName,
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["4:5", "9:16"],
     source: "external",
+    workspace_id: workspaceId,
   };
   if (source_folder_id) insertData.source_folder_id = source_folder_id;
   if (product) insertData.product = product;

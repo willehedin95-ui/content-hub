@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -13,12 +14,14 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let query = db
     .from("image_translations")
     .select("id, language, aspect_ratio, translated_url, source_images!inner(id, filename, original_url, image_jobs!inner(id, name, product))")
     .eq("status", "completed")
     .eq("language", language)
+    .eq("source_images.image_jobs.workspace_id", workspaceId)
     .not("translated_url", "is", null);
 
   if (ratio) {

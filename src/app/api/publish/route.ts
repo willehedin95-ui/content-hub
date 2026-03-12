@@ -4,6 +4,7 @@ import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 export const maxDuration = 120;
 
@@ -132,12 +133,7 @@ async function doPublish(
     }));
 
     // Load analytics settings
-    const { data: settingsRow } = await db
-      .from("app_settings")
-      .select("settings")
-      .limit(1)
-      .single();
-    const appSettings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+    const appSettings = await getWorkspaceSettings();
     const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
     const excludedIps = (appSettings.excluded_ips as string[]) ?? [];
     const analytics: PageAnalyticsConfig = {

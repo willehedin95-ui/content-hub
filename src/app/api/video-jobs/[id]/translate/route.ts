@@ -5,6 +5,7 @@ import { OPENAI_MODEL } from "@/lib/constants";
 import { extractDialogue, replaceDialogue } from "@/lib/video-brainstorm";
 import { formatRules } from "@/lib/translation-rules";
 import OpenAI from "openai";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 60;
 
@@ -80,12 +81,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // 1. Fetch video job with shots and existing translations
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("*, video_shots(*), video_translations(*)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
@@ -233,6 +236,7 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { error } = await db
     .from("video_translations")

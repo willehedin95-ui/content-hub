@@ -10,7 +10,8 @@ import {
   ChevronRight,
   Download,
 } from "lucide-react";
-import { ImageJob, LANGUAGES, PRODUCTS } from "@/types";
+import { ImageJob, LANGUAGES } from "@/types";
+import { useProducts, getProductLabel } from "@/hooks/useProducts";
 
 interface Props {
   job: ImageJob;
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props) {
+  const products = useProducts();
   const total = job.total_translations ?? 0;
   const completed = job.completed_translations ?? 0;
   const failed = job.failed_translations ?? 0;
@@ -60,7 +62,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
             <p className="text-sm font-medium text-gray-800 truncate">{job.name}</p>
             {job.product && (
               <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">
-                {PRODUCTS.find((p) => p.value === job.product)?.label}
+                {getProductLabel(products, job.product)}
               </span>
             )}
           </div>

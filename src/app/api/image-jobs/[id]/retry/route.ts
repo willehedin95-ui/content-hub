@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 
@@ -13,6 +14,18 @@ export async function POST(
   }
   const includeStalled = _req.nextUrl.searchParams.get("include_stalled") === "true";
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify job belongs to workspace
+  const { data: jobCheck } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!jobCheck) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
   // Find all failed translations for this job
   const { data: failed, error: findError } = await db

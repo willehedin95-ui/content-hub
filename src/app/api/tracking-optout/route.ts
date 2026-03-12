@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +19,7 @@ export async function GET(req: NextRequest) {
     return corsResponse(req, { optout: false });
   }
 
-  const db = createServerSupabase();
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-
-  const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const settings = await getWorkspaceSettings();
   const excludedIps = (settings.excluded_ips ?? []) as string[];
 
   return corsResponse(req, { optout: excludedIps.includes(ip) });

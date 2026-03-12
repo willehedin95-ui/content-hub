@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { COUNTRY_MAP } from "@/types";
 
 /**
@@ -11,12 +12,14 @@ export async function GET(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Get target languages for this job
   const { data: job } = await db
     .from("image_jobs")
     .select("target_languages")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!job) {
@@ -92,12 +95,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Validate job exists and is ready
   const { data: job } = await db
     .from("image_jobs")
     .select("id, status, target_languages")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!job) {

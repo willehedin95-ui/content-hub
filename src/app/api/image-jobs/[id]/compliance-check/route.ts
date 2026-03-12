@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { runComplianceCheck } from "@/lib/meta-compliance";
 import { isValidUUID } from "@/lib/validation";
 import { CLAUDE_MODEL, OPENAI_MODEL } from "@/lib/constants";
@@ -16,6 +17,7 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   try {
     // Load job with ad copy and images
@@ -25,6 +27,7 @@ export async function POST(
         "id, ad_copy_primary, ad_copy_headline, source_images(id, original_url, skip_translation, image_translations(translated_url, aspect_ratio, status))"
       )
       .eq("id", jobId)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (jobError || !job) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // POST /api/brainstorm/reject — Store a rejected concept for future avoidance
 export async function POST(req: NextRequest) {
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { error } = await db.from("rejected_concepts").insert({
     product,
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
     awareness_level: awareness_level ?? null,
     concept_description: concept_description ?? null,
     reason: reason ?? null,
+    workspace_id: workspaceId,
   });
 
   if (error) {

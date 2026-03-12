@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { stripForTranslation, compactForSwiper } from "@/lib/html-parser";
 import { buildRewritePrompts } from "@/lib/claude";
@@ -30,10 +31,11 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Load product bank data
   const [productResult, guidelinesResult, referencesResult] = await Promise.all([
-    db.from("products").select("*").eq("id", productId).single(),
+    db.from("products").select("*").eq("id", productId).eq("workspace_id", workspaceId).single(),
     db
       .from("copywriting_guidelines")
       .select("*")
@@ -130,6 +132,7 @@ export async function POST(req: NextRequest) {
       swiped_from_url: sourceUrl || null,
       status: "importing",
       swipe_job_id: job.id,
+      workspace_id: workspaceId,
     })
     .select("id")
     .single();

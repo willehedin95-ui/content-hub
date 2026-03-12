@@ -4,6 +4,7 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { translateAdCopyBatch } from "@/lib/meta-push";
 import type { Language, ConceptCopyTranslations, ConceptCopyTranslation } from "@/types";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 120;
 

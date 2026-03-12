@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { validateImageFile, isValidUUID } from "@/lib/validation";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
@@ -26,12 +27,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Verify job exists
   const { data: job, error: jobError } = await db
     .from("image_jobs")
     .select("id, target_languages, target_ratios")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 // 1x1 transparent GIF
 const PIXEL = Buffer.from(
@@ -48,13 +49,7 @@ function sendCAPIPageView(params: {
   const token = process.env.META_SYSTEM_USER_TOKEN;
   if (!token) return;
 
-  const db = createServerSupabase();
-  db.from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single()
-    .then(({ data }) => {
-      const settings = (data?.settings ?? {}) as Record<string, unknown>;
+  getWorkspaceSettings().then((settings) => {
       const pixelId = settings.meta_pixel_id as string;
       if (!pixelId) return;
 

@@ -6,6 +6,7 @@ import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { generateImage } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -57,12 +58,14 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch product
   const { data: product, error: productErr } = await db
     .from("products")
     .select("*")
     .eq("slug", productSlug)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (productErr || !product) {
@@ -100,6 +103,7 @@ export async function POST(req: NextRequest) {
       .from("image_jobs")
       .select("name, cash_dna")
       .eq("product", productSlug)
+      .eq("workspace_id", workspaceId)
       .not("cash_dna", "is", null);
 
     if (jobs && jobs.length > 0) {
@@ -117,7 +121,8 @@ export async function POST(req: NextRequest) {
   const { data: rejectedData } = await db
     .from("rejected_concepts")
     .select("angle, awareness_level, concept_description")
-    .eq("product", productSlug);
+    .eq("product", productSlug)
+    .eq("workspace_id", workspaceId);
 
   const rejectedConcepts = (rejectedData ?? []) as Array<{
     angle: string | null;
@@ -126,10 +131,10 @@ export async function POST(req: NextRequest) {
   }>;
 
   // Fetch approved hooks for inspiration
-  const hookInspiration = await buildHookInspiration(productSlug);
+  const hookInspiration = await buildHookInspiration(productSlug, workspaceId);
 
   // Fetch learnings from past ad tests
-  const learningsContext = await buildLearningsContext(productSlug);
+  const learningsContext = await buildLearningsContext(productSlug, workspaceId);
 
   // -----------------------------------------------------------------------
   // FROM COMPETITOR AD — separate code path (vision + image generation)
@@ -285,6 +290,7 @@ export async function POST(req: NextRequest) {
         const { data: lastJob } = await db
           .from("image_jobs")
           .select("concept_number")
+          .eq("workspace_id", workspaceId)
           .not("concept_number", "is", null)
           .order("concept_number", { ascending: false })
           .limit(1)
@@ -324,6 +330,7 @@ export async function POST(req: NextRequest) {
             ad_copy_primary: parsed.concept.ad_copy_primary,
             ad_copy_headline: parsed.concept.ad_copy_headline,
             visual_direction: parsed.concept.visual_direction ?? null,
+            workspace_id: workspaceId,
             pending_competitor_gen: {
               image_prompts: parsed.image_prompts,
               competitor_image_urls: competitorImageUrls,
@@ -380,7 +387,7 @@ export async function POST(req: NextRequest) {
 
         await emit({ step: "generating", message: "Generating video concepts..." });
 
-        const context = await loadVideoUgcContext(productSlug);
+        const context = await loadVideoUgcContext(productSlug, workspaceId);
 
         const systemPrompt = buildVideoUgcSystemPrompt(
           productSlug,

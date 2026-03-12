@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 15;
 
@@ -16,6 +17,7 @@ export async function GET(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // 1. Fetch image_job with source images
   const { data: job, error: jobErr } = await db
@@ -24,6 +26,7 @@ export async function GET(
       "id, name, product, status, concept_number, cash_dna, ad_copy_primary, ad_copy_headline, landing_page_id, iteration_of, iteration_type, iteration_context, tags, created_at, updated_at, source_images(id, original_url, thumbnail_url, filename, processing_order)"
     )
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobErr || !job) {

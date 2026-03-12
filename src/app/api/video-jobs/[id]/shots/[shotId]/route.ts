@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const ALLOWED_FIELDS = ["shot_description", "veo_prompt"] as const;
 
@@ -26,6 +27,19 @@ export async function PATCH(
   const db = createServerSupabase();
 
   // Verify shot belongs to this job
+  const workspaceId = await getWorkspaceId();
+
+  // Verify video job belongs to workspace
+  const { data: jobCheck, error: jobCheckError } = await db
+    .from("video_jobs")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (jobCheckError || !jobCheck) {
+    return safeError(jobCheckError, "Video job not found", 404);
+  }
+
   const { data: shot, error: shotError } = await db
     .from("video_shots")
     .select("id")

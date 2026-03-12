@@ -4,9 +4,10 @@ import Sidebar from "@/components/layout/Sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import AgentationWrapper from "@/components/ui/AgentationWrapper";
 import { createAuthServerClient } from "@/lib/supabase-server";
+import { getAllWorkspaces, getWorkspaceSlug } from "@/lib/workspace";
 
 export const metadata: Metadata = {
-  title: "Content Hub — Hälsobladet",
+  title: "Content Hub",
   description: "Translation dashboard for advertorials and listicles",
   icons: { icon: "/icon.svg" },
 };
@@ -26,12 +27,16 @@ export default async function RootLayout({
     // Not authenticated or cookies not available
   }
 
+  // Load workspaces for the sidebar switcher
+  const workspaces = user ? await getAllWorkspaces() : [];
+  const activeWorkspaceSlug = user ? await getWorkspaceSlug() : undefined;
+
   return (
     <html lang="en">
       <body className="flex min-h-screen bg-gray-50">
           {user ? (
             <>
-              <Sidebar userEmail={user.email} />
+              <Sidebar userEmail={user.email} workspaces={workspaces} activeWorkspaceSlug={activeWorkspaceSlug} />
               <main className="flex-1 overflow-auto">{children}</main>
             </>
           ) : (

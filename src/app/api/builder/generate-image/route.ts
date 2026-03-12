@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
@@ -210,10 +211,11 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Load product data
   const [productResult, imagesResult, briefResult] = await Promise.all([
-    db.from("products").select("name, slug, description").eq("id", productId).single(),
+    db.from("products").select("name, slug, description").eq("id", productId).eq("workspace_id", workspaceId).single(),
     db
       .from("product_images")
       .select("*")

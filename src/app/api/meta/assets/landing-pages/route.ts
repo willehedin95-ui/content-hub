@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch published landing pages
   let query = db
@@ -19,6 +21,7 @@ export async function GET(req: NextRequest) {
     .select("id, language, slug, published_url, seo_title, pages!inner(id, name, slug, product, tags, page_type, angle, thumbnail_url)")
     .eq("status", "published")
     .eq("language", language)
+    .eq("pages.workspace_id", workspaceId)
     .not("published_url", "is", null);
 
   if (product) {
@@ -32,6 +35,7 @@ export async function GET(req: NextRequest) {
       .from("ab_tests")
       .select("id, name, slug, language, router_url, status")
       .eq("language", language)
+      .eq("workspace_id", workspaceId)
       .eq("status", "active")
       .not("router_url", "is", null)
       .order("created_at", { ascending: false }),

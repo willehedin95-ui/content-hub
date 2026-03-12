@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { generateImage } from "@/lib/kie";
 import { STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
@@ -23,12 +24,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch the job
   const { data: job, error: jobErr } = await db
     .from("image_jobs")
     .select("id, status, pending_competitor_gen")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobErr || !job) {

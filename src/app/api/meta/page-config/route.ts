@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("meta_page_config")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("country");
 
   if (error) {
@@ -32,12 +35,14 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("meta_page_config")
     .upsert(
       {
         country,
+        workspace_id: workspaceId,
         meta_page_id,
         meta_page_name: meta_page_name ?? null,
         updated_at: new Date().toISOString(),

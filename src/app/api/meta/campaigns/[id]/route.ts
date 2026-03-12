@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -12,10 +13,12 @@ export async function GET(
   }
   const db = createServerSupabase();
 
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("meta_campaigns")
     .select("*, meta_ads(*)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !data) {

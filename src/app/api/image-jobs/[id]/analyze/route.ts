@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { analyzeTranslationQuality } from "@/lib/quality-analysis";
 import { calcOpenAICost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
@@ -21,6 +22,18 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify job belongs to workspace
+  const { data: jobCheck } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!jobCheck) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
   // Look up the version and its parent translation + source image
   const { data: version, error: vError } = await db

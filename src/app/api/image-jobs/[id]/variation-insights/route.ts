@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
-import { getAdInsightsForIds } from "@/lib/meta";
+import { getAdInsightsForIds, setMetaConfig } from "@/lib/meta";
 
 export const maxDuration = 60;
 
@@ -16,6 +17,20 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+  const ws = await getWorkspace();
+  setMetaConfig(ws.meta_config ?? null);
+
+  // Verify job belongs to workspace
+  const { data: jobCheck } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!jobCheck) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
   // Get all pushed meta_ads for this concept
   const { data: campaigns } = await db

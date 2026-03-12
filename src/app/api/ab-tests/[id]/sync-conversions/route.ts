@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import { getConversionsForTest, isShopifyConfigured } from "@/lib/shopify";
 
 export async function POST(
@@ -21,12 +22,14 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Get the test to find its activation date
   const { data: test, error: tErr } = await db
     .from("ab_tests")
     .select("id, status, created_at, updated_at")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (tErr || !test) {
@@ -37,7 +40,7 @@ export async function POST(
   const since = test.created_at;
 
   try {
-    const conversions = await getConversionsForTest(id, since);
+    const conversions = await getConversionsForTest(id, since, workspaceId);
 
     if (conversions.length === 0) {
       return NextResponse.json({ synced: 0 });

@@ -6,6 +6,7 @@ import { fetchClarityInsights } from "@/lib/clarity";
 import { getOrdersByPage } from "@/lib/shopify";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { calcOpenAICost } from "@/lib/pricing";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 export const maxDuration = 60;
 
@@ -19,12 +20,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = createServerSupabase();
-    const { data: settingsRow } = await db
-      .from("app_settings")
-      .select("settings")
-      .limit(1)
-      .single();
-    const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+    const settings = await getWorkspaceSettings();
 
     const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
     const clarityToken = settings.clarity_api_token as string | undefined;

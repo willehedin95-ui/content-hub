@@ -445,13 +445,15 @@ const TEMPLATE_NAMES: Record<AdTemplate, string> = {
 // Hook inspiration from curated hook library
 // ---------------------------------------------------------------------------
 
-export async function buildHookInspiration(product: string): Promise<string> {
+export async function buildHookInspiration(product: string, workspaceId: string): Promise<string> {
   const { createServerSupabase } = await import("@/lib/supabase");
   const db = createServerSupabase();
+  const wsId = workspaceId;
 
   const { data: hooks } = await db
     .from("hook_library")
     .select("hook_text, awareness_level, angle")
+    .eq("workspace_id", wsId)
     .eq("status", "approved")
     .or(`product.eq.${product},product.is.null`)
     .order("created_at", { ascending: false })
@@ -478,13 +480,15 @@ export async function buildHookInspiration(product: string): Promise<string> {
 /**
  * Build learnings context from past concept outcomes for brainstorm prompt injection.
  */
-export async function buildLearningsContext(product: string): Promise<string> {
+export async function buildLearningsContext(product: string, workspaceId: string): Promise<string> {
   const { createServerSupabase } = await import("@/lib/supabase");
   const db = createServerSupabase();
+  const wsId = workspaceId;
 
   const { data: learnings } = await db
     .from("concept_learnings")
     .select("*")
+    .eq("workspace_id", wsId)
     .eq("product", product)
     .order("created_at", { ascending: false })
     .limit(50);

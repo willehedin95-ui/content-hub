@@ -1,4 +1,24 @@
-export type Product = "happysleep" | "hydro13";
+export interface Workspace {
+  id: string;
+  slug: string;
+  name: string;
+  icon_emoji: string;
+  settings: Record<string, unknown>;
+  meta_config: WorkspaceMetaConfig;
+  languages: string[];
+  markets: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMetaConfig {
+  system_user_token?: string;
+  ad_account_id?: string;
+  page_id?: string;
+  app_id?: string;
+}
+
+export type Product = string;
 export type PageType = "advertorial" | "listicle";
 export type PageAngle = "snoring" | "neck_pain" | "neutral";
 export type Language = "sv" | "da" | "no" | "de";
@@ -86,11 +106,6 @@ export interface ABTest {
   created_at: string;
   updated_at: string;
 }
-
-export const PRODUCTS: { value: Product; label: string }[] = [
-  { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
-];
 
 export const PAGE_TYPES: { value: PageType; label: string }[] = [
   { value: "advertorial", label: "Advertorial" },

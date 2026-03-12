@@ -2,6 +2,7 @@ import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow
 import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD, getRatesToUSD } from "./shopify";
 import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights, GoogleAdsCampaignRow } from "./google-ads";
 import { createServerSupabase } from "./supabase";
+import { getWorkspaceId } from "./workspace";
 import type { CashDna } from "@/types";
 
 // ---- Types ----
@@ -191,9 +192,10 @@ export async function fetchAnalyticsSummary(days: number): Promise<AnalyticsSumm
   };
 }
 
-export async function fetchCampaignPerformance(days: number): Promise<CampaignPerformance[]> {
+export async function fetchCampaignPerformance(days: number, workspaceId?: string): Promise<CampaignPerformance[]> {
   const { since, until, sinceISO } = getDateRange(days);
   const db = createServerSupabase();
+  const wsId = workspaceId ?? await getWorkspaceId();
 
   // Fetch all data sources + exchange rates in parallel
   const [metaResult, googleAdsResult, shopifyResult, dbResult] = await Promise.allSettled([
@@ -202,6 +204,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     isShopifyConfigured() ? fetchOrdersSince(sinceISO) : Promise.resolve([]),
     db.from("meta_campaigns")
       .select("id, name, product, language, meta_campaign_id, image_job_id, meta_ads(landing_page_url)")
+      .eq("workspace_id", wsId)
       .in("status", ["pushed", "pushing"]),
     getRatesToUSD(), // Warm rate cache
   ]);
@@ -227,6 +230,7 @@ export async function fetchCampaignPerformance(days: number): Promise<CampaignPe
     const { data: dnaRows } = await db
       .from("image_jobs")
       .select("id, cash_dna")
+      .eq("workspace_id", wsId)
       .in("id", jobIds)
       .not("cash_dna", "is", null);
     for (const row of dnaRows ?? []) {

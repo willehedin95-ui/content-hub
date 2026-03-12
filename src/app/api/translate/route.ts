@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { extractBlocks, applyBlockTranslations, stripForTranslation, restoreAfterTranslation } from "@/lib/html-parser";
 import { translateFullHtml, translateMetas, translateBlocks, translateBatch } from "@/lib/openai";
 import { calcOpenAICost } from "@/lib/pricing";
@@ -39,12 +40,14 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch the page
   const { data: page, error: pageError } = await db
     .from("pages")
     .select("*")
     .eq("id", page_id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (pageError || !page) {

@@ -13,7 +13,8 @@ import {
   CheckSquare,
   Square,
 } from "lucide-react";
-import { PRODUCTS, PAGE_TYPES, Product, PageType } from "@/types";
+import { PAGE_TYPES, Product, PageType } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 import TagInput from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
 import type { TextBlock, ImageBlock } from "@/app/api/fetch-url/route";
@@ -28,6 +29,7 @@ const FETCH_STAGES = [
 
 export default function ImportPageModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
+  const products = useProducts();
   const [step, setStep] = useState<Step>("url");
 
   const [url, setUrl] = useState("");
@@ -488,7 +490,7 @@ export default function ImportPageModal({ open, onClose }: { open: boolean; onCl
                       onChange={(e) => setProduct(e.target.value as Product)}
                       className="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
                     >
-                      {PRODUCTS.map((p) => (
+                      {products.map((p) => (
                         <option key={p.value} value={p.value}>{p.label}</option>
                       ))}
                     </select>

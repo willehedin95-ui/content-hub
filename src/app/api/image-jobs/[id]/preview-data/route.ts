@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
@@ -12,11 +13,13 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job } = await db
     .from("image_jobs")
     .select("landing_page_id, ab_test_id, product")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!job) {

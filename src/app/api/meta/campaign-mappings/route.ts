@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("meta_campaign_mappings")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("product")
     .order("country");
 
@@ -38,11 +41,13 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("meta_campaign_mappings")
     .upsert(
       {
+        workspace_id: workspaceId,
         product,
         country,
         meta_campaign_id,
@@ -73,11 +78,13 @@ export async function DELETE(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { error } = await db
     .from("meta_campaign_mappings")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
 
   if (error) {
     return safeError(error, "Failed to delete campaign mapping");

@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase";
 import { generateVideo, type VideoModel } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 300; // 5 minutes for Vercel
 
@@ -16,12 +17,14 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const model: VideoModel = VALID_MODELS.includes(body.model) ? body.model : "sora-2-pro-text-to-video";
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // 1. Fetch the video job
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);

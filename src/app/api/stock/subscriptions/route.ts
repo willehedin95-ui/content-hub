@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { invalidateCache } from "@/lib/pulse-cache";
 
 export async function PUT(req: NextRequest) {
@@ -12,6 +13,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
     const { error } = await db
       .from("products")
       .update({
@@ -20,7 +22,8 @@ export async function PUT(req: NextRequest) {
         subscription_cycle_days: subscriptionCycleDays ?? 30,
         subscribers_updated_at: new Date().toISOString(),
       })
-      .eq("slug", "hydro13");
+      .eq("slug", "hydro13")
+      .eq("workspace_id", workspaceId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

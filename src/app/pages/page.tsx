@@ -1,4 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import ABTestsClient from "@/app/ab-tests/ABTestsClient";
 import SwiperClient from "@/components/swiper/SwiperClient";
@@ -14,11 +15,13 @@ export default async function LandingPagesPage({
 }) {
   const { tab } = await searchParams;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   if (tab === "ab-tests") {
     const { data: tests, error } = await db
       .from("ab_tests")
       .select("*")
+      .eq("workspace_id", workspaceId)
       .order("updated_at", { ascending: false });
 
     if (error) {
@@ -44,6 +47,7 @@ export default async function LandingPagesPage({
     const { data: products } = await db
       .from("products")
       .select("id, slug, name, product_images(*)")
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true });
 
     return (
@@ -58,6 +62,7 @@ export default async function LandingPagesPage({
   const { data: pages, error } = await db
     .from("pages")
     .select(`*, translations (id, language, status, published_url, seo_title)`)
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });
 
   if (error) {

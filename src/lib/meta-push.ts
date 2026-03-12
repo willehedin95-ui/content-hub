@@ -1,4 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId, getWorkspace, getWorkspaceSettings } from "@/lib/workspace";
 import { Language, COUNTRY_MAP, LANGUAGES, ConceptCopyTranslations } from "@/types";
 import {
   getAdSetConfig,
@@ -6,6 +7,7 @@ import {
   uploadImage,
   createAdCreative,
   createAd,
+  setMetaConfig,
 } from "@/lib/meta";
 import { getShortLocalizationNote } from "@/lib/localization";
 import OpenAI from "openai";
@@ -48,14 +50,20 @@ export interface PushResult {
  */
 export async function pushConceptToMeta(
   jobId: string,
-  opts?: { languages?: string[] }
+  opts?: { languages?: string[]; workspaceId?: string }
 ): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
   const db = createServerSupabase();
+  const wsId = opts?.workspaceId ?? await getWorkspaceId();
+
+  // Load workspace Meta config (uses per-workspace creds if configured, else env vars)
+  const ws = await getWorkspace();
+  setMetaConfig(ws.meta_config ?? null);
 
   // Load the concept with images + translations
   const { data: job, error: jobError } = await db
     .from("image_jobs")
     .select("*, source_images(*, image_translations(*))")
+    .eq("workspace_id", wsId)
     .eq("id", jobId)
     .single();
 
@@ -81,6 +89,7 @@ export async function pushConceptToMeta(
   const { data: activePush } = await db
     .from("meta_campaigns")
     .select("id")
+    .eq("workspace_id", wsId)
     .eq("image_job_id", jobId)
     .eq("status", "pushing")
     .limit(1);
@@ -138,14 +147,10 @@ export async function pushConceptToMeta(
   // Strip leading "#XXX " or "RXXX " prefix from concept name to avoid duplication in ad set name
   const conceptName = job.name.replace(/^#\d+\s*/, "").replace(/^R\d+\s*/, "").toLowerCase();
 
-  // Load default schedule time from settings (e.g. "03:00")
+  // Load default schedule time from workspace settings (e.g. "03:00")
   let scheduledStartTime: string | null = null;
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-  const scheduleHHMM = (settingsRow?.settings as Record<string, unknown>)?.meta_default_schedule_time as string | undefined;
+  const wsSettings = await getWorkspaceSettings();
+  const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
   if (scheduleHHMM) {
     const [hh, mm] = scheduleHHMM.split(":").map(Number);
     const now = new Date();
@@ -229,8 +234,8 @@ export async function pushConceptToMeta(
 
       // Check campaign mapping + page config in parallel
       const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
-        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("product", job.product).eq("country", country).eq("format", "image").single(),
-        db.from("meta_page_config").select("meta_page_id").eq("country", country).single(),
+        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("workspace_id", wsId).eq("product", job.product).eq("country", country).eq("format", "image").single(),
+        db.from("meta_page_config").select("meta_page_id").eq("workspace_id", wsId).eq("country", country).single(),
       ]);
 
       if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
@@ -281,6 +286,7 @@ export async function pushConceptToMeta(
       const { data: existingCampaign } = await db
         .from("meta_campaigns")
         .select("id, meta_adset_id, meta_ads(image_url)")
+        .eq("workspace_id", wsId)
         .eq("image_job_id", jobId)
         .eq("language", lang)
         .eq("status", "pushed")
@@ -332,6 +338,7 @@ export async function pushConceptToMeta(
         const { data: newCampaign } = await db
           .from("meta_campaigns")
           .insert({
+            workspace_id: wsId,
             name: adSetName,
             product: job.product,
             image_job_id: jobId,

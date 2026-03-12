@@ -8,9 +8,11 @@ import {
   uploadImage,
   createAdCreative,
   createAd,
+  setMetaConfig,
 } from "@/lib/meta";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
 
 export const maxDuration = 180;
 
@@ -23,6 +25,11 @@ export async function POST(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+
+  // Load workspace Meta config
+  const workspaceId = await getWorkspaceId();
+  const ws = await getWorkspace();
+  setMetaConfig(ws.meta_config ?? null);
 
   // Load campaign with ads
   const { data: campaign, error } = await db
@@ -78,6 +85,7 @@ export async function POST(
         .from("meta_campaign_mappings")
         .select("template_adset_id")
         .eq("product", campaign.product)
+        .eq("workspace_id", workspaceId)
         .eq("country", campaign.countries[0])
         .eq("format", "image")
         .single();

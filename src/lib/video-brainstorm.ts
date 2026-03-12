@@ -344,7 +344,7 @@ export function buildVideoUgcUserPrompt(
   return prompt;
 }
 
-export async function loadVideoUgcContext(product: string): Promise<{
+export async function loadVideoUgcContext(product: string, workspaceId: string): Promise<{
   productBrief: string;
   guidelines: string;
   hookInspiration: string;
@@ -353,16 +353,17 @@ export async function loadVideoUgcContext(product: string): Promise<{
   existingConcepts: string[];
 }> {
   const db = createServerSupabase();
+  const wsId = workspaceId;
 
   // Fetch product info, guidelines, and existing video characters in parallel
   const [productResult, guidelinesResult, charactersResult, conceptsResult, hookInspiration, learningsContext] =
     await Promise.all([
-      db.from("products").select("*").eq("slug", product).single(),
+      db.from("products").select("*").eq("workspace_id", wsId).eq("slug", product).single(),
       db.from("copywriting_guidelines").select("*").eq("product", product),
-      db.from("video_characters").select("*").eq("product", product),
-      db.from("video_jobs").select("concept_name, hook_type, format_type").eq("product", product).neq("status", "killed"),
-      buildHookInspiration(product),
-      buildLearningsContext(product),
+      db.from("video_characters").select("*").eq("workspace_id", wsId).eq("product", product),
+      db.from("video_jobs").select("concept_name, hook_type, format_type").eq("workspace_id", wsId).eq("product", product).neq("status", "killed"),
+      buildHookInspiration(product, wsId),
+      buildLearningsContext(product, wsId),
     ]);
 
   const productData = productResult.data;

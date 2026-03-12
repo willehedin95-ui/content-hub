@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(url.searchParams.get("limit") ?? String(DEFAULT_PAGE_SIZE), 10)));
@@ -14,9 +16,10 @@ export async function GET(req: NextRequest) {
     db
       .from("ab_tests")
       .select("*")
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
-    db.from("ab_tests").select("id", { count: "exact", head: true }),
+    db.from("ab_tests").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
   ]);
 
   if (dataResult.error) {
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let resolvedVariantId = variant_id;
   let variantTranslationId: string | undefined;
@@ -153,6 +157,7 @@ export async function POST(req: NextRequest) {
     .select("id")
     .eq("slug", slug)
     .eq("language", language)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (existing) {
@@ -174,6 +179,7 @@ export async function POST(req: NextRequest) {
       variant_id: resolvedVariantId,
       split: split ?? 50,
       status: "draft",
+      workspace_id: workspaceId,
     })
     .select()
     .single();

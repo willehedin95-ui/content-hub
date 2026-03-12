@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   if (market) {
     // Per-market reorder (new behavior)
@@ -38,6 +40,7 @@ export async function POST(req: NextRequest) {
           .from("video_jobs")
           .select("launchpad_market_priorities")
           .eq("id", conceptId)
+          .eq("workspace_id", workspaceId)
           .single();
 
         const priorities = (job?.launchpad_market_priorities as Record<string, number>) ?? {};
@@ -46,7 +49,8 @@ export async function POST(req: NextRequest) {
         await db
           .from("video_jobs")
           .update({ launchpad_market_priorities: priorities })
-          .eq("id", conceptId);
+          .eq("id", conceptId)
+          .eq("workspace_id", workspaceId);
       }
     }
   } else {
@@ -57,7 +61,8 @@ export async function POST(req: NextRequest) {
       await db
         .from(table)
         .update({ launchpad_priority: i + 1 })
-        .eq("id", conceptId);
+        .eq("id", conceptId)
+        .eq("workspace_id", workspaceId);
     }
   }
 

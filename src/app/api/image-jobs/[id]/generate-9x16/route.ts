@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 
@@ -12,12 +13,14 @@ export async function POST(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Get the job's target_ratios to determine primary ratio
   const { data: job } = await db
     .from("image_jobs")
     .select("target_ratios")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
   const primaryRatio = job?.target_ratios?.[0] ?? "4:5";
 

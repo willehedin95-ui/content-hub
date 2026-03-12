@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function DELETE(
   _req: NextRequest,
@@ -12,6 +13,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify product belongs to workspace
+  const { data: productCheck } = await db.from("products").select("id").eq("id", id).eq("workspace_id", workspaceId).single();
+  if (!productCheck) return NextResponse.json({ error: "Product not found" }, { status: 404 });
 
   // Get image URL to delete from storage
   const { data: image } = await db
@@ -63,6 +69,12 @@ export async function PATCH(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify product belongs to workspace
+  const { data: productCheck2 } = await db.from("products").select("id").eq("id", id).eq("workspace_id", workspaceId).single();
+  if (!productCheck2) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+
   const { data, error } = await db
     .from("product_images")
     .update(updateData)

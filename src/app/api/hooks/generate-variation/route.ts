@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "@/lib/constants";
 
@@ -24,10 +25,12 @@ export async function POST(req: NextRequest) {
 
   if (mode === "hook_inspired") {
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
     const { data: hooks } = await db
       .from("hook_library")
       .select("hook_text, hook_type, awareness_level, angle")
       .eq("status", "approved")
+      .eq("workspace_id", workspaceId)
       .or(product ? `product.eq.${product},product.is.null` : "product.is.null")
       .order("created_at", { ascending: false })
       .limit(20);

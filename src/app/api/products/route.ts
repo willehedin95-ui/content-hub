@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("products")
     .select("*, product_images(id, url, category)")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -19,6 +22,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const body = await req.json();
   const { slug, name } = body;
 
@@ -44,6 +48,7 @@ export async function POST(req: NextRequest) {
       price_info: body.price_info || {},
       target_audience: body.target_audience || null,
       competitor_keywords: body.competitor_keywords || [],
+      workspace_id: workspaceId,
     })
     .select()
     .single();

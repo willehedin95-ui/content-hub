@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import type { AutoPipelineConcept } from "@/types";
 
 export const maxDuration = 180;
@@ -13,6 +14,7 @@ export async function POST(
     const { id } = await params;
 
     const supabase = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     // Fetch concept
     const { data: concept, error: fetchError } = await supabase
@@ -46,6 +48,7 @@ export async function POST(
         ad_copy_headline: typedConcept.ad_copy_headline,
         cash_dna: typedConcept.cash_dna,
         auto_export: false,
+        workspace_id: workspaceId,
       })
       .select()
       .single();
@@ -84,6 +87,7 @@ export async function POST(
         source: "concept_auto",
         source_concept_id: typedConcept.id,
         status: "unreviewed",
+        workspace_id: workspaceId,
       })),
       ...conceptHeadlines.map((h: string) => ({
         hook_text: h.trim(),
@@ -94,6 +98,7 @@ export async function POST(
         source: "concept_auto",
         source_concept_id: typedConcept.id,
         status: "unreviewed",
+        workspace_id: workspaceId,
       })),
     ];
     if (hookRows.length > 0) {

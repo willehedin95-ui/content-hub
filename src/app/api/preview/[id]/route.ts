@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
@@ -9,6 +10,7 @@ export async function GET(
   const { id } = await params;
   const origin = new URL(_req.url).origin;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Handle source preview: synthetic ID format "source_<pageId>"
   const isSourcePreview = id.startsWith("source_");
@@ -25,6 +27,7 @@ export async function GET(
       .from("pages")
       .select("original_html, source_url")
       .eq("id", realId)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (error || !page?.original_html) {

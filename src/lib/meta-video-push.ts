@@ -1,38 +1,23 @@
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId, getWorkspace, getWorkspaceSettings } from "@/lib/workspace";
 import { Language, COUNTRY_MAP, VideoTranslation, ConceptCopyTranslations } from "@/types";
 import {
   getAdSetConfig,
   createAdSetFromTemplate,
   createAd as metaCreateAd,
+  getToken,
+  getAdAccountId,
+  getPageId,
+  setMetaConfig,
 } from "@/lib/meta";
 import { withRetry, isTransientError } from "@/lib/retry";
 import { translateAdCopyBatch } from "@/lib/meta-push";
 
 // ---------------------------------------------------------------------------
-// Meta API helpers (local copies — video upload uses multipart/form-data which
-// the generic metaJson in meta.ts already supports, but we need a longer
-// timeout for video uploads and different response shapes)
+// Meta API helpers for video (uses longer timeout + different response shapes)
 // ---------------------------------------------------------------------------
 
 const META_API_BASE = "https://graph.facebook.com/v22.0";
-
-function getToken(): string {
-  const token = process.env.META_SYSTEM_USER_TOKEN;
-  if (!token) throw new Error("META_SYSTEM_USER_TOKEN is not set");
-  return token;
-}
-
-function getAdAccountId(): string {
-  const id = process.env.META_AD_ACCOUNT_ID;
-  if (!id) throw new Error("META_AD_ACCOUNT_ID is not set");
-  return id;
-}
-
-function getPageId(): string {
-  const id = process.env.META_PAGE_ID;
-  if (!id) throw new Error("META_PAGE_ID is not set");
-  return id;
-}
 
 /** Generic Meta API JSON call with retry, matching the pattern in meta.ts */
 async function metaFetchJson<T>(
@@ -338,14 +323,20 @@ export interface VideoPushResult {
  */
 export async function pushVideoToMeta(
   videoJobId: string,
-  opts?: { languages?: string[]; markets?: string[] }
+  opts?: { languages?: string[]; markets?: string[]; workspaceId?: string }
 ): Promise<{ results: VideoPushResult[] }> {
   const db = createServerSupabase();
+  const wsId = opts?.workspaceId ?? await getWorkspaceId();
+
+  // Load workspace Meta config (uses per-workspace creds if configured, else env vars)
+  const ws = await getWorkspace();
+  setMetaConfig(ws.meta_config ?? null);
 
   // Load the video job with translations + source videos
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("*, video_translations(*), source_videos(*)")
+    .eq("workspace_id", wsId)
     .eq("id", videoJobId)
     .single();
 
@@ -427,6 +418,7 @@ export async function pushVideoToMeta(
   const { data: activePush } = await db
     .from("meta_campaigns")
     .select("id")
+    .eq("workspace_id", wsId)
     .eq("video_job_id", videoJobId)
     .eq("status", "pushing")
     .limit(1);
@@ -465,14 +457,10 @@ export async function pushVideoToMeta(
     throw new Error("No completed video translations to push");
   }
 
-  // Load default schedule time from settings
+  // Load default schedule time from workspace settings
   let scheduledStartTime: string | null = null;
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-  const scheduleHHMM = (settingsRow?.settings as Record<string, unknown>)?.meta_default_schedule_time as string | undefined;
+  const wsSettings = await getWorkspaceSettings();
+  const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
   if (scheduleHHMM) {
     const [hh, mm] = scheduleHHMM.split(":").map(Number);
     const now = new Date();
@@ -504,8 +492,8 @@ export async function pushVideoToMeta(
 
     // Look up campaign mapping + page config
     const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
-      db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("product", job.product).eq("country", country).eq("format", "video").single(),
-      db.from("meta_page_config").select("meta_page_id").eq("country", country).single(),
+      db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("workspace_id", wsId).eq("product", job.product).eq("country", country).eq("format", "video").single(),
+      db.from("meta_page_config").select("meta_page_id").eq("workspace_id", wsId).eq("country", country).single(),
     ]);
 
     if (!mapping?.meta_campaign_id) {
@@ -597,6 +585,7 @@ export async function pushVideoToMeta(
       const { data: newCampaign } = await db
         .from("meta_campaigns")
         .insert({
+          workspace_id: wsId,
           name: adSetName,
           product: job.product,
           video_job_id: videoJobId,

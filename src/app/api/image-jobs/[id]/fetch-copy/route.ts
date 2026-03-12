@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 
 export async function GET(
@@ -12,12 +13,14 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Load the concept
   const { data: job, error } = await db
     .from("image_jobs")
     .select("id, name, concept_number, ad_copy_doc_id")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !job) {

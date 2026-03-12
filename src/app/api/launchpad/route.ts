@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { calculateAvailableBudget, getLaunchpadConcepts } from "@/lib/pipeline";
 
 // GET: Fetch launch pad concepts + budget info
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
   if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   if (type === "video") {
     // --- Video concept validation ---
@@ -29,6 +31,7 @@ export async function POST(req: NextRequest) {
       .from("video_jobs")
       .select("id, concept_name, product, target_languages, landing_page_id, landing_page_url, ab_test_id, ad_copy_primary")
       .eq("id", conceptId)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (!job) return NextResponse.json({ error: "Video concept not found" }, { status: 404 });
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
     .from("image_jobs")
     .select("id, name, product, source, target_languages, landing_page_id, ab_test_id, ad_copy_primary")
     .eq("id", conceptId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!job) return NextResponse.json({ error: "Concept not found" }, { status: 404 });
@@ -191,6 +195,7 @@ export async function DELETE(req: NextRequest) {
   if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const now = new Date().toISOString();
 
   if (type === "video") {
@@ -198,7 +203,8 @@ export async function DELETE(req: NextRequest) {
     await db
       .from("video_jobs")
       .update({ launchpad_priority: null, launchpad_market_priorities: null })
-      .eq("id", conceptId);
+      .eq("id", conceptId)
+      .eq("workspace_id", workspaceId);
 
     return NextResponse.json({ success: true });
   }
@@ -207,7 +213,8 @@ export async function DELETE(req: NextRequest) {
   await db
     .from("image_jobs")
     .update({ launchpad_priority: null })
-    .eq("id", conceptId);
+    .eq("id", conceptId)
+    .eq("workspace_id", workspaceId);
 
   // Clear per-market priorities
   await db

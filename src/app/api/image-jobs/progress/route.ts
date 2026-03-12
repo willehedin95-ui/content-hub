@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Fetch processing jobs + average generation time in parallel
   const [jobsResult, avgResult] = await Promise.all([
     db
       .from("image_jobs")
       .select("id, status, source_images(id, image_translations(status))")
+      .eq("workspace_id", workspaceId)
       .eq("status", "processing"),
     db
       .from("image_translations")

@@ -1,4 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import ProductList from "@/components/products/ProductList";
 import StockClient from "@/app/stock/StockClient";
 import ProductsTabBar from "@/components/products/ProductsTabBar";
@@ -21,9 +22,11 @@ export default async function ProductsPage({
 
   // Default: products tab
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data: products } = await db
     .from("products")
     .select("*, product_images(id, url, category)")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true });
 
   return (

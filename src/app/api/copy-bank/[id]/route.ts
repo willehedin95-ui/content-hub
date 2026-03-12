@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // DELETE /api/copy-bank/[id]
 export async function DELETE(
@@ -14,11 +15,13 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { error } = await db
     .from("copy_bank")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
 
   if (error) return safeError(error, "Failed to delete copy bank entry");
 

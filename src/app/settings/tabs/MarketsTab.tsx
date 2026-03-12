@@ -4,7 +4,8 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
-import { LANGUAGES, PRODUCTS, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
+import { LANGUAGES, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 import Dropdown from "@/components/ui/dropdown";
 import {
   SettingsCard,
@@ -59,6 +60,7 @@ export default function MarketsTab({
   fetchAdSetsForCampaign,
   handleTemplateAdSetChange,
 }: MarketsTabProps) {
+  const products = useProducts();
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-900 mb-5">Markets</h2>
@@ -81,7 +83,7 @@ export default function MarketsTab({
                 {/* Product URLs */}
                 <SectionHeader>Product URLs</SectionHeader>
                 <SettingsCard>
-                  {PRODUCTS.map((prod, i) => {
+                  {products.map((prod, i) => {
                     const cellKey = `${prod.value}-${country}`;
                     const existing = marketUrls.urls.find((u) => u.product === prod.value && u.country === country);
                     const draft = marketUrls.drafts[cellKey];
@@ -173,7 +175,7 @@ export default function MarketsTab({
                   </SettingsCard>
                 ) : (
                   <SettingsCard>
-                    {PRODUCTS.map((prod, i) => {
+                    {products.map((prod, i) => {
                       const mapping = mappings.campaignMappings.find(
                         (m) => m.product === prod.value && m.country === country
                       );

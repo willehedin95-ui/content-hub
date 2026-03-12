@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -12,6 +13,11 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify A/B test belongs to workspace
+  const { data: testCheck } = await db.from("ab_tests").select("id").eq("id", id).eq("workspace_id", workspaceId).single();
+  if (!testCheck) return NextResponse.json({ error: "A/B test not found" }, { status: 404 });
 
   // Fetch events and conversions in parallel
   const [eventsResult, conversionsResult] = await Promise.all([

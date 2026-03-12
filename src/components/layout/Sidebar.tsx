@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, Megaphone, Workflow, Activity, Video, Rocket, FolderOpen } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Video, Rocket, FolderOpen, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
+import type { Workspace } from "@/types";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 type NavGroup = { label: string; icon: React.ComponentType<{ className?: string }>; children: NavItem[] };
@@ -21,11 +22,35 @@ interface Progress {
   total: number;
 }
 
-export default function Sidebar({ userEmail }: { userEmail?: string }) {
+export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlug }: { userEmail?: string; workspaces?: Workspace[]; activeWorkspaceSlug?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
   const [pipelineBadgeCount, setPipelineBadgeCount] = useState(0);
+  const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+  const wsDropdownRef = useRef<HTMLDivElement>(null);
+  const activeWorkspace = workspaces.find(w => w.slug === activeWorkspaceSlug) || workspaces[0];
+
+  // Close workspace dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
+        setWsDropdownOpen(false);
+      }
+    }
+    if (wsDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [wsDropdownOpen]);
+
+  function switchWorkspace(slug: string) {
+    document.cookie = `ch-workspace=${slug};path=/;max-age=${60 * 60 * 24 * 365};samesite=lax`;
+    setWsDropdownOpen(false);
+    router.refresh();
+    // Full page reload to clear all cached data
+    window.location.reload();
+  }
 
   // Auto-open groups that contain the active route
   const groupOpenByDefault = (group: NavGroup) =>
@@ -211,19 +236,41 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
 
   return (
     <aside className="w-56 h-screen bg-background border-r border-border flex flex-col shrink-0 sticky top-0">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-foreground flex items-center justify-center">
-            <Zap className="w-4 h-4 text-background" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground leading-tight">
-              Content Hub
+      {/* Workspace Switcher */}
+      <div className="px-3 pt-4 pb-3 border-b border-border" ref={wsDropdownRef}>
+        <button
+          onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
+          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-accent transition-colors"
+        >
+          <span className="text-lg leading-none">{activeWorkspace?.icon_emoji || "🏢"}</span>
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-sm font-semibold text-foreground leading-tight truncate">
+              {activeWorkspace?.name || "Content Hub"}
             </p>
-            <p className="text-xs text-muted-foreground">Hälsobladet</p>
+            <p className="text-[10px] text-muted-foreground">Workspace</p>
           </div>
-        </div>
+          <ChevronRight className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", wsDropdownOpen && "rotate-90")} />
+        </button>
+        {wsDropdownOpen && workspaces.length > 0 && (
+          <div className="mt-1 py-1 rounded-lg border border-border bg-background shadow-lg">
+            {workspaces.map((ws) => (
+              <button
+                key={ws.slug}
+                onClick={() => switchWorkspace(ws.slug)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-accent",
+                  ws.slug === activeWorkspaceSlug && "bg-accent/50"
+                )}
+              >
+                <span className="text-base leading-none">{ws.icon_emoji}</span>
+                <span className="flex-1 text-left truncate">{ws.name}</span>
+                {ws.slug === activeWorkspaceSlug && (
+                  <Check className="w-3.5 h-3.5 text-foreground" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Nav */}

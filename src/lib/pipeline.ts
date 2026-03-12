@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getAdInsightsDaily, getCampaignBudget, updateAdSet } from "./meta";
 import { createServerSupabase } from "./supabase";
+import { getWorkspaceId } from "./workspace";
 import type {
   PipelineStage,
   PipelineSignal,
@@ -26,6 +27,11 @@ const KILL_CPA_MULTIPLIER = 2;
 const PUBLISH_MORE_THRESHOLD = 5;
 const AVG_AGE_THRESHOLD = 14;
 const NO_SPEND_DAYS = 3;
+
+/** Resolve workspace ID: use explicit value or fall back to cookie */
+async function resolveWsId(explicit?: string): Promise<string> {
+  return explicit ?? (await getWorkspaceId());
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -180,9 +186,10 @@ export interface StageTransition {
   signal: string;
 }
 
-export async function detectStageTransitions(): Promise<StageTransition[]> {
+export async function detectStageTransitions(workspaceId?: string): Promise<StageTransition[]> {
   const transitions: StageTransition[] = [];
   const db = createServerSupabase();
+  const wsId = await resolveWsId(workspaceId);
   const now = new Date().toISOString();
 
   // Get all pushed image_job_markets
@@ -446,6 +453,7 @@ export async function detectStageTransitions(): Promise<StageTransition[]> {
             hypothesisTested: originalHypothesis,
             takeaway: learningResult.takeaway,
             tags: learningResult.tags,
+            workspaceId: wsId,
           });
         } catch (err) {
           console.error(`[AutoTransition] Learning generation failed for ${marketId}:`, err);
@@ -2020,14 +2028,17 @@ async function insertConceptLearning(opts: {
   tags: string[];
   /** "image" or "video" — affects concept_type and auto-adds "video" tag */
   adFormat?: "image" | "video";
+  workspaceId?: string;
 }): Promise<void> {
   const db = createServerSupabase();
+  const wsId = await resolveWsId(opts.workspaceId);
   // For video concepts, ensure "video" tag is present
   const tags = opts.adFormat === "video" && !opts.tags.includes("video")
     ? ["video", ...opts.tags]
     : opts.tags;
 
   const { error } = await db.from("concept_learnings").insert({
+    workspace_id: wsId,
     image_job_market_id: opts.imageJobMarketId,
     image_job_id: opts.imageJobId,
     product: opts.product,
@@ -2060,10 +2071,12 @@ async function insertConceptLearning(opts: {
 
 export async function killConcept(
   imageJobMarketId: string,
-  notes?: string
+  notes?: string,
+  workspaceId?: string
 ): Promise<void> {
   const db = createServerSupabase();
   const now = new Date().toISOString();
+  const wsId = await resolveWsId(workspaceId);
 
   // Get the market and its campaign
   const { data: market } = await db
@@ -2099,6 +2112,7 @@ export async function killConcept(
     const { data: jobInfo } = await db
       .from("image_jobs")
       .select("name, product, concept_number, cash_dna, pipeline_concept_id")
+      .eq("workspace_id", wsId)
       .eq("id", market.image_job_id)
       .single();
 
@@ -2135,6 +2149,7 @@ export async function killConcept(
       const { data: setting } = await db
         .from("pipeline_settings")
         .select("target_cpa, target_roas, currency")
+        .eq("workspace_id", wsId)
         .eq("product", jobInfo.product)
         .eq("country", market.market)
         .single();
@@ -2194,6 +2209,7 @@ export async function killConcept(
       hypothesisTested: originalHypothesis,
       takeaway: learningResult.takeaway,
       tags: learningResult.tags,
+      workspaceId: wsId,
     });
   } catch (err) {
     console.error("[Kill] Learning generation failed:", err);
@@ -2219,13 +2235,15 @@ export async function killConcept(
 
 // ── Campaign budgets ──────────────────────────────────────────
 
-export async function getCampaignBudgets(): Promise<CampaignBudget[]> {
+export async function getCampaignBudgets(workspaceId?: string): Promise<CampaignBudget[]> {
   const db = createServerSupabase();
+  const wsId = await resolveWsId(workspaceId);
 
   // Get distinct meta_campaign_id values with their countries and product
   const { data: mappings } = await db
     .from("meta_campaign_mappings")
-    .select("meta_campaign_id, country, product");
+    .select("meta_campaign_id, country, product")
+    .eq("workspace_id", wsId);
 
   if (!mappings || mappings.length === 0) return [];
 
@@ -2248,6 +2266,7 @@ export async function getCampaignBudgets(): Promise<CampaignBudget[]> {
   const { data: settingsData } = await db
     .from("pipeline_settings")
     .select("country, currency")
+    .eq("workspace_id", wsId)
     .limit(10);
   const currencyMap = new Map<string, string>();
   for (const s of settingsData ?? []) {

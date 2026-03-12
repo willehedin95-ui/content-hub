@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { extractContent, applyTranslations } from "@/lib/html-parser";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { safeError } from "@/lib/api-error";
@@ -22,12 +23,14 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   if (isSource) {
     const { data: page, error } = await db
       .from("pages")
       .select("id, name, slug, source_url, original_html")
       .eq("id", realId)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (error || !page) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET, RATE_LIMIT_IMAGE_TRANSLATE } from "@/lib/constants";
@@ -38,6 +39,18 @@ export async function POST(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify job belongs to workspace
+  const { data: jobCheck } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!jobCheck) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
   // Look up the translation and verify it belongs to this job
   const { data: translation, error: tError } = await db

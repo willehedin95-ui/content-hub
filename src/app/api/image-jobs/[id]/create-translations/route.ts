@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 
@@ -12,12 +13,14 @@ export async function POST(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Verify job exists and is in "ready" status
   const { data: job, error: jobError } = await db
     .from("image_jobs")
     .select("id, status, target_languages, target_ratios")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) {

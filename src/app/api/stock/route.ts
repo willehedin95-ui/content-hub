@@ -6,6 +6,7 @@ import {
   ShopifyOrderFull,
 } from "@/lib/shopify";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { getCached, setCache } from "@/lib/pulse-cache";
 
 const COLLAGEN_SKU = "COLLAGEN-MARINE-12500";
@@ -95,6 +96,7 @@ export async function GET() {
     }
 
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     // Fetch stock, product config, and 90 days of orders in parallel
     const ninetyDaysAgo = new Date(
@@ -106,6 +108,7 @@ export async function GET() {
         .from("products")
         .select("lead_time_days, reorder_threshold_days, active_subscribers, units_per_subscriber, subscription_cycle_days, subscribers_updated_at")
         .eq("slug", "hydro13")
+        .eq("workspace_id", workspaceId)
         .single(),
       fetchOrdersFullSince(ninetyDaysAgo),
     ]);

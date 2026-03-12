@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { createDriveFolder, uploadToDrive } from "@/lib/google-drive";
 import { LANGUAGES } from "@/types";
 
@@ -13,11 +14,13 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error: jobError } = await db
     .from("image_jobs")
     .select(`*, source_images(*, image_translations(*))`)
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) {

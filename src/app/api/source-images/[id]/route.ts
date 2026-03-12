@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { STORAGE_BUCKET } from "@/lib/constants";
 import { isValidUUID } from "@/lib/validation";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // DELETE /api/source-images/[id] — delete a source image and its translations + storage files
 export async function DELETE(
@@ -14,6 +15,7 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Look up the source image to find its job_id (needed for storage path)
   const { data: si, error: fetchErr } = await db
@@ -25,6 +27,10 @@ export async function DELETE(
   if (fetchErr || !si) {
     return NextResponse.json({ error: "Source image not found" }, { status: 404 });
   }
+
+  // Verify parent image_job belongs to workspace
+  const { data: jobCheck } = await db.from("image_jobs").select("id").eq("id", si.job_id).eq("workspace_id", workspaceId).single();
+  if (!jobCheck) return NextResponse.json({ error: "Source image not found" }, { status: 404 });
 
   // Clean up storage files for each translation: image-jobs/{jobId}/{translationId}/*
   const translationIds = (si.image_translations ?? []).map((t: { id: string }) => t.id);

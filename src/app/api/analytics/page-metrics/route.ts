@@ -4,6 +4,7 @@ import { fetchAllGA4Metrics, fetchTrafficSourcesByPage } from "@/lib/ga4";
 import { fetchClarityInsights } from "@/lib/clarity";
 import { getOrdersByPage, getRatesToUSD } from "@/lib/shopify";
 import { getMetaMetricsByPage } from "@/lib/analytics";
+import { getWorkspaceSettings } from "@/lib/workspace";
 
 export const maxDuration = 60;
 
@@ -11,12 +12,7 @@ export async function GET(req: NextRequest) {
   const days = parseInt(req.nextUrl.searchParams.get("days") ?? "7", 10);
 
   const db = createServerSupabase();
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-  const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const settings = await getWorkspaceSettings();
 
   const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
   const legacyPropertyId = settings.ga4_legacy_property_id as string | undefined;

@@ -13,7 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PRODUCTS, ASSET_CATEGORIES, type Product, type Asset, type AssetCategory } from "@/types";
+import { ASSET_CATEGORIES, type Product, type Asset, type AssetCategory } from "@/types";
+import { useProducts } from "@/hooks/useProducts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +38,7 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 export default function ImageSwiper({ onAssetCreated }: Props) {
+  const products = useProducts();
   const [phase, setPhase] = useState<Phase>("upload");
   const [error, setError] = useState<string | null>(null);
 
@@ -479,7 +481,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                 Product <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <div className="flex gap-2">
-                {PRODUCTS.map((p) => (
+                {products.map((p) => (
                   <button
                     key={p.value}
                     onClick={() => setProduct(prev => prev === p.value ? null : p.value)}
@@ -788,7 +790,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                     >
                       General
                     </button>
-                    {PRODUCTS.map((p) => (
+                    {products.map((p) => (
                       <button
                         key={p.value}
                         onClick={() => setSaveProduct(p.value)}

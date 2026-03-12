@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -13,10 +14,12 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("video_jobs")
     .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error) {
@@ -79,10 +82,12 @@ export async function PATCH(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("video_jobs")
     .update(updateData)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .select("*, source_videos(*), video_translations(*), video_shots(*), video_clips(*)")
     .single();
 

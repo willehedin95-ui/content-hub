@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ImageJob, LANGUAGES, PRODUCTS, COUNTRY_MAP } from "@/types";
+import { ImageJob, LANGUAGES, COUNTRY_MAP } from "@/types";
+import { useProducts, getProductLabel } from "@/hooks/useProducts";
 import { TagBadge } from "@/components/ui/tag-input";
 import { getLanguageStatus, getMarketStatus, COUNTRY_FLAGS, type WizardStep } from "@/lib/concept-status";
 
@@ -25,6 +26,7 @@ function daysAgo(dateStr: string): string {
 }
 
 export default function ConceptBoard({ jobs, getWizardStep }: ConceptBoardProps) {
+  const products = useProducts();
   const grouped = new Map<number, ImageJob[]>();
   for (const col of COLUMNS) grouped.set(col.step, []);
   for (const job of jobs) {
@@ -82,7 +84,7 @@ export default function ConceptBoard({ jobs, getWizardStep }: ConceptBoardProps)
                     {/* Product + languages */}
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
-                        {job.product ? (PRODUCTS.find((p) => p.value === job.product)?.label ?? job.product) : "—"}
+                        {getProductLabel(products, job.product ?? null)}
                       </span>
                       <div className="flex items-center gap-1">
                         {job.target_languages.map((lang) => {

@@ -2,12 +2,13 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
 import AngleSelector from "@/components/pages/AngleSelector";
 import TranslationPanel from "@/components/pages/TranslationPanel";
 import ImportProgressPanel from "@/components/pages/ImportProgressPanel";
-import { Page, Translation, LANGUAGES, PRODUCTS, PAGE_TYPES } from "@/types";
+import { Page, Translation, LANGUAGES, PAGE_TYPES } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,13 @@ export default async function PageDetailPage({
 }) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: page, error } = await db
     .from("pages")
     .select(`*, translations (*)`)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !page) notFound();
@@ -57,6 +60,7 @@ export default async function PageDetailPage({
     .from("image_jobs")
     .select("id, name, concept_number, status, updated_at")
     .eq("landing_page_id", id)
+    .eq("workspace_id", workspaceId)
     .order("updated_at", { ascending: false });
 
   // Fetch A/B tests using any translation of this page
@@ -71,6 +75,10 @@ export default async function PageDetailPage({
           )
           .order("updated_at", { ascending: false })
       : { data: [] as never[] };
+
+  // Fetch products from DB instead of using hardcoded constant
+  const { data: productsData } = await db.from("products").select("slug, name").eq("workspace_id", workspaceId);
+  const products = (productsData ?? []).map(pr => ({ value: pr.slug, label: pr.name }));
 
   const hasRelated =
     (linkedConcepts && linkedConcepts.length > 0) ||
@@ -93,7 +101,7 @@ export default async function PageDetailPage({
           <EditablePageName pageId={p.id} initialName={p.name} />
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-              {PRODUCTS.find((pr) => pr.value === p.product)?.label}
+              {products.find((pr) => pr.value === p.product)?.label}
             </span>
             <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full capitalize">
               {PAGE_TYPES.find((t) => t.value === p.page_type)?.label}

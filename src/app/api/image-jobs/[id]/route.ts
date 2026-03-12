@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { STORAGE_BUCKET } from "@/lib/constants";
 import { computeCounts } from "@/lib/image-utils";
 import { isValidUUID } from "@/lib/validation";
@@ -14,6 +15,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const url = new URL(_req.url);
   const compact = url.searchParams.get("compact") === "true";
 
@@ -27,12 +29,14 @@ export async function GET(
         .from("image_jobs")
         .select(select)
         .eq("id", id)
+        .eq("workspace_id", workspaceId)
         .eq("source_images.image_translations.versions.is_active", true)
         .single()
     : await db
         .from("image_jobs")
         .select(select)
         .eq("id", id)
+        .eq("workspace_id", workspaceId)
         .single();
 
   // Fall back to query without versions if table doesn't exist yet
@@ -41,6 +45,7 @@ export async function GET(
       .from("image_jobs")
       .select(`*, source_images(*, image_translations(*))`)
       .eq("id", id)
+      .eq("workspace_id", workspaceId)
       .single();
     job = fallback.data;
     error = fallback.error;
@@ -80,6 +85,7 @@ export async function PATCH(
   };
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const updateData: {
     updated_at: string;
@@ -115,6 +121,7 @@ export async function PATCH(
     .from("image_jobs")
     .update(updateData)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .select()
     .single();
 
@@ -134,6 +141,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Clean up storage files (nested: image-jobs/{id}/{translationId}/{file}.png)
   const { data: subfolders } = await db.storage
@@ -162,7 +170,7 @@ export async function DELETE(
   }
 
   // Delete job (CASCADE handles source_images and image_translations)
-  const { error } = await db.from("image_jobs").delete().eq("id", id);
+  const { error } = await db.from("image_jobs").delete().eq("id", id).eq("workspace_id", workspaceId);
 
   if (error) {
     return safeError(error, "Failed to delete image job");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
 import { isValidUUID } from "@/lib/validation";
+import { getWorkspaceId } from "@/lib/workspace";
 
 // GET /api/copy-bank?product=X&language=Y&segment_id=Z
 export async function GET(req: NextRequest) {
@@ -11,10 +12,12 @@ export async function GET(req: NextRequest) {
   const segmentId = searchParams.get("segment_id");
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let query = db
     .from("copy_bank")
     .select("*, segment:product_segments(id, name)")
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false });
 
   if (product) query = query.eq("product", product);
@@ -49,6 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data, error } = await db
     .from("copy_bank")
@@ -62,6 +66,7 @@ export async function POST(req: NextRequest) {
         source_meta_ad_id: source_meta_ad_id || null,
         source_concept_name: source_concept_name || null,
         notes: notes || null,
+        workspace_id: workspaceId,
       },
       { onConflict: "product,language,primary_text" }
     )

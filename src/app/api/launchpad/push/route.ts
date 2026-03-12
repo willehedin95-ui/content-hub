@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { getWorkspaceId } from "@/lib/workspace";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const languages = (body.markets ?? ["NO", "DK", "SE"])
     .map((m: string) => MARKET_TO_LANG[m])
@@ -33,7 +35,8 @@ export async function POST(req: NextRequest) {
       await db
         .from("video_jobs")
         .update({ launchpad_priority: null })
-        .eq("id", conceptId);
+        .eq("id", conceptId)
+        .eq("workspace_id", workspaceId);
     }
 
     return NextResponse.json({ success: true, results: pushResult.results });
@@ -81,7 +84,8 @@ export async function POST(req: NextRequest) {
     await db
       .from("image_jobs")
       .update({ launchpad_priority: null })
-      .eq("id", conceptId);
+      .eq("id", conceptId)
+      .eq("workspace_id", workspaceId);
   }
 
   return NextResponse.json({ success: true, results: pushResult.results });

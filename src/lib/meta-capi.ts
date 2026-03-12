@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { withRetry, isTransientError } from "./retry";
 import { createServerSupabase } from "./supabase";
 import { ShopifyOrderFull, fetchOrdersFullSince } from "./shopify";
+import { getWorkspaceSettings } from "./workspace";
 
 const META_API_BASE = "https://graph.facebook.com/v22.0";
 
@@ -223,13 +224,7 @@ export async function syncOrdersToCAPI(daysSince: number): Promise<CAPISyncResul
   const db = createServerSupabase();
 
   // Get pixel ID and token
-  const { data: settingsRow } = await db
-    .from("app_settings")
-    .select("settings")
-    .limit(1)
-    .single();
-
-  const settings = (settingsRow?.settings ?? {}) as Record<string, unknown>;
+  const settings = await getWorkspaceSettings();
   const pixelId = settings.meta_pixel_id as string;
   if (!pixelId) throw new Error("Meta Pixel ID not configured in settings");
 

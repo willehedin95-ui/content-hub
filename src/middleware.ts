@@ -55,6 +55,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Ensure workspace cookie exists (default to "happysleep")
+  if (!request.cookies.get("ch-workspace")?.value) {
+    supabaseResponse.cookies.set("ch-workspace", "happysleep", {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+      sameSite: "lax",
+    });
+  }
+
   return supabaseResponse;
 }
 

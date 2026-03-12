@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Clock, Image as ImageIcon, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
-import { ImageJob, PRODUCTS, COUNTRY_MAP } from "@/types";
+import { ImageJob, COUNTRY_MAP } from "@/types";
+import { useProducts, getProductLabel } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import { getMarketStatus, getWizardStep, getConceptThumbnail, COUNTRY_FLAGS } from "@/lib/concept-status";
 import NewConceptModal from "@/components/images/NewConceptModal";
@@ -44,6 +45,7 @@ const STATUS_PRIORITY: Record<string, number> = {
 
 export default function ImagesPage() {
   const router = useRouter();
+  const products = useProducts();
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -304,7 +306,7 @@ export default function ImagesPage() {
             >
               All
             </button>
-            {PRODUCTS.map((p) => (
+            {products.map((p) => (
               <button
                 key={p.value}
                 onClick={() => setProductFilter(p.value)}
@@ -494,7 +496,7 @@ export default function ImagesPage() {
 
                 {/* Product */}
                 <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full text-center truncate">
-                  {job.product ? (PRODUCTS.find((p) => p.value === job.product)?.label ?? job.product) : "\u2014"}
+                  {getProductLabel(products, job.product ?? null)}
                 </span>
 
                 {/* Status badge */}

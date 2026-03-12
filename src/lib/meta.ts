@@ -1,22 +1,31 @@
 import { withRetry, isTransientError } from "./retry";
+import type { WorkspaceMetaConfig } from "@/types";
 
 const META_API_BASE = "https://graph.facebook.com/v22.0";
 const META_FETCH_TIMEOUT_MS = 30_000;
 
-function getToken(): string {
-  const token = process.env.META_SYSTEM_USER_TOKEN;
+// Per-request workspace Meta config override (set before calling Meta functions)
+let _wsMetaConfig: WorkspaceMetaConfig | null = null;
+
+/** Set workspace Meta config for subsequent API calls. Call with null to clear. */
+export function setMetaConfig(config: WorkspaceMetaConfig | null): void {
+  _wsMetaConfig = config;
+}
+
+export function getToken(): string {
+  const token = _wsMetaConfig?.system_user_token || process.env.META_SYSTEM_USER_TOKEN;
   if (!token) throw new Error("META_SYSTEM_USER_TOKEN is not set");
   return token;
 }
 
-function getAdAccountId(): string {
-  const id = process.env.META_AD_ACCOUNT_ID;
+export function getAdAccountId(): string {
+  const id = _wsMetaConfig?.ad_account_id || process.env.META_AD_ACCOUNT_ID;
   if (!id) throw new Error("META_AD_ACCOUNT_ID is not set");
   return id;
 }
 
-function getPageId(): string {
-  const id = process.env.META_PAGE_ID;
+export function getPageId(): string {
+  const id = _wsMetaConfig?.page_id || process.env.META_PAGE_ID;
   if (!id) throw new Error("META_PAGE_ID is not set");
   return id;
 }

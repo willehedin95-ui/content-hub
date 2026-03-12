@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const maxDuration = 120;
 
@@ -16,11 +17,13 @@ export async function GET(
   const { id } = await params;
   const language = req.nextUrl.searchParams.get("language") || null;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("product")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
@@ -57,11 +60,13 @@ export async function POST(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error: jobError } = await db
     .from("video_jobs")
     .select("product, target_languages")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
