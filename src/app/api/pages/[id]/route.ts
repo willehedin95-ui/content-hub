@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import type { PageAngle } from "@/types";
 
 export async function GET(
@@ -13,11 +14,13 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: page, error } = await db
     .from("pages")
     .select(`*, translations (*)`)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error) {
@@ -60,11 +63,13 @@ export async function PATCH(
     }
 
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     const { data, error } = await db
       .from("pages")
       .update(updateData)
       .eq("id", id)
+      .eq("workspace_id", workspaceId)
       .select()
       .single();
 
@@ -87,8 +92,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
-  const { error } = await db.from("pages").delete().eq("id", id);
+  const { error } = await db.from("pages").delete().eq("id", id).eq("workspace_id", workspaceId);
 
   if (error) {
     return safeError(error, "Failed to delete page");

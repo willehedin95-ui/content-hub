@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { validateMediaFile } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import type { AssetCategory, MediaType } from "@/types";
 import { ASSET_CATEGORIES } from "@/types";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const category = req.nextUrl.searchParams.get("category");
   const mediaType = req.nextUrl.searchParams.get("media_type");
   const product = req.nextUrl.searchParams.get("product");
   const search = req.nextUrl.searchParams.get("search");
 
-  let query = db.from("assets").select("*").order("created_at", { ascending: false });
+  let query = db.from("assets").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false });
 
   if (category && ASSET_CATEGORIES.includes(category as AssetCategory)) {
     query = query.eq("category", category);
@@ -75,6 +77,7 @@ export async function POST(req: NextRequest) {
 
   const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
 
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("assets")
     .insert({
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
       description,
       file_size: file.size,
       source_url: null,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

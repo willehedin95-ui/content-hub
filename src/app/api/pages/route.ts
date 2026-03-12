@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(url.searchParams.get("limit") ?? String(DEFAULT_PAGE_SIZE), 10)));
@@ -14,9 +16,10 @@ export async function GET(req: NextRequest) {
     db
       .from("pages")
       .select(`*, translations (id, language, status, published_url, seo_title)`)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
-    db.from("pages").select("id", { count: "exact", head: true }),
+    db.from("pages").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
   ]);
 
   if (dataResult.error) {
@@ -33,6 +36,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const body = await req.json();
 
   const { name, product, page_type, source_url, original_html, slug, images_to_translate, source_language, tags } = body;
@@ -44,11 +48,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Check for duplicate slug
+  // Check for duplicate slug within workspace
   const { data: existingPage } = await db
     .from("pages")
     .select("id")
     .eq("slug", slug)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (existingPage) {
@@ -71,6 +76,7 @@ export async function POST(req: NextRequest) {
       images_to_translate: images_to_translate || [],
       tags: tags || [],
       swiped_from_url: body.swiped_from_url || null,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

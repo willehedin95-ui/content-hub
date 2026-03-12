@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 import {
   ALLOWED_IMAGE_EXTENSIONS,
   ALLOWED_VIDEO_EXTENSIONS,
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
   const { data: { publicUrl } } = db.storage.from("translated-images").getPublicUrl(storagePath);
 
   // Create asset record
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("assets")
     .insert({
@@ -123,6 +125,7 @@ export async function POST(req: NextRequest) {
       url: publicUrl,
       file_size: buffer.length,
       source_url: url,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

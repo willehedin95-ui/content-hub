@@ -8,6 +8,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const EMPTY_SENTINEL = "__empty__";
+
 interface Option {
   value: string;
   label: string;
@@ -29,13 +31,16 @@ export default function Dropdown({
   className,
 }: DropdownProps) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select
+      value={value === "" ? EMPTY_SENTINEL : value}
+      onValueChange={(v) => onChange(v === EMPTY_SENTINEL ? "" : v)}
+    >
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {options.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
+          <SelectItem key={opt.value || EMPTY_SENTINEL} value={opt.value || EMPTY_SENTINEL}>
             {opt.label}
           </SelectItem>
         ))}

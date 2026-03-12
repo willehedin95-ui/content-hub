@@ -5,9 +5,11 @@ import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET() {
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("pipeline_settings")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .order("product")
     .order("country");
 
@@ -25,11 +27,13 @@ export async function PUT(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data: existing } = await db
     .from("pipeline_settings")
     .select("id")
     .eq("product", product)
     .eq("country", country)
+    .eq("workspace_id", workspaceId)
     .single();
 
   const updateFields: Record<string, unknown> = {
@@ -60,6 +64,7 @@ export async function PUT(req: NextRequest) {
         target_roas: target_roas ?? null,
         currency: currency || "USD",
         testing_slots: testing_slots ?? 5,
+        workspace_id: workspaceId,
       });
     if (error) return safeError(error, "Failed to create pipeline setting");
   }

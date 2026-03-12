@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -8,6 +9,19 @@ export async function GET(
 ) {
   const { id } = await params;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify page test belongs to current workspace
+  const { data: test, error: testError } = await db
+    .from("page_tests")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (testError || !test) {
+    return NextResponse.json({ error: "Page test not found" }, { status: 404 });
+  }
 
   // Get all ad sets linked to this page test
   const { data: adsets, error: adsetsError } = await db

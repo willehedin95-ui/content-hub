@@ -22,11 +22,12 @@ export async function POST(
   const ws = await getWorkspace();
   setMetaConfig(ws.meta_config ?? null);
 
-  // Get page test with linked ad sets
+  // Get page test with linked ad sets (scoped to workspace)
   const { data: test, error: testError } = await db
     .from("page_tests")
     .select("*, page_test_adsets(*)")
     .eq("id", id)
+    .eq("workspace_id", ws.id)
     .single();
 
   if (testError || !test) {

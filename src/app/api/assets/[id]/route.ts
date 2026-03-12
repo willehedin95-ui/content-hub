@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -13,10 +14,12 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("assets")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error) {
@@ -51,10 +54,12 @@ export async function PATCH(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
   const { data, error } = await db
     .from("assets")
     .update(updates)
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .select()
     .single();
 
@@ -75,15 +80,17 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   // Get the asset URL to delete from storage
   const { data: asset } = await db
     .from("assets")
     .select("url")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
-  const { error } = await db.from("assets").delete().eq("id", id);
+  const { error } = await db.from("assets").delete().eq("id", id).eq("workspace_id", workspaceId);
 
   if (error) {
     return safeError(error, "Failed to delete asset");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -23,15 +24,17 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   if (action === "delete") {
     // Fetch URLs for storage cleanup
     const { data: assets } = await db
       .from("assets")
       .select("url")
-      .in("id", ids);
+      .in("id", ids)
+      .eq("workspace_id", workspaceId);
 
-    const { error } = await db.from("assets").delete().in("id", ids);
+    const { error } = await db.from("assets").delete().in("id", ids).eq("workspace_id", workspaceId);
     if (error) {
       return safeError(error, "Failed to delete assets");
     }
@@ -69,6 +72,7 @@ export async function POST(req: NextRequest) {
       .from("assets")
       .update(clean)
       .in("id", ids)
+      .eq("workspace_id", workspaceId)
       .select();
 
     if (error) {
@@ -90,7 +94,8 @@ export async function POST(req: NextRequest) {
     const { data: assets, error: fetchError } = await db
       .from("assets")
       .select("id, tags")
-      .in("id", ids);
+      .in("id", ids)
+      .eq("workspace_id", workspaceId);
 
     if (fetchError) {
       return safeError(fetchError, "Failed to fetch assets");
