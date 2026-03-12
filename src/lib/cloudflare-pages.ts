@@ -10,13 +10,6 @@ interface CFDeployResult {
   deploy_id: string;
 }
 
-interface ABTestDeployResult {
-  routerUrl: string;
-  controlUrl: string;
-  variantUrl: string;
-  deploy_id: string;
-}
-
 export interface DeployFile {
   path: string;
   sha1: string;
@@ -310,18 +303,15 @@ export async function publishPage(
 }
 
 /**
- * Analytics config for all published pages (regular + AB test).
- * AB test context is optional — only set for AB test variant pages.
+ * Analytics config for published pages.
  */
 export interface PageAnalyticsConfig {
   ga4MeasurementId?: string;
   clarityProjectId?: string;
   shopifyDomains?: string[];
   metaPixelId?: string;
-  /** Page slug — used for UTM campaign on non-AB pages */
+  /** Page slug — used for UTM campaign */
   slug?: string;
-  /** AB test context — only set for AB test variant pages */
-  abTest?: { testId: string; variant: "a" | "b" };
   /** Hub URL for IP-based tracking opt-out check */
   hubUrl?: string;
   /** IPs excluded from tracking (baked into page for fast check) */
@@ -412,7 +402,6 @@ function injectOptOutScript(html: string, hubUrl?: string, excludedIps?: string[
 
 /**
  * Inject all configured analytics scripts into HTML.
- * Used by both publishPage() and publishABTest().
  */
 function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string {
   // Opt-out guard (must be injected first)
@@ -420,11 +409,7 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
 
   // GA4 (with cross-domain linking to Shopify)
   if (config.ga4MeasurementId) {
-    if (config.abTest) {
-      html = injectGA4Script(html, config.ga4MeasurementId, config.abTest.testId, config.abTest.variant, config.shopifyDomains);
-    } else {
-      html = injectGA4ScriptBasic(html, config.ga4MeasurementId, config.shopifyDomains);
-    }
+    html = injectGA4ScriptBasic(html, config.ga4MeasurementId, config.shopifyDomains);
   }
 
   // Clarity
@@ -443,12 +428,8 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
   }
 
   // UTM link rewriting
-  if (config.shopifyDomains?.length) {
-    if (config.abTest) {
-      html = injectUTMRewriter(html, config.abTest.testId, config.abTest.variant, config.shopifyDomains);
-    } else if (config.slug) {
-      html = injectUTMRewriterPage(html, config.slug, config.shopifyDomains);
-    }
+  if (config.shopifyDomains?.length && config.slug) {
+    html = injectUTMRewriterPage(html, config.slug, config.shopifyDomains);
   }
 
   return html;
@@ -511,71 +492,6 @@ navigator.sendBeacon(u+'?'+cq);
   return html.replace(/<\/head>/i, script + "</head>");
 }
 
-function injectTrackingScript(
-  html: string,
-  appUrl: string,
-  testId: string,
-  variant: "a" | "b"
-): string {
-  const script = `<script data-cc-injected="true">
-(function(){
-  var u=${JSON.stringify(appUrl + "/api/ab-track")};
-  var t=${JSON.stringify(testId)};
-  var v=${JSON.stringify(variant)};
-  new Image().src=u+'?t='+t+'&v='+v+'&e=view&_='+Date.now();
-  document.addEventListener('click',function(e){
-    var a=e.target.closest('a[href]');
-    if(a&&a.hostname!==location.hostname){
-      navigator.sendBeacon(u+'?t='+t+'&v='+v+'&e=click');
-    }
-  });
-})();
-</script>`;
-  return html.replace(/<\/body>/i, script + "</body>");
-}
-
-function injectUTMRewriter(
-  html: string,
-  testId: string,
-  variant: "a" | "b",
-  shopifyDomains: string[]
-): string {
-  if (shopifyDomains.length === 0) return html;
-  const script = `<script data-cc-utm="true">
-(function(){
-  var t=${JSON.stringify(testId)};
-  var v=${JSON.stringify(variant)};
-  var d=${JSON.stringify(shopifyDomains)};
-  var p=new URLSearchParams(location.search);
-  var src=p.get('utm_source')||'';
-  document.addEventListener('DOMContentLoaded',function(){
-    document.querySelectorAll('a[href]').forEach(function(a){
-      try{
-        var u=new URL(a.href,location.href);
-        if(!d.some(function(h){return u.hostname.indexOf(h)!==-1}))return;
-        if(src){
-          // Visitor came from an ad — preserve original UTMs
-          ['utm_source','utm_medium','utm_campaign','utm_content','utm_adset'].forEach(function(k){
-            var val=p.get(k);if(val)u.searchParams.set(k,val);
-          });
-          // Add AB test info as additional params
-          u.searchParams.set('utm_term',t+'_'+v);
-        }else{
-          // Direct/organic — set AB test UTMs
-          u.searchParams.set('utm_source','abtest');
-          u.searchParams.set('utm_medium','landingpage');
-          u.searchParams.set('utm_campaign',t);
-          u.searchParams.set('utm_content',v);
-        }
-        a.href=u.toString();
-      }catch(e){}
-    });
-  });
-})();
-</script>`;
-  return html.replace(/<\/body>/i, script + "</body>");
-}
-
 /**
  * Inline JS that tracks outbound CTA clicks and scroll depth as GA4 events.
  * Injected into every published page alongside the basic gtag config.
@@ -612,34 +528,7 @@ document.addEventListener('click',function(e){
   window.addEventListener('scroll',check,{passive:true});
 })();`;
 
-function injectGA4Script(
-  html: string,
-  measurementId: string,
-  testId: string,
-  variant: "a" | "b",
-  shopifyDomains?: string[]
-): string {
-  const linkerConfig = shopifyDomains?.length
-    ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
-    : "";
-  const script = `<!-- GA4 -->
-<script>
-if(!window.__chOptout){
-var _gs=document.createElement('script');_gs.async=true;
-_gs.src='https://www.googletagmanager.com/gtag/js?id=${measurementId}';
-document.head.appendChild(_gs);
-window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
-window.gtag=gtag;
-gtag('js',new Date());
-gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
-gtag('event','ab_test_view',{test_id:${JSON.stringify(testId)},variant:${JSON.stringify(variant)}});
-${GA4_ENGAGEMENT_TRACKING}
-}
-</script>`;
-  return html.replace(/<\/head>/i, script + "</head>");
-}
-
-/** GA4 injection for regular pages (no AB test event) */
+/** GA4 injection for pages */
 function injectGA4ScriptBasic(html: string, measurementId: string, shopifyDomains?: string[]): string {
   if (html.includes('data-cc-ga4="true"')) return html;
   // Cross-domain linker config so GA4 session continues to Shopify
@@ -707,126 +596,3 @@ function injectUTMRewriterPage(
   return html.replace(/<\/body>/i, script + "</body>");
 }
 
-function buildRouterHtml(slug: string, split: number): string {
-  const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "_");
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Loading...</title></head>
-<body><script>
-(function(){
-  var k=${JSON.stringify("ab_" + safeSlug)};
-  var m=document.cookie.split('; ').find(function(c){return c.startsWith(k+'=')});
-  var v;
-  if(m){v=m.split('=')[1]}
-  else{v=Math.random()*100<${split}?'a':'b';
-    document.cookie=k+'='+v+';max-age=2592000;path=/;SameSite=Lax'}
-  var p=window.location.pathname;
-  if(p.charAt(p.length-1)!=='/') p+='/';
-  window.location.replace(p+v+'/');
-})();
-</script>
-<noscript><a href="./a/">Click here to continue</a></noscript>
-</body></html>`;
-}
-
-/**
- * Deploy an A/B test: router page + two variant pages.
- * The router redirects visitors to /a/ or /b/ based on cookie.
- */
-export interface ABTestAnalyticsConfig {
-  ga4MeasurementId?: string;
-  clarityProjectId?: string;
-  metaPixelId?: string;
-  shopifyDomains?: string[];
-  hubUrl?: string;
-  excludedIps?: string[];
-}
-
-export async function publishABTest(
-  controlHtml: string,
-  variantHtml: string,
-  slug: string,
-  language: Language,
-  split: number,
-  testId: string,
-  appUrl: string,
-  analytics?: ABTestAnalyticsConfig
-): Promise<ABTestDeployResult> {
-  const { accountId, apiToken } = getConfig();
-  const projectName = getProjectName(language);
-
-  const prefix = `/${slug}`;
-  const routerPath = `${prefix}/index.html`;
-  const controlPath = `${prefix}/a/index.html`;
-  const variantPath = `${prefix}/b/index.html`;
-
-  const routerHtml = buildRouterHtml(slug, split);
-  // Inject AB test tracking pixel
-  let trackedControlHtml = injectTrackingScript(controlHtml, appUrl, testId, "a");
-  let trackedVariantHtml = injectTrackingScript(variantHtml, appUrl, testId, "b");
-
-  // Inject analytics (GA4, Clarity, UTM) via shared helper
-  const controlAnalytics: PageAnalyticsConfig = {
-    ga4MeasurementId: analytics?.ga4MeasurementId,
-    clarityProjectId: analytics?.clarityProjectId,
-    metaPixelId: analytics?.metaPixelId,
-    shopifyDomains: analytics?.shopifyDomains,
-    hubUrl: analytics?.hubUrl,
-    excludedIps: analytics?.excludedIps,
-    slug,
-    abTest: { testId, variant: "a" },
-  };
-  const variantAnalytics: PageAnalyticsConfig = {
-    ...controlAnalytics,
-    abTest: { testId, variant: "b" },
-  };
-  trackedControlHtml = injectPageAnalytics(trackedControlHtml, controlAnalytics);
-  trackedVariantHtml = injectPageAnalytics(trackedVariantHtml, variantAnalytics);
-
-  const newFiles = [
-    { path: routerPath, content: Buffer.from(routerHtml, "utf-8") },
-    { path: controlPath, content: Buffer.from(trackedControlHtml, "utf-8") },
-    { path: variantPath, content: Buffer.from(trackedVariantHtml, "utf-8") },
-  ].map((f) => ({
-    ...f,
-    hash: md5hex(f.content),
-    contentType: "text/html",
-  }));
-
-  // Load existing manifest and merge
-  const existingManifest = await loadManifest(projectName);
-  const manifest: Record<string, string> = { ...existingManifest };
-  for (const f of newFiles) {
-    manifest[f.path] = f.hash;
-  }
-
-  const existingHashes = new Set(Object.values(existingManifest));
-  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
-
-  const jwt = await getUploadToken(accountId, apiToken, projectName);
-
-  if (filesToUpload.length > 0) {
-    await uploadFiles(jwt, filesToUpload);
-    await upsertHashes(
-      jwt,
-      filesToUpload.map((f) => f.hash)
-    );
-  }
-
-  const deploy = await createDeployment(
-    accountId,
-    apiToken,
-    projectName,
-    manifest
-  );
-
-  await saveManifest(projectName, manifest);
-
-  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
-
-  return {
-    routerUrl: `${baseUrl}${prefix}`,
-    controlUrl: `${baseUrl}${prefix}/a`,
-    variantUrl: `${baseUrl}${prefix}/b`,
-    deploy_id: deploy.id,
-  };
-}

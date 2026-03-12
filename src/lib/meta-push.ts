@@ -81,8 +81,8 @@ export async function pushConceptToMeta(
   }
   const headlineTexts: string[] = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
 
-  if (!job.landing_page_id && !job.ab_test_id) {
-    throw new Error("Landing page or AB test is required");
+  if (!job.landing_page_id) {
+    throw new Error("Landing page is required");
   }
 
   // Prevent duplicate pushes — reject if there's already a push in progress for this concept
@@ -163,7 +163,7 @@ export async function pushConceptToMeta(
     scheduledStartTime = scheduled.toISOString();
   }
 
-  // Get landing page URLs for each language
+  // Get landing page URLs for each language (page A)
   const landingUrlByLang = new Map<string, string>();
 
   if (job.landing_page_id) {
@@ -179,16 +179,20 @@ export async function pushConceptToMeta(
     }
   }
 
-  // Override with AB test router URL for its language (if selected)
-  if (job.ab_test_id) {
-    const { data: abTest } = await db
-      .from("ab_tests")
-      .select("language, router_url")
-      .eq("id", job.ab_test_id)
-      .single();
+  // Get landing page B URLs (for A/B page testing)
+  const landingUrlByLangB = new Map<string, string>();
+  const isPageTest = !!job.landing_page_id_b;
 
-    if (abTest?.router_url) {
-      landingUrlByLang.set(abTest.language, abTest.router_url);
+  if (isPageTest) {
+    const { data: landingPageBTranslations } = await db
+      .from("translations")
+      .select("language, published_url")
+      .eq("page_id", job.landing_page_id_b)
+      .eq("status", "published")
+      .not("published_url", "is", null);
+
+    for (const t of landingPageBTranslations ?? []) {
+      landingUrlByLangB.set(t.language, t.published_url.trim());
     }
   }
 
@@ -279,7 +283,9 @@ export async function pushConceptToMeta(
         translatedHeadlines = result.translatedHeadlines;
       }
 
-      const adSetName = `${country} ${numberPrefix}${conceptNumberStr} | statics | ${conceptName}`;
+      const adSetNameBase = `${country} ${numberPrefix}${conceptNumberStr} | statics | ${conceptName}`;
+      const hasPageB = isPageTest && landingUrlByLangB.has(lang);
+      const adSetName = hasPageB ? `${adSetNameBase} [A]` : adSetNameBase;
 
       // Check for existing pushed ad set for this concept + language
       // If found, add new images to it instead of creating a new ad set
@@ -474,6 +480,147 @@ export async function pushConceptToMeta(
             updated_at: new Date().toISOString(),
           })
           .eq("id", campaignId);
+
+        // ── Page Test: Create ad set B for the second landing page ──
+        if (hasPageB && !isAddingToExisting) {
+          const landingUrlB = landingUrlByLangB.get(lang)!;
+          const adSetNameB = `${adSetNameBase} [B]`;
+
+          // Create a new ad set from template for page B
+          const templateConfigB = await getAdSetConfig(mapping.template_adset_id);
+          const newAdSetB = await createAdSetFromTemplate({
+            templateConfig: templateConfigB,
+            name: adSetNameB,
+            isDynamicCreative: true,
+            startTime: scheduledStartTime || undefined,
+          });
+
+          const { data: newCampaignB } = await db
+            .from("meta_campaigns")
+            .insert({
+              workspace_id: wsId,
+              name: adSetNameB,
+              product: job.product,
+              image_job_id: jobId,
+              meta_campaign_id: mapping.meta_campaign_id,
+              meta_adset_id: newAdSetB.id,
+              objective: "OUTCOME_TRAFFIC",
+              countries: [country],
+              language: lang,
+              daily_budget: 0,
+              status: "pushing",
+              start_time: scheduledStartTime,
+            })
+            .select()
+            .single();
+
+          if (!newCampaignB) throw new Error("Failed to create campaign record for page B");
+
+          // Reuse the same uploaded images — create a new creative pointing to page B
+          const urlTagsB = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrlB).pathname.replace(/^\/|\/$/g, ""))}`;
+
+          const allImageHashesB: Array<{ hash: string }> = [];
+          for (const img of uploadedImages) {
+            allImageHashesB.push({ hash: img.hash });
+            if (img.hash9x16) {
+              allImageHashesB.push({ hash: img.hash9x16 });
+            }
+          }
+
+          const creativeB = await withRetry(() => createAdCreative({
+            name: adSetNameB,
+            images: allImageHashesB,
+            bodies: translatedPrimaries,
+            titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
+            linkUrl: landingUrlB,
+            pageId: pageConfig?.meta_page_id,
+          }));
+
+          const metaAdB = await withRetry(() => createAd({
+            name: adSetNameB,
+            adSetId: newAdSetB.id,
+            creativeId: creativeB.id,
+            status: "ACTIVE",
+            urlTags: urlTagsB,
+          }));
+
+          // Store meta_ads row for page B
+          await db.from("meta_ads").insert({
+            campaign_id: newCampaignB.id,
+            name: adSetNameB,
+            image_url: uploadedImages[0].url,
+            image_url_9x16: uploadedImages[0].url9x16,
+            image_urls: uploadedImages.map((img) => img.url),
+            meta_image_hash: uploadedImages[0].hash,
+            meta_image_hash_9x16: uploadedImages[0].hash9x16 ?? null,
+            ad_copy: translatedPrimaries[0],
+            headline: translatedHeadlines[0] || null,
+            source_primary_text: JSON.stringify(primaryTexts),
+            source_headline: JSON.stringify(headlineTexts),
+            landing_page_url: landingUrlB,
+            aspect_ratio: feedRatio,
+            variation_index: 0,
+            meta_creative_id: creativeB.id,
+            meta_ad_id: metaAdB.id,
+            status: "pushed",
+          });
+
+          await db.from("meta_campaigns").update({
+            status: "pushed",
+            error_message: null,
+            updated_at: new Date().toISOString(),
+          }).eq("id", newCampaignB.id);
+
+          // Create page test record + link ad sets
+          const testName = `${conceptName} — page test`;
+          const { data: existingTest } = await db
+            .from("page_tests")
+            .select("id")
+            .eq("workspace_id", wsId)
+            .eq("image_job_id", jobId)
+            .eq("page_a_id", job.landing_page_id)
+            .eq("page_b_id", job.landing_page_id_b)
+            .limit(1)
+            .single();
+
+          let pageTestId: string;
+          if (existingTest) {
+            pageTestId = existingTest.id;
+          } else {
+            const { data: newTest } = await db
+              .from("page_tests")
+              .insert({
+                workspace_id: wsId,
+                name: testName,
+                image_job_id: jobId,
+                page_a_id: job.landing_page_id,
+                page_b_id: job.landing_page_id_b,
+              })
+              .select("id")
+              .single();
+            pageTestId = newTest!.id;
+          }
+
+          // Link both ad sets to the page test
+          await db.from("page_test_adsets").insert([
+            {
+              page_test_id: pageTestId,
+              variant: "a",
+              meta_campaign_record_id: campaignId,
+              meta_adset_id: adSetId,
+              language: lang,
+              country,
+            },
+            {
+              page_test_id: pageTestId,
+              variant: "b",
+              meta_campaign_record_id: newCampaignB.id,
+              meta_adset_id: newAdSetB.id,
+              language: lang,
+              country,
+            },
+          ]);
+        }
       } catch (crashErr) {
         // If anything crashes unexpectedly, mark the campaign as error so it doesn't stay stuck in "pushing"
         await db

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     // --- Video concept validation ---
     const { data: job } = await db
       .from("video_jobs")
-      .select("id, concept_name, product, target_languages, landing_page_id, landing_page_url, ab_test_id, ad_copy_primary")
+      .select("id, concept_name, product, target_languages, landing_page_id, landing_page_url, ad_copy_primary")
       .eq("id", conceptId)
       .eq("workspace_id", workspaceId)
       .single();
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = [];
     if (!job.product) errors.push("Product not set");
-    if (!job.landing_page_id && !job.landing_page_url && !job.ab_test_id) errors.push("No landing page or A/B test selected");
+    if (!job.landing_page_id && !job.landing_page_url) errors.push("No landing page selected");
     if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
 
     // Check for completed video translations (captioned or raw)
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   // --- Image concept (original logic) ---
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, product, source, target_languages, landing_page_id, ab_test_id, ad_copy_primary")
+    .select("id, name, product, source, target_languages, landing_page_id, ad_copy_primary")
     .eq("id", conceptId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
 
   const errors: string[] = [];
   if (!job.product) errors.push("Product not set");
-  if (!job.landing_page_id && !job.ab_test_id) errors.push("No landing page or A/B test selected");
+  if (!job.landing_page_id) errors.push("No landing page selected");
   if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
 
   if (errors.length > 0) {

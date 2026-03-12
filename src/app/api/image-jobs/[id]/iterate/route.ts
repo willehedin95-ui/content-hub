@@ -198,7 +198,7 @@ export async function POST(
       ad_copy_headline: adCopyHeadline,
       ad_copy_doc_id: parent.ad_copy_doc_id,
       landing_page_id: parent.landing_page_id,
-      ab_test_id: parent.ab_test_id,
+      landing_page_id_b: parent.landing_page_id_b,
       tags: [...(parent.tags ?? []), "iteration"],
       cash_dna: childDna,
       visual_direction: parent.visual_direction,

@@ -89,24 +89,6 @@ export interface PageQualityAnalysis {
   suggested_corrections?: { find: string; replace: string }[];
 }
 
-export type ABTestStatus = "draft" | "active" | "completed";
-
-export interface ABTest {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  language: Language;
-  status: ABTestStatus;
-  control_id: string;
-  variant_id: string;
-  split: number;
-  router_url: string | null;
-  winner: "control" | "b" | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export const PAGE_TYPES: { value: PageType; label: string }[] = [
   { value: "advertorial", label: "Advertorial" },
   { value: "listicle", label: "Listicle" },
@@ -260,7 +242,7 @@ export interface ImageJob {
   ad_copy_headline: string[];
   ad_copy_doc_id: string | null;
   landing_page_id: string | null;
-  ab_test_id: string | null;
+  landing_page_id_b: string | null;
   concept_number: number | null;
   marked_ready_at: string | null;
   tags: string[];
@@ -1071,7 +1053,6 @@ export interface VideoJob {
   landing_page_url: string | null;
   ad_copy_translations?: ConceptCopyTranslations;
   landing_page_id: string | null;
-  ab_test_id: string | null;
   launchpad_priority: number | null;
   created_at: string;
   updated_at: string;

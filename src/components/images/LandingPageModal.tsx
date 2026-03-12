@@ -15,30 +15,20 @@ interface LandingPageItem {
   thumbnail_url?: string | null;
 }
 
-interface ABTestItem {
-  id: string;
-  name: string;
-  slug: string;
-  language: string;
-  router_url: string;
-}
-
 interface LandingPageModalProps {
   open: boolean;
   onClose: () => void;
   onSelect: (value: string) => void;
   landingPages: LandingPageItem[];
-  abTests: ABTestItem[];
   selectedValue: string;
   conceptTags?: string[];
   conceptAngle?: string;
 }
 
-const ANGLE_TABS: { key: PageAngle | "ab_tests"; label: string }[] = [
+const ANGLE_TABS: { key: PageAngle; label: string }[] = [
   { key: "snoring", label: "Snoring" },
   { key: "neck_pain", label: "Neck Pain" },
   { key: "neutral", label: "Neutral" },
-  { key: "ab_tests", label: "A/B Tests" },
 ];
 
 function detectConceptAngle(tags?: string[], angle?: string): PageAngle {
@@ -54,7 +44,6 @@ export default function LandingPageModal({
   onClose,
   onSelect,
   landingPages,
-  abTests,
   selectedValue,
   conceptTags,
   conceptAngle,
@@ -64,7 +53,7 @@ export default function LandingPageModal({
     [conceptTags, conceptAngle]
   );
 
-  const [activeTab, setActiveTab] = useState<PageAngle | "ab_tests">(autoAngle);
+  const [activeTab, setActiveTab] = useState<PageAngle>(autoAngle);
 
   const grouped = useMemo(() => {
     const groups: Record<PageAngle, LandingPageItem[]> = {
@@ -103,8 +92,7 @@ export default function LandingPageModal({
         {/* Tabs */}
         <div className="flex gap-1 px-5 pt-3 pb-2 border-b border-gray-100">
           {ANGLE_TABS.map((tab) => {
-            const count = tab.key === "ab_tests" ? abTests.length : grouped[tab.key]?.length ?? 0;
-            if (count === 0 && tab.key === "ab_tests") return null;
+            const count = grouped[tab.key]?.length ?? 0;
             return (
               <button
                 key={tab.key}
@@ -124,68 +112,49 @@ export default function LandingPageModal({
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-5">
-          {activeTab === "ab_tests" ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {abTests.map((test) => (
-                <button
-                  key={test.id}
-                  onClick={() => handleSelect(`abtest:${test.id}`)}
-                  className={`text-left p-3 rounded-lg border-2 transition-colors ${
-                    selectedValue === `abtest:${test.id}`
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  <div className="text-sm font-medium text-gray-900 truncate">{test.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{test.language.toUpperCase()}</div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {(grouped[activeTab] ?? []).map((page) => (
-                <button
-                  key={page.id}
-                  onClick={() => handleSelect(page.id)}
-                  className={`text-left rounded-lg border-2 overflow-hidden transition-colors ${
-                    selectedValue === page.id
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  {/* Thumbnail */}
-                  <div className="aspect-[3/4] bg-gray-100 relative">
-                    {page.thumbnail_url ? (
-                      <img
-                        src={page.thumbnail_url}
-                        alt={page.name}
-                        className="w-full h-full object-cover object-top"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <FileText className="w-8 h-8 text-gray-300" />
-                      </div>
-                    )}
-                    {page.page_type === "advertorial" && (
-                      <span className="absolute top-1.5 right-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
-                        Advertorial
-                      </span>
-                    )}
-                  </div>
-                  {/* Name */}
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-gray-900 truncate">{page.name}</div>
-                    <div className="text-[10px] text-gray-400 truncate">/{page.slug}</div>
-                  </div>
-                </button>
-              ))}
-              {(grouped[activeTab] ?? []).length === 0 && (
-                <p className="col-span-full text-sm text-gray-400 text-center py-8">
-                  No pages in this category
-                </p>
-              )}
-            </div>
-          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {(grouped[activeTab] ?? []).map((page) => (
+              <button
+                key={page.id}
+                onClick={() => handleSelect(page.id)}
+                className={`text-left rounded-lg border-2 overflow-hidden transition-colors ${
+                  selectedValue === page.id
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-gray-200 hover:border-indigo-300"
+                }`}
+              >
+                {/* Thumbnail */}
+                <div className="aspect-[3/4] bg-gray-100 relative">
+                  {page.thumbnail_url ? (
+                    <img
+                      src={page.thumbnail_url}
+                      alt={page.name}
+                      className="w-full h-full object-cover object-top"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <FileText className="w-8 h-8 text-gray-300" />
+                    </div>
+                  )}
+                  {page.page_type === "advertorial" && (
+                    <span className="absolute top-1.5 right-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+                      Advertorial
+                    </span>
+                  )}
+                </div>
+                {/* Name */}
+                <div className="p-2">
+                  <div className="text-xs font-medium text-gray-900 truncate">{page.name}</div>
+                  <div className="text-[10px] text-gray-400 truncate">/{page.slug}</div>
+                </div>
+              </button>
+            ))}
+            {(grouped[activeTab] ?? []).length === 0 && (
+              <p className="col-span-full text-sm text-gray-400 text-center py-8">
+                No pages in this category
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

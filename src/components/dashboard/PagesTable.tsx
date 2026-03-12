@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search, Loader2 } from "lucide-react";
 import { Page, Translation, LANGUAGES, PAGE_TYPES } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
+import { Trophy, FlaskConical } from "lucide-react";
 import { TagBadge } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
+import type { TestRecord } from "./DashboardClient";
 import StatusDot from "./StatusDot";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -34,7 +36,7 @@ function getTranslationUrl(translations: Translation[], lang: string) {
   return translations?.find((t) => t.language === lang)?.published_url;
 }
 
-export default function PagesTable({ pages, onImport }: { pages: Page[]; onImport?: () => void }) {
+export default function PagesTable({ pages, onImport, testRecords }: { pages: Page[]; onImport?: () => void; testRecords?: Record<string, TestRecord> }) {
   const products = useProducts();
   const PRODUCT_MAP = useMemo(() => Object.fromEntries(products.map((p) => [p.value, p.label])), [products]);
   const router = useRouter();
@@ -241,7 +243,30 @@ export default function PagesTable({ pages, onImport }: { pages: Page[]; onImpor
               >
                 <td className="px-4 py-3">
                   <div>
-                    <span className="text-foreground font-medium">{page.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-foreground font-medium">{page.name}</span>
+                      {(() => {
+                        const rec = testRecords?.[page.id];
+                        if (!rec) return null;
+                        if (rec.active > 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                              <FlaskConical className="w-3 h-3" />
+                              Testing
+                            </span>
+                          );
+                        }
+                        if (rec.wins + rec.losses > 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                              <Trophy className="w-3 h-3" />
+                              {rec.wins}W {rec.losses}L
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                     {(page.tags ?? []).length > 0 && (
                       <div className="flex items-center gap-1 mt-1">
                         {(page.tags ?? []).map((tag) => (

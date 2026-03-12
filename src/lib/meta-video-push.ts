@@ -376,18 +376,7 @@ export async function pushVideoToMeta(
     }
   }
 
-  // Override with AB test router URL for its language (if selected)
-  if (job.ab_test_id) {
-    const { data: abTest } = await db
-      .from("ab_tests")
-      .select("language, router_url")
-      .eq("id", job.ab_test_id)
-      .single();
-
-    if (abTest?.router_url) {
-      landingUrlByLang.set(abTest.language, abTest.router_url);
-    }
-  }
+  // No longer using ab_test_id — all landing URLs come from pages
 
   // Auto-assign concept number if not set
   let conceptNumber = job.concept_number;

@@ -28,18 +28,7 @@ export async function GET(req: NextRequest) {
     query = query.eq("pages.product", product);
   }
 
-  // Fetch active AB tests for this language
-  const [pagesResult, abTestsResult] = await Promise.all([
-    query.order("updated_at", { ascending: false }),
-    db
-      .from("ab_tests")
-      .select("id, name, slug, language, router_url, status")
-      .eq("language", language)
-      .eq("workspace_id", workspaceId)
-      .eq("status", "active")
-      .not("router_url", "is", null)
-      .order("created_at", { ascending: false }),
-  ]);
+  const pagesResult = await query.order("updated_at", { ascending: false });
 
   if (pagesResult.error) {
     return safeError(pagesResult.error, "Failed to fetch landing page assets");
@@ -47,6 +36,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     pages: pagesResult.data ?? [],
-    abTests: abTestsResult.data ?? [],
   });
 }

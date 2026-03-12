@@ -5,7 +5,7 @@ import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
 import { sendMessage } from "@/lib/telegram";
-import { getConversionsForTest, isShopifyConfigured } from "@/lib/shopify";
+
 
 export const maxDuration = 300;
 
@@ -40,37 +40,7 @@ export async function GET(req: NextRequest) {
       console.warn("[Pipeline Cron] Sync errors:", syncResult.errors);
     }
 
-    // Step 1.5: Sync AB test conversions from Shopify
-    if (isShopifyConfigured()) {
-      console.log("[Pipeline Cron] Syncing AB test conversions...");
-      const { data: activeTests } = await db
-        .from("ab_tests")
-        .select("id, created_at")
-        .eq("status", "active");
-
-      for (const test of activeTests ?? []) {
-        try {
-          const conversions = await getConversionsForTest(test.id, test.created_at);
-          if (conversions.length > 0) {
-            await db
-              .from("ab_conversions")
-              .upsert(
-                conversions.map((c) => ({
-                  test_id: test.id,
-                  variant: c.variant,
-                  shopify_order_id: c.shopifyOrderId,
-                  revenue: c.revenue,
-                  currency: c.currency,
-                })),
-                { onConflict: "test_id,shopify_order_id", ignoreDuplicates: true }
-              );
-            console.log(`[Pipeline Cron] AB test ${test.id}: synced ${conversions.length} conversions`);
-          }
-        } catch (err) {
-          console.error(`[Pipeline Cron] AB test ${test.id} sync failed:`, err);
-        }
-      }
-    }
+    // Old AB test conversion sync removed — now using ad-level page testing
 
     // Step 2: Push from launch pad based on available budget per market (format-aware)
     const budgets = await calculateAvailableBudget();

@@ -130,8 +130,8 @@ function computeStepCompletion(
     allCoveredLangs.every((lang) => ct[lang]?.status === "completed");
   const step2 = hasPrimary && allLangsTranslated;
 
-  // Step 3: Preview & Push — has landing page/AB test selected
-  const hasLanding = !!j.landing_page_id || !!j.ab_test_id;
+  // Step 3: Preview & Push — has landing page selected
+  const hasLanding = !!j.landing_page_id;
   const step3 = hasLanding && step2;
 
   return [step0, step1, step2, step3];
@@ -185,13 +185,9 @@ export default function VideoJobDetail({ initialJob }: Props) {
 
   // Preview & Push state (Step 3)
   const [landingPageId, setLandingPageId] = useState(initialJob.landing_page_id ?? "");
-  const [abTestId, setAbTestId] = useState(initialJob.ab_test_id ?? "");
   const [landingPages, setLandingPages] = useState<Array<{
     id: string; name: string; slug: string; product: string;
     tags?: string[]; page_type?: string;
-  }>>([]);
-  const [abTests, setAbTests] = useState<Array<{
-    id: string; name: string; slug: string; language: string; router_url: string;
   }>>([]);
   const [pushing, setPushing] = useState(false);
   const [pushResults, setPushResults] = useState<Array<{
@@ -537,10 +533,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
           id: string; name: string; slug: string; product: string;
           tags?: string[]; page_type?: string;
         }> = [];
-        const seenTests = new Set<string>();
-        const tests: Array<{
-          id: string; name: string; slug: string; language: string; router_url: string;
-        }> = [];
         for (const data of results) {
           for (const t of data.pages ?? []) {
             const page = t.pages as {
@@ -552,15 +544,8 @@ export default function VideoJobDetail({ initialJob }: Props) {
               pages.push(page);
             }
           }
-          for (const ab of data.abTests ?? []) {
-            if (!seenTests.has(ab.id)) {
-              seenTests.add(ab.id);
-              tests.push(ab);
-            }
-          }
         }
         setLandingPages(pages);
-        setAbTests(tests);
       })
       .catch(() => {});
   }, [initialJob.product, initialJob.target_languages, step]);
@@ -606,24 +591,12 @@ export default function VideoJobDetail({ initialJob }: Props) {
   }
 
   async function handleWebsiteUrlChange(value: string) {
-    if (value.startsWith("abtest:")) {
-      const newAbTestId = value.replace("abtest:", "");
-      setAbTestId(newAbTestId);
-      setLandingPageId("");
-      await fetch(`/api/video-jobs/${job.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ab_test_id: newAbTestId, landing_page_id: null }),
-      });
-    } else {
-      setLandingPageId(value);
-      setAbTestId("");
-      await fetch(`/api/video-jobs/${job.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ landing_page_id: value || null, ab_test_id: null }),
-      });
-    }
+    setLandingPageId(value);
+    await fetch(`/api/video-jobs/${job.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ landing_page_id: value || null }),
+    });
   }
 
   async function handlePushToMeta() {
@@ -1505,37 +1478,22 @@ export default function VideoJobDetail({ initialJob }: Props) {
               <Globe className="w-4 h-4" />
               Website URL
             </label>
-            {landingPages.length > 0 || abTests.length > 0 ? (
+            {landingPages.length > 0 ? (
               <select
-                value={
-                  abTestId ? `abtest:${abTestId}` : landingPageId
-                }
+                value={landingPageId}
                 onChange={(e) => handleWebsiteUrlChange(e.target.value)}
                 className="w-full bg-white border border-gray-300 text-gray-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"
               >
                 <option value="">Select a destination...</option>
-                {landingPages.length > 0 && (
-                  <optgroup label="Landing Pages">
-                    {landingPages.map((page) => (
-                      <option key={page.id} value={page.id}>
-                        {page.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {abTests.length > 0 && (
-                  <optgroup label="A/B Tests">
-                    {abTests.map((test) => (
-                      <option key={test.id} value={`abtest:${test.id}`}>
-                        {test.name} ({test.language.toUpperCase()})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
+                {landingPages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
               </select>
             ) : (
               <p className="text-sm text-gray-400">
-                No published pages or active A/B tests found for {job.product}
+                No published pages found for {job.product}
               </p>
             )}
           </div>
@@ -1554,7 +1512,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
                 const hasCaptionedVideo = !!translation?.captioned_video_url;
                 const hasTranslatedCopy =
                   copyTranslations[lang]?.status === "completed";
-                const hasLanding = !!landingPageId || !!abTestId;
+                const hasLanding = !!landingPageId;
                 const allReady =
                   hasCaptionedVideo && hasTranslatedCopy && hasLanding;
 
@@ -1596,7 +1554,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
           <div className="flex items-center gap-3">
             <button
               onClick={handlePushToMeta}
-              disabled={pushing || (!landingPageId && !abTestId)}
+              disabled={pushing || !landingPageId}
               className="flex items-center gap-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg transition-colors"
             >
               {pushing ? (

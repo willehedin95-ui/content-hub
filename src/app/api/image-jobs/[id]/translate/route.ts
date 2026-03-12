@@ -308,7 +308,7 @@ async function notifyTranslationComplete(
 
     const { data: job } = await db
       .from("image_jobs")
-      .select("name, concept_number, product, ad_copy_primary, landing_page_id, ab_test_id, launchpad_priority")
+      .select("name, concept_number, product, ad_copy_primary, landing_page_id, launchpad_priority")
       .eq("id", jobId)
       .single();
 
@@ -332,7 +332,7 @@ async function notifyTranslationComplete(
     // All succeeded — check what's still needed for launchpad
     const missing: string[] = [];
     if (!job.product) missing.push("product");
-    if (!job.landing_page_id && !job.ab_test_id) missing.push("landing page");
+    if (!job.landing_page_id) missing.push("landing page");
     if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) missing.push("ad copy");
 
     const { sendMessage } = await import("@/lib/telegram");

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Image, FlaskConical, Plus, Pencil } from "lucide-react";
+import { ArrowLeft, ExternalLink, Image, FlaskConical, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import { getWorkspaceId } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
@@ -63,18 +63,13 @@ export default async function PageDetailPage({
     .eq("workspace_id", workspaceId)
     .order("updated_at", { ascending: false });
 
-  // Fetch A/B tests using any translation of this page
-  const translationIds = (p.translations ?? []).map((t) => t.id);
-  const { data: linkedTests } =
-    translationIds.length > 0
-      ? await db
-          .from("ab_tests")
-          .select("id, name, language, status, updated_at")
-          .or(
-            `control_id.in.(${translationIds.join(",")}),variant_id.in.(${translationIds.join(",")})`
-          )
-          .order("updated_at", { ascending: false })
-      : { data: [] as never[] };
+  // Fetch page tests involving this page
+  const { data: linkedTests } = await db
+    .from("page_tests")
+    .select("id, name, status, winner_page_id, updated_at")
+    .or(`page_a_id.eq.${id},page_b_id.eq.${id}`)
+    .eq("workspace_id", workspaceId)
+    .order("updated_at", { ascending: false });
 
   // Fetch products from DB instead of using hardcoded constant
   const { data: productsData } = await db.from("products").select("slug, name").eq("workspace_id", workspaceId);
@@ -165,17 +160,10 @@ export default async function PageDetailPage({
         </>
       )}
 
-      {/* Related concepts & A/B tests */}
+      {/* Related concepts & page tests */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-900">Related</h2>
-          <Link
-            href={`/ab-tests/new?pageId=${p.id}`}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 transition-colors"
-          >
-            <Plus className="w-3 h-3" />
-            Create A/B Test
-          </Link>
         </div>
 
         {hasRelated ? (
@@ -211,36 +199,34 @@ export default async function PageDetailPage({
               </Link>
             ))}
 
-            {(linkedTests ?? []).map((test) => (
+            {(linkedTests ?? []).map((test: { id: string; name: string; status: string; winner_page_id?: string | null }) => (
               <Link
                 key={test.id}
-                href={`/ab-tests/${test.id}`}
+                href={`/pages?tab=ab-tests`}
                 className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 transition-colors group"
               >
                 <FlaskConical className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-700 truncate">{test.name}</p>
                 </div>
-                <span className="text-xs text-gray-400 uppercase">
-                  {test.language}
-                </span>
+                {test.winner_page_id === id && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">Winner</span>
+                )}
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
                     test.status === "active"
                       ? "bg-emerald-50 text-emerald-600"
-                      : test.status === "completed"
-                        ? "bg-blue-50 text-blue-600"
-                        : "bg-gray-100 text-gray-500"
+                      : "bg-gray-100 text-gray-500"
                   }`}
                 >
-                  {test.status}
+                  {test.status === "active" ? "Testing" : "Completed"}
                 </span>
               </Link>
             ))}
           </div>
         ) : (
           <p className="text-xs text-gray-400 py-2">
-            No linked concepts or A/B tests yet.
+            No linked concepts or page tests yet.
           </p>
         )}
       </div>

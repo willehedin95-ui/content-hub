@@ -14,7 +14,7 @@ export interface ConceptPreviewStepProps {
     primaryTexts: string[];
     headlines: string[];
     landingPageId: string;
-    abTestId: string;
+    landingPageIdB: string;
     pushing: boolean;
     pushResults: Array<{ language: string; country: string; status: string; error?: string; scheduled_time?: string }> | null;
   };

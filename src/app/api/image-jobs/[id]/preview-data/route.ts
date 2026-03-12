@@ -17,7 +17,7 @@ export async function GET(
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("landing_page_id, ab_test_id, product")
+    .select("landing_page_id, landing_page_id_b, product")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -41,16 +41,18 @@ export async function GET(
     }
   }
 
-  // Override with AB test router URL for its language
-  if (job.ab_test_id) {
-    const { data: abTest } = await db
-      .from("ab_tests")
-      .select("language, router_url")
-      .eq("id", job.ab_test_id)
-      .single();
+  // Get page B URLs if this is a page test
+  const landingPageUrlsB: Record<string, string> = {};
+  if (job.landing_page_id_b) {
+    const { data: translations } = await db
+      .from("translations")
+      .select("language, published_url")
+      .eq("page_id", job.landing_page_id_b)
+      .eq("status", "published")
+      .not("published_url", "is", null);
 
-    if (abTest?.router_url) {
-      landingPageUrls[abTest.language] = abTest.router_url;
+    for (const t of translations ?? []) {
+      landingPageUrlsB[t.language] = t.published_url;
     }
   }
 
@@ -72,6 +74,7 @@ export async function GET(
 
   return NextResponse.json({
     landingPageUrls,
+    landingPageUrlsB,
     campaignMappings,
     pageConfigs: pageConfigs ?? [],
   });

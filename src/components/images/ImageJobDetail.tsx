@@ -46,9 +46,9 @@ function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boole
   const completedTrans = allTrans.filter((t) => t.status === "completed").length;
   const step1 = totalTrans > 0 && completedTrans === totalTrans;
 
-  // Step 2: Ad Copy — has primary text + landing page/AB test + all target languages translated
+  // Step 2: Ad Copy — has primary text + landing page + all target languages translated
   const hasPrimary = (j.ad_copy_primary ?? []).some((t: string) => t.trim());
-  const hasLanding = !!j.landing_page_id || !!j.ab_test_id;
+  const hasLanding = !!j.landing_page_id;
   const allLangsTranslated = j.target_languages.length > 0 && j.target_languages.every(
     (lang) => ct[lang]?.status === "completed"
   );
@@ -98,20 +98,19 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     primaryTexts: string[];
     headlines: string[];
     landingPageId: string;
-    abTestId: string;
+    landingPageIdB: string;
     pushing: boolean;
     pushResults: Array<{ language: string; country: string; status: string; error?: string; scheduled_time?: string }> | null;
   }>(() => ({
     primaryTexts: (initialJob.ad_copy_primary ?? []).length > 0 ? initialJob.ad_copy_primary! : [""],
     headlines: (initialJob.ad_copy_headline ?? []).length > 0 ? initialJob.ad_copy_headline! : [""],
     landingPageId: initialJob.landing_page_id ?? "",
-    abTestId: initialJob.ab_test_id ?? "",
+    landingPageIdB: initialJob.landing_page_id_b ?? "",
     pushing: false,
     pushResults: null,
   }));
 
   const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>>([]);
-  const [abTests, setAbTests] = useState<Array<{ id: string; name: string; slug: string; language: string; router_url: string }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
     landingPageUrls: Record<string, string>;
@@ -242,10 +241,10 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     return new Set(LANGUAGES.map((l) => l.value));
   });
 
-  // Fetch landing pages and AB tests for this product
+  // Fetch landing pages for this product
   useEffect(() => {
     if (!initialJob.product) return;
-    // Fetch for all target languages to get AB tests across languages
+    // Fetch for all target languages to get pages across languages
     const langs = initialJob.target_languages?.length ? initialJob.target_languages : ["no"];
     const fetches = langs.map((lang) =>
       fetch(`/api/meta/assets/landing-pages?language=${lang}&product=${initialJob.product}`)
@@ -256,8 +255,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         // Deduplicate pages across languages
         const seenPages = new Set<string>();
         const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }> = [];
-        const seenTests = new Set<string>();
-        const tests: Array<{ id: string; name: string; slug: string; language: string; router_url: string }> = [];
         for (const data of results) {
           for (const t of data.pages ?? []) {
             const pageId = (t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }).id;
@@ -266,15 +263,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
               pages.push(t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null });
             }
           }
-          for (const ab of data.abTests ?? []) {
-            if (!seenTests.has(ab.id)) {
-              seenTests.add(ab.id);
-              tests.push(ab);
-            }
-          }
         }
         setLandingPages(pages);
-        setAbTests(tests);
       })
       .catch(() => {});
   }, [initialJob.product, initialJob.target_languages]);
@@ -526,24 +516,24 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
   }
 
-  // Save website URL selection (landing page or AB test)
+  // Save landing page A selection
   async function handleWebsiteUrlChange(value: string) {
-    if (value.startsWith("abtest:")) {
-      const abTestId = value.replace("abtest:", "");
-      setMetaPush(prev => ({ ...prev, landingPageId: "", abTestId }));
-      await fetch(`/api/image-jobs/${initialJob.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ab_test_id: abTestId, landing_page_id: null }),
-      });
-    } else {
-      setMetaPush(prev => ({ ...prev, landingPageId: value, abTestId: "" }));
-      await fetch(`/api/image-jobs/${initialJob.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ landing_page_id: value || null, ab_test_id: null }),
-      });
-    }
+    setMetaPush(prev => ({ ...prev, landingPageId: value }));
+    await fetch(`/api/image-jobs/${initialJob.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ landing_page_id: value || null }),
+    });
+  }
+
+  // Save landing page B selection (for A/B testing)
+  async function handleWebsiteUrlBChange(value: string) {
+    setMetaPush(prev => ({ ...prev, landingPageIdB: value }));
+    await fetch(`/api/image-jobs/${initialJob.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ landing_page_id_b: value || null }),
+    });
   }
 
   // Push to Meta
@@ -1265,23 +1255,24 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
               ))}
             </div>
           )}
-          {/* Linked page / AB test */}
-          {(job.landing_page_id || job.ab_test_id) && (() => {
+          {/* Linked page(s) */}
+          {job.landing_page_id && (() => {
             const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
-            const linkedTest = abTests.find((t) => t.id === job.ab_test_id);
-            if (!linkedPage && !linkedTest) return null;
+            const linkedPageB = landingPages.find((p) => p.id === job.landing_page_id_b);
+            if (!linkedPage) return null;
             return (
               <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
                 <ExternalLink className="w-3 h-3" />
-                {linkedPage && (
-                  <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                    {linkedPage.name}
-                  </Link>
-                )}
-                {linkedTest && (
-                  <Link href={`/ab-tests/${linkedTest.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                    {linkedTest.name}
-                  </Link>
+                <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                  {linkedPage.name}
+                </Link>
+                {linkedPageB && (
+                  <>
+                    <span className="text-gray-300">vs</span>
+                    <Link href={`/pages/${linkedPageB.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                      {linkedPageB.name}
+                    </Link>
+                  </>
                 )}
               </div>
             );
@@ -1491,7 +1482,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           copyState={copyState}
           doc={doc}
           landingPages={landingPages}
-          abTests={abTests}
           handlePrimaryChange={handlePrimaryChange}
           handleHeadlineChange={handleHeadlineChange}
           handleTranslatedCopyChange={handleTranslatedCopyChange}
@@ -1502,6 +1492,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           handleFetchFromDoc={handleFetchFromDoc}
           handleTranslateCopy={handleTranslateCopy}
           handleWebsiteUrlChange={handleWebsiteUrlChange}
+          handleWebsiteUrlBChange={handleWebsiteUrlBChange}
         />
       ) : (
         <ConceptPreviewStep

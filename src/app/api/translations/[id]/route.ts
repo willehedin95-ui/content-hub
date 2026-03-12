@@ -264,20 +264,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Block deletion if there's an active A/B test using this translation
-  const { data: activeTests } = await db
-    .from("ab_tests")
-    .select("id")
-    .or(`control_id.eq.${id},variant_id.eq.${id}`)
-    .in("status", ["draft", "active"]);
-
-  if (activeTests && activeTests.length > 0) {
-    return NextResponse.json(
-      { error: "Cannot delete — translation is part of an active A/B test. End the test first." },
-      { status: 409 }
-    );
-  }
-
   // Clean up storage images (files under translationId/ prefix)
   const { data: files } = await db.storage
     .from(STORAGE_BUCKET)

@@ -8,7 +8,9 @@ import ImportPageModal from "./ImportPageModal";
 import PagesTable from "./PagesTable";
 import { Page } from "@/types";
 
-export default function DashboardClient({ pages }: { pages: Page[] }) {
+export type TestRecord = { wins: number; losses: number; active: number };
+
+export default function DashboardClient({ pages, testRecords }: { pages: Page[]; testRecords?: Record<string, TestRecord> }) {
   const router = useRouter();
   const [importOpen, setImportOpen] = useState(false);
 
@@ -35,7 +37,7 @@ export default function DashboardClient({ pages }: { pages: Page[] }) {
         </div>
       </div>
 
-      <PagesTable pages={pages} onImport={() => setImportOpen(true)} />
+      <PagesTable pages={pages} onImport={() => setImportOpen(true)} testRecords={testRecords} />
 
       <ImportPageModal open={importOpen} onClose={() => setImportOpen(false)} />
     </>

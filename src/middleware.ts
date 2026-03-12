@@ -35,7 +35,6 @@ export async function middleware(request: NextRequest) {
   // Allow public API endpoints (called from external sources)
   if (
     request.nextUrl.pathname.startsWith("/api/pixel") ||
-    request.nextUrl.pathname.startsWith("/api/ab-track") ||
     request.nextUrl.pathname.startsWith("/api/telegram/webhook") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
     request.nextUrl.pathname.startsWith("/api/morning-brief")

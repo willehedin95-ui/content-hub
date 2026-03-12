@@ -1,10 +1,10 @@
 import { createServerSupabase } from "@/lib/supabase";
 import { getWorkspaceId } from "@/lib/workspace";
 import DashboardClient from "@/components/dashboard/DashboardClient";
-import ABTestsClient from "@/app/ab-tests/ABTestsClient";
+import PageTestsClient from "@/components/pages/PageTestsClient";
 import SwiperClient from "@/components/swiper/SwiperClient";
 import PagesTabBar from "@/components/pages/PagesTabBar";
-import { Page, ABTest, LANGUAGES } from "@/types";
+import { Page } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,27 +18,10 @@ export default async function LandingPagesPage({
   const workspaceId = await getWorkspaceId();
 
   if (tab === "ab-tests") {
-    const { data: tests, error } = await db
-      .from("ab_tests")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .order("updated_at", { ascending: false });
-
-    if (error) {
-      return (
-        <div className="p-8">
-          <PagesTabBar activeTab="ab-tests" />
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-            Failed to load A/B tests: {error.message}
-          </p>
-        </div>
-      );
-    }
-
     return (
       <div className="p-8">
         <PagesTabBar activeTab="ab-tests" />
-        <ABTestsClient tests={(tests as ABTest[]) || []} languages={LANGUAGES} />
+        <PageTestsClient />
       </div>
     );
   }
@@ -59,11 +42,33 @@ export default async function LandingPagesPage({
   }
 
   // Default: pages tab
-  const { data: pages, error } = await db
-    .from("pages")
-    .select(`*, translations (id, language, status, published_url, seo_title)`)
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false });
+  const [{ data: pages, error }, { data: completedTests }] = await Promise.all([
+    db
+      .from("pages")
+      .select(`*, translations (id, language, status, published_url, seo_title)`)
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false }),
+    db
+      .from("page_tests")
+      .select("page_a_id, page_b_id, winner_page_id, status")
+      .eq("workspace_id", workspaceId),
+  ]);
+
+  // Build win/loss records per page
+  const testRecords: Record<string, { wins: number; losses: number; active: number }> = {};
+  for (const t of completedTests ?? []) {
+    for (const pageId of [t.page_a_id, t.page_b_id]) {
+      if (!testRecords[pageId]) testRecords[pageId] = { wins: 0, losses: 0, active: 0 };
+    }
+    if (t.status === "active") {
+      testRecords[t.page_a_id].active++;
+      testRecords[t.page_b_id].active++;
+    } else if (t.winner_page_id) {
+      const loserId = t.winner_page_id === t.page_a_id ? t.page_b_id : t.page_a_id;
+      testRecords[t.winner_page_id].wins++;
+      testRecords[loserId].losses++;
+    }
+  }
 
   if (error) {
     return (
@@ -79,7 +84,7 @@ export default async function LandingPagesPage({
   return (
     <div className="p-8">
       <PagesTabBar activeTab="pages" />
-      <DashboardClient pages={(pages as Page[]) || []} />
+      <DashboardClient pages={(pages as Page[]) || []} testRecords={testRecords} />
     </div>
   );
 }

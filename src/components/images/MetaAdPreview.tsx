@@ -33,7 +33,7 @@ interface Props {
     primaryTexts: string[];
     headlines: string[];
     landingPageId: string;
-    abTestId?: string;
+    landingPageIdB?: string;
     pushing: boolean;
     pushResults: Array<{
       language: string;
@@ -186,7 +186,7 @@ export default function MetaAdPreview({
     (lang) => copyTranslations[lang]?.status === "completed"
   );
   const hasCopy = metaPush.primaryTexts.some((t) => t.trim());
-  const canPush = hasCopy && (metaPush.landingPageId || metaPush.abTestId) && allLangsTranslated;
+  const canPush = hasCopy && metaPush.landingPageId && allLangsTranslated;
 
   return (
     <div className="space-y-6">
