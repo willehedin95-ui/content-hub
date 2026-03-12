@@ -11,6 +11,7 @@ import {
   Search,
   Link as LinkIcon,
   Play,
+  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Asset, AssetCategory, MediaType, Product } from "@/types";
@@ -40,6 +41,19 @@ const PRODUCT_OPTIONS = [
   { value: "hydro13", label: "Hydro13" },
 ];
 
+const SUGGESTED_TAGS = [
+  "neck pain",
+  "snoring",
+  "sleep quality",
+  "back pain",
+  "testimonial",
+  "before after",
+  "social proof",
+  "scientific",
+  "lifestyle",
+  "unboxing",
+];
+
 export default function AssetGrid({
   assets,
   mediaType,
@@ -57,11 +71,16 @@ export default function AssetGrid({
   const [uploadName, setUploadName] = useState("");
   const [uploadCategory, setUploadCategory] = useState<AssetCategory>("other");
   const [uploadProduct, setUploadProduct] = useState<string>("");
+  const [uploadTags, setUploadTags] = useState<string[]>([]);
+  const [uploadTagInput, setUploadTagInput] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState<AssetCategory>("other");
   const [editProduct, setEditProduct] = useState<string>("");
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
 
@@ -75,6 +94,8 @@ export default function AssetGrid({
     }
 
     if (activeCategory !== "all" && asset.category !== activeCategory) return false;
+
+    if (activeTag && !asset.tags.some((t) => t.toLowerCase() === activeTag.toLowerCase())) return false;
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -112,6 +133,8 @@ export default function AssetGrid({
     setUploadName("");
     setUploadCategory("other");
     setUploadProduct("");
+    setUploadTags([]);
+    setUploadTagInput("");
     setShowUploadForm(false);
   }
 
@@ -126,6 +149,9 @@ export default function AssetGrid({
       formData.append("category", uploadCategory);
       if (uploadProduct) {
         formData.append("product", uploadProduct);
+      }
+      if (uploadTags.length > 0) {
+        formData.append("tags", uploadTags.join(","));
       }
 
       const res = await fetch("/api/assets", { method: "POST", body: formData });
@@ -149,6 +175,8 @@ export default function AssetGrid({
     setEditName(asset.name);
     setEditCategory(asset.category);
     setEditProduct(asset.product || "");
+    setEditTags(asset.tags || []);
+    setEditTagInput("");
   }
 
   const closePreview = useCallback(() => {
@@ -174,12 +202,14 @@ export default function AssetGrid({
           name: editName.trim(),
           category: editCategory,
           product: editProduct || null,
+          tags: editTags,
         }),
       });
       if (!res.ok) throw new Error("Update failed");
       const updated: Asset = await res.json();
       onAssetsChange(assets.map((a) => (a.id === previewAsset.id ? updated : a)));
       setPreviewAsset(updated);
+      setEditTags(updated.tags || []);
     } catch {
       alert("Failed to update asset");
     }
@@ -190,6 +220,8 @@ export default function AssetGrid({
     setEditName(asset.name);
     setEditCategory(asset.category);
     setEditProduct(asset.product || "");
+    setEditTags(asset.tags || []);
+    setEditTagInput("");
   }
 
   async function saveEdit(id: string) {
@@ -201,6 +233,7 @@ export default function AssetGrid({
           name: editName.trim(),
           category: editCategory,
           product: editProduct || null,
+          tags: editTags,
         }),
       });
 
@@ -339,6 +372,55 @@ export default function AssetGrid({
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Tags
+                </label>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {uploadTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5 text-xs"
+                    >
+                      {tag}
+                      <button
+                        onClick={() => setUploadTags(uploadTags.filter((t) => t !== tag))}
+                        className="text-indigo-400 hover:text-indigo-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={uploadTagInput}
+                    onChange={(e) => setUploadTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && uploadTagInput.trim()) {
+                        e.preventDefault();
+                        const tag = uploadTagInput.trim().toLowerCase();
+                        if (!uploadTags.includes(tag)) setUploadTags([...uploadTags, tag]);
+                        setUploadTagInput("");
+                      }
+                    }}
+                    placeholder="Type and press Enter..."
+                    className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {SUGGESTED_TAGS.filter((t) => !uploadTags.includes(t)).slice(0, 6).map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => setUploadTags([...uploadTags, tag])}
+                      className="text-[10px] bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-full px-2 py-0.5 transition-colors"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={handleUpload}
@@ -395,6 +477,46 @@ export default function AssetGrid({
           );
         })}
       </div>
+
+      {/* Tag filter pills */}
+      {(() => {
+        const allTags = Array.from(
+          new Set(
+            assets
+              .filter((a) => a.media_type === mediaType)
+              .flatMap((a) => a.tags || [])
+              .map((t) => t.toLowerCase())
+          )
+        ).sort();
+        if (allTags.length === 0) return null;
+        return (
+          <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+            <Tag className="w-3.5 h-3.5 text-gray-400" />
+            {activeTag && (
+              <button
+                onClick={() => setActiveTag(null)}
+                className="text-[10px] text-gray-400 hover:text-gray-600 underline mr-1"
+              >
+                Clear
+              </button>
+            )}
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-xs font-medium transition-colors border",
+                  activeTag === tag
+                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+                )}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Asset grid */}
       <div className="flex-1 overflow-y-auto">
@@ -524,6 +646,23 @@ export default function AssetGrid({
                           </>
                         )}
                       </div>
+                      {asset.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-0.5 mt-1">
+                          {asset.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="text-[9px] bg-indigo-50 text-indigo-600 rounded-full px-1.5 py-px"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {asset.tags.length > 3 && (
+                            <span className="text-[9px] text-gray-400">
+                              +{asset.tags.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -619,6 +758,53 @@ export default function AssetGrid({
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Tags
+                  </label>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {editTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5 text-xs"
+                      >
+                        {tag}
+                        <button
+                          onClick={() => setEditTags(editTags.filter((t) => t !== tag))}
+                          className="text-indigo-400 hover:text-indigo-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={editTagInput}
+                    onChange={(e) => setEditTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editTagInput.trim()) {
+                        e.preventDefault();
+                        const tag = editTagInput.trim().toLowerCase();
+                        if (!editTags.includes(tag)) setEditTags([...editTags, tag]);
+                        setEditTagInput("");
+                      }
+                    }}
+                    placeholder="Type and press Enter..."
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {SUGGESTED_TAGS.filter((t) => !editTags.includes(t)).slice(0, 5).map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => setEditTags([...editTags, tag])}
+                        className="text-[10px] bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-full px-2 py-0.5 transition-colors"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Metadata */}

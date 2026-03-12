@@ -87,6 +87,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const processingRef = useRef(false);
   const cancelRef = useRef(false);
+  const genAbortRef = useRef<AbortController | null>(null);
   const [showTranslateConfirm, setShowTranslateConfirm] = useState(false);
   const [showAddLang, setShowAddLang] = useState(false);
   const [addLangSelected, setAddLangSelected] = useState<Set<Language>>(new Set());
@@ -1042,8 +1043,19 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
 
 
   // Generate static ads via Nano Banana
+  function handleCancelGenerate() {
+    genAbortRef.current?.abort();
+    genAbortRef.current = null;
+    setGenState(prev => ({ ...prev, generating: false, progress: null, error: null }));
+    refreshJob();
+  }
+
   async function handleGenerateStatic() {
     if (genState.generating) return;
+    genAbortRef.current?.abort();
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+
     setGenState(prev => ({ ...prev, generating: true, progress: "Starting generation...", error: null, results: null }));
 
     // Poll for new images while the API request runs — images appear in the grid as they complete
@@ -1054,6 +1066,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ styles: genState.selectedStyles, segment_id: genState.segmentId }),
+        signal: controller.signal,
       });
       const data = await res.json();
       clearInterval(pollInterval);
@@ -1077,6 +1090,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       await refreshJob();
     } catch (err) {
       clearInterval(pollInterval);
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setGenState(prev => ({
         ...prev,
         generating: false,
@@ -1460,6 +1474,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
             segments: productSegments,
           }}
           handleGenerateStatic={handleGenerateStatic}
+          handleCancelGenerate={handleCancelGenerate}
           onReroll={handleReroll}
           rerollingId={rerollingId}
           onToggleSkip={handleToggleSkip}

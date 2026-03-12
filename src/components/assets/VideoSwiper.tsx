@@ -11,6 +11,7 @@ import {
   Video,
   Download,
   XCircle,
+  X,
   Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,16 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   const [keyframeUrls, setKeyframeUrls] = useState<Record<number, string>>({});
   const [keyframeCount, setKeyframeCount] = useState({ done: 0, total: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (pollRef.current) clearInterval(pollRef.current);
+    setPhase("upload");
+    setStatusMessage("");
+    setUploadingVideo(false);
+  }, []);
 
   // Poll Kling task statuses
   useEffect(() => {
@@ -221,6 +232,10 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
   // Start the full pipeline
   const handleAnalyze = useCallback(async () => {
     if (!videoFile) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
     setPhase("uploading");
     setUploadingVideo(true);
@@ -234,7 +249,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
       // Step 1: Upload the video file to get a public URL
       const formData = new FormData();
       formData.append("file", videoFile);
-      const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
+      const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData, signal: controller.signal });
       if (!uploadRes.ok) {
         const errBody = await uploadRes.json().catch(() => ({}));
         throw new Error(errBody.error || "Failed to upload video");
@@ -257,6 +272,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           notes: notes.trim() || undefined,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -305,6 +321,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       setPhase("upload");
@@ -555,6 +572,13 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
               {uploadingVideo ? "Uploading video..." : "Preparing video..."}
             </p>
             <p className="text-xs text-gray-400">This may take a moment for larger files</p>
+            <button
+              onClick={handleCancel}
+              className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -570,6 +594,13 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
             </div>
             <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
             <p className="text-xs text-gray-400">Gemini is watching the full video to extract visual details and detect scenes...</p>
+            <button
+              onClick={handleCancel}
+              className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -623,6 +654,13 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                   ))}
                 </div>
               )}
+              <button
+                onClick={handleCancel}
+                className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -668,7 +706,16 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                 Generating {tasks.length > 1 ? `${tasks.length} clips` : "video"} with {VIDEO_MODELS.find(m => m.value === videoModel)?.label ?? videoModel}...
               </span>
             </div>
-            <p className="text-xs text-gray-400 mb-4">This usually takes 2-4 minutes</p>
+            <div className="flex items-center gap-3 mb-4">
+              <p className="text-xs text-gray-400">This usually takes 2-4 minutes</p>
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-3 py-1 rounded-lg transition-colors"
+              >
+                <X className="w-3 h-3" />
+                Cancel
+              </button>
+            </div>
 
             <div className="space-y-3">
               {tasks.map((task) => {

@@ -82,6 +82,7 @@ export default function ImagePanel({
   const [pickingFromAssets, setPickingFromAssets] = useState(false);
   const [assetBankData, setAssetBankData] = useState<Asset[]>([]);
   const assetsFetchedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Product bank data (fetched client-side)
@@ -178,6 +179,14 @@ export default function ImagePanel({
     setAnalyzing(false);
   }
 
+  function handleCancelGeneration() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setGenerating(false);
+    setSmartGenerating(false);
+    onImageTranslating?.(false);
+  }
+
   /** Swap an image in the iframe */
   function swapImageInIframe(imageIndex: number, newUrl: string) {
     const doc = iframeRef.current?.contentDocument;
@@ -197,6 +206,10 @@ export default function ImagePanel({
   /** Translate image via Kie AI — keeps panel open during generation */
   async function handleTranslate() {
     if (!clickedImage) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const aspectRatio = computeAspectRatio(
       clickedImage.width,
@@ -219,6 +232,7 @@ export default function ImagePanel({
           translationId,
           aspectRatio,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -228,8 +242,8 @@ export default function ImagePanel({
 
       const { newImageUrl } = await res.json();
       swapImageInIframe(imageToProcess.index, newImageUrl);
-      onClickedImageClear();
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Background image translation failed:", err);
       setError(err instanceof Error ? err.message : "Image translation failed");
     } finally {
@@ -284,6 +298,10 @@ export default function ImagePanel({
   async function handleSmartGenerate() {
     if (!clickedImage || !productData) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const imageToProcess = { ...clickedImage };
 
     setError("");
@@ -304,6 +322,7 @@ export default function ImagePanel({
           aspectRatio: computeAspectRatio(imageToProcess.width, imageToProcess.height),
           hint: generationHint.trim() || undefined,
         }),
+        signal: controller.signal,
       });
 
       clearTimeout(phaseTimer);
@@ -316,8 +335,8 @@ export default function ImagePanel({
       const { imageUrl, prompt: usedPrompt } = await res.json();
       setPrompt(usedPrompt);
       swapImageInIframe(imageToProcess.index, imageUrl);
-      onClickedImageClear();
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Smart image generation failed:", err);
       setError(err instanceof Error ? err.message : "Image generation failed");
     } finally {
@@ -329,6 +348,10 @@ export default function ImagePanel({
   /** Generate replacement image via Kie AI — keeps panel open during generation */
   async function handleReplace() {
     if (!clickedImage || !prompt.trim()) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const imageToProcess = { ...clickedImage };
     const currentPrompt = prompt;
@@ -349,6 +372,7 @@ export default function ImagePanel({
           referenceImages,
           originalSrc: imageToProcess.src,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -358,8 +382,8 @@ export default function ImagePanel({
 
       const { generatedUrl } = await res.json();
       swapImageInIframe(imageToProcess.index, generatedUrl);
-      onClickedImageClear();
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Background image replacement failed:", err);
       setError(err instanceof Error ? err.message : "Image generation failed");
     } finally {
@@ -521,6 +545,16 @@ export default function ImagePanel({
             )}
           </button>
 
+          {smartGenerating && (
+            <button
+              onClick={handleCancelGeneration}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 py-2 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
+          )}
+
           {/* Optional hint for generation */}
           <textarea
             value={generationHint}
@@ -598,6 +632,16 @@ export default function ImagePanel({
           ) : (
             <><Wand2 className="w-3.5 h-3.5" /> Generate Replacement</>
           )}
+        </button>
+      )}
+
+      {generating && (
+        <button
+          onClick={handleCancelGeneration}
+          className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 py-2 rounded-lg transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+          Cancel
         </button>
       )}
 

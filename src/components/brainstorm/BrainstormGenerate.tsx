@@ -127,6 +127,7 @@ export default function BrainstormGenerate() {
   const [urlInput, setUrlInput] = useState("");
   const [competitorAdCopy, setCompetitorAdCopy] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const MAX_COMPETITOR_IMAGES = 10;
   const totalCompetitorImages = competitorImages.length + competitorImageUrls.length;
@@ -281,7 +282,18 @@ export default function BrainstormGenerate() {
     return () => clearInterval(interval);
   }, [phase, mode]);
 
+  function handleCancel() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setPhase("configure");
+    setProgressSteps([]);
+  }
+
   async function handleGenerate() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setPhase("loading");
     setError("");
     setLoadingMsg(0);
@@ -320,6 +332,7 @@ export default function BrainstormGenerate() {
             competitor_image_urls: allImageUrls,
             competitor_ad_copy: competitorAdCopy || undefined,
           }),
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -445,6 +458,7 @@ export default function BrainstormGenerate() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(reqBody),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -532,6 +546,7 @@ export default function BrainstormGenerate() {
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Something went wrong");
       setPhase("configure");
     }
@@ -1510,6 +1525,13 @@ export default function BrainstormGenerate() {
                 {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, "0")} elapsed
               </p>
             )}
+            <button
+              onClick={handleCancel}
+              className="mt-4 mx-auto flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
           </div>
         </div>
       ) : phase === "loading" ? (
@@ -1521,6 +1543,13 @@ export default function BrainstormGenerate() {
           <p className="text-xs text-gray-400 mt-2">
             This usually takes 10-20 seconds
           </p>
+          <button
+            onClick={handleCancel}
+            className="mt-4 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+            Cancel
+          </button>
         </div>
       ) : null}
 

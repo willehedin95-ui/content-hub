@@ -10,6 +10,7 @@ import {
   Download,
   Sparkles,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PRODUCTS, type Product, type Asset } from "@/types";
@@ -53,6 +54,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // File selection
   const handleFileSelect = useCallback((file: File) => {
@@ -125,9 +127,20 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     return () => document.removeEventListener("paste", onPaste);
   }, [phase, handleFileSelect]);
 
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setPhase("upload");
+    setStatusMessage("");
+  }, []);
+
   // Start the full pipeline
   const handleAnalyze = useCallback(async () => {
     if (!competitorImageUrl && !competitorImageFile) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
     setAnalysis(null);
     setGeneratedImageUrl(null);
@@ -143,7 +156,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
 
         const formData = new FormData();
         formData.append("file", competitorImageFile);
-        const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData });
+        const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData, signal: controller.signal });
         if (!uploadRes.ok) throw new Error("Failed to upload image");
         const { url } = await uploadRes.json();
         imageUrl = url;
@@ -165,6 +178,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           notes: notes.trim() || undefined,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -207,6 +221,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       setPhase("upload");
@@ -478,6 +493,13 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             </div>
             <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
             <p className="text-xs text-gray-400">Analyzing visual structure and generating prompt...</p>
+            <button
+              onClick={handleCancel}
+              className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -509,6 +531,13 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               </div>
               <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
               <p className="text-xs text-gray-400">Generating adapted image with Nano Banana...</p>
+              <button
+                onClick={handleCancel}
+                className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cancel
+              </button>
             </div>
           </div>
         </div>

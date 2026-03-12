@@ -11,6 +11,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
@@ -220,6 +221,7 @@ export interface ConceptImagesStepProps {
     results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[]; prompt?: string }> | null;
   };
   handleGenerateStatic?: () => void;
+  handleCancelGenerate?: () => void;
   // Re-roll
   onReroll?: (sourceImageId: string) => void;
   rerollingId?: string | null;
@@ -267,6 +269,7 @@ export default function ConceptImagesStep({
   handleRetrySingle,
   generateState,
   handleGenerateStatic,
+  handleCancelGenerate,
   onReroll,
   rerollingId,
   onToggleSkip,
@@ -342,23 +345,34 @@ export default function ConceptImagesStep({
         </div>
 
         {/* Generate button */}
-        <button
-          onClick={handleGenerateStatic}
-          disabled={generateState.generating || generateState.selectedStyles.length === 0}
-          className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
-        >
-          {generateState.generating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              Generate {generateState.selectedStyles.length} Static Ad{generateState.selectedStyles.length !== 1 ? "s" : ""}
-            </>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleGenerateStatic}
+            disabled={generateState.generating || generateState.selectedStyles.length === 0}
+            className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+          >
+            {generateState.generating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate {generateState.selectedStyles.length} Static Ad{generateState.selectedStyles.length !== 1 ? "s" : ""}
+              </>
+            )}
+          </button>
+          {generateState.generating && handleCancelGenerate && (
+            <button
+              onClick={handleCancelGenerate}
+              className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
           )}
-        </button>
+        </div>
 
         {/* Progress */}
         {generateState.progress && (

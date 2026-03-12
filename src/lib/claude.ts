@@ -97,6 +97,8 @@ Use the angle specified in the prompt. If none is specified, match the angle to 
 - Use words like "cure", "treat", or "medical device" (regulatory)
 - Make the copy hypey or salesy — Scandinavian audiences reject this
 - NEVER mention specific product prices or monetary amounts (e.g. "only 599 kr", "was 999 kr now 499 kr"). Remove any pricing from the competitor source. Mentioning discounts or offers in general terms (e.g. "limited-time discount", "special offer") is fine — just never include actual numbers. Pricing is handled separately on the product page
+- NEVER write longer copy than the source. Your rewrite must be EQUAL length or SHORTER than the original. Trim unnecessary words, shorten paragraphs, and condense explanations. Every sentence should earn its place — cut filler, redundancy, and over-explanation
+- For listicle-style content ("Reasons Why", "Warning Signs", numbered lists): keep each list item to 1-2 sentences max. Be punchy and scannable — claim + brief support, then move on. Do NOT expand list items beyond what the source has. Scandinavian readers prefer direct, no-fluff communication
 
 ### Step 4: Output
 
