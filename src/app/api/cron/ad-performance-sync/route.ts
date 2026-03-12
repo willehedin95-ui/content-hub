@@ -57,8 +57,14 @@ export async function GET(req: NextRequest) {
     .from("meta_ad_performance")
     .select("id", { count: "exact", head: true });
 
+  // Check adset table separately — it was added later and may need its own backfill
+  const { count: adsetCount } = await db
+    .from("meta_adset_performance")
+    .select("adset_id", { count: "exact", head: true });
+
   const isBackfill = (count ?? 0) === 0;
-  const daysBack = isBackfill ? 30 : 3;
+  const adsetNeedsBackfill = (adsetCount ?? 0) < 200; // < 200 rows means < ~7 days of data
+  const daysBack = isBackfill || adsetNeedsBackfill ? 30 : 3;
 
   const until = new Date();
   until.setDate(until.getDate() - 1); // yesterday (today's data is incomplete)

@@ -157,9 +157,10 @@ export function computeStrategyGuide(input: StrategyInput): StrategyGuide {
   const recommendations: StrategyRecommendation[] = [];
 
   // Build multi-window KPIs per campaign
-  const multiWindowKpis = campaigns.map((c) =>
-    buildCampaignKpi(c, adset_days, today)
-  );
+  // Filter out ghost campaigns (0 budget, 0 ad sets, 0 spend) — often old/inactive campaign IDs
+  const multiWindowKpis = campaigns
+    .map((c) => buildCampaignKpi(c, adset_days, today))
+    .filter((kpi) => kpi.daily_budget_sek > 0 || kpi.active_adsets > 0 || kpi.w30.spend > 0);
 
   // Build ad set breakdown
   const adsetBreakdown = buildAdSetBreakdown(adset_days, campaigns, today);
