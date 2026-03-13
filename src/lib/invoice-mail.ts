@@ -206,6 +206,33 @@ async function downloadPdf(uid: number, part: string): Promise<Buffer> {
   }
 }
 
+/** Download the full raw RFC822 source of an email */
+async function downloadFullEmail(uid: number): Promise<Buffer> {
+  const config = getImapConfig();
+  const client = new ImapFlow({
+    ...config,
+    logger: false,
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+
+    try {
+      const { content } = await client.download(String(uid), undefined, { uid: true });
+      const chunks: Buffer[] = [];
+      for await (const chunk of content) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks);
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
 /** Get UIDVALIDITY for the INBOX */
 async function getUidValidity(): Promise<number> {
   const config = getImapConfig();
@@ -258,11 +285,11 @@ function matchEmailToService(
 
 // --- SMTP ---
 
-/** Forward a PDF to Juni */
+/** Forward the original email as-is to Juni (preserving body content for AI matching) */
 async function forwardToJuni(
   serviceName: string,
   period: string,
-  pdf: { content: Buffer; filename: string },
+  originalEmailRaw: Buffer,
   originalSubject: string
 ): Promise<ForwardResult> {
   const smtpConfig = getSmtpConfig();
@@ -271,18 +298,25 @@ async function forwardToJuni(
   const transporter = nodemailer.createTransport(smtpConfig);
 
   try {
+    // Parse the original email and re-send it with new To: header
+    // This preserves the original HTML body (with amounts, dates, etc.)
+    // which Juni's AI uses for transaction matching
+    const rawStr = originalEmailRaw.toString();
+
+    // Extract the original HTML and text parts, and attachments
+    // by forwarding as an attachment of type message/rfc822 won't work well
+    // Instead, use nodemailer's built-in forwarding: set the raw source as envelope
     await transporter.sendMail({
-      from: smtpConfig.auth.user,
-      to: forwardEmail,
-      subject: `Invoice: ${serviceName} - ${period} | ${originalSubject}`,
-      text: `Auto-forwarded invoice from ${serviceName} for period ${period}.\n\nOriginal subject: ${originalSubject}`,
-      attachments: [
-        {
-          filename: pdf.filename,
-          content: pdf.content,
-          contentType: "application/pdf",
-        },
-      ],
+      envelope: {
+        from: smtpConfig.auth.user,
+        to: forwardEmail,
+      },
+      // Forward using raw — replace To: header but keep everything else
+      raw: rewriteEmailHeaders(rawStr, {
+        from: smtpConfig.auth.user,
+        to: forwardEmail,
+        subject: `Fwd: ${originalSubject}`,
+      }),
     });
     return { success: true };
   } catch (e) {
@@ -290,6 +324,49 @@ async function forwardToJuni(
     console.error(`[invoice-mail] SMTP forward error:`, msg);
     return { success: false, error: msg };
   }
+}
+
+/** Rewrite From/To/Subject headers in a raw email while preserving the body */
+function rewriteEmailHeaders(
+  raw: string,
+  headers: { from: string; to: string; subject: string }
+): string {
+  // Split headers from body (double CRLF or double LF)
+  const divider = raw.includes("\r\n\r\n") ? "\r\n\r\n" : "\n\n";
+  const dividerIndex = raw.indexOf(divider);
+  if (dividerIndex === -1) return raw;
+
+  const headerSection = raw.substring(0, dividerIndex);
+  const body = raw.substring(dividerIndex);
+
+  // Replace or add headers
+  const lines = headerSection.split(/\r?\n/);
+  const newLines: string[] = [];
+  let skipContinuation = false;
+
+  for (const line of lines) {
+    // Check if this is a continuation line (starts with whitespace)
+    if (/^\s/.test(line) && skipContinuation) continue;
+    skipContinuation = false;
+
+    const lower = line.toLowerCase();
+    if (lower.startsWith("from:") || lower.startsWith("to:") || lower.startsWith("subject:")) {
+      skipContinuation = true; // skip this header and any continuation lines
+      continue;
+    }
+    newLines.push(line);
+  }
+
+  // Add our new headers at the top
+  const nl = raw.includes("\r\n") ? "\r\n" : "\n";
+  const newHeaders = [
+    `From: ${headers.from}`,
+    `To: ${headers.to}`,
+    `Subject: ${headers.subject}`,
+    ...newLines,
+  ].join(nl);
+
+  return newHeaders + body;
 }
 
 // --- Orchestrator ---
@@ -381,15 +458,15 @@ export async function processInvoices(): Promise<{
       continue;
     }
 
-    // Download first PDF and forward
+    // Download full original email and forward it (preserves body for Juni AI matching)
     const pdfInfo = email.pdfAttachments[0];
     try {
-      const pdfContent = await downloadPdf(email.uid, pdfInfo.part);
+      const fullEmail = await downloadFullEmail(email.uid);
 
       const result = await forwardToJuni(
         service.name,
         period,
-        { content: pdfContent, filename: pdfInfo.filename },
+        fullEmail,
         email.subject
       );
 
@@ -404,7 +481,7 @@ export async function processInvoices(): Promise<{
           email_date: email.date.toISOString(),
           forwarded_at: new Date().toISOString(),
           pdf_filename: pdfInfo.filename,
-          pdf_size_bytes: pdfContent.length,
+          pdf_size_bytes: fullEmail.length,
         });
         forwarded++;
       } else {
