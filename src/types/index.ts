@@ -1198,3 +1198,45 @@ export interface Asset {
   source_url: string | null;
   created_at: string;
 }
+
+// Invoice Tracker
+export interface InvoiceService {
+  id: string;
+  name: string;
+  sender_patterns: string[];
+  subject_patterns: string[];
+  billing_cycle: "monthly" | "annual" | "quarterly";
+  billing_anchor_month: number | null;
+  icon_url: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due";
+
+export interface InvoiceLog {
+  id: string;
+  service_id: string;
+  period: string;
+  status: string;
+  email_uid: string | null;
+  email_subject: string | null;
+  email_from: string | null;
+  email_date: string | null;
+  forwarded_at: string | null;
+  error_message: string | null;
+  pdf_filename: string | null;
+  pdf_size_bytes: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceSummaryRow {
+  service: InvoiceService;
+  status: InvoiceStatus;
+  log: InvoiceLog | null;
+  expected: boolean;
+}

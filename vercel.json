@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/auto-pause-bleeders",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/invoice-check",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
