@@ -1,7 +1,7 @@
 "use client";
 
 import type { InvoiceStatus } from "@/types";
-import { Check, Clock, AlertCircle, Minus, FileText, Hand, HelpCircle, Send } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, Minus, FileText, Hand, HelpCircle, Send } from "lucide-react";
 
 const config: Record<
   InvoiceStatus,
@@ -14,6 +14,7 @@ const config: Record<
   manual: { label: "Manual", color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Hand },
   not_due: { label: "Not due", color: "text-gray-400", bg: "bg-gray-50 border-gray-100", icon: Minus },
   ready: { label: "Ready", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200", icon: Send },
+  paid: { label: "Paid", color: "text-emerald-800", bg: "bg-emerald-100 border-emerald-300", icon: CheckCheck },
   unmatched: { label: "Unmatched", color: "text-orange-700", bg: "bg-orange-50 border-orange-200", icon: HelpCircle },
 };
 

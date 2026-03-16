@@ -30,13 +30,58 @@ interface ForwardResult {
 
 // --- Config ---
 
-function getImapConfig() {
-  const host = process.env.INVOICE_IMAP_HOST || "imap.hostinger.com";
-  const port = parseInt(process.env.INVOICE_IMAP_PORT || "993", 10);
-  const user = process.env.INVOICE_IMAP_EMAIL;
-  const pass = process.env.INVOICE_IMAP_PASSWORD;
-  if (!user || !pass) throw new Error("INVOICE_IMAP_EMAIL and INVOICE_IMAP_PASSWORD must be set");
-  return { host, port, secure: true, auth: { user, pass } };
+interface ImapAccountConfig {
+  accountId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: { user: string; pass: string };
+}
+
+/** Get all configured IMAP accounts */
+function getImapAccounts(): ImapAccountConfig[] {
+  const accounts: ImapAccountConfig[] = [];
+
+  // Primary: Hostinger
+  const hostingerUser = process.env.INVOICE_IMAP_EMAIL;
+  const hostingerPass = process.env.INVOICE_IMAP_PASSWORD;
+  if (hostingerUser && hostingerPass) {
+    accounts.push({
+      accountId: "hostinger",
+      host: process.env.INVOICE_IMAP_HOST || "imap.hostinger.com",
+      port: parseInt(process.env.INVOICE_IMAP_PORT || "993", 10),
+      secure: true,
+      auth: { user: hostingerUser, pass: hostingerPass },
+    });
+  }
+
+  // Rasmus Gmail
+  const gmailUser = process.env.INVOICE_GMAIL_RASMUS_EMAIL;
+  const gmailPass = process.env.INVOICE_GMAIL_RASMUS_PASSWORD;
+  if (gmailUser && gmailPass) {
+    accounts.push({
+      accountId: "gmail-rasmus",
+      host: "imap.gmail.com",
+      port: 993,
+      secure: true,
+      auth: { user: gmailUser, pass: gmailPass },
+    });
+  }
+
+  return accounts;
+}
+
+/** Get a specific IMAP account by id */
+function getImapAccountById(accountId: string): ImapAccountConfig {
+  const accounts = getImapAccounts();
+  const acct = accounts.find((a) => a.accountId === accountId);
+  if (!acct) throw new Error(`IMAP account "${accountId}" not configured`);
+  return acct;
+}
+
+function getImapConfig(): ImapAccountConfig {
+  // Legacy: returns the primary hostinger account
+  return getImapAccountById("hostinger");
 }
 
 function getSmtpConfig() {
@@ -111,14 +156,17 @@ function findPdfs(
 // --- Shared IMAP session ---
 
 /** Create a connected IMAP client with mailbox lock */
-async function createImapSession(): Promise<{
+async function createImapSession(account?: ImapAccountConfig): Promise<{
   client: ImapFlow;
   lock: { release: () => void };
   uidValidity: number;
 }> {
-  const config = getImapConfig();
+  const config = account || getImapConfig();
   const client = new ImapFlow({
-    ...config,
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
     logger: false,
     socketTimeout: 30_000,
   });
@@ -202,8 +250,9 @@ async function downloadFullEmail(client: ImapFlow, uid: number): Promise<Buffer>
 }
 
 /** Download full email using a standalone connection (for retryForward/reprocess) */
-async function downloadFullEmailStandalone(uid: number): Promise<Buffer> {
-  const session = await createImapSession();
+async function downloadFullEmailStandalone(uid: number, accountId?: string): Promise<Buffer> {
+  const account = accountId ? getImapAccountById(accountId) : undefined;
+  const session = await createImapSession(account);
   try {
     return await downloadFullEmail(session.client, uid);
   } finally {
@@ -545,24 +594,61 @@ export async function processInvoices(): Promise<{
   errors: number;
   skipped: number;
 }> {
-  const db = createServerSupabase();
+  const accounts = getImapAccounts();
+  if (accounts.length === 0) throw new Error("No IMAP accounts configured");
 
-  // 1. Load IMAP state
+  let totalProcessed = 0;
+  let totalForwarded = 0;
+  let totalErrors = 0;
+  let totalSkipped = 0;
+
+  for (const account of accounts) {
+    try {
+      console.log(`[invoice-mail] Scanning account: ${account.accountId}`);
+      const result = await processAccount(account);
+      totalProcessed += result.processed;
+      totalForwarded += result.forwarded;
+      totalErrors += result.errors;
+      totalSkipped += result.skipped;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[invoice-mail] Error scanning ${account.accountId}:`, msg);
+      totalErrors++;
+    }
+  }
+
+  return { processed: totalProcessed, forwarded: totalForwarded, errors: totalErrors, skipped: totalSkipped };
+}
+
+/** Process a single IMAP account */
+async function processAccount(account: ImapAccountConfig): Promise<{
+  processed: number;
+  forwarded: number;
+  errors: number;
+  skipped: number;
+}> {
+  const db = createServerSupabase();
+  const accountId = account.accountId;
+
+  // 1. Load IMAP state for this account
   const { data: imapState } = await db
     .from("invoice_imap_state")
     .select("*")
-    .eq("account_id", "hostinger")
+    .eq("account_id", accountId)
     .single();
 
-  if (!imapState) throw new Error("invoice_imap_state row not found");
+  if (!imapState) {
+    console.warn(`[invoice-mail] No imap_state row for "${accountId}", skipping`);
+    return { processed: 0, forwarded: 0, errors: 0, skipped: 0 };
+  }
 
   // 2. Open single IMAP session (reused for all operations)
-  const session = await createImapSession();
+  const session = await createImapSession(account);
   const currentValidity = session.uidValidity;
 
   let lastUid = imapState.last_processed_uid as number;
   if (imapState.last_uid_validity && currentValidity !== imapState.last_uid_validity) {
-    console.log("[invoice-mail] UIDVALIDITY changed, resetting last_processed_uid");
+    console.log(`[invoice-mail] [${accountId}] UIDVALIDITY changed, resetting last_processed_uid`);
     lastUid = 0;
   }
 
@@ -579,7 +665,7 @@ export async function processInvoices(): Promise<{
 
   // 4. Fetch new emails (headers only — fast, reuses session)
   const emails = await fetchNewEmails(session.client, lastUid);
-  console.log(`[invoice-mail] Found ${emails.length} new emails since UID ${lastUid}`);
+  console.log(`[invoice-mail] [${accountId}] Found ${emails.length} new emails since UID ${lastUid}`);
 
   let forwarded = 0;
   let errors = 0;
@@ -597,7 +683,7 @@ export async function processInvoices(): Promise<{
           last_run_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("account_id", "hostinger");
+        .eq("account_id", accountId);
     }
   }
 
@@ -615,6 +701,7 @@ export async function processInvoices(): Promise<{
           .select("id")
           .is("service_id", null)
           .eq("email_uid", String(email.uid))
+          .eq("imap_account_id", accountId)
           .maybeSingle();
         if (!existingUnmatched) {
           await db.from("invoice_logs").insert({
@@ -625,6 +712,7 @@ export async function processInvoices(): Promise<{
             email_subject: email.subject,
             email_from: email.from,
             email_date: email.date.toISOString(),
+            imap_account_id: accountId,
           });
         }
       }
@@ -634,11 +722,13 @@ export async function processInvoices(): Promise<{
       continue;
     }
 
+    // Check for existing log (same service + same email_uid + same account)
     const { data: existing } = await db
       .from("invoice_logs")
       .select("id")
       .eq("service_id", service.id)
       .eq("email_uid", String(email.uid))
+      .eq("imap_account_id", accountId)
       .maybeSingle();
 
     if (existing) {
@@ -658,7 +748,7 @@ export async function processInvoices(): Promise<{
       const period = emailPeriod(effectiveDate);
 
       if (originalDate) {
-        console.log(`[invoice-mail] Found original date ${originalDate.toISOString()} in forwarded email (envelope: ${email.date.toISOString()})`);
+        console.log(`[invoice-mail] [${accountId}] Found original date ${originalDate.toISOString()} in forwarded email (envelope: ${email.date.toISOString()})`);
       }
 
       // Store as "ready" — no auto-forwarding. User sends to Juni manually.
@@ -679,6 +769,7 @@ export async function processInvoices(): Promise<{
           email_from: email.from,
           email_date: effectiveDate.toISOString(),
           error_message: "No PDF attachment and no HTML body",
+          imap_account_id: accountId,
         });
         skipped++;
         continue;
@@ -699,6 +790,7 @@ export async function processInvoices(): Promise<{
         pdf_size_bytes: hasPdf ? fullEmail.length : null,
         amount: amountInfo?.amount || null,
         currency: amountInfo?.currency || null,
+        imap_account_id: accountId,
       });
       forwarded++;
     } catch (e) {
@@ -712,6 +804,7 @@ export async function processInvoices(): Promise<{
         email_from: email.from,
         email_date: email.date.toISOString(),
         error_message: msg,
+        imap_account_id: accountId,
       });
       errors++;
     }
@@ -728,7 +821,7 @@ export async function processInvoices(): Promise<{
   await db
     .from("invoice_imap_state")
     .update({ last_run_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("account_id", "hostinger");
+    .eq("account_id", accountId);
 
   return { processed: emails.length, forwarded, errors, skipped };
 }
@@ -751,12 +844,13 @@ export async function testImapConnection(): Promise<{ exists: number; uidValidit
 /** Retry forwarding a specific email by UID for a given service */
 export async function retryForward(
   emailUid: number,
-  service: InvoiceService
+  service: InvoiceService,
+  accountId?: string
 ): Promise<{ success: boolean; error?: string }> {
   const db = createServerSupabase();
 
   try {
-    const fullEmail = await downloadFullEmailStandalone(emailUid);
+    const fullEmail = await downloadFullEmailStandalone(emailUid, accountId);
     const parsed = await simpleParser(fullEmail);
     const hasPdf = parsed.attachments?.some(
       (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
@@ -785,6 +879,7 @@ export async function retryForward(
         forwarded_at: result.success ? new Date().toISOString() : null,
         pdf_filename: pdfAttachment?.filename || "invoice.pdf",
         error_message: result.error || null,
+        imap_account_id: accountId || "hostinger",
       });
       return result;
     }
@@ -811,6 +906,7 @@ export async function retryForward(
       pdf_filename: pdfFilename,
       pdf_size_bytes: pdfBuffer.length,
       error_message: result.error || null,
+      imap_account_id: accountId || "hostinger",
     });
     return result;
   } catch (e) {
@@ -843,7 +939,7 @@ export async function forwardLogToJuni(
   if (!emailUid) return { success: false, error: "No email UID to forward" };
 
   try {
-    const fullEmail = await downloadFullEmailStandalone(emailUid);
+    const fullEmail = await downloadFullEmailStandalone(emailUid, log.imap_account_id || "hostinger");
     const parsed = await simpleParser(fullEmail);
     const hasPdf = parsed.attachments?.some(
       (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
@@ -905,7 +1001,7 @@ export async function reprocessPeriods(): Promise<{
   // Load all forwarded/error logs that have email UIDs (can be re-downloaded)
   const { data: logs } = await db
     .from("invoice_logs")
-    .select("id, service_id, period, email_uid, email_date, invoice_services(name)")
+    .select("id, service_id, period, email_uid, email_date, imap_account_id, invoice_services(name)")
     .in("status", ["forwarded", "error", "received_no_pdf"])
     .not("email_uid", "is", null)
     .order("created_at", { ascending: false });
@@ -923,7 +1019,7 @@ export async function reprocessPeriods(): Promise<{
       const emailUid = parseInt(log.email_uid, 10);
       if (isNaN(emailUid)) continue;
 
-      const fullEmail = await downloadFullEmailStandalone(emailUid);
+      const fullEmail = await downloadFullEmailStandalone(emailUid, log.imap_account_id || "hostinger");
       const emailHtml = await extractHtmlFromEmail(fullEmail);
       const originalDate = extractOriginalEmailDate(emailHtml);
 

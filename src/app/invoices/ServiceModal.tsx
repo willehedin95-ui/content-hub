@@ -55,7 +55,7 @@ export default function ServiceModal({ service, onClose, onSave, onDelete }: Ser
   const [isManualUpload, setIsManualUpload] = useState(service?.is_manual_upload ?? false);
   const [conditions, setConditions] = useState<Condition[]>(buildConditionsFromService(service));
   const [forwardTo, setForwardTo] = useState<InvoiceForwardTarget>(service?.forward_to || "receipts");
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual" | "quarterly" | "usage_based">(service?.billing_cycle || "monthly");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual" | "quarterly" | "usage_based" | "one_time">(service?.billing_cycle || "monthly");
   const [anchorMonth, setAnchorMonth] = useState<number | null>(service?.billing_anchor_month ?? null);
   const [matchMode, setMatchMode] = useState<"any" | "all">(service?.match_mode || "any");
   const [billingUrl, setBillingUrl] = useState(service?.billing_url || "");
@@ -84,7 +84,7 @@ export default function ServiceModal({ service, onClose, onSave, onDelete }: Ser
         match_mode: matchMode,
         billing_url: billingUrl.trim() || null,
         billing_cycle: billingCycle,
-        billing_anchor_month: billingCycle !== "monthly" && billingCycle !== "usage_based" ? anchorMonth : null,
+        billing_anchor_month: billingCycle !== "monthly" && billingCycle !== "usage_based" && billingCycle !== "one_time" ? anchorMonth : null,
         notes: notes.trim() || null,
         is_active: service?.is_active ?? true,
       });
@@ -334,18 +334,19 @@ export default function ServiceModal({ service, onClose, onSave, onDelete }: Ser
             <label className="block text-sm font-medium text-gray-700 mb-1">Billing Cycle</label>
             <select
               value={billingCycle}
-              onChange={(e) => setBillingCycle(e.target.value as "monthly" | "annual" | "quarterly" | "usage_based")}
+              onChange={(e) => setBillingCycle(e.target.value as "monthly" | "annual" | "quarterly" | "usage_based" | "one_time")}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
               <option value="annual">Annual</option>
               <option value="usage_based">Usage-based (multiple per month)</option>
+              <option value="one_time">One-time purchase</option>
             </select>
           </div>
 
           {/* Anchor Month (for non-monthly, non-usage-based) */}
-          {billingCycle !== "monthly" && billingCycle !== "usage_based" && (
+          {billingCycle !== "monthly" && billingCycle !== "usage_based" && billingCycle !== "one_time" && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 {billingCycle === "annual" ? "Invoice Month" : "First Invoice Month"}

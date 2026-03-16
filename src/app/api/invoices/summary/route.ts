@@ -5,6 +5,7 @@ import type { InvoiceService, InvoiceSummaryRow, InvoiceStatus } from "@/types";
 
 function isExpectedThisMonth(svc: InvoiceService, period: string): boolean {
   if (svc.billing_cycle === "usage_based") return true; // always "expected" — no false waiting
+  if (svc.billing_cycle === "one_time") return false; // never "waiting" — shows up only when invoice arrives
   const month = parseInt(period.split("-")[1], 10); // 1-12
   if (svc.billing_cycle === "monthly") return true;
   if (svc.billing_cycle === "annual") {
@@ -65,13 +66,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (!expected) {
+    if (!expected && svcLogs.length === 0) {
       return {
         service: svc,
         status: "not_due" as InvoiceStatus,
         log: null,
         logs: svcLogs,
-        invoiceCount: svcLogs.length,
+        invoiceCount: 0,
         totalAmount,
         totalCurrency,
         expected,
@@ -93,8 +94,9 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // Pick the "best" log (forwarded > manual > ready > received_no_pdf > error > waiting)
+    // Pick the "best" log (paid > forwarded > manual > ready > received_no_pdf > error > waiting)
     const priority: Record<string, number> = {
+      paid: 7,
       forwarded: 6,
       manual: 5,
       ready: 4,

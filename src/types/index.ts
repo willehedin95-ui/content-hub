@@ -1207,7 +1207,7 @@ export interface InvoiceService {
   name: string;
   sender_patterns: string[];
   subject_patterns: string[];
-  billing_cycle: "monthly" | "annual" | "quarterly" | "usage_based";
+  billing_cycle: "monthly" | "annual" | "quarterly" | "usage_based" | "one_time";
   billing_anchor_month: number | null;
   forward_to: InvoiceForwardTarget;
   is_manual_upload: boolean;
@@ -1222,7 +1222,7 @@ export interface InvoiceService {
   updated_at: string;
 }
 
-export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due" | "unmatched" | "ready";
+export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due" | "unmatched" | "ready" | "paid";
 
 export interface InvoiceLog {
   id: string;

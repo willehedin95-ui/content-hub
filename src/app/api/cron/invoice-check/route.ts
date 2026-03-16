@@ -19,16 +19,18 @@ export async function GET(req: NextRequest) {
     const result = await processInvoices();
     console.log("[cron/invoice-check] Result:", result);
 
-    // Send Telegram notification if anything happened
+    // Send Telegram notification if new invoices found
     const chatId = getChatId();
     if (chatId && (result.forwarded > 0 || result.errors > 0)) {
-      const parts: string[] = ["<b>Invoice Check</b>"];
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://contenthub.se";
+      const parts: string[] = ["<b>Invoice Scanner</b>"];
       if (result.forwarded > 0) {
-        parts.push(`${result.forwarded} invoice${result.forwarded > 1 ? "s" : ""} forwarded to Juni`);
+        parts.push(`${result.forwarded} new invoice${result.forwarded > 1 ? "s" : ""} ready for review`);
       }
       if (result.errors > 0) {
-        parts.push(`${result.errors} error${result.errors > 1 ? "s" : ""} — check the Invoice Tracker`);
+        parts.push(`${result.errors} error${result.errors > 1 ? "s" : ""}`);
       }
+      parts.push(`\n<a href="${appUrl}/invoices">Open Invoice Tracker</a>`);
       await sendMessage(chatId, parts.join("\n"), { parse_mode: "HTML" });
     }
 

@@ -125,6 +125,7 @@ export default function InvoiceTrackerClient() {
   const [forwarding, setForwarding] = useState<string | null>(null); // log id being forwarded
   const [forwardingAll, setForwardingAll] = useState(false);
   const [forwardResult, setForwardResult] = useState<{ forwarded: number; errors: number } | null>(null);
+  const [markingPaid, setMarkingPaid] = useState<string | null>(null); // service id being marked
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
@@ -320,6 +321,22 @@ export default function InvoiceTrackerClient() {
     }
   }
 
+  async function handleMarkPaid(logIds: string[], serviceId: string) {
+    setMarkingPaid(serviceId);
+    try {
+      for (const logId of logIds) {
+        await fetch(`/api/invoices/logs/${logId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "paid" }),
+        });
+      }
+      await fetchSummary();
+    } finally {
+      setMarkingPaid(null);
+    }
+  }
+
   function copyToClipboard(email: string, type: "receipts" | "invoices") {
     navigator.clipboard.writeText(email);
     setCopiedEmail(type);
@@ -327,7 +344,7 @@ export default function InvoiceTrackerClient() {
   }
 
   // Summary counts
-  const done = summary.filter((r) => r.status === "forwarded" || r.status === "manual").length;
+  const done = summary.filter((r) => r.status === "forwarded" || r.status === "manual" || r.status === "paid").length;
   const needsAction = summary.length - summary.filter((r) => r.status === "not_due").length;
   const pct = needsAction > 0 ? Math.round((done / needsAction) * 100) : 100;
 
@@ -338,8 +355,15 @@ export default function InvoiceTrackerClient() {
     0
   );
 
+  // Count unpaid (ready + forwarded) logs for the action banner
+  const unpaidCount = summary.reduce(
+    (sum, r) => sum + r.logs.filter((l) => l.status === "ready" || l.status === "forwarded").length,
+    0
+  );
+
   const counts = {
     total: summary.length,
+    paid: summary.filter((r) => r.status === "paid").length,
     forwarded: summary.filter((r) => r.status === "forwarded").length,
     ready: readyCount,
     waiting: summary.filter((r) => r.status === "waiting").length,
@@ -364,7 +388,7 @@ export default function InvoiceTrackerClient() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Invoice Tracker</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Auto-forward invoice PDFs to Juni for accounting
+            Track and manage monthly service invoices
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -484,27 +508,32 @@ export default function InvoiceTrackerClient() {
         </div>
       )}
 
-      {/* Send All to Juni banner */}
-      {readyCount > 0 && (
+      {/* Unpaid invoices banner */}
+      {unpaidCount > 0 && (
         <div className="mb-4 px-4 py-3 rounded-lg flex items-center justify-between bg-indigo-50 border border-indigo-200">
           <div className="flex items-center gap-2">
             <Send className="w-4 h-4 text-indigo-600 flex-shrink-0" />
             <span className="text-sm text-indigo-700">
-              <span className="font-semibold">{readyCount}</span> invoice{readyCount > 1 ? "s" : ""} ready to send to Juni
+              <span className="font-semibold">{unpaidCount}</span> unpaid invoice{unpaidCount > 1 ? "s" : ""}
+              {readyCount > 0 && readyCount < unpaidCount && ` (${readyCount} new)`}
             </span>
           </div>
-          <button
-            onClick={handleForwardAll}
-            disabled={forwardingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {forwardingAll ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Send className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2">
+            {readyCount > 0 && (
+              <button
+                onClick={handleForwardAll}
+                disabled={forwardingAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-300 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {forwardingAll ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                Send to Juni
+              </button>
             )}
-            Send All to Juni
-          </button>
+          </div>
         </div>
       )}
 
@@ -698,6 +727,11 @@ export default function InvoiceTrackerClient() {
                 Total: {fmtAmount(insights.monthlySpend.total, insights.monthlySpend.currency)}
               </span>
             )}
+            {counts.paid > 0 && (
+              <span className="text-emerald-700">
+                <span className="font-semibold">{counts.paid}</span> paid
+              </span>
+            )}
             {counts.forwarded > 0 && (
               <span className="text-emerald-600">
                 <span className="font-semibold">{counts.forwarded}</span> forwarded
@@ -818,14 +852,14 @@ export default function InvoiceTrackerClient() {
 
                   {/* Cycle */}
                   <span className="text-xs text-gray-500 capitalize">
-                    {row.service.billing_cycle === "usage_based" ? "Usage" : row.service.billing_cycle}
+                    {row.service.billing_cycle === "usage_based" ? "Usage" : row.service.billing_cycle === "one_time" ? "One-time" : row.service.billing_cycle}
                   </span>
 
                   {/* Status */}
                   <div className="flex items-center gap-2">
                     {row.service.is_manual_upload ? (
                       <>
-                        {row.status === "forwarded" || row.status === "manual" ? (
+                        {row.status === "forwarded" || row.status === "manual" || row.status === "paid" ? (
                           <StatusBadge status={row.status} />
                         ) : null}
                         <button
@@ -847,27 +881,24 @@ export default function InvoiceTrackerClient() {
                             {row.invoiceCount}x
                           </span>
                         )}
-                        {row.status === "ready" && row.logs.some((l) => l.status === "ready") && (
+                        {/* Mark Paid button for ready/forwarded */}
+                        {(row.status === "ready" || row.status === "forwarded") && row.logs.some((l) => l.status === "ready" || l.status === "forwarded") && (
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              const readyLogs = row.logs.filter((l) => l.status === "ready");
-                              setForwarding(row.service.id);
-                              for (const l of readyLogs) {
-                                await handleForwardLog(l.id);
-                              }
-                              setForwarding(null);
+                              const unpaidLogs = row.logs.filter((l) => l.status === "ready" || l.status === "forwarded");
+                              await handleMarkPaid(unpaidLogs.map((l) => l.id), row.service.id);
                             }}
-                            disabled={forwarding === row.service.id}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                            title="Send to Juni"
+                            disabled={markingPaid === row.service.id}
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                            title="Mark as paid"
                           >
-                            {forwarding === row.service.id ? (
+                            {markingPaid === row.service.id ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
                             ) : (
-                              <Send className="w-3 h-3" />
+                              <Check className="w-3 h-3" />
                             )}
-                            Send
+                            Paid
                           </button>
                         )}
                       </>
@@ -910,6 +941,21 @@ export default function InvoiceTrackerClient() {
                           <Upload className="w-3.5 h-3.5" />
                           Upload PDF manually
                         </button>
+                        {/* Mark as paid */}
+                        {(row.status === "ready" || row.status === "forwarded") && row.logs.length > 0 && (
+                          <button
+                            onClick={async () => {
+                              setActionMenu(null);
+                              const unpaidLogs = row.logs.filter((l) => l.status === "ready" || l.status === "forwarded");
+                              await handleMarkPaid(unpaidLogs.map((l) => l.id), row.service.id);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Mark as paid
+                          </button>
+                        )}
+                        {/* Send to Juni */}
                         {row.status === "ready" && row.log?.id && (
                           <button
                             onClick={() => {
@@ -941,7 +987,7 @@ export default function InvoiceTrackerClient() {
                             Retry forward
                           </button>
                         )}
-                        {row.status !== "forwarded" && row.status !== "not_due" && (
+                        {row.status !== "forwarded" && row.status !== "paid" && row.status !== "not_due" && (
                           <button
                             onClick={() => handleMarkManual(row.log?.id, row.service.id)}
                             className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
@@ -1059,24 +1105,25 @@ export default function InvoiceTrackerClient() {
         </div>
       </div>
 
-      {/* Juni matching reminder — show when month is fully handled */}
+      {/* Monthly summary — show when month is fully handled */}
       {pct === 100 && done > 0 && (
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          <p className="text-sm font-medium text-amber-800 mb-2">
-            Remember to match these transactions in Juni
+        <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+          <p className="text-sm font-medium text-emerald-800 mb-2">
+            All invoices handled for {formatPeriod(period)}
           </p>
           <div className="space-y-1">
             {summary
-              .filter((r) => r.status === "forwarded" || r.status === "manual")
+              .filter((r) => r.status === "paid" || r.status === "forwarded" || r.status === "manual")
               .map((r) => (
-                <div key={r.service.id} className="flex items-center gap-2 text-sm text-amber-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                <div key={r.service.id} className="flex items-center gap-2 text-sm text-emerald-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                   <span>{r.service.name}</span>
                   {r.totalAmount != null && (
-                    <span className="text-amber-500 font-mono text-xs">
+                    <span className="text-emerald-500 font-mono text-xs">
                       {fmtAmount(r.totalAmount, r.totalCurrency || "SEK")}
                     </span>
                   )}
+                  <StatusBadge status={r.status} />
                 </div>
               ))}
           </div>

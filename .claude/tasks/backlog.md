@@ -1,11 +1,13 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-12 (session 3 — workspace isolation + rename)
+Updated: 2026-03-14 (session 1 — invoice tracker manual flow)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Push to deploy** — multiple commits on main (up to `6b9a286`), not pushed. After push: verify workspace switcher, data isolation, page testing UI
+- [ ] **Push to deploy** — commits up to `3ca08ea` not pushed. After push: trigger invoice rescan via "Check Now", verify service matching
+- [ ] **Invoice Tracker: verify full rescan** — `last_processed_uid` reset to 0, rules fixed. Need to click "Check Now" after deploy and verify all services detected correctly
+- [ ] **Invoice Tracker: test manual forwarding** — Test "Send to Juni" for single + bulk flow end-to-end
 - [ ] **Test workspace switching E2E** — switch between HappySleep/Hydro13/Doginwork, verify data isolation (pages, assets, concepts, settings all scoped correctly)
 - [ ] **Test page testing E2E** — push a concept with 2 landing pages, verify 2 ad sets created in Meta with [A]/[B] suffixes, verify comparison stats populate after ad performance sync
 - [ ] Live-test competitor swipe end-to-end: import real page → generate images/videos → apply → publish (added 2026-03-09, updated 2026-03-10)
@@ -45,6 +47,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Invoice Tracker — manual forwarding flow** — Changed from auto-forward to two-phase flow: scan stores as "ready", user manually sends to Juni via UI buttons. Fixed overly broad matching rules (Klaviyo, Vercel, Meta). Cleaned up 102 bad Shopify logs. Added forward-all endpoint, bulk upload, export, insights APIs. Commit `3ca08ea`. (done 2026-03-14)
+- [x] **Invoice Tracker — initial build** — IMAP scanning, SMTP forwarding, PDF detection, billing cycle awareness, cron job, full dashboard UI. Commits `3b3682f`, `7b9471f`. (done 2026-03-13)
 - [x] **Workspace isolation + Doginwork rename** — Added workspace_id filtering to 10 API routes (pages, assets, ad-learnings, pipeline-settings, page-tests). Renamed Dog Coaching → Doginwork. Fixed Settings page Dropdown crash (Radix SelectItem empty value). Added workspace_id column to ad_learnings table. Commit `6b9a286`. (done 2026-03-12)
 - [x] **Ad-level landing page A/B testing** — Replaced old router-based AB test system (cloaking risk per Mark's advice) with ad-level page testing: 2 ad sets per market with same creatives, different landing URLs. New tables: `page_tests`, `page_test_adsets`. New API routes: `/api/page-tests` (list/stats/winner). UI: "Test against another page" in concept push, comparison view with metrics table + statistical significance, winner declaration pauses losing ad sets, win/loss badges on Pages list. Old system fully removed (-2,694 lines, 13 files deleted). Commit `a1bc6c8`. (done 2026-03-12)
 - [x] **Multi-workspace architecture** — 7-phase implementation: workspaces table + workspace_id on ~20 tables, cookie-based resolution, sidebar switcher, ~100+ API routes migrated, dynamic product type (removed PRODUCTS constant), per-workspace Meta creds (setMetaConfig), per-workspace settings (migrated from app_settings). 3 workspaces: HappySleep, Hydro13, Doginwork. Commit `f13c301`. (done 2026-03-12)

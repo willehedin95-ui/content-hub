@@ -43,7 +43,7 @@ export async function PUT(
       await db.from("invoice_logs").delete().eq("id", id);
 
       // Re-process this specific email
-      const result = await retryForward(emailUid, log.invoice_services);
+      const result = await retryForward(emailUid, log.invoice_services, log.imap_account_id);
       return NextResponse.json(result);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
