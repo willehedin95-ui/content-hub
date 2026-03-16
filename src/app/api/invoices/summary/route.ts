@@ -4,6 +4,7 @@ import { safeError } from "@/lib/api-error";
 import type { InvoiceService, InvoiceSummaryRow, InvoiceStatus } from "@/types";
 
 function isExpectedThisMonth(svc: InvoiceService, period: string): boolean {
+  if (svc.billing_cycle === "usage_based") return true; // always "expected" — no false waiting
   const month = parseInt(period.split("-")[1], 10); // 1-12
   if (svc.billing_cycle === "monthly") return true;
   if (svc.billing_cycle === "annual") {
@@ -33,16 +34,18 @@ export async function GET(req: NextRequest) {
 
   if (svcErr) return safeError(svcErr, "Failed to load services");
 
-  // Fetch logs for this period
+  // Fetch logs for this period (only service-linked ones)
   const { data: logs, error: logErr } = await db
     .from("invoice_logs")
     .select("*")
-    .eq("period", period);
+    .eq("period", period)
+    .not("service_id", "is", null);
 
   if (logErr) return safeError(logErr, "Failed to load logs");
 
   const logsByService = new Map<string, typeof logs>();
   for (const log of logs ?? []) {
+    if (!log.service_id) continue;
     const existing = logsByService.get(log.service_id) || [];
     existing.push(log);
     logsByService.set(log.service_id, existing);
@@ -52,18 +55,49 @@ export async function GET(req: NextRequest) {
     const svcLogs = logsByService.get(svc.id) || [];
     const expected = isExpectedThisMonth(svc, period);
 
+    // Calculate totals across all logs
+    let totalAmount: number | null = null;
+    let totalCurrency: string | null = null;
+    for (const l of svcLogs) {
+      if (l.amount != null) {
+        totalAmount = (totalAmount ?? 0) + l.amount;
+        if (!totalCurrency) totalCurrency = l.currency;
+      }
+    }
+
     if (!expected) {
-      return { service: svc, status: "not_due" as InvoiceStatus, log: null, expected };
+      return {
+        service: svc,
+        status: "not_due" as InvoiceStatus,
+        log: null,
+        logs: svcLogs,
+        invoiceCount: svcLogs.length,
+        totalAmount,
+        totalCurrency,
+        expected,
+      };
     }
 
     if (svcLogs.length === 0) {
-      return { service: svc, status: "waiting" as InvoiceStatus, log: null, expected };
+      // Usage-based services with no invoices yet aren't "waiting" — they just have zero
+      const status: InvoiceStatus = svc.billing_cycle === "usage_based" ? "not_due" : "waiting";
+      return {
+        service: svc,
+        status,
+        log: null,
+        logs: [],
+        invoiceCount: 0,
+        totalAmount: null,
+        totalCurrency: null,
+        expected,
+      };
     }
 
-    // Pick the "best" log (forwarded > manual > received_no_pdf > error > waiting)
+    // Pick the "best" log (forwarded > manual > ready > received_no_pdf > error > waiting)
     const priority: Record<string, number> = {
-      forwarded: 5,
-      manual: 4,
+      forwarded: 6,
+      manual: 5,
+      ready: 4,
       received_no_pdf: 3,
       error: 2,
       waiting: 1,
@@ -77,6 +111,10 @@ export async function GET(req: NextRequest) {
       service: svc,
       status: best.status as InvoiceStatus,
       log: best,
+      logs: svcLogs,
+      invoiceCount: svcLogs.length,
+      totalAmount,
+      totalCurrency,
       expected,
     };
   });

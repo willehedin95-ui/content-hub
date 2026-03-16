@@ -1,7 +1,7 @@
 "use client";
 
 import type { InvoiceStatus } from "@/types";
-import { Check, Clock, AlertCircle, Minus, FileText, Hand } from "lucide-react";
+import { Check, Clock, AlertCircle, Minus, FileText, Hand, HelpCircle, Send } from "lucide-react";
 
 const config: Record<
   InvoiceStatus,
@@ -13,6 +13,8 @@ const config: Record<
   error: { label: "Error", color: "text-red-700", bg: "bg-red-50 border-red-200", icon: AlertCircle },
   manual: { label: "Manual", color: "text-gray-600", bg: "bg-gray-50 border-gray-200", icon: Hand },
   not_due: { label: "Not due", color: "text-gray-400", bg: "bg-gray-50 border-gray-100", icon: Minus },
+  ready: { label: "Ready", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200", icon: Send },
+  unmatched: { label: "Unmatched", color: "text-orange-700", bg: "bg-orange-50 border-orange-200", icon: HelpCircle },
 };
 
 export default function StatusBadge({ status }: { status: InvoiceStatus }) {

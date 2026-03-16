@@ -1200,13 +1200,21 @@ export interface Asset {
 }
 
 // Invoice Tracker
+export type InvoiceForwardTarget = "receipts" | "invoices";
+
 export interface InvoiceService {
   id: string;
   name: string;
   sender_patterns: string[];
   subject_patterns: string[];
-  billing_cycle: "monthly" | "annual" | "quarterly";
+  billing_cycle: "monthly" | "annual" | "quarterly" | "usage_based";
   billing_anchor_month: number | null;
+  forward_to: InvoiceForwardTarget;
+  is_manual_upload: boolean;
+  billing_url: string | null;
+  match_mode: "any" | "all";
+  expected_amount: number | null;
+  expected_currency: string | null;
   icon_url: string | null;
   notes: string | null;
   is_active: boolean;
@@ -1214,11 +1222,11 @@ export interface InvoiceService {
   updated_at: string;
 }
 
-export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due";
+export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due" | "unmatched" | "ready";
 
 export interface InvoiceLog {
   id: string;
-  service_id: string;
+  service_id: string | null;
   period: string;
   status: string;
   email_uid: string | null;
@@ -1229,6 +1237,8 @@ export interface InvoiceLog {
   error_message: string | null;
   pdf_filename: string | null;
   pdf_size_bytes: number | null;
+  amount: number | null;
+  currency: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -1238,5 +1248,20 @@ export interface InvoiceSummaryRow {
   service: InvoiceService;
   status: InvoiceStatus;
   log: InvoiceLog | null;
+  logs: InvoiceLog[];
+  invoiceCount: number;
+  totalAmount: number | null;
+  totalCurrency: string | null;
   expected: boolean;
+}
+
+export interface InvoiceUnmatched {
+  id: string;
+  email_uid: string;
+  email_from: string;
+  email_subject: string;
+  email_date: string;
+  period: string;
+  has_pdf: boolean;
+  created_at: string;
 }
