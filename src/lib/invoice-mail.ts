@@ -260,13 +260,21 @@ async function downloadFullEmailStandalone(uid: number, accountId?: string): Pro
   }
 }
 
-/** Match email against service conditions (sender and/or subject patterns) */
+/** Match email against service conditions (sender and/or subject patterns).
+ *  Scores all matching services and returns the best match:
+ *  - "all" mode matches score higher than "any" mode (both conditions met)
+ *  - sender+subject match scores higher than sender-only or subject-only
+ *  - longer pattern matches score higher (more specific)
+ */
 function matchEmailToService(
   email: InvoiceEmail,
   services: InvoiceService[]
 ): InvoiceService | null {
   const fromLower = email.from.toLowerCase();
   const subjectLower = email.subject.toLowerCase();
+
+  let bestMatch: InvoiceService | null = null;
+  let bestScore = 0;
 
   for (const svc of services) {
     const hasSenderPatterns = svc.sender_patterns.length > 0;
@@ -283,18 +291,34 @@ function matchEmailToService(
     );
 
     const mode = svc.match_mode || "any";
+    let matched = false;
 
     if (mode === "any") {
-      // OR: any single condition matching is enough
-      if (senderMatch || subjectMatch) return svc;
+      matched = senderMatch || subjectMatch;
     } else {
       // AND: all configured groups must match
       if (hasSenderPatterns && !senderMatch) continue;
       if (hasSubjectPatterns && !subjectMatch) continue;
-      return svc;
+      matched = true;
+    }
+
+    if (!matched) continue;
+
+    // Score: prefer matches that satisfy more conditions
+    let score = 0;
+    if (senderMatch) score += 10;  // sender match is strong signal
+    if (subjectMatch) score += 5;
+    if (mode === "all" && senderMatch && subjectMatch) score += 20; // both matched in strict mode
+    // Bonus for pattern specificity (longer patterns = more specific)
+    const maxSenderLen = hasSenderPatterns ? Math.max(...svc.sender_patterns.map(p => p.length)) : 0;
+    score += Math.min(maxSenderLen, 10); // cap at 10 bonus points
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = svc;
     }
   }
-  return null;
+  return bestMatch;
 }
 
 // --- Invoice heuristics ---
