@@ -929,11 +929,10 @@ export function BuilderProvider({
     // Detect link URL, element selection, hidden count
     setExcludeCount(doc.querySelectorAll("[data-cc-pad-skip]").length);
 
-    // Optimize link detection by sampling first 100 links
+    // Detect most common link URL (used as default destination)
     const links = doc.querySelectorAll("a[href]");
-    const linkSample = Array.from(links).slice(0, 100);
     const urlCounts = new Map<string, number>();
-    linkSample.forEach((a) => {
+    links.forEach((a) => {
       const href = (a as HTMLAnchorElement).href;
       if (
         !href ||
@@ -1544,7 +1543,9 @@ export function BuilderProvider({
     "font-size", "font-weight", "font-family", "color", "background-color",
     "text-align", "line-height", "letter-spacing", "text-decoration",
     "text-transform", "border", "border-radius", "padding", "margin",
-    "opacity", "box-shadow",
+    "opacity", "box-shadow", "display", "flex-direction", "justify-content",
+    "align-items", "gap", "width", "max-width", "height", "max-height",
+    "position", "z-index", "overflow", "transform",
   ];
 
   function handleCopyStyles() {

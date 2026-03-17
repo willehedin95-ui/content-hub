@@ -307,12 +307,14 @@ export function stripForTranslation(fullHtml: string): {
   const headHtml = $("head").html() || "";
   const stripped: Array<{ placeholder: string; original: string }> = [];
   let counter = 0;
+  // Random suffix per invocation to avoid collision with original HTML content
+  const nonce = Math.random().toString(36).slice(2, 8);
 
   function stripElement(el: Element) {
     // Use an actual HTML element as placeholder — LLMs drop HTML comments
-    // but preserve real elements. The id format is unique enough to avoid
-    // collisions and is not touched by compactForSwiper.
-    const placeholder = `<i id="__strip_${counter}__"></i>`;
+    // but preserve real elements. The id format includes a random nonce to
+    // avoid collisions with any identical patterns in the original HTML.
+    const placeholder = `<i id="__x${nonce}_${counter}__"></i>`;
     const original = $(el).toString();
     stripped.push({ placeholder, original });
     $(el).replaceWith(placeholder);
@@ -489,17 +491,25 @@ export function decompactAfterSwiper(
 ): string {
   let result = html;
 
+  let unresolvedCount = 0;
+
   // Restore class attributes
   result = result.replace(/\bclass="c(\d+)"/g, (_, idStr: string) => {
     const original = classMap[parseInt(idStr)];
+    if (original === undefined) unresolvedCount++;
     return original !== undefined ? `class="${original}"` : `class="c${idStr}"`;
   });
 
   // Restore style attributes
   result = result.replace(/\bstyle="s(\d+)"/g, (_, idStr: string) => {
     const original = styleMap[parseInt(idStr)];
+    if (original === undefined) unresolvedCount++;
     return original !== undefined ? `style="${original}"` : `style="s${idStr}"`;
   });
+
+  if (unresolvedCount > 0) {
+    console.warn(`[decompact] ${unresolvedCount} unresolved class/style references`);
+  }
 
   return result;
 }

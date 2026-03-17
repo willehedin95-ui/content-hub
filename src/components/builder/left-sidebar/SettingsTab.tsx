@@ -127,6 +127,7 @@ export default function SettingsTab() {
             value={seoTitle}
             onChange={(e) => setSeoTitle(e.target.value)}
             placeholder="SEO title..."
+            maxLength={70}
             className={inputClass}
           />
         </div>
@@ -148,6 +149,7 @@ export default function SettingsTab() {
             onChange={(e) => setSeoDesc(e.target.value)}
             placeholder="Meta description..."
             rows={3}
+            maxLength={200}
             className={`${inputClass} resize-none`}
           />
         </div>
