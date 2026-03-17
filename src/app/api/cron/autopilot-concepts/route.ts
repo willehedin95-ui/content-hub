@@ -47,14 +47,17 @@ export async function GET(req: NextRequest) {
   const db = createServerSupabase();
 
   try {
-    // --- Step 1: Check if concepts are needed ---
-    const needResult = await checkConceptNeed(db);
-    if (!needResult.needed) {
-      return NextResponse.json({
-        ok: true,
-        skipped: true,
-        reason: needResult.reason,
-      });
+    // --- Step 1: Check if concepts are needed (skip with ?force=true) ---
+    const force = req.nextUrl.searchParams.get("force") === "true";
+    if (!force) {
+      const needResult = await checkConceptNeed(db);
+      if (!needResult.needed) {
+        return NextResponse.json({
+          ok: true,
+          skipped: true,
+          reason: needResult.reason,
+        });
+      }
     }
 
     // --- Step 2: Pick brainstorm mode ---
