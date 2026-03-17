@@ -122,6 +122,17 @@ export async function GET(req: NextRequest) {
   }
 
   // === Concept-level kills: zombie ad sets (all ads paused) ===
+  // Skip permanent ad sets — they're shared and should never be paused
+
+  // Get permanent ad set IDs to protect
+  const { data: permanentMappings } = await db
+    .from("meta_campaign_mappings")
+    .select("template_adset_id")
+    .eq("is_permanent", true);
+
+  const permanentAdSetIds = new Set(
+    (permanentMappings ?? []).map((m: { template_adset_id: string | null }) => m.template_adset_id).filter(Boolean)
+  );
 
   const { data: activeCampaigns } = await db
     .from("meta_campaigns")
@@ -132,6 +143,9 @@ export async function GET(req: NextRequest) {
 
   for (const campaign of activeCampaigns ?? []) {
     if (!campaign.meta_adset_id) continue;
+
+    // NEVER pause permanent ad sets (they're shared across all concepts)
+    if (permanentAdSetIds.has(campaign.meta_adset_id)) continue;
 
     // Check if any active ads remain in this ad set
     const { data: ads } = await db

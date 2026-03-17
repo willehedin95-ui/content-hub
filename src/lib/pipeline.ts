@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getAdInsightsDaily, getCampaignBudget, updateAdSet } from "./meta";
+import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd } from "./meta";
 import { createServerSupabase } from "./supabase";
 import { getWorkspaceId } from "./workspace";
 import type {
@@ -468,21 +468,46 @@ export async function detectStageTransitions(workspaceId?: string): Promise<Stag
         hypothesis,
       });
 
-      // Pause Meta ad set when auto-killed (only for this specific market)
+      // Pause ads when auto-killed (only for this specific market)
       if (newStage === "killed" && market.meta_campaign_id) {
         const campaign = campaignMap.get(market.meta_campaign_id);
         if (campaign) {
           const { data: campaignDetail } = await db
             .from("meta_campaigns")
-            .select("meta_adset_id")
+            .select("meta_adset_id, meta_ads(meta_ad_id)")
             .eq("id", market.meta_campaign_id)
             .single();
 
-          if (campaignDetail?.meta_adset_id) {
-            try {
-              await updateAdSet(campaignDetail.meta_adset_id, { status: "PAUSED" });
-            } catch (err) {
-              console.error(`[Kill] Failed to pause ad set ${campaignDetail.meta_adset_id}:`, err);
+          if (campaignDetail) {
+            // Check if this ad set is permanent (shared across concepts)
+            const { data: isPermanentMapping } = await db
+              .from("meta_campaign_mappings")
+              .select("is_permanent")
+              .eq("template_adset_id", campaignDetail.meta_adset_id)
+              .eq("is_permanent", true)
+              .limit(1);
+
+            const isPermanent = (isPermanentMapping ?? []).length > 0;
+
+            if (isPermanent) {
+              // Permanent ad set: pause individual ads, NOT the ad set
+              const ads = (campaignDetail.meta_ads ?? []) as Array<{ meta_ad_id: string | null }>;
+              for (const ad of ads) {
+                if (ad.meta_ad_id) {
+                  try {
+                    await updateAd(ad.meta_ad_id, { status: "PAUSED" });
+                  } catch (err) {
+                    console.error(`[Kill] Failed to pause ad ${ad.meta_ad_id}:`, err);
+                  }
+                }
+              }
+            } else if (campaignDetail.meta_adset_id) {
+              // Legacy: pause the entire ad set
+              try {
+                await updateAdSet(campaignDetail.meta_adset_id, { status: "PAUSED" });
+              } catch (err) {
+                console.error(`[Kill] Failed to pause ad set ${campaignDetail.meta_adset_id}:`, err);
+              }
             }
           }
         }
@@ -531,18 +556,43 @@ async function ensureKilledAdSetsPaused(): Promise<string[]> {
 
   const campaignIds = markets.map((m) => m.meta_campaign_id).filter(Boolean) as string[];
 
-  // Get ad set IDs for these campaigns
+  // Get ad set IDs + ads for these campaigns
   const { data: campaigns } = await db
     .from("meta_campaigns")
-    .select("id, meta_adset_id")
+    .select("id, meta_adset_id, meta_ads(meta_ad_id)")
     .in("id", campaignIds)
     .not("meta_adset_id", "is", null);
 
   if (!campaigns || campaigns.length === 0) return paused;
 
-  // Pause each ad set (updateAdSet is idempotent — pausing an already paused set is fine)
+  // Get all permanent ad set IDs to avoid pausing them
+  const { data: permanentMappings } = await db
+    .from("meta_campaign_mappings")
+    .select("template_adset_id")
+    .eq("is_permanent", true);
+
+  const permanentAdSetIds = new Set(
+    (permanentMappings ?? []).map((m) => m.template_adset_id).filter(Boolean)
+  );
+
   for (const campaign of campaigns) {
-    if (campaign.meta_adset_id) {
+    if (!campaign.meta_adset_id) continue;
+
+    if (permanentAdSetIds.has(campaign.meta_adset_id)) {
+      // Permanent ad set: pause individual ads only
+      const ads = (campaign.meta_ads ?? []) as Array<{ meta_ad_id: string | null }>;
+      for (const ad of ads) {
+        if (ad.meta_ad_id) {
+          try {
+            await updateAd(ad.meta_ad_id, { status: "PAUSED" });
+            paused.push(ad.meta_ad_id);
+          } catch (err) {
+            console.error(`[EnsureKilled] Failed to pause ad ${ad.meta_ad_id}:`, err);
+          }
+        }
+      }
+    } else {
+      // Legacy: pause the entire ad set
       try {
         await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
         paused.push(campaign.meta_adset_id);

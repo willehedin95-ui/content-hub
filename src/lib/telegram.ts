@@ -165,6 +165,33 @@ export async function editMessageText(
   }
 }
 
+/** Send a photo with caption and optional inline keyboard */
+export async function sendPhoto(
+  chatId: number | string,
+  photoUrl: string,
+  caption: string,
+  buttons?: Array<Array<{ text: string; callback_data: string }>>
+): Promise<{ message_id?: number }> {
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/sendPhoto`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: photoUrl,
+      caption,
+      ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] sendPhoto failed: ${res.status} ${err}`);
+    return {};
+  }
+  const data = await res.json();
+  return { message_id: data.result?.message_id };
+}
+
 /** Format a CASH analysis summary for Telegram */
 export function formatCashSummary(
   analysis: Record<string, unknown>,

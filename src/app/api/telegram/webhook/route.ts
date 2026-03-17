@@ -351,6 +351,14 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
     } else if (data === "strategy_skip") {
       await answerCallbackQuery(query.id, "Strategy action skipped");
       await editMessageText(chatId, messageId, "🛡️ Strategy kill — skipped.");
+    } else if (data.startsWith("concept_approve:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Approving concept...");
+      await approveAutopilotConcept(chatId, messageId, jobId);
+    } else if (data.startsWith("concept_reject:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Concept rejected");
+      await rejectAutopilotConcept(chatId, messageId, jobId);
     } else if (data.startsWith("hook_product:")) {
       const parts = data.split(":");
       const hookId = parts[1];
@@ -605,6 +613,111 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
     chatId,
     messageId,
     `✅ Winners graduated:\n\n${results.join("\n")}`
+  );
+}
+
+async function approveAutopilotConcept(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+  const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+
+  // Fetch the job
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, target_languages, landing_page_id")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageText(chatId, messageId, "❌ Concept not found.");
+    return;
+  }
+
+  // Check landing page is assigned
+  if (!job.landing_page_id) {
+    await editMessageText(
+      chatId,
+      messageId,
+      `⚠️ Concept "${job.name}" has no landing page assigned. Assign one in the Hub before approving.\n\n${hubBase}/concepts/${jobId}`
+    );
+    return;
+  }
+
+  // Get next launchpad priority (put at the top)
+  const { data: topLaunchpad } = await db
+    .from("image_jobs")
+    .select("launchpad_priority")
+    .not("launchpad_priority", "is", null)
+    .order("launchpad_priority", { ascending: true })
+    .limit(1)
+    .single();
+
+  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
+
+  // Set launchpad priority + create market records
+  await db.from("image_jobs").update({
+    launchpad_priority: priority,
+    marked_ready_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  // Create image_job_markets entries (if they don't exist)
+  const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
+  const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
+
+  for (const lang of targetLangs) {
+    const market = COUNTRY_MAP[lang] ?? lang.toUpperCase();
+    const { data: existing } = await db
+      .from("image_job_markets")
+      .select("id")
+      .eq("image_job_id", jobId)
+      .eq("market", market)
+      .single();
+
+    if (!existing) {
+      await db.from("image_job_markets").insert({
+        image_job_id: jobId,
+        market,
+        launchpad_priority: priority,
+      });
+    } else {
+      await db.from("image_job_markets").update({
+        launchpad_priority: priority,
+      }).eq("id", existing.id);
+    }
+  }
+
+  const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
+  await editMessageText(
+    chatId,
+    messageId,
+    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nPipeline will auto-push next cycle.\n\n${hubBase}/launchpad`
+  );
+}
+
+async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageText(chatId, messageId, "❌ Concept not found.");
+    return;
+  }
+
+  // Archive the rejected concept
+  await db.from("image_jobs").update({
+    archived_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  await editMessageText(
+    chatId,
+    messageId,
+    `🗑️ Concept #${job.concept_number ?? "?"} "${job.name}" rejected and archived.`
   );
 }
 

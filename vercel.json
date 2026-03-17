@@ -25,6 +25,10 @@
       "schedule": "30 6 * * *"
     },
     {
+      "path": "/api/cron/autopilot-concepts",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/invoice-check",
       "schedule": "0 */6 * * *"
     }

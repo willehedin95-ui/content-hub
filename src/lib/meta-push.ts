@@ -238,13 +238,15 @@ export async function pushConceptToMeta(
 
       // Check campaign mapping + page config in parallel
       const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
-        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id").eq("workspace_id", wsId).eq("product", job.product).eq("country", country).eq("format", "image").single(),
+        db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id, is_permanent").eq("workspace_id", wsId).eq("product", job.product).eq("country", country).eq("format", "image").single(),
         db.from("meta_page_config").select("meta_page_id").eq("workspace_id", wsId).eq("country", country).single(),
       ]);
 
       if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
         return { language: lang, country, status: "error", error: `No campaign mapping for ${job.product}/${country}. Configure in Settings.` } as const;
       }
+
+      const isPermanent = mapping.is_permanent === true;
 
       const landingUrl = landingUrlByLang.get(lang);
       if (!landingUrl) {
@@ -304,8 +306,60 @@ export async function pushConceptToMeta(
       let campaignId: string;
       let isAddingToExisting = false;
 
-      if (existingCampaign?.meta_adset_id) {
-        // Reuse existing ad set — filter out already-pushed images
+      if (isPermanent) {
+        // Simplified structure: use permanent ad set directly (no cloning)
+        adSetId = mapping.template_adset_id;
+
+        // Check if we already have a campaign record for this concept + language
+        if (existingCampaign?.meta_adset_id) {
+          // Filter out already-pushed images
+          const pushedUrls = new Set(
+            ((existingCampaign.meta_ads ?? []) as Array<{ image_url: string | null }>)
+              .map((a) => a.image_url)
+              .filter(Boolean)
+          );
+          const newImages = allLangImages.filter((img) => !pushedUrls.has(img.image_url));
+
+          if (newImages.length === 0) {
+            return { language: lang, country, status: "pushed", error: undefined } as const;
+          }
+
+          campaignId = existingCampaign.id;
+          isAddingToExisting = true;
+
+          await db.from("meta_campaigns").update({
+            status: "pushing",
+            updated_at: new Date().toISOString(),
+          }).eq("id", campaignId);
+
+          allLangImages.length = 0;
+          allLangImages.push(...newImages);
+        } else {
+          // Create new campaign record (tracks this concept's push)
+          const { data: newCampaign } = await db
+            .from("meta_campaigns")
+            .insert({
+              workspace_id: wsId,
+              name: adSetName,
+              product: job.product,
+              image_job_id: jobId,
+              meta_campaign_id: mapping.meta_campaign_id,
+              meta_adset_id: adSetId,
+              objective: "OUTCOME_TRAFFIC",
+              countries: [country],
+              language: lang,
+              daily_budget: 0,
+              status: "pushing",
+              start_time: scheduledStartTime,
+            })
+            .select()
+            .single();
+
+          if (!newCampaign) throw new Error("Failed to create campaign record");
+          campaignId = newCampaign.id;
+        }
+      } else if (existingCampaign?.meta_adset_id) {
+        // Legacy structure: reuse existing ad set — filter out already-pushed images
         const pushedUrls = new Set(
           ((existingCampaign.meta_ads ?? []) as Array<{ image_url: string | null }>)
             .map((a) => a.image_url)
@@ -331,7 +385,7 @@ export async function pushConceptToMeta(
         allLangImages.length = 0;
         allLangImages.push(...newImages);
       } else {
-        // Create new ad set from template config
+        // Legacy structure: Create new ad set from template config
         const templateConfig = await getAdSetConfig(mapping.template_adset_id);
         const newAdSet = await createAdSetFromTemplate({
           templateConfig,
