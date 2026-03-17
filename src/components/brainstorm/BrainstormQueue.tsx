@@ -3,7 +3,30 @@
 import { useState, useEffect } from "react";
 import CoverageMatrix from "@/components/pipeline/CoverageMatrix";
 import ConceptCard from "@/components/pipeline/ConceptCard";
+import AutopilotConceptCard from "@/components/brainstorm/AutopilotConceptCard";
 import type { AutoPipelineConcept, AutoCoverageGap } from "@/types";
+
+interface AutopilotData {
+  pending: AutopilotConcept[];
+  approved: AutopilotConcept[];
+  rejected: AutopilotConcept[];
+}
+
+interface AutopilotConcept {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  product: string;
+  status: string;
+  ad_copy_primary?: string | null;
+  ad_copy_headline?: string | null;
+  cash_dna?: { angle?: string; awareness_level?: string; hooks?: string[] } | null;
+  landing_page_id?: string | null;
+  target_languages?: string[] | null;
+  created_at: string;
+  archived_at?: string | null;
+  source_images?: Array<{ id: string; original_url: string; filename: string }>;
+}
 
 export default function BrainstormQueue() {
   const [pendingConcepts, setPendingConcepts] = useState<
@@ -15,13 +38,30 @@ export default function BrainstormQueue() {
   const [rejectedConcepts, setRejectedConcepts] = useState<
     AutoPipelineConcept[]
   >([]);
+  const [autopilot, setAutopilot] = useState<AutopilotData>({ pending: [], approved: [], rejected: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchConcepts();
-    const interval = setInterval(fetchConcepts, 5000);
+    fetchAll();
+    const interval = setInterval(fetchAll, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  async function fetchAll() {
+    await Promise.all([fetchConcepts(), fetchAutopilot()]);
+  }
+
+  async function fetchAutopilot() {
+    try {
+      const res = await fetch("/api/autopilot/concepts");
+      if (res.ok) {
+        const data = await res.json();
+        setAutopilot(data);
+      }
+    } catch (error) {
+      console.error("Error fetching autopilot concepts:", error);
+    }
+  }
 
   async function fetchConcepts() {
     try {
@@ -86,6 +126,71 @@ export default function BrainstormQueue() {
       <div className="mb-8">
         <CoverageMatrix onGapClick={handleGapClick} />
       </div>
+
+      {/* Autopilot Concepts */}
+      {(autopilot.pending.length > 0 || autopilot.approved.length > 0 || autopilot.rejected.length > 0) && (
+        <div className="mb-8 space-y-6">
+          <div className="flex items-center gap-2">
+            <div className="h-5 w-5 rounded-full bg-purple-100 flex items-center justify-center">
+              <svg className="h-3 w-3 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Autopilot Concepts</h2>
+          </div>
+
+          {/* Pending autopilot */}
+          {autopilot.pending.length > 0 && (
+            <section>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Pending Review
+                <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">
+                  {autopilot.pending.length}
+                </span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {autopilot.pending.map((c) => (
+                  <AutopilotConceptCard key={c.id} concept={c} status="pending" onAction={fetchAll} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Approved autopilot */}
+          {autopilot.approved.length > 0 && (
+            <section>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Approved
+                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                  {autopilot.approved.length}
+                </span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {autopilot.approved.slice(0, 6).map((c) => (
+                  <AutopilotConceptCard key={c.id} concept={c} status="approved" />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Rejected autopilot */}
+          {autopilot.rejected.length > 0 && (
+            <section>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Rejected
+                <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded">
+                  {autopilot.rejected.length}
+                </span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {autopilot.rejected.slice(0, 3).map((c) => (
+                  <AutopilotConceptCard key={c.id} concept={c} status="rejected" />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* Concepts Grid */}
       <div className="space-y-8">
