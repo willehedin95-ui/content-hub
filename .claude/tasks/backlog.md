@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-17 (autopilot translation pipeline)
+Updated: 2026-03-17 (audit & bug fixes session 3)
 
 ## P0 — Blockers
 (none)
@@ -15,6 +15,11 @@ Updated: 2026-03-17 (autopilot translation pipeline)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 
 ## P2 — Important
+- [ ] **Autosave race condition** — manual save can overlap with in-flight autosave. Needs optimistic concurrency or save lock. (added 2026-03-17, audit)
+- [ ] **Inline scripts in imported HTML** — `handleIframeLoad` removes `<script src>` but not inline `<script>`. Low risk (builder iframe only), but should sanitize. (added 2026-03-17, audit)
+- [ ] **Video generation sequential timeout** — ImportProgressPanel processes videos one-at-a-time with 5min timeout each. Refactor to `Promise.allSettled`. (added 2026-03-17, audit)
+- [ ] **No partial retry for failed image generation** — must restart entire batch if some images fail. (added 2026-03-17, audit)
+- [ ] **Hover label layout thrashing** — `getBoundingClientRect()` on every mouseover in builder canvas needs throttling. (added 2026-03-17, audit)
 - [ ] **Cron workspace iteration** — loop over workspaces in cron jobs (ad-performance-sync, auto-pause-bleeders, daily-snapshot) for multi-workspace Meta support. Currently hardcoded to env vars.
 - [ ] **Configure Doginwork workspace** — add products, set up Meta Ad Account when mom is ready
 - [ ] **Replace raw `<img>` with `next/Image`** — key locations: images/page.tsx:471, MorningBriefClient.tsx:496, ImportProgressPanel.tsx:850-866, ImageSwiper.tsx. Skip builder canvas. (added 2026-03-12)
@@ -46,6 +51,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Full audit: Page Swiper + Builder** — 15 issues found, 10 fixed: cheerio data-attr parsing, autosave error state, placeholder nonce, copy/paste styles expansion, link detection, SEO validation, image src-based matching, publish error surfacing, decompact warnings. 5 lower-priority items added to P2. Commits `a036d1a`, `0a1b318`. (done 2026-03-17)
+- [x] **Builder improvements** — Inline element text editing (STRONG, EM, etc.), object-fit/position controls, image selection UX fix (standard blue outline + explicit edit buttons), AI Edit sidekick (free-form instruction, scope selector, quick actions). Commits `3a1f6df`, `c6530ac`. (done 2026-03-17)
 - [x] **Autopilot translation pipeline** — Wired translation pipeline to autopilot approve flow. Created `src/lib/autopilot-translations.ts` shared library. Both Hub UI and Telegram approve handlers now trigger full pipeline (create translations, translate copy, process images, outpaint 9:16) via `after()`. Commits `3c79f21`. (done 2026-03-17)
 - [x] **Autopilot Concept Factory** — Daily cron generates concepts via Claude brainstorm, generates images via Kie AI, sends Telegram notification with approve/reject. Hub UI in Brainstorm > Queue tab. English language rule for image generation. Commits `ce3258b`, `815d33f`, `276d887`. (done 2026-03-16/17)
 - [x] **Invoice Tracker — manual forwarding flow** — Changed from auto-forward to two-phase flow: scan stores as "ready", user manually sends to Juni via UI buttons. Fixed overly broad matching rules (Klaviyo, Vercel, Meta). Cleaned up 102 bad Shopify logs. Added forward-all endpoint, bulk upload, export, insights APIs. Commit `3ca08ea`. (done 2026-03-14)
