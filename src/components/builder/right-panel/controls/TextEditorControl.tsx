@@ -9,7 +9,10 @@ const TEXT_TAGS = new Set([
   "H1", "H2", "H3", "H4", "H5", "H6",
   "P", "SPAN", "LI", "BUTTON", "A",
   "BLOCKQUOTE", "FIGCAPTION", "LABEL",
-  "DIV",
+  "DIV", "STRONG", "EM", "B", "I", "U",
+  "S", "MARK", "SMALL", "SUB", "SUP",
+  "CITE", "Q", "CODE", "TD", "TH",
+  "DT", "DD", "SUMMARY",
 ]);
 
 export default function TextEditorControl() {
