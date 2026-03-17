@@ -247,42 +247,50 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  if (!isValidUUID(id)) {
-    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  try {
+    const { id } = await params;
+    if (!isValidUUID(id)) {
+      return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+    }
+    const db = createServerSupabase();
+
+    // Check translation exists
+    const { data: translation, error: fetchError } = await db
+      .from("translations")
+      .select("id, page_id, language, variant")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !translation) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Clean up storage images (files under translationId/ prefix)
+    try {
+      const { data: files } = await db.storage
+        .from(STORAGE_BUCKET)
+        .list(id);
+
+      if (files && files.length > 0) {
+        const paths = files.map((f) => `${id}/${f.name}`);
+        await db.storage.from(STORAGE_BUCKET).remove(paths);
+      }
+    } catch {
+      // Storage cleanup is best-effort — don't block delete
+    }
+
+    // Delete the translation row
+    const { error: deleteError } = await db
+      .from("translations")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      return safeError(deleteError, "Failed to delete translation");
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return safeError(err, "Failed to delete translation");
   }
-  const db = createServerSupabase();
-
-  // Check translation exists and is not part of an active A/B test
-  const { data: translation, error: fetchError } = await db
-    .from("translations")
-    .select("id, page_id, language, variant")
-    .eq("id", id)
-    .single();
-
-  if (fetchError || !translation) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  // Clean up storage images (files under translationId/ prefix)
-  const { data: files } = await db.storage
-    .from(STORAGE_BUCKET)
-    .list(id);
-
-  if (files && files.length > 0) {
-    const paths = files.map((f) => `${id}/${f.name}`);
-    await db.storage.from(STORAGE_BUCKET).remove(paths);
-  }
-
-  // Delete the translation row
-  const { error: deleteError } = await db
-    .from("translations")
-    .delete()
-    .eq("id", id);
-
-  if (deleteError) {
-    return safeError(deleteError, "Failed to delete translation");
-  }
-
-  return NextResponse.json({ ok: true });
 }

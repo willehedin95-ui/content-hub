@@ -550,13 +550,20 @@ export default function TranslationRow({
     try {
       const res = await fetch(`/api/translations/${translation.id}`, { method: "DELETE" });
       if (!res.ok) {
-        const data = await res.json();
-        setProgress(prev => ({ ...prev, error: data.error || "Failed to delete translation" }));
+        let msg = "Failed to delete translation";
+        try {
+          const data = await res.json();
+          msg = data.error || msg;
+        } catch {
+          msg = `Failed to delete (${res.status})`;
+        }
+        setProgress(prev => ({ ...prev, error: msg }));
         return;
       }
       router.refresh();
-    } catch {
-      setProgress(prev => ({ ...prev, error: "Failed to delete \u2014 check your connection" }));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "";
+      setProgress(prev => ({ ...prev, error: `Failed to delete${detail ? `: ${detail}` : ""}` }));
     } finally {
       setProgress(prev => ({ ...prev, loading: null }));
     }
