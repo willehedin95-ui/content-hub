@@ -22,9 +22,11 @@ export default function BuilderStatusBar() {
       ? "Saving..."
       : autoSaveStatus === "saved"
         ? "Saved"
-        : isDirty
-          ? "Unsaved changes"
-          : "";
+        : autoSaveStatus === "error"
+          ? "Save failed"
+          : isDirty
+            ? "Unsaved changes"
+            : "";
 
   function handleZoomOut() {
     setZoom(Math.max(50, zoom - 10));
@@ -53,7 +55,9 @@ export default function BuilderStatusBar() {
               ? "text-yellow-600"
               : autoSaveStatus === "saved"
                 ? "text-green-600"
-                : "text-orange-500"
+                : autoSaveStatus === "error"
+                  ? "text-red-600 font-medium"
+                  : "text-orange-500"
           }
         >
           {autosaveText}

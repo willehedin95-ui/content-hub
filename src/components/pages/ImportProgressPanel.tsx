@@ -95,14 +95,12 @@ function normalizeUrlForDedup(url: string): string {
   }
 }
 
-/** Extract images and videos from HTML, filter out icons/tiny images, deduplicate by src */
-function extractMedia(html: string): ExtractedImage[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-
-  // Smart noscript stripping: only remove noscript blocks that contain duplicates
-  // of already-visible images (e.g. Shopify lazy-load pattern: <img data-src="x"> + <noscript><img src="x">).
-  // Keep noscript blocks with unique images (e.g. video fallbacks).
+/**
+ * Remove noscript blocks that duplicate already-visible images (Shopify lazy-load pattern).
+ * Keeps noscript blocks with unique images (e.g. video fallbacks).
+ * Shared between extraction and replacement to ensure consistent DOM indexing.
+ */
+function stripDuplicateNoscripts(doc: Document): void {
   const knownImageSrcs = new Set<string>();
   doc.querySelectorAll("img").forEach((img) => {
     const src = img.getAttribute("src") || "";
@@ -112,13 +110,11 @@ function extractMedia(html: string): ExtractedImage[] {
   });
 
   doc.querySelectorAll("noscript").forEach((noscript) => {
-    // In DOMParser, noscript children are parsed as real DOM
     const noscriptImgs = noscript.querySelectorAll("img");
     if (noscriptImgs.length === 0) {
-      noscript.remove(); // No images — safe to remove
+      noscript.remove();
       return;
     }
-    // Check if ALL images in this noscript already exist in the DOM
     let allDuplicates = true;
     noscriptImgs.forEach((img) => {
       const src = img.getAttribute("src") || "";
@@ -126,11 +122,16 @@ function extractMedia(html: string): ExtractedImage[] {
         allDuplicates = false;
       }
     });
-    if (allDuplicates) {
-      noscript.remove(); // All images are duplicates of lazy-loaded originals
-    }
-    // else: keep — contains unique images (e.g. video fallback <img>)
+    if (allDuplicates) noscript.remove();
   });
+}
+
+/** Extract images and videos from HTML, filter out icons/tiny images, deduplicate by src */
+function extractMedia(html: string): ExtractedImage[] {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  stripDuplicateNoscripts(doc);
 
   const results: ExtractedImage[] = [];
   const seenSrcs = new Set<string>();
@@ -691,32 +692,13 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     const parser = new DOMParser();
     const doc = parser.parseFromString(rewrittenHtml, "text/html");
 
-    // Smart noscript stripping (same logic as extraction step) so indices match
-    const knownSrcs = new Set<string>();
-    doc.querySelectorAll("img").forEach((img) => {
-      const src = img.getAttribute("src") || "";
-      const dataSrc = img.getAttribute("data-src") || "";
-      if (src && !src.startsWith("data:")) knownSrcs.add(normalizeUrlForDedup(src));
-      if (dataSrc) knownSrcs.add(normalizeUrlForDedup(dataSrc));
-    });
-    doc.querySelectorAll("noscript").forEach((noscript) => {
-      const nImgs = noscript.querySelectorAll("img");
-      if (nImgs.length === 0) { noscript.remove(); return; }
-      let allDups = true;
-      nImgs.forEach((img) => {
-        const src = img.getAttribute("src") || "";
-        if (src && !src.startsWith("data:") && !knownSrcs.has(normalizeUrlForDedup(src))) {
-          allDups = false;
-        }
-      });
-      if (allDups) noscript.remove();
-    });
+    // Use shared noscript stripping so DOM indices match extraction
+    stripDuplicateNoscripts(doc);
 
     const imageReplacements = new Map<string, string>();
     const videoToImageReplacements = new Map<number, string>();
     const videoToVideoReplacements = new Map<number, string>();
 
-    const allImgs = doc.querySelectorAll("img");
     const allVideos = doc.querySelectorAll("video");
 
     for (const [indexStr, { url, asVideo }] of Object.entries(replacements)) {
@@ -731,13 +713,13 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           videoToImageReplacements.set(i, url);
         }
       } else {
-        const origSrc = allImgs[i]?.getAttribute("src");
-        if (origSrc) imageReplacements.set(origSrc, url);
+        // Use the src captured during extraction — avoids fragile index-based DOM lookup
+        imageReplacements.set(item.src, url);
       }
     }
 
     // Replace ALL img tags that share the same src
-    allImgs.forEach((img) => {
+    doc.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src") || "";
       const newUrl = imageReplacements.get(src);
       if (newUrl) {

@@ -459,9 +459,18 @@ export function compactForSwiper(bodyHtml: string): {
     return `style="s${id}"`;
   });
 
-  // Remove data-* attributes (not needed for text rewriting)
-  compact = compact.replace(/\s+data-[a-z][\w.-]*="[^"]*"/gi, "");
-  compact = compact.replace(/\s+data-[a-z][\w.-]*='[^']*'/gi, "");
+  // Remove data-* attributes using cheerio (regex breaks on nested quotes/JSON in values)
+  const $c = cheerio.load(compact, { xml: false });
+  $c("*").each((_, el) => {
+    const attribs = (el as Element).attribs;
+    if (!attribs) return;
+    for (const attr of Object.keys(attribs)) {
+      if (attr.startsWith("data-")) {
+        $c(el).removeAttr(attr);
+      }
+    }
+  });
+  compact = $c("body").html() || compact;
 
   // Normalize whitespace: collapse runs of whitespace between tags
   compact = compact.replace(/>\s{2,}</g, "> <");

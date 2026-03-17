@@ -29,7 +29,7 @@ import { BLOCKS_MAP } from "./block-definitions";
 export type ViewMode = "desktop" | "mobile";
 export type LeftTab = "layers" | "components" | "settings";
 export type RightTab = "design" | "config" | "ai";
-export type AutoSaveStatus = "idle" | "saving" | "saved";
+export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 export type BlockType = "text" | "image" | "cta" | "divider" | "video";
 
 export type ViewportConfig = {
@@ -500,6 +500,18 @@ export function BuilderProvider({
     autosaveDataRef.current = { seoTitle, seoDesc, slug, customHeadCode };
   }, [seoTitle, seoDesc, slug, customHeadCode]);
 
+  // Trigger autosave when customHeadCode changes (skip initial render)
+  const customHeadCodeInitRef = useRef(true);
+  useEffect(() => {
+    if (customHeadCodeInitRef.current) {
+      customHeadCodeInitRef.current = false;
+      return;
+    }
+    setIsDirty(true);
+    triggerAutosave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customHeadCode]);
+
   useEffect(() => {
     savingRef.current = saving || publishing || retranslating;
   }, [saving, publishing, retranslating]);
@@ -649,10 +661,12 @@ export function BuilderProvider({
             3000
           );
         } else {
-          setAutoSaveStatus("idle");
+          console.error("[builder] Autosave failed:", res.status, res.statusText);
+          setAutoSaveStatus("error");
         }
-      } catch {
-        setAutoSaveStatus("idle");
+      } catch (err) {
+        console.error("[builder] Autosave error:", err);
+        setAutoSaveStatus("error");
       } finally {
         savingRef.current = false;
       }

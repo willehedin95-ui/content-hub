@@ -116,8 +116,10 @@ async function doPublish(
     // Optimize images
     const imageResult = await optimizeImages(html, slugPrefix);
 
+    let imageWarnings = "";
     if (imageResult.stats.errors.length > 0) {
       console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
+      imageWarnings = `${imageResult.stats.errors.length} image(s) failed to optimize`;
     }
 
     // Replace image URLs in HTML with optimized deploy paths
@@ -175,7 +177,7 @@ async function doPublish(
       .update({
         status: "published",
         published_url: result.url.trim(),
-        publish_error: null,
+        publish_error: imageWarnings || null,
         publish_step: null,
         updated_at: new Date().toISOString(),
       })
