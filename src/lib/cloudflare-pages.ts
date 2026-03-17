@@ -212,7 +212,8 @@ export async function publishPage(
   language: Language,
   additionalFiles?: DeployFile[],
   onProgress?: (current: number, total: number) => void,
-  analytics?: PageAnalyticsConfig
+  analytics?: PageAnalyticsConfig,
+  customCode?: string,
 ): Promise<CFDeployResult> {
   const { accountId, apiToken } = getConfig();
   const projectName = getProjectName(language);
@@ -220,6 +221,11 @@ export async function publishPage(
   // Inject analytics scripts if configured
   if (analytics) {
     html = injectPageAnalytics(html, { ...analytics, slug });
+  }
+
+  // Inject custom code (countdown timers, extra styles, etc.)
+  if (customCode?.trim()) {
+    html = injectCustomCode(html, customCode);
   }
 
   const htmlPath = `/${slug}/index.html`;
@@ -433,6 +439,16 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
   }
 
   return html;
+}
+
+/**
+ * Inject user-provided custom code before </body>.
+ * Used for countdown timers, custom styles, tracking scripts, etc.
+ */
+function injectCustomCode(html: string, code: string): string {
+  if (html.includes('data-cc-custom="true"')) return html;
+  const block = `<!-- Custom Code -->\n<div data-cc-custom="true" style="display:none"></div>\n${code}\n`;
+  return html.replace(/<\/body>/i, block + "</body>");
 }
 
 /** First-party tracking pixel — captures visitor ID, fbclid, _fbp cookie, UTM params */

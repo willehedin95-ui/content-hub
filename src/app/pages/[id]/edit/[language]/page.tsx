@@ -37,7 +37,7 @@ export default async function EditTranslationPage({
   // Fetch page name, slug, and original HTML (for image revert)
   const { data: page, error: pError } = await db
     .from("pages")
-    .select("id, name, slug, product, original_html")
+    .select("id, name, slug, product, original_html, custom_head_code")
     .eq("id", id)
     .single();
 
@@ -49,6 +49,7 @@ export default async function EditTranslationPage({
       pageName={page.name}
       pageSlug={page.slug}
       pageProduct={page.product}
+      customHeadCode={page.custom_head_code || ""}
       originalHtml={page.original_html}
       translation={translation}
       language={lang}

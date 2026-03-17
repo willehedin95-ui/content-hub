@@ -86,6 +86,9 @@ export default function SettingsTab() {
     filteredUrls,
     urlMode,
     setUrlMode,
+    // Custom code
+    customHeadCode,
+    setCustomHeadCode,
     // Retranslate
     isSource,
     retranslating,
@@ -232,6 +235,22 @@ export default function SettingsTab() {
           </button>
         </CollapsibleSection>
       )}
+
+      {/* Custom Code — default closed */}
+      <CollapsibleSection title="Custom Code" defaultOpen={false}>
+        <div>
+          <textarea
+            value={customHeadCode}
+            onChange={(e) => setCustomHeadCode(e.target.value)}
+            placeholder={'<script>\n  // Your code here\n</script>'}
+            rows={6}
+            className={`${inputClass} resize-y font-mono text-[11px] leading-relaxed`}
+          />
+          <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
+            Injected before &lt;/body&gt; on published pages. Use for countdown timers, custom styles, or tracking scripts. Not visible in builder preview.
+          </p>
+        </div>
+      </CollapsibleSection>
 
       {/* Padding — default closed */}
       <CollapsibleSection title="Padding" defaultOpen={false}>

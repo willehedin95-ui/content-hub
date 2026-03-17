@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   // Fetch translation + page
   const { data: translation, error: tError } = await db
     .from("translations")
-    .select(`*, pages (slug, source_url)`)
+    .select(`*, pages (slug, source_url, custom_head_code)`)
     .eq("id", translation_id)
     .single();
 
@@ -157,13 +157,17 @@ async function doPublish(
       .update({ publish_step: "deploying" })
       .eq("id", translationId);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const customCode = (translation.pages as any)?.custom_head_code || "";
+
     const result = await publishPage(
       html,
       slug,
       language,
       additionalFiles,
       undefined,
-      analytics
+      analytics,
+      customCode,
     );
 
     await db

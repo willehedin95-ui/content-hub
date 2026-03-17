@@ -8,6 +8,7 @@ interface Props {
   pageName: string;
   pageSlug: string;
   pageProduct?: string;
+  customHeadCode?: string;
   originalHtml: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];

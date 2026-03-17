@@ -54,6 +54,7 @@ export interface BuilderProps {
   pageName: string;
   pageSlug: string;
   pageProduct?: string;
+  customHeadCode?: string;
   originalHtml: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
@@ -102,6 +103,8 @@ export interface BuilderContextValue {
   setSeoTitle: (v: string) => void;
   seoDesc: string;
   setSeoDesc: (v: string) => void;
+  customHeadCode: string;
+  setCustomHeadCode: (v: string) => void;
   saving: boolean;
   publishing: boolean;
   retranslating: boolean;
@@ -351,6 +354,7 @@ export function BuilderProvider({
     pageName,
     pageSlug,
     pageProduct,
+    customHeadCode: initialCustomHeadCode,
     originalHtml,
     translation,
     language,
@@ -372,7 +376,7 @@ export function BuilderProvider({
   const baselineHtmlRef = useRef<string>("");
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const autoSavedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "" });
+  const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "", customHeadCode: "" });
   const savingRef = useRef(false);
   const prevLinkUrl = useRef("");
   const excludeModeRef = useRef(false);
@@ -387,6 +391,7 @@ export function BuilderProvider({
   // -----------------------------------------------------------------------
   const [seoTitle, setSeoTitle] = useState(translation.seo_title ?? "");
   const [seoDesc, setSeoDesc] = useState(translation.seo_description ?? "");
+  const [customHeadCode, setCustomHeadCode] = useState(initialCustomHeadCode ?? "");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [retranslating, setRetranslating] = useState(false);
@@ -492,8 +497,8 @@ export function BuilderProvider({
   // Ref-sync effects
   // -----------------------------------------------------------------------
   useEffect(() => {
-    autosaveDataRef.current = { seoTitle, seoDesc, slug };
-  }, [seoTitle, seoDesc, slug]);
+    autosaveDataRef.current = { seoTitle, seoDesc, slug, customHeadCode };
+  }, [seoTitle, seoDesc, slug, customHeadCode]);
 
   useEffect(() => {
     savingRef.current = saving || publishing || retranslating;
@@ -605,25 +610,34 @@ export function BuilderProvider({
       setAutoSaveStatus("saving");
       try {
         const html = extractHtmlFromIframe();
+        const d = autosaveDataRef.current;
         let res: Response;
         if (isSource) {
           res = await fetch(`/api/pages/${pageId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ original_html: html }),
+            body: JSON.stringify({ original_html: html, custom_head_code: d.customHeadCode }),
           });
         } else {
-          const d = autosaveDataRef.current;
-          res = await fetch(`/api/translations/${translation.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              translated_html: html,
-              seo_title: d.seoTitle || undefined,
-              seo_description: d.seoDesc || undefined,
-              slug: d.slug || undefined,
+          // Save translation HTML + save custom code to page (parallel)
+          const [tRes] = await Promise.all([
+            fetch(`/api/translations/${translation.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                translated_html: html,
+                seo_title: d.seoTitle || undefined,
+                seo_description: d.seoDesc || undefined,
+                slug: d.slug || undefined,
+              }),
             }),
-          });
+            fetch(`/api/pages/${pageId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ custom_head_code: d.customHeadCode }),
+            }),
+          ]);
+          res = tRes;
         }
         if (res.ok) {
           setIsDirty(false);
@@ -1277,7 +1291,7 @@ export function BuilderProvider({
         const res = await fetch(`/api/pages/${pageId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ original_html: html }),
+          body: JSON.stringify({ original_html: html, custom_head_code: customHeadCode }),
         });
 
         if (!res.ok) {
@@ -1286,20 +1300,27 @@ export function BuilderProvider({
           return;
         }
       } else {
-        const res = await fetch(`/api/translations/${translation.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            translated_html: html,
-            seo_title: seoTitle || undefined,
-            seo_description: seoDesc || undefined,
-            slug: slug || undefined,
+        const [tRes] = await Promise.all([
+          fetch(`/api/translations/${translation.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              translated_html: html,
+              seo_title: seoTitle || undefined,
+              seo_description: seoDesc || undefined,
+              slug: slug || undefined,
+            }),
           }),
-        });
+          fetch(`/api/pages/${pageId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ custom_head_code: customHeadCode }),
+          }),
+        ]);
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setSaveError(data.error || `Failed to save (${res.status})`);
+        if (!tRes.ok) {
+          const data = await tRes.json().catch(() => ({}));
+          setSaveError(data.error || `Failed to save (${tRes.status})`);
           return;
         }
       }
@@ -2083,6 +2104,8 @@ export function BuilderProvider({
     setSeoTitle,
     seoDesc,
     setSeoDesc,
+    customHeadCode,
+    setCustomHeadCode,
     saving,
     publishing,
     retranslating,

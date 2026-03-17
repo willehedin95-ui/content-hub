@@ -13,7 +13,7 @@ export default async function EditSourcePage({
 
   const { data: page, error } = await db
     .from("pages")
-    .select("id, name, slug, product, original_html, source_language")
+    .select("id, name, slug, product, original_html, source_language, custom_head_code")
     .eq("id", id)
     .single();
 
@@ -58,6 +58,7 @@ export default async function EditSourcePage({
       pageName={page.name}
       pageSlug={page.slug}
       pageProduct={page.product}
+      customHeadCode={page.custom_head_code || ""}
       originalHtml={page.original_html}
       translation={syntheticTranslation}
       language={lang}
