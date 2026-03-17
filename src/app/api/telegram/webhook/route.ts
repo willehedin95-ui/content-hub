@@ -10,6 +10,7 @@ import {
   detectPlatform,
   answerCallbackQuery,
   editMessageText,
+  editMessageCaption,
 } from "@/lib/telegram";
 import { getCampaignBudget, updateCampaign, listCampaigns } from "@/lib/meta";
 
@@ -628,13 +629,13 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
     .single();
 
   if (!job) {
-    await editMessageText(chatId, messageId, "❌ Concept not found.");
+    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
   // Check landing page is assigned
   if (!job.landing_page_id) {
-    await editMessageText(
+    await editMessageCaption(
       chatId,
       messageId,
       `⚠️ Concept "${job.name}" has no landing page assigned. Assign one in the Hub before approving.\n\n${hubBase}/concepts/${jobId}`
@@ -687,10 +688,10 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
   }
 
   const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
-  await editMessageText(
+  await editMessageCaption(
     chatId,
     messageId,
-    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...\n\n${hubBase}/launchpad`
+    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...`
   );
 
   // Trigger translation pipeline in background
@@ -716,7 +717,7 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     .single();
 
   if (!job) {
-    await editMessageText(chatId, messageId, "❌ Concept not found.");
+    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
@@ -726,7 +727,7 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     updated_at: new Date().toISOString(),
   }).eq("id", jobId);
 
-  await editMessageText(
+  await editMessageCaption(
     chatId,
     messageId,
     `🗑️ Concept #${job.concept_number ?? "?"} "${job.name}" rejected and archived.`

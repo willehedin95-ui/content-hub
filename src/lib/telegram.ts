@@ -165,6 +165,28 @@ export async function editMessageText(
   }
 }
 
+/** Edit the caption of a photo/media message (use instead of editMessageText for photo messages) */
+export async function editMessageCaption(
+  chatId: number | string,
+  messageId: number,
+  caption: string,
+): Promise<void> {
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/editMessageCaption`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      caption,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] editMessageCaption failed: ${res.status} ${err}`);
+  }
+}
+
 /** Send a photo with caption and optional inline keyboard */
 export async function sendPhoto(
   chatId: number | string,
