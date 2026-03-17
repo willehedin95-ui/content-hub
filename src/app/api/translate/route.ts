@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
 
     // Strip non-translatable content (CSS, SVGs, scripts) from the body.
-    const { bodyHtml, headHtml, stripped } = stripForTranslation(page.original_html);
+    const { bodyHtml, headHtml, htmlAttrs, stripped } = stripForTranslation(page.original_html);
     const useLargePageMode = bodyHtml.length > FULL_HTML_MAX_CHARS;
 
     let translatedHtml: string;
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
       ]);
 
       const translatedMetas = metasResult.result;
-      translatedHtml = restoreAfterTranslation(htmlResult.result, headHtml, stripped, translatedMetas);
+      translatedHtml = restoreAfterTranslation(htmlResult.result, headHtml, stripped, translatedMetas, htmlAttrs);
       totalInputTokens = htmlResult.inputTokens + metasResult.inputTokens;
       totalOutputTokens = htmlResult.outputTokens + metasResult.outputTokens;
       approach = "full-html";

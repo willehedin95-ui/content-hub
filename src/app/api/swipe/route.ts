@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const swiperAngle = (angle as SwiperAngle) || undefined;
 
   // Strip non-translatable elements from HTML
-  const { bodyHtml, headHtml, stripped } = stripForTranslation(html);
+  const { bodyHtml, headHtml, htmlAttrs, stripped } = stripForTranslation(html);
 
   // Compact class/style/data attributes to reduce token count
   const { compact, classMap, styleMap } = compactForSwiper(bodyHtml);
@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
       system_prompt: systemPrompt,
       user_prompt: userPrompt,
       head_html: headHtml,
+      html_attrs: htmlAttrs,
       stripped,
       class_map: classMap,
       style_map: styleMap,

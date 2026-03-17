@@ -283,16 +283,36 @@ export function applyBlockTranslations(
 export function stripForTranslation(fullHtml: string): {
   bodyHtml: string;
   headHtml: string;
+  htmlAttrs: string;
   stripped: Array<{ placeholder: string; original: string }>;
 } {
   const $ = cheerio.load(fullHtml);
+
+  // Preserve <html> tag attributes (class, style with CSS variables, lang, etc.)
+  // These are lost when restoreAfterTranslation reconstructs the document.
+  const htmlEl = $("html");
+  const htmlAttrParts: string[] = [];
+  const attrs = (htmlEl[0] as Element)?.attribs;
+  if (attrs) {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value) {
+        htmlAttrParts.push(`${key}="${value.replace(/"/g, "&quot;")}"`);
+      } else {
+        htmlAttrParts.push(key);
+      }
+    }
+  }
+  const htmlAttrs = htmlAttrParts.join(" ");
 
   const headHtml = $("head").html() || "";
   const stripped: Array<{ placeholder: string; original: string }> = [];
   let counter = 0;
 
   function stripElement(el: Element) {
-    const placeholder = `<!-- __STRIP_${counter}__ -->`;
+    // Use an actual HTML element as placeholder — LLMs drop HTML comments
+    // but preserve real elements. The id format is unique enough to avoid
+    // collisions and is not touched by compactForSwiper.
+    const placeholder = `<i id="__strip_${counter}__"></i>`;
     const original = $(el).toString();
     stripped.push({ placeholder, original });
     $(el).replaceWith(placeholder);
@@ -303,6 +323,15 @@ export function stripForTranslation(fullHtml: string): {
   $("body")
     .find("style, svg, noscript, script")
     .each((_, el) => stripElement(el as Element));
+
+  // Strip head-like elements that ended up in the body (common with Webflow,
+  // some Shopify themes, and pages with malformed HTML). These have no visible
+  // content and confuse the AI into including them in its output.
+  $("body")
+    .find("meta, title, link")
+    .each((_, el) => {
+      $(el).remove();
+    });
 
   // Strip hidden elements (display:none, visibility:hidden, hidden attribute)
   $("body [hidden]").each((_, el) => stripElement(el as Element));
@@ -324,7 +353,7 @@ export function stripForTranslation(fullHtml: string): {
 
   const bodyHtml = $("body").html() || "";
 
-  return { bodyHtml, headHtml, stripped };
+  return { bodyHtml, headHtml, htmlAttrs, stripped };
 }
 
 /**
@@ -341,7 +370,8 @@ export function restoreAfterTranslation(
     description?: string;
     ogTitle?: string;
     ogDescription?: string;
-  }
+  },
+  htmlAttrs?: string,
 ): string {
   // Restore stripped elements into the translated body
   let restoredBody = translatedBodyHtml;
@@ -350,8 +380,10 @@ export function restoreAfterTranslation(
   }
 
   // Reconstruct full document with original head + translated body
+  // Preserve original <html> tag attributes (CSS variables, lang, class, etc.)
+  const htmlTag = htmlAttrs ? `<html ${htmlAttrs}>` : "<html>";
   const $ = cheerio.load(
-    `<!DOCTYPE html><html><head>${headHtml}</head><body>${restoredBody}</body></html>`
+    `<!DOCTYPE html>${htmlTag}<head>${headHtml}</head><body>${restoredBody}</body></html>`
   );
 
   // Apply meta translations — use dedicated og fields when available, fallback to title/description

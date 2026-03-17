@@ -87,7 +87,8 @@ export async function GET(
     rewrittenBody,
     job.head_html || "",
     stripped,
-    {}
+    {},
+    job.html_attrs || undefined,
   );
 
   // Extract images

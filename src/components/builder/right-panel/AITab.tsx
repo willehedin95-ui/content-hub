@@ -36,6 +36,7 @@ export default function AITab() {
   const [instruction, setInstruction] = useState("");
   const [scope, setScope] = useState<Scope>("element");
   const [editing, setEditing] = useState(false);
+  const [editProgress, setEditProgress] = useState("");
   const [editError, setEditError] = useState("");
   const [lastEdit, setLastEdit] = useState<{ el: HTMLElement; oldHtml: string } | null>(null);
 
@@ -91,38 +92,125 @@ export default function AITab() {
     return el;
   }
 
-  async function handleAIEdit(customInstruction?: string) {
-    const target = getTargetElement();
-    if (!target) return;
+  // Find section-like containers in the body for page-scope editing
+  function getPageSections(): HTMLElement[] {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return [];
 
+    const sections: HTMLElement[] = [];
+    const sectionTags = new Set(["SECTION", "ARTICLE", "MAIN", "HEADER", "FOOTER"]);
+    const sectionClasses = /section|block|container|wrapper|listicle|shopify-section/i;
+
+    for (const child of Array.from(doc.body.children) as HTMLElement[]) {
+      if (!child.tagName) continue;
+      // Skip scripts, styles, and hidden elements
+      if (["SCRIPT", "STYLE", "LINK", "META", "NOSCRIPT"].includes(child.tagName)) continue;
+      // Skip elements with no visible content
+      if (!child.innerHTML?.trim()) continue;
+
+      if (sectionTags.has(child.tagName) || sectionClasses.test(child.className || "")) {
+        sections.push(child);
+      } else if (child.tagName === "DIV") {
+        // Top-level divs that contain sections — check children
+        const innerSections = child.querySelectorAll("section, article, [class*=section], [class*=block]");
+        if (innerSections.length > 0) {
+          // Process inner sections individually
+          for (const inner of Array.from(innerSections) as HTMLElement[]) {
+            if (inner.innerHTML?.trim()) sections.push(inner);
+          }
+        } else if (child.innerHTML?.trim()) {
+          // It's a content div, process as a whole
+          sections.push(child);
+        }
+      } else {
+        sections.push(child);
+      }
+    }
+    return sections;
+  }
+
+  async function editSingleElement(target: HTMLElement, text: string): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch("/api/builder/ai-edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        html: target.innerHTML,
+        instruction: text,
+        language: isSource ? "English" : language.label,
+        product: pageProduct || null,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.html) {
+      return { ok: false, error: data.error || "AI edit failed" };
+    }
+
+    target.innerHTML = data.html;
+    return { ok: true };
+  }
+
+  async function handleAIEdit(customInstruction?: string) {
     const text = customInstruction || instruction.trim();
     if (!text) return;
 
+    // For page scope, iterate through sections instead of sending entire body
+    if (scope === "page") {
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc?.body) return;
+
+      const sections = getPageSections();
+      if (sections.length === 0) {
+        setEditError("No sections found on page");
+        return;
+      }
+
+      setEditing(true);
+      setEditError("");
+      pushUndoSnapshot();
+      const oldHtml = doc.body.innerHTML;
+
+      let errors = 0;
+      for (let i = 0; i < sections.length; i++) {
+        setEditProgress(`Editing section ${i + 1}/${sections.length}...`);
+        try {
+          const result = await editSingleElement(sections[i], text);
+          if (!result.ok) errors++;
+        } catch {
+          errors++;
+        }
+      }
+
+      setLastEdit({ el: doc.body, oldHtml });
+      markDirty();
+      setLayersRefreshKey((k: number) => k + 1);
+      if (!customInstruction) setInstruction("");
+      setEditProgress("");
+      setEditing(false);
+      if (errors > 0) {
+        setEditError(`${errors} of ${sections.length} sections had errors`);
+      }
+      return;
+    }
+
+    // Element or section scope — single edit
+    const target = getTargetElement();
+    if (!target) return;
+
     setEditing(true);
     setEditError("");
+    setEditProgress("");
 
     try {
       pushUndoSnapshot();
       const oldHtml = target.innerHTML;
 
-      const res = await fetch("/api/builder/ai-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          html: target.innerHTML,
-          instruction: text,
-          language: isSource ? "English" : language.label,
-          product: pageProduct || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.html) {
-        setEditError(data.error || "AI edit failed");
+      const result = await editSingleElement(target, text);
+      if (!result.ok) {
+        setEditError(result.error || "AI edit failed");
         return;
       }
 
-      target.innerHTML = data.html;
       setLastEdit({ el: target, oldHtml });
       markDirty();
       setLayersRefreshKey((k: number) => k + 1);
@@ -249,9 +337,11 @@ export default function AITab() {
 
         {/* Scope description */}
         <p className="text-[10px] text-gray-400 mb-2">
-          {hasSelectedEl
-            ? `Editing: ${SCOPE_LABELS[scope]}`
-            : "Select an element first"}
+          {scope === "page"
+            ? "Editing: Whole page (section by section)"
+            : hasSelectedEl
+              ? `Editing: ${SCOPE_LABELS[scope]}`
+              : "Select an element first"}
         </p>
 
         {/* Instruction input */}
@@ -273,12 +363,12 @@ export default function AITab() {
         {/* Apply button */}
         <button
           onClick={() => handleAIEdit()}
-          disabled={editing || !instruction.trim() || !hasSelectedEl}
+          disabled={editing || !instruction.trim() || (scope !== "page" && !hasSelectedEl)}
           className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-2 mt-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {editing ? (
             <>
-              <Loader2 className="w-3 h-3 animate-spin" /> Editing...
+              <Loader2 className="w-3 h-3 animate-spin" /> {editProgress || "Editing..."}
             </>
           ) : (
             <>
@@ -311,7 +401,7 @@ export default function AITab() {
               <button
                 key={action.label}
                 onClick={() => handleAIEdit(action.instruction)}
-                disabled={editing || !hasSelectedEl}
+                disabled={editing || (scope !== "page" && !hasSelectedEl)}
                 className="text-[10px] font-medium px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-40"
               >
                 {action.label}
