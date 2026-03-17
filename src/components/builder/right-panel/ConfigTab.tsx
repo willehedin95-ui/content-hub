@@ -18,6 +18,7 @@ export default function ConfigTab() {
     handlePasteStyles,
     hasCopiedStyles,
     deselectElement,
+    selectElementInIframe,
     layersRefreshKey,
   } = useBuilder();
 
@@ -140,6 +141,32 @@ export default function ConfigTab() {
     markDirty();
   }
 
+  function handleConvertToImage() {
+    const currentEl = selectedElRef.current;
+    if (!currentEl) return;
+    const videoEl = currentEl.tagName === "VIDEO" ? currentEl : currentEl.closest("video");
+    if (!videoEl) return;
+
+    pushUndoSnapshot();
+
+    const doc = videoEl.ownerDocument;
+    const img = doc.createElement("img");
+
+    // Preserve dimensions and styling
+    const style = videoEl.getAttribute("style");
+    const className = videoEl.getAttribute("class");
+    if (style) img.setAttribute("style", style);
+    if (className) img.setAttribute("class", className);
+    img.setAttribute("src", "");
+    img.setAttribute("alt", "");
+    img.style.display = "block";
+    if (!img.style.width) img.style.width = "100%";
+
+    videoEl.parentNode?.replaceChild(img, videoEl);
+    selectElementInIframe(img);
+    markDirty();
+  }
+
   if (!hasSelectedEl) return null;
 
   const inputClass =
@@ -226,6 +253,12 @@ export default function ConfigTab() {
               className={inputClass}
             />
           </div>
+          <button
+            onClick={handleConvertToImage}
+            className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors w-full justify-center"
+          >
+            <Image className="w-3 h-3" /> Convert to Image
+          </button>
         </div>
       )}
 
