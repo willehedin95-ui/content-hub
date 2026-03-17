@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/invoice-check",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }
