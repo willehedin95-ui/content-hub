@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useBuilder } from "../BuilderContext";
-import { EyeOff, Trash2, Copy, X, Link2, Image, Video, Clipboard, ClipboardPaste } from "lucide-react";
+import { EyeOff, Trash2, Copy, X, Link2, Image, Video, Clipboard, ClipboardPaste, Pencil } from "lucide-react";
 
 export default function ConfigTab() {
   const {
@@ -19,6 +19,8 @@ export default function ConfigTab() {
     hasCopiedStyles,
     deselectElement,
     selectElementInIframe,
+    openImageEditor,
+    openVideoEditor,
     layersRefreshKey,
   } = useBuilder();
 
@@ -234,6 +236,12 @@ export default function ConfigTab() {
               />
             </div>
           </div>
+          <button
+            onClick={openImageEditor}
+            className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors w-full justify-center"
+          >
+            <Pencil className="w-3 h-3" /> Replace / Generate Image
+          </button>
         </div>
       )}
 
@@ -258,6 +266,12 @@ export default function ConfigTab() {
             className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors w-full justify-center"
           >
             <Image className="w-3 h-3" /> Convert to Image
+          </button>
+          <button
+            onClick={openVideoEditor}
+            className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-md border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors w-full justify-center"
+          >
+            <Pencil className="w-3 h-3" /> Replace Video
           </button>
         </div>
       )}

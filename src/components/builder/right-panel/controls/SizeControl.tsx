@@ -41,6 +41,9 @@ export default function SizeControl() {
   const [maxHVal, setMaxHVal] = useState("");
   const [maxHUnit, setMaxHUnit] = useState<Unit>("px");
 
+  const [objectFit, setObjectFit] = useState("");
+  const [objPosX, setObjPosX] = useState("50");
+  const [objPosY, setObjPosY] = useState("50");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const getComputedValue = useCallback(
@@ -93,7 +96,27 @@ export default function SizeControl() {
     const maxH = readProp("max-height");
     setMaxHVal(maxH.num);
     setMaxHUnit(maxH.unit);
-  }, [hasSelectedEl, layersRefreshKey, getComputedValue, getInlineValue]);
+
+    // object-fit + object-position (only relevant for img/video)
+    const el = selectedElRef.current;
+    if (el && (el.tagName === "IMG" || el.tagName === "VIDEO")) {
+      const inline = getInlineValue("object-fit");
+      setObjectFit(inline || getComputedValue("object-fit") || "fill");
+      // Parse object-position (e.g. "30% 50%" or "left center")
+      const posRaw = getInlineValue("object-position") || getComputedValue("object-position") || "50% 50%";
+      const parts = posRaw.trim().split(/\s+/);
+      const toPercent = (v: string) => {
+        if (v === "left" || v === "top") return "0";
+        if (v === "center") return "50";
+        if (v === "right" || v === "bottom") return "100";
+        return String(Math.round(parseFloat(v)));
+      };
+      setObjPosX(toPercent(parts[0] || "50%"));
+      setObjPosY(toPercent(parts[1] || "50%"));
+    } else {
+      setObjectFit("");
+    }
+  }, [hasSelectedEl, layersRefreshKey, getComputedValue, getInlineValue, selectedElRef]);
 
   function applyStyle(prop: string, value: string) {
     const el = selectedElRef.current;
@@ -260,6 +283,94 @@ export default function SizeControl() {
         </div>
         {renderInputRow(heightField)}
       </div>
+
+      {/* Object Fit — only for images/videos */}
+      {objectFit && (
+        <div className="space-y-3">
+          <div>
+            <label className={labelClass}>Object Fit</label>
+            <div className="flex gap-0.5 bg-gray-100 rounded p-0.5">
+              {(["cover", "contain", "fill", "none"] as const).map((v) => (
+                <button
+                  key={v}
+                  className={presetBtnClass(objectFit === v)}
+                  onClick={() => {
+                    setObjectFit(v);
+                    applyStyle("object-fit", v);
+                  }}
+                >
+                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Object Position — only useful with cover/contain */}
+          {(objectFit === "cover" || objectFit === "contain") && (
+            <div>
+              <label className={labelClass}>Position</label>
+              <div className="flex items-start gap-3">
+                {/* 3x3 grid picker */}
+                <div className="grid grid-cols-3 gap-0.5 shrink-0">
+                  {[
+                    ["0", "0"], ["50", "0"], ["100", "0"],
+                    ["0", "50"], ["50", "50"], ["100", "50"],
+                    ["0", "100"], ["50", "100"], ["100", "100"],
+                  ].map(([x, y]) => (
+                    <button
+                      key={`${x}-${y}`}
+                      className={`w-5 h-5 rounded-sm border transition-colors ${
+                        objPosX === x && objPosY === y
+                          ? "bg-indigo-500 border-indigo-600"
+                          : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                      }`}
+                      onClick={() => {
+                        setObjPosX(x);
+                        setObjPosY(y);
+                        applyStyle("object-position", `${x}% ${y}%`);
+                      }}
+                      title={`${x}% ${y}%`}
+                    />
+                  ))}
+                </div>
+                {/* X/Y inputs */}
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400 w-3">X</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={objPosX}
+                      onChange={(e) => {
+                        setObjPosX(e.target.value);
+                        applyStyle("object-position", `${e.target.value}% ${objPosY}%`);
+                      }}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:border-indigo-400"
+                    />
+                    <span className="text-[10px] text-gray-400">%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400 w-3">Y</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={objPosY}
+                      onChange={(e) => {
+                        setObjPosY(e.target.value);
+                        applyStyle("object-position", `${objPosX}% ${e.target.value}%`);
+                      }}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:border-indigo-400"
+                    />
+                    <span className="text-[10px] text-gray-400">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Advanced toggle */}
       <button

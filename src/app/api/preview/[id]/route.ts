@@ -68,10 +68,7 @@ export async function GET(
   style.setAttribute('data-cc-editor', 'true');
   style.textContent = [
     '[data-cc-selected] { outline: 2px solid rgba(99,102,241,0.8) !important; outline-offset: 2px; }',
-    'img:not([data-cc-img-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
-    'img[data-cc-img-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }',
-    'video:not([data-cc-media-highlight]):hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }',
-    'video[data-cc-media-highlight] { outline: 3px solid #818cf8; outline-offset: 2px; }'
+    'img:hover, video:hover { outline: 2px dashed rgba(245,158,11,0.6); outline-offset: 2px; cursor: pointer; }'
   ].join('\\n');
   document.head.appendChild(style);
 
@@ -109,13 +106,11 @@ export async function GET(
     return texts.join(' \\n ');
   }
 
-  // Handle clicks: image/video selection only (text editing handled via right panel)
+  // Send image/video metadata to parent (non-blocking — normal selection still fires)
   document.addEventListener('click', function(e) {
-    // Image click — send to parent for image panel
     var img = e.target.closest('img');
     if (img && img.src) {
       e.preventDefault();
-      e.stopPropagation();
       var allImgs = Array.from(document.querySelectorAll('img'));
       window.parent.postMessage({
         type: 'cc-image-click',
@@ -128,11 +123,9 @@ export async function GET(
       return;
     }
 
-    // Video click — send to parent for replacement
     var video = e.target.closest('video');
     if (video) {
       e.preventDefault();
-      e.stopPropagation();
       var allVideos = Array.from(document.querySelectorAll('video'));
       var videoSrc = video.src || (video.querySelector('source') || {}).src || '';
       window.parent.postMessage({

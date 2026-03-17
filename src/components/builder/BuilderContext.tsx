@@ -147,6 +147,8 @@ export interface BuilderContextValue {
   setClickedImage: (v: ClickedMedia | null) => void;
   clickedVideo: ClickedMedia | null;
   setClickedVideo: (v: ClickedMedia | null) => void;
+  openImageEditor: () => void;
+  openVideoEditor: () => void;
   bgImageTranslating: boolean;
   setBgImageTranslating: (v: boolean) => void;
 
@@ -158,6 +160,7 @@ export interface BuilderContextValue {
   hiddenCount: number;
   revealHidden: boolean;
   layersRefreshKey: number;
+  setLayersRefreshKey: React.Dispatch<React.SetStateAction<number>>;
 
   // --- Undo / redo ---
   undoCount: number;
@@ -376,6 +379,8 @@ export function BuilderProvider({
   // enteredContainerRef reserved for future Figma-style container selection
   const copiedStylesRef = useRef<Record<string, string> | null>(null);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastImageDataRef = useRef<ClickedMedia | null>(null);
+  const lastVideoDataRef = useRef<ClickedMedia | null>(null);
 
   // -----------------------------------------------------------------------
   // State — ported from EditPageClient.tsx
@@ -1029,8 +1034,7 @@ export function BuilderProvider({
 
     // Helper to select an element (clears previous, sets state)
     function selectElement(el: HTMLElement) {
-      // Clear media panels when selecting via direct click (images/videos
-      // are intercepted by the iframe script and never reach here)
+      // Clear media panels when selecting a new element
       setClickedImage(null);
       setClickedVideo(null);
 
@@ -1750,6 +1754,42 @@ export function BuilderProvider({
     setHasSelectedEl(false);
   }
 
+  function openImageEditor() {
+    const el = selectedElRef.current;
+    if (!el || el.tagName !== "IMG") return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const imgs = doc.querySelectorAll("img");
+    const index = Array.from(imgs).indexOf(el as HTMLImageElement);
+    const img = el as HTMLImageElement;
+    setClickedImage({
+      src: img.src,
+      index,
+      width: img.naturalWidth || img.offsetWidth || 200,
+      height: img.naturalHeight || img.offsetHeight || 200,
+      surroundingText: lastImageDataRef.current?.surroundingText || "",
+    });
+  }
+
+  function openVideoEditor() {
+    const el = selectedElRef.current;
+    if (!el) return;
+    const videoEl = el.tagName === "VIDEO" ? el : el.closest("video");
+    if (!videoEl) return;
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const videos = doc.querySelectorAll("video");
+    const index = Array.from(videos).indexOf(videoEl as HTMLVideoElement);
+    const video = videoEl as HTMLVideoElement;
+    const source = video.querySelector("source");
+    setClickedVideo({
+      src: source?.src || video.src || "",
+      index,
+      width: video.videoWidth || video.offsetWidth || 400,
+      height: video.videoHeight || video.offsetHeight || 300,
+    });
+  }
+
   function reloadIframe() {
     setIframeKey((k) => k + 1);
   }
@@ -1804,38 +1844,23 @@ export function BuilderProvider({
       if (e.data?.type === "cc-dirty") {
         markDirty();
       }
+      // Store image/video metadata for on-demand editing (don't auto-open panels)
       if (e.data?.type === "cc-image-click") {
-        setClickedVideo(null);
-        setClickedImage({
+        lastImageDataRef.current = {
           src: e.data.src,
           index: e.data.index,
           width: e.data.width,
           height: e.data.height,
           surroundingText: e.data.surroundingText || "",
-        });
-        // Also select the image element so it highlights in canvas + layers
-        const doc = iframeRef.current?.contentDocument;
-        if (doc) {
-          const imgs = doc.querySelectorAll("img");
-          const imgEl = imgs[e.data.index] as HTMLElement | undefined;
-          if (imgEl) selectElementInIframe(imgEl);
-        }
+        };
       }
       if (e.data?.type === "cc-video-click") {
-        setClickedImage(null);
-        setClickedVideo({
+        lastVideoDataRef.current = {
           src: e.data.src,
           index: e.data.index,
           width: e.data.width,
           height: e.data.height,
-        });
-        // Also select the video element
-        const doc = iframeRef.current?.contentDocument;
-        if (doc) {
-          const videos = doc.querySelectorAll("video");
-          const videoEl = videos[e.data.index] as HTMLElement | undefined;
-          if (videoEl) selectElementInIframe(videoEl);
-        }
+        };
       }
     }
     window.addEventListener("message", handleMessage);
@@ -2103,6 +2128,8 @@ export function BuilderProvider({
     setClickedImage,
     clickedVideo,
     setClickedVideo,
+    openImageEditor,
+    openVideoEditor,
     bgImageTranslating,
     setBgImageTranslating,
 
@@ -2114,6 +2141,7 @@ export function BuilderProvider({
     hiddenCount,
     revealHidden,
     layersRefreshKey,
+    setLayersRefreshKey,
 
     // Undo / redo
     undoCount,

@@ -51,38 +51,19 @@ export default function VideoPanel({
       .catch(() => {});
   }, []);
 
-  // Highlight clicked video in iframe
+  // Scroll clicked video into view (selection outline handled by data-cc-selected)
   useEffect(() => {
+    if (!clickedVideo) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
-
-    const prev = doc.querySelector("[data-cc-media-highlight]");
-    if (prev) {
-      (prev as HTMLElement).style.outline = "";
-      prev.removeAttribute("data-cc-media-highlight");
-    }
-
-    if (clickedVideo) {
-      const videos = doc.querySelectorAll("video");
-      const video = videos[clickedVideo.index];
-      if (video) {
-        video.style.outline = "3px solid #818cf8";
-        video.setAttribute("data-cc-media-highlight", "true");
-        video.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+    const videos = doc.querySelectorAll("video");
+    const video = videos[clickedVideo.index];
+    if (video) {
+      video.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [clickedVideo, iframeRef]);
 
   function handleBack() {
-    // Remove highlight
-    const doc = iframeRef.current?.contentDocument;
-    if (doc) {
-      const highlighted = doc.querySelector("[data-cc-media-highlight]");
-      if (highlighted) {
-        (highlighted as HTMLElement).style.outline = "";
-        highlighted.removeAttribute("data-cc-media-highlight");
-      }
-    }
     onClickedVideoClear();
     setError("");
   }
@@ -102,7 +83,6 @@ export default function VideoPanel({
           source.src = newUrl;
         }
         video.load(); // Reload video with new source
-        video.style.outline = "";
         video.removeAttribute("data-cc-media-highlight");
         // Remove placeholder attribute if it was an empty video
         video.removeAttribute("data-cc-video-placeholder");

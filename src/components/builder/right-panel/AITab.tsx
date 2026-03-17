@@ -1,19 +1,43 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useBuilder } from "../BuilderContext";
-import { Loader2, Lightbulb, Sparkles, RefreshCw, X } from "lucide-react";
+import { Loader2, Lightbulb, Sparkles, RefreshCw, X, Wand2, Undo2 } from "lucide-react";
+
+type Scope = "element" | "section" | "page";
+
+const SCOPE_LABELS: Record<Scope, string> = {
+  element: "Selected element",
+  section: "Parent section",
+  page: "Whole page",
+};
+
+const QUICK_ACTIONS = [
+  { label: "Shorten text", instruction: "Make all text content shorter and more concise. Cut unnecessary words, reduce paragraph length by ~40%. Keep the same meaning and tone." },
+  { label: "More urgent", instruction: "Make the copy more urgent and action-oriented. Add urgency without being spammy. Use active voice, stronger verbs, and create a sense of immediacy." },
+  { label: "Simpler language", instruction: "Simplify the language. Use shorter words, shorter sentences, 6th grade reading level. Remove jargon and complex phrasing." },
+  { label: "Add social proof", instruction: "Where appropriate, weave in social proof elements (e.g. 'thousands of customers', 'verified by experts', '94% reported improvement'). Don't add new HTML elements, just enhance existing text." },
+];
 
 export default function AITab() {
   const {
     selectedElRef,
+    iframeRef,
     hasSelectedEl,
     language,
     pageProduct,
     isSource,
     markDirty,
     pushUndoSnapshot,
+    setLayersRefreshKey,
   } = useBuilder();
+
+  // --- Free-form AI edit ---
+  const [instruction, setInstruction] = useState("");
+  const [scope, setScope] = useState<Scope>("element");
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [lastEdit, setLastEdit] = useState<{ el: HTMLElement; oldHtml: string } | null>(null);
 
   // --- Headline suggestions ---
   const [headlineSuggestions, setHeadlineSuggestions] = useState<
@@ -26,9 +50,99 @@ export default function AITab() {
   const [generatingVariation, setGeneratingVariation] = useState(false);
   const [showVariationMenu, setShowVariationMenu] = useState(false);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const isHeading =
     selectedElRef.current &&
     ["H1", "H2", "H3"].includes(selectedElRef.current.tagName);
+
+  // Resolve the target element based on scope
+  function getTargetElement(): HTMLElement | null {
+    const el = selectedElRef.current;
+    if (!el) return null;
+
+    if (scope === "element") return el;
+
+    if (scope === "section") {
+      // Walk up to find a section-like container
+      const sectionTags = ["SECTION", "ARTICLE", "MAIN"];
+      const sectionClasses = /section|block|container|wrapper|listicle/i;
+      let parent = el.parentElement;
+      let depth = 0;
+      while (parent && depth < 8) {
+        if (
+          sectionTags.includes(parent.tagName) ||
+          sectionClasses.test(parent.className || "")
+        ) {
+          return parent;
+        }
+        parent = parent.parentElement;
+        depth++;
+      }
+      // Fallback: grandparent
+      return el.parentElement?.parentElement || el.parentElement || el;
+    }
+
+    if (scope === "page") {
+      const doc = iframeRef.current?.contentDocument;
+      return doc?.body || el;
+    }
+
+    return el;
+  }
+
+  async function handleAIEdit(customInstruction?: string) {
+    const target = getTargetElement();
+    if (!target) return;
+
+    const text = customInstruction || instruction.trim();
+    if (!text) return;
+
+    setEditing(true);
+    setEditError("");
+
+    try {
+      pushUndoSnapshot();
+      const oldHtml = target.innerHTML;
+
+      const res = await fetch("/api/builder/ai-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html: target.innerHTML,
+          instruction: text,
+          language: isSource ? "English" : language.label,
+          product: pageProduct || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.html) {
+        setEditError(data.error || "AI edit failed");
+        return;
+      }
+
+      target.innerHTML = data.html;
+      setLastEdit({ el: target, oldHtml });
+      markDirty();
+      setLayersRefreshKey((k: number) => k + 1);
+      if (!customInstruction) setInstruction("");
+    } catch (err) {
+      console.error("AI edit failed:", err);
+      setEditError("Failed to connect to AI");
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  function handleUndoLastEdit() {
+    if (!lastEdit) return;
+    pushUndoSnapshot();
+    lastEdit.el.innerHTML = lastEdit.oldHtml;
+    markDirty();
+    setLayersRefreshKey((k: number) => k + 1);
+    setLastEdit(null);
+  }
 
   const handleSuggestHeadlines = useCallback(async () => {
     const el = selectedElRef.current;
@@ -105,15 +219,110 @@ export default function AITab() {
     [selectedElRef, isSource, language.value, pageProduct, markDirty, pushUndoSnapshot]
   );
 
-  if (!hasSelectedEl) return null;
-
   const selectedText = selectedElRef.current?.textContent?.trim();
   const hasText = !!selectedText;
 
   return (
     <div className="space-y-0">
+      {/* Free-form AI Edit — always shown */}
+      <div className="px-4 py-3 border-b border-gray-100">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1 mb-2">
+          <Wand2 className="w-3 h-3" /> AI Edit
+        </label>
+
+        {/* Scope selector */}
+        <div className="flex gap-0.5 bg-gray-100 rounded p-0.5 mb-2">
+          {(["element", "section", "page"] as Scope[]).map((s) => (
+            <button
+              key={s}
+              className={`flex-1 py-1 rounded text-[10px] font-medium transition-colors ${
+                scope === s
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setScope(s)}
+            >
+              {s === "element" ? "Element" : s === "section" ? "Section" : "Page"}
+            </button>
+          ))}
+        </div>
+
+        {/* Scope description */}
+        <p className="text-[10px] text-gray-400 mb-2">
+          {hasSelectedEl
+            ? `Editing: ${SCOPE_LABELS[scope]}`
+            : "Select an element first"}
+        </p>
+
+        {/* Instruction input */}
+        <textarea
+          ref={textareaRef}
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              handleAIEdit();
+            }
+          }}
+          placeholder='e.g. "Shorten all paragraphs" or "Make the tone more urgent"'
+          rows={3}
+          className="w-full bg-white border border-gray-200 text-gray-900 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 placeholder:text-gray-400"
+        />
+
+        {/* Apply button */}
+        <button
+          onClick={() => handleAIEdit()}
+          disabled={editing || !instruction.trim() || !hasSelectedEl}
+          className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-2 mt-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {editing ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" /> Editing...
+            </>
+          ) : (
+            <>
+              <Wand2 className="w-3 h-3" /> Apply Edit
+              <span className="text-[10px] opacity-60 ml-1">⌘↵</span>
+            </>
+          )}
+        </button>
+
+        {/* Undo last edit */}
+        {lastEdit && !editing && (
+          <button
+            onClick={handleUndoLastEdit}
+            className="w-full flex items-center justify-center gap-1 text-xs font-medium px-2 py-1.5 mt-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <Undo2 className="w-3 h-3" /> Undo AI edit
+          </button>
+        )}
+
+        {/* Error */}
+        {editError && (
+          <p className="text-xs text-red-500 mt-1.5">{editError}</p>
+        )}
+
+        {/* Quick actions */}
+        <div className="mt-3">
+          <span className="text-[10px] text-gray-400 uppercase font-medium">Quick actions</span>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                onClick={() => handleAIEdit(action.instruction)}
+                disabled={editing || !hasSelectedEl}
+                className="text-[10px] font-medium px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-40"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Headline Suggestions — only for h1/h2/h3 */}
-      {isHeading && hasText && (
+      {hasSelectedEl && isHeading && hasText && (
         <div className="px-4 py-3 border-b border-gray-100">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1 mb-2">
             <Lightbulb className="w-3 h-3" /> Headline Ideas
@@ -185,7 +394,7 @@ export default function AITab() {
       )}
 
       {/* Generate Variation — for any text element */}
-      {hasText && (
+      {hasSelectedEl && hasText && (
         <div className="px-4 py-3 border-b border-gray-100">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1 mb-2">
             <Sparkles className="w-3 h-3" /> Copy Variation
@@ -235,23 +444,6 @@ export default function AITab() {
               </div>
             )}
           </div>
-
-          {/* Current text preview */}
-          <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100">
-            <span className="text-[10px] text-gray-400 uppercase block mb-0.5">
-              Selected text
-            </span>
-            <p className="text-xs text-gray-700 line-clamp-3">{selectedText}</p>
-          </div>
-        </div>
-      )}
-
-      {/* No text hint */}
-      {!hasText && (
-        <div className="px-4 py-6 text-center">
-          <p className="text-xs text-gray-400">
-            Select a text element to use AI tools
-          </p>
         </div>
       )}
     </div>

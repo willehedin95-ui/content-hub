@@ -151,25 +151,15 @@ export default function ImagePanel({
     }
   }, [clickedImage, mode, language.label]);
 
-  // Highlight clicked image in iframe
+  // Scroll clicked image into view (selection outline handled by data-cc-selected)
   useEffect(() => {
+    if (!clickedImage) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
-
-    const prev = doc.querySelector("[data-cc-img-highlight]");
-    if (prev) {
-      (prev as HTMLElement).style.outline = "";
-      prev.removeAttribute("data-cc-img-highlight");
-    }
-
-    if (clickedImage) {
-      const imgs = doc.querySelectorAll("img");
-      const img = imgs[clickedImage.index];
-      if (img) {
-        img.style.outline = "3px solid #818cf8";
-        img.setAttribute("data-cc-img-highlight", "true");
-        img.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+    const imgs = doc.querySelectorAll("img");
+    const img = imgs[clickedImage.index];
+    if (img) {
+      img.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [clickedImage, iframeRef]);
 
@@ -201,7 +191,6 @@ export default function ImagePanel({
         if (picture) {
           picture.querySelectorAll("source").forEach((s) => s.remove());
         }
-        img.style.outline = "";
         img.removeAttribute("data-cc-img-highlight");
       }
     }
