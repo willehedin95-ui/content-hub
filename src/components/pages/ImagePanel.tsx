@@ -196,6 +196,11 @@ export default function ImagePanel({
       if (img) {
         img.src = newUrl;
         img.removeAttribute("srcset");
+        // Clear <source> elements inside parent <picture> — they override img.src
+        const picture = img.closest("picture");
+        if (picture) {
+          picture.querySelectorAll("source").forEach((s) => s.remove());
+        }
         img.style.outline = "";
         img.removeAttribute("data-cc-img-highlight");
       }
