@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
+import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
+
+export const maxDuration = 300;
 
 // POST /api/autopilot/concepts/:id/approve
 // body: { approved: boolean }
@@ -79,7 +83,18 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ ok: true, action: "approved", priority });
+    // Trigger translation pipeline in background (after response is sent)
+    after(async () => {
+      try {
+        console.log(`[autopilot-approve] Starting translations for job ${jobId}`);
+        const result = await triggerAutopilotTranslations(jobId);
+        console.log(`[autopilot-approve] Translations done:`, result);
+      } catch (err) {
+        console.error(`[autopilot-approve] Translation pipeline failed for ${jobId}:`, err);
+      }
+    });
+
+    return NextResponse.json({ ok: true, action: "approved", priority, translationsStarted: true });
   } else {
     // Reject = archive
     await db

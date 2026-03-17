@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import sharp from "sharp";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/lib/telegram";
 import { getCampaignBudget, updateCampaign, listCampaigns } from "@/lib/meta";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 interface AnalyzeResult {
   croppedBuffer: Buffer;
@@ -690,8 +690,20 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
   await editMessageText(
     chatId,
     messageId,
-    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nPipeline will auto-push next cycle.\n\n${hubBase}/launchpad`
+    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...\n\n${hubBase}/launchpad`
   );
+
+  // Trigger translation pipeline in background
+  after(async () => {
+    try {
+      const { triggerAutopilotTranslations } = await import("@/lib/autopilot-translations");
+      console.log(`[telegram-approve] Starting translations for job ${jobId}`);
+      const result = await triggerAutopilotTranslations(jobId);
+      console.log(`[telegram-approve] Translations done:`, result);
+    } catch (err) {
+      console.error(`[telegram-approve] Translation pipeline failed for ${jobId}:`, err);
+    }
+  });
 }
 
 async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: string): Promise<void> {
