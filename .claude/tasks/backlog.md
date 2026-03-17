@@ -1,13 +1,13 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-14 (session 1 — invoice tracker manual flow)
+Updated: 2026-03-17 (autopilot translation pipeline)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Push to deploy** — commits up to `3ca08ea` not pushed. After push: trigger invoice rescan via "Check Now", verify service matching
-- [ ] **Invoice Tracker: verify full rescan** — `last_processed_uid` reset to 0, rules fixed. Need to click "Check Now" after deploy and verify all services detected correctly
-- [ ] **Invoice Tracker: test manual forwarding** — Test "Send to Juni" for single + bulk flow end-to-end
+- [ ] **Test autopilot end-to-end** — Trigger `autopilot-concepts?force=true`, approve from Hub or Telegram, verify: translation rows created, ad copy translated, images translated (4:5 + 9:16), pipeline pushes to Meta
+- [ ] **Simplified Meta campaign structure** (Phase 1 from plan) — Create permanent ad sets (1 per market per format), rewrite push flow to skip ad set duplication, update kill/promote to pause individual ads. See `.claude/plans/hashed-sprouting-lamport.md` Step 1.1-1.6.
+- [ ] **Push invoice improvements** — Committed at `894a3e5` but not pushed. Upload, forwarding, download logs improvements.
 - [ ] **Test workspace switching E2E** — switch between HappySleep/Hydro13/Doginwork, verify data isolation (pages, assets, concepts, settings all scoped correctly)
 - [ ] **Test page testing E2E** — push a concept with 2 landing pages, verify 2 ad sets created in Meta with [A]/[B] suffixes, verify comparison stats populate after ad performance sync
 - [ ] Live-test competitor swipe end-to-end: import real page → generate images/videos → apply → publish (added 2026-03-09, updated 2026-03-10)
@@ -21,7 +21,6 @@ Updated: 2026-03-14 (session 1 — invoice tracker manual flow)
 - [ ] **Tune Strategy Guide thresholds** — after seeing real data, adjust constants in strategy-engine.ts (BUDGET_COOLDOWN_DAYS, MIN_BUDGET_PER_ADSET, etc.) (added 2026-03-11)
 - [ ] **Per-breakpoint responsive styles** — mobile vs desktop style editing via media queries (viewMode toggle exists, needs to write @media rules) (added 2026-03-10)
 - [ ] Landing Page Recommender — data-driven page selection (added 2025-02-25)
-- [ ] Telegram notifications — Hub messages when concepts ready for review (added 2025-02-25)
 - [ ] Test template brainstorm mode end-to-end (added 2026-02-28)
 
 ## P2.5 — Meta Ads Automation (new initiative, 2026-03-03)
@@ -47,13 +46,11 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Autopilot translation pipeline** — Wired translation pipeline to autopilot approve flow. Created `src/lib/autopilot-translations.ts` shared library. Both Hub UI and Telegram approve handlers now trigger full pipeline (create translations, translate copy, process images, outpaint 9:16) via `after()`. Commits `3c79f21`. (done 2026-03-17)
+- [x] **Autopilot Concept Factory** — Daily cron generates concepts via Claude brainstorm, generates images via Kie AI, sends Telegram notification with approve/reject. Hub UI in Brainstorm > Queue tab. English language rule for image generation. Commits `ce3258b`, `815d33f`, `276d887`. (done 2026-03-16/17)
 - [x] **Invoice Tracker — manual forwarding flow** — Changed from auto-forward to two-phase flow: scan stores as "ready", user manually sends to Juni via UI buttons. Fixed overly broad matching rules (Klaviyo, Vercel, Meta). Cleaned up 102 bad Shopify logs. Added forward-all endpoint, bulk upload, export, insights APIs. Commit `3ca08ea`. (done 2026-03-14)
 - [x] **Invoice Tracker — initial build** — IMAP scanning, SMTP forwarding, PDF detection, billing cycle awareness, cron job, full dashboard UI. Commits `3b3682f`, `7b9471f`. (done 2026-03-13)
 - [x] **Workspace isolation + Doginwork rename** — Added workspace_id filtering to 10 API routes (pages, assets, ad-learnings, pipeline-settings, page-tests). Renamed Dog Coaching → Doginwork. Fixed Settings page Dropdown crash (Radix SelectItem empty value). Added workspace_id column to ad_learnings table. Commit `6b9a286`. (done 2026-03-12)
 - [x] **Ad-level landing page A/B testing** — Replaced old router-based AB test system (cloaking risk per Mark's advice) with ad-level page testing: 2 ad sets per market with same creatives, different landing URLs. New tables: `page_tests`, `page_test_adsets`. New API routes: `/api/page-tests` (list/stats/winner). UI: "Test against another page" in concept push, comparison view with metrics table + statistical significance, winner declaration pauses losing ad sets, win/loss badges on Pages list. Old system fully removed (-2,694 lines, 13 files deleted). Commit `a1bc6c8`. (done 2026-03-12)
 - [x] **Multi-workspace architecture** — 7-phase implementation: workspaces table + workspace_id on ~20 tables, cookie-based resolution, sidebar switcher, ~100+ API routes migrated, dynamic product type (removed PRODUCTS constant), per-workspace Meta creds (setMetaConfig), per-workspace settings (migrated from app_settings). 3 workspaces: HappySleep, Hydro13, Doginwork. Commit `f13c301`. (done 2026-03-12)
 - [x] **Hub cleanup & restructure** — Dead code removal (-2.8K lines), sidebar 15→10 items (hooks/learnings→brainstorm tabs, A/B tests/swiper→landing pages tabs, inventory→products tab), perf fixes (polling, singleton supabase, middleware auth, SELECT *). Image swiper: save modal, no-logo fix, edit instructions. Commit `ec44fd4`. (done 2026-03-12)
-- [x] **Asset tags + cancel buttons + builder/swiper fixes** — tag management on Assets page, cancel buttons on all generation flows (AbortController), builder image panel stays open after gen, swiper copy length constraints. Commit `f318bee`. (done 2026-03-12)
-- [x] **Strategy Guide for Morning Brief** — 5-phase feature: data infra (2 new tables + cron sync), strategy engine (4 rule sets, anti-panic), API integration, UI (5 components in MorningBriefClient), Telegram (strategy summary + kill button). Commits `79d8b89`, `4172d81`. (done 2026-03-11)
-- [x] **Builder image gen rewrite** — Replaced GPT-4o with Claude Vision structured extraction (same as Assets Image Swiper). Fixes headlines being copied into images. Product hero images now passed as Nano Banana references. Commit `b85813c`. (done 2026-03-11)
-- [x] **Assets Hub overhaul** — Video uploads, sidebar nav, URL import, Image Swiper, Video Swiper moved to tab, new categories, product filter, search, storage bar. DB migration + 12-task implementation. Commits `10afb94`, `be92416`, `874e569`. (done 2026-03-10 session 5)
