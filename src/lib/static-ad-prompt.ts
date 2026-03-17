@@ -257,7 +257,10 @@ Each brief must have:
 - hook: the scroll-stopping text to feature prominently on the image
 - headline: secondary text (shorter, benefit-focused)
 - referenceStrategy: which reference images to use
-- reptileTriggers: array of 1-2 trigger IDs that are embodied in the prompt`;
+- reptileTriggers: array of 1-2 trigger IDs that are embodied in the prompt
+
+## LANGUAGE RULE (CRITICAL):
+ALL text in hooks, headlines, and any text embedded in prompts MUST be in ENGLISH. Never write hooks, headlines, or text overlays in Swedish, Norwegian, Danish, or any other language. The images will be translated to local languages later — the originals must always be English.`;
 }
 
 function buildBriefUserPrompt(opts: {
