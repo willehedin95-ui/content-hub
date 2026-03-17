@@ -802,6 +802,34 @@ async function processAccount(account: ImapAccountConfig): Promise<{
       // Try to extract amount from email body (non-blocking)
       const amountInfo = emailHtml ? await extractAmount(emailHtml).catch(() => null) : null;
 
+      // For invoice-type services, extract and store the PDF for download
+      let pdfStoragePath: string | null = null;
+      if (hasPdf && service.forward_to === "invoices") {
+        try {
+          const parsed = await simpleParser(fullEmail);
+          const pdfAtt = parsed.attachments?.find(
+            (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
+          );
+          if (pdfAtt) {
+            const safeName = (pdfAtt.filename || "invoice.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const storagePath = `${service.id}/${period}/${email.uid}_${safeName}`;
+            const { error: uploadErr } = await db.storage
+              .from("invoice-pdfs")
+              .upload(storagePath, pdfAtt.content, {
+                contentType: "application/pdf",
+                upsert: true,
+              });
+            if (!uploadErr) {
+              pdfStoragePath = storagePath;
+            } else {
+              console.error(`[invoice-mail] Failed to store PDF: ${uploadErr.message}`);
+            }
+          }
+        } catch (parseErr) {
+          console.error(`[invoice-mail] Failed to parse email for PDF storage:`, parseErr);
+        }
+      }
+
       await db.from("invoice_logs").insert({
         service_id: service.id,
         period,
@@ -815,6 +843,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         amount: amountInfo?.amount || null,
         currency: amountInfo?.currency || null,
         imap_account_id: accountId,
+        pdf_storage_path: pdfStoragePath,
       });
       forwarded++;
     } catch (e) {
@@ -937,6 +966,23 @@ export async function retryForward(
     const msg = e instanceof Error ? e.message : String(e);
     return { success: false, error: msg };
   }
+}
+
+/**
+ * Download an email from IMAP and extract the first PDF attachment.
+ * Used by the download endpoint as a fallback when PDF isn't in storage.
+ */
+export async function downloadAndExtractPdf(
+  emailUid: number,
+  accountId: string
+): Promise<{ buffer: Buffer; filename: string } | null> {
+  const fullEmail = await downloadFullEmailStandalone(emailUid, accountId);
+  const parsed = await simpleParser(fullEmail);
+  const pdfAtt = parsed.attachments?.find(
+    (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
+  );
+  if (!pdfAtt) return null;
+  return { buffer: pdfAtt.content, filename: pdfAtt.filename || "invoice.pdf" };
 }
 
 /**

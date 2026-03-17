@@ -66,20 +66,47 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    // Create log entry
-    const { data: log } = await db.from("invoice_logs").insert({
-      service_id: serviceId,
-      period,
-      status: "forwarded",
-      email_subject: `Manual upload: ${file.name}`,
-      email_from: "manual",
-      email_date: new Date().toISOString(),
-      forwarded_at: new Date().toISOString(),
-      pdf_filename: file.name,
-      pdf_size_bytes: buffer.length,
-    }).select("id").single();
+    // Try to resolve an existing "ready" or "received_no_pdf" detection log
+    // instead of always creating a new one. This links the uploaded receipt
+    // to the detected billing email.
+    const { data: pendingLog } = await db
+      .from("invoice_logs")
+      .select("id")
+      .eq("service_id", serviceId)
+      .eq("period", period)
+      .in("status", ["ready", "received_no_pdf"])
+      .order("email_date", { ascending: true })
+      .limit(1)
+      .single();
 
-    return NextResponse.json({ success: true, logId: log?.id });
+    let logId: string | undefined;
+
+    if (pendingLog) {
+      // Resolve existing detection log
+      await db.from("invoice_logs").update({
+        status: "forwarded",
+        forwarded_at: new Date().toISOString(),
+        pdf_filename: file.name,
+        pdf_size_bytes: buffer.length,
+      }).eq("id", pendingLog.id);
+      logId = pendingLog.id;
+    } else {
+      // No pending detection log — create a new one
+      const { data: log } = await db.from("invoice_logs").insert({
+        service_id: serviceId,
+        period,
+        status: "forwarded",
+        email_subject: `Manual upload: ${file.name}`,
+        email_from: "manual",
+        email_date: new Date().toISOString(),
+        forwarded_at: new Date().toISOString(),
+        pdf_filename: file.name,
+        pdf_size_bytes: buffer.length,
+      }).select("id").single();
+      logId = log?.id;
+    }
+
+    return NextResponse.json({ success: true, logId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

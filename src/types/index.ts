@@ -1239,6 +1239,7 @@ export interface InvoiceLog {
   pdf_size_bytes: number | null;
   amount: number | null;
   currency: string | null;
+  pdf_storage_path: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

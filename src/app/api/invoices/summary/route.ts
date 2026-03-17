@@ -80,8 +80,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (svcLogs.length === 0) {
-      // Usage-based services with no invoices yet aren't "waiting" — they just have zero
-      const status: InvoiceStatus = svc.billing_cycle === "usage_based" ? "not_due" : "waiting";
+      // Usage-based services: if they have sender patterns (can detect emails),
+      // show "waiting" so the user knows no charges were detected yet.
+      // If no patterns (fully manual), show "not_due" — we can't know.
+      const hasPatterns = (svc.sender_patterns?.length ?? 0) > 0;
+      const status: InvoiceStatus =
+        svc.billing_cycle === "usage_based" && !hasPatterns ? "not_due" : "waiting";
       return {
         service: svc,
         status,

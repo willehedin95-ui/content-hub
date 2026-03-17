@@ -27,7 +27,7 @@ import {
   Send,
 } from "lucide-react";
 import type { InvoiceService, InvoiceSummaryRow, InvoiceStatus, InvoiceLog } from "@/types";
-import StatusBadge from "./StatusBadge";
+
 import ServiceModal from "./ServiceModal";
 import BulkUploadModal from "./BulkUploadModal";
 
@@ -67,6 +67,11 @@ function currentPeriod(): string {
   // Default to previous month — invoices arrive after the billing period
   const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function actualCurrentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function formatPeriod(period: string): string {
@@ -119,13 +124,13 @@ export default function InvoiceTrackerClient() {
   const [insights, setInsights] = useState<Insights | null>(null);
   const [unmatched, setUnmatched] = useState<InvoiceLog[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
   const [uploadTarget, setUploadTarget] = useState<{ serviceId: string; serviceName: string } | null>(null);
   const [lastUpload, setLastUpload] = useState<{ logId: string; serviceName: string; filename: string } | null>(null);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [forwarding, setForwarding] = useState<string | null>(null); // log id being forwarded
   const [forwardingAll, setForwardingAll] = useState(false);
   const [forwardResult, setForwardResult] = useState<{ forwarded: number; errors: number } | null>(null);
-  const [markingPaid, setMarkingPaid] = useState<string | null>(null); // service id being marked
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
@@ -235,6 +240,15 @@ export default function InvoiceTrackerClient() {
     await fetchSummary();
   }
 
+  async function handleMarkLogDone(logId: string) {
+    await fetch(`/api/invoices/logs/${logId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "forwarded" }),
+    });
+    await fetchSummary();
+  }
+
   async function handleRetry(logId: string) {
     setRetrying(logId);
     try {
@@ -259,23 +273,56 @@ export default function InvoiceTrackerClient() {
     setUnmatched((prev) => prev.filter((u) => u.id !== logId));
   }
 
-  async function handleUploadPdf(serviceId: string, serviceName: string, file: File) {
+  async function handleUploadPdfs(serviceId: string, serviceName: string, files: File[]) {
     setUploading(true);
+    setUploadProgress(null);
+    let lastLogId: string | undefined;
+    let succeeded = 0;
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("service_id", serviceId);
-      formData.append("period", period);
-      const res = await fetch("/api/invoices/upload", { method: "POST", body: formData });
-      const data = await res.json();
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress({ current: i + 1, total: files.length, filename: file.name });
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("service_id", serviceId);
+        formData.append("period", period);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 55_000);
+
+        const res = await fetch("/api/invoices/upload", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          console.error("[upload] Error:", errData);
+          alert(`Upload failed for ${file.name}: ${errData.error || res.statusText}`);
+          continue;
+        }
+
+        const data = await res.json();
+        if (data.logId) lastLogId = data.logId;
+        succeeded++;
+      }
+
       await fetchSummary();
       setUploadTarget(null);
-      if (data.logId) {
-        setLastUpload({ logId: data.logId, serviceName, filename: file.name });
+      if (lastLogId) {
+        const label = succeeded > 1 ? `${succeeded} files` : files[0].name;
+        setLastUpload({ logId: lastLogId, serviceName, filename: label });
         setTimeout(() => setLastUpload(null), 15000);
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`Upload failed: ${msg.includes("abort") ? "Request timed out" : msg}`);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -321,21 +368,6 @@ export default function InvoiceTrackerClient() {
     }
   }
 
-  async function handleMarkPaid(logIds: string[], serviceId: string) {
-    setMarkingPaid(serviceId);
-    try {
-      for (const logId of logIds) {
-        await fetch(`/api/invoices/logs/${logId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "paid" }),
-        });
-      }
-      await fetchSummary();
-    } finally {
-      setMarkingPaid(null);
-    }
-  }
 
   function copyToClipboard(email: string, type: "receipts" | "invoices") {
     navigator.clipboard.writeText(email);
@@ -348,23 +380,26 @@ export default function InvoiceTrackerClient() {
   const needsAction = summary.length - summary.filter((r) => r.status === "not_due").length;
   const pct = needsAction > 0 ? Math.round((done / needsAction) * 100) : 100;
 
-  // Count individual ready logs across all services (not summary rows, since
-  // a service might show "forwarded" if some logs are forwarded and others ready)
-  const readyCount = summary.reduce(
-    (sum, r) => sum + r.logs.filter((l) => l.status === "ready").length,
+  // Count individual ready logs — split by type
+  // Receipt-type: can be auto-forwarded to Juni via "Send to Juni"
+  // Invoice-type: user downloads + uploads manually (not counted for auto-send)
+  const readyForJuniCount = summary.reduce(
+    (sum, r) => r.service.forward_to !== "invoices"
+      ? sum + r.logs.filter((l) => l.status === "ready").length
+      : sum,
     0
   );
-
-  // Count unpaid (ready + forwarded) logs for the action banner
-  const unpaidCount = summary.reduce(
-    (sum, r) => sum + r.logs.filter((l) => l.status === "ready" || l.status === "forwarded").length,
+  const readyInvoiceCount = summary.reduce(
+    (sum, r) => r.service.forward_to === "invoices"
+      ? sum + r.logs.filter((l) => l.status === "ready").length
+      : sum,
     0
   );
+  const readyCount = readyForJuniCount + readyInvoiceCount;
 
   const counts = {
     total: summary.length,
-    paid: summary.filter((r) => r.status === "paid").length,
-    forwarded: summary.filter((r) => r.status === "forwarded").length,
+    sent: summary.filter((r) => r.status === "paid" || r.status === "forwarded").length,
     ready: readyCount,
     waiting: summary.filter((r) => r.status === "waiting").length,
     error: summary.filter((r) => r.status === "error").length,
@@ -406,7 +441,7 @@ export default function InvoiceTrackerClient() {
             <button
               onClick={() => setPeriod(shiftPeriod(period, 1))}
               className="p-1 text-gray-500 hover:text-gray-700 rounded"
-              disabled={period >= currentPeriod()}
+              disabled={period >= actualCurrentMonth()}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -508,32 +543,37 @@ export default function InvoiceTrackerClient() {
         </div>
       )}
 
-      {/* Unpaid invoices banner */}
-      {unpaidCount > 0 && (
+      {/* Ready to send banner — receipts that can be auto-forwarded to Juni */}
+      {readyForJuniCount > 0 && (
         <div className="mb-4 px-4 py-3 rounded-lg flex items-center justify-between bg-indigo-50 border border-indigo-200">
           <div className="flex items-center gap-2">
             <Send className="w-4 h-4 text-indigo-600 flex-shrink-0" />
             <span className="text-sm text-indigo-700">
-              <span className="font-semibold">{unpaidCount}</span> unpaid invoice{unpaidCount > 1 ? "s" : ""}
-              {readyCount > 0 && readyCount < unpaidCount && ` (${readyCount} new)`}
+              <span className="font-semibold">{readyForJuniCount}</span> receipt{readyForJuniCount > 1 ? "s" : ""} ready to send to Juni
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {readyCount > 0 && (
-              <button
-                onClick={handleForwardAll}
-                disabled={forwardingAll}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-300 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {forwardingAll ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-                Send to Juni
-              </button>
+          <button
+            onClick={handleForwardAll}
+            disabled={forwardingAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-300 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {forwardingAll ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
             )}
-          </div>
+            Send to Juni
+          </button>
+        </div>
+      )}
+
+      {/* Unpaid invoices banner — invoice-type services with new invoices to download */}
+      {readyInvoiceCount > 0 && (
+        <div className="mb-4 px-4 py-3 rounded-lg flex items-center gap-2 bg-amber-50 border border-amber-200">
+          <Download className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span className="text-sm text-amber-700">
+            <span className="font-semibold">{readyInvoiceCount}</span> unpaid invoice{readyInvoiceCount > 1 ? "s" : ""} to download and pay
+          </span>
         </div>
       )}
 
@@ -722,19 +762,9 @@ export default function InvoiceTrackerClient() {
             )}
           </div>
           <div className="flex items-center gap-3 text-xs">
-            {insights?.monthlySpend && (
-              <span className="text-gray-700 font-medium">
-                Total: {fmtAmount(insights.monthlySpend.total, insights.monthlySpend.currency)}
-              </span>
-            )}
-            {counts.paid > 0 && (
-              <span className="text-emerald-700">
-                <span className="font-semibold">{counts.paid}</span> paid
-              </span>
-            )}
-            {counts.forwarded > 0 && (
+            {counts.sent > 0 && (
               <span className="text-emerald-600">
-                <span className="font-semibold">{counts.forwarded}</span> forwarded
+                <span className="font-semibold">{counts.sent}</span> sent
               </span>
             )}
             {counts.ready > 0 && (
@@ -778,14 +808,6 @@ export default function InvoiceTrackerClient() {
 
       {/* Service List */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {/* Table Header */}
-        <div className="grid grid-cols-[1fr_80px_160px_44px] gap-3 px-4 py-2.5 border-b border-gray-100 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider">
-          <span>Service</span>
-          <span>Cycle</span>
-          <span>Status</span>
-          <span></span>
-        </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-12 text-gray-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -802,111 +824,97 @@ export default function InvoiceTrackerClient() {
             </button>
           </div>
         ) : (
-          summary.map((row) => {
+          [...summary].sort((a, b) => {
+            const doneStatuses = new Set(["paid", "forwarded", "manual", "not_due", "dismissed"]);
+            const aDone = doneStatuses.has(a.status) ? 1 : 0;
+            const bDone = doneStatuses.has(b.status) ? 1 : 0;
+            if (aDone !== bDone) return aDone - bDone;
+            return a.service.name.localeCompare(b.service.name);
+          }).map((row) => {
             const isOverdue = showMonthEndWarning && row.status === "waiting";
+            const isSent = row.status === "paid" || row.status === "forwarded";
+            const isDone = isSent || row.status === "manual";
+            const isNotDue = row.status === "not_due";
+            const isReady = row.status === "ready";
+            const borderColor = isSent ? "border-l-emerald-400" : isDone ? "border-l-gray-300" : isReady ? "border-l-indigo-400" : row.status === "error" ? "border-l-red-400" : isOverdue ? "border-l-amber-400" : "border-l-transparent";
+
             return (
-              <div key={row.service.id}>
+              <div key={row.service.id} className="border-b border-gray-100 last:border-b-0">
                 <div
-                  className={`grid grid-cols-[1fr_80px_160px_44px] gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50 items-center cursor-pointer ${
-                    isOverdue ? "bg-amber-50/30" : ""
+                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 cursor-pointer border-l-[3px] ${borderColor} ${
+                    isOverdue ? "bg-amber-50/20" : ""
                   }`}
                   onClick={() => setExpandedRow(expandedRow === row.service.id ? null : row.service.id)}
                 >
-                  {/* Service name */}
-                  <div>
+                  {/* Service name + type + billing link */}
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-gray-800">{row.service.name}</p>
-                      {row.service.is_manual_upload && (
-                        <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
-                          Manual
-                        </span>
+                      <span className={`text-sm font-medium ${isNotDue ? "text-gray-400" : "text-gray-800"}`}>
+                        {row.service.name}
+                      </span>
+                      {row.invoiceCount > 1 && (
+                        <span className="text-[10px] text-gray-400">{row.invoiceCount}x</span>
                       )}
-                      {row.service.forward_to === "invoices" && (
-                        <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                          Unpaid
-                        </span>
-                      )}
-                      {isOverdue && (
-                        <span className="text-[10px] font-medium text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded">
-                          Overdue
-                        </span>
+                      {row.service.billing_url && (
+                        <a
+                          href={row.service.billing_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-600 hover:underline"
+                        >
+                          billing &rarr;
+                        </a>
                       )}
                     </div>
-                    {row.service.sender_patterns.length > 0 && (
-                      <p className="text-xs text-gray-400 truncate">
-                        {row.service.sender_patterns.join(", ")}
-                      </p>
-                    )}
-                    {row.service.billing_url && (
-                      <a
-                        href={row.service.billing_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-indigo-500 hover:text-indigo-600 hover:underline truncate block"
-                      >
-                        Billing page &rarr;
-                      </a>
-                    )}
+                    <span className="text-xs text-gray-400">
+                      {row.service.is_manual_upload ? "Manual" : "Automatic"}
+                    </span>
                   </div>
 
-                  {/* Cycle */}
-                  <span className="text-xs text-gray-500 capitalize">
-                    {row.service.billing_cycle === "usage_based" ? "Usage" : row.service.billing_cycle === "one_time" ? "One-time" : row.service.billing_cycle}
-                  </span>
+                  {/* Status text — single clean indicator */}
+                  <div className="flex-shrink-0 w-20 text-right">
+                    {isSent ? (
+                      <span className="text-xs font-medium text-emerald-600">Sent</span>
+                    ) : isReady ? (
+                      <span className="text-xs font-medium text-indigo-600">Ready</span>
+                    ) : row.status === "waiting" ? (
+                      <span className={`text-xs ${isOverdue ? "font-medium text-amber-600" : "text-gray-400"}`}>
+                        {isOverdue ? "Overdue" : "Waiting"}
+                      </span>
+                    ) : row.status === "error" ? (
+                      <span className="text-xs font-medium text-red-500">Error</span>
+                    ) : row.status === "manual" ? (
+                      <span className="text-xs text-gray-400">Handled</span>
+                    ) : isNotDue ? (
+                      <span className="text-xs text-gray-300">Not due</span>
+                    ) : row.status === "received_no_pdf" ? (
+                      <span className="text-xs text-blue-500">No PDF</span>
+                    ) : row.status === "unmatched" ? (
+                      <span className="text-xs text-orange-500">Unmatched</span>
+                    ) : null}
+                  </div>
 
-                  {/* Status */}
-                  <div className="flex items-center gap-2">
-                    {row.service.is_manual_upload ? (
-                      <>
-                        {row.status === "forwarded" || row.status === "manual" || row.status === "paid" ? (
-                          <StatusBadge status={row.status} />
-                        ) : null}
+                  {/* Quick action — Upload for manual services, nothing for sent */}
+                  <div className="flex-shrink-0 w-[90px] flex justify-end">
+                    {row.service.is_manual_upload && !isDone && !isNotDue ? (() => {
+                      const pendingCount = row.logs.filter(l => l.status === "ready" || l.status === "received_no_pdf").length;
+                      return (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setUploadTarget({ serviceId: row.service.id, serviceName: row.service.name });
                           }}
-                          className="p-1 rounded border bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                          title="Upload PDF"
+                          className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-500 transition-colors"
                         >
-                          <Upload className="w-3.5 h-3.5" />
+                          Upload{pendingCount > 0 ? ` (${pendingCount})` : ""}
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        <StatusBadge status={row.status} />
-                        {row.invoiceCount > 1 && (
-                          <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
-                            {row.invoiceCount}x
-                          </span>
-                        )}
-                        {/* Mark Paid button for ready/forwarded */}
-                        {(row.status === "ready" || row.status === "forwarded") && row.logs.some((l) => l.status === "ready" || l.status === "forwarded") && (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              const unpaidLogs = row.logs.filter((l) => l.status === "ready" || l.status === "forwarded");
-                              await handleMarkPaid(unpaidLogs.map((l) => l.id), row.service.id);
-                            }}
-                            disabled={markingPaid === row.service.id}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                            title="Mark as paid"
-                          >
-                            {markingPaid === row.service.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3 h-3" />
-                            )}
-                            Paid
-                          </button>
-                        )}
-                      </>
-                    )}
+                      );
+                    })() : null}
                   </div>
 
-                  {/* Actions */}
-                  <div className="relative">
+                  {/* Menu button — always visible */}
+                  <div className="relative flex-shrink-0">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -939,24 +947,20 @@ export default function InvoiceTrackerClient() {
                           className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                         >
                           <Upload className="w-3.5 h-3.5" />
-                          Upload PDF manually
+                          Upload PDF
                         </button>
-                        {/* Mark as paid */}
-                        {(row.status === "ready" || row.status === "forwarded") && row.logs.length > 0 && (
-                          <button
-                            onClick={async () => {
-                              setActionMenu(null);
-                              const unpaidLogs = row.logs.filter((l) => l.status === "ready" || l.status === "forwarded");
-                              await handleMarkPaid(unpaidLogs.map((l) => l.id), row.service.id);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
+                        {row.service.billing_url && (
+                          <a
+                            href={row.service.billing_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            Mark as paid
-                          </button>
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            Billing page
+                          </a>
                         )}
-                        {/* Send to Juni */}
-                        {row.status === "ready" && row.log?.id && (
+                        {row.status === "ready" && row.log?.id && row.service.forward_to !== "invoices" && (
                           <button
                             onClick={() => {
                               setActionMenu(null);
@@ -984,10 +988,10 @@ export default function InvoiceTrackerClient() {
                             ) : (
                               <RotateCcw className="w-3.5 h-3.5" />
                             )}
-                            Retry forward
+                            Retry
                           </button>
                         )}
-                        {row.status !== "forwarded" && row.status !== "paid" && row.status !== "not_due" && (
+                        {!isSent && row.status !== "not_due" && (
                           <button
                             onClick={() => handleMarkManual(row.log?.id, row.service.id)}
                             className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
@@ -1003,7 +1007,7 @@ export default function InvoiceTrackerClient() {
                             }}
                             className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
                           >
-                            Delete log entry
+                            Delete log
                           </button>
                         )}
                       </div>
@@ -1011,80 +1015,77 @@ export default function InvoiceTrackerClient() {
                   </div>
                 </div>
 
-                {/* Expanded log details */}
+                {/* Expanded log details — clean card layout */}
                 {expandedRow === row.service.id && row.logs.length > 0 && (
-                  <div className="px-4 py-3 bg-gray-50/70 border-b border-gray-100 text-xs text-gray-500 space-y-3">
-                    {row.logs.length > 1 && (
-                      <div className="flex items-center gap-2 pb-2 border-b border-gray-200 mb-1">
-                        <span className="font-medium text-gray-600">
-                          {row.logs.length} invoices this period
-                        </span>
-                        {row.totalAmount != null && (
-                          <span className="text-gray-600 font-mono">
-                            — Total: {fmtAmount(row.totalAmount, row.totalCurrency || "SEK")}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {row.logs.map((log, logIdx) => (
-                      <div key={log.id} className="grid grid-cols-2 gap-x-6 gap-y-1.5 max-w-lg">
-                        {row.logs.length > 1 && (
-                          <>
-                            <span className="text-gray-400 font-medium col-span-2">
-                              Invoice #{logIdx + 1}
-                            </span>
-                          </>
-                        )}
-                        {log.email_from && (
-                          <>
-                            <span className="text-gray-400">From</span>
-                            <span className="text-gray-600 truncate">{log.email_from}</span>
-                          </>
-                        )}
-                        {log.email_subject && (
-                          <>
-                            <span className="text-gray-400">Subject</span>
-                            <span className="text-gray-600 truncate">{log.email_subject}</span>
-                          </>
-                        )}
-                        {log.email_date && (
-                          <>
-                            <span className="text-gray-400">Email date</span>
-                            <span className="text-gray-600">{new Date(log.email_date).toLocaleString()}</span>
-                          </>
-                        )}
-                        {log.amount != null && (
-                          <>
-                            <span className="text-gray-400">Amount</span>
-                            <span className="text-gray-600 font-mono">{fmtAmount(log.amount, log.currency || "SEK")}</span>
-                          </>
-                        )}
-                        {log.pdf_filename && (
-                          <>
-                            <span className="text-gray-400">PDF</span>
-                            <span className="text-gray-600">{log.pdf_filename}</span>
-                          </>
-                        )}
-                        {log.forwarded_at && (
-                          <>
-                            <span className="text-gray-400">Forwarded</span>
-                            <span className="text-gray-600">{new Date(log.forwarded_at).toLocaleString()}</span>
-                          </>
-                        )}
-                        {log.error_message && (
-                          <>
-                            <span className="text-gray-400">Error</span>
-                            <span className="text-red-500">{log.error_message}</span>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                  <div className="bg-gray-50/60 border-t border-gray-100 px-5 py-3 space-y-2">
+                    {row.logs.map((log, logIdx) => {
+                      const logDone = log.status === "paid" || log.status === "forwarded";
+                      return (
+                        <div
+                          key={log.id}
+                          className={`bg-white rounded-lg border px-4 py-3 flex items-start gap-3 ${
+                            logDone ? "border-gray-100 opacity-60" : "border-gray-200"
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <button
+                            onClick={() => !logDone && handleMarkLogDone(log.id)}
+                            className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              logDone
+                                ? "bg-emerald-500 border-emerald-500 cursor-default"
+                                : "border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer"
+                            }`}
+                          >
+                            {logDone && <Check className="w-3 h-3 text-white" />}
+                          </button>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            {/* Subject as title */}
+                            <p className={`text-sm font-medium truncate ${logDone ? "text-gray-400 line-through" : "text-gray-700"}`}>
+                              {log.email_subject || `Invoice #${logIdx + 1}`}
+                            </p>
+                            {/* Key details in a compact row */}
+                            <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                              {log.email_date && (
+                                <span>{new Date(log.email_date).toLocaleDateString()}</span>
+                              )}
+                              {log.pdf_filename && (
+                                <span className="text-gray-500">{log.pdf_filename}</span>
+                              )}
+                            </div>
+                            {log.error_message && (
+                              <p className="text-xs text-red-500">{log.error_message}</p>
+                            )}
+                          </div>
+                          {/* Download button for invoice-type services */}
+                          {log.pdf_filename && row.service.forward_to === "invoices" && (
+                            <a
+                              href={`/api/invoices/logs/${log.id}/download`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-shrink-0 p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              title={`Download ${log.pdf_filename}`}
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          )}
+                          {/* Status label */}
+                          <div className="flex-shrink-0 text-right">
+                            {logDone ? (
+                              <span className="text-xs text-gray-400">
+                                {log.forwarded_at ? new Date(log.forwarded_at).toLocaleDateString() : "Done"}
+                              </span>
+                            ) : log.status === "error" ? (
+                              <span className="text-xs font-medium text-red-500">Error</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Expanded: no log yet */}
                 {expandedRow === row.service.id && row.logs.length === 0 && (
-                  <div className="px-4 py-3 bg-gray-50/70 border-b border-gray-100 text-xs text-gray-400 italic">
+                  <div className="bg-gray-50/60 border-t border-gray-100 px-5 py-4 text-sm text-gray-400">
                     No email received yet for this period.
                   </div>
                 )}
@@ -1118,12 +1119,9 @@ export default function InvoiceTrackerClient() {
                 <div key={r.service.id} className="flex items-center gap-2 text-sm text-emerald-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                   <span>{r.service.name}</span>
-                  {r.totalAmount != null && (
-                    <span className="text-emerald-500 font-mono text-xs">
-                      {fmtAmount(r.totalAmount, r.totalCurrency || "SEK")}
-                    </span>
-                  )}
-                  <StatusBadge status={r.status} />
+                  <span className="text-xs text-emerald-500">
+                    {r.status === "manual" ? "manual" : "sent"}
+                  </span>
                 </div>
               ))}
           </div>
@@ -1132,42 +1130,54 @@ export default function InvoiceTrackerClient() {
 
       {/* Upload PDF Modal */}
       {uploadTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setUploadTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => !uploading && setUploadTarget(null)}>
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Invoice PDF</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Upload a PDF for <span className="font-medium">{uploadTarget.serviceName}</span> — {formatPeriod(period)}.
-              It will be forwarded to Juni and marked as handled.
+              Upload PDFs for <span className="font-medium">{uploadTarget.serviceName}</span> — {formatPeriod(period)}.
+              They will be forwarded to Juni and marked as handled.
             </p>
             <label className="block">
               <div className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors">
                 {uploading ? (
-                  <div className="flex items-center justify-center gap-2 text-gray-500">
+                  <div className="flex flex-col items-center gap-1 text-gray-500">
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Uploading and forwarding...</span>
+                    {uploadProgress && uploadProgress.total > 1 ? (
+                      <>
+                        <span className="text-sm">Uploading {uploadProgress.current}/{uploadProgress.total}...</span>
+                        <span className="text-xs text-gray-400">{uploadProgress.filename}</span>
+                      </>
+                    ) : (
+                      <span className="text-sm">Uploading and forwarding...</span>
+                    )}
                   </div>
                 ) : (
                   <>
                     <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">Click to select a PDF file</p>
+                    <p className="text-sm text-gray-500">Click to select PDF files</p>
+                    <p className="text-xs text-gray-400 mt-1">You can select multiple files</p>
                   </>
                 )}
               </div>
               <input
                 type="file"
                 accept=".pdf"
+                multiple
                 className="hidden"
                 disabled={uploading}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleUploadPdf(uploadTarget.serviceId, uploadTarget.serviceName, file);
+                  const files = e.target.files;
+                  if (files && files.length > 0) {
+                    handleUploadPdfs(uploadTarget.serviceId, uploadTarget.serviceName, Array.from(files));
+                  }
                 }}
               />
             </label>
             <div className="flex justify-end mt-4">
               <button
-                onClick={() => setUploadTarget(null)}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                onClick={() => !uploading && setUploadTarget(null)}
+                disabled={uploading}
+                className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
               >
                 Cancel
               </button>

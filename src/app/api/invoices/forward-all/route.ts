@@ -13,13 +13,26 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
-  // Get all "ready" logs for this period
-  const { data: logs, error } = await db
+  // Get all "ready" logs for this period, excluding invoice-type services
+  // (invoice services need manual download+upload, not auto-forward)
+  const { data: invoiceServiceIds } = await db
+    .from("invoice_services")
+    .select("id")
+    .eq("forward_to", "invoices");
+  const excludeIds = (invoiceServiceIds || []).map((s: { id: string }) => s.id);
+
+  let query = db
     .from("invoice_logs")
     .select("id")
     .eq("status", "ready")
     .eq("period", period)
     .not("service_id", "is", null);
+
+  if (excludeIds.length > 0) {
+    query = query.not("service_id", "in", `(${excludeIds.join(",")})`);
+  }
+
+  const { data: logs, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
