@@ -276,7 +276,7 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         {nav.map((entry) =>
           isGroup(entry) ? renderGroup(entry) : renderNavItem(entry)
         )}
@@ -315,7 +315,7 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
           </div>
         )}
         <p className="text-[10px] text-muted-foreground/50 mt-1 font-mono">
-          v{process.env.NEXT_PUBLIC_BUILD_ID}
+          {process.env.NEXT_PUBLIC_BUILD_ID}
         </p>
       </div>
     </aside>

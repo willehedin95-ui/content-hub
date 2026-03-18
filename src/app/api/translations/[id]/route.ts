@@ -108,29 +108,13 @@ export async function PUT(
         );
       }
 
-      const cheerio = await import("cheerio");
-      const { sanitizeHtml } = await import("@/lib/sanitize");
-      const $ = cheerio.load(translated_html);
-
-      // Server-side sanitization: strip ALL editor artifacts
-      $("[data-cc-editor]").remove();
-      $("[data-cc-injected]").remove();
-      $("[data-cc-el-toolbar]").remove();
-      $("[data-cc-exclude-mode]").remove();
-      $("[data-cc-editable]").removeAttr("data-cc-editable");
-      $("[contenteditable]").removeAttr("contenteditable");
-      $("[data-cc-padded]").removeAttr("data-cc-padded");
-      $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
-      $("[data-cc-hidden]").removeAttr("data-cc-hidden");
-      $("[data-cc-selected]").removeAttr("data-cc-selected");
-      $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
-
-      const finalHtml = sanitizeHtml($.html());
-
+      // Client-side extractHtmlFromIframe() already strips all editor artifacts.
+      // Skip redundant server-side cheerio + DOMPurify (2 full DOM parses of ~950KB
+      // HTML that caused timeouts on Vercel cold starts). Sanitization runs on publish.
       const { data: page, error: saveError } = await db
         .from("pages")
         .update({
-          original_html: finalHtml,
+          original_html: translated_html,
           updated_at: new Date().toISOString(),
         })
         .eq("id", realId)
@@ -141,7 +125,6 @@ export async function PUT(
         return safeError(saveError, "Failed to save source page");
       }
 
-      // Return minimal response (don't echo back the full HTML)
       return NextResponse.json({
         id,
         page_id: realId,
@@ -151,8 +134,9 @@ export async function PUT(
 
     if (translated_html) {
       // Inline editing path — HTML comes directly from the client.
-      // Only fetch the lightweight columns we need (skip translated_html and
-      // pages.original_html which can be ~1MB each and are unused here).
+      // Client-side extractHtmlFromIframe() already strips all editor artifacts.
+      // Skip redundant server-side cheerio + DOMPurify (2 full DOM parses of ~950KB
+      // HTML that caused timeouts on Vercel cold starts). Sanitization runs on publish.
       const { data: translation, error: fetchError } = await db
         .from("translations")
         .select("id, status, seo_title, seo_description, slug, translated_texts")
@@ -163,34 +147,25 @@ export async function PUT(
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
-      const cheerio = await import("cheerio");
-      const { sanitizeHtml } = await import("@/lib/sanitize");
-      const $ = cheerio.load(translated_html);
-
-      // Server-side sanitization: strip ALL editor artifacts
-      $("[data-cc-editor]").remove();
-      $("[data-cc-injected]").remove();
-      $("[data-cc-el-toolbar]").remove();
-      $("[data-cc-exclude-mode]").remove();
-      $("[data-cc-editable]").removeAttr("data-cc-editable");
-      $("[contenteditable]").removeAttr("contenteditable");
-      $("[data-cc-padded]").removeAttr("data-cc-padded");
-      $("[data-cc-pad-skip]").removeAttr("data-cc-pad-skip");
-      $("[data-cc-hidden]").removeAttr("data-cc-hidden");
-      $("[data-cc-selected]").removeAttr("data-cc-selected");
-      $("[data-cc-img-highlight]").removeAttr("data-cc-img-highlight").css("outline", "");
-
-      // Apply SEO meta tags
+      // Lightweight SEO meta tag injection via regex (no DOM parsing needed)
+      let finalHtml = translated_html;
       if (seo_title) {
-        $("title").text(seo_title);
-        $('meta[property="og:title"]').attr("content", seo_title);
+        finalHtml = finalHtml.replace(/<title>[^<]*<\/title>/, `<title>${seo_title}</title>`);
+        finalHtml = finalHtml.replace(
+          /(<meta\s[^>]*property="og:title"[^>]*content=")[^"]*"/,
+          `$1${seo_title}"`
+        );
       }
       if (seo_description) {
-        $('meta[name="description"]').attr("content", seo_description);
-        $('meta[property="og:description"]').attr("content", seo_description);
+        finalHtml = finalHtml.replace(
+          /(<meta\s[^>]*name="description"[^>]*content=")[^"]*"/,
+          `$1${seo_description}"`
+        );
+        finalHtml = finalHtml.replace(
+          /(<meta\s[^>]*property="og:description"[^>]*content=")[^"]*"/,
+          `$1${seo_description}"`
+        );
       }
-
-      const finalHtml = sanitizeHtml($.html());
 
       const { data: updated, error: saveError } = await db
         .from("translations")
@@ -202,7 +177,6 @@ export async function PUT(
           slug: slug ?? translation.slug,
           status:
             translation.status === "published" ? "translated" : translation.status,
-          // Always clear stale quality data — content was edited
           quality_score: null,
           quality_analysis: null,
           updated_at: new Date().toISOString(),
