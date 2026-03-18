@@ -1,11 +1,13 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-18 (text overlay detection + ad copy sync fix)
+Updated: 2026-03-18 (countdown timer feature + save error improvements)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Push + deploy** — 1 commit ahead (`4e291ae` text overlay detection + ad copy sync). Push to main, verify Vercel deploy
+- [ ] **Push + deploy** — 1 commit ahead (`e123f46` countdown timer feature + save error improvements). Push to main, verify Vercel deploy
+- [ ] **Test countdown timer E2E** — Tag element in builder, save, reopen (verify persistence), publish, verify live countdown works, test localStorage persistence across refresh
+- [ ] **Debug save error on Swedish translation** — Hover Error button to see tooltip message, diagnose root cause
 - [ ] **Test autopilot competitor swipe end-to-end** — Set `autopilot_mode: "competitor_swipe"` in settings, create GetHookd board, trigger `autopilot-concepts?force=true`, verify: ad discovered, Claude Vision analysis, images generated, Telegram notification sent, approve triggers translations + push
 - [ ] **Test autopilot-execute dry run** — Call `/api/cron/autopilot-execute?dry_run=true`, verify strategy engine runs and logs recommendations without executing
 - [ ] **Test autopilot-execute live** — Enable `autopilot_auto_kill` in settings, verify zombie ad sets get paused via Meta API, `autopilot_actions` rows created, Telegram digest sent
@@ -56,6 +58,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Builder countdown timer support** — ConfigTab "Interactive" section with countdown toggle (evergreen/fixed), auto-inject JS on publish via `injectCountdownScript()` in cloudflare-pages.ts, orange dashed outline in editor, Timer badge in Layers. Save error tooltip + dual response checking. Commit `e123f46`. (done 2026-03-18)
 - [x] **Text overlay detection + ad copy sync** — AI detects whether competitor ad has text overlays (clean native → no text). Ad copy now syncs into UI when background pipeline finishes. JSON parse robustness improved. Commit `4e291ae`. (done 2026-03-18)
 - [x] **Pain Point Selector + Ad Copy Adaptation** — Pill selector (5 options) in Ad Spy + Brainstorm competitor mode. System prompt constrains to single pain point. Ad copy adaptation instructions (structure/tone/length matching). Angle-aware landing page auto-assignment. `discovered_ads.pain_point` column. Commits `ea1fd74`, `0026530`, `31b18ba`. (done 2026-03-18)
 - [x] **Autopilot Competitor Swiping + Auto-Execute** — GetHookd API wrapper (`src/lib/gethookd.ts`), dual-mode autopilot-concepts cron (from_scratch + competitor_swipe), autopilot-execute cron (auto-kill + auto-budget at 07:00 UTC), Settings > Autopilot tab, DB tables (discovered_ads, autopilot_actions), Vercel env var. Commit `39047b3`. (done 2026-03-18)
