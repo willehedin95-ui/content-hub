@@ -13,6 +13,7 @@ export default function BuilderStatusBar() {
     setZoom,
     viewMode,
     setShowShortcutsModal,
+    saveError,
   } = useBuilder();
 
   const gc = qualityGrade ? gradeConfig(qualityGrade) : null;
@@ -23,7 +24,7 @@ export default function BuilderStatusBar() {
       : autoSaveStatus === "saved"
         ? "Saved"
         : autoSaveStatus === "error"
-          ? "Save failed"
+          ? saveError || "Save failed"
           : isDirty
             ? "Unsaved changes"
             : "";

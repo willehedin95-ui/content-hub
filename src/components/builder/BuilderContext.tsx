@@ -665,13 +665,18 @@ export function BuilderProvider({
             3000
           );
         } else {
-          console.error("[builder] Autosave failed:", res.status, res.statusText);
+          const errBody = await res.json().catch(() => ({}));
+          const errMsg = errBody.error || res.statusText || "Unknown error";
+          console.error("[builder] Autosave failed:", res.status, errMsg);
+          setSaveError(`Autosave failed (${res.status}): ${errMsg}`);
           setAutoSaveStatus("error");
           // Retry after 8 seconds
           autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
         }
       } catch (err) {
-        console.error("[builder] Autosave error:", err);
+        const msg = err instanceof Error ? err.message : "Network error";
+        console.error("[builder] Autosave error:", msg);
+        setSaveError(`Autosave error: ${msg}`);
         setAutoSaveStatus("error");
         // Retry after 8 seconds
         autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
