@@ -16,7 +16,7 @@ export const maxDuration = 120;
  * Stores results in image_jobs.ad_copy_translations JSON column.
  *
  * POST body: { language: Language }
- * - If language is omitted, translates all target languages sequentially.
+ * - If language is omitted, translates all target languages in parallel.
  */
 export async function POST(
   req: NextRequest,
@@ -61,10 +61,8 @@ export async function POST(
   const existing: ConceptCopyTranslations = job.ad_copy_translations ?? {};
   const results: Record<string, ConceptCopyTranslation> = { ...existing };
 
+  // Mark all target languages as "translating" in one DB write
   for (const lang of languages) {
-    const langLabel = LANGUAGES.find((l) => l.value === lang)?.label ?? lang;
-
-    // Mark as translating
     results[lang] = {
       primary_texts: [],
       headlines: [],
@@ -72,72 +70,76 @@ export async function POST(
       quality_analysis: null,
       status: "translating",
     };
-    await db
-      .from("image_jobs")
-      .update({ ad_copy_translations: results })
-      .eq("id", jobId);
+  }
+  await db
+    .from("image_jobs")
+    .update({ ad_copy_translations: results })
+    .eq("id", jobId);
 
-    try {
-      // Step 1: Translate
-      const translateResponse = await openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        max_completion_tokens: 4000,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
+  // Translate all languages in parallel to avoid sequential timeout
+  async function translateLang(lang: Language): Promise<ConceptCopyTranslation> {
+    const langLabel = LANGUAGES.find((l) => l.value === lang)?.label ?? lang;
+
+    // Step 1: Translate
+    const translateResponse = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      max_completion_tokens: 4000,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}${corrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${corrections}` : ""}
 Return a JSON object with exactly two keys:
 - "primary_texts": an array of translated primary texts (same order as input)
 - "headlines": an array of translated headlines (same order as input)
 No other text.`,
-          },
-          {
-            role: "user",
-            content: JSON.stringify({ primary_texts: primaryTexts, headlines: headlineTexts }),
-          },
-        ],
-      });
+        },
+        {
+          role: "user",
+          content: JSON.stringify({ primary_texts: primaryTexts, headlines: headlineTexts }),
+        },
+      ],
+    });
 
-      const translateContent = translateResponse.choices[0]?.message?.content?.trim();
-      if (!translateContent) throw new Error("No translation returned");
+    const translateContent = translateResponse.choices[0]?.message?.content?.trim();
+    if (!translateContent) throw new Error("No translation returned");
 
-      let parsed: { primary_texts: string[]; headlines: string[] };
-      try {
-        parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
-      } catch {
-        throw new Error("Translation returned invalid JSON");
-      }
+    let parsed: { primary_texts: string[]; headlines: string[] };
+    try {
+      parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
+    } catch {
+      throw new Error("Translation returned invalid JSON");
+    }
 
-      // Log translation usage
-      const tInput = translateResponse.usage?.prompt_tokens ?? 0;
-      const tOutput = translateResponse.usage?.completion_tokens ?? 0;
-      await db.from("usage_logs").insert({
-        type: "translation",
+    // Log translation usage
+    const tInput = translateResponse.usage?.prompt_tokens ?? 0;
+    const tOutput = translateResponse.usage?.completion_tokens ?? 0;
+    await db.from("usage_logs").insert({
+      type: "translation",
+      model: OPENAI_MODEL,
+      input_tokens: tInput,
+      output_tokens: tOutput,
+      cost_usd: calcOpenAICost(tInput, tOutput),
+      metadata: { purpose: "concept_copy_translation", language: lang, job_id: jobId },
+    });
+
+    // Step 2: Quality analysis (non-critical — translation is saved even if this fails)
+    let analysis = null;
+    let qualityScore = null;
+    try {
+      const allOriginal = [...primaryTexts, ...headlineTexts].join("\n---\n");
+      const allTranslated = [...parsed.primary_texts, ...parsed.headlines].join("\n---\n");
+
+      const analyzeResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
-        input_tokens: tInput,
-        output_tokens: tOutput,
-        cost_usd: calcOpenAICost(tInput, tOutput),
-        metadata: { purpose: "concept_copy_translation", language: lang, job_id: jobId },
-      });
-
-      // Step 2: Quality analysis (non-critical — translation is saved even if this fails)
-      let analysis = null;
-      let qualityScore = null;
-      try {
-        const allOriginal = [...primaryTexts, ...headlineTexts].join("\n---\n");
-        const allTranslated = [...parsed.primary_texts, ...parsed.headlines].join("\n---\n");
-
-        const analyzeResponse = await openai.chat.completions.create({
-          model: OPENAI_MODEL,
-          max_completion_tokens: 1500,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation and evaluate quality.
+        max_completion_tokens: 1500,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation and evaluate quality.
 
 Respond with JSON:
 {
@@ -153,61 +155,71 @@ List ALL issues you find. Pay special attention to:
 - Ad copy maintaining its persuasive power
 - Natural-sounding ${langLabel} (not "translationese")
 IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
-            },
-            {
-              role: "user",
-              content: `Original (English):\n${allOriginal}\n\nTranslation (${langLabel}):\n${allTranslated}`,
-            },
-          ],
-        });
+          },
+          {
+            role: "user",
+            content: `Original (English):\n${allOriginal}\n\nTranslation (${langLabel}):\n${allTranslated}`,
+          },
+        ],
+      });
 
-        const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
-        if (analyzeContent) {
-          analysis = JSON.parse(analyzeContent);
-          const grade = deriveCopyGrade(analysis);
-          analysis.quality_score = gradeToNumeric(grade);
-          qualityScore = analysis.quality_score;
-        }
-
-        // Log analysis usage
-        const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;
-        const aOutput = analyzeResponse.usage?.completion_tokens ?? 0;
-        await db.from("usage_logs").insert({
-          type: "translation",
-          model: OPENAI_MODEL,
-          input_tokens: aInput,
-          output_tokens: aOutput,
-          cost_usd: calcOpenAICost(aInput, aOutput),
-          metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
-        });
-      } catch (analysisErr) {
-        console.warn(`[translate-copy] Quality analysis failed for ${lang}, saving translation without analysis:`, analysisErr);
+      const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
+      if (analyzeContent) {
+        analysis = JSON.parse(analyzeContent);
+        const grade = deriveCopyGrade(analysis);
+        analysis.quality_score = gradeToNumeric(grade);
+        qualityScore = analysis.quality_score;
       }
 
-      results[lang] = {
-        primary_texts: parsed.primary_texts,
-        headlines: parsed.headlines,
-        quality_score: qualityScore,
-        quality_analysis: analysis,
-        status: "completed",
-      };
-    } catch (err) {
+      // Log analysis usage
+      const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;
+      const aOutput = analyzeResponse.usage?.completion_tokens ?? 0;
+      await db.from("usage_logs").insert({
+        type: "translation",
+        model: OPENAI_MODEL,
+        input_tokens: aInput,
+        output_tokens: aOutput,
+        cost_usd: calcOpenAICost(aInput, aOutput),
+        metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
+      });
+    } catch (analysisErr) {
+      console.warn(`[translate-copy] Quality analysis failed for ${lang}, saving translation without analysis:`, analysisErr);
+    }
+
+    return {
+      primary_texts: parsed.primary_texts,
+      headlines: parsed.headlines,
+      quality_score: qualityScore,
+      quality_analysis: analysis,
+      status: "completed",
+    };
+  }
+
+  const settled = await Promise.allSettled(
+    languages.map((lang) => translateLang(lang).then((result) => ({ lang, result })))
+  );
+
+  for (const outcome of settled) {
+    if (outcome.status === "fulfilled") {
+      results[outcome.value.lang] = outcome.value.result;
+    } else {
+      const lang = languages[settled.indexOf(outcome)];
       results[lang] = {
         primary_texts: [],
         headlines: [],
         quality_score: null,
         quality_analysis: null,
         status: "error",
-        error: err instanceof Error ? err.message : "Translation failed",
+        error: outcome.reason instanceof Error ? outcome.reason.message : "Translation failed",
       };
     }
-
-    // Save after each language
-    await db
-      .from("image_jobs")
-      .update({ ad_copy_translations: results })
-      .eq("id", jobId);
   }
+
+  // Save all results in one write
+  await db
+    .from("image_jobs")
+    .update({ ad_copy_translations: results })
+    .eq("id", jobId);
 
   return NextResponse.json({ translations: results });
 }
