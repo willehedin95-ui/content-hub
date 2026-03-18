@@ -10,6 +10,7 @@ import {
   X,
   Globe,
   BarChart3,
+  Bot,
 } from "lucide-react";
 import { MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
 import UsagePage from "@/app/usage/page";
@@ -19,11 +20,13 @@ import StaticAdsTab from "./tabs/StaticAdsTab";
 import MarketsTab from "./tabs/MarketsTab";
 import MetaAdsTab from "./tabs/MetaAdsTab";
 import IntegrationsTab from "./tabs/IntegrationsTab";
+import AutopilotTab from "./tabs/AutopilotTab";
 
 const TABS = [
   { id: "pages", label: "Landing Pages", icon: FileText, group: "SETTINGS" },
   { id: "static-ads", label: "Static Ads", icon: Image, group: "SETTINGS" },
   { id: "markets", label: "Markets", icon: Globe, group: "SETTINGS" },
+  { id: "autopilot", label: "Autopilot", icon: Bot, group: "SETTINGS" },
   { id: "meta-ads", label: "Meta Ads", icon: Megaphone, group: "CONNECTIONS" },
   { id: "integrations", label: "Integrations", icon: Plug, group: "CONNECTIONS" },
   { id: "usage", label: "Usage & Costs", icon: BarChart3, group: "ANALYTICS" },
@@ -55,6 +58,11 @@ export default function SettingsPage() {
     shopify_domains: "",
     meta_pixel_id: "",
     excluded_ips: [],
+    autopilot_mode: "disabled",
+    autopilot_auto_kill: false,
+    autopilot_auto_budget: false,
+    gethookd_board_id: "",
+    gethookd_explore_queries: [],
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -530,6 +538,10 @@ export default function SettingsPage() {
               fetchAdSetsForCampaign={fetchAdSetsForCampaign}
               handleTemplateAdSetChange={handleTemplateAdSetChange}
             />
+          )}
+
+          {activeTab === "autopilot" && (
+            <AutopilotTab settings={settings} setSettings={setSettings} saved={saved} handleSave={handleSave} />
           )}
 
           {activeTab === "meta-ads" && (

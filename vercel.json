@@ -25,6 +25,10 @@
       "schedule": "30 6 * * *"
     },
     {
+      "path": "/api/cron/autopilot-execute",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/autopilot-concepts",
       "schedule": "0 8 * * *"
     },

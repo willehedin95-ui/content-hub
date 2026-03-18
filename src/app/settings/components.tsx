@@ -32,6 +32,11 @@ export interface Settings {
   shopify_domains: string;
   meta_pixel_id: string;
   excluded_ips: string[];
+  autopilot_mode: "disabled" | "from_scratch" | "competitor_swipe";
+  autopilot_auto_kill: boolean;
+  autopilot_auto_budget: boolean;
+  gethookd_board_id: string;
+  gethookd_explore_queries: string[];
 }
 
 /* ─── Common props interface ────────────────────────── */

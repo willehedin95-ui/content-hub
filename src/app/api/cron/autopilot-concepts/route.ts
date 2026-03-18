@@ -12,7 +12,17 @@ import {
 } from "@/lib/brainstorm";
 import { generateImageBriefs, resolveReferenceImages } from "@/lib/static-ad-prompt";
 import { generateImage } from "@/lib/kie";
-import { CLAUDE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
+import {
+  exploreAds,
+  getBoardAds,
+  getBrandSpyBrands,
+  getBrandSpyAds,
+  filterImageAds,
+  getImageUrls,
+  type GethookdAd,
+} from "@/lib/gethookd";
 import type {
   BrainstormMode,
   BrainstormRequest,
@@ -34,6 +44,20 @@ const AUTOPILOT_MODES: BrainstormMode[] = [
   "from_internal",
   "unaware",
   "from_template",
+];
+
+// Default explore queries to rotate through (any niche — not just health)
+const DEFAULT_EXPLORE_QUERIES = [
+  "supplement health",
+  "skincare beauty",
+  "fitness equipment",
+  "wellness product",
+  "pillow sleep",
+  "mattress bed",
+  "pain relief",
+  "posture corrector",
+  "weight loss",
+  "anti-aging",
 ];
 
 export async function GET(req: NextRequest) {
@@ -60,265 +84,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // --- Step 2: Pick brainstorm mode ---
-    const mode = await pickBrainstormMode(db);
-
-    // --- Step 3: Fetch product context ---
-    const { data: product } = await db
-      .from("products")
-      .select("*")
-      .eq("slug", PRODUCT_SLUG)
+    // --- Step 2: Check autopilot mode from workspace settings ---
+    const { data: workspace } = await db
+      .from("workspaces")
+      .select("settings")
+      .eq("id", HAPPYSLEEP_WORKSPACE_ID)
       .single();
 
-    if (!product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 500 });
+    const settings = (workspace?.settings ?? {}) as Record<string, unknown>;
+    const autopilotMode = (settings.autopilot_mode as string) ?? "from_scratch";
+
+    // Route to the right code path
+    if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
+      return await runCompetitorSwipe(db, chatId, settings);
     }
 
-    const { data: guidelines } = await db
-      .from("copywriting_guidelines")
-      .select("*")
-      .eq("product_id", product.id);
-
-    const { data: segments } = await db
-      .from("product_segments")
-      .select("*")
-      .eq("product_id", product.id);
-
-    // --- Step 4: Build prompts and call Claude ---
-    const hookInspiration = await buildHookInspiration(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
-    const learningsContext = await buildLearningsContext(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
-
-    // For from_internal mode, fetch existing concepts for gap analysis
-    let existingConcepts: Array<{ name: string; angle: string; awareness: string }> | undefined;
-    if (mode === "from_internal") {
-      const { data: existing } = await db
-        .from("image_jobs")
-        .select("name, cash_dna")
-        .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-        .eq("product", PRODUCT_SLUG)
-        .not("cash_dna", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(30);
-
-      existingConcepts = (existing ?? []).map((j) => ({
-        name: j.name,
-        angle: (j.cash_dna as Record<string, unknown>)?.angle as string ?? "unknown",
-        awareness: (j.cash_dna as Record<string, unknown>)?.awareness_level as string ?? "unknown",
-      }));
-    }
-
-    const systemPrompt = buildBrainstormSystemPrompt(
-      product as ProductFull,
-      undefined, // productBrief
-      (guidelines ?? []) as CopywritingGuideline[],
-      (segments ?? []) as ProductSegment[],
-      mode,
-      hookInspiration,
-      learningsContext
-    );
-
-    const brainstormRequest: BrainstormRequest = {
-      mode,
-      product: PRODUCT_SLUG,
-      count: 1, // One concept at a time to stay within cron limits
-    };
-
-    const userPrompt = buildBrainstormUserPrompt(
-      brainstormRequest,
-      (segments ?? []) as ProductSegment[],
-      existingConcepts
-    );
-
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-    const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 4000,
-      temperature: 0.9,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-
-    const rawContent = response.content[0]?.type === "text" ? response.content[0].text : "";
-    const proposals = parseConceptProposals(rawContent);
-
-    if (proposals.length === 0) {
-      if (chatId) {
-        await sendMessageWithInlineKeyboard(chatId,
-          `⚠️ Autopilot brainstorm returned no valid proposals (mode: ${mode}). Will retry tomorrow.`,
-          []
-        );
-      }
-      return NextResponse.json({ ok: true, error: "No proposals parsed" });
-    }
-
-    const proposal = proposals[0];
-
-    // --- Step 5: Create image_job ---
-    // Get next concept number
-    const { data: lastJob } = await db
-      .from("image_jobs")
-      .select("concept_number")
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-      .not("concept_number", "is", null)
-      .order("concept_number", { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
-
-    const { data: job, error: jobErr } = await db
-      .from("image_jobs")
-      .insert({
-        workspace_id: HAPPYSLEEP_WORKSPACE_ID,
-        name: proposal.concept_name,
-        product: PRODUCT_SLUG,
-        status: "draft",
-        source: "autopilot",
-        concept_number: nextConceptNumber,
-        target_languages: TARGET_LANGUAGES,
-        target_ratios: TARGET_RATIOS,
-        cash_dna: proposal.cash_dna,
-        ad_copy_primary: proposal.ad_copy_primary,
-        ad_copy_headline: proposal.ad_copy_headline,
-        visual_direction: proposal.visual_direction,
-        tags: proposal.suggested_tags ?? [],
-      })
-      .select()
-      .single();
-
-    if (jobErr || !job) {
-      console.error("[Autopilot] Failed to create image_job:", jobErr);
-      return NextResponse.json({ error: "Failed to create job" }, { status: 500 });
-    }
-
-    // --- Step 6: Auto-assign landing page ---
-    const landingPageId = await findBestLandingPage(db);
-    if (landingPageId) {
-      await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
-    }
-
-    // --- Step 7: Generate images ---
-    const { data: productImages } = await db
-      .from("product_images")
-      .select("url, category")
-      .eq("product_id", product.id)
-      .order("sort_order", { ascending: true });
-
-    let imageResults: Array<{ url: string; sourceImageId: string }> = [];
-    try {
-      const { briefs } = await generateImageBriefs({
-        job: job as Parameters<typeof generateImageBriefs>[0]["job"],
-        product: product as ProductFull,
-        productImages: (productImages ?? []) as Array<{ url: string; category: string }>,
-        count: 3,
-      });
-
-      const settled = await Promise.allSettled(
-        briefs.map(async (brief, index) => {
-          const referenceUrls = resolveReferenceImages(
-            brief,
-            (productImages ?? []) as Array<{ url: string; category: string }>
-          );
-
-          const { urls: resultUrls } = await generateImage(brief.prompt, referenceUrls, "4:5");
-          if (!resultUrls?.length) throw new Error("No image generated");
-
-          // Download and upload to Supabase
-          const resultRes = await fetch(resultUrls[0]);
-          if (!resultRes.ok) throw new Error("Failed to download image");
-          const buffer = Buffer.from(await resultRes.arrayBuffer());
-
-          const fileId = crypto.randomUUID();
-          const filePath = `image-jobs/${job.id}/${fileId}.png`;
-          const { error: uploadError } = await db.storage
-            .from(STORAGE_BUCKET)
-            .upload(filePath, buffer, { contentType: "image/png", upsert: false });
-
-          if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-
-          const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
-
-          // Insert source_images row
-          const { data: sourceImage } = await db
-            .from("source_images")
-            .insert({
-              job_id: job.id,
-              original_url: urlData.publicUrl,
-              filename: `${brief.style}-${fileId.slice(0, 8)}.png`,
-              processing_order: index,
-              skip_translation: false,
-              generation_prompt: brief.prompt,
-              generation_style: brief.style,
-              batch: 1,
-            })
-            .select()
-            .single();
-
-          return { url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" };
-        })
-      );
-
-      for (const outcome of settled) {
-        if (outcome.status === "fulfilled") {
-          imageResults.push(outcome.value);
-        } else {
-          console.error("[Autopilot] Image generation failed:", outcome.reason);
-        }
-      }
-
-      // Update job status
-      await db.from("image_jobs").update({
-        status: "ready",
-        updated_at: new Date().toISOString(),
-      }).eq("id", job.id);
-    } catch (err) {
-      console.error("[Autopilot] Image generation error:", err);
-    }
-
-    // --- Step 8: Send Telegram notification ---
-    if (chatId) {
-      const angle = proposal.cash_dna?.angle ?? "—";
-      const awareness = proposal.cash_dna?.awareness_level ?? "—";
-      const hook = proposal.cash_dna?.hooks?.[0] ?? "—";
-      const imagesGenerated = imageResults.length;
-      const pageAssigned = landingPageId ? "Yes" : "No";
-      const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
-
-      const caption = [
-        `🤖 Autopilot concept #${nextConceptNumber}:`,
-        ``,
-        `"${proposal.concept_name}"`,
-        `Angle: ${angle} | Awareness: ${awareness}`,
-        `Hook: "${hook.length > 60 ? hook.slice(0, 60) + "..." : hook}"`,
-        `Images: ${imagesGenerated}/3 | Page: ${pageAssigned}`,
-        `Mode: ${mode}`,
-        ``,
-        `${hubUrl}/concepts/${job.id}`,
-      ].join("\n");
-
-      const buttons = [[
-        { text: "✅ Approve", callback_data: `concept_approve:${job.id}` },
-        { text: "❌ Reject", callback_data: `concept_reject:${job.id}` },
-      ]];
-
-      if (imageResults.length > 0) {
-        await sendPhoto(chatId, imageResults[0].url, caption, buttons);
-      } else {
-        await sendMessageWithInlineKeyboard(chatId, caption, buttons);
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      concept: {
-        id: job.id,
-        name: proposal.concept_name,
-        concept_number: nextConceptNumber,
-        mode,
-        images_generated: imageResults.length,
-        landing_page_assigned: !!landingPageId,
-      },
-    });
+    // Default: from-scratch mode (original flow)
+    return await runFromScratch(db, chatId);
   } catch (err) {
     console.error("[Autopilot] Fatal error:", err);
     if (chatId) {
@@ -332,6 +114,801 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// ===========================================================================
+// COMPETITOR SWIPE MODE
+// ===========================================================================
+
+async function runCompetitorSwipe(
+  db: ReturnType<typeof createServerSupabase>,
+  chatId: string | undefined,
+  settings: Record<string, unknown>
+) {
+  // --- Discover a winning competitor ad ---
+  const discovered = await discoverCompetitorAd(db, settings);
+
+  if (!discovered) {
+    if (chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        "🔍 Autopilot swipe: No new ads found to swipe today. Will retry tomorrow.",
+        []
+      );
+    }
+    return NextResponse.json({ ok: true, skipped: true, reason: "No new ads discovered" });
+  }
+
+  console.log(`[Autopilot] Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}"`);
+
+  // --- Store in discovered_ads ---
+  const imageUrls = getImageUrls(discovered.ad);
+  await db.from("discovered_ads").upsert({
+    workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+    gethookd_ad_id: discovered.ad.id,
+    external_id: discovered.ad.external_id,
+    brand_name: discovered.ad.brand.name,
+    title: discovered.ad.title,
+    body: discovered.ad.body,
+    landing_page: discovered.ad.landing_page,
+    performance_score: discovered.ad.performance_score,
+    performance_score_title: discovered.ad.performance_score_title,
+    days_active: discovered.ad.days_active,
+    display_format: discovered.ad.display_format,
+    media_urls: imageUrls,
+    source: discovered.source,
+    status: "swiping",
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "workspace_id,gethookd_ad_id" });
+
+  // --- Score ad (skip for board ads — user already vetted) ---
+  if (discovered.source !== "board") {
+    const score = await scoreAd(discovered.ad);
+    await db.from("discovered_ads")
+      .update({ ai_relevance_score: score.score, ai_reasoning: score.reasoning })
+      .eq("gethookd_ad_id", discovered.ad.id)
+      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+
+    if (score.score < 6) {
+      await db.from("discovered_ads")
+        .update({ status: "skipped" })
+        .eq("gethookd_ad_id", discovered.ad.id)
+        .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+
+      console.log(`[Autopilot] Ad scored ${score.score}/10 — skipping: ${score.reasoning}`);
+      if (chatId) {
+        await sendMessageWithInlineKeyboard(chatId,
+          `🔍 Autopilot skipped ad from ${discovered.ad.brand.name} (score: ${score.score}/10)\nReason: ${score.reasoning}`,
+          []
+        );
+      }
+      return NextResponse.json({ ok: true, skipped: true, reason: `Ad scored ${score.score}/10` });
+    }
+  }
+
+  // --- Swipe via Claude Vision (reuse existing competitor ad pipeline) ---
+  const competitorImageUrls = imageUrls.slice(0, 3); // Max 3 images
+  if (competitorImageUrls.length === 0) {
+    await db.from("discovered_ads")
+      .update({ status: "skipped" })
+      .eq("gethookd_ad_id", discovered.ad.id)
+      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+    return NextResponse.json({ ok: true, skipped: true, reason: "No images in ad" });
+  }
+
+  // Fetch product context
+  const { data: product } = await db.from("products").select("*").eq("slug", PRODUCT_SLUG).single();
+  if (!product) return NextResponse.json({ error: "Product not found" }, { status: 500 });
+
+  const { data: guidelines } = await db.from("copywriting_guidelines").select("*").eq("product_id", product.id);
+  const { data: segments } = await db.from("product_segments").select("*").eq("product_id", product.id);
+  const hookInspiration = await buildHookInspiration(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
+  const learningsContext = await buildLearningsContext(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
+
+  // Build system prompt for competitor ad mode
+  const systemPrompt = buildBrainstormSystemPrompt(
+    product as ProductFull,
+    undefined,
+    (guidelines ?? []) as CopywritingGuideline[],
+    (segments ?? []) as ProductSegment[],
+    "from_competitor_ad",
+    hookInspiration,
+    learningsContext,
+    competitorImageUrls.length,
+    1 // 1 variation per image
+  );
+
+  // Build user prompt with competitor ad context
+  const userPrompt = buildBrainstormUserPrompt(
+    {
+      mode: "from_competitor_ad",
+      product: PRODUCT_SLUG,
+      count: 1,
+      competitor_image_urls: competitorImageUrls,
+      competitor_ad_copy: discovered.ad.body?.slice(0, 2000),
+    } as BrainstormRequest,
+    (segments ?? []) as ProductSegment[],
+  );
+
+  // Call Claude Vision
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 8000,
+    temperature: 0.7,
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+    messages: [{
+      role: "user",
+      content: [
+        ...competitorImageUrls.map((url) => ({
+          type: "image" as const,
+          source: { type: "url" as const, url },
+        })),
+        { type: "text" as const, text: userPrompt },
+      ],
+    }],
+  });
+
+  const rawContent = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+  if (!rawContent) {
+    if (chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        `⚠️ Autopilot swipe: Claude returned empty response for ad from ${discovered.ad.brand.name}. Will retry tomorrow.`,
+        []
+      );
+    }
+    return NextResponse.json({ ok: true, error: "Empty Claude response" });
+  }
+
+  // Parse response
+  let parsed: {
+    analysis: Record<string, unknown>;
+    concept: {
+      concept_name: string;
+      concept_description?: string;
+      cash_dna: Record<string, unknown>;
+      ad_copy_primary: string[];
+      ad_copy_headline: string[];
+      visual_direction: string;
+      differentiation_note?: string;
+      suggested_tags?: string[];
+    };
+    image_prompts: Array<{
+      source_index?: number;
+      prompt: string;
+      hook_text: string;
+      headline_text: string;
+      include_product_reference?: boolean;
+    }>;
+  };
+
+  try {
+    const cleaned = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    parsed = JSON.parse(cleaned);
+  } catch (parseErr) {
+    console.error("[Autopilot/swipe] Parse error:", parseErr, "\nRaw:", rawContent.slice(0, 500));
+    if (chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        `⚠️ Autopilot swipe: Failed to parse Claude response. Will retry tomorrow.`,
+        []
+      );
+    }
+    return NextResponse.json({ ok: true, error: "Parse error" });
+  }
+
+  if (!parsed.concept || !parsed.image_prompts?.length) {
+    return NextResponse.json({ ok: true, error: "Missing required fields in response" });
+  }
+
+  // --- Create image_job ---
+  const { data: lastJob } = await db
+    .from("image_jobs")
+    .select("concept_number")
+    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+    .not("concept_number", "is", null)
+    .order("concept_number", { ascending: false })
+    .limit(1)
+    .single();
+
+  const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
+
+  const tags = [...(parsed.concept.suggested_tags ?? []), "competitor-swipe", "autopilot"];
+  // Add source info to cash_dna
+  const cashDna = {
+    ...(parsed.concept.cash_dna ?? {}),
+    ad_source: "competitor_swipe",
+    swiped_from: discovered.ad.brand.name,
+    swiped_ad_id: discovered.ad.id,
+  };
+
+  const { data: productImages } = await db
+    .from("product_images")
+    .select("url, category")
+    .eq("product_id", product.id)
+    .order("sort_order", { ascending: true });
+
+  const productHeroUrls = (productImages ?? [])
+    .filter((i) => i.category === "product")
+    .slice(0, 3)
+    .map((i) => i.url);
+
+  const { data: job, error: jobErr } = await db
+    .from("image_jobs")
+    .insert({
+      workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+      name: parsed.concept.concept_name,
+      product: PRODUCT_SLUG,
+      status: "draft",
+      source: "autopilot",
+      concept_number: nextConceptNumber,
+      target_languages: TARGET_LANGUAGES,
+      target_ratios: TARGET_RATIOS,
+      cash_dna: cashDna,
+      ad_copy_primary: parsed.concept.ad_copy_primary,
+      ad_copy_headline: parsed.concept.ad_copy_headline,
+      visual_direction: parsed.concept.visual_direction,
+      tags,
+      pending_competitor_gen: {
+        image_prompts: parsed.image_prompts,
+        competitor_image_urls: competitorImageUrls,
+        product_hero_urls: productHeroUrls,
+      },
+    })
+    .select()
+    .single();
+
+  if (jobErr || !job) {
+    console.error("[Autopilot/swipe] Failed to create image_job:", jobErr);
+    return NextResponse.json({ error: "Failed to create job" }, { status: 500 });
+  }
+
+  // Auto-assign landing page
+  const landingPageId = await findBestLandingPage(db);
+  if (landingPageId) {
+    await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
+  }
+
+  // --- Generate images (inline, same flow as generate-competitor route) ---
+  let imageResults: Array<{ url: string; sourceImageId: string }> = [];
+  try {
+    // Clear pending_competitor_gen and store reference data
+    await db.from("image_jobs").update({
+      pending_competitor_gen: null,
+      competitor_reference_data: {
+        competitor_image_urls: competitorImageUrls,
+        product_hero_urls: productHeroUrls,
+      },
+    }).eq("id", job.id);
+
+    for (let index = 0; index < parsed.image_prompts.length; index++) {
+      const imgPrompt = parsed.image_prompts[index];
+      try {
+        const sourceIdx = imgPrompt.source_index ?? 0;
+        const competitorRef = competitorImageUrls[sourceIdx] ?? competitorImageUrls[0];
+        const includeProduct = imgPrompt.include_product_reference !== false;
+        const referenceUrls = includeProduct
+          ? [competitorRef, ...productHeroUrls]
+          : [competitorRef];
+
+        const { urls: resultUrls, costTimeMs } = await generateImage(
+          imgPrompt.prompt,
+          referenceUrls,
+          "4:5"
+        );
+
+        if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
+
+        const resultRes = await fetch(resultUrls[0]);
+        if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
+        const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+        const fileId = crypto.randomUUID();
+        const filePath = `image-jobs/${job.id}/${fileId}.png`;
+        const { error: uploadError } = await db.storage
+          .from(STORAGE_BUCKET)
+          .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+
+        if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
+
+        const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+        const { data: sourceImage } = await db
+          .from("source_images")
+          .insert({
+            job_id: job.id,
+            original_url: urlData.publicUrl,
+            filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
+            processing_order: index,
+            skip_translation: false,
+            generation_prompt: imgPrompt.prompt,
+            generation_style: "competitor-swipe",
+            batch: 1,
+          })
+          .select()
+          .single();
+
+        await db.from("usage_logs").insert({
+          type: "image_generation",
+          page_id: null,
+          translation_id: null,
+          model: KIE_MODEL,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: KIE_IMAGE_COST,
+          metadata: {
+            purpose: "autopilot_competitor_swipe",
+            image_job_id: job.id,
+            source_image_id: sourceImage?.id,
+            kie_cost_time_ms: costTimeMs,
+            reference_image_count: referenceUrls.length,
+          },
+        });
+
+        imageResults.push({ url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" });
+      } catch (err) {
+        console.error(`[Autopilot/swipe] Image ${index + 1} failed:`, err);
+      }
+    }
+
+    // Update job status
+    await db.from("image_jobs").update({
+      status: "ready",
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
+  } catch (err) {
+    console.error("[Autopilot/swipe] Image generation error:", err);
+  }
+
+  // --- Update discovered_ads ---
+  await db.from("discovered_ads")
+    .update({ status: "swiped", image_job_id: job.id, updated_at: new Date().toISOString() })
+    .eq("gethookd_ad_id", discovered.ad.id)
+    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+
+  // --- Telegram notification ---
+  if (chatId) {
+    const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+    const scoreLabel = discovered.ad.performance_score
+      ? ` | ${discovered.ad.performance_score_title} (${discovered.ad.performance_score})`
+      : "";
+
+    const caption = [
+      `🔍 Autopilot swipe #${nextConceptNumber}:`,
+      ``,
+      `"${parsed.concept.concept_name}"`,
+      `Swiped from: ${discovered.ad.brand.name}${scoreLabel}`,
+      `Source: ${discovered.source} | ${discovered.ad.days_active}d active`,
+      `Images: ${imageResults.length}/${parsed.image_prompts.length} | Page: ${landingPageId ? "Yes" : "No"}`,
+      ``,
+      `${hubUrl}/concepts/${job.id}`,
+    ].join("\n");
+
+    const buttons = [[
+      { text: "✅ Approve", callback_data: `concept_approve:${job.id}` },
+      { text: "❌ Reject", callback_data: `concept_reject:${job.id}` },
+    ]];
+
+    if (imageResults.length > 0) {
+      await sendPhoto(chatId, imageResults[0].url, caption, buttons);
+    } else {
+      await sendMessageWithInlineKeyboard(chatId, caption, buttons);
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    mode: "competitor_swipe",
+    concept: {
+      id: job.id,
+      name: parsed.concept.concept_name,
+      concept_number: nextConceptNumber,
+      swiped_from: discovered.ad.brand.name,
+      source: discovered.source,
+      images_generated: imageResults.length,
+      landing_page_assigned: !!landingPageId,
+    },
+  });
+}
+
+// ===========================================================================
+// DISCOVER COMPETITOR AD (Board → Brand Spy → Explore)
+// ===========================================================================
+
+async function discoverCompetitorAd(
+  db: ReturnType<typeof createServerSupabase>,
+  settings: Record<string, unknown>
+): Promise<{ ad: GethookdAd; source: "board" | "brand_spy" | "explore" } | null> {
+  // Get already-seen ad IDs to avoid duplicates
+  const { data: seenAds } = await db
+    .from("discovered_ads")
+    .select("gethookd_ad_id")
+    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+
+  const seenIds = new Set((seenAds ?? []).map((a) => a.gethookd_ad_id));
+
+  // --- Priority 1: Board (user-curated) ---
+  const boardId = settings.gethookd_board_id as string | undefined;
+  if (boardId) {
+    try {
+      const { ads } = await getBoardAds(boardId, 1, 50);
+      const imageAds = filterImageAds(ads);
+      const unswiped = imageAds.filter((a) => !seenIds.has(a.id));
+      if (unswiped.length > 0) {
+        console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads`);
+        return { ad: unswiped[0], source: "board" };
+      }
+    } catch (err) {
+      console.error("[Autopilot] Board fetch failed:", err);
+    }
+  }
+
+  // --- Priority 2: Brand Spy ---
+  try {
+    const brands = await getBrandSpyBrands();
+    for (const brand of brands.slice(0, 10)) {
+      const ads = await getBrandSpyAds(brand.id, { per_page: 10 });
+      const imageAds = filterImageAds(ads);
+      const unseen = imageAds.filter(
+        (a) => !seenIds.has(a.id) &&
+          a.performance_score !== null &&
+          a.performance_score >= 40
+      );
+      if (unseen.length > 0) {
+        console.log(`[Autopilot] Found unseen ad from brand spy: ${brand.name}`);
+        return { ad: unseen[0], source: "brand_spy" };
+      }
+    }
+  } catch (err) {
+    console.error("[Autopilot] Brand spy fetch failed:", err);
+  }
+
+  // --- Priority 3: Explore (rotate through search queries) ---
+  const queries = (settings.gethookd_explore_queries as string[]) ?? DEFAULT_EXPLORE_QUERIES;
+  // Pick a random query to avoid always hitting the same one
+  const query = queries[Math.floor(Math.random() * queries.length)];
+
+  try {
+    const { ads } = await exploreAds({
+      query,
+      "ad-format": "image",
+      performance_scores: "winning,scaling",
+      ads_per_brand_limit: 2,
+      per_page: 20,
+      sort_column: "days_active",
+      sort_direction: "desc",
+    });
+
+    const unseen = ads.filter((a) => !seenIds.has(a.id));
+    if (unseen.length > 0) {
+      console.log(`[Autopilot] Found ${unseen.length} unseen explore ads for query "${query}"`);
+      return { ad: unseen[0], source: "explore" };
+    }
+  } catch (err) {
+    console.error("[Autopilot] Explore fetch failed:", err);
+  }
+
+  return null;
+}
+
+// ===========================================================================
+// SCORE AD (Claude Haiku quick relevance check)
+// ===========================================================================
+
+async function scoreAd(ad: GethookdAd): Promise<{ score: number; reasoning: string }> {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+    const imageUrls = getImageUrls(ad);
+    const firstImage = imageUrls[0];
+
+    const content: Anthropic.Messages.ContentBlockParam[] = [];
+    if (firstImage) {
+      content.push({ type: "image", source: { type: "url", url: firstImage } });
+    }
+    content.push({
+      type: "text",
+      text: [
+        "Score this ad's VISUAL FORMAT and PERSUASION STRUCTURE for swipe potential.",
+        "We adapt ads from ANY niche to sell a sleep pillow. We don't copy the product or messaging — we swipe the visual format, layout, and persuasion mechanics.",
+        "",
+        `Ad title: ${ad.title}`,
+        `Brand: ${ad.brand.name}`,
+        `Format: ${ad.display_format}`,
+        `Days active: ${ad.days_active}`,
+        "",
+        "Score 1-10 based on:",
+        "- Is the visual format distinctive and reproducible? (split images, before/after, X-ray, handwritten text, etc.)",
+        "- Is the persuasion structure strong? (clear pain→promise, social proof, curiosity gap)",
+        "- Would this format work when adapted to a completely different product?",
+        "- Is this a static image ad (not just a product photo or logo)?",
+        "",
+        "Respond in JSON only: {\"score\": N, \"reasoning\": \"1-2 sentences\"}",
+      ].join("\n"),
+    });
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 200,
+      temperature: 0,
+      messages: [{ role: "user", content }],
+    });
+
+    const raw = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return { score: parsed.score ?? 5, reasoning: parsed.reasoning ?? "" };
+  } catch (err) {
+    console.error("[Autopilot] Scoring failed:", err);
+    return { score: 7, reasoning: "Scoring failed — defaulting to pass" };
+  }
+}
+
+// ===========================================================================
+// FROM-SCRATCH MODE (original flow)
+// ===========================================================================
+
+async function runFromScratch(
+  db: ReturnType<typeof createServerSupabase>,
+  chatId: string | undefined
+) {
+  // --- Step 2: Pick brainstorm mode ---
+  const mode = await pickBrainstormMode(db);
+
+  // --- Step 3: Fetch product context ---
+  const { data: product } = await db
+    .from("products")
+    .select("*")
+    .eq("slug", PRODUCT_SLUG)
+    .single();
+
+  if (!product) {
+    return NextResponse.json({ error: "Product not found" }, { status: 500 });
+  }
+
+  const { data: guidelines } = await db
+    .from("copywriting_guidelines")
+    .select("*")
+    .eq("product_id", product.id);
+
+  const { data: segments } = await db
+    .from("product_segments")
+    .select("*")
+    .eq("product_id", product.id);
+
+  // --- Step 4: Build prompts and call Claude ---
+  const hookInspiration = await buildHookInspiration(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
+  const learningsContext = await buildLearningsContext(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
+
+  // For from_internal mode, fetch existing concepts for gap analysis
+  let existingConcepts: Array<{ name: string; angle: string; awareness: string }> | undefined;
+  if (mode === "from_internal") {
+    const { data: existing } = await db
+      .from("image_jobs")
+      .select("name, cash_dna")
+      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+      .eq("product", PRODUCT_SLUG)
+      .not("cash_dna", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    existingConcepts = (existing ?? []).map((j) => ({
+      name: j.name,
+      angle: (j.cash_dna as Record<string, unknown>)?.angle as string ?? "unknown",
+      awareness: (j.cash_dna as Record<string, unknown>)?.awareness_level as string ?? "unknown",
+    }));
+  }
+
+  const systemPrompt = buildBrainstormSystemPrompt(
+    product as ProductFull,
+    undefined, // productBrief
+    (guidelines ?? []) as CopywritingGuideline[],
+    (segments ?? []) as ProductSegment[],
+    mode,
+    hookInspiration,
+    learningsContext
+  );
+
+  const brainstormRequest: BrainstormRequest = {
+    mode,
+    product: PRODUCT_SLUG,
+    count: 1, // One concept at a time to stay within cron limits
+  };
+
+  const userPrompt = buildBrainstormUserPrompt(
+    brainstormRequest,
+    (segments ?? []) as ProductSegment[],
+    existingConcepts
+  );
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 4000,
+    temperature: 0.9,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  const rawContent = response.content[0]?.type === "text" ? response.content[0].text : "";
+  const proposals = parseConceptProposals(rawContent);
+
+  if (proposals.length === 0) {
+    if (chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        `⚠️ Autopilot brainstorm returned no valid proposals (mode: ${mode}). Will retry tomorrow.`,
+        []
+      );
+    }
+    return NextResponse.json({ ok: true, error: "No proposals parsed" });
+  }
+
+  const proposal = proposals[0];
+
+  // --- Step 5: Create image_job ---
+  // Get next concept number
+  const { data: lastJob } = await db
+    .from("image_jobs")
+    .select("concept_number")
+    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+    .not("concept_number", "is", null)
+    .order("concept_number", { ascending: false })
+    .limit(1)
+    .single();
+
+  const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
+
+  const { data: job, error: jobErr } = await db
+    .from("image_jobs")
+    .insert({
+      workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+      name: proposal.concept_name,
+      product: PRODUCT_SLUG,
+      status: "draft",
+      source: "autopilot",
+      concept_number: nextConceptNumber,
+      target_languages: TARGET_LANGUAGES,
+      target_ratios: TARGET_RATIOS,
+      cash_dna: proposal.cash_dna,
+      ad_copy_primary: proposal.ad_copy_primary,
+      ad_copy_headline: proposal.ad_copy_headline,
+      visual_direction: proposal.visual_direction,
+      tags: proposal.suggested_tags ?? [],
+    })
+    .select()
+    .single();
+
+  if (jobErr || !job) {
+    console.error("[Autopilot] Failed to create image_job:", jobErr);
+    return NextResponse.json({ error: "Failed to create job" }, { status: 500 });
+  }
+
+  // --- Step 6: Auto-assign landing page ---
+  const landingPageId = await findBestLandingPage(db);
+  if (landingPageId) {
+    await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
+  }
+
+  // --- Step 7: Generate images ---
+  const { data: productImages } = await db
+    .from("product_images")
+    .select("url, category")
+    .eq("product_id", product.id)
+    .order("sort_order", { ascending: true });
+
+  let imageResults: Array<{ url: string; sourceImageId: string }> = [];
+  try {
+    const { briefs } = await generateImageBriefs({
+      job: job as Parameters<typeof generateImageBriefs>[0]["job"],
+      product: product as ProductFull,
+      productImages: (productImages ?? []) as Array<{ url: string; category: string }>,
+      count: 3,
+    });
+
+    const settled = await Promise.allSettled(
+      briefs.map(async (brief, index) => {
+        const referenceUrls = resolveReferenceImages(
+          brief,
+          (productImages ?? []) as Array<{ url: string; category: string }>
+        );
+
+        const { urls: resultUrls } = await generateImage(brief.prompt, referenceUrls, "4:5");
+        if (!resultUrls?.length) throw new Error("No image generated");
+
+        // Download and upload to Supabase
+        const resultRes = await fetch(resultUrls[0]);
+        if (!resultRes.ok) throw new Error("Failed to download image");
+        const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+        const fileId = crypto.randomUUID();
+        const filePath = `image-jobs/${job.id}/${fileId}.png`;
+        const { error: uploadError } = await db.storage
+          .from(STORAGE_BUCKET)
+          .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+
+        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+        const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+        // Insert source_images row
+        const { data: sourceImage } = await db
+          .from("source_images")
+          .insert({
+            job_id: job.id,
+            original_url: urlData.publicUrl,
+            filename: `${brief.style}-${fileId.slice(0, 8)}.png`,
+            processing_order: index,
+            skip_translation: false,
+            generation_prompt: brief.prompt,
+            generation_style: brief.style,
+            batch: 1,
+          })
+          .select()
+          .single();
+
+        return { url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" };
+      })
+    );
+
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        imageResults.push(outcome.value);
+      } else {
+        console.error("[Autopilot] Image generation failed:", outcome.reason);
+      }
+    }
+
+    // Update job status
+    await db.from("image_jobs").update({
+      status: "ready",
+      updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
+  } catch (err) {
+    console.error("[Autopilot] Image generation error:", err);
+  }
+
+  // --- Step 8: Send Telegram notification ---
+  if (chatId) {
+    const angle = proposal.cash_dna?.angle ?? "—";
+    const awareness = proposal.cash_dna?.awareness_level ?? "—";
+    const hook = proposal.cash_dna?.hooks?.[0] ?? "—";
+    const imagesGenerated = imageResults.length;
+    const pageAssigned = landingPageId ? "Yes" : "No";
+    const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+
+    const caption = [
+      `🤖 Autopilot concept #${nextConceptNumber}:`,
+      ``,
+      `"${proposal.concept_name}"`,
+      `Angle: ${angle} | Awareness: ${awareness}`,
+      `Hook: "${hook.length > 60 ? hook.slice(0, 60) + "..." : hook}"`,
+      `Images: ${imagesGenerated}/3 | Page: ${pageAssigned}`,
+      `Mode: ${mode}`,
+      ``,
+      `${hubUrl}/concepts/${job.id}`,
+    ].join("\n");
+
+    const buttons = [[
+      { text: "✅ Approve", callback_data: `concept_approve:${job.id}` },
+      { text: "❌ Reject", callback_data: `concept_reject:${job.id}` },
+    ]];
+
+    if (imageResults.length > 0) {
+      await sendPhoto(chatId, imageResults[0].url, caption, buttons);
+    } else {
+      await sendMessageWithInlineKeyboard(chatId, caption, buttons);
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    mode: "from_scratch",
+    concept: {
+      id: job.id,
+      name: proposal.concept_name,
+      concept_number: nextConceptNumber,
+      mode,
+      images_generated: imageResults.length,
+      landing_page_assigned: !!landingPageId,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
