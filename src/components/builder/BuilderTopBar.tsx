@@ -153,6 +153,7 @@ export default function BuilderTopBar() {
         <button
           onClick={handleSave}
           disabled={saving || publishing || retranslating}
+          title={saveError || undefined}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
             saved
               ? "bg-green-50 text-green-700 border border-green-300"

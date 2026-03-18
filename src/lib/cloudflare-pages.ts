@@ -228,6 +228,9 @@ export async function publishPage(
     html = injectCustomCode(html, customCode);
   }
 
+  // Auto-inject countdown timer JS if any elements have countdown attributes
+  html = injectCountdownScript(html);
+
   const htmlPath = `/${slug}/index.html`;
   const htmlBuffer = Buffer.from(html, "utf-8");
   const htmlHash = md5hex(htmlBuffer);
@@ -449,6 +452,50 @@ function injectCustomCode(html: string, code: string): string {
   if (html.includes('data-cc-custom="true"')) return html;
   const block = `<!-- Custom Code -->\n<div data-cc-custom="true" style="display:none"></div>\n${code}\n`;
   return html.replace(/<\/body>/i, block + "</body>");
+}
+
+/**
+ * Auto-inject countdown timer script when elements have data-countdown-minutes.
+ * Supports evergreen (per-visitor via localStorage) and fixed deadline modes.
+ */
+function injectCountdownScript(html: string): string {
+  if (!html.includes("data-countdown-minutes")) return html;
+  if (html.includes('data-cc-countdown="true"')) return html;
+
+  const script = `<!-- Countdown Timer -->
+<script data-cc-countdown="true">
+(function(){
+  var els=document.querySelectorAll('[data-countdown-minutes]');
+  if(!els.length)return;
+  function pad(n){return n<10?'0'+n:''+n}
+  function fmt(ms){
+    if(ms<=0)return'00:00:00';
+    var s=Math.floor(ms/1000);
+    return pad(Math.floor(s/3600))+':'+pad(Math.floor((s%3600)/60))+':'+pad(s%60);
+  }
+  function slug(){return(location.pathname.replace(/^\\/|\\/$|\\/index\\.html$/g,'')||'home')}
+  els.forEach(function(el){
+    var min=parseInt(el.getAttribute('data-countdown-minutes'),10)||15;
+    var type=el.getAttribute('data-countdown-type')||'evergreen';
+    var endAttr=el.getAttribute('data-countdown-end');
+    var end;
+    if(type==='fixed'&&endAttr){
+      end=new Date(endAttr).getTime();
+    }else{
+      var k='_cd_'+slug()+'_'+min;
+      var v=localStorage.getItem(k);
+      if(v&&parseInt(v,10)>Date.now()){end=parseInt(v,10)}
+      else{end=Date.now()+min*60000;try{localStorage.setItem(k,''+end)}catch(e){}}
+    }
+    (function tick(){
+      el.textContent=fmt(end-Date.now());
+      if(end>Date.now())setTimeout(tick,250);
+    })();
+  });
+})();
+</script>`;
+
+  return html.replace(/<\/body>/i, script + "\n</body>");
 }
 
 /** First-party tracking pixel — captures visitor ID, fbclid, _fbp cookie, UTM params */

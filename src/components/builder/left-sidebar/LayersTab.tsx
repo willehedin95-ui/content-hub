@@ -18,6 +18,7 @@ import {
   Film,
   Square,
   ListTree,
+  Timer,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
 import { TAG_LABELS, SKIP_TAGS } from "../constants";
@@ -477,6 +478,11 @@ function LayerItem({
                 </span>
               )}
             </>
+          )}
+          {node.el.hasAttribute("data-countdown-minutes") && (
+            <span className="shrink-0 text-orange-500" title="Countdown timer">
+              <Timer className="w-3 h-3" />
+            </span>
           )}
         </span>
 

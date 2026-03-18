@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useBuilder } from "../BuilderContext";
-import { EyeOff, Trash2, Copy, X, Link2, Image, Video, Clipboard, ClipboardPaste, Pencil } from "lucide-react";
+import { EyeOff, Trash2, Copy, X, Link2, Image, Video, Clipboard, ClipboardPaste, Pencil, Timer } from "lucide-react";
 
 export default function ConfigTab() {
   const {
@@ -34,6 +34,12 @@ export default function ConfigTab() {
 
   // --- Video editing state ---
   const [videoSrc, setVideoSrc] = useState("");
+
+  // --- Countdown timer state ---
+  const [countdownEnabled, setCountdownEnabled] = useState(false);
+  const [countdownMinutes, setCountdownMinutes] = useState("15");
+  const [countdownType, setCountdownType] = useState<"evergreen" | "fixed">("evergreen");
+  const [countdownEnd, setCountdownEnd] = useState("");
 
   // Derive element types from current selection
   const el = selectedElRef.current;
@@ -75,6 +81,22 @@ export default function ConfigTab() {
     }
     if (currentEl.tagName === "SOURCE") {
       setVideoSrc(currentEl.getAttribute("src") || "");
+    }
+
+    // Countdown
+    const cdMinutes = currentEl.getAttribute("data-countdown-minutes");
+    if (cdMinutes) {
+      setCountdownEnabled(true);
+      setCountdownMinutes(cdMinutes);
+      setCountdownType(
+        currentEl.getAttribute("data-countdown-type") === "fixed" ? "fixed" : "evergreen"
+      );
+      setCountdownEnd(currentEl.getAttribute("data-countdown-end") || "");
+    } else {
+      setCountdownEnabled(false);
+      setCountdownMinutes("15");
+      setCountdownType("evergreen");
+      setCountdownEnd("");
     }
   }, [hasSelectedEl, selectedElRef, layersRefreshKey]);
 
@@ -166,6 +188,58 @@ export default function ConfigTab() {
 
     videoEl.parentNode?.replaceChild(img, videoEl);
     selectElementInIframe(img);
+    markDirty();
+  }
+
+  // --- Countdown handlers ---
+  function handleCountdownToggle(enabled: boolean) {
+    setCountdownEnabled(enabled);
+    const currentEl = selectedElRef.current;
+    if (!currentEl) return;
+    pushUndoSnapshot();
+    if (enabled) {
+      currentEl.setAttribute("data-countdown-minutes", countdownMinutes || "15");
+      currentEl.setAttribute("data-countdown-type", countdownType);
+      if (countdownType === "fixed" && countdownEnd) {
+        currentEl.setAttribute("data-countdown-end", countdownEnd);
+      }
+    } else {
+      currentEl.removeAttribute("data-countdown-minutes");
+      currentEl.removeAttribute("data-countdown-type");
+      currentEl.removeAttribute("data-countdown-end");
+    }
+    markDirty();
+  }
+
+  function handleCountdownMinutesChange(value: string) {
+    setCountdownMinutes(value);
+    const currentEl = selectedElRef.current;
+    if (!currentEl || !countdownEnabled) return;
+    pushUndoSnapshot();
+    currentEl.setAttribute("data-countdown-minutes", value || "15");
+    markDirty();
+  }
+
+  function handleCountdownTypeChange(type: "evergreen" | "fixed") {
+    setCountdownType(type);
+    const currentEl = selectedElRef.current;
+    if (!currentEl || !countdownEnabled) return;
+    pushUndoSnapshot();
+    currentEl.setAttribute("data-countdown-type", type);
+    if (type === "fixed" && countdownEnd) {
+      currentEl.setAttribute("data-countdown-end", countdownEnd);
+    } else {
+      currentEl.removeAttribute("data-countdown-end");
+    }
+    markDirty();
+  }
+
+  function handleCountdownEndChange(value: string) {
+    setCountdownEnd(value);
+    const currentEl = selectedElRef.current;
+    if (!currentEl || !countdownEnabled) return;
+    pushUndoSnapshot();
+    currentEl.setAttribute("data-countdown-end", value);
     markDirty();
   }
 
@@ -275,6 +349,71 @@ export default function ConfigTab() {
           </button>
         </div>
       )}
+
+      {/* Countdown Timer */}
+      <div className="px-4 py-3 space-y-2 border-b border-gray-100">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+          <Timer className="w-3 h-3" /> Interactive
+        </label>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-600">Countdown Timer</span>
+          <button
+            onClick={() => handleCountdownToggle(!countdownEnabled)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              countdownEnabled ? "bg-indigo-600" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                countdownEnabled ? "translate-x-4" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+        {countdownEnabled && (
+          <div className="space-y-1.5 pt-1">
+            <div>
+              <span className="text-[10px] text-gray-400 uppercase">Type</span>
+              <select
+                value={countdownType}
+                onChange={(e) => handleCountdownTypeChange(e.target.value as "evergreen" | "fixed")}
+                className="w-full bg-white border border-gray-300 text-gray-900 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+              >
+                <option value="evergreen">Evergreen (per visitor)</option>
+                <option value="fixed">Fixed deadline</option>
+              </select>
+            </div>
+            {countdownType === "evergreen" ? (
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase">Duration (minutes)</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  value={countdownMinutes}
+                  onChange={(e) => handleCountdownMinutesChange(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            ) : (
+              <div>
+                <span className="text-[10px] text-gray-400 uppercase">End date & time</span>
+                <input
+                  type="datetime-local"
+                  value={countdownEnd}
+                  onChange={(e) => handleCountdownEndChange(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            )}
+            <p className="text-[10px] text-gray-400 leading-snug">
+              {countdownType === "evergreen"
+                ? "Each visitor gets their own timer starting on first visit."
+                : "All visitors see the same deadline."}
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Element Actions — always shown */}
       <div className="px-4 py-3 space-y-2">

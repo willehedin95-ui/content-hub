@@ -985,6 +985,10 @@ export function BuilderProvider({
         font: 500 10px/1 system-ui, sans-serif; letter-spacing: 0.3px;
         padding: 2px 6px; border-radius: 2px; white-space: nowrap;
       }
+      [data-countdown-minutes]:not([data-cc-selected]) {
+        outline: 2px dashed rgba(234, 88, 12, 0.6) !important;
+        outline-offset: 1px;
+      }
     `;
 
     // Restore padding settings from saved style tags
@@ -1313,7 +1317,7 @@ export function BuilderProvider({
           return;
         }
       } else {
-        const [tRes] = await Promise.all([
+        const [tRes, pRes] = await Promise.all([
           fetch(`/api/translations/${translation.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -1333,7 +1337,12 @@ export function BuilderProvider({
 
         if (!tRes.ok) {
           const data = await tRes.json().catch(() => ({}));
-          setSaveError(data.error || `Failed to save (${tRes.status})`);
+          setSaveError(data.error || `Failed to save translation (${tRes.status})`);
+          return;
+        }
+        if (!pRes.ok) {
+          const data = await pRes.json().catch(() => ({}));
+          setSaveError(data.error || `Failed to save page settings (${pRes.status})`);
           return;
         }
       }
