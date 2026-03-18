@@ -16,5 +16,5 @@ export function safeError(
         ? (error as { message: string }).message
         : String(error);
   console.error(`[API Error] ${publicMessage}:`, detail);
-  return NextResponse.json({ error: publicMessage }, { status });
+  return NextResponse.json({ error: `${publicMessage}: ${detail}` }, { status });
 }
