@@ -5,6 +5,8 @@ import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
 import type { PageAngle } from "@/types";
 
+export const maxDuration = 30;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -72,7 +74,7 @@ export async function PATCH(
       .update(updateData)
       .eq("id", id)
       .eq("workspace_id", workspaceId)
-      .select()
+      .select("id, name, slug, status, tags, angle, custom_head_code, updated_at")
       .single();
 
     if (error) {
