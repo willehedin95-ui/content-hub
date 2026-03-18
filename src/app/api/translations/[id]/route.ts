@@ -134,36 +134,35 @@ export async function PUT(
           updated_at: new Date().toISOString(),
         })
         .eq("id", realId)
-        .select()
+        .select("id, updated_at")
         .single();
 
       if (saveError) {
         return safeError(saveError, "Failed to save source page");
       }
 
-      // Return in translation-like format for compatibility
+      // Return minimal response (don't echo back the full HTML)
       return NextResponse.json({
         id,
         page_id: realId,
-        translated_html: finalHtml,
         updated_at: page.updated_at,
       });
     }
 
-    const { data: translation, error: fetchError } = await db
-      .from("translations")
-      .select(`*, pages (original_html)`)
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !translation) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    let finalHtml: string;
-
     if (translated_html) {
-      // Inline editing path — HTML comes directly from the client
+      // Inline editing path — HTML comes directly from the client.
+      // Only fetch the lightweight columns we need (skip translated_html and
+      // pages.original_html which can be ~1MB each and are unused here).
+      const { data: translation, error: fetchError } = await db
+        .from("translations")
+        .select("id, status, seo_title, seo_description, slug, translated_texts")
+        .eq("id", id)
+        .single();
+
+      if (fetchError || !translation) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
       const cheerio = await import("cheerio");
       const { sanitizeHtml } = await import("@/lib/sanitize");
       const $ = cheerio.load(translated_html);
@@ -191,9 +190,44 @@ export async function PUT(
         $('meta[property="og:description"]').attr("content", seo_description);
       }
 
-      finalHtml = sanitizeHtml($.html());
+      const finalHtml = sanitizeHtml($.html());
+
+      const { data: updated, error: saveError } = await db
+        .from("translations")
+        .update({
+          translated_html: finalHtml,
+          translated_texts: translated_texts ?? translation.translated_texts,
+          seo_title: seo_title ?? translation.seo_title,
+          seo_description: seo_description ?? translation.seo_description,
+          slug: slug ?? translation.slug,
+          status:
+            translation.status === "published" ? "translated" : translation.status,
+          // Always clear stale quality data — content was edited
+          quality_score: null,
+          quality_analysis: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select("id, status, updated_at, seo_title, seo_description, slug")
+        .single();
+
+      if (saveError) {
+        return safeError(saveError, "Failed to save translation");
+      }
+
+      return NextResponse.json(updated);
     } else {
-      // Legacy segment editing path — rebuild HTML from placeholders
+      // Legacy segment editing path — needs pages.original_html
+      const { data: translation, error: fetchError } = await db
+        .from("translations")
+        .select(`*, pages (original_html)`)
+        .eq("id", id)
+        .single();
+
+      if (fetchError || !translation) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
       const { extractContent, applyTranslations } = await import("@/lib/html-parser");
       const { modifiedHtml } = extractContent(
         (translation.pages as { original_html: string }).original_html
@@ -206,38 +240,38 @@ export async function PUT(
         ogDescription: seo_description,
       };
 
-      finalHtml = applyTranslations(
+      const finalHtml = applyTranslations(
         modifiedHtml,
         translated_texts!,
         metaTranslations
       );
+
+      // Clear quality data if the HTML content actually changed (scores would be stale)
+      const htmlChanged = finalHtml !== translation.translated_html;
+
+      const { data: updated, error: saveError } = await db
+        .from("translations")
+        .update({
+          translated_html: finalHtml,
+          translated_texts: translated_texts ?? translation.translated_texts,
+          seo_title: seo_title ?? translation.seo_title,
+          seo_description: seo_description ?? translation.seo_description,
+          slug: slug ?? translation.slug,
+          status:
+            translation.status === "published" ? "translated" : translation.status,
+          ...(htmlChanged && { quality_score: null, quality_analysis: null }),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (saveError) {
+        return safeError(saveError, "Failed to save translation");
+      }
+
+      return NextResponse.json(updated);
     }
-
-    // Clear quality data if the HTML content actually changed (scores would be stale)
-    const htmlChanged = finalHtml !== translation.translated_html;
-
-    const { data: updated, error: saveError } = await db
-      .from("translations")
-      .update({
-        translated_html: finalHtml,
-        translated_texts: translated_texts ?? translation.translated_texts,
-        seo_title: seo_title ?? translation.seo_title,
-        seo_description: seo_description ?? translation.seo_description,
-        slug: slug ?? translation.slug,
-        status:
-          translation.status === "published" ? "translated" : translation.status,
-        ...(htmlChanged && { quality_score: null, quality_analysis: null }),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (saveError) {
-      return safeError(saveError, "Failed to save translation");
-    }
-
-    return NextResponse.json(updated);
   } catch (err) {
     return safeError(err, "Failed to save translation");
   }
