@@ -10,14 +10,9 @@ export async function sendJobCompleteEmail(
   to: string,
   jobName: string,
   imageCount: number,
-  languageCount: number,
-  driveExported: boolean
+  languageCount: number
 ): Promise<void> {
   const resend = getResend();
-
-  const driveNote = driveExported
-    ? "<p style='color:#059669;margin-top:8px;'>Images have been auto-exported to Google Drive.</p>"
-    : "";
 
   await resend.emails.send({
     from: "Content Hub <noreply@updates.contenttools.app>",
@@ -31,7 +26,6 @@ export async function sendJobCompleteEmail(
           <p style="font-size:14px;color:#6b7280;margin:0;">
             ${imageCount} images &times; ${languageCount} languages translated
           </p>
-          ${driveNote}
         </div>
         <p style="font-size:12px;color:#9ca3af;">
           Sent by Content Hub

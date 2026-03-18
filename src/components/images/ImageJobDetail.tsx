@@ -1469,7 +1469,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           metaPush={metaPush}
           copyTranslations={copyTranslations}
           copyState={copyState}
-          doc={doc}
           landingPages={landingPages}
           handlePrimaryChange={handlePrimaryChange}
           handleHeadlineChange={handleHeadlineChange}
@@ -1478,7 +1477,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           removePrimaryText={removePrimaryText}
           addHeadline={addHeadline}
           removeHeadline={removeHeadline}
-          handleFetchFromDoc={handleFetchFromDoc}
           handleTranslateCopy={handleTranslateCopy}
           handleWebsiteUrlChange={handleWebsiteUrlChange}
           handleWebsiteUrlBChange={handleWebsiteUrlBChange}

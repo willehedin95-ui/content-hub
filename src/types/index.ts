@@ -233,14 +233,11 @@ export interface ImageJob {
   status: ImageJobStatus;
   target_languages: Language[];
   target_ratios: AspectRatio[];
-  source_folder_id: string | null;
   pipeline_concept_id?: string | null;
   auto_export: boolean;
-  exported_at: string | null;
   notified_at: string | null;
   ad_copy_primary: string[];
   ad_copy_headline: string[];
-  ad_copy_doc_id: string | null;
   landing_page_id: string | null;
   landing_page_id_b: string | null;
   concept_number: number | null;
@@ -251,7 +248,7 @@ export interface ImageJob {
   iteration_of?: string | null;
   iteration_type?: IterationType | null;
   iteration_context?: Record<string, unknown> | null;
-  source?: "hub" | "external";
+  source?: string;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
@@ -696,7 +693,7 @@ export interface ConceptProposal {
 
 export type PipelineStage = "draft" | "queued" | "launchpad" | "testing" | "review" | "active" | "killed";
 
-export type ConceptSource = "hub" | "external" | "legacy";
+export type ConceptSource = "hub" | "autopilot" | "legacy";
 
 export interface PipelineSetting {
   id: string;

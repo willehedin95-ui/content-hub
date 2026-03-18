@@ -196,7 +196,6 @@ export async function POST(
       auto_export: parent.auto_export,
       ad_copy_primary: adCopyPrimary,
       ad_copy_headline: adCopyHeadline,
-      ad_copy_doc_id: parent.ad_copy_doc_id,
       landing_page_id: parent.landing_page_id,
       landing_page_id_b: parent.landing_page_id_b,
       tags: [...(parent.tags ?? []), "iteration"],

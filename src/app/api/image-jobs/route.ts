@@ -79,10 +79,9 @@ export async function GET(req: NextRequest) {
 // Creates a job, then images are uploaded individually via /api/image-jobs/[id]/upload
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, target_languages, source_folder_id, target_ratios, product, tags } = body as {
+  const { name, target_languages, target_ratios, product, tags } = body as {
     name?: string;
     target_languages?: string[];
-    source_folder_id?: string;
     target_ratios?: string[];
     product?: string;
     tags?: string[];
@@ -113,7 +112,6 @@ export async function POST(req: NextRequest) {
     status: string;
     target_languages: string[];
     target_ratios: string[];
-    source_folder_id?: string;
     product?: string;
     concept_number?: number;
     source: string;
@@ -123,10 +121,9 @@ export async function POST(req: NextRequest) {
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["4:5", "9:16"],
-    source: "external",
+    source: "hub",
     workspace_id: workspaceId,
   };
-  if (source_folder_id) insertData.source_folder_id = source_folder_id;
   if (product) insertData.product = product;
   if (conceptNumber !== null) insertData.concept_number = conceptNumber;
   if (tags?.length) (insertData as Record<string, unknown>).tags = tags;

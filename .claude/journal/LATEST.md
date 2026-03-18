@@ -1,50 +1,48 @@
-# Session: 2026-03-18 (Session 1)
+# Session: 2026-03-18 (Session 2)
 
 ## What was done
-- **Autopilot Competitor Swiping** — Full implementation of GetHookd-powered competitor ad discovery and swiping:
-  - Created `src/lib/gethookd.ts` — API wrapper for GetHookd (explore, boards, brand spy, auth check)
-  - Rewrote `src/app/api/cron/autopilot-concepts/route.ts` (~700 lines) with dual mode: "from_scratch" (original) and "competitor_swipe" (new)
-  - Competitor swipe discovers ads via Board → Brand Spy → Explore priority, scores with Claude Haiku Vision, swipes via Claude Vision analysis, generates images with Kie AI, sends Telegram notification with approve/reject
-  - Created `discovered_ads` and `autopilot_actions` DB tables via Supabase Management API
+- **Pain Point Selector** — Added pill-style selector (Auto-detect/Neck Pain/Snoring/Sleep Quality/General) to both Ad Spy board feed and Brainstorm > From Competitor Ad UI
+  - When a specific pain point is chosen, Claude is constrained to focus on ONLY that single angle via system prompt instruction
+  - Auto-detect mode now also instructs Claude to pick ONE pain point (not mix multiple)
+  - Selected pain point stored in `cash_dna.pain_point` on image_jobs for tracking
 
-- **Full Autopilot Execution** — Auto-kill + auto-budget based on strategy engine:
-  - Created `src/app/api/cron/autopilot-execute/route.ts` (~280 lines) running at 07:00 UTC
-  - Executes strategy engine recommendations: kills zombie ad sets (max 5/run), adjusts budgets (+20% max)
-  - Supports `?dry_run=true` for safe testing
-  - Logs all actions to `autopilot_actions` table, sends Telegram digest
+- **Angle-Aware Landing Page Assignment** — Upgraded `findBestLandingPage()` in `swipe-competitor.ts` to match pain point to page angle (`neck-pain`→`neck_pain`, `snoring`→`snoring`, others→`neutral`). Falls back to most-used page logic when no match.
 
-- **Settings UI** — New Autopilot tab in Settings:
-  - Created `src/app/settings/tabs/AutopilotTab.tsx` with mode selector, GetHookd config (board ID, explore queries), and auto-execution toggles
-  - Created `/api/gethookd/test` endpoint for connection testing
-  - Added 5 new fields to Settings interface
+- **Better Ad Copy Adaptation** — Rewrote competitor ad system prompt instructions:
+  - Added "AD COPY ADAPTATION" section with 5 rules: structure mapping, tone matching, persuasion transfer, length matching, hook adaptation
+  - Updated output format to emphasize structural adaptation over generic copy
+  - Restyled competitor ad copy input from gray "optional" to amber "Recommended" with explanation text
+  - User prompt now explicitly instructs "deeply adapt this copy's structure" when copy is provided
 
-- **GetHookd API tested** — Verified all endpoints work: auth check, explore with performance_scores filter, image downloads (2000x2000 JPEG), board access. Key finding: `ad-format` parameter uses hyphens not underscores.
+- **Ad Spy Pain Point Flow** — Full pipeline support:
+  - `discovered_ads.pain_point` column added via Supabase Management API
+  - Single swipe, batch swipe, and process-next all pass pain_point through
+  - BoardFeed.tsx has persistent pill selector that applies to all swipe actions
 
-- **Vercel env** — Added `GETHOOKD_API_TOKEN` to production env vars
+- **Cleanup commit** — Committed remaining changes from Session 1 that weren't staged:
+  - Extracted shared swipe logic into `swipe-competitor.ts`
+  - Added generate-variations endpoint
+  - Removed unused Google Drive, fetch-copy routes, NewConceptModal
+  - Various refactors to ConceptImagesStep, ImageJobDetail
 
 ## Decisions made
-- **Search ALL niches, not just health** — User said the swiper adapts any visual format, so explore queries cover supplement, skincare, fitness, wellness, pillow, mattress, pain relief, weight loss, anti-aging
-- **Board-first priority** — User's curated GetHookd board is always checked first (0 credits), then brand spy, then explore
-- **Board ads skip scoring** — Since user manually saved them, no need for AI relevance check
-- **No approval for auto-kill/budget** — User explicitly wanted full autonomy, no Telegram confirm needed
-- **Max 5 kills per run** as safety rail
-- **Cron timing**: autopilot-execute at 07:00 (after perf sync 06:00 + morning brief 06:15), autopilot-concepts at 08:00
+- **Reused SwiperAngle vocabulary** — Pain point options match the existing SwiperAngle values (neck-pain, snoring, sleep-quality, general) rather than inventing new ones
+- **Stored pain point in cash_dna JSONB** — No new column on image_jobs needed; the existing JSONB field absorbs it naturally
+- **Added discovered_ads.pain_point column** — For batch swipe flow, the pain point needs to persist between queue insertion and processing, so a DB column was the cleanest approach
+- **Auto-detect = "pick ONE"** — Even without explicit selection, Claude is now instructed to never mix multiple pain points in a single concept
 
 ## Current state
-- All code committed (`39047b3`), build passes clean
-- NOT pushed yet (auto-deploys on push)
-- DB tables created and ready
-- GetHookd API token set in both .env.local and Vercel
-- Workspace settings default to `autopilot_mode: "disabled"` — user needs to enable in Settings > Autopilot
+- 2 commits ahead of origin (`ea1fd74` + `0026530`), NOT pushed
+- Build passes clean
+- DB column `discovered_ads.pain_point` created in production Supabase
+- All functionality ready: pain point selector in both UIs, prompt engineering, landing page matching
 
 ## Blockers / Open questions
-- User needs to create a GetHookd board and save ads they want swiped, then enter the board ID in settings
-- GetHookd Grow plan ($59/mo) has 200 credits — estimated ~30-90 credits/month for daily swiping
-- Haven't tested the full end-to-end flow live yet (cron → discover → swipe → approve → translate → push)
+- None — ready to push and test live
 
 ## Next up
-1. Push to deploy and test live with `?force=true`
-2. User creates GetHookd board, enables competitor_swipe mode
-3. Test autopilot-execute with `?dry_run=true` first
-4. Monitor first few days of autopilot operation
-5. Consider adding discovered ads browser UI (see what autopilot found/scored)
+1. Push to deploy and test live: swipe a competitor ad with specific pain point, verify single-angle output
+2. Test ad copy adaptation: paste competitor copy text, verify structural adaptation (not generic)
+3. Test landing page auto-assignment: pick "snoring", verify snoring page gets assigned
+4. Consider adding pain point to autopilot competitor swipe settings (currently uses auto-detect)
+5. Continue with other backlog items

@@ -94,14 +94,15 @@ const BUDGET_PER_NEW_CONCEPT = 150; // kr/day
 // ── Helpers ──────────────────────────────────────────────────
 
 function sourceBadge(source: string, conceptNumber: number | null): string {
-  if (source === "hub") return `Hub${conceptNumber !== null ? ` #${String(conceptNumber).padStart(3, "0")}` : ""}`;
-  if (source === "external") return `Ron${conceptNumber !== null ? ` R${String(conceptNumber).padStart(3, "0")}` : ""}`;
-  return "Legacy";
+  const num = conceptNumber !== null ? ` #${String(conceptNumber).padStart(3, "0")}` : "";
+  if (source === "hub") return `Hub${num}`;
+  if (source === "autopilot") return `Auto${num}`;
+  return `#${conceptNumber !== null ? String(conceptNumber).padStart(3, "0") : "???"}`;
 }
 
 function sourceBadgeColors(source: string): string {
   if (source === "hub") return "bg-blue-100 text-blue-700";
-  if (source === "external") return "bg-purple-100 text-purple-700";
+  if (source === "autopilot") return "bg-emerald-100 text-emerald-700";
   return "bg-gray-100 text-gray-500";
 }
 

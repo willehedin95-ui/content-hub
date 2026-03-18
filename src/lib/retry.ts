@@ -1,6 +1,6 @@
 /**
  * Generic retry utility with exponential backoff.
- * Use for all external API calls (Kie AI, OpenAI, Meta, Cloudflare, Google Drive).
+ * Use for all external API calls (Kie AI, OpenAI, Meta, Cloudflare).
  */
 
 interface RetryOptions {

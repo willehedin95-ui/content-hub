@@ -99,51 +99,36 @@ export async function pushConceptToMeta(
 
   // Auto-assign concept number if not set
   let conceptNumber = job.concept_number;
-  const isExternal = job.source === "external";
 
   if (!conceptNumber) {
-    if (isExternal) {
-      const { data: assigned, error: rpcError } = await db.rpc("assign_next_external_concept_number", {
-        p_job_id: jobId,
-        p_product: job.product,
-      });
-      if (!rpcError && assigned !== null) {
-        conceptNumber = assigned;
-      }
-    }
+    const { data: assigned, error: rpcError } = await db.rpc("assign_next_concept_number", {
+      p_job_id: jobId,
+      p_product: job.product,
+    });
 
-    if (!conceptNumber) {
-      // Hub concepts or fallback
-      const { data: assigned, error: rpcError } = await db.rpc("assign_next_concept_number", {
-        p_job_id: jobId,
-        p_product: job.product,
-      });
+    if (rpcError || assigned === null || assigned === undefined) {
+      const { data: maxRow } = await db
+        .from("image_jobs")
+        .select("concept_number")
+        .eq("product", job.product)
+        .not("concept_number", "is", null)
+        .order("concept_number", { ascending: false })
+        .limit(1)
+        .single();
 
-      if (rpcError || assigned === null || assigned === undefined) {
-        const { data: maxRow } = await db
-          .from("image_jobs")
-          .select("concept_number")
-          .eq("product", job.product)
-          .not("concept_number", "is", null)
-          .neq("source", "external")
-          .order("concept_number", { ascending: false })
-          .limit(1)
-          .single();
+      conceptNumber = (maxRow?.concept_number ?? 0) + 1;
 
-        conceptNumber = (maxRow?.concept_number ?? 0) + 1;
-
-        await db
-          .from("image_jobs")
-          .update({ concept_number: conceptNumber })
-          .eq("id", jobId);
-      } else {
-        conceptNumber = assigned;
-      }
+      await db
+        .from("image_jobs")
+        .update({ concept_number: conceptNumber })
+        .eq("id", jobId);
+    } else {
+      conceptNumber = assigned;
     }
   }
 
   const conceptNumberStr = String(conceptNumber).padStart(3, "0");
-  const numberPrefix = isExternal ? "R" : "#";
+  const numberPrefix = "#";
   // Strip leading "#XXX " or "RXXX " prefix from concept name to avoid duplication in ad set name
   const conceptName = job.name.replace(/^#\d+\s*/, "").replace(/^R\d+\s*/, "").toLowerCase();
 

@@ -295,7 +295,6 @@ export default function IntegrationsTab({
           { name: "Shopify", env: "SHOPIFY_*", desc: "Order data for A/B test conversions" },
           { name: "Kie AI", env: "KIE_AI_API_KEY", desc: "Image generation & translation" },
           { name: "Resend", env: "RESEND_API_KEY", desc: "Email notifications" },
-          { name: "Google Drive", env: "GDRIVE_*", desc: "Image import & export" },
         ].map((svc, i) => (
           <div key={svc.name}>
             {i > 0 && <RowDivider />}

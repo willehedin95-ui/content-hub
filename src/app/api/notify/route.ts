@@ -32,8 +32,7 @@ export async function POST(req: NextRequest) {
       email,
       job.name,
       job.source_images?.length ?? 0,
-      job.target_languages?.length ?? 0,
-      !!job.exported_at
+      job.target_languages?.length ?? 0
     );
 
     await db
