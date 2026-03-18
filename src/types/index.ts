@@ -268,6 +268,14 @@ export interface ImageJob {
     competitor_image_urls: string[];
     product_hero_urls: string[];
   } | null;
+  competitor_reference_data?: {
+    competitor_image_urls: string[];
+    product_hero_urls: string[];
+  } | null;
+  swipe_progress?: {
+    step: string;
+    message: string;
+  } | null;
   launchpad_priority?: number | null;
 }
 
@@ -657,6 +665,7 @@ export interface BrainstormRequest {
   competitor_image_url?: string;
   competitor_image_urls?: string[];
   competitor_ad_copy?: string;
+  competitor_pain_point?: string;
 }
 
 // --- Concept Generator Types ---

@@ -995,6 +995,13 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
 // From Competitor Ad — Claude Vision analysis + Nano Banana prompt generation
 // ---------------------------------------------------------------------------
 
+const PAIN_POINT_LABELS: Record<string, string> = {
+  "neck-pain": "NECK PAIN — morning stiffness, chronic pain, failed pillow treatments, cervical support",
+  "snoring": "SNORING — partner relationship destruction, kinked airway, breathing problems during sleep",
+  "sleep-quality": "SLEEP QUALITY — poor rest, fatigue, tossing and turning, waking up unrested",
+  "general": "GENERAL PRODUCT BENEFITS — comfort, materials, quality, value, guarantee, social proof",
+};
+
 function buildFromCompetitorAdSystem(
   product: ProductFull,
   productBrief: string | undefined,
@@ -1003,7 +1010,8 @@ function buildFromCompetitorAdSystem(
   hookInspiration?: string,
   learningsContext?: string,
   imageCount?: number,
-  variationsPerImage?: number
+  variationsPerImage?: number,
+  painPoint?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
 
@@ -1062,6 +1070,32 @@ Create an original concept for OUR product that:
 - Think: "What would this exact visual format look like if it was always about a pillow that fixes sleep problems?" — NOT "How can I loosely connect the competitor's beauty angle to a pillow?"
 - Maintains the emotional energy of the original while being completely original in content and problem domain
 
+${painPoint && painPoint !== "auto-detect" && PAIN_POINT_LABELS[painPoint]
+  ? `### MANDATORY PAIN POINT FOCUS
+
+**You MUST focus ALL hooks, copy, and messaging on this single pain point: ${PAIN_POINT_LABELS[painPoint]}.**
+
+Do NOT mix multiple pain points. Every hook, headline, and ad copy text must be about this one angle. If the competitor ad addresses a different problem, map their persuasion structure to THIS pain point specifically.
+
+For example, if the pain point is "snoring" and the competitor ad uses a before/after format about skincare, your adapted concept must use the same before/after format but about snoring — not about neck pain, not about sleep quality, ONLY about snoring.`
+  : `### PAIN POINT SELECTION
+
+Choose the SINGLE most natural pain point for this competitor ad's persuasion structure. Pick ONE from: neck pain, snoring, sleep quality, or general product benefits. Do NOT mix multiple pain points in the same concept. All hooks, headlines, and ad copy must focus on that one chosen angle.`}
+
+### AD COPY ADAPTATION
+
+When competitor ad copy text is provided, you MUST deeply analyze and ADAPT it — not generate generic copy:
+
+1. **Structure Mapping**: Identify the copy's structure (hook → problem agitation → solution pivot → proof → CTA). Map each structural element to our product.
+2. **Tone Matching**: Match the competitor's tone. Casual → casual. Urgent → urgent. Long-form storytelling → long-form storytelling.
+3. **Persuasion Transfer**: Reproduce their persuasion techniques (social proof, authority, scarcity, curiosity gap, identity) with our product's claims.
+4. **Length Matching**: If the competitor's text is 50 words, yours should be ~50 words. If 200, yours ~200.
+5. **Hook Adaptation**: Reproduce the hook TYPE (question, statistic, story opener, bold claim) with our product's angle.
+
+The ad_copy_primary MUST clearly derive from the competitor's approach — a reader should recognize the structural DNA.
+
+If NO competitor ad copy is provided, generate strong direct-response copy based on the visual ad's implied messaging and the chosen pain point.
+
 ### 5. NANO BANANA IMAGE PROMPT GENERATION
 
 You will receive ${imageCount ?? 1} competitor image(s). For EACH image, generate exactly ${variationsPerImage ?? 1} visually distinct Nano Banana prompt(s).
@@ -1086,10 +1120,9 @@ Generate prompts for the Nano Banana AI image generator (nano-banana-2) that rep
 - Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
 - Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
 - Describe the MOOD last (clinical, warm, urgent, calm, editorial)
-- **TEXT IN IMAGES — CRITICAL**: The competitor image is passed as a reference to Nano Banana. If the competitor ad has text that is PART OF THE IMAGE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product in the prompt. Otherwise Nano Banana will just reproduce the competitor's original text from the reference image. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt for a PILLOW product must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style" — adapt to OUR product's problem domain, not theirs. Each image_prompt variation should use a different hook_text, and that SAME text must appear in the Nano Banana prompt.
-- Do NOT include design-overlay text (bold headlines, CTA buttons, price tags) — those are added separately in post-production
+- **TEXT IN IMAGES — CRITICAL**: The generated image MUST include text overlays. The hook_text and headline_text you provide will be appended to the Nano Banana prompt as text overlay instructions. Your Nano Banana prompt should describe the VISUAL SCENE only — the text will be added automatically from hook_text and headline_text. However, if the competitor ad has text that is physically PART OF THE SCENE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product directly in the Nano Banana prompt. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style". Each image_prompt variation should use a different hook_text.
 - Focus on reproducing the competitor's visual STYLE, not their specific product
-- The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely, OVERRIDING any competitor-specific elements (text, product, branding) with our adapted versions
+- The competitor image is NOT passed to Nano Banana — your prompt must be SELF-CONTAINED and describe the entire desired image without relying on a visual reference. Be very specific about layout, composition, colors, and style.
 - If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
 - If the competitor ad uses a product shot, describe how our product should be positioned in the same style
 - **PRODUCT REFERENCE CONTROL — CRITICAL**: For each image_prompt, set \`"include_product_reference": true\` ONLY if the competitor ad prominently features a VISIBLE physical product (a bottle, box, pillow, device, etc.) that should be replaced with our product. Set it to \`false\` for native/UGC-style ads where no product is visible — e.g. a person at a doctor's office, a selfie, a lifestyle scene, medical staff, etc. When set to false, the product hero images will NOT be passed to Nano Banana, so it will reproduce the scene naturally without forcing our product into the image. This is essential for native ads that are supposed to look organic, not like product ads.
@@ -1127,8 +1160,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
       "copy_blocks": ["array of blocks used with depth levels"],
       "concept_description": "same as outer concept_description"
     },
-    "ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each) — adapted for our product using the competitor's persuasion structure"],
-    "ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],
+    "ad_copy_primary": ["2-3 primary ad text variations (English). ADAPT from the competitor's copy structure, tone, and length — reproduce their hook style, agitation pattern, proof types, and CTA. Match their word count. Must read as a structural adaptation, not generic product copy."],
+    "ad_copy_headline": ["2-3 headline variations (English, max 40 chars). Match the competitor's headline STYLE: question→question, number→number, bold claim→bold claim."],
     "visual_direction": "What the static ad image should look like — referencing the competitor's format but adapted for our product",
     "differentiation_note": "How this concept differs from the competitor's ad — what we kept (structure/technique) vs what we changed (content/claims/product)",
     "suggested_tags": ["competitor-swipe", "2-4 additional relevant tags"]
@@ -1150,9 +1183,9 @@ CRITICAL RULES:
 - NEVER invent medical claims — only use claims from our product brief
 - **NEVER keep the competitor's problem domain.** If the competitor ad is about beauty/skincare/supplements/weight loss/fitness — the adapted hooks MUST be about sleep, snoring, neck pain, or whatever OUR product actually solves. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
 - The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle
-- The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
-- **NATIVE ADS — DO NOT ADD PRODUCT**: If the competitor ad is a native/UGC-style image (person at doctor, selfie, lifestyle scene, medical setting, etc.) where NO physical product is visible, your Nano Banana prompt must NOT mention or describe our product. The image should look like an organic, real photo — NOT an ad. Set \`include_product_reference: false\` for these. Only describe our product in the prompt if the competitor ad itself prominently shows a physical product that needs to be swapped.
-- **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product. This text must be about OUR product's benefits (sleep/snoring/neck pain), NOT a reworded version of the competitor's claims. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
+- The competitor image is NOT passed to Nano Banana — your prompt must fully describe the desired image on its own
+- **NATIVE ADS — DO NOT ADD PRODUCT**: If the competitor ad is a native/UGC-style image (person at doctor, selfie, lifestyle scene, medical setting, illustrated scene, etc.) where NO physical product is visible, your Nano Banana prompt must NOT mention or describe our product. The image should look organic — NOT an ad. Set \`include_product_reference: false\` for these. Only set it to true if the competitor ad itself prominently shows a physical product that needs to be swapped with ours.
+- **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product directly in the prompt.**
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
 - Each entry MUST have a source_index (0-based) matching the uploaded image it is based on
@@ -1202,14 +1235,16 @@ export function buildBrainstormSystemPrompt(
   hookInspiration?: string,
   learningsContext?: string,
   competitorImageCount?: number,
-  variationsPerImage?: number
+  variationsPerImage?: number,
+  painPoint?: string
 ): string {
-  // from_competitor_ad needs extra params (image count + variations)
+  // from_competitor_ad needs extra params (image count + variations + pain point)
   if (mode === "from_competitor_ad") {
     return buildFromCompetitorAdSystem(
       product, productBrief, guidelines, segments,
       hookInspiration, learningsContext,
-      competitorImageCount, variationsPerImage
+      competitorImageCount, variationsPerImage,
+      painPoint
     );
   }
   const builder = SYSTEM_BUILDERS[mode];
@@ -1368,9 +1403,14 @@ export function buildBrainstormUserPrompt(
           ? `Analyze the ${imgCount} competitor ad images attached below as a cohesive concept set. Reverse-engineer their visual structure, identify why they work together, and create adapted versions for our product.`
           : "Analyze the competitor ad image attached below. Reverse-engineer its visual structure, identify why it works, and create an adapted version for our product."
       );
+      if (request.competitor_pain_point && request.competitor_pain_point !== "auto-detect") {
+        parts.push(`\n**REQUIRED PAIN POINT:** ${request.competitor_pain_point.replace(/-/g, " ")} — ALL copy and hooks must focus on this single angle. Do NOT mix other pain points.`);
+      }
       if (request.competitor_ad_copy) {
         parts.push(`\n### COMPETITOR AD COPY (from Meta Ads Library)\n${request.competitor_ad_copy.slice(0, 3000)}`);
-        parts.push("Use this copy to understand the competitor's messaging approach. Do NOT copy their claims — adapt the structure and technique for our product.");
+        parts.push("\n**CRITICAL**: Deeply adapt this copy's structure, tone, length, and persuasion techniques for our product. The ad_copy_primary output must be a structural adaptation of the above — not generic product copy. Match their hook style, agitation pattern, proof types, and CTA approach.");
+      } else {
+        parts.push("\n*No competitor ad copy was provided.* Generate strong direct-response ad copy based on the visual analysis and the chosen pain point.");
       }
       parts.push(`\nGenerate 1 concept. For each of the ${imgCount} image(s), generate ${count} visual variation(s) = ${imgCount * count} total image prompts.`);
       break;

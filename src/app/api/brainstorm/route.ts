@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
     const competitorImageUrls: string[] = body.competitor_image_urls
       ?? (body.competitor_image_url ? [body.competitor_image_url] : []);
     const competitorAdCopy: string | undefined = body.competitor_ad_copy;
+    const competitorPainPoint: string | undefined = body.competitor_pain_point;
 
     if (competitorImageUrls.length === 0) {
       return NextResponse.json(
@@ -161,7 +162,8 @@ export async function POST(req: NextRequest) {
       hookInspiration,
       learningsContext,
       competitorImageUrls.length,
-      competitorVariations
+      competitorVariations,
+      competitorPainPoint
     );
 
     const userPrompt = buildBrainstormUserPrompt(
@@ -326,7 +328,10 @@ export async function POST(req: NextRequest) {
             target_ratios: ["4:5", "9:16"],
             concept_number: nextNumber,
             tags,
-            cash_dna: parsed.concept.cash_dna,
+            cash_dna: {
+              ...(parsed.concept.cash_dna ?? {}),
+              pain_point: competitorPainPoint || "auto-detect",
+            },
             ad_copy_primary: parsed.concept.ad_copy_primary,
             ad_copy_headline: parsed.concept.ad_copy_headline,
             visual_direction: parsed.concept.visual_direction ?? null,

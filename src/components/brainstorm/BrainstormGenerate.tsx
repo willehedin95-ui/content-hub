@@ -127,6 +127,7 @@ export default function BrainstormGenerate() {
   const [variationsPerImage, setVariationsPerImage] = useState(1);
   const [urlInput, setUrlInput] = useState("");
   const [competitorAdCopy, setCompetitorAdCopy] = useState("");
+  const [competitorPainPoint, setCompetitorPainPoint] = useState("auto-detect");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -332,6 +333,7 @@ export default function BrainstormGenerate() {
             count: variationsPerImage,
             competitor_image_urls: allImageUrls,
             competitor_ad_copy: competitorAdCopy || undefined,
+            competitor_pain_point: competitorPainPoint !== "auto-detect" ? competitorPainPoint : undefined,
           }),
           signal: controller.signal,
         });
@@ -1033,20 +1035,57 @@ export default function BrainstormGenerate() {
                 )}
               </div>
 
-              {/* Optional ad copy textarea */}
+              {/* Pain point selector */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Competitor Ad Copy (optional)
+                  Pain Point Focus
                 </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "auto-detect", label: "Auto-detect" },
+                    { value: "neck-pain", label: "Neck Pain" },
+                    { value: "snoring", label: "Snoring" },
+                    { value: "sleep-quality", label: "Sleep Quality" },
+                    { value: "general", label: "General" },
+                  ].map((pp) => (
+                    <button
+                      key={pp.value}
+                      type="button"
+                      onClick={() => setCompetitorPainPoint(pp.value)}
+                      className={`px-3.5 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                        competitorPainPoint === pp.value
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                          : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      {pp.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Constrains the concept to focus on one problem domain. Helps match landing pages.
+                </p>
+              </div>
+
+              {/* Competitor ad copy */}
+              <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4">
+                <label className="block text-sm font-semibold text-amber-800 mb-1">
+                  Competitor Ad Copy
+                  <span className="ml-2 text-xs font-normal text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
+                    Recommended
+                  </span>
+                </label>
+                <p className="text-xs text-amber-600 mb-3">
+                  Paste the primary text + headline from Meta Ads Library. The AI will adapt the
+                  competitor&apos;s copy structure, tone, and persuasion hooks for our product.
+                  Without this, only the visual format is swiped.
+                </p>
                 <textarea
                   value={competitorAdCopy}
                   onChange={(e) => setCompetitorAdCopy(e.target.value)}
-                  placeholder="Paste the competitor's primary text and headline from Meta Ads Library..."
-                  className="w-full h-28 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 resize-none"
+                  placeholder={"Primary text:\n[Paste the main ad text here...]\n\nHeadline:\n[Paste the headline here...]"}
+                  className="w-full h-36 px-4 py-3 rounded-xl border border-amber-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 resize-none bg-white"
                 />
-                <p className="text-xs text-gray-400 mt-1">
-                  Adding the ad copy helps Claude better understand the competitor&apos;s strategy
-                </p>
               </div>
             </div>
           )}
