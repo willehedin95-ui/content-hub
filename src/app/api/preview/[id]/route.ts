@@ -8,7 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const origin = new URL(_req.url).origin;
+  const url = new URL(_req.url);
+  const origin = url.origin;
+  const raw = url.searchParams.get("raw") === "true";
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
 
@@ -141,7 +143,16 @@ export async function GET(
 })();
 </script>`;
 
-  // HTML was already sanitized when saved — no need to re-sanitize for preview
+  // Raw mode: serve the HTML as-is for clean preview in a new tab (with JS running)
+  if (raw) {
+    return new NextResponse(html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+      },
+    });
+  }
+
+  // Editor mode: inject contentEditable script for builder iframe
   const finalHtml = html.replace(/<\/body>/i, editorScript + "</body>");
 
   return new NextResponse(finalHtml, {

@@ -14,6 +14,7 @@ import { generateImageBriefs, resolveReferenceImages } from "@/lib/static-ad-pro
 import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
+import { swipeCompetitorAd, findBestLandingPage } from "@/lib/swipe-competitor";
 import {
   exploreAds,
   getBoardAds,
@@ -185,8 +186,7 @@ async function runCompetitorSwipe(
     }
   }
 
-  // --- Swipe via Claude Vision (reuse existing competitor ad pipeline) ---
-  const competitorImageUrls = imageUrls.slice(0, 3); // Max 3 images
+  const competitorImageUrls = imageUrls.slice(0, 3);
   if (competitorImageUrls.length === 0) {
     await db.from("discovered_ads")
       .update({ status: "skipped" })
@@ -195,318 +195,47 @@ async function runCompetitorSwipe(
     return NextResponse.json({ ok: true, skipped: true, reason: "No images in ad" });
   }
 
-  // Fetch product context
-  const { data: product } = await db.from("products").select("*").eq("slug", PRODUCT_SLUG).single();
-  if (!product) return NextResponse.json({ error: "Product not found" }, { status: 500 });
-
-  const { data: guidelines } = await db.from("copywriting_guidelines").select("*").eq("product_id", product.id);
-  const { data: segments } = await db.from("product_segments").select("*").eq("product_id", product.id);
-  const hookInspiration = await buildHookInspiration(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
-  const learningsContext = await buildLearningsContext(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
-
-  // Build system prompt for competitor ad mode
-  const systemPrompt = buildBrainstormSystemPrompt(
-    product as ProductFull,
-    undefined,
-    (guidelines ?? []) as CopywritingGuideline[],
-    (segments ?? []) as ProductSegment[],
-    "from_competitor_ad",
-    hookInspiration,
-    learningsContext,
-    competitorImageUrls.length,
-    1 // 1 variation per image
-  );
-
-  // Build user prompt with competitor ad context
-  const userPrompt = buildBrainstormUserPrompt(
-    {
-      mode: "from_competitor_ad",
-      product: PRODUCT_SLUG,
-      count: 1,
-      competitor_image_urls: competitorImageUrls,
-      competitor_ad_copy: discovered.ad.body?.slice(0, 2000),
-    } as BrainstormRequest,
-    (segments ?? []) as ProductSegment[],
-  );
-
-  // Call Claude Vision
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-  const response = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 8000,
-    temperature: 0.7,
-    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-    messages: [{
-      role: "user",
-      content: [
-        ...competitorImageUrls.map((url) => ({
-          type: "image" as const,
-          source: { type: "url" as const, url },
-        })),
-        { type: "text" as const, text: userPrompt },
-      ],
-    }],
-  });
-
-  const rawContent = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  if (!rawContent) {
-    if (chatId) {
-      await sendMessageWithInlineKeyboard(chatId,
-        `⚠️ Autopilot swipe: Claude returned empty response for ad from ${discovered.ad.brand.name}. Will retry tomorrow.`,
-        []
-      );
-    }
-    return NextResponse.json({ ok: true, error: "Empty Claude response" });
-  }
-
-  // Parse response
-  let parsed: {
-    analysis: Record<string, unknown>;
-    concept: {
-      concept_name: string;
-      concept_description?: string;
-      cash_dna: Record<string, unknown>;
-      ad_copy_primary: string[];
-      ad_copy_headline: string[];
-      visual_direction: string;
-      differentiation_note?: string;
-      suggested_tags?: string[];
-    };
-    image_prompts: Array<{
-      source_index?: number;
-      prompt: string;
-      hook_text: string;
-      headline_text: string;
-      include_product_reference?: boolean;
-    }>;
-  };
-
+  // --- Delegate to shared swipe function ---
   try {
-    const cleaned = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    parsed = JSON.parse(cleaned);
-  } catch (parseErr) {
-    console.error("[Autopilot/swipe] Parse error:", parseErr, "\nRaw:", rawContent.slice(0, 500));
-    if (chatId) {
-      await sendMessageWithInlineKeyboard(chatId,
-        `⚠️ Autopilot swipe: Failed to parse Claude response. Will retry tomorrow.`,
-        []
-      );
-    }
-    return NextResponse.json({ ok: true, error: "Parse error" });
-  }
+    const result = await swipeCompetitorAd({
+      workspaceId: HAPPYSLEEP_WORKSPACE_ID,
+      productSlug: PRODUCT_SLUG,
+      competitorImageUrls,
+      competitorAdCopy: discovered.ad.body,
+      brandName: discovered.ad.brand.name,
+      gethookdAdId: discovered.ad.id,
+      notifyTelegram: !!chatId,
+    });
 
-  if (!parsed.concept || !parsed.image_prompts?.length) {
-    return NextResponse.json({ ok: true, error: "Missing required fields in response" });
-  }
+    // Update discovered_ads with the job link
+    await db.from("discovered_ads")
+      .update({ status: "swiped", image_job_id: result.jobId, updated_at: new Date().toISOString() })
+      .eq("gethookd_ad_id", discovered.ad.id)
+      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
 
-  // --- Create image_job ---
-  const { data: lastJob } = await db
-    .from("image_jobs")
-    .select("concept_number")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-    .not("concept_number", "is", null)
-    .order("concept_number", { ascending: false })
-    .limit(1)
-    .single();
-
-  const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
-
-  const tags = [...(parsed.concept.suggested_tags ?? []), "competitor-swipe", "autopilot"];
-  // Add source info to cash_dna
-  const cashDna = {
-    ...(parsed.concept.cash_dna ?? {}),
-    ad_source: "competitor_swipe",
-    swiped_from: discovered.ad.brand.name,
-    swiped_ad_id: discovered.ad.id,
-  };
-
-  const { data: productImages } = await db
-    .from("product_images")
-    .select("url, category")
-    .eq("product_id", product.id)
-    .order("sort_order", { ascending: true });
-
-  const productHeroUrls = (productImages ?? [])
-    .filter((i) => i.category === "product")
-    .slice(0, 3)
-    .map((i) => i.url);
-
-  const { data: job, error: jobErr } = await db
-    .from("image_jobs")
-    .insert({
-      workspace_id: HAPPYSLEEP_WORKSPACE_ID,
-      name: parsed.concept.concept_name,
-      product: PRODUCT_SLUG,
-      status: "draft",
-      source: "autopilot",
-      concept_number: nextConceptNumber,
-      target_languages: TARGET_LANGUAGES,
-      target_ratios: TARGET_RATIOS,
-      cash_dna: cashDna,
-      ad_copy_primary: parsed.concept.ad_copy_primary,
-      ad_copy_headline: parsed.concept.ad_copy_headline,
-      visual_direction: parsed.concept.visual_direction,
-      tags,
-      pending_competitor_gen: {
-        image_prompts: parsed.image_prompts,
-        competitor_image_urls: competitorImageUrls,
-        product_hero_urls: productHeroUrls,
+    return NextResponse.json({
+      ok: true,
+      mode: "competitor_swipe",
+      concept: {
+        id: result.jobId,
+        name: result.conceptName,
+        concept_number: result.conceptNumber,
+        swiped_from: discovered.ad.brand.name,
+        source: discovered.source,
+        images_generated: result.imagesGenerated,
+        landing_page_assigned: result.landingPageAssigned,
       },
-    })
-    .select()
-    .single();
-
-  if (jobErr || !job) {
-    console.error("[Autopilot/swipe] Failed to create image_job:", jobErr);
-    return NextResponse.json({ error: "Failed to create job" }, { status: 500 });
-  }
-
-  // Auto-assign landing page
-  const landingPageId = await findBestLandingPage(db);
-  if (landingPageId) {
-    await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
-  }
-
-  // --- Generate images (inline, same flow as generate-competitor route) ---
-  let imageResults: Array<{ url: string; sourceImageId: string }> = [];
-  try {
-    // Clear pending_competitor_gen and store reference data
-    await db.from("image_jobs").update({
-      pending_competitor_gen: null,
-      competitor_reference_data: {
-        competitor_image_urls: competitorImageUrls,
-        product_hero_urls: productHeroUrls,
-      },
-    }).eq("id", job.id);
-
-    for (let index = 0; index < parsed.image_prompts.length; index++) {
-      const imgPrompt = parsed.image_prompts[index];
-      try {
-        const sourceIdx = imgPrompt.source_index ?? 0;
-        const competitorRef = competitorImageUrls[sourceIdx] ?? competitorImageUrls[0];
-        const includeProduct = imgPrompt.include_product_reference !== false;
-        const referenceUrls = includeProduct
-          ? [competitorRef, ...productHeroUrls]
-          : [competitorRef];
-
-        const { urls: resultUrls, costTimeMs } = await generateImage(
-          imgPrompt.prompt,
-          referenceUrls,
-          "4:5"
-        );
-
-        if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
-
-        const resultRes = await fetch(resultUrls[0]);
-        if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
-        const buffer = Buffer.from(await resultRes.arrayBuffer());
-
-        const fileId = crypto.randomUUID();
-        const filePath = `image-jobs/${job.id}/${fileId}.png`;
-        const { error: uploadError } = await db.storage
-          .from(STORAGE_BUCKET)
-          .upload(filePath, buffer, { contentType: "image/png", upsert: false });
-
-        if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
-
-        const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
-
-        const { data: sourceImage } = await db
-          .from("source_images")
-          .insert({
-            job_id: job.id,
-            original_url: urlData.publicUrl,
-            filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
-            processing_order: index,
-            skip_translation: false,
-            generation_prompt: imgPrompt.prompt,
-            generation_style: "competitor-swipe",
-            batch: 1,
-          })
-          .select()
-          .single();
-
-        await db.from("usage_logs").insert({
-          type: "image_generation",
-          page_id: null,
-          translation_id: null,
-          model: KIE_MODEL,
-          input_tokens: 0,
-          output_tokens: 0,
-          cost_usd: KIE_IMAGE_COST,
-          metadata: {
-            purpose: "autopilot_competitor_swipe",
-            image_job_id: job.id,
-            source_image_id: sourceImage?.id,
-            kie_cost_time_ms: costTimeMs,
-            reference_image_count: referenceUrls.length,
-          },
-        });
-
-        imageResults.push({ url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" });
-      } catch (err) {
-        console.error(`[Autopilot/swipe] Image ${index + 1} failed:`, err);
-      }
-    }
-
-    // Update job status
-    await db.from("image_jobs").update({
-      status: "ready",
-      updated_at: new Date().toISOString(),
-    }).eq("id", job.id);
+    });
   } catch (err) {
-    console.error("[Autopilot/swipe] Image generation error:", err);
-  }
-
-  // --- Update discovered_ads ---
-  await db.from("discovered_ads")
-    .update({ status: "swiped", image_job_id: job.id, updated_at: new Date().toISOString() })
-    .eq("gethookd_ad_id", discovered.ad.id)
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
-
-  // --- Telegram notification ---
-  if (chatId) {
-    const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
-    const scoreLabel = discovered.ad.performance_score
-      ? ` | ${discovered.ad.performance_score_title} (${discovered.ad.performance_score})`
-      : "";
-
-    const caption = [
-      `🔍 Autopilot swipe #${nextConceptNumber}:`,
-      ``,
-      `"${parsed.concept.concept_name}"`,
-      `Swiped from: ${discovered.ad.brand.name}${scoreLabel}`,
-      `Source: ${discovered.source} | ${discovered.ad.days_active}d active`,
-      `Images: ${imageResults.length}/${parsed.image_prompts.length} | Page: ${landingPageId ? "Yes" : "No"}`,
-      ``,
-      `${hubUrl}/concepts/${job.id}`,
-    ].join("\n");
-
-    const buttons = [[
-      { text: "✅ Approve", callback_data: `concept_approve:${job.id}` },
-      { text: "❌ Reject", callback_data: `concept_reject:${job.id}` },
-    ]];
-
-    if (imageResults.length > 0) {
-      await sendPhoto(chatId, imageResults[0].url, caption, buttons);
-    } else {
-      await sendMessageWithInlineKeyboard(chatId, caption, buttons);
+    console.error("[Autopilot/swipe] Swipe failed:", err);
+    if (chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        `⚠️ Autopilot swipe failed for ad from ${discovered.ad.brand.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
+        []
+      );
     }
+    return NextResponse.json({ ok: true, error: err instanceof Error ? err.message : "Unknown error" });
   }
-
-  return NextResponse.json({
-    ok: true,
-    mode: "competitor_swipe",
-    concept: {
-      id: job.id,
-      name: parsed.concept.concept_name,
-      concept_number: nextConceptNumber,
-      swiped_from: discovered.ad.brand.name,
-      source: discovered.source,
-      images_generated: imageResults.length,
-      landing_page_assigned: !!landingPageId,
-    },
-  });
 }
 
 // ===========================================================================
@@ -781,7 +510,7 @@ async function runFromScratch(
   }
 
   // --- Step 6: Auto-assign landing page ---
-  const landingPageId = await findBestLandingPage(db);
+  const landingPageId = await findBestLandingPage(db, HAPPYSLEEP_WORKSPACE_ID, PRODUCT_SLUG);
   if (landingPageId) {
     await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
   }
@@ -1016,54 +745,4 @@ async function pickBrainstormMode(
   return AUTOPILOT_MODES[Math.floor(Math.random() * AUTOPILOT_MODES.length)];
 }
 
-// ---------------------------------------------------------------------------
-// Helper: Find best performing landing page for auto-assignment
-// ---------------------------------------------------------------------------
-
-async function findBestLandingPage(
-  db: ReturnType<typeof createServerSupabase>
-): Promise<string | null> {
-  // Find pages that have been used in pushed concepts with good ROAS
-  const { data: pushedJobs } = await db
-    .from("image_jobs")
-    .select("landing_page_id")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-    .eq("product", PRODUCT_SLUG)
-    .not("landing_page_id", "is", null)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (!pushedJobs?.length) {
-    // No prior usage — pick the most recently published page for this product
-    const { data: pages } = await db
-      .from("pages")
-      .select("id")
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-      .eq("product", PRODUCT_SLUG)
-      .not("published_at", "is", null)
-      .order("published_at", { ascending: false })
-      .limit(1);
-
-    return pages?.[0]?.id ?? null;
-  }
-
-  // Count usage frequency — most-used page is likely the best performer
-  const pageCounts = new Map<string, number>();
-  for (const j of pushedJobs) {
-    const pid = j.landing_page_id as string;
-    pageCounts.set(pid, (pageCounts.get(pid) ?? 0) + 1);
-  }
-
-  // Return the most frequently used page
-  let bestPage: string | null = null;
-  let bestCount = 0;
-  for (const [pid, count] of pageCounts) {
-    if (count > bestCount) {
-      bestPage = pid;
-      bestCount = count;
-    }
-  }
-
-  return bestPage;
-}
+// findBestLandingPage is imported from @/lib/swipe-competitor

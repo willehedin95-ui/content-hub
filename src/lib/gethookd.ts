@@ -153,13 +153,16 @@ export async function getBoardAds(
   perPage = 50
 ): Promise<{ ads: GethookdAd[]; total: number }> {
   const res = await gethookdFetch<{
-    data: GethookdAd[];
-    meta: { total: number };
+    data: {
+      id: number;
+      name: string;
+      ads: { data: GethookdAd[]; total: number };
+    };
   }>(`/boards/${boardId}`, { page, per_page: perPage });
 
   return {
-    ads: res.data ?? [],
-    total: res.meta?.total ?? 0,
+    ads: res.data?.ads?.data ?? [],
+    total: res.data?.ads?.total ?? 0,
   };
 }
 

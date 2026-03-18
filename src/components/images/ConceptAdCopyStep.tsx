@@ -106,13 +106,6 @@ export interface ConceptAdCopyStepProps {
     translating: boolean;
     translatingLang: Language | null;
   };
-  // Doc fetch state
-  doc: {
-    fetching: boolean;
-    tabs: Array<{ id: string; title: string }> | null;
-    error: string | null;
-    matchedTab: string | null;
-  };
   // Landing pages
   landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>;
   // Handlers
@@ -123,7 +116,6 @@ export interface ConceptAdCopyStepProps {
   removePrimaryText: (index: number) => void;
   addHeadline: () => void;
   removeHeadline: (index: number) => void;
-  handleFetchFromDoc: (tabId?: string) => void;
   handleTranslateCopy: (lang?: Language, corrections?: string) => void;
   handleWebsiteUrlChange: (value: string) => void;
   handleWebsiteUrlBChange: (value: string) => void;
@@ -138,7 +130,6 @@ export default function ConceptAdCopyStep({
   metaPush,
   copyTranslations,
   copyState,
-  doc,
   landingPages,
   handlePrimaryChange,
   handleHeadlineChange,
@@ -147,7 +138,6 @@ export default function ConceptAdCopyStep({
   removePrimaryText,
   addHeadline,
   removeHeadline,
-  handleFetchFromDoc,
   handleTranslateCopy,
   handleWebsiteUrlChange,
   handleWebsiteUrlBChange,
@@ -177,45 +167,6 @@ export default function ConceptAdCopyStep({
         <Type className="w-5 h-5 text-indigo-600" />
         Ad Copy
       </h2>
-
-      {/* Ad Copy from Google Doc */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => handleFetchFromDoc()}
-            disabled={doc.fetching}
-            className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
-          >
-            {doc.fetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {doc.fetching ? "Fetching..." : "Auto-match from doc"}
-          </button>
-          {doc.tabs && doc.tabs.length > 0 && (
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleFetchFromDoc(e.target.value);
-                }
-              }}
-              value=""
-              disabled={doc.fetching}
-              className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">Pick a tab...</option>
-              {doc.tabs.map((tab) => (
-                <option key={tab.id} value={tab.id}>{tab.title}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {doc.matchedTab && (
-          <p className="text-xs text-green-600">Loaded from tab: &ldquo;{doc.matchedTab}&rdquo;</p>
-        )}
-
-        {doc.error && (
-          <p className="text-xs text-red-600">{doc.error}</p>
-        )}
-      </div>
 
       {/* Primary Texts */}
       <div>

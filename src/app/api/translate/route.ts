@@ -8,8 +8,11 @@ import { OPENAI_MODEL, RATE_LIMIT_TRANSLATE, STALE_CLAIM_MS } from "@/lib/consta
 import { Language } from "@/types";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-// Pages larger than this (after stripping scripts/styles) use block-based translation
-const FULL_HTML_MAX_CHARS = 80_000;
+// Pages larger than this (after stripping scripts/styles) use block-based translation.
+// Block-based is more robust for large pages: GPT translates smaller JSON chunks
+// rather than having to return the entire HTML verbatim. Lowered from 80K after
+// observing repeated failures on ~40K pages where GPT truncated or timed out.
+const FULL_HTML_MAX_CHARS = 25_000;
 
 export const maxDuration = 180;
 
@@ -225,6 +228,7 @@ export async function POST(req: NextRequest) {
           seo_title: seoMetas.title || null,
           seo_description: seoMetas.description || null,
           status: "translated",
+          error_message: null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "page_id,language,variant" }
@@ -258,6 +262,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(translation);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Translation failed";
+    console.error(`[translate] Failed for page=${page_id} lang=${language}:`, message);
 
     await db.from("translations").upsert(
       {
@@ -265,6 +270,7 @@ export async function POST(req: NextRequest) {
         language,
         variant: "control",
         status: "error",
+        error_message: message.slice(0, 500),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "page_id,language,variant" }

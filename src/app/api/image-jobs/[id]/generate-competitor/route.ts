@@ -80,18 +80,31 @@ export async function POST(
   for (let index = 0; index < image_prompts.length; index++) {
     const imgPrompt = image_prompts[index];
     try {
-      // Use source_index to pick the correct competitor image as reference
-      const sourceIdx = imgPrompt.source_index ?? 0;
-      const competitorRef = competitorImageUrls[sourceIdx] ?? competitorImageUrls[0];
-      // Only include product hero images when the competitor ad has a visible product
-      // Native/UGC ads without products should NOT get product images forced in
-      const includeProduct = imgPrompt.include_product_reference !== false;
-      const referenceUrls = includeProduct
-        ? [competitorRef, ...product_hero_urls]
-        : [competitorRef];
+      // Pass competitor image as style reference so generated images match the original's visual style.
+      // Product hero images are added when include_product_reference is true.
+      const includeProduct = imgPrompt.include_product_reference === true;
+      const competitorStyleRef = competitorImageUrls[0];
+      const referenceUrls = [
+        ...(competitorStyleRef ? [competitorStyleRef] : []),
+        ...(includeProduct ? product_hero_urls : []),
+      ];
+
+      // Build the full prompt: scene description + text overlay instructions.
+      // hook_text and headline_text must be baked into the image by Kie AI.
+      let fullPrompt = imgPrompt.prompt;
+      if (imgPrompt.hook_text || imgPrompt.headline_text) {
+        const textParts: string[] = [];
+        if (imgPrompt.hook_text) {
+          textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
+        }
+        if (imgPrompt.headline_text) {
+          textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
+        }
+        fullPrompt += " " + textParts.join(" ");
+      }
 
       const { urls: resultUrls, costTimeMs } = await generateImage(
-        imgPrompt.prompt,
+        fullPrompt,
         referenceUrls,
         "4:5"
       );

@@ -145,6 +145,17 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
   }, [job.cash_dna]);
 
+  // Competitor swipe variation states
+  const isCompetitorSwipe = (job.tags ?? []).includes("competitor-swipe");
+  const competitorImageUrls = (job.competitor_reference_data as { competitor_image_urls?: string[] } | null)?.competitor_image_urls ?? [];
+  const [varState, setVarState] = useState<{
+    generating: boolean;
+    count: number;
+    progress: string | null;
+    error: string | null;
+  }>({ generating: false, count: 3, progress: null, error: null });
+  const varAbortRef = useRef<AbortController | null>(null);
+
   // V3.3: Product segments for targeting
   const [productSegments, setProductSegments] = useState<ProductSegment[]>([]);
 
@@ -163,14 +174,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     loading: false,
     error: null,
   });
-
-  // Doc fetch states
-  const [doc, setDoc] = useState<{
-    fetching: boolean;
-    tabs: Array<{ id: string; title: string }> | null;
-    error: string | null;
-    matchedTab: string | null;
-  }>({ fetching: false, tabs: null, error: null, matchedTab: null });
 
   // Copy translation states
   const [copyState, setCopyState] = useState<{
@@ -422,71 +425,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       copyDebounceRef.current = setTimeout(() => saveCopy(prev.primaryTexts, next), 500);
       return { ...prev, headlines: next.length > 0 ? next : [""] };
     });
-  }
-
-  // Load available doc tabs when switching to ad-copy step
-  useEffect(() => {
-    if (step !== 1 || doc.tabs !== null) return;
-    (async () => {
-      try {
-        const res = await fetch(`/api/image-jobs/${initialJob.id}/fetch-copy`);
-        const data = await res.json().catch(() => ({}));
-        if (data.availableTabs?.length) {
-          setDoc(prev => ({ ...prev, tabs: data.availableTabs }));
-        }
-        // If auto-matched, populate the copy fields
-        if (res.ok && data.primaryTexts?.length) {
-          setMetaPush(prev => ({
-            ...prev,
-            primaryTexts: data.primaryTexts,
-            ...(data.headlines?.length ? { headlines: data.headlines } : {}),
-          }));
-          if (data.matchedTab) setDoc(prev => ({ ...prev, matchedTab: data.matchedTab }));
-          await saveCopy(data.primaryTexts, data.headlines || metaPush.headlines);
-        }
-      } catch {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  // Fetch ad copy from Google Doc
-  async function handleFetchFromDoc(tabId?: string) {
-    setDoc(prev => ({ ...prev, fetching: true, error: null, matchedTab: null }));
-    try {
-      const url = tabId
-        ? `/api/image-jobs/${initialJob.id}/fetch-copy?tab_id=${tabId}`
-        : `/api/image-jobs/${initialJob.id}/fetch-copy`;
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        if (data.error === "no_match" && data.availableTabs?.length) {
-          setDoc(prev => ({ ...prev, tabs: data.availableTabs, error: data.message }));
-          return;
-        }
-        throw new Error(data.error || "Failed to fetch copy from doc");
-      }
-
-      // Store available tabs for manual selection dropdown
-      if (data.availableTabs?.length) {
-        setDoc(prev => ({ ...prev, tabs: data.availableTabs }));
-      }
-      if (data.matchedTab) {
-        setDoc(prev => ({ ...prev, matchedTab: data.matchedTab }));
-      }
-      setMetaPush(prev => ({
-        ...prev,
-        ...(data.primaryTexts?.length ? { primaryTexts: data.primaryTexts } : {}),
-        ...(data.headlines?.length ? { headlines: data.headlines } : {}),
-      }));
-      // Save immediately
-      await saveCopy(data.primaryTexts || metaPush.primaryTexts, data.headlines || metaPush.headlines);
-    } catch (err) {
-      setDoc(prev => ({ ...prev, error: err instanceof Error ? err.message : "Failed to fetch copy" }));
-      console.error("Fetch from doc failed:", err);
-    } finally {
-      setDoc(prev => ({ ...prev, fetching: false }));
-    }
   }
 
   // Translate ad copy for all languages (or a specific one)
@@ -1091,6 +1029,50 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
   }
 
+  // Generate variations of a competitor-swipe concept
+  async function handleGenerateVariations() {
+    if (varState.generating) return;
+    varAbortRef.current?.abort();
+    const controller = new AbortController();
+    varAbortRef.current = controller;
+
+    setVarState(prev => ({ ...prev, generating: true, progress: "Generating variation prompts...", error: null }));
+
+    const pollInterval = setInterval(() => refreshJob(), 3000);
+
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/generate-variations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: varState.count }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      clearInterval(pollInterval);
+
+      if (!res.ok) {
+        setVarState(prev => ({ ...prev, generating: false, progress: null, error: data.error || "Generation failed" }));
+        await refreshJob();
+        return;
+      }
+      const errorMsg = data.failed > 0
+        ? `Generated ${data.generated}/${data.generated + data.failed}. ${data.failed} failed.`
+        : null;
+      setVarState(prev => ({ ...prev, generating: false, progress: null, error: errorMsg }));
+      await refreshJob();
+    } catch (err) {
+      clearInterval(pollInterval);
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setVarState(prev => ({
+        ...prev,
+        generating: false,
+        progress: null,
+        error: err instanceof Error ? err.message : "Generation failed",
+      }));
+      await refreshJob();
+    }
+  }
+
   // Re-roll a single source image
   async function handleReroll(sourceImageId: string) {
     if (rerollingId) return;
@@ -1473,6 +1455,13 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           show9x16Button={show9x16Button}
           count9x16={translationsPrimary.length}
           onDeleteImage={handleDeleteImage}
+          isCompetitorSwipe={isCompetitorSwipe}
+          competitorImageUrls={competitorImageUrls}
+          variationState={{
+            ...varState,
+            setCount: (n: number) => setVarState(prev => ({ ...prev, count: n })),
+          }}
+          handleGenerateVariations={handleGenerateVariations}
         />
       ) : step === 1 ? (
         <ConceptAdCopyStep

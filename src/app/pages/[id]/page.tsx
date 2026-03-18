@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink, Image, FlaskConical, Pencil } from "lucide-react";
+import { ArrowLeft, ExternalLink, Eye, Image, FlaskConical, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase";
 import { getWorkspaceId } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
@@ -117,13 +117,24 @@ export default async function PageDetailPage({
         </div>
         <div className="flex items-center gap-2">
           {p.status !== "importing" && (
-            <Link
-              href={`/pages/${p.id}/edit/source`}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              Edit Source
-            </Link>
+            <>
+              <a
+                href={`/api/preview/source_${p.id}?raw=true`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Preview
+              </a>
+              <Link
+                href={`/pages/${p.id}/edit/source`}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded-lg px-3 py-2 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Edit Source
+              </Link>
+            </>
           )}
           {p.source_url && (
             <a

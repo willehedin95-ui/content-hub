@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Clock, Image as ImageIcon, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
+import { Clock, Image as ImageIcon, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
 import { ImageJob, COUNTRY_MAP } from "@/types";
 import { useProducts, getProductLabel } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import { getMarketStatus, getWizardStep, getConceptThumbnail, COUNTRY_FLAGS } from "@/lib/concept-status";
-import NewConceptModal from "@/components/images/NewConceptModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { TagBadge } from "@/components/ui/tag-input";
 import { useAllTags } from "@/lib/hooks/use-all-tags";
@@ -48,7 +47,6 @@ export default function ImagesPage() {
   const products = useProducts();
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [avgSeconds, setAvgSeconds] = useState(75);
   const [totalCount, setTotalCount] = useState(0);
@@ -218,10 +216,6 @@ export default function ImagesPage() {
     }
   }
 
-  function handleCreated(jobId: string) {
-    setShowModal(false);
-    router.push(`/images/${jobId}`);
-  }
 
   return (
     <div className="p-8 max-w-6xl">
@@ -237,13 +231,6 @@ export default function ImagesPage() {
           >
             {backfillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dna className="w-4 h-4" />}
             {backfillLoading ? "Analyzing..." : "Backfill DNA"}
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New Ad Concept
           </button>
         </div>
       </div>
@@ -556,13 +543,6 @@ export default function ImagesPage() {
         </p>
         </>
       )}
-
-      <NewConceptModal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        onCreated={handleCreated}
-        avgSecondsPerImage={avgSeconds}
-      />
 
       <ConfirmDialog
         open={!!confirmDeleteId}

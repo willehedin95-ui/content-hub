@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
+  Check,
   CheckCircle2,
   Loader2,
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  Copy,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
@@ -233,6 +235,17 @@ export interface ConceptImagesStepProps {
   count9x16?: number;
   // Delete source image
   onDeleteImage?: (sourceImageId: string) => void;
+  // Competitor swipe variations
+  isCompetitorSwipe?: boolean;
+  competitorImageUrls?: string[];
+  variationState?: {
+    generating: boolean;
+    count: number;
+    setCount: (n: number) => void;
+    progress: string | null;
+    error: string | null;
+  };
+  handleGenerateVariations?: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -277,6 +290,10 @@ export default function ConceptImagesStep({
   show9x16Button,
   count9x16,
   onDeleteImage,
+  isCompetitorSwipe,
+  competitorImageUrls,
+  variationState,
+  handleGenerateVariations,
 }: ConceptImagesStepProps) {
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
   // Show generate section when job has visual_direction and isn't processing
@@ -462,40 +479,197 @@ export default function ConceptImagesStep({
     );
   };
 
+  const renderCompetitorReference = () => {
+    if (!isCompetitorSwipe || !competitorImageUrls?.length) return null;
+    return (
+      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Copy className="w-4 h-4 text-gray-500" />
+          <h4 className="text-sm font-medium text-gray-700">Original Competitor Ad</h4>
+        </div>
+        <div className="flex gap-3">
+          {competitorImageUrls.map((url, i) => (
+            <div key={i} className="w-24 rounded-lg overflow-hidden border border-gray-200 shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Competitor ${i + 1}`} className="w-full aspect-[4/5] object-cover" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderVariationSection = () => {
+    if (!isCompetitorSwipe || !variationState || !handleGenerateVariations) return null;
+    if (job.status === "processing") return null;
+    return (
+      <div className="mt-4 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-5 h-5 text-amber-600" />
+          <h3 className="text-base font-semibold text-gray-900">Generate Variations</h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Same visual style, different hooks and scene details. Each variation tests a different angle to find what resonates.
+        </p>
+
+        {/* Count selector */}
+        <div className="flex items-center gap-3 mb-4">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Variations to generate
+          </label>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => variationState.setCount(Math.max(1, variationState.count - 1))}
+              disabled={variationState.generating || variationState.count <= 1}
+              className="w-7 h-7 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-50 flex items-center justify-center text-sm"
+            >
+              -
+            </button>
+            <span className="w-8 text-center text-sm font-medium">{variationState.count}</span>
+            <button
+              onClick={() => variationState.setCount(Math.min(6, variationState.count + 1))}
+              disabled={variationState.generating || variationState.count >= 6}
+              className="w-7 h-7 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-50 flex items-center justify-center text-sm"
+            >
+              +
+            </button>
+          </div>
+          <span className="text-xs text-gray-400">
+            ~${(0.04 + variationState.count * KIE_IMAGE_COST).toFixed(2)}
+          </span>
+        </div>
+
+        {/* Generate button */}
+        <button
+          onClick={handleGenerateVariations}
+          disabled={variationState.generating}
+          className="px-5 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+        >
+          {variationState.generating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Generate {variationState.count} Variation{variationState.count !== 1 ? "s" : ""}
+            </>
+          )}
+        </button>
+
+        {/* Progress */}
+        {variationState.generating && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-amber-600">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>{variationState.progress || "Generating variations..."}</span>
+            <span className="text-gray-400 text-xs"><ElapsedTimer /></span>
+          </div>
+        )}
+
+        {/* Error */}
+        {variationState.error && (
+          <p className="mt-3 text-sm text-red-600">{variationState.error}</p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Generate section first when no images exist */}
-      {!hasExistingImages && renderGenerateSection()}
+      {!hasExistingImages && !isCompetitorSwipe && renderGenerateSection()}
 
-      {job.status === "draft" && !(showGenerateSection && !hasExistingImages) ? (
+      {job.status === "draft" && (!!job.swipe_progress || !(showGenerateSection && !hasExistingImages)) ? (
         <div className="space-y-4">
           {(() => {
+            const swipeProgress = job.swipe_progress as { step: string; message: string } | null | undefined;
             const pendingCount = job.pending_competitor_gen
               ? job.pending_competitor_gen.image_prompts?.length ?? 5
               : 0;
-            const totalExpected = Math.max(pendingCount, 4);
             const isCompetitorGen = pendingCount > 0 || job.tags?.includes("competitor-swipe");
+            // For swipe pipeline jobs, the total expected comes from swipe_progress step
+            // During "analyzing" we don't know the count yet; during "generating" we parse it from the message
+            const totalExpected = pendingCount > 0 ? pendingCount : (isCompetitorGen ? Math.max(3, sourceImages.length) : 4);
+
+            // Swipe pipeline step indicators
+            const swipeSteps = [
+              { key: "queued", label: "Queued" },
+              { key: "analyzing", label: "Analyzing" },
+              { key: "generating", label: "Generating" },
+            ];
+            const currentStepIndex = swipeProgress
+              ? swipeSteps.findIndex(s => s.key === swipeProgress.step)
+              : -1;
+
             return (
               <>
-                <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {isCompetitorGen
-                    ? `Generating competitor-swipe images (${sourceImages.length}/${totalExpected})...`
-                    : job.visual_direction ? "Generating images..." : "Importing from Drive..."}
-                  <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
-                </div>
+                {/* Swipe pipeline progress (step-by-step) */}
+                {swipeProgress && swipeProgress.step !== "error" ? (
+                  <div className="space-y-3">
+                    {/* Step indicators */}
+                    <div className="flex items-center gap-2">
+                      {swipeSteps.map((s, i) => {
+                        const isActive = i === currentStepIndex;
+                        const isDone = i < currentStepIndex;
+                        return (
+                          <div key={s.key} className="flex items-center gap-2">
+                            {i > 0 && (
+                              <div className={`w-6 h-px ${isDone ? "bg-indigo-400" : "bg-gray-200"}`} />
+                            )}
+                            <div className={`flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 ${
+                              isActive ? "bg-indigo-100 text-indigo-700" : isDone ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-400"
+                            }`}>
+                              {isActive && <Loader2 className="w-3 h-3 animate-spin" />}
+                              {isDone && <Check className="w-3 h-3" />}
+                              {s.label}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <span className="text-gray-400 text-xs ml-auto"><ElapsedTimer /></span>
+                    </div>
 
-                {/* Progress bar for competitor generation */}
-                {isCompetitorGen && totalExpected > 0 && (
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, (sourceImages.length / totalExpected) * 100)}%` }}
-                    />
+                    {/* Current step message */}
+                    <p className="text-sm text-gray-600">{swipeProgress.message}</p>
+
+                    {/* Progress bar during generating phase */}
+                    {swipeProgress.step === "generating" && totalExpected > 0 && (
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (sourceImages.length / totalExpected) * 100)}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
+                ) : swipeProgress?.step === "error" ? (
+                  <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{swipeProgress.message}</span>
+                  </div>
+                ) : (
+                  /* Default draft progress (non-swipe jobs) */
+                  <>
+                    <div className="flex items-center gap-1.5 text-indigo-600 text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {isCompetitorGen
+                        ? `Generating competitor-swipe images (${sourceImages.length}/${totalExpected})...`
+                        : job.visual_direction ? "Generating images..." : "Importing from Drive..."}
+                      <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
+                    </div>
+                    {isCompetitorGen && totalExpected > 0 && (
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (sourceImages.length / totalExpected) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {/* Skeleton image grid -- show generated images + placeholder skeletons */}
+                {/* Image grid -- show generated images + placeholder skeletons */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {sourceImages.map((si) => (
                     <div key={si.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -507,7 +681,8 @@ export default function ConceptImagesStep({
                     </div>
                   ))}
                   {/* Skeleton placeholders for images still loading */}
-                  {Array.from({ length: Math.max(0, totalExpected - sourceImages.length) }).map((_, i) => (
+                  {(swipeProgress?.step === "generating" || (!swipeProgress && isCompetitorGen)) &&
+                    Array.from({ length: Math.max(0, totalExpected - sourceImages.length) }).map((_, i) => (
                     <div key={`skel-${i}`} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                       <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center relative">
                         <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
@@ -524,6 +699,9 @@ export default function ConceptImagesStep({
         </div>
       ) : job.status === "ready" ? (
         <>
+          {/* Competitor reference image (for swipe concepts) */}
+          {renderCompetitorReference()}
+
           {/* Source images preview */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
@@ -575,8 +753,8 @@ export default function ConceptImagesStep({
             ))}
           </div>
 
-          {/* Generate more styles (shown below existing images) */}
-          {hasExistingImages && renderGenerateSection()}
+          {/* Generate more: variations for swipe concepts, styles for regular concepts */}
+          {hasExistingImages && (isCompetitorSwipe ? renderVariationSection() : renderGenerateSection())}
 
           {/* Language selection + Translate All */}
           <div className="space-y-4">
