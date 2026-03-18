@@ -74,7 +74,7 @@ export async function PATCH(
       .update(updateData)
       .eq("id", id)
       .eq("workspace_id", workspaceId)
-      .select("id, name, slug, status, tags, angle, custom_head_code, updated_at")
+      .select("id, name, slug, status, tags, angle, custom_head_code")
       .single();
 
     if (error) {
