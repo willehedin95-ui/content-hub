@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase";
 import { getWorkspaceId } from "@/lib/workspace";
-import { extractContent, applyTranslations } from "@/lib/html-parser";
-import { sanitizeHtml } from "@/lib/sanitize";
 import { safeError } from "@/lib/api-error";
-import * as cheerio from "cheerio";
 import { isValidUUID } from "@/lib/validation";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
@@ -109,6 +106,8 @@ export async function PUT(
         );
       }
 
+      const cheerio = await import("cheerio");
+      const { sanitizeHtml } = await import("@/lib/sanitize");
       const $ = cheerio.load(translated_html);
 
       // Server-side sanitization: strip ALL editor artifacts
@@ -163,6 +162,8 @@ export async function PUT(
 
     if (translated_html) {
       // Inline editing path — HTML comes directly from the client
+      const cheerio = await import("cheerio");
+      const { sanitizeHtml } = await import("@/lib/sanitize");
       const $ = cheerio.load(translated_html);
 
       // Server-side sanitization: strip ALL editor artifacts
@@ -191,6 +192,7 @@ export async function PUT(
       finalHtml = sanitizeHtml($.html());
     } else {
       // Legacy segment editing path — rebuild HTML from placeholders
+      const { extractContent, applyTranslations } = await import("@/lib/html-parser");
       const { modifiedHtml } = extractContent(
         (translation.pages as { original_html: string }).original_html
       );
