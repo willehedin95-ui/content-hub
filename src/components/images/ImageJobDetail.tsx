@@ -209,6 +209,22 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     () => initialJob.ad_copy_translations ?? {}
   );
 
+  // Sync copyTranslations from refreshed job data (e.g. autopilot pipeline, page reload)
+  // and auto-recover stale "translating" states left by timed-out requests
+  useEffect(() => {
+    if (!job.ad_copy_translations || copyState.translating || copyState.translatingLang) return;
+    const fresh = job.ad_copy_translations as ConceptCopyTranslations;
+    const recovered = { ...fresh };
+    let changed = false;
+    for (const lang of Object.keys(recovered)) {
+      if (recovered[lang]?.status === "translating") {
+        recovered[lang] = { ...recovered[lang], status: "error", error: "Translation timed out — try again" };
+        changed = true;
+      }
+    }
+    setCopyTranslations(changed ? recovered : fresh);
+  }, [job.ad_copy_translations, copyState.translating, copyState.translatingLang]);
+
   // Performance data from pipeline API
   const [perfData, setPerfData] = useState<{
     markets: Array<{

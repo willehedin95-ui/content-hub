@@ -613,8 +613,11 @@ export function BuilderProvider({
   // Callbacks
   // -----------------------------------------------------------------------
 
+  const autoSaveRetryRef = useRef<NodeJS.Timeout | null>(null);
+
   const triggerAutosave = useCallback(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (autoSaveRetryRef.current) clearTimeout(autoSaveRetryRef.current);
     autoSaveTimerRef.current = setTimeout(async () => {
       // Lock autosave to prevent concurrent saves
       if (savingRef.current) return;
@@ -654,6 +657,7 @@ export function BuilderProvider({
         if (res.ok) {
           setIsDirty(false);
           setAutoSaveStatus("saved");
+          setSaveError(""); // Clear stale manual save errors on successful autosave
           if (autoSavedTimeoutRef.current)
             clearTimeout(autoSavedTimeoutRef.current);
           autoSavedTimeoutRef.current = setTimeout(
@@ -663,10 +667,14 @@ export function BuilderProvider({
         } else {
           console.error("[builder] Autosave failed:", res.status, res.statusText);
           setAutoSaveStatus("error");
+          // Retry after 8 seconds
+          autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
         }
       } catch (err) {
         console.error("[builder] Autosave error:", err);
         setAutoSaveStatus("error");
+        // Retry after 8 seconds
+        autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
       } finally {
         savingRef.current = false;
       }
@@ -1296,8 +1304,22 @@ export function BuilderProvider({
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
+    if (autoSaveRetryRef.current) {
+      clearTimeout(autoSaveRetryRef.current);
+      autoSaveRetryRef.current = null;
+    }
+    // Wait for in-flight autosave to finish before manual save
+    if (savingRef.current) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (!savingRef.current) { clearInterval(check); resolve(); }
+        }, 100);
+        setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+      });
+    }
     setAutoSaveStatus("idle");
     setSaving(true);
+    savingRef.current = true;
     setSaveError("");
     setSaved(false);
 
@@ -1355,6 +1377,7 @@ export function BuilderProvider({
       setSaveError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   }
 
@@ -1849,6 +1872,7 @@ export function BuilderProvider({
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
       if (autoSavedTimeoutRef.current)
         clearTimeout(autoSavedTimeoutRef.current);
+      if (autoSaveRetryRef.current) clearTimeout(autoSaveRetryRef.current);
     };
   }, []);
 

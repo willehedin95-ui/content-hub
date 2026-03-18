@@ -5,6 +5,8 @@ import { safeError } from "@/lib/api-error";
 import { isValidUUID } from "@/lib/validation";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
+export const maxDuration = 30;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

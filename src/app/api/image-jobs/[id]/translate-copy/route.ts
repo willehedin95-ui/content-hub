@@ -123,18 +123,21 @@ No other text.`,
         metadata: { purpose: "concept_copy_translation", language: lang, job_id: jobId },
       });
 
-      // Step 2: Quality analysis
-      const allOriginal = [...primaryTexts, ...headlineTexts].join("\n---\n");
-      const allTranslated = [...parsed.primary_texts, ...parsed.headlines].join("\n---\n");
+      // Step 2: Quality analysis (non-critical — translation is saved even if this fails)
+      let analysis = null;
+      let qualityScore = null;
+      try {
+        const allOriginal = [...primaryTexts, ...headlineTexts].join("\n---\n");
+        const allTranslated = [...parsed.primary_texts, ...parsed.headlines].join("\n---\n");
 
-      const analyzeResponse = await openai.chat.completions.create({
-        model: OPENAI_MODEL,
-        max_completion_tokens: 1500,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation and evaluate quality.
+        const analyzeResponse = await openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          max_completion_tokens: 1500,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation and evaluate quality.
 
 Respond with JSON:
 {
@@ -150,44 +153,41 @@ List ALL issues you find. Pay special attention to:
 - Ad copy maintaining its persuasive power
 - Natural-sounding ${langLabel} (not "translationese")
 IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
-          },
-          {
-            role: "user",
-            content: `Original (English):\n${allOriginal}\n\nTranslation (${langLabel}):\n${allTranslated}`,
-          },
-        ],
-      });
+            },
+            {
+              role: "user",
+              content: `Original (English):\n${allOriginal}\n\nTranslation (${langLabel}):\n${allTranslated}`,
+            },
+          ],
+        });
 
-      const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
-      if (!analyzeContent) throw new Error("No analysis returned");
+        const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
+        if (analyzeContent) {
+          analysis = JSON.parse(analyzeContent);
+          const grade = deriveCopyGrade(analysis);
+          analysis.quality_score = gradeToNumeric(grade);
+          qualityScore = analysis.quality_score;
+        }
 
-      let analysis;
-      try {
-        analysis = JSON.parse(analyzeContent);
-      } catch {
-        throw new Error("Quality analysis returned invalid JSON");
+        // Log analysis usage
+        const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;
+        const aOutput = analyzeResponse.usage?.completion_tokens ?? 0;
+        await db.from("usage_logs").insert({
+          type: "translation",
+          model: OPENAI_MODEL,
+          input_tokens: aInput,
+          output_tokens: aOutput,
+          cost_usd: calcOpenAICost(aInput, aOutput),
+          metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
+        });
+      } catch (analysisErr) {
+        console.warn(`[translate-copy] Quality analysis failed for ${lang}, saving translation without analysis:`, analysisErr);
       }
-
-      // Log analysis usage
-      const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;
-      const aOutput = analyzeResponse.usage?.completion_tokens ?? 0;
-      await db.from("usage_logs").insert({
-        type: "translation",
-        model: OPENAI_MODEL,
-        input_tokens: aInput,
-        output_tokens: aOutput,
-        cost_usd: calcOpenAICost(aInput, aOutput),
-        metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
-      });
-
-      // Derive grade deterministically from issues
-      const grade = deriveCopyGrade(analysis);
-      analysis.quality_score = gradeToNumeric(grade);
 
       results[lang] = {
         primary_texts: parsed.primary_texts,
         headlines: parsed.headlines,
-        quality_score: analysis.quality_score,
+        quality_score: qualityScore,
         quality_analysis: analysis,
         status: "completed",
       };
