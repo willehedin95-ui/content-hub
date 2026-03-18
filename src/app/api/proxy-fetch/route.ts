@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedUrl } from "@/lib/validation";
 
 export const maxDuration = 60;
 
@@ -18,6 +19,11 @@ export async function GET(req: NextRequest) {
     new URL(url);
   } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
+  const urlCheck = isAllowedUrl(url);
+  if (!urlCheck.valid) {
+    return NextResponse.json({ error: urlCheck.reason }, { status: 400 });
   }
 
   try {

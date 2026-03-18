@@ -4,7 +4,7 @@
  * approve handlers (no cookie/workspace dependency).
  */
 
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST, calcOpenAICost } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET, OPENAI_MODEL } from "@/lib/constants";

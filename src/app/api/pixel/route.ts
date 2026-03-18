@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceSettings } from "@/lib/workspace";
 
 // 1x1 transparent GIF

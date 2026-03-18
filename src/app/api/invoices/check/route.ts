@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { processInvoices, testImapConnection } from "@/lib/invoice-mail";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 
 export const maxDuration = 60;
 

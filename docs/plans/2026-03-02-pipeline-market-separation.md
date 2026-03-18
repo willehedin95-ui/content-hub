@@ -52,7 +52,7 @@ CREATE POLICY "Service role can manage pipeline_concepts"
 Run:
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$(cat supabase/migrations/20260302_pipeline_market_separation.sql | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
 ```
@@ -115,7 +115,7 @@ ON CONFLICT (image_job_id, market) DO NOTHING;
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$(cat supabase/migrations/20260302_populate_pipeline_concepts.sql | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
 ```
@@ -202,7 +202,7 @@ CREATE INDEX IF NOT EXISTS idx_concept_lifecycle_pipeline_concept ON concept_lif
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$(cat supabase/migrations/20260302_migrate_concept_lifecycle.sql | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
 ```
@@ -265,7 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_concept_metrics_pipeline_concept ON concept_metri
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"$(cat supabase/migrations/20260302_migrate_concept_metrics.sql | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
 ```

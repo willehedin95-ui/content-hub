@@ -1,4 +1,4 @@
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { notFound } from "next/navigation";
 import ProductDetail from "@/components/products/ProductDetail";
 

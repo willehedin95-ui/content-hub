@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import type { StrategyInput, CampaignInfo, AdSetDayRow, BudgetSnapshot } from "@/lib/strategy-engine";
 
 export const maxDuration = 30;
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   if (authHeader) {
     // Cron/API caller — verify bearer token
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   } else {

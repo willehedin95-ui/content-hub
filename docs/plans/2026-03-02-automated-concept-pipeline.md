@@ -125,7 +125,7 @@ cd /Users/williamhedin/Claude\ Code/content-hub
 SCHEMA_SQL=$(cat supabase/schema/pipeline_concepts.sql)
 
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"query\":\"$SCHEMA_SQL\"}"
 ```
@@ -137,7 +137,7 @@ Expected: HTTP 200, success response
 Run:
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''pipeline_concepts'\'' ORDER BY ordinal_position;"}'
 ```

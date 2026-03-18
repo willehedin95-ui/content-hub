@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { generateCaptionsFromScript, ShotDialogue } from "@/lib/captions";
 import { getWorkspaceId } from "@/lib/workspace";

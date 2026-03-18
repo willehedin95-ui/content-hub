@@ -19,7 +19,7 @@
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "CREATE TABLE IF NOT EXISTS meta_ad_performance ( id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, date DATE NOT NULL, meta_ad_id TEXT NOT NULL, ad_name TEXT, adset_id TEXT, adset_name TEXT, campaign_id TEXT, campaign_name TEXT, status TEXT, impressions INTEGER NOT NULL DEFAULT 0, clicks INTEGER NOT NULL DEFAULT 0, spend NUMERIC(10,2) NOT NULL DEFAULT 0, ctr NUMERIC(6,4) DEFAULT 0, cpc NUMERIC(10,2) DEFAULT 0, cpm NUMERIC(10,2) DEFAULT 0, frequency NUMERIC(6,2) DEFAULT 0, purchases INTEGER NOT NULL DEFAULT 0, purchase_value NUMERIC(10,2) DEFAULT 0, roas NUMERIC(8,2) DEFAULT 0, cpa NUMERIC(10,2) DEFAULT 0, synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(date, meta_ad_id) ); CREATE INDEX IF NOT EXISTS idx_ad_perf_date ON meta_ad_performance(date DESC); CREATE INDEX IF NOT EXISTS idx_ad_perf_ad ON meta_ad_performance(meta_ad_id, date DESC); CREATE INDEX IF NOT EXISTS idx_ad_perf_campaign ON meta_ad_performance(campaign_id, date DESC);"}'
 ```
@@ -28,7 +28,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/datab
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''meta_ad_performance'\'' ORDER BY ordinal_position;"}'
 ```
@@ -372,7 +372,7 @@ Expected response:
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT date, COUNT(*) as ads, SUM(spend) as total_spend, SUM(purchases) as total_purchases FROM meta_ad_performance GROUP BY date ORDER BY date DESC LIMIT 10;"}'
 ```

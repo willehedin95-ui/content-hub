@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const SUPABASE_PROJECT_REF = "fbpefeqqqfrcmfmjmeij";
+const SUPABASE_PROJECT_REF = process.env.SUPABASE_PROJECT_REF || "fbpefeqqqfrcmfmjmeij";
 const STORAGE_LIMIT_GB = 100; // Supabase Pro plan
 
 export async function GET() {

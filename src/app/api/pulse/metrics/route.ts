@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchAnalyticsSummary } from "@/lib/analytics";
 import { fetchKlaviyoRevenue } from "@/lib/klaviyo";
 import { fetchOrdersSince, fetchOrdersFullSince } from "@/lib/shopify";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getCached, setCache } from "@/lib/pulse-cache";
 import { fetchHydro13Stock } from "@/lib/shelfless";
 

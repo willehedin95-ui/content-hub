@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { updateAd, updateCampaign, getCampaignBudget } from "@/lib/meta";
 
 const DELAY = 500;
@@ -15,6 +15,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * - apply_budget_shifts: Apply efficiency-based budget rebalancing
  */
 export async function POST(req: NextRequest) {
+  // Auth check — this route is middleware-exempt, so verify session inline
+  const { createServerClient } = await import("@supabase/ssr");
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json();
   const { action } = body;
   const db = createServerSupabase();

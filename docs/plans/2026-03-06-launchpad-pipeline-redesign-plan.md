@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_image_jobs_launchpad
 Run:
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "<SQL from step 1>"}'
 ```
@@ -53,7 +53,7 @@ Expected: Empty result (no errors).
 Run:
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type, column_default FROM information_schema.columns WHERE table_name = '\''image_jobs'\'' AND column_name IN ('\''source'\'', '\''launchpad_priority'\'')"}'
 ```
@@ -107,7 +107,7 @@ $$ LANGUAGE plpgsql;
 Run a test call:
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT routine_name FROM information_schema.routines WHERE routine_name = '\''assign_next_external_concept_number'\''"}'
 ```

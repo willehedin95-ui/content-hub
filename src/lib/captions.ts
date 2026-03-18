@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import OpenAI from "openai";
 import ffmpegPath from "ffmpeg-static";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
 const execFile = promisify(execFileCb);

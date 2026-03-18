@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import type { AutoPipelineBadgeCount } from "@/types";
 
 export const dynamic = "force-dynamic";

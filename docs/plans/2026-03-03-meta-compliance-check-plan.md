@@ -79,7 +79,7 @@ Run via Supabase Management API:
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS compliance_result jsonb DEFAULT null;"}'
 ```

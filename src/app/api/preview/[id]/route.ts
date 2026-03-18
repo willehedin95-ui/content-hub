@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 
@@ -148,6 +148,8 @@ export async function GET(
     return new NextResponse(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": "sandbox allow-same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
       },
     });
   }

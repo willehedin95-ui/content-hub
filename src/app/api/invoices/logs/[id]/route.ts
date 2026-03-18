@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { retryForward, forwardLogToJuni } from "@/lib/invoice-mail";
 
+// TODO: Add workspace_id check once column is added to invoice_logs table
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,6 +70,7 @@ export async function PUT(
   return NextResponse.json(data);
 }
 
+// TODO: Add workspace_id check once column is added to invoice_logs table
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

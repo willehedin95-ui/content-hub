@@ -21,7 +21,7 @@
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "CREATE TABLE IF NOT EXISTS saved_components ( id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, html TEXT NOT NULL, thumbnail_url TEXT, product TEXT, category TEXT NOT NULL DEFAULT '\''section'\'', created_at TIMESTAMPTZ NOT NULL DEFAULT now() );"}'
 ```
@@ -39,7 +39,7 @@ curl -s -X POST "https://fbpefeqqqfrcmfmjmeij.supabase.co/storage/v1/bucket" \
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''saved_components'\'' ORDER BY ordinal_position;"}'
 ```

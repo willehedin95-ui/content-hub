@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 
 // GET — return current workspace
@@ -15,6 +15,12 @@ export async function GET() {
 
   if (error || !data) {
     return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+  }
+
+  // Mask sensitive tokens before sending to client
+  if (data?.meta_config?.system_user_token) {
+    const token = data.meta_config.system_user_token;
+    data.meta_config.system_user_token = token.slice(0, 6) + "****" + token.slice(-4);
   }
 
   return NextResponse.json(data);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { fetchAnalyticsSummary, fetchCampaignPerformance, AIInsights } from "@/lib/analytics";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { OPENAI_MODEL } from "@/lib/constants";
 import { calcOpenAICost } from "@/lib/pricing";
 

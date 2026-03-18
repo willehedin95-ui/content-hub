@@ -5,9 +5,10 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
+  const safePath = next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
   if (code) {
-    const supabaseResponse = NextResponse.redirect(`${origin}${next}`);
+    const supabaseResponse = NextResponse.redirect(`${origin}${safePath}`);
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

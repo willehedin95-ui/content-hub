@@ -1,4 +1,4 @@
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 
 export interface ClarityInsight {
   url: string;

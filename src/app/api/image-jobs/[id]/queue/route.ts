@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { COUNTRY_MAP } from "@/types";
 
@@ -188,6 +188,19 @@ export async function DELETE(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify the image job belongs to the current workspace
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (!job) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
 
   for (const market of markets) {
     // Find the image_job_markets record

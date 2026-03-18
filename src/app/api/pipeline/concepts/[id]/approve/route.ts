@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import type { AutoPipelineConcept } from "@/types";
 
@@ -25,6 +25,19 @@ export async function POST(
 
     if (fetchError || !concept) {
       return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+    }
+
+    // Verify workspace access through product
+    if (concept.product) {
+      const { data: productCheck } = await supabase
+        .from("products")
+        .select("id")
+        .eq("slug", concept.product)
+        .eq("workspace_id", workspaceId)
+        .single();
+      if (!productCheck) {
+        return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+      }
     }
 
     const typedConcept = concept as AutoPipelineConcept;

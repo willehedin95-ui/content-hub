@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { validateMediaFile } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -30,7 +30,11 @@ export async function GET(req: NextRequest) {
     }
   }
   if (search) {
-    query = query.or(`name.ilike.%${search}%,tags.cs.{${search}}`);
+    // Sanitize search to prevent PostgREST filter injection
+    const safeSearch = search.replace(/[,.*{}()\\]/g, "");
+    if (safeSearch) {
+      query = query.or(`name.ilike.%${safeSearch}%,tags.cs.{${safeSearch}}`);
+    }
   }
 
   const { data, error } = await query;

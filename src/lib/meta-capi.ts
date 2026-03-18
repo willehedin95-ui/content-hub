@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { withRetry, isTransientError } from "./retry";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 import { ShopifyOrderFull, fetchOrdersFullSince } from "./shopify";
 import { getWorkspaceSettings } from "./workspace";
 

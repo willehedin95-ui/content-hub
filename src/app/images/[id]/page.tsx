@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import ImageJobDetail from "@/components/images/ImageJobDetail";
 
 export const dynamic = "force-dynamic";

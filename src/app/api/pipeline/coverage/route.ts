@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { calculateCoverageMatrix, identifyCoverageGaps, generateSuggestions } from "@/lib/coverage-matrix";
 import type { AutoPipelineConcept, Product } from "@/types";
 

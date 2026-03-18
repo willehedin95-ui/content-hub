@@ -1,4 +1,4 @@
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import PageTestsClient from "@/components/pages/PageTestsClient";

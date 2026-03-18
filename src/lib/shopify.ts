@@ -278,7 +278,7 @@ export async function getConversionsForTest(
   since: string,
   workspaceId?: string
 ): Promise<Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }>> {
-  const { createServerSupabase } = await import("./supabase");
+  const { createServerSupabase } = await import("./supabase-admin");
   const db = createServerSupabase();
 
   // Get the AB test slug — paths are always /{slug}/a/ and /{slug}/b/

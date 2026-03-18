@@ -446,7 +446,7 @@ const TEMPLATE_NAMES: Record<AdTemplate, string> = {
 // ---------------------------------------------------------------------------
 
 export async function buildHookInspiration(product: string, workspaceId: string): Promise<string> {
-  const { createServerSupabase } = await import("@/lib/supabase");
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
   const db = createServerSupabase();
   const wsId = workspaceId;
 
@@ -481,7 +481,7 @@ export async function buildHookInspiration(product: string, workspaceId: string)
  * Build learnings context from past concept outcomes for brainstorm prompt injection.
  */
 export async function buildLearningsContext(product: string, workspaceId: string): Promise<string> {
-  const { createServerSupabase } = await import("@/lib/supabase");
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
   const db = createServerSupabase();
   const wsId = workspaceId;
 

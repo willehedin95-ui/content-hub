@@ -21,7 +21,7 @@ Execute via Supabase Management API (DDL requires management API, not service ro
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "CREATE TABLE IF NOT EXISTS copy_bank ( id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product text NOT NULL, language text NOT NULL, primary_text text NOT NULL, headline text, segment_id uuid REFERENCES product_segments(id) ON DELETE SET NULL, source_meta_ad_id uuid REFERENCES meta_ads(id) ON DELETE SET NULL, source_concept_name text, notes text, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(product, language, primary_text) );"}'
 ```
@@ -32,7 +32,7 @@ Expected: `200 OK`
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "ALTER TABLE copy_bank ENABLE ROW LEVEL SECURITY; CREATE POLICY \"Service role full access\" ON copy_bank FOR ALL USING (true) WITH CHECK (true);"}'
 ```
@@ -43,7 +43,7 @@ Expected: `200 OK`
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''copy_bank'\'' ORDER BY ordinal_position;"}'
 ```

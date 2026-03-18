@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { swipeCompetitorAd } from "@/lib/swipe-competitor";
 

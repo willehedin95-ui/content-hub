@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
-import { getWorkspaceSettings } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 
 export const maxDuration = 120;
 
@@ -26,15 +26,25 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
-  // Fetch translation + page
+  // Fetch translation + page (with workspace verification)
   const { data: translation, error: tError } = await db
     .from("translations")
-    .select(`*, pages (slug, source_url, custom_head_code)`)
+    .select(`*, pages (slug, source_url, custom_head_code, workspace_id)`)
     .eq("id", translation_id)
     .single();
 
   if (tError || !translation) {
+    return NextResponse.json(
+      { error: "Translation not found" },
+      { status: 404 }
+    );
+  }
+
+  // Verify workspace access through parent page
+  const publishPages = translation.pages as { slug: string; source_url: string; custom_head_code?: string; workspace_id?: string } | null;
+  if (publishPages?.workspace_id && publishPages.workspace_id !== workspaceId) {
     return NextResponse.json(
       { error: "Translation not found" },
       { status: 404 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 
 // GET /api/video-jobs/model-status — recent success rates per video model
 export async function GET() {

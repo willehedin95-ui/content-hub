@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { STORAGE_BUCKET } from "@/lib/constants";
 import { isValidUUID } from "@/lib/validation";
 import { getWorkspaceId } from "@/lib/workspace";

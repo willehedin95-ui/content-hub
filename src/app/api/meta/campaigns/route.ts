@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { isValidLanguage, isValidBudget } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { META_OBJECTIVES, COUNTRY_MAP } from "@/types";

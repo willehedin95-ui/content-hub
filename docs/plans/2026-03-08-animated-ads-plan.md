@@ -17,7 +17,7 @@
 
 **Step 1: Create the 4 tables**
 
-Run this SQL via the Supabase Management API (`curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query"` with `Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4`):
+Run this SQL via the Supabase Management API (`curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query"` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN`):
 
 ```sql
 -- Animated Ads: main job table

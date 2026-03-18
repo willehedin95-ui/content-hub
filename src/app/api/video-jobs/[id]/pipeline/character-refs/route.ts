@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";

@@ -1,4 +1,4 @@
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspace, getWorkspaceSettings } from "@/lib/workspace";
 import { Language, COUNTRY_MAP, LANGUAGES, ConceptCopyTranslations } from "@/types";
 import {

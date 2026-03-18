@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 
@@ -7,9 +8,23 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; refId: string }> }
 ) {
-  const { refId } = await params;
+  const { id: productId, refId } = await params;
   if (!isValidUUID(refId)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
+  const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify product belongs to current workspace
+  const { data: product } = await db
+    .from("products")
+    .select("id")
+    .eq("id", productId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!product) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const body = await req.json();
@@ -23,7 +38,6 @@ export async function PATCH(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const db = createServerSupabase();
   const { data, error } = await db
     .from("reference_pages")
     .update(updateData)
@@ -42,11 +56,23 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; refId: string }> }
 ) {
-  const { refId } = await params;
+  const { id: productId, refId } = await params;
   if (!isValidUUID(refId)) {
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify product belongs to current workspace
+  const { data: product } = await db
+    .from("products")
+    .select("id")
+    .eq("id", productId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!product) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { error } = await db
     .from("reference_pages")

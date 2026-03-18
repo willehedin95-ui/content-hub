@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchAllGA4Metrics } from "@/lib/ga4";
 import { fetchClarityInsights } from "@/lib/clarity";
 import { getOrdersByPage } from "@/lib/shopify";

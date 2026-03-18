@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import nodemailer from "nodemailer";
 
 const JUNI_RECEIPTS_EMAIL = "q1k5n1k0@receipts.juni.co";

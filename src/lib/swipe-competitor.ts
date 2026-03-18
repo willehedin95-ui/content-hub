@@ -12,7 +12,7 @@
 
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendPhoto, sendMessageWithInlineKeyboard } from "@/lib/telegram";
 import {
   buildBrainstormSystemPrompt,

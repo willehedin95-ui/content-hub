@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plus, Video, Clock } from "lucide-react";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { VideoJob } from "@/types";
 import { VIDEO_FORMATS, HOOK_TYPES } from "@/lib/constants";

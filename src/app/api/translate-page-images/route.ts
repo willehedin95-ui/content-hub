@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";

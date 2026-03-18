@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
 import puppeteer from "puppeteer-core";
@@ -97,8 +97,17 @@ export async function POST(req: NextRequest) {
     });
 
     const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      // Block all network requests during thumbnail generation
+      if (["image", "stylesheet", "font", "script", "xhr", "fetch", "websocket"].includes(request.resourceType())) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
     const shell = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { margin:0; padding:16px; background:white; font-family:system-ui,sans-serif; }</style></head><body>${html}</body></html>`;
-    await page.setContent(shell, { waitUntil: "networkidle0" });
+    await page.setContent(shell, { waitUntil: "domcontentloaded" });
     const screenshot = await page.screenshot({
       type: "png",
       clip: { x: 0, y: 0, width: 800, height: 600 },

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { LANGUAGES } from "@/types";
 import EditPageClient from "./EditPageClient";
 

@@ -19,7 +19,7 @@
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS archived_at timestamptz DEFAULT NULL;"}'
 ```
@@ -30,7 +30,7 @@ Expected: 200 OK
 
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''image_jobs'\'' AND column_name = '\''archived_at'\'';"}'
 ```

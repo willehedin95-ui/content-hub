@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchAllGA4Metrics, fetchTrafficSourcesByPage } from "@/lib/ga4";
 import { fetchClarityInsights } from "@/lib/clarity";
 import { getOrdersByPage, getRatesToUSD } from "@/lib/shopify";

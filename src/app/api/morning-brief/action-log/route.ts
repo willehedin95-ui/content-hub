@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 
 /**
@@ -7,6 +7,18 @@ import { safeError } from "@/lib/api-error";
  * Returns all applied/dismissed card IDs for a given brief date.
  */
 export async function GET(req: NextRequest) {
+  // Auth check — this route is middleware-exempt, so verify session inline
+  const { createServerClient } = await import("@supabase/ssr");
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const db = createServerSupabase();
   const date = req.nextUrl.searchParams.get("date");
   if (!date) {
@@ -35,6 +47,18 @@ export async function GET(req: NextRequest) {
  * Body: { brief_date: "YYYY-MM-DD", card_id: "xxx", status: "applied" | "dismissed" }
  */
 export async function POST(req: NextRequest) {
+  // Auth check — this route is middleware-exempt, so verify session inline
+  const { createServerClient } = await import("@supabase/ssr");
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const db = createServerSupabase();
   const body = await req.json();
   const { brief_date, card_id, status } = body;

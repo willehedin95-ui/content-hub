@@ -55,7 +55,7 @@
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "ALTER TABLE assets ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT '\''image'\''; ALTER TABLE assets ADD COLUMN IF NOT EXISTS product TEXT; ALTER TABLE assets ADD COLUMN IF NOT EXISTS file_size BIGINT; ALTER TABLE assets ADD COLUMN IF NOT EXISTS dimensions TEXT; ALTER TABLE assets ADD COLUMN IF NOT EXISTS duration REAL; ALTER TABLE assets ADD COLUMN IF NOT EXISTS source_url TEXT;"}'
 ```
@@ -66,7 +66,7 @@ Expected: 200 OK, columns added.
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "UPDATE assets SET category = '\''graphic'\'' WHERE category IN ('\''icon'\'', '\''badge'\''); UPDATE assets SET category = '\''other'\'' WHERE category = '\''background'\'';"}'
 ```
@@ -77,7 +77,7 @@ Expected: 200 OK, existing rows migrated.
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = '\''assets'\'' ORDER BY ordinal_position;"}'
 ```

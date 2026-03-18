@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import {
   createCampaign,
   createAdSet,
@@ -31,11 +31,12 @@ export async function POST(
   const ws = await getWorkspace();
   setMetaConfig(ws.meta_config ?? null);
 
-  // Load campaign with ads
+  // Load campaign with ads (workspace-scoped)
   const { data: campaign, error } = await db
     .from("meta_campaigns")
     .select("*, meta_ads(*)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (error || !campaign) {

@@ -5,7 +5,7 @@ import {
   isShopifyConfigured,
   ShopifyOrderFull,
 } from "@/lib/shopify";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { getCached, setCache } from "@/lib/pulse-cache";
 

@@ -61,7 +61,7 @@ export async function downloadFile(
 /** Validate the X-Telegram-Bot-Api-Secret-Token header */
 export function validateWebhookSecret(headerValue: string | null): boolean {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (!secret) return true; // Skip validation if not configured
+  if (!secret) return false; // Reject if not configured
   return headerValue === secret;
 }
 

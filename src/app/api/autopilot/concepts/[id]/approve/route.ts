@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
 
 export const maxDuration = 300;
@@ -16,11 +17,13 @@ export async function POST(
   const approved = body.approved !== false; // default true
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job } = await db
     .from("image_jobs")
     .select("id, name, concept_number, target_languages, landing_page_id")
     .eq("id", jobId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!job) {
@@ -103,7 +106,8 @@ export async function POST(
         archived_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", jobId);
+      .eq("id", jobId)
+      .eq("workspace_id", workspaceId);
 
     return NextResponse.json({ ok: true, action: "rejected" });
   }

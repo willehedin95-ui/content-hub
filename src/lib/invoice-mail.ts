@@ -4,7 +4,7 @@ import { simpleParser } from "mailparser";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import Anthropic from "@anthropic-ai/sdk";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import type { InvoiceService } from "@/types";
 
 // --- Types ---

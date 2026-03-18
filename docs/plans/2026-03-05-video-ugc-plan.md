@@ -73,7 +73,7 @@ CREATE TRIGGER trg_video_jobs_updated
   FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
 ```
 
-Run via: `curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" -H "Content-Type: application/json" -d '{"query":"..."}'`
+Run via: `curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d '{"query":"..."}'`
 
 **Step 2: Create source_videos table**
 

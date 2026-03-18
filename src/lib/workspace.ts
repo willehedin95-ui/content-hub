@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 import type { Workspace } from "@/types";
 
 const WORKSPACE_COOKIE = "ch-workspace";

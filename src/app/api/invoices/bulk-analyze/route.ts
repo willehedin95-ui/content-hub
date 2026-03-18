@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import Anthropic from "@anthropic-ai/sdk";
 import type { InvoiceService } from "@/types";
 

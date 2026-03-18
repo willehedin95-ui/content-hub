@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { CLAUDE_MODEL } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";

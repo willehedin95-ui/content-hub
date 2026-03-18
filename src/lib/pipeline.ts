@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd } from "./meta";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 import { getWorkspaceId } from "./workspace";
 import type {
   PipelineStage,

@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 import { buildLearningsContext, buildHookInspiration } from "./brainstorm";
 import { OPENAI_MODEL } from "./constants";
 import { formatRules } from "./translation-rules";

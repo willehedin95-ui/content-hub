@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { Language } from "@/types";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchWithRetry } from "./retry";
 
 const CF_API = "https://api.cloudflare.com/client/v4";

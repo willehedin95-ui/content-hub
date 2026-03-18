@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchProductsWithInventory } from "@/lib/shopify";
 import { fetchOrdersSince, isShopifyConfigured } from "@/lib/shopify";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getCached, setCache } from "@/lib/pulse-cache";
 
 // ---- Types ----

@@ -1,7 +1,7 @@
 import { getAccountInsights, getAdInsights, getCampaignInsights, MetaInsightsRow } from "./meta";
 import { fetchOrdersSince, ShopifyOrder, isShopifyConfigured, convertToUSD, getRatesToUSD } from "./shopify";
 import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights, GoogleAdsCampaignRow } from "./google-ads";
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 import { getWorkspaceId } from "./workspace";
 import type { CashDna } from "@/types";
 

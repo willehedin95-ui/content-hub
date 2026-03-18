@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { safeError } from "@/lib/api-error";
 import { isValidUUID } from "@/lib/validation";
@@ -47,12 +47,19 @@ export async function GET(
 
   const { data, error } = await db
     .from("translations")
-    .select(`*, pages (id, name, slug, source_url, original_html)`)
+    .select(`*, pages (id, name, slug, source_url, original_html, workspace_id)`)
     .eq("id", id)
     .single();
 
   if (error || !data) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Verify workspace access through parent page
+  if (data?.pages?.workspace_id) {
+    if (data.pages.workspace_id !== workspaceId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   return NextResponse.json(data);
@@ -98,6 +105,7 @@ export async function PUT(
     }
 
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     // Source page editing: save to pages.original_html
     if (isSourceEdit) {
@@ -117,6 +125,7 @@ export async function PUT(
           original_html: translated_html,
         })
         .eq("id", realId)
+        .eq("workspace_id", workspaceId)
         .select("id")
         .single();
 
@@ -137,11 +146,17 @@ export async function PUT(
       // HTML that caused timeouts on Vercel cold starts). Sanitization runs on publish.
       const { data: translation, error: fetchError } = await db
         .from("translations")
-        .select("id, status, seo_title, seo_description, slug, translated_texts")
+        .select("id, status, seo_title, seo_description, slug, translated_texts, pages!inner(workspace_id)")
         .eq("id", id)
         .single();
 
       if (fetchError || !translation) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
+      // Verify workspace access through parent page
+      const translationPages = translation.pages as unknown as { workspace_id: string } | null;
+      if (translationPages?.workspace_id && translationPages.workspace_id !== workspaceId) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
@@ -192,11 +207,17 @@ export async function PUT(
       // Legacy segment editing path — needs pages.original_html
       const { data: translation, error: fetchError } = await db
         .from("translations")
-        .select(`*, pages (original_html)`)
+        .select(`*, pages (original_html, workspace_id)`)
         .eq("id", id)
         .single();
 
       if (fetchError || !translation) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
+      // Verify workspace access through parent page
+      const legacyPages = translation.pages as unknown as { original_html: string; workspace_id: string } | null;
+      if (legacyPages?.workspace_id && legacyPages.workspace_id !== workspaceId) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
@@ -263,15 +284,22 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
     const db = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
-    // Check translation exists
+    // Check translation exists and belongs to current workspace
     const { data: translation, error: fetchError } = await db
       .from("translations")
-      .select("id, page_id, language, variant")
+      .select("id, page_id, language, variant, pages!inner(workspace_id)")
       .eq("id", id)
       .single();
 
     if (fetchError || !translation) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Verify workspace access through parent page
+    const delPages = translation.pages as unknown as { workspace_id: string } | null;
+    if (delPages?.workspace_id && delPages.workspace_id !== workspaceId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

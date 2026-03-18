@@ -19,7 +19,7 @@
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "CREATE TABLE saved_ads ( id uuid PRIMARY KEY DEFAULT gen_random_uuid(), source_url text, source_platform text NOT NULL DEFAULT '\''unknown'\'', media_url text, media_type text, thumbnail_url text, headline text, body text, destination_url text, brand_name text, cash_analysis jsonb, analyzed_at timestamptz, user_notes text, is_bookmarked boolean NOT NULL DEFAULT false, telegram_message_id text, raw_scrape_data jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now() ); CREATE INDEX idx_saved_ads_created ON saved_ads (created_at DESC); CREATE INDEX idx_saved_ads_platform ON saved_ads (source_platform); CREATE INDEX idx_saved_ads_bookmarked ON saved_ads (is_bookmarked) WHERE is_bookmarked = true;"}'
 ```
@@ -30,7 +30,7 @@ Expected: `200 OK` with empty result.
 
 ```bash
 curl -s -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '\''saved_ads'\'' ORDER BY ordinal_position;"}'
 ```

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { getAdInsightsForIds, setMetaConfig } from "@/lib/meta";

@@ -1,4 +1,4 @@
-import { createServerSupabase } from "./supabase";
+import { createServerSupabase } from "./supabase-admin";
 
 export async function getCached<T>(key: string): Promise<T | null> {
   const db = createServerSupabase();

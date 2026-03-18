@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkVeoStatus, checkImageTaskStatus } from "@/lib/kie";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 
 export const maxDuration = 60;

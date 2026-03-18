@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export async function GET(
     const { id } = await params;
 
     const supabase = createServerSupabase();
+    const workspaceId = await getWorkspaceId();
 
     const { data, error } = await supabase
       .from("pipeline_concepts")
@@ -21,6 +23,19 @@ export async function GET(
 
     if (error || !data) {
       return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+    }
+
+    // Verify workspace access through product
+    if (data.product) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("id")
+        .eq("slug", data.product)
+        .eq("workspace_id", workspaceId)
+        .single();
+      if (!product) {
+        return NextResponse.json({ error: "Concept not found" }, { status: 404 });
+      }
     }
 
     return NextResponse.json({ concept: data });

@@ -84,7 +84,7 @@ CREATE INDEX idx_concept_lifecycle_current ON concept_lifecycle(image_job_id) WH
 Run all three via Supabase Management API:
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/fbpefeqqqfrcmfmjmeij/database/query" \
-  -H "Authorization: Bearer sbp_c05da7e870b172e14c07457d6d0cee99feb65eb4" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "<SQL HERE>"}'
 ```

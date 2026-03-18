@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { decompactAfterSwiper, restoreAfterTranslation } from "@/lib/html-parser";
 import { CLAUDE_MODEL } from "@/lib/constants";
@@ -20,6 +21,7 @@ export async function GET(
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   const { data: job, error } = await db
     .from("swipe_jobs")
@@ -29,6 +31,19 @@ export async function GET(
 
   if (error || !job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
+
+  // Verify workspace access through product
+  if (job.product_id) {
+    const { data: product } = await db
+      .from("products")
+      .select("id")
+      .eq("id", job.product_id)
+      .eq("workspace_id", workspaceId)
+      .single();
+    if (!product) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
   }
 
   // Pending or processing — return progress

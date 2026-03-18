@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 import { getAccountInsights, getCampaignInsights } from "@/lib/meta";
 import { fetchOrdersSince, isShopifyConfigured, convertToUSD, getRatesToUSD } from "@/lib/shopify";
 import { fetchAllGA4Metrics } from "@/lib/ga4";
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   // Verify CRON_SECRET
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

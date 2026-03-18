@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-admin";
 
+// TODO: Add workspace_id check once column is added to invoice_logs table
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
