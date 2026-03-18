@@ -164,9 +164,21 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   };
 
   try {
-    const cleaned = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    // Strip markdown fences (various formats Claude might use)
+    let cleaned = rawContent;
+    // Remove leading ```json or ``` with optional whitespace
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, "");
+    // Remove trailing ```
+    cleaned = cleaned.replace(/\n?\s*```\s*$/i, "");
+    // If response starts with non-JSON text before the first {, extract the JSON
+    const firstBrace = cleaned.indexOf("{");
+    if (firstBrace > 0) {
+      cleaned = cleaned.slice(firstBrace);
+    }
+    cleaned = cleaned.trim();
     parsed = JSON.parse(cleaned);
-  } catch {
+  } catch (parseErr) {
+    console.error("[swipe-competitor] Failed to parse Claude response. First 500 chars:", rawContent.slice(0, 500));
     throw new Error("Failed to parse Claude response");
   }
 
@@ -286,15 +298,16 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         ...(includeProduct ? productHeroUrls : []),
       ];
 
-      // Build the full prompt: scene description + text overlay instructions.
-      // hook_text and headline_text must be baked into the image by Kie AI.
+      // Build the full prompt: scene description + optional text overlay instructions.
+      // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
       let fullPrompt = imgPrompt.prompt;
-      if (imgPrompt.hook_text || imgPrompt.headline_text) {
+      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+      if (hasTextOverlay) {
         const textParts: string[] = [];
-        if (imgPrompt.hook_text) {
+        if (imgPrompt.hook_text?.trim()) {
           textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
         }
-        if (imgPrompt.headline_text) {
+        if (imgPrompt.headline_text?.trim()) {
           textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
         }
         fullPrompt += " " + textParts.join(" ");

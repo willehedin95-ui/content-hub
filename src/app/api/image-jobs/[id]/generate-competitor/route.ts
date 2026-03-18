@@ -89,15 +89,16 @@ export async function POST(
         ...(includeProduct ? product_hero_urls : []),
       ];
 
-      // Build the full prompt: scene description + text overlay instructions.
-      // hook_text and headline_text must be baked into the image by Kie AI.
+      // Build the full prompt: scene description + optional text overlay instructions.
+      // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
       let fullPrompt = imgPrompt.prompt;
-      if (imgPrompt.hook_text || imgPrompt.headline_text) {
+      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+      if (hasTextOverlay) {
         const textParts: string[] = [];
-        if (imgPrompt.hook_text) {
+        if (imgPrompt.hook_text?.trim()) {
           textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
         }
-        if (imgPrompt.headline_text) {
+        if (imgPrompt.headline_text?.trim()) {
           textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
         }
         fullPrompt += " " + textParts.join(" ");

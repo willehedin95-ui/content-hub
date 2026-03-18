@@ -1120,7 +1120,11 @@ Generate prompts for the Nano Banana AI image generator (nano-banana-2) that rep
 - Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
 - Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
 - Describe the MOOD last (clinical, warm, urgent, calm, editorial)
-- **TEXT IN IMAGES — CRITICAL**: The generated image MUST include text overlays. The hook_text and headline_text you provide will be appended to the Nano Banana prompt as text overlay instructions. Your Nano Banana prompt should describe the VISUAL SCENE only — the text will be added automatically from hook_text and headline_text. However, if the competitor ad has text that is physically PART OF THE SCENE (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.), you MUST describe the ADAPTED text for our product directly in the Nano Banana prompt. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style". Each image_prompt variation should use a different hook_text.
+- **TEXT IN IMAGES — CRITICAL**: You MUST analyze whether the competitor ad has text overlays or not.
+  - **If the competitor ad has NO text overlays** (pure photo, native/UGC style, clean lifestyle shot, no words visible in the image at all): set hook_text and headline_text to EMPTY STRINGS (""). The generated image should be a CLEAN image with NO text — matching the competitor's text-free visual style.
+  - **If the competitor ad HAS text overlays** (bold headlines, hook text, captions, call-to-action text, etc. layered ON TOP of the image): provide adapted hook_text and headline_text for our product. These will be appended to the Nano Banana prompt as text overlay instructions. Your Nano Banana prompt should describe the VISUAL SCENE only — the text will be added automatically.
+  - **If the competitor ad has text that is physically PART OF THE SCENE** (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.): you MUST describe the ADAPTED text for our product directly in the Nano Banana prompt. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style". In this case, set hook_text and headline_text to empty strings since the text is already in the prompt.
+  - Each image_prompt variation should use a different hook_text (when text overlays are present).
 - Focus on reproducing the competitor's visual STYLE, not their specific product
 - The competitor image is NOT passed to Nano Banana — your prompt must be SELF-CONTAINED and describe the entire desired image without relying on a visual reference. Be very specific about layout, composition, colors, and style.
 - If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
@@ -1170,8 +1174,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
     {
       "source_index": 0,
       "prompt": "Nano Banana prompt (2-4 dense sentences)...",
-      "hook_text": "Main text overlay...",
-      "headline_text": "Secondary text line...",
+      "hook_text": "Main text overlay (or empty string if competitor ad has NO text)",
+      "headline_text": "Secondary text line (or empty string if no text)",
       "include_product_reference": true
     }
   ]

@@ -110,6 +110,27 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     pushResults: null,
   }));
 
+  // Sync metaPush ad copy when job data updates (e.g. from background swipe pipeline)
+  useEffect(() => {
+    const jobPrimary = job.ad_copy_primary ?? [];
+    const jobHeadline = job.ad_copy_headline ?? [];
+    const currentPrimary = metaPush.primaryTexts;
+    const currentHeadline = metaPush.headlines;
+    // Only sync if metaPush has empty/placeholder values and job has real data
+    const primaryIsEmpty = currentPrimary.length <= 1 && !currentPrimary[0]?.trim();
+    const headlineIsEmpty = currentHeadline.length <= 1 && !currentHeadline[0]?.trim();
+    if ((primaryIsEmpty && jobPrimary.length > 0 && jobPrimary.some((t: string) => t.trim())) ||
+        (headlineIsEmpty && jobHeadline.length > 0 && jobHeadline.some((t: string) => t.trim()))) {
+      setMetaPush((prev) => ({
+        ...prev,
+        primaryTexts: jobPrimary.length > 0 ? jobPrimary : prev.primaryTexts,
+        headlines: jobHeadline.length > 0 ? jobHeadline : prev.headlines,
+        landingPageId: job.landing_page_id ?? prev.landingPageId,
+        landingPageIdB: job.landing_page_id_b ?? prev.landingPageIdB,
+      }));
+    }
+  }, [job.ad_copy_primary, job.ad_copy_headline, job.landing_page_id, job.landing_page_id_b]);
+
   const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
