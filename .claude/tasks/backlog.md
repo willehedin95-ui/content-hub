@@ -1,11 +1,15 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-17 (audit & bug fixes session 3)
+Updated: 2026-03-18 (autopilot competitor swipe + auto-execute)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Test autopilot end-to-end** — Trigger `autopilot-concepts?force=true`, approve from Hub or Telegram, verify: translation rows created, ad copy translated, images translated (4:5 + 9:16), pipeline pushes to Meta
+- [ ] **Push + deploy autopilot competitor swipe** — Push `39047b3` to main, verify Vercel deploy succeeds
+- [ ] **Test autopilot competitor swipe end-to-end** — Set `autopilot_mode: "competitor_swipe"` in settings, create GetHookd board, trigger `autopilot-concepts?force=true`, verify: ad discovered, Claude Vision analysis, images generated, Telegram notification sent, approve triggers translations + push
+- [ ] **Test autopilot-execute dry run** — Call `/api/cron/autopilot-execute?dry_run=true`, verify strategy engine runs and logs recommendations without executing
+- [ ] **Test autopilot-execute live** — Enable `autopilot_auto_kill` in settings, verify zombie ad sets get paused via Meta API, `autopilot_actions` rows created, Telegram digest sent
+- [ ] **Test from-scratch autopilot end-to-end** — Trigger `autopilot-concepts?force=true` with `autopilot_mode: "from_scratch"`, approve from Hub or Telegram, verify: translation rows created, ad copy translated, images translated (4:5 + 9:16), pipeline pushes to Meta
 - [ ] **Simplified Meta campaign structure** (Phase 1 from plan) — Create permanent ad sets (1 per market per format), rewrite push flow to skip ad set duplication, update kill/promote to pause individual ads. See `.claude/plans/hashed-sprouting-lamport.md` Step 1.1-1.6.
 - [ ] **Push invoice improvements** — Committed at `894a3e5` but not pushed. Upload, forwarding, download logs improvements.
 - [ ] **Test workspace switching E2E** — switch between HappySleep/Hydro13/Doginwork, verify data isolation (pages, assets, concepts, settings all scoped correctly)
@@ -15,6 +19,7 @@ Updated: 2026-03-17 (audit & bug fixes session 3)
 - [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
 
 ## P2 — Important
+- [ ] **Discovered ads browser UI** — Show what autopilot found/scored/swiped in a table view. Could live at `/concepts?tab=discovered` or similar. (added 2026-03-18)
 - [ ] **Autosave race condition** — manual save can overlap with in-flight autosave. Needs optimistic concurrency or save lock. (added 2026-03-17, audit)
 - [ ] **Inline scripts in imported HTML** — `handleIframeLoad` removes `<script src>` but not inline `<script>`. Low risk (builder iframe only), but should sanitize. (added 2026-03-17, audit)
 - [ ] **Video generation sequential timeout** — ImportProgressPanel processes videos one-at-a-time with 5min timeout each. Refactor to `Promise.allSettled`. (added 2026-03-17, audit)
@@ -51,6 +56,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Autopilot Competitor Swiping + Auto-Execute** — GetHookd API wrapper (`src/lib/gethookd.ts`), dual-mode autopilot-concepts cron (from_scratch + competitor_swipe), autopilot-execute cron (auto-kill + auto-budget at 07:00 UTC), Settings > Autopilot tab, DB tables (discovered_ads, autopilot_actions), Vercel env var. Commit `39047b3`. (done 2026-03-18)
 - [x] **Full audit: Page Swiper + Builder** — 15 issues found, 10 fixed: cheerio data-attr parsing, autosave error state, placeholder nonce, copy/paste styles expansion, link detection, SEO validation, image src-based matching, publish error surfacing, decompact warnings. 5 lower-priority items added to P2. Commits `a036d1a`, `0a1b318`. (done 2026-03-17)
 - [x] **Builder improvements** — Inline element text editing (STRONG, EM, etc.), object-fit/position controls, image selection UX fix (standard blue outline + explicit edit buttons), AI Edit sidekick (free-form instruction, scope selector, quick actions). Commits `3a1f6df`, `c6530ac`. (done 2026-03-17)
 - [x] **Autopilot translation pipeline** — Wired translation pipeline to autopilot approve flow. Created `src/lib/autopilot-translations.ts` shared library. Both Hub UI and Telegram approve handlers now trigger full pipeline (create translations, translate copy, process images, outpaint 9:16) via `after()`. Commits `3c79f21`. (done 2026-03-17)
