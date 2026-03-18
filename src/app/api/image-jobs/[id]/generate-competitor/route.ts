@@ -46,7 +46,7 @@ export async function POST(
   }
 
   const pendingGen = job.pending_competitor_gen as {
-    image_prompts: Array<{ source_index?: number; prompt: string; hook_text: string; headline_text: string }>;
+    image_prompts: Array<{ source_index?: number; prompt: string; hook_text: string; headline_text: string; include_product_reference?: boolean }>;
     competitor_image_urls?: string[];
     competitor_image_url?: string; // legacy single-URL support
     product_hero_urls: string[];
@@ -57,10 +57,17 @@ export async function POST(
     ?? (pendingGen.competitor_image_url ? [pendingGen.competitor_image_url] : []);
   const product_hero_urls = pendingGen.product_hero_urls;
 
-  // Clear pending data immediately so a retry won't double-generate
+  // Store competitor reference data persistently for re-roll, then clear pending
+  // competitor_reference_data is kept permanently so re-roll can access competitor URLs
   await db
     .from("image_jobs")
-    .update({ pending_competitor_gen: null })
+    .update({
+      pending_competitor_gen: null,
+      competitor_reference_data: {
+        competitor_image_urls: competitorImageUrls,
+        product_hero_urls,
+      },
+    })
     .eq("id", id);
 
   const jobId = job.id;
@@ -76,7 +83,12 @@ export async function POST(
       // Use source_index to pick the correct competitor image as reference
       const sourceIdx = imgPrompt.source_index ?? 0;
       const competitorRef = competitorImageUrls[sourceIdx] ?? competitorImageUrls[0];
-      const referenceUrls = [competitorRef, ...product_hero_urls];
+      // Only include product hero images when the competitor ad has a visible product
+      // Native/UGC ads without products should NOT get product images forced in
+      const includeProduct = imgPrompt.include_product_reference !== false;
+      const referenceUrls = includeProduct
+        ? [competitorRef, ...product_hero_urls]
+        : [competitorRef];
 
       const { urls: resultUrls, costTimeMs } = await generateImage(
         imgPrompt.prompt,

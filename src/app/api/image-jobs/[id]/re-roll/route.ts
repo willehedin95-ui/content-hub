@@ -95,8 +95,131 @@ export async function POST(
     .map((i) => i.generation_prompt as string)
     .filter(Boolean);
 
+  const styleRaw = sourceImage.generation_style as string;
+  const isCompetitorSwipe = styleRaw === "competitor-swipe";
+  const style = styleRaw as StaticStyleId;
+
+  // --- COMPETITOR-SWIPE RE-ROLL: reuse competitor reference + original prompt ---
+  if (isCompetitorSwipe) {
+    const competitorData = job.competitor_reference_data as {
+      competitor_image_urls?: string[];
+      product_hero_urls?: string[];
+    } | null;
+
+    const originalPrompt = sourceImage.generation_prompt as string | null;
+    if (!originalPrompt) {
+      return NextResponse.json(
+        { error: "Cannot re-roll: no original generation prompt stored" },
+        { status: 400 }
+      );
+    }
+
+    // Build reference URLs — use competitor image if available, otherwise just the prompt
+    const competitorUrls = competitorData?.competitor_image_urls ?? [];
+    const productHeroUrls = competitorData?.product_hero_urls ?? [];
+    // For competitor-swipe re-rolls, use the same reference setup as the original generation
+    // (competitor image only — no product heroes unless the original included them)
+    const referenceUrls = competitorUrls.length > 0
+      ? [competitorUrls[0], ...productHeroUrls]
+      : productHeroUrls;
+
+    let resultUrls: string[] | undefined;
+    let costTimeMs: number | undefined;
+    try {
+      // Same prompt, different seed → different image from Nano Banana
+      const result = await generateImage(originalPrompt, referenceUrls, "4:5");
+      resultUrls = result.urls;
+      costTimeMs = result.costTimeMs ?? undefined;
+    } catch (err) {
+      return safeError(err, "Image generation failed");
+    }
+
+    if (!resultUrls?.length) {
+      return NextResponse.json({ error: "No image generated" }, { status: 500 });
+    }
+
+    // Download from Kie CDN
+    const resultRes = await fetch(resultUrls[0]);
+    if (!resultRes.ok) {
+      return NextResponse.json({ error: "Failed to download generated image" }, { status: 500 });
+    }
+    const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+    // Upload to Supabase Storage
+    const fileId = crypto.randomUUID();
+    const filePath = `image-jobs/${id}/${fileId}.png`;
+    const { error: uploadError } = await db.storage
+      .from(STORAGE_BUCKET)
+      .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+
+    if (uploadError) {
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    }
+
+    const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+    // Delete old source image's storage file
+    const oldUrl = sourceImage.original_url as string;
+    const oldPathMatch = oldUrl.match(/translated-images\/(.+)$/);
+    if (oldPathMatch) {
+      await db.storage.from(STORAGE_BUCKET).remove([oldPathMatch[1]]);
+    }
+
+    // Delete old source image row (CASCADE removes translations)
+    await db.from("source_images").delete().eq("id", source_image_id);
+
+    // Insert new source image — preserve original prompt and style
+    const { data: newSourceImage, error: insertErr } = await db
+      .from("source_images")
+      .insert({
+        job_id: id,
+        original_url: urlData.publicUrl,
+        filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
+        processing_order: sourceImage.processing_order,
+        skip_translation: false,
+        generation_prompt: originalPrompt,
+        generation_style: "competitor-swipe",
+      })
+      .select()
+      .single();
+
+    if (insertErr || !newSourceImage) {
+      return safeError(insertErr ?? new Error("Insert failed"), "Failed to save new image");
+    }
+
+    // Log Kie usage
+    await db.from("usage_logs").insert({
+      type: "image_generation",
+      page_id: null,
+      translation_id: null,
+      model: KIE_MODEL,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: KIE_IMAGE_COST,
+      metadata: {
+        purpose: "competitor_swipe_reroll",
+        image_job_id: id,
+        source_image_id: newSourceImage.id,
+        old_source_image_id: source_image_id,
+        kie_cost_time_ms: costTimeMs,
+      },
+    });
+
+    return NextResponse.json({
+      source_image: {
+        id: newSourceImage.id,
+        original_url: urlData.publicUrl,
+        filename: newSourceImage.filename,
+        label: "Competitor Swipe",
+        style: "competitor-swipe",
+        prompt: originalPrompt,
+      },
+      cost_usd: KIE_IMAGE_COST,
+    });
+  }
+
+  // --- STANDARD STATIC AD RE-ROLL ---
   // Generate ONE new brief for the same style
-  const style = sourceImage.generation_style as StaticStyleId;
   let briefs;
   try {
     briefs = await generateImageBriefs({

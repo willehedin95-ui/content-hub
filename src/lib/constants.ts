@@ -26,9 +26,9 @@ export const STATIC_STYLES = [
   { id: "bold-statement", label: "Bold Statement", description: "Large bold typography dominates, one powerful claim, minimal background visual" },
   { id: "before-after", label: "Before/After", description: "Split composition showing transformation contrast — pain state vs dream state" },
   { id: "social-proof", label: "Social Proof", description: "Product or lifestyle image with testimonial overlay boxes and review quotes" },
-  { id: "native-medical", label: "Medical Illustration", description: "Anatomical cross-sections, medical diagrams, microscope close-ups — looks like it belongs next to a WebMD article" },
-  { id: "native-closeup", label: "Uncomfortable Close-up", description: "Raw skin textures, swollen joints, body close-ups that trigger involuntary attention — mild disgust stops the scroll" },
-  { id: "native-messy", label: "Messy Real-Life", description: "Cluttered medicine cabinet, messy bedside table with supplements, kitchen counter with health products — relatable, not aspirational" },
+  { id: "native-medical", label: "Medical / Scientific", description: "Pencil sketches, CT scans, microscopy, fabric models, infographic diagrams, comic illustrations — educational imagery in varied visual media" },
+  { id: "native-closeup", label: "Pattern Interrupt", description: "Disgusting objects, exhaustion portraits, scene-of-the-crime beds, metaphorical objects, intimate 3AM moments — raw and unexpected" },
+  { id: "native-messy", label: "Real-Life Native", description: "Problem scenes (messy nightstands, stacked pillows, 3AM phones) AND outcome scenes (celebration selfies, couple moments, flat-lay comparisons) — iPhone aesthetic" },
   { id: "comparison", label: "Comparison", description: "Side-by-side showing your product vs generic alternative, with clear advantage callouts" },
 ] as const;
 

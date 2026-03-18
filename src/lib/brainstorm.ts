@@ -875,28 +875,64 @@ ${productContext}
 
 ## VISUAL DIRECTION FOR UNAWARE/NATIVE ADS
 
-For unaware ads, visual direction should prioritize NATIVE-LOOKING imagery:
-- Medical illustrations, anatomical cross-sections, microscope close-ups
-- Uncomfortable close-ups, messy real-life scenes, cluttered environments
-- Editorial-style photography that looks like it belongs in a news article
-- AVOID polished product shots, lifestyle glamour, anything that "looks like an ad"
-- Images should create a curiosity gap and trigger involuntary attention
+The IMAGE is the most important element of a native ad. It must stop the scroll by being WEIRD, RANDOM, or UNCOMFORTABLE — NOT by being polished or pretty. The image must make someone think "wait, what?" or "ugh" or "that's so me" — never "oh that's an ad."
 
-Visual direction MUST specify which of the 3 native image types to use:
-1. native-medical — anatomical diagrams, medical illustrations, cellular close-ups
-2. native-closeup — raw skin textures, swollen joints, uncomfortable body close-ups
-3. native-messy — cluttered medicine cabinets, messy bedside tables, real-life bathroom shelves
+You're competing against the article someone was just reading. Your image must be MORE INTERESTING than that article's images. A product shot loses every time. A stained pillow on a lab bench wins.
+
+IMAGE IDEA PRINCIPLES:
+- The image should feel RANDOM and DISCONNECTED from the product. A yellowed pillow cut open on a lab bench. A fridge interior with supplements next to pizza boxes. Hands gripping a steering wheel at 3 AM. A woman at a birthday party shielding her eyes while everyone else laughs.
+- The weirder and more unexpected, the better. If it makes you uncomfortable, it probably converts.
+- Images should create a question the viewer can't answer without clicking: "why is there a pillow on a lab bench?" "what's wrong with her at that party?"
+- NEVER describe the product or solution in the image. The image shows the PROBLEM or a RANDOM provocative scene.
+
+THE IMAGE-HEADLINE RELATIONSHIP (CRITICAL):
+Image and headline do TWO DIFFERENT JOBS:
+- IMAGE → creates an emotion or unanswered question (recognition, disgust, curiosity)
+- HEADLINE → answers it halfway, opens a DIFFERENT curiosity gap you can only close by clicking
+If image shows stained pillow and headline says "dirty pillows cause health problems" — FAIL. Same message twice.
+Instead: image = stained pillow ("ugh, is mine like that?") → headline = "The nighttime habit aging your skin 10 years faster" (DIFFERENT question).
+
+Visual direction MUST specify which native image type AND describe a SPECIFIC, WEIRD image idea:
+1. native-medical — anatomical diagrams, X-ray scans, vintage anatomical plates on aged parchment, microscopy, heat maps, CT scans, comic/graphic novel panels. Looks like it came from WebMD or a medical textbook.
+2. native-closeup — disgusting objects on lab benches, exhaustion portraits under harsh fluorescent, hands close-ups (gripping steering wheel, pressing temples), emotional isolation (suffering while others are fine), metaphorical objects (ice pack shaped like pillow). Raw, visceral, involuntary attention.
+3. native-messy — cluttered nightstands, kitchen counters with vitamin chaos, bathroom shelves, car dashboards at commute time, desk flat-lays telling exhaustion stories, purse dumps, fridge interiors showing intention-vs-reality. Looks like someone's actual phone photo.
+
+BAD visual direction: "Medical illustration of spine alignment" (generic, boring)
+GOOD visual direction: "native-medical: Vintage anatomical copperplate engraving of cervical vertebrae on heavily aged parchment with Latin labels, foxing marks, water stains, frayed edges — looks like a 200-year-old medical textbook page that was just discovered"
+
+BAD visual direction: "Messy nightstand with pills" (generic, seen 1000 times)
+GOOD visual direction: "native-messy: Overhead flat-lay of a bathroom counter at 6 AM — concealer tube with cap sitting separately, energy drink half-empty, three different under-eye creams lined up, a phone face-down. The objects tell the story of someone hiding their exhaustion every morning. Harsh fluorescent bathroom light."
+
+## CONCEPT PHILOSOPHY FOR NATIVE ADS
+
+Native ad concepts are NOT traditional ad campaigns with a catchy name. They are ANGLES OF ATTACK — a specific belief to shift, a curiosity to exploit, a worldview to tap. The concept should answer: "What weird image + editorial headline combination will make someone who isn't looking for a pillow click on this?"
+
+Think like a tabloid editor, not an ad creative director. What headline would make someone click on a health blog article? What image next to that headline would make it irresistible?
+
+Your concept names should reflect the ANGLE, not sound like ad campaigns:
+BAD concept names: "The Bedroom Murder Mystery", "Sleep Revolution", "The Comfort Promise"
+GOOD concept names: "Positional Escape Behavior", "The Pillow Autopsy", "Cervical Countdown"
+
+Your hooks should be things real people would click on in a news feed:
+BAD hooks: "Your body moves 40-60 times per night trying to escape something" (still sounds like an ad)
+GOOD hooks: "Sleep researchers have a name for what your body does at 3 AM. It's not pretty.", "The concerning thing that happens to your neck after 7 years on the same pillow"
 
 ${HEADLINE_FORMULAS}
 
-Generate editorial-style native_headlines using these formulas. They should read like news article titles, NOT ad headlines.
+Generate editorial-style native_headlines using these formulas. They should read like CNN or WebMD article titles, NOT ad headlines.
 
 ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replace(
   '"awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware"',
   '"awareness_level": "Unaware"'
 ).replace(
   '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],',
-  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like news article titles, NOT ad headlines"],'
+  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like CNN/WebMD article titles, NOT ad headlines"],'
+).replace(
+  '"ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each)"],',
+  '"ad_copy_primary": ["2-3 primary ad text variations — for native/unaware ads, write these as ADVERTORIAL OPENINGS (150-300 words each). Never mention the product in the first 150 words. Open with education, story, or shocking fact. The reader should be halfway through before they realize this might lead somewhere. These are the first paragraphs of a long-form article, not short ad copy."],'
+).replace(
+  '"visual_direction": "What the static ad image should look like — layout, imagery, mood, text overlay approach",',
+  '"visual_direction": "MUST specify native image type (native-medical, native-closeup, or native-messy) + a SPECIFIC weird/provocative image idea. Describe the exact scene, objects, lighting, and mood. The image should make someone stop scrolling because it is unexpected, not because it is pretty.",'
 )}
 
 CRITICAL — ORIGINALITY RULES:
@@ -909,9 +945,11 @@ ADDITIONAL RULES FOR UNAWARE CONCEPTS:
 - Each proposal must specify which unaware ad type it uses (Straddle, Symptom, Worldview Porn, or Story)
 - Include the unaware type in suggested_tags (e.g., ["unaware", "straddle", "native"])
 - Hooks must NOT mention the product name — lead with curiosity or emotional energy
-- Visual direction should describe native/editorial-style imagery and specify which native image type (native-medical, native-closeup, or native-messy) fits best
-- native_headlines MUST use the editorial formulas above — they will be overlaid on native-style images
-- Destination should be implied as advertorial/educational content, not direct product page`;
+- Visual direction MUST describe a SPECIFIC weird/provocative image — not generic descriptions. Include the native image type (native-medical, native-closeup, or native-messy), exact scene composition, key objects, and lighting mood.
+- native_headlines MUST read like editorial article titles you'd see on CNN, WebMD, or a health blog — NOT like ad headlines
+- ad_copy_primary should read like the opening paragraphs of a long-form article/advertorial — NOT short ad copy. Never mention the product in the first 150 words.
+- Destination should be implied as advertorial/educational content, not direct product page
+- The concept name should reflect the psychological ANGLE, not sound like an ad campaign name`;
 }
 
 function buildFromTemplateSystem(
@@ -1054,6 +1092,7 @@ Generate prompts for the Nano Banana AI image generator (nano-banana-2) that rep
 - The competitor image will be passed as a reference image to Nano Banana — your prompt should COMPLEMENT that reference by describing the desired output precisely, OVERRIDING any competitor-specific elements (text, product, branding) with our adapted versions
 - If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
 - If the competitor ad uses a product shot, describe how our product should be positioned in the same style
+- **PRODUCT REFERENCE CONTROL — CRITICAL**: For each image_prompt, set \`"include_product_reference": true\` ONLY if the competitor ad prominently features a VISIBLE physical product (a bottle, box, pillow, device, etc.) that should be replaced with our product. Set it to \`false\` for native/UGC-style ads where no product is visible — e.g. a person at a doctor's office, a selfie, a lifestyle scene, medical staff, etc. When set to false, the product hero images will NOT be passed to Nano Banana, so it will reproduce the scene naturally without forcing our product into the image. This is essential for native ads that are supposed to look organic, not like product ads.
 
 **Nano Banana prompt structure:**
 \`[Subject/scene description with specific details]. [Lighting and atmosphere]. [Textures, materials, and technical details]. [Overall mood and feeling].\`
@@ -1099,7 +1138,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
       "source_index": 0,
       "prompt": "Nano Banana prompt (2-4 dense sentences)...",
       "hook_text": "Main text overlay...",
-      "headline_text": "Secondary text line..."
+      "headline_text": "Secondary text line...",
+      "include_product_reference": true
     }
   ]
 }
@@ -1111,6 +1151,7 @@ CRITICAL RULES:
 - **NEVER keep the competitor's problem domain.** If the competitor ad is about beauty/skincare/supplements/weight loss/fitness — the adapted hooks MUST be about sleep, snoring, neck pain, or whatever OUR product actually solves. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
 - The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle
 - The competitor image will be passed as a reference to Nano Banana — prompts should describe the desired output that uses our product in their format
+- **NATIVE ADS — DO NOT ADD PRODUCT**: If the competitor ad is a native/UGC-style image (person at doctor, selfie, lifestyle scene, medical setting, etc.) where NO physical product is visible, your Nano Banana prompt must NOT mention or describe our product. The image should look like an organic, real photo — NOT an ad. Set \`include_product_reference: false\` for these. Only describe our product in the prompt if the competitor ad itself prominently shows a physical product that needs to be swapped.
 - **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product. This text must be about OUR product's benefits (sleep/snoring/neck pain), NOT a reworded version of the competitor's claims. The reference image will cause Nano Banana to copy the competitor's text unless you override it in the prompt.**
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
