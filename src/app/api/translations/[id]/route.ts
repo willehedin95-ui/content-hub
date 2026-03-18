@@ -115,10 +115,9 @@ export async function PUT(
         .from("pages")
         .update({
           original_html: translated_html,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", realId)
-        .select("id, updated_at")
+        .select("id")
         .single();
 
       if (saveError) {
@@ -128,7 +127,6 @@ export async function PUT(
       return NextResponse.json({
         id,
         page_id: realId,
-        updated_at: page.updated_at,
       });
     }
 
