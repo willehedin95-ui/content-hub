@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, ExternalLink, Zap, Play, Video } from "lucide-react";
+import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2 } from "lucide-react";
 
 interface BoardAd {
   id: number;
@@ -42,6 +42,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [boards, setBoards] = useState<Array<{ id: number; name: string; ad_count: number }>>([]);
   const [batchSwiping, setBatchSwiping] = useState(false);
   const [painPoint, setPainPoint] = useState("auto-detect");
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // First, fetch boards to let user pick or auto-select
   useEffect(() => {
@@ -274,16 +275,25 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           )}
         </div>
 
-        {unswipedCount > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleBatchSwipe}
-            disabled={batchSwiping}
-            className="flex items-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-1.5 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2 rounded-lg transition-colors"
           >
-            {batchSwiping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            Swipe All ({unswipedCount})
+            <Upload className="w-3.5 h-3.5" />
+            Upload Video
           </button>
-        )}
+          {unswipedCount > 0 && (
+            <button
+              onClick={handleBatchSwipe}
+              disabled={batchSwiping}
+              className="flex items-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {batchSwiping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              Swipe All ({unswipedCount})
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Pain point selector */}
@@ -342,9 +352,263 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           No ads match this filter.
         </div>
       )}
+
+      {/* Upload Video Modal */}
+      {showUploadModal && (
+        <UploadVideoModal
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={(videoJobId) => {
+            setShowUploadModal(false);
+            router.push(`/video-ads/${videoJobId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Upload Video Modal
+// ---------------------------------------------------------------------------
+
+function UploadVideoModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (videoJobId: string) => void;
+}) {
+  const [mode, setMode] = useState<"file" | "url">("file");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [brandName, setBrandName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  async function handleSubmit() {
+    if (!brandName.trim()) {
+      setError("Brand name is required");
+      return;
+    }
+
+    let finalVideoUrl = videoUrl;
+
+    // If file mode, upload first
+    if (mode === "file") {
+      if (!file) {
+        setError("Select a video file");
+        return;
+      }
+      setUploading(true);
+      setUploadProgress("Uploading video...");
+      setError(null);
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/ad-spy/upload-video", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+        finalVideoUrl = data.url;
+        setUploadProgress(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload failed");
+        setUploading(false);
+        setUploadProgress(null);
+        return;
+      }
+      setUploading(false);
+    } else {
+      if (!videoUrl.trim()) {
+        setError("Paste a video URL");
+        return;
+      }
+    }
+
+    // Call swipe-video without gethookd_ad_id
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ad-spy/swipe-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_url: finalVideoUrl,
+          brand_name: brandName.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Swipe failed");
+      onSuccess(data.videoJobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start video swipe");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile?.type.startsWith("video/")) {
+      setFile(droppedFile);
+      setError(null);
+    } else {
+      setError("Please drop a video file (mp4, mov, webm)");
+    }
+  }
+
+  const isProcessing = uploading || submitting;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Swipe Competitor Video</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+            <button
+              onClick={() => { setMode("file"); setError(null); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-md transition-colors ${
+                mode === "file" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Upload File
+            </button>
+            <button
+              onClick={() => { setMode("url"); setError(null); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-md transition-colors ${
+                mode === "url" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              Paste URL
+            </button>
+          </div>
+
+          {/* File upload area */}
+          {mode === "file" && (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                dragOver
+                  ? "border-purple-400 bg-purple-50"
+                  : file
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-gray-200 hover:border-gray-300 bg-gray-50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,video/x-msvideo"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) { setFile(f); setError(null); }
+                }}
+              />
+              {file ? (
+                <div className="space-y-1">
+                  <Video className="w-6 h-6 text-emerald-500 mx-auto" />
+                  <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+                  <p className="text-[11px] text-gray-400">{(file.size / (1024 * 1024)).toFixed(1)} MB</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Upload className="w-6 h-6 text-gray-400 mx-auto" />
+                  <p className="text-sm text-gray-500">Drop a video or click to browse</p>
+                  <p className="text-[11px] text-gray-400">MP4, MOV, WebM up to 100MB</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* URL input */}
+          {mode === "url" && (
+            <input
+              type="url"
+              placeholder="https://example.com/competitor-ad.mp4"
+              value={videoUrl}
+              onChange={(e) => { setVideoUrl(e.target.value); setError(null); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300"
+            />
+          )}
+
+          {/* Brand name */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Brand / Competitor Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Emma Sleep, Casper, Purple..."
+              value={brandName}
+              onChange={(e) => { setBrandName(e.target.value); setError(null); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+
+          {/* Progress */}
+          {uploadProgress && (
+            <div className="flex items-center gap-2 text-xs text-purple-600">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {uploadProgress}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={isProcessing}
+            className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg py-2.5 transition-colors disabled:opacity-50"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {uploading ? "Uploading..." : "Starting swipe..."}
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4" />
+                Swipe Video
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ad Card + helpers
+// ---------------------------------------------------------------------------
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);

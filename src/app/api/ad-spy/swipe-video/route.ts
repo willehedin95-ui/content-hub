@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     brand_name,
     video_duration,
   } = body as {
-    gethookd_ad_id: number;
+    gethookd_ad_id?: number;
     video_url: string;
     thumbnail_url?: string;
     title?: string;
@@ -30,26 +30,29 @@ export async function POST(req: NextRequest) {
     video_duration?: number;
   };
 
-  if (!gethookd_ad_id || !video_url || !brand_name) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  if (!video_url || !brand_name) {
+    return NextResponse.json({ error: "Missing required fields (video_url, brand_name)" }, { status: 400 });
   }
 
   const productSlug = (settings as Record<string, unknown>).default_product as string || "happysleep";
+  const isManual = !gethookd_ad_id;
 
   try {
-    // Upsert into discovered_ads
-    await db.from("discovered_ads").upsert({
-      workspace_id: workspaceId,
-      gethookd_ad_id,
-      brand_name,
-      title: title ?? "",
-      body: adBody ?? "",
-      media_urls: thumbnail_url ? [thumbnail_url] : [],
-      source: "board",
-      status: "swiping",
-      ad_type: "video",
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "workspace_id,gethookd_ad_id" });
+    // Only track in discovered_ads when coming from GetHookd
+    if (!isManual) {
+      await db.from("discovered_ads").upsert({
+        workspace_id: workspaceId,
+        gethookd_ad_id,
+        brand_name,
+        title: title ?? "",
+        body: adBody ?? "",
+        media_urls: thumbnail_url ? [thumbnail_url] : [],
+        source: "board",
+        status: "swiping",
+        ad_type: "video",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "workspace_id,gethookd_ad_id" });
+    }
 
     // Create a placeholder video_job so user can navigate to it
     const { data: job, error: jobErr } = await db
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest) {
         concept_name: `Swiping from ${brand_name}...`,
         product: productSlug,
         status: "draft",
-        source: "autopilot",
+        source: isManual ? "manual" : "autopilot",
         pipeline_mode: "multi_clip",
         target_languages: ["sv", "da", "no"],
         max_shots: 4,
@@ -75,11 +78,13 @@ export async function POST(req: NextRequest) {
 
     const videoJobId = job.id;
 
-    // Update discovered_ads with the video job ID
-    await db.from("discovered_ads")
-      .update({ video_job_id: videoJobId, updated_at: new Date().toISOString() })
-      .eq("gethookd_ad_id", gethookd_ad_id)
-      .eq("workspace_id", workspaceId);
+    // Update discovered_ads with the video job ID (only for GetHookd ads)
+    if (!isManual) {
+      await db.from("discovered_ads")
+        .update({ video_job_id: videoJobId, updated_at: new Date().toISOString() })
+        .eq("gethookd_ad_id", gethookd_ad_id)
+        .eq("workspace_id", workspaceId);
+    }
 
     // Run the full pipeline in background after response is sent
     after(async () => {
@@ -96,11 +101,13 @@ export async function POST(req: NextRequest) {
           existingJobId: videoJobId,
         });
 
-        // Update discovered_ads status
-        await db.from("discovered_ads")
-          .update({ status: "swiped", updated_at: new Date().toISOString() })
-          .eq("gethookd_ad_id", gethookd_ad_id)
-          .eq("workspace_id", workspaceId);
+        // Update discovered_ads status (only for GetHookd ads)
+        if (!isManual) {
+          await db.from("discovered_ads")
+            .update({ status: "swiped", updated_at: new Date().toISOString() })
+            .eq("gethookd_ad_id", gethookd_ad_id)
+            .eq("workspace_id", workspaceId);
+        }
 
         console.log(`[ad-spy/swipe-video] Complete: ${result.conceptName} (${result.shotsCreated} shots)`);
       } catch (err) {
@@ -111,10 +118,12 @@ export async function POST(req: NextRequest) {
           swipe_progress: { step: "error", message: err instanceof Error ? err.message : "Video swipe failed" },
         }).eq("id", videoJobId);
 
-        await db.from("discovered_ads")
-          .update({ status: "skipped", updated_at: new Date().toISOString() })
-          .eq("gethookd_ad_id", gethookd_ad_id)
-          .eq("workspace_id", workspaceId);
+        if (!isManual) {
+          await db.from("discovered_ads")
+            .update({ status: "skipped", updated_at: new Date().toISOString() })
+            .eq("gethookd_ad_id", gethookd_ad_id)
+            .eq("workspace_id", workspaceId);
+        }
       }
     });
 
@@ -123,10 +132,12 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[ad-spy/swipe-video] Error:", err);
 
-    await db.from("discovered_ads")
-      .update({ status: "skipped", updated_at: new Date().toISOString() })
-      .eq("gethookd_ad_id", gethookd_ad_id)
-      .eq("workspace_id", workspaceId);
+    if (!isManual) {
+      await db.from("discovered_ads")
+        .update({ status: "skipped", updated_at: new Date().toISOString() })
+        .eq("gethookd_ad_id", gethookd_ad_id)
+        .eq("workspace_id", workspaceId);
+    }
 
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Video swipe failed" },
