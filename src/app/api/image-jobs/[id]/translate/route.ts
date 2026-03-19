@@ -210,6 +210,39 @@ export async function POST(
       })
       .eq("id", translationId);
 
+    // For skipped (no-text) images: the 9:16 outpaint is identical across languages,
+    // so copy the result to all other pending 9:16 siblings to avoid redundant Kie AI calls
+    if (translation.aspect_ratio === "9:16") {
+      const { data: sourceImg } = await db
+        .from("source_images")
+        .select("skip_translation")
+        .eq("id", translation.source_image_id)
+        .single();
+
+      if (sourceImg?.skip_translation) {
+        const { data: pendingSiblings } = await db
+          .from("image_translations")
+          .select("id")
+          .eq("source_image_id", translation.source_image_id)
+          .eq("aspect_ratio", "9:16")
+          .eq("status", "pending")
+          .neq("id", translationId);
+
+        if (pendingSiblings?.length) {
+          const siblingIds = pendingSiblings.map((s) => s.id);
+          await db
+            .from("image_translations")
+            .update({
+              status: "completed",
+              translated_url: urlData.publicUrl,
+              error_message: null,
+              updated_at: new Date().toISOString(),
+            })
+            .in("id", siblingIds);
+        }
+      }
+    }
+
     // Log usage
     await db.from("usage_logs").insert({
       type: "image_generation",

@@ -817,7 +817,8 @@ export default function ConceptImagesStep({
                       const translatableCount = sourceImages.filter(si => !si.skip_translation).length;
                       const skippedCount = sourceImages.filter(si => si.skip_translation).length;
                       const translateCount = translatableCount * selectedLanguages.size;
-                      const outpaintCount = skippedCount * selectedLanguages.size;
+                      // Skipped images only outpaint once (same result reused across languages)
+                      const outpaintCount = skippedCount;
                       const parts: string[] = [];
                       if (translateCount > 0) parts.push(`${translateCount} translations (4:5)`);
                       if (outpaintCount > 0) parts.push(`${outpaintCount} outpaints (9:16)`);
