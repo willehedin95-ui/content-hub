@@ -1,12 +1,22 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (P1 items tested + 2 features shipped)
+Updated: 2026-03-19 (workflow optimization plan)
 
 ## P0 — Blockers
 (none)
 
-## P1 — Do Next
+## P1 — Do Now (Pipeline Unblock)
+- [ ] **"Finish & Queue" button** — One-click on any concept to run full translation pipeline (images + 9:16 + ad copy) + auto-add to launchpad. Reuses `triggerAutopilotTranslations()`. (added 2026-03-19)
+- [ ] **Fix translation scoring** — Only "needs_fixes" on context errors (mistranslation, wrong meaning) + untranslated English words. Fluency/grammar issues = informational only, never block. Kill the fix-issues re-translate loop. (added 2026-03-19)
+- [ ] **Fix translation bugs** — Investigate why ad copy translations fail/hang. User reports frequent failures. (added 2026-03-19)
+- [ ] **Default Page B setting** — Workspace setting for default A/B test landing page. Every push auto-tests against this page without manual selection. (added 2026-03-19)
+
+## P1.5 — Do Next
 - [ ] **Test page testing live** — push a concept with 2 landing pages to Meta, verify 2 ad sets created with [A]/[B] suffixes (code verified, needs live push)
 - [ ] **Live-test competitor swipe E2E** — import real page → generate images/videos → apply → publish (requires manual UI testing)
+
+## P2 — Visual Cleanup (next week)
+- [ ] **Concepts card grid redesign** — Replace table with big-thumbnail card grid (like GetHookd). Minimal info: thumbnail, name, status badge (Ready/Live/Needs work), concept number. Remove: tags, product column, market flags. (added 2026-03-19)
+- [ ] **Sidebar navigation simplification** — Merge scattered pipeline items. (added 2026-03-19)
 
 ## P2 — Important
 - [ ] **Discovered ads browser UI** — Show what autopilot found/scored/swiped in a table view. Could live at `/concepts?tab=discovered` or similar. (added 2026-03-18)
@@ -29,6 +39,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 ### Phase 1-4: All complete (see Done section)
 
 ## P3 — Backlog
+- [ ] **Video Ad Swiper** — Same workflow as image swiper but for videos. Upload/paste competitor video → AI (Gemini/Claude) watches and extracts script + scene breakdown → adapts for HappySleep → generates AI UGC via existing video tools. (added 2026-03-19)
 - [ ] **Animated Ads Pipeline** — Franky Shaw-style animated ad generation: brainstorm → 18 NanoBananaPro images → 9 Kling 3.0 video transitions → ElevenLabs voiceover → Suno music → download for CapCut editing. ~$9-10/ad. Design + plan ready at `docs/plans/2026-03-08-animated-ads-design.md` and `docs/plans/2026-03-08-animated-ads-plan.md`. 15 tasks, needs `ELEVENLABS_API_KEY` env var. (added 2026-03-08)
 - [ ] **Drop `app_settings` table** — fully migrated to `workspaces.settings`, only legacy fallback in settings route. Can be removed once verified in production. (added 2026-03-12)
 - [ ] **Telegram/Morning Brief workspace context** — these routes don't have workspace context, will need it for multi-workspace support (added 2026-03-12)

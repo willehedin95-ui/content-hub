@@ -143,22 +143,31 @@ No other text.`,
         messages: [
           {
             role: "system",
-            content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation and evaluate quality.
+            content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation.
 
 Respond with JSON:
 {
   "fluency_issues": [<list of unnatural or awkward phrasings>],
   "grammar_issues": [<list of grammar problems>],
-  "context_errors": [<list of meaning changes, mistranslations, or cultural issues>],
+  "context_errors": [<list of CRITICAL errors only — see rules below>],
   "overall_assessment": "<1-2 sentence summary>"
 }
 
-List ALL issues you find. Pay special attention to:
-- Names being properly localized to ${langLabel} equivalents
-- Cultural references adapted for the target market
-- Ad copy maintaining its persuasive power
-- Natural-sounding ${langLabel} (not "translationese")
-IMPORTANT: Write ALL feedback, assessments, and issue descriptions in English.`,
+CONTEXT_ERROR RULES — only flag these as context_errors:
+- English words left untranslated (e.g. "Dad", "stroke", "sleep" used as-is). Brand names (HappySleep, etc.) and common loanwords are fine.
+- Completely wrong meaning (sentence says the opposite of the original)
+- Wrong target language (e.g. Swedish words in a Danish translation)
+
+DO NOT flag these as context_errors (put them in fluency_issues instead):
+- Minor tone/register shifts ("conversational" vs "clinical")
+- Slightly different nuance that preserves the core meaning
+- Technical terms translated differently but still correct
+- Product feature names like "cervical cradle" kept in English (this is intentional)
+- Currency references (SEK/DKK/NOK) — these are handled elsewhere
+- Minor meaning softening or strengthening
+
+The bar for context_errors should be HIGH. If a native ${langLabel} speaker would understand the intended message correctly, it is NOT a context_error.
+IMPORTANT: Write ALL feedback in English.`,
           },
           {
             role: "user",

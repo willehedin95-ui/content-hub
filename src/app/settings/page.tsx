@@ -63,6 +63,7 @@ export default function SettingsPage() {
     autopilot_auto_budget: false,
     gethookd_board_id: "",
     gethookd_explore_queries: [],
+    default_page_b_id: "",
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

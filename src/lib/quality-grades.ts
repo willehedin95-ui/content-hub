@@ -72,7 +72,8 @@ export function deriveImageGrade(analysis: {
 
 /**
  * Derive grade for ad copy text analysis.
- * Uses: fluency_issues, grammar_issues, context_errors
+ * Only blocks on context_errors (mistranslations, untranslated English words).
+ * Grammar/fluency issues are informational — never block publishing.
  */
 export function deriveCopyGrade(analysis: {
   fluency_issues?: string[];
@@ -83,7 +84,7 @@ export function deriveCopyGrade(analysis: {
   const grammar = analysis.grammar_issues?.length ?? 0;
   const fluency = analysis.fluency_issues?.length ?? 0;
 
-  if (context > 0 || grammar >= 3) return "needs_fixes";
+  if (context > 0) return "needs_fixes";
   if (grammar > 0 || fluency > 2) return "good";
   return "great";
 }

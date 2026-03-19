@@ -37,6 +37,7 @@ export interface Settings {
   autopilot_auto_budget: boolean;
   gethookd_board_id: string;
   gethookd_explore_queries: string[];
+  default_page_b_id: string;
 }
 
 /* ─── Common props interface ────────────────────────── */

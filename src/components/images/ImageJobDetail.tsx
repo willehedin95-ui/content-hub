@@ -15,6 +15,7 @@ import {
   Rocket,
   X,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { deriveImageGrade } from "@/lib/quality-grades";
@@ -195,6 +196,13 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     loading: false,
     error: null,
   });
+
+  // Finish & Queue state
+  const [finishQueue, setFinishQueue] = useState<{
+    loading: boolean;
+    started: boolean;
+    error: string | null;
+  }>({ loading: false, started: false, error: null });
 
   // Copy translation states
   const [copyState, setCopyState] = useState<{
@@ -589,6 +597,26 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       }
     } catch {
       setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
+
+  // Finish & Queue handler
+  async function handleFinishAndQueue() {
+    setFinishQueue({ loading: true, started: false, error: null });
+    try {
+      const res = await fetch(`/api/image-jobs/${initialJob.id}/finish-and-queue`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFinishQueue({ loading: false, started: true, error: null });
+        // Start polling for updates
+        await refreshJob();
+      } else {
+        setFinishQueue({ loading: false, started: false, error: data.error || "Failed to start pipeline" });
+      }
+    } catch {
+      setFinishQueue({ loading: false, started: false, error: "Network error" });
     }
   }
 
@@ -1308,6 +1336,38 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           })()}
         </div>
         <div className="flex items-center gap-1">
+          {/* Finish & Queue — one-click pipeline button */}
+          {(() => {
+            const hasSources = (job.source_images?.length ?? 0) > 0;
+            const hasPrimary = (metaPush.primaryTexts ?? []).some((t) => t.trim());
+            const isProcessing = job.status === "processing" || finishQueue.started;
+            const allDone = totalCount > 0 && completedCount === totalCount;
+            const copyDone = job.target_languages.every((lang) => copyTranslations[lang]?.status === "completed");
+            const fullyFinished = allDone && copyDone;
+            const showButton = hasSources && hasPrimary && !fullyFinished && !isProcessing;
+            if (showButton) return (
+              <button
+                onClick={handleFinishAndQueue}
+                disabled={finishQueue.loading}
+                className="flex items-center gap-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                title="Translate images + ad copy + add to Launch Pad"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {finishQueue.loading ? "Starting..." : "Finish & Queue"}
+              </button>
+            );
+            if (isProcessing && !fullyFinished) return (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">
+                <Zap className="w-3.5 h-3.5 animate-pulse" />
+                Pipeline running...
+              </span>
+            );
+            return null;
+          })()}
+          {/* Finish & Queue error */}
+          {finishQueue.error && (
+            <span className="text-xs text-red-600 max-w-48 truncate" title={finishQueue.error}>{finishQueue.error}</span>
+          )}
           {/* Launch Pad button */}
           {launchpad.priority !== null ? (
             <div className="flex items-center gap-1.5">

@@ -447,22 +447,17 @@ export default function ConceptAdCopyStep({
                       {ct.quality_analysis && (
                         <div className="border-t border-gray-100 pt-2 flex items-start justify-between gap-2">
                           <p className="text-xs text-gray-500">{ct.quality_analysis.overall_assessment}</p>
-                          {(ct.quality_analysis.fluency_issues?.length > 0 ||
-                            ct.quality_analysis.grammar_issues?.length > 0 ||
-                            ct.quality_analysis.context_errors?.length > 0) && (
+                          {/* Only show Fix button for context errors (untranslated words, wrong meaning) */}
+                          {(ct.quality_analysis.context_errors?.length ?? 0) > 0 && (
                             <button
                               onClick={() => {
                                 const issues: string[] = [];
-                                if (ct.quality_analysis!.fluency_issues?.length)
-                                  issues.push(`Fluency issues: ${ct.quality_analysis!.fluency_issues.join("; ")}`);
-                                if (ct.quality_analysis!.grammar_issues?.length)
-                                  issues.push(`Grammar issues: ${ct.quality_analysis!.grammar_issues.join("; ")}`);
                                 if (ct.quality_analysis!.context_errors?.length)
                                   issues.push(`Context errors: ${ct.quality_analysis!.context_errors.join("; ")}`);
                                 handleTranslateCopy(lang as Language, issues.join("\n"));
                               }}
                               disabled={copyState.translatingLang === lang || copyState.translating}
-                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors shrink-0"
+                              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors shrink-0"
                             >
                               {copyState.translatingLang === lang ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
