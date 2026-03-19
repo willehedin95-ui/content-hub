@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (session 6 — concepts card grid + re-roll UX + processing poll)
+Updated: 2026-03-19 (session 9 — cold start mode)
 
 ## P0 — Blockers
 (none)
@@ -32,7 +32,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 ### Phase 1-4: All complete (see Done section)
 
 ## P3 — Backlog
-- [ ] **Video Ad Swiper** — Same workflow as image swiper but for videos. Upload/paste competitor video → AI (Gemini/Claude) watches and extracts script + scene breakdown → adapts for HappySleep → generates AI UGC via existing video tools. (added 2026-03-19)
+- [x] ~~**Video Ad Swiper**~~ — done, see Done section
 - [ ] **Animated Ads Pipeline** — Franky Shaw-style animated ad generation: brainstorm → 18 NanoBananaPro images → 9 Kling 3.0 video transitions → ElevenLabs voiceover → Suno music → download for CapCut editing. ~$9-10/ad. Design + plan ready at `docs/plans/2026-03-08-animated-ads-design.md` and `docs/plans/2026-03-08-animated-ads-plan.md`. 15 tasks, needs `ELEVENLABS_API_KEY` env var. (added 2026-03-08)
 - [ ] **Drop `app_settings` table** — fully migrated to `workspaces.settings`, only legacy fallback in settings route. Can be removed once verified in production. (added 2026-03-12)
 - [ ] **Telegram/Morning Brief workspace context** — these routes don't have workspace context, will need it for multi-workspace support (added 2026-03-12)
@@ -48,8 +48,11 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Verify nano-banana-2 actual credit cost at 1K resolution from usage logs (added 2026-02-27)
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
+- [ ] **Launch Pad budget reduction button** — add "Reduce to X SEK" button for cold start markets where budget is too high (added 2026-03-19)
 
 ## Done (recent)
+- [x] **Launch Pad cold start mode** — When market has 0 active ad sets: push 5 concepts (not 3), 7-day cooldown, blue/purple/green card states, budget recommendation. Cooldown detected from performance data age. Commit `456267b`. (done 2026-03-19)
+- [x] **Video Ad Swiper + Manual Upload** — Two-model pipeline: Gemini 2.5 Pro watches actual competitor video (audio + visual) → transcribes script, identifies hook/format/delivery/character/setting → Claude generates adapted UGC concept with shots → Kie AI keyframe images → Telegram approve/reject. GetHookd board shows video ads (purple badge, play icon, duration). Manual upload via file drop or URL paste bypasses GetHookd entirely. DB: `discovered_ads.video_job_id`, `discovered_ads.ad_type`, `video_jobs.swipe_progress/source/delivery_style`. Commits `5477b85`, `90ccf65`. (done 2026-03-19)
 - [x] **Concepts card grid + re-roll UX + processing poll** — Replaced table-based concepts list with responsive card grid (2-5 columns, 4:5 thumbnails, concept number + market flag overlays, status badges). Moved re-roll button from preview modal to thumbnail hover overlay. Fixed missing polling for server-side `after()` pipeline (Finish & Queue showed "0/0"). Commit `4d28b94`. (done 2026-03-19)
 - [x] **9:16 safe zone overlay + display bug fixes** — Safe zone overlay on thumbnails/preview (top 14%, bottom 20%). Fixed 9:16 display on All tab (was showing 4:5 originals). Fixed progress count double-counting ratios. Trimmed competitor swipe image count. Updated Rule 11 text placement for safe zone. E2E tested with Kie AI. Commit `8836834`. (done 2026-03-19)
 - [x] **Concept detail redesign + Meta placement fix** — Replaced wizard with collapsible sections, status-driven CTA, overflow menu, 4:5/9:16 ratio toggle. Fixed Meta push: per-image-pair creatives with `asset_customization_rules` routing 4:5→feed and 9:16→stories/reels. Also fixed campaign builder push route. Commit `7eea009`. (done 2026-03-19)
