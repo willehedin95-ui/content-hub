@@ -595,10 +595,20 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   const allTranslations = job.source_images?.flatMap(
     (si) => si.image_translations ?? []
   ) ?? [];
-  const totalCount = allTranslations.length;
-  const completedCount = allTranslations.filter((t) => t.status === "completed").length;
-  const failedCount = allTranslations.filter((t) => t.status === "failed").length;
-  const pendingCount = allTranslations.filter(
+
+  // Exclude pre-completed 4:5 stubs for skipped (no-text) images from progress counts
+  // These are placeholders that were never processed — counting them inflates the total
+  const skippedSourceIds = new Set(
+    (job.source_images ?? []).filter((si) => si.skip_translation).map((si) => si.id)
+  );
+  const primaryRatioForCount = job.target_ratios?.[0] ?? "4:5";
+  const activeTranslations = allTranslations.filter(
+    (t) => !(skippedSourceIds.has(t.source_image_id) && t.aspect_ratio === primaryRatioForCount)
+  );
+  const totalCount = activeTranslations.length;
+  const completedCount = activeTranslations.filter((t) => t.status === "completed").length;
+  const failedCount = activeTranslations.filter((t) => t.status === "failed").length;
+  const pendingCount = activeTranslations.filter(
     (t) => t.status === "pending" || t.status === "processing"
   ).length;
 
@@ -1190,9 +1200,9 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         : si.image_translations?.filter((t) => t.language === activeTab),
   }));
 
-  // Count per language for tabs
+  // Count per language for tabs (exclude pre-completed stubs for skipped images)
   const langCounts = new Map<string, { total: number; completed: number }>();
-  for (const t of allTranslations) {
+  for (const t of activeTranslations) {
     const curr = langCounts.get(t.language) ?? { total: 0, completed: 0 };
     curr.total++;
     if (t.status === "completed") curr.completed++;
