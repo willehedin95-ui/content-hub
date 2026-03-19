@@ -101,14 +101,17 @@ async function createTranslationRows(
 ): Promise<number> {
   const { data: sourceImages } = await db
     .from("source_images")
-    .select("id, skip_translation")
+    .select("id, skip_translation, original_url")
     .eq("job_id", jobId);
 
   if (!sourceImages?.length) return 0;
 
   const translatableImages = sourceImages.filter((si) => !si.skip_translation);
-  const rows: { source_image_id: string; language: string; aspect_ratio: string; status: string }[] = [];
+  const skippedImages = sourceImages.filter((si) => si.skip_translation);
+  const primaryRatio = targetRatios[0] ?? "4:5";
+  const rows: { source_image_id: string; language: string; aspect_ratio: string; status: string; translated_url?: string }[] = [];
 
+  // Normal images: all ratios as "pending"
   for (const si of translatableImages) {
     for (const lang of targetLangs) {
       for (const ratio of targetRatios) {
@@ -118,6 +121,30 @@ async function createTranslationRows(
           aspect_ratio: ratio,
           status: "pending",
         });
+      }
+    }
+  }
+
+  // Skipped images (no text): primary ratio as pre-completed (original URL),
+  // secondary ratios (9:16) as pending so outpainting still runs
+  for (const si of skippedImages) {
+    for (const lang of targetLangs) {
+      rows.push({
+        source_image_id: si.id,
+        language: lang,
+        aspect_ratio: primaryRatio,
+        status: "completed",
+        translated_url: si.original_url,
+      });
+      for (const ratio of targetRatios) {
+        if (ratio !== primaryRatio) {
+          rows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
       }
     }
   }

@@ -37,7 +37,7 @@ export async function POST(
   // Get source images that need translation
   const { data: sourceImages, error: siError } = await db
     .from("source_images")
-    .select("id, skip_translation")
+    .select("id, skip_translation, original_url")
     .eq("job_id", jobId);
 
   if (siError || !sourceImages?.length) {
@@ -45,6 +45,7 @@ export async function POST(
   }
 
   const translatableImages = sourceImages.filter((si) => !si.skip_translation);
+  const skippedImages = sourceImages.filter((si) => si.skip_translation);
 
   // Create translation rows for each (source_image × language)
   const translationRows: {
@@ -52,9 +53,13 @@ export async function POST(
     language: string;
     aspect_ratio: string;
     status: string;
+    translated_url?: string;
   }[] = [];
 
   const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5"];
+  const primaryRatio = ratios[0] ?? "4:5";
+
+  // Normal images: all ratios as "pending"
   for (const si of translatableImages) {
     for (const lang of job.target_languages) {
       for (const ratio of ratios) {
@@ -64,6 +69,32 @@ export async function POST(
           aspect_ratio: ratio,
           status: "pending",
         });
+      }
+    }
+  }
+
+  // Skipped images (no text): primary ratio as pre-completed (original URL),
+  // secondary ratios (9:16) as pending so outpainting still runs
+  for (const si of skippedImages) {
+    for (const lang of job.target_languages) {
+      // Primary ratio: immediately completed with original image
+      translationRows.push({
+        source_image_id: si.id,
+        language: lang,
+        aspect_ratio: primaryRatio,
+        status: "completed",
+        translated_url: si.original_url,
+      });
+      // Secondary ratios (e.g. 9:16): pending for outpainting
+      for (const ratio of ratios) {
+        if (ratio !== primaryRatio) {
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
       }
     }
   }
@@ -91,6 +122,7 @@ export async function POST(
     languages: job.target_languages.length,
     ratios: ratios.length,
     images: translatableImages.length,
-    skipped: sourceImages.length - translatableImages.length,
+    skipped: skippedImages.length,
+    skippedWithOutpainting: skippedImages.length > 0 && ratios.length > 1,
   });
 }
