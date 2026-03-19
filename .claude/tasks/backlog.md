@@ -1,17 +1,11 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (workflow optimization plan)
+Updated: 2026-03-19 (session 4 — concept detail redesign + Meta fix)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Now
-(none)
-
-## Recently Completed (Phase 1 — Pipeline Unblock, 2026-03-19)
-- [x] **"Finish & Queue" button** — One-click pipeline + auto-launchpad. Commit `3d1e466`.
-- [x] **Fix translation scoring** — Only context_errors block. Fluency/grammar informational only.
-- [x] **Fix translation bugs** — Root cause: quality analyzer too strict, not actual failures. Prompt rewritten.
-- [x] **Default Page B setting** — Workspace setting + Settings UI dropdown.
+- [ ] **Safe zone overlay for 9:16 preview** — Add Stories/Reels safe zone guardrails overlay to 9:16 image preview in ConceptImagesStep. User requested after seeing Meta screenshots. (added 2026-03-19)
 
 ## P1.5 — Do Next
 - [ ] **Test page testing live** — push a concept with 2 landing pages to Meta, verify 2 ad sets created with [A]/[B] suffixes (code verified, needs live push)
@@ -60,6 +54,8 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Concept detail redesign + Meta placement fix** — Replaced wizard with collapsible sections, status-driven CTA, overflow menu, 4:5/9:16 ratio toggle. Fixed Meta push: per-image-pair creatives with `asset_customization_rules` routing 4:5→feed and 9:16→stories/reels. Also fixed campaign builder push route. Commit `7eea009`. (done 2026-03-19)
+- [x] **Phase 1 Pipeline Unblock** — Finish & Queue button, relaxed translation scoring, default Page B setting. Commit `3d1e466`. (done 2026-03-19)
 - [x] **P1 backlog blitz** — Tested all autopilot flows E2E (from-scratch, competitor-swipe, execute dry-run, execute live — killed 5 zombie ad sets). Verified workspace isolation (all core routes filter by workspace_id). Verified page testing code. Built market-specific iterations feature (target_market on source_images, scoped translations). Added push-to-existing UI indicator (pre-push notice + result label). Fixed morning brief diagnostic cards missing market. Commit `9482f1d`. (done 2026-03-19)
 - [x] **Builder save bug fix + API error transparency** — Root cause: `.select("..., updated_at")` on `pages` table which has no `updated_at` column. Also: removed redundant cheerio+DOMPurify from save path, exposed real errors in `safeError()`, added autosave retry, fixed source page editing path. 8 commits (`db2a50f`→`85141fb`). (done 2026-03-18)
 - [x] **Builder countdown timer support** — ConfigTab "Interactive" section with countdown toggle (evergreen/fixed), auto-inject JS on publish via `injectCountdownScript()` in cloudflare-pages.ts, orange dashed outline in editor, Timer badge in Layers. Save error tooltip + dual response checking. Commit `e123f46`. (done 2026-03-18)
