@@ -1,45 +1,23 @@
-# Session: 2026-03-19 (Session 1)
+# Session: 2026-03-19 (Session 2)
 
 ## What was done
-- **P1 backlog blitz** — Systematically tested and completed all remaining P1 items:
-  - Tested autopilot-execute dry run: confirmed 5 zombie ad sets identified correctly
-  - Tested from-scratch autopilot E2E: set mode, triggered cron with `?force=true`, created concept #135
-  - Tested competitor-swipe autopilot E2E: switched mode, triggered cron, created concept #136
-  - Tested autopilot-execute live: killed 5 zombie ad sets, verified audit log in `autopilot_actions`
-  - Verified workspace isolation: confirmed all core API routes filter by `workspace_id`
-  - Verified page testing code: read through the full implementation, confirmed correct but needs live Meta push
-  - Determined live competitor swipe E2E requires manual UI testing (can't automate fully)
-- **Market-specific iterations feature** — Built the ability to generate iterations scoped to a specific market:
-  - Added `target_market` column to `source_images` table (via Supabase Management API)
-  - Wired SmartIterateModal to pass `target_market` when market prop is set
-  - Updated `generate-static` API to accept and store `target_market` on source images
-  - Updated `create-translations` API with `MARKET_TO_LANG` mapping + `getLangsForImage()` helper
-  - Market-scoped images only create translations for their target language (e.g., NO iteration → only Norwegian translations)
-- **Push-to-existing UI indicator** — Added visual feedback when pushing to existing Meta ad sets:
-  - Pre-push notice (blue info box) when deployments already exist for a market
-  - Result label shows "Added to existing ad set" vs "Created new ad set"
-- **Morning brief fix** — Added `market` to diagnostic creative_problem action_data for proper iteration routing
-- Fixed TypeScript error: extracted `allLangs` from `job.target_languages` before closure to avoid null reference
+- **Fixed Norwegian translation timeout** — "primal v5" page (950KB HTML, 125 text blocks) was failing on Vercel because one OpenAI chunk had 120 blocks generating 32K output tokens (~340s). Fixed by reducing `CHUNK_SIZE` from 120 to 50 so 3 smaller chunks run in parallel (~110s each). Also bumped `maxDuration` from 180→300 for extra headroom.
+- **Manually ran Norwegian translation** — Wrote standalone script to translate the page locally (no timeout). Translation completed in 340s and saved to DB.
 
 ## Decisions made
-- Market-specific iterations use the existing `target_market` column pattern — simple string on source_images, resolved to language at translation time via `MARKET_TO_LANG` mapping
-- Page testing and live competitor swipe E2E deferred to P1 as they require manual interaction (live Meta push / browser UI)
-- Workspace isolation verified at code level (all routes checked) rather than creating separate test data per workspace
+- **CHUNK_SIZE 120→50**: Trades slight cross-chunk name consistency for dramatic speed improvement (3 parallel chunks vs 1 massive chunk). Acceptable tradeoff.
+- **maxDuration 180→300**: Extra safety for large pages on Vercel Pro plan.
+- **No new infrastructure**: Chunk size fix was sufficient — no Railway/streaming needed.
 
 ## Current state
-- All P1 items tested and verified except 2 that need manual/live testing
-- Build passes cleanly
-- Both commits pushed to main: `9482f1d` (features + fixes) and `bdf986b` (backlog update)
-- Autopilot is working: both from-scratch and competitor-swipe modes create concepts successfully
-- Autopilot-execute kills zombie ad sets correctly (5 killed in live test)
+- Norwegian translation for "primal v5" is done (status: translated)
+- Translation chunk fix deployed (`9f04f2a`)
+- Build passes, all tests pass
 
 ## Blockers / Open questions
-- Page testing needs a live Meta push to fully verify (2 ad sets with [A]/[B] suffixes)
-- Live competitor swipe E2E needs manual UI walkthrough (import page → generate → apply → publish)
+- None
 
 ## Next up
 1. Test page testing live (push concept with 2 landing pages to Meta)
 2. Live-test competitor swipe E2E (manual UI testing)
 3. Discovered ads browser UI (P2)
-4. Autosave race condition fix (P2)
-5. Cron workspace iteration for multi-workspace Meta support (P2)
