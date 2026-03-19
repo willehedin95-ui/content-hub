@@ -237,3 +237,35 @@ export function getImageUrls(ad: GethookdAd): string[] {
   }
   return urls;
 }
+
+/** Filter an ad list to video-only ads */
+export function filterVideoAds(ads: GethookdAd[]): GethookdAd[] {
+  return ads.filter((ad) => {
+    const fmt = ad.display_format?.toLowerCase();
+    return fmt === "video";
+  });
+}
+
+/** Get the first video URL from an ad's media array */
+export function getVideoUrl(ad: GethookdAd): string | null {
+  for (const m of ad.media) {
+    if (m.type === "video" && m.url) return m.url;
+  }
+  return null;
+}
+
+/** Get the first video thumbnail URL from an ad's media array */
+export function getVideoThumbnailUrl(ad: GethookdAd): string | null {
+  for (const m of ad.media) {
+    if (m.type === "video" && m.thumbnail_url) return m.thumbnail_url;
+  }
+  return null;
+}
+
+/** Get video duration from an ad's first video media item */
+export function getVideoDuration(ad: GethookdAd): number | null {
+  for (const m of ad.media) {
+    if (m.type === "video" && m.video_length) return m.video_length;
+  }
+  return null;
+}

@@ -86,6 +86,7 @@ export default function SettingsTab() {
     filteredUrls,
     urlMode,
     setUrlMode,
+    switchToSavedUrl,
     // Custom code
     customHeadCode,
     setCustomHeadCode,
@@ -203,7 +204,7 @@ export default function SettingsTab() {
                   className={inputClass}
                 />
                 <button
-                  onClick={() => setUrlMode("saved")}
+                  onClick={switchToSavedUrl}
                   className="text-[11px] text-indigo-600 hover:text-indigo-700 font-medium"
                 >
                   Use saved URL

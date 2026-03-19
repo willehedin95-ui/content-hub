@@ -33,14 +33,24 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch linked image_jobs for swiped ads
-  const jobIds = (ads ?? []).map((a) => a.image_job_id).filter(Boolean);
-  const { data: jobs } = jobIds.length > 0
+  const imageJobIds = (ads ?? []).map((a) => a.image_job_id).filter(Boolean);
+  const { data: imageJobs } = imageJobIds.length > 0
     ? await db.from("image_jobs")
         .select("id, name, concept_number, status, launchpad_priority, archived_at")
-        .in("id", jobIds)
+        .in("id", imageJobIds)
     : { data: [] };
 
-  const jobMap = new Map((jobs ?? []).map((j) => [j.id, j]));
+  const jobMap = new Map((imageJobs ?? []).map((j) => [j.id, j]));
+
+  // Fetch linked video_jobs for video ad swipes
+  const videoJobIds = (ads ?? []).map((a) => a.video_job_id).filter(Boolean);
+  const { data: videoJobs } = videoJobIds.length > 0
+    ? await db.from("video_jobs")
+        .select("id, concept_name, concept_number, status, launchpad_priority")
+        .in("id", videoJobIds)
+    : { data: [] };
+
+  const videoJobMap = new Map((videoJobs ?? []).map((j) => [j.id, j]));
 
   // Stats
   const { data: stats } = await db
@@ -60,6 +70,7 @@ export async function GET(req: NextRequest) {
     ads: (ads ?? []).map((ad) => ({
       ...ad,
       image_job: ad.image_job_id ? jobMap.get(ad.image_job_id) ?? null : null,
+      video_job: ad.video_job_id ? videoJobMap.get(ad.video_job_id) ?? null : null,
     })),
     total: count ?? 0,
     stats: statCounts,

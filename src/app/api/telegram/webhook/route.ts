@@ -360,6 +360,14 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Concept rejected");
       await rejectAutopilotConcept(chatId, messageId, jobId);
+    } else if (data.startsWith("video_approve:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Approving video concept...");
+      await approveVideoConceptTelegram(chatId, messageId, jobId);
+    } else if (data.startsWith("video_reject:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Video concept rejected");
+      await rejectVideoConceptTelegram(chatId, messageId, jobId);
     } else if (data.startsWith("hook_product:")) {
       const parts = data.split(":");
       const hookId = parts[1];
@@ -731,6 +739,82 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     chatId,
     messageId,
     `🗑️ Concept #${job.concept_number ?? "?"} "${job.name}" rejected and archived.`
+  );
+}
+
+async function approveVideoConceptTelegram(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+  const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+
+  const { data: job } = await db
+    .from("video_jobs")
+    .select("id, concept_name, concept_number, target_languages")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageCaption(chatId, messageId, "❌ Video concept not found.");
+    return;
+  }
+
+  // Get next launchpad priority
+  const { data: topLaunchpad } = await db
+    .from("video_jobs")
+    .select("launchpad_priority")
+    .not("launchpad_priority", "is", null)
+    .order("launchpad_priority", { ascending: true })
+    .limit(1)
+    .single();
+
+  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
+
+  // Set launchpad priority and per-market priorities
+  const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
+  const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
+  const marketPriorities: Record<string, number> = {};
+  for (const lang of targetLangs) {
+    const market = COUNTRY_MAP[lang] ?? lang.toUpperCase();
+    marketPriorities[market] = priority;
+  }
+
+  await db.from("video_jobs").update({
+    launchpad_priority: priority,
+    launchpad_market_priorities: marketPriorities,
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
+  await editMessageCaption(
+    chatId,
+    messageId,
+    `✅ Video #${job.concept_number ?? "?"} "${job.concept_name}" approved!\n\nAdded to launchpad for ${markets}.\n\n${hubBase}/video-ads/${jobId}`
+  );
+}
+
+async function rejectVideoConceptTelegram(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+
+  const { data: job } = await db
+    .from("video_jobs")
+    .select("id, concept_name, concept_number")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageCaption(chatId, messageId, "❌ Video concept not found.");
+    return;
+  }
+
+  // Kill the rejected video concept
+  await db.from("video_jobs").update({
+    status: "killed",
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  await editMessageCaption(
+    chatId,
+    messageId,
+    `🗑️ Video #${job.concept_number ?? "?"} "${job.concept_name}" rejected.`
   );
 }
 

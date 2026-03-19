@@ -176,6 +176,7 @@ export interface BuilderContextValue {
   marketUrls: MarketProductUrl[];
   urlMode: "saved" | "custom";
   setUrlMode: (v: "saved" | "custom") => void;
+  switchToSavedUrl: () => void;
   filteredUrls: MarketProductUrl[];
 
   // --- Confirm dialog ---
@@ -1305,6 +1306,18 @@ export function BuilderProvider({
     markDirty();
   }
 
+  function switchToSavedUrl() {
+    setUrlMode("saved");
+    // If current linkUrl doesn't match any saved URL, auto-apply the first one.
+    // This prevents a React controlled <select> issue where the select visually
+    // shows the first option but onChange never fires because the browser thinks
+    // the option is already selected.
+    const match = filteredUrls.find((u) => u.url === linkUrl);
+    if (!match && filteredUrls.length > 0) {
+      handleLinkUrlChange(filteredUrls[0].url);
+    }
+  }
+
   async function handleSave() {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -2233,6 +2246,7 @@ export function BuilderProvider({
     marketUrls,
     urlMode,
     setUrlMode,
+    switchToSavedUrl,
     filteredUrls,
 
     // Confirm dialog

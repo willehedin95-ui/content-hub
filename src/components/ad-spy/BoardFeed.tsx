@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, ExternalLink, Zap } from "lucide-react";
+import { Loader2, Check, ExternalLink, Zap, Play, Video } from "lucide-react";
 
 interface BoardAd {
   id: number;
@@ -20,9 +20,15 @@ interface BoardAd {
   thumbnail_url: string;
   swipe_status: string | null;
   image_job_id: string | null;
+  ad_type: "image" | "video";
+  video_url: string | null;
+  video_thumbnail_url: string | null;
+  video_duration: number | null;
+  video_job_id: string | null;
 }
 
 type Filter = "all" | "unswiped" | "swiped";
+type TypeFilter = "all" | "image" | "video";
 
 export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }) {
   const router = useRouter();
@@ -31,6 +37,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [error, setError] = useState<string | null>(null);
   const [swipingIds, setSwipingIds] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<Filter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [boardId, setBoardId] = useState<string | null>(null);
   const [boards, setBoards] = useState<Array<{ id: number; name: string; ad_count: number }>>([]);
   const [batchSwiping, setBatchSwiping] = useState(false);
@@ -77,48 +84,81 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
 
   async function handleSwipe(ad: BoardAd) {
     setSwipingIds((prev) => new Set(prev).add(ad.id));
+
+    const isVideo = ad.ad_type === "video";
+
     try {
-      const res = await fetch("/api/ad-spy/swipe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gethookd_ad_id: ad.id,
-          media_urls: ad.image_urls,
-          title: ad.title,
-          body: ad.body,
-          brand_name: ad.brand_name,
-          pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (data.ok && data.jobId) {
-        setAds((prev) =>
-          prev.map((a) =>
-            a.id === ad.id ? { ...a, swipe_status: "swiped", image_job_id: data.jobId } : a
-          )
-        );
-        // Navigate to the concept page immediately to watch progress
-        router.push(`/images/${data.jobId}`);
-      } else {
-        console.error("Swipe failed:", data.error);
-        setSwipingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(ad.id);
-          return next;
+      if (isVideo) {
+        // Video swipe endpoint
+        const res = await fetch("/api/ad-spy/swipe-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gethookd_ad_id: ad.id,
+            video_url: ad.video_url,
+            thumbnail_url: ad.video_thumbnail_url || ad.thumbnail_url,
+            title: ad.title,
+            body: ad.body,
+            brand_name: ad.brand_name,
+            video_duration: ad.video_duration,
+          }),
         });
+        const data = await res.json();
+        if (data.ok && data.videoJobId) {
+          setAds((prev) =>
+            prev.map((a) =>
+              a.id === ad.id ? { ...a, swipe_status: "swiped", video_job_id: data.videoJobId } : a
+            )
+          );
+          router.push(`/video-ads/${data.videoJobId}`);
+        } else {
+          console.error("Video swipe failed:", data.error);
+          clearSwiping(ad.id);
+        }
+      } else {
+        // Image swipe endpoint (existing)
+        const res = await fetch("/api/ad-spy/swipe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gethookd_ad_id: ad.id,
+            media_urls: ad.image_urls,
+            title: ad.title,
+            body: ad.body,
+            brand_name: ad.brand_name,
+            pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok && data.jobId) {
+          setAds((prev) =>
+            prev.map((a) =>
+              a.id === ad.id ? { ...a, swipe_status: "swiped", image_job_id: data.jobId } : a
+            )
+          );
+          router.push(`/images/${data.jobId}`);
+        } else {
+          console.error("Swipe failed:", data.error);
+          clearSwiping(ad.id);
+        }
       }
     } catch (err) {
       console.error("Swipe error:", err);
-      setSwipingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(ad.id);
-        return next;
-      });
+      clearSwiping(ad.id);
     }
   }
 
+  function clearSwiping(adId: number) {
+    setSwipingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(adId);
+      return next;
+    });
+  }
+
   async function handleBatchSwipe() {
-    const unswiped = ads.filter((a) => !a.swipe_status);
+    // Batch swipe only for image ads (video needs Gemini per-video)
+    const unswiped = ads.filter((a) => !a.swipe_status && a.ad_type === "image");
     if (unswiped.length === 0) return;
 
     setBatchSwiping(true);
@@ -139,10 +179,9 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
       });
       const data = await res.json();
       if (data.ok) {
-        // Mark all as queued locally
         setAds((prev) =>
           prev.map((a) =>
-            !a.swipe_status ? { ...a, swipe_status: "queued" } : a
+            !a.swipe_status && a.ad_type === "image" ? { ...a, swipe_status: "queued" } : a
           )
         );
         onBatchSwipe();
@@ -155,13 +194,17 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   }
 
   const filteredAds = ads.filter((a) => {
-    if (filter === "unswiped") return !a.swipe_status;
-    if (filter === "swiped") return a.swipe_status === "swiped";
+    if (filter === "unswiped" && a.swipe_status) return false;
+    if (filter === "swiped" && a.swipe_status !== "swiped") return false;
+    if (typeFilter === "image" && a.ad_type !== "image") return false;
+    if (typeFilter === "video" && a.ad_type !== "video") return false;
     return true;
   });
 
   const unswipedCount = ads.filter((a) => !a.swipe_status).length;
   const swipedCount = ads.filter((a) => a.swipe_status === "swiped").length;
+  const imageCount = ads.filter((a) => a.ad_type === "image").length;
+  const videoCount = ads.filter((a) => a.ad_type === "video").length;
 
   if (!boardId && !loading) {
     return (
@@ -209,6 +252,26 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
               </button>
             ))}
           </div>
+
+          {/* Type filter */}
+          {videoCount > 0 && (
+            <div className="flex gap-1 ml-1 border-l border-gray-200 pl-2">
+              {(["all", "image", "video"] as TypeFilter[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(t)}
+                  className={`text-xs px-2 py-1 rounded-full transition-colors flex items-center gap-1 ${
+                    typeFilter === t
+                      ? t === "video" ? "bg-purple-600 text-white" : "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {t === "video" && <Video className="w-2.5 h-2.5" />}
+                  {t === "all" ? "All" : t === "image" ? `Images (${imageCount})` : `Videos (${videoCount})`}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {unswipedCount > 0 && (
@@ -283,6 +346,12 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   );
 }
 
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `0:${String(s).padStart(2, "0")}`;
+}
+
 function AdCard({
   ad,
   swiping,
@@ -294,6 +363,8 @@ function AdCard({
 }) {
   const isSwiped = ad.swipe_status === "swiped";
   const isQueued = ad.swipe_status === "queued" || ad.swipe_status === "swiping";
+  const isVideo = ad.ad_type === "video";
+  const viewUrl = isVideo ? `/video-ads/${ad.video_job_id}` : `/images/${ad.image_job_id}`;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
@@ -306,6 +377,28 @@ function AdCard({
             alt={ad.title || "Ad"}
             className="w-full h-full object-cover"
           />
+        )}
+        {/* Video play icon overlay + duration */}
+        {isVideo && (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
+                <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+              </div>
+            </div>
+            {ad.video_duration && (
+              <span className="absolute bottom-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-black/70 text-white tabular-nums">
+                {formatDuration(ad.video_duration)}
+              </span>
+            )}
+          </>
+        )}
+        {/* Video type badge */}
+        {isVideo && (
+          <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/90 text-white flex items-center gap-0.5">
+            <Video className="w-2.5 h-2.5" />
+            Video
+          </span>
         )}
         {/* Performance badge */}
         {ad.performance_score_title && (
@@ -321,8 +414,8 @@ function AdCard({
             {ad.performance_score_title}
           </span>
         )}
-        {/* Swiped badge (top-left) */}
-        {isSwiped && (
+        {/* Swiped badge (top-left, only for images since video has Video badge there) */}
+        {isSwiped && !isVideo && (
           <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
             <Check className="w-2.5 h-2.5" />
             Swiped
@@ -359,8 +452,12 @@ function AdCard({
         ) : isSwiped ? (
           <div className="flex gap-1.5">
             <a
-              href={`/images/${ad.image_job_id}`}
-              className="flex items-center justify-center gap-1 flex-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg py-1.5 hover:bg-emerald-100 transition-colors"
+              href={viewUrl}
+              className={`flex items-center justify-center gap-1 flex-1 text-[11px] font-medium rounded-lg py-1.5 transition-colors ${
+                isVideo
+                  ? "text-purple-600 bg-purple-50 border border-purple-200 hover:bg-purple-100"
+                  : "text-emerald-600 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
+              }`}
             >
               <Check className="w-3 h-3" />
               View
@@ -385,7 +482,11 @@ function AdCard({
           <button
             onClick={onSwipe}
             disabled={swiping}
-            className="flex items-center justify-center gap-1.5 w-full text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+            className={`flex items-center justify-center gap-1.5 w-full text-xs font-medium text-white rounded-lg py-1.5 transition-colors disabled:opacity-50 ${
+              isVideo
+                ? "bg-purple-600 hover:bg-purple-700"
+                : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
           >
             {swiping ? (
               <>
@@ -395,7 +496,7 @@ function AdCard({
             ) : (
               <>
                 <Zap className="w-3 h-3" />
-                Swipe
+                {isVideo ? "Swipe Video" : "Swipe"}
               </>
             )}
           </button>

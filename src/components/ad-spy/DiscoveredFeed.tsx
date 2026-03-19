@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, ExternalLink, Check, X, Clock, Search, Filter, Sparkles } from "lucide-react";
+import { Loader2, ExternalLink, Check, X, Clock, Search, Filter, Sparkles, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DiscoveredAd {
@@ -22,6 +22,8 @@ interface DiscoveredAd {
   ai_reasoning: string | null;
   pain_point: string | null;
   image_job_id: string | null;
+  video_job_id: string | null;
+  ad_type: string | null;
   created_at: string;
   image_job: {
     id: string;
@@ -30,6 +32,13 @@ interface DiscoveredAd {
     status: string;
     launchpad_priority: number | null;
     archived_at: string | null;
+  } | null;
+  video_job: {
+    id: string;
+    concept_name: string;
+    concept_number: number;
+    status: string;
+    launchpad_priority: number | null;
   } | null;
 }
 
@@ -204,6 +213,13 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
         )}>
           {ad.source === "brand_spy" ? "Spy" : ad.source === "board" ? "Board" : "Explore"}
         </span>
+        {/* Video type badge */}
+        {ad.ad_type === "video" && (
+          <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/90 text-white flex items-center gap-0.5">
+            <Video className="w-2.5 h-2.5" />
+            Video
+          </span>
+        )}
         {/* Status overlay for swiped/skipped */}
         {ad.status === "swiped" && (
           <div className="absolute bottom-2 right-2">
@@ -255,13 +271,24 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
           <p className="text-[11px] text-gray-500 line-clamp-2 leading-tight">{ad.body}</p>
         )}
 
-        {/* Concept link */}
+        {/* Concept link (image) */}
         {ad.image_job && (
           <a
             href={`/images/${ad.image_job.id}`}
             className="inline-flex items-center gap-1 text-[10px] text-indigo-600 hover:underline"
           >
             #{ad.image_job.concept_number} {ad.image_job.name}
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        )}
+        {/* Concept link (video) */}
+        {ad.video_job && (
+          <a
+            href={`/video-ads/${ad.video_job.id}`}
+            className="inline-flex items-center gap-1 text-[10px] text-purple-600 hover:underline"
+          >
+            <Video className="w-2.5 h-2.5" />
+            #{ad.video_job.concept_number} {ad.video_job.concept_name}
             <ExternalLink className="w-2.5 h-2.5" />
           </a>
         )}
