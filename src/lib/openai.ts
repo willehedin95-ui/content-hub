@@ -422,9 +422,10 @@ export async function translateBlocks(
     systemPrompt += `\n\nPRODUCT COPYWRITING GUIDELINES (follow these when translating product-specific terms and tone):\n${options.copywritingGuidelines}`;
   }
 
-  // Large chunk size — most landing pages (50-150 blocks) fit in 1-2 chunks,
-  // ensuring consistent name localization across the entire page
-  const CHUNK_SIZE = 120;
+  // Smaller chunks run in parallel → faster wall time. 50 blocks ≈ 11K output
+  // tokens per chunk (~110s each), keeping total under Vercel's 180s limit even
+  // for large pages (120/chunk caused 340s single-call bottleneck).
+  const CHUNK_SIZE = 50;
   const result: Record<string, string> = {};
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
