@@ -1143,20 +1143,46 @@ export default function ConceptImagesStep({
               </button>
             )}
             {/* Thumbnail — show translated version when a specific language tab is active */}
-            <div className={`${selectedRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"} bg-gray-50 flex items-center justify-center overflow-hidden`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={
-                  activeTab !== "all"
-                    ? (si.image_translations?.find(
-                        (t) => t.language === activeTab && t.aspect_ratio === selectedRatio && t.status === "completed" && t.translated_url
-                      )?.translated_url ?? si.original_url)
-                    : si.original_url
-                }
-                alt={si.filename ?? "Source image"}
-                className="w-full h-full object-cover"
-              />
-            </div>
+            {(() => {
+              const matchedTranslation = activeTab !== "all"
+                ? si.image_translations?.find(
+                    (t) => t.language === activeTab && t.aspect_ratio === selectedRatio && t.status === "completed" && t.translated_url
+                  )
+                : selectedRatio === "9:16"
+                  // On "All" tab with 9:16 selected, pick any completed 9:16 translation to display
+                  // (there's no 9:16 original — source images are always 4:5)
+                  ? si.image_translations?.find(
+                      (t) => t.aspect_ratio === "9:16" && t.status === "completed" && t.translated_url
+                    ) ?? null
+                  : null;
+              const imgSrc = matchedTranslation?.translated_url ?? si.original_url;
+              // When viewing 9:16 but no 9:16 translation exists, we're showing a 4:5 fallback
+              const is9x16Fallback = selectedRatio === "9:16" && !matchedTranslation;
+              const has9x16Image = selectedRatio === "9:16" && !!matchedTranslation;
+              return (
+                <div className={`relative ${selectedRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"} bg-gray-100 flex items-center justify-center overflow-hidden`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imgSrc}
+                    alt={si.filename ?? "Source image"}
+                    className={`w-full h-full ${is9x16Fallback ? "object-contain" : "object-cover"}`}
+                  />
+                  {/* "Not outpainted" indicator when showing 4:5 fallback in 9:16 view */}
+                  {is9x16Fallback && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className="bg-black/60 text-white text-[10px] font-medium px-2 py-1 rounded">9:16 pending</span>
+                    </div>
+                  )}
+                  {/* Safe zone overlay for 9:16 — shows where Stories/Reels UI covers content */}
+                  {has9x16Image && (
+                    <>
+                      <div className="absolute inset-x-0 top-0 h-[14%] bg-black/30 pointer-events-none border-b border-dashed border-red-400/70" />
+                      <div className="absolute inset-x-0 bottom-0 h-[20%] bg-black/30 pointer-events-none border-t border-dashed border-red-400/70" />
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Translation statuses */}
             <div className="p-2.5 space-y-1">

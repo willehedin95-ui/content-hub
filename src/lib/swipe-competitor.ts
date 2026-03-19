@@ -186,6 +186,12 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     throw new Error("Missing required fields in Claude response");
   }
 
+  // Trim to expected count — Claude sometimes returns more prompts than requested
+  const expectedCount = competitorImageUrls.length * 3; // 3 variations per competitor image
+  if (parsed.image_prompts.length > expectedCount) {
+    parsed.image_prompts = parsed.image_prompts.slice(0, expectedCount);
+  }
+
   // --- Create or update image_job ---
   const { data: lastJob } = await db
     .from("image_jobs")

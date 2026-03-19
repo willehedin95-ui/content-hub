@@ -345,14 +345,23 @@ export default function ImagePreviewModal({
               </div>
             </>
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayUrl}
-              alt={isOriginal ? "Original" : `${activeLang} translation`}
-              className="max-w-full max-h-full object-contain rounded-lg"
-              style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 0.15s" }}
-              onDoubleClick={() => setZoom(z => z === 1 ? 2 : 1)}
-            />
+            <div className="relative inline-flex">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={displayUrl}
+                alt={isOriginal ? "Original" : `${activeLang} translation`}
+                className="max-w-full max-h-full object-contain rounded-lg"
+                style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 0.15s" }}
+                onDoubleClick={() => setZoom(z => z === 1 ? 2 : 1)}
+              />
+              {/* Safe zone overlay for 9:16 images */}
+              {activeTranslation?.aspect_ratio === "9:16" && zoom === 1 && (
+                <>
+                  <div className="absolute inset-x-0 top-0 h-[14%] bg-black/25 pointer-events-none border-b border-dashed border-red-400/70 rounded-t-lg" />
+                  <div className="absolute inset-x-0 bottom-0 h-[20%] bg-black/25 pointer-events-none border-t border-dashed border-red-400/70 rounded-b-lg" />
+                </>
+              )}
+            </div>
           )}
         </div>
 

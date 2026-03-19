@@ -1,15 +1,11 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (session 4 — concept detail redesign + Meta fix)
+Updated: 2026-03-19 (session 5 — 9:16 safe zone + bug fixes)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Now
-- [ ] **Safe zone overlay for 9:16 preview** — Add Stories/Reels safe zone guardrails overlay to 9:16 image preview in ConceptImagesStep. User requested after seeing Meta screenshots. (added 2026-03-19)
-
-## P1.5 — Do Next
-- [ ] **Test page testing live** — push a concept with 2 landing pages to Meta, verify 2 ad sets created with [A]/[B] suffixes (code verified, needs live push)
-- [ ] **Live-test competitor swipe E2E** — import real page → generate images/videos → apply → publish (requires manual UI testing)
+(none)
 
 ## P2 — Visual Cleanup (next week)
 - [ ] **Concepts card grid redesign** — Replace table with big-thumbnail card grid (like GetHookd). Minimal info: thumbnail, name, status badge (Ready/Live/Needs work), concept number. Remove: tags, product column, market flags. (added 2026-03-19)

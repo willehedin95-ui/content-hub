@@ -1326,9 +1326,10 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         : si.image_translations?.filter((t) => t.language === activeTab),
   }));
 
-  // Count per language for tabs (exclude pre-completed stubs for skipped images)
+  // Count per language for tabs — only count primary ratio (4:5) to show "images translated" not "files generated"
   const langCounts = new Map<string, { total: number; completed: number }>();
   for (const t of activeTranslations) {
+    if (t.aspect_ratio !== primaryRatioForCount) continue; // skip 9:16 so count = source images, not files
     const curr = langCounts.get(t.language) ?? { total: 0, completed: 0 };
     curr.total++;
     if (t.status === "completed") curr.completed++;
