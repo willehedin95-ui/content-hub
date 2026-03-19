@@ -1,20 +1,12 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-18 (builder save bug fixed, 8 commits pushed)
+Updated: 2026-03-19 (P1 items tested + 2 features shipped)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Test autopilot competitor swipe end-to-end** — Set `autopilot_mode: "competitor_swipe"` in settings, create GetHookd board, trigger `autopilot-concepts?force=true`, verify: ad discovered, Claude Vision analysis, images generated, Telegram notification sent, approve triggers translations + push
-- [ ] **Test autopilot-execute dry run** — Call `/api/cron/autopilot-execute?dry_run=true`, verify strategy engine runs and logs recommendations without executing
-- [ ] **Test autopilot-execute live** — Enable `autopilot_auto_kill` in settings, verify zombie ad sets get paused via Meta API, `autopilot_actions` rows created, Telegram digest sent
-- [ ] **Test from-scratch autopilot end-to-end** — Trigger `autopilot-concepts?force=true` with `autopilot_mode: "from_scratch"`, approve from Hub or Telegram, verify: translation rows created, ad copy translated, images translated (4:5 + 9:16), pipeline pushes to Meta
-- [ ] **Push invoice improvements** — Committed at `894a3e5` but not pushed. Upload, forwarding, download logs improvements.
-- [ ] **Test workspace switching E2E** — switch between HappySleep/Hydro13/Doginwork, verify data isolation (pages, assets, concepts, settings all scoped correctly)
-- [ ] **Test page testing E2E** — push a concept with 2 landing pages, verify 2 ad sets created in Meta with [A]/[B] suffixes, verify comparison stats populate after ad performance sync
-- [ ] Live-test competitor swipe end-to-end: import real page → generate images/videos → apply → publish (added 2026-03-09, updated 2026-03-10)
-- [ ] Push iteration images to existing Meta ad set — add new batch ads to existing ad set instead of creating new one (added 2026-03-04)
-- [ ] Market-specific iterations — generate only for the flagged market when Daily Actions suggests iterate for e.g. NO (added 2026-03-04)
+- [ ] **Test page testing live** — push a concept with 2 landing pages to Meta, verify 2 ad sets created with [A]/[B] suffixes (code verified, needs live push)
+- [ ] **Live-test competitor swipe E2E** — import real page → generate images/videos → apply → publish (requires manual UI testing)
 
 ## P2 — Important
 - [ ] **Discovered ads browser UI** — Show what autopilot found/scored/swiped in a table view. Could live at `/concepts?tab=discovered` or similar. (added 2026-03-18)
@@ -54,6 +46,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **P1 backlog blitz** — Tested all autopilot flows E2E (from-scratch, competitor-swipe, execute dry-run, execute live — killed 5 zombie ad sets). Verified workspace isolation (all core routes filter by workspace_id). Verified page testing code. Built market-specific iterations feature (target_market on source_images, scoped translations). Added push-to-existing UI indicator (pre-push notice + result label). Fixed morning brief diagnostic cards missing market. Commit `9482f1d`. (done 2026-03-19)
 - [x] **Builder save bug fix + API error transparency** — Root cause: `.select("..., updated_at")` on `pages` table which has no `updated_at` column. Also: removed redundant cheerio+DOMPurify from save path, exposed real errors in `safeError()`, added autosave retry, fixed source page editing path. 8 commits (`db2a50f`→`85141fb`). (done 2026-03-18)
 - [x] **Builder countdown timer support** — ConfigTab "Interactive" section with countdown toggle (evergreen/fixed), auto-inject JS on publish via `injectCountdownScript()` in cloudflare-pages.ts, orange dashed outline in editor, Timer badge in Layers. Save error tooltip + dual response checking. Commit `e123f46`. (done 2026-03-18)
 - [x] **Text overlay detection + ad copy sync** — AI detects whether competitor ad has text overlays (clean native → no text). Ad copy now syncs into UI when background pipeline finishes. JSON parse robustness improved. Commit `4e291ae`. (done 2026-03-18)
