@@ -41,6 +41,7 @@ interface Props {
       status: string;
       error?: string;
       scheduled_time?: string;
+      added_to_existing?: boolean;
     }> | null;
   };
   deployments: MetaCampaign[];
@@ -461,6 +462,14 @@ export default function MetaAdPreview({
         )}
       </div>
 
+      {/* Pre-push notice: adding to existing ad sets */}
+      {deployments.length > 0 && !metaPush.pushResults && (
+        <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-blue-50 text-blue-700">
+          <Globe className="w-4 h-4 shrink-0" />
+          <span>New images will be added to existing ad sets</span>
+        </div>
+      )}
+
       {/* Push button */}
       <div className="space-y-2">
         <div className="relative inline-flex rounded-xl">
@@ -537,7 +546,9 @@ export default function MetaAdPreview({
                 {r.status === "pushed"
                   ? r.scheduled_time
                     ? `Scheduled — goes live ${new Date(r.scheduled_time).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} at ${new Date(r.scheduled_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Published — ads are live"
+                    : r.added_to_existing
+                      ? "Added to existing ad set"
+                      : "Published — ads are live"
                   : r.error}
               </span>
             </div>

@@ -1,18 +1,14 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-18 (countdown timer feature + save error improvements)
+Updated: 2026-03-18 (builder save bug fixed, 8 commits pushed)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Next
-- [ ] **Push + deploy** — 1 commit ahead (`e123f46` countdown timer feature + save error improvements). Push to main, verify Vercel deploy
-- [ ] **Test countdown timer E2E** — Tag element in builder, save, reopen (verify persistence), publish, verify live countdown works, test localStorage persistence across refresh
-- [ ] **Debug save error on Swedish translation** — Hover Error button to see tooltip message, diagnose root cause
 - [ ] **Test autopilot competitor swipe end-to-end** — Set `autopilot_mode: "competitor_swipe"` in settings, create GetHookd board, trigger `autopilot-concepts?force=true`, verify: ad discovered, Claude Vision analysis, images generated, Telegram notification sent, approve triggers translations + push
 - [ ] **Test autopilot-execute dry run** — Call `/api/cron/autopilot-execute?dry_run=true`, verify strategy engine runs and logs recommendations without executing
 - [ ] **Test autopilot-execute live** — Enable `autopilot_auto_kill` in settings, verify zombie ad sets get paused via Meta API, `autopilot_actions` rows created, Telegram digest sent
 - [ ] **Test from-scratch autopilot end-to-end** — Trigger `autopilot-concepts?force=true` with `autopilot_mode: "from_scratch"`, approve from Hub or Telegram, verify: translation rows created, ad copy translated, images translated (4:5 + 9:16), pipeline pushes to Meta
-- [ ] **Simplified Meta campaign structure** (Phase 1 from plan) — Create permanent ad sets (1 per market per format), rewrite push flow to skip ad set duplication, update kill/promote to pause individual ads. See `.claude/plans/hashed-sprouting-lamport.md` Step 1.1-1.6.
 - [ ] **Push invoice improvements** — Committed at `894a3e5` but not pushed. Upload, forwarding, download logs improvements.
 - [ ] **Test workspace switching E2E** — switch between HappySleep/Hydro13/Doginwork, verify data isolation (pages, assets, concepts, settings all scoped correctly)
 - [ ] **Test page testing E2E** — push a concept with 2 landing pages, verify 2 ad sets created in Meta with [A]/[B] suffixes, verify comparison stats populate after ad performance sync
@@ -58,6 +54,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Builder save bug fix + API error transparency** — Root cause: `.select("..., updated_at")` on `pages` table which has no `updated_at` column. Also: removed redundant cheerio+DOMPurify from save path, exposed real errors in `safeError()`, added autosave retry, fixed source page editing path. 8 commits (`db2a50f`→`85141fb`). (done 2026-03-18)
 - [x] **Builder countdown timer support** — ConfigTab "Interactive" section with countdown toggle (evergreen/fixed), auto-inject JS on publish via `injectCountdownScript()` in cloudflare-pages.ts, orange dashed outline in editor, Timer badge in Layers. Save error tooltip + dual response checking. Commit `e123f46`. (done 2026-03-18)
 - [x] **Text overlay detection + ad copy sync** — AI detects whether competitor ad has text overlays (clean native → no text). Ad copy now syncs into UI when background pipeline finishes. JSON parse robustness improved. Commit `4e291ae`. (done 2026-03-18)
 - [x] **Pain Point Selector + Ad Copy Adaptation** — Pill selector (5 options) in Ad Spy + Brainstorm competitor mode. System prompt constrains to single pain point. Ad copy adaptation instructions (structure/tone/length matching). Angle-aware landing page auto-assignment. `discovered_ads.pain_point` column. Commits `ea1fd74`, `0026530`, `31b18ba`. (done 2026-03-18)

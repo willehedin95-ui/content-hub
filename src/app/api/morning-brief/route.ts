@@ -1367,7 +1367,7 @@ export async function GET(req: NextRequest) {
         why: `CTR is ${diag.ctr_7d}% — in the bottom 25% of your ads (threshold: ${diag.ctr_threshold_low}%). ${diag.spend_7d} kr spent over 7 days. The hook isn't stopping the scroll.`,
         guidance: "The landing page might be fine — the problem is the ad creative. People aren't clicking. Try a different hook, image style, or opening line. Consider a completely different angle for this product.",
         expected_impact: "Higher CTR → more traffic to a potentially working page",
-        action_data: { ad_id: diag.ad_id, image_job_id: enrichment?.image_job_id, diagnosis: "structural_creative_problem" },
+        action_data: { ad_id: diag.ad_id, image_job_id: enrichment?.image_job_id, diagnosis: "structural_creative_problem", market },
         priority: 3,
         ad_name: diag.ad_name,
         adset_id: diag.adset_id,

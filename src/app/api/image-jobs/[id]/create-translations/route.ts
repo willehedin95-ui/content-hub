@@ -3,6 +3,15 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import type { Language } from "@/types";
+
+// Country code → language (reverse of COUNTRY_MAP)
+const MARKET_TO_LANG: Record<string, Language> = {
+  NO: "no",
+  DK: "da",
+  SE: "sv",
+  DE: "de",
+};
 
 export async function POST(
   req: NextRequest,
@@ -34,10 +43,10 @@ export async function POST(
     );
   }
 
-  // Get source images that need translation
+  // Get source images that need translation (include target_market for market-specific iterations)
   const { data: sourceImages, error: siError } = await db
     .from("source_images")
-    .select("id, skip_translation, original_url")
+    .select("id, skip_translation, original_url, target_market")
     .eq("job_id", jobId);
 
   if (siError || !sourceImages?.length) {
@@ -59,9 +68,23 @@ export async function POST(
   const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5"];
   const primaryRatio = ratios[0] ?? "4:5";
 
+  const allLangs: string[] = job.target_languages;
+
+  // Helper: get target languages for a source image (respects market-specific iterations)
+  function getLangsForImage(si: { target_market: string | null }): string[] {
+    if (si.target_market) {
+      const lang = MARKET_TO_LANG[si.target_market];
+      if (lang && allLangs.includes(lang)) {
+        return [lang];
+      }
+    }
+    return allLangs;
+  }
+
   // Normal images: all ratios as "pending"
   for (const si of translatableImages) {
-    for (const lang of job.target_languages) {
+    const langs = getLangsForImage(si);
+    for (const lang of langs) {
       for (const ratio of ratios) {
         translationRows.push({
           source_image_id: si.id,
@@ -76,7 +99,8 @@ export async function POST(
   // Skipped images (no text): primary ratio as pre-completed (original URL),
   // secondary ratios (9:16) as pending so outpainting still runs
   for (const si of skippedImages) {
-    for (const lang of job.target_languages) {
+    const langs = getLangsForImage(si);
+    for (const lang of langs) {
       // Primary ratio: immediately completed with original image
       translationRows.push({
         source_image_id: si.id,

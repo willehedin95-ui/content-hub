@@ -118,6 +118,7 @@ export default function SmartIterateModal({ job, performanceContext, market, onC
           count: 5,
           batch_label: suggestion.title,
           iteration_context: iterationContext,
+          ...(market ? { target_market: market } : {}),
         }),
       });
 

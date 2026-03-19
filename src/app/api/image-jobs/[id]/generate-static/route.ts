@@ -38,6 +38,8 @@ export async function POST(
   const batchLabel = typeof body.batch_label === "string" ? body.batch_label : undefined;
   // Allow caller to override iteration_context (for Smart Iterate calling parent concept directly)
   const overrideIterationContext = body.iteration_context as Record<string, unknown> | undefined;
+  // Market-specific iteration: only translate to this market's language
+  const targetMarket = typeof body.target_market === "string" ? body.target_market : undefined;
 
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
@@ -237,6 +239,7 @@ export async function POST(
           generation_style: brief.style,
           batch,
           ...(batchLabel ? { batch_label: batchLabel } : {}),
+          ...(targetMarket ? { target_market: targetMarket } : {}),
         })
         .select()
         .single();
