@@ -798,19 +798,32 @@ export default function ConceptImagesStep({
                 disabled={proc.processing || selectedLanguages.size === 0}
                 className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
               >
-                  {proc.processing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
-                      Starting translations...
-                    </>
-                  ) : (
-                    "Translate All"
-                  )}
+                  {(() => {
+                    const translatableCount = sourceImages.filter(si => !si.skip_translation).length;
+                    const skippedCount = sourceImages.filter(si => si.skip_translation).length;
+                    const allSkipped = translatableCount === 0 && skippedCount > 0;
+                    if (proc.processing) return (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                        {allSkipped ? "Generating 9:16..." : "Starting translations..."}
+                      </>
+                    );
+                    return allSkipped ? "Generate 9:16 Versions" : "Translate All";
+                  })()}
                 </button>
                 {selectedLanguages.size > 0 && (
                   <p className="text-sm text-gray-400">
-                    {sourceImages.filter(si => !si.skip_translation).length * selectedLanguages.size} translations (4:5)
-                    {" \u2248 "}{(sourceImages.filter(si => !si.skip_translation).length * selectedLanguages.size * 1).toFixed(0)} kr
+                    {(() => {
+                      const translatableCount = sourceImages.filter(si => !si.skip_translation).length;
+                      const skippedCount = sourceImages.filter(si => si.skip_translation).length;
+                      const translateCount = translatableCount * selectedLanguages.size;
+                      const outpaintCount = skippedCount * selectedLanguages.size;
+                      const parts: string[] = [];
+                      if (translateCount > 0) parts.push(`${translateCount} translations (4:5)`);
+                      if (outpaintCount > 0) parts.push(`${outpaintCount} outpaints (9:16)`);
+                      const totalCost = translateCount + outpaintCount;
+                      return `${parts.join(" + ")} \u2248 ${totalCost} kr`;
+                    })()}
                   </p>
                 )}
               </div>
