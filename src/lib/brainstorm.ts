@@ -666,8 +666,8 @@ Generate concept proposals as a JSON object with a "proposals" array. Each propo
         "copy_blocks": ["array of blocks used: Pain, Promise, Proof, Curiosity, Constraints, Conditions — specify depth level where relevant (e.g. 'Pain: Cinematic + Core Wound', 'Proof: Experiential + Social', 'Curiosity: Characterization')"],
         "concept_description": "same as outer concept_description"
       },
-      "ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each)"],
-      "ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],
+      "ad_copy_primary": ["1 primary ad text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence or idea per paragraph. Never write a wall of text."],
+      "ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],
       "visual_direction": "What the static ad image should look like — layout, imagery, mood, text overlay approach",
       "differentiation_note": "What makes this concept unique / how it differs from other proposals",
       "suggested_tags": ["2-4 relevant tags"]
@@ -681,6 +681,7 @@ CRITICAL RULES:
 - NEVER invent medical claims — only use claims from the product brief
 - Hooks should be scroll-stopping — curiosity, pattern interrupts, or strong emotional triggers
 - Primary text should be ready-to-use ad copy, not placeholder text. Apply Copy Blocks techniques: use Pain Chain levels, Proof Braid (pair claims with proof), strong Curiosity characterizations, and C.R.A.V.E.S. to strengthen every block
+- FORMAT: Use short paragraphs separated by blank lines (\\n\\n). One sentence or thought per paragraph. This creates readable, scroll-friendly ad copy. Never write dense wall-of-text paragraphs.
 - Visual direction should be specific enough to brief a designer
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.`;
@@ -925,11 +926,11 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replac
   '"awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware"',
   '"awareness_level": "Unaware"'
 ).replace(
-  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],',
-  '"ad_copy_headline": ["2-3 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like CNN/WebMD article titles, NOT ad headlines"],'
+  '"ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],',
+  '"ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like CNN/WebMD article titles, NOT ad headlines"],'
 ).replace(
-  '"ad_copy_primary": ["2-3 primary ad text variations (English, 100-200 words each)"],',
-  '"ad_copy_primary": ["2-3 primary ad text variations — for native/unaware ads, write these as ADVERTORIAL OPENINGS (150-300 words each). Never mention the product in the first 150 words. Open with education, story, or shocking fact. The reader should be halfway through before they realize this might lead somewhere. These are the first paragraphs of a long-form article, not short ad copy."],'
+  '"ad_copy_primary": ["1 primary ad text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence or idea per paragraph. Never write a wall of text."],',
+  '"ad_copy_primary": ["1 primary ad text — for native/unaware ads, write as an ADVERTORIAL OPENING (150-300 words). Never mention the product in the first 150 words. Open with education, story, or shocking fact. Use SHORT PARAGRAPHS with line breaks (\\\\n\\\\n) between each thought. One sentence per paragraph. The reader should be halfway through before they realize this might lead somewhere."],'
 ).replace(
   '"visual_direction": "What the static ad image should look like — layout, imagery, mood, text overlay approach",',
   '"visual_direction": "MUST specify native image type (native-medical, native-closeup, or native-messy) + a SPECIFIC weird/provocative image idea. Describe the exact scene, objects, lighting, and mood. The image should make someone stop scrolling because it is unexpected, not because it is pretty.",'
@@ -947,7 +948,7 @@ ADDITIONAL RULES FOR UNAWARE CONCEPTS:
 - Hooks must NOT mention the product name — lead with curiosity or emotional energy
 - Visual direction MUST describe a SPECIFIC weird/provocative image — not generic descriptions. Include the native image type (native-medical, native-closeup, or native-messy), exact scene composition, key objects, and lighting mood.
 - native_headlines MUST read like editorial article titles you'd see on CNN, WebMD, or a health blog — NOT like ad headlines
-- ad_copy_primary should read like the opening paragraphs of a long-form article/advertorial — NOT short ad copy. Never mention the product in the first 150 words.
+- ad_copy_primary should read like the opening paragraphs of a long-form article/advertorial — NOT short ad copy. Never mention the product in the first 150 words. Use short paragraphs with line breaks between each thought.
 - Destination should be implied as advertorial/educational content, not direct product page
 - The concept name should reflect the psychological ANGLE, not sound like an ad campaign name`;
 }
@@ -1164,8 +1165,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
       "copy_blocks": ["array of blocks used with depth levels"],
       "concept_description": "same as outer concept_description"
     },
-    "ad_copy_primary": ["2-3 primary ad text variations (English). ADAPT from the competitor's copy structure, tone, and length — reproduce their hook style, agitation pattern, proof types, and CTA. Match their word count. Must read as a structural adaptation, not generic product copy."],
-    "ad_copy_headline": ["2-3 headline variations (English, max 40 chars). Match the competitor's headline STYLE: question→question, number→number, bold claim→bold claim."],
+    "ad_copy_primary": ["1 primary ad text (English). ADAPT from the competitor's copy structure, tone, and length — reproduce their hook style, agitation pattern, proof types, and CTA. Match their word count. Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text. Must read as a structural adaptation, not generic product copy."],
+    "ad_copy_headline": ["2 headline variations (English, max 40 chars). Match the competitor's headline STYLE: question→question, number→number, bold claim→bold claim."],
     "visual_direction": "What the static ad image should look like — referencing the competitor's format but adapted for our product",
     "differentiation_note": "How this concept differs from the competitor's ad — what we kept (structure/technique) vs what we changed (content/claims/product)",
     "suggested_tags": ["competitor-swipe", "2-4 additional relevant tags"]
@@ -1543,8 +1544,8 @@ ${opts.productContext}
 
 ## Your Task
 Rewrite the winning ad copy below based on the iteration instructions. Produce:
-- 2-3 primary text variations (English, 100-200 words each)
-- 2-3 headline variations (English, max 40 chars each)
+- 1 primary text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text.
+- 2 headline variations (English, max 40 chars each)
 
 ## Rules
 - Keep what works: The parent concept PROVED itself — preserve the emotional core
@@ -1641,7 +1642,7 @@ ${iterationInstructions}
 
 Return JSON:
 {
-  "ad_copy_primary": ["variation 1...", "variation 2..."],
+  "ad_copy_primary": ["variation 1..."],
   "ad_copy_headline": ["headline 1...", "headline 2..."]
 }`;
 
