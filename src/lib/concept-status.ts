@@ -126,6 +126,9 @@ export function getWizardStep(job: ImageJob): WizardStep {
   if (job.marked_ready_at)
     return { step: 3, label: "Ready", color: "text-teal-700 bg-teal-50" };
 
+  if (job.launchpad_priority != null)
+    return { step: 3, label: "Launch Pad", color: "text-emerald-700 bg-emerald-50" };
+
   const completed = job.completed_translations ?? 0;
   const total = job.total_translations ?? 0;
   const imagesComplete = total > 0 && completed === total;

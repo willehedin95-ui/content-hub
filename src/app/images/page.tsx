@@ -16,6 +16,7 @@ const STATUS_FILTERS = [
   { value: "Images", label: "Images" },
   { value: "Ad Copy", label: "Ad Copy" },
   { value: "Preview", label: "Preview" },
+  { value: "Launch Pad", label: "Launch Pad" },
   { value: "Ready", label: "Ready" },
   { value: "Published", label: "Published" },
 ] as const;
@@ -26,8 +27,9 @@ const STATUS_PRIORITY: Record<string, number> = {
   "Step 1/3 \u00B7 Images": 1,
   "Step 2/3 \u00B7 Ad Copy": 2,
   "Step 3/3 \u00B7 Preview": 3,
-  "Ready": 4,
-  "Published": 5,
+  "Launch Pad": 4,
+  "Ready": 5,
+  "Published": 6,
 };
 
 export default function ImagesPage() {
