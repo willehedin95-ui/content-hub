@@ -7,11 +7,13 @@ import { cn } from "@/lib/utils";
 import BoardFeed from "@/components/ad-spy/BoardFeed";
 import SwipeQueue from "@/components/ad-spy/SwipeQueue";
 import SwipeHistory from "@/components/ad-spy/SwipeHistory";
+import DiscoveredFeed from "@/components/ad-spy/DiscoveredFeed";
 
-type Tab = "board" | "queue" | "history";
+type Tab = "board" | "discovered" | "queue" | "history";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "board", label: "Board" },
+  { value: "discovered", label: "Discovered" },
   { value: "queue", label: "Queue" },
   { value: "history", label: "History" },
 ];
@@ -79,6 +81,9 @@ function AdSpyPageInner() {
       {/* Content */}
       {activeTab === "board" && (
         <BoardFeed onBatchSwipe={handleSwipeBatch} />
+      )}
+      {activeTab === "discovered" && (
+        <DiscoveredFeed />
       )}
       {activeTab === "queue" && (
         <SwipeQueue onCountChange={setQueueCount} />

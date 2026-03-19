@@ -378,6 +378,7 @@ export function BuilderProvider({
   const autoSavedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "", customHeadCode: "" });
   const savingRef = useRef(false);
+  const manualSaveActiveRef = useRef(false);
   const prevLinkUrl = useRef("");
   const excludeModeRef = useRef(false);
   // enteredContainerRef reserved for future Figma-style container selection
@@ -619,8 +620,8 @@ export function BuilderProvider({
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     if (autoSaveRetryRef.current) clearTimeout(autoSaveRetryRef.current);
     autoSaveTimerRef.current = setTimeout(async () => {
-      // Lock autosave to prevent concurrent saves
-      if (savingRef.current) return;
+      // Lock autosave to prevent concurrent saves or overlap with manual save
+      if (savingRef.current || manualSaveActiveRef.current) return;
       savingRef.current = true;
       setAutoSaveStatus("saving");
       try {
@@ -1325,6 +1326,7 @@ export function BuilderProvider({
     setAutoSaveStatus("idle");
     setSaving(true);
     savingRef.current = true;
+    manualSaveActiveRef.current = true;
     setSaveError("");
     setSaved(false);
 
@@ -1383,6 +1385,7 @@ export function BuilderProvider({
     } finally {
       setSaving(false);
       savingRef.current = false;
+      manualSaveActiveRef.current = false;
     }
   }
 

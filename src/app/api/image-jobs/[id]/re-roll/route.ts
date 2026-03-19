@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -10,6 +11,7 @@ import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import type { ProductFull, ProductSegment } from "@/types";
+import { triggerRerollTranslations } from "@/lib/autopilot-translations";
 
 export const maxDuration = 180;
 
@@ -205,6 +207,16 @@ export async function POST(
       },
     });
 
+    // Trigger translation pipeline in background
+    after(async () => {
+      try {
+        await triggerRerollTranslations(id, newSourceImage.id);
+        console.log(`[re-roll] Translations completed for re-rolled image ${newSourceImage.id}`);
+      } catch (err) {
+        console.error(`[re-roll] Translation pipeline failed:`, err);
+      }
+    });
+
     return NextResponse.json({
       source_image: {
         id: newSourceImage.id,
@@ -345,6 +357,16 @@ export async function POST(
       style: brief.style,
       kie_cost_time_ms: costTimeMs,
     },
+  });
+
+  // Trigger translation pipeline in background
+  after(async () => {
+    try {
+      await triggerRerollTranslations(id, newSourceImage.id);
+      console.log(`[re-roll] Translations completed for re-rolled image ${newSourceImage.id}`);
+    } catch (err) {
+      console.error(`[re-roll] Translation pipeline failed:`, err);
+    }
   });
 
   return NextResponse.json({

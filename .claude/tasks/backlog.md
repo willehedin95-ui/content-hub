@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (session 5 — 9:16 safe zone + bug fixes)
+Updated: 2026-03-19 (session 6 — concepts card grid + re-roll UX + processing poll)
 
 ## P0 — Blockers
 (none)
@@ -8,7 +8,7 @@ Updated: 2026-03-19 (session 5 — 9:16 safe zone + bug fixes)
 (none)
 
 ## P2 — Visual Cleanup (next week)
-- [ ] **Concepts card grid redesign** — Replace table with big-thumbnail card grid (like GetHookd). Minimal info: thumbnail, name, status badge (Ready/Live/Needs work), concept number. Remove: tags, product column, market flags. (added 2026-03-19)
+- [x] ~~**Concepts card grid redesign**~~ — done, see Done section
 - [ ] **Sidebar navigation simplification** — Merge scattered pipeline items. (added 2026-03-19)
 
 ## P2 — Important
@@ -50,6 +50,7 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 
 ## Done (recent)
+- [x] **Concepts card grid + re-roll UX + processing poll** — Replaced table-based concepts list with responsive card grid (2-5 columns, 4:5 thumbnails, concept number + market flag overlays, status badges). Moved re-roll button from preview modal to thumbnail hover overlay. Fixed missing polling for server-side `after()` pipeline (Finish & Queue showed "0/0"). Commit `4d28b94`. (done 2026-03-19)
 - [x] **9:16 safe zone overlay + display bug fixes** — Safe zone overlay on thumbnails/preview (top 14%, bottom 20%). Fixed 9:16 display on All tab (was showing 4:5 originals). Fixed progress count double-counting ratios. Trimmed competitor swipe image count. Updated Rule 11 text placement for safe zone. E2E tested with Kie AI. Commit `8836834`. (done 2026-03-19)
 - [x] **Concept detail redesign + Meta placement fix** — Replaced wizard with collapsible sections, status-driven CTA, overflow menu, 4:5/9:16 ratio toggle. Fixed Meta push: per-image-pair creatives with `asset_customization_rules` routing 4:5→feed and 9:16→stories/reels. Also fixed campaign builder push route. Commit `7eea009`. (done 2026-03-19)
 - [x] **Phase 1 Pipeline Unblock** — Finish & Queue button, relaxed translation scoring, default Page B setting. Commit `3d1e466`. (done 2026-03-19)

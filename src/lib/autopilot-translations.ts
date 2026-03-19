@@ -612,3 +612,96 @@ async function notifyTranslationsDone(
     console.error("[autopilot-translate] Telegram notification failed:", err);
   }
 }
+
+/**
+ * Re-roll translation pipeline — creates translation rows for a single
+ * re-rolled source image and processes them. Called via after() from the
+ * re-roll endpoint. Does NOT re-translate ad copy (already done).
+ */
+export async function triggerRerollTranslations(
+  jobId: string,
+  sourceImageId: string
+): Promise<{ created: number; processed: number; failed: number }> {
+  const db = createServerSupabase();
+
+  // Fetch job config
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, target_languages, target_ratios")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) throw new Error(`Job ${jobId} not found`);
+
+  const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
+  const targetRatios = (job.target_ratios as string[])?.length ? job.target_ratios as string[] : ["4:5"];
+
+  // Fetch source image
+  const { data: sourceImage } = await db
+    .from("source_images")
+    .select("id, skip_translation, original_url")
+    .eq("id", sourceImageId)
+    .single();
+
+  if (!sourceImage) throw new Error(`Source image ${sourceImageId} not found`);
+
+  // Create translation rows for this one image
+  const primaryRatio = targetRatios[0] ?? "4:5";
+  const rows: { source_image_id: string; language: string; aspect_ratio: string; status: string; translated_url?: string }[] = [];
+
+  if (sourceImage.skip_translation) {
+    // No-text image: primary ratio pre-completed, secondary pending for outpainting
+    for (const lang of targetLangs) {
+      rows.push({
+        source_image_id: sourceImageId,
+        language: lang,
+        aspect_ratio: primaryRatio,
+        status: "completed",
+        translated_url: sourceImage.original_url,
+      });
+      for (const ratio of targetRatios) {
+        if (ratio !== primaryRatio) {
+          rows.push({ source_image_id: sourceImageId, language: lang, aspect_ratio: ratio, status: "pending" });
+        }
+      }
+    }
+  } else {
+    for (const lang of targetLangs) {
+      for (const ratio of targetRatios) {
+        rows.push({ source_image_id: sourceImageId, language: lang, aspect_ratio: ratio, status: "pending" });
+      }
+    }
+  }
+
+  if (rows.length > 0) {
+    await db.from("image_translations").insert(rows);
+  }
+
+  console.log(`[reroll-translate] Created ${rows.length} translation rows for source image ${sourceImageId}`);
+
+  // Set job to processing
+  await db.from("image_jobs").update({
+    status: "processing",
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  // Process 4:5 first
+  const primary = await processImageTranslations(db, jobId, primaryRatio);
+  console.log(`[reroll-translate] ${primaryRatio}: ${primary.processed} done, ${primary.failed} failed`);
+
+  // Then 9:16
+  let secondary = { processed: 0, failed: 0 };
+  if (targetRatios.includes("9:16")) {
+    secondary = await processImageTranslations(db, jobId, "9:16");
+    console.log(`[reroll-translate] 9:16: ${secondary.processed} done, ${secondary.failed} failed`);
+  }
+
+  // Update final job status
+  await updateJobStatusFinal(db, jobId);
+
+  return {
+    created: rows.length,
+    processed: primary.processed + secondary.processed,
+    failed: primary.failed + secondary.failed,
+  };
+}

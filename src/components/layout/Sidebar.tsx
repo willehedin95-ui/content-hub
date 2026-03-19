@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Video, Rocket, FolderOpen, Check, Receipt, Eye } from "lucide-react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 import type { Workspace } from "@/types";
@@ -68,17 +68,16 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
       label: "Ads",
       icon: Megaphone,
       children: [
-        { href: "/pipeline", label: "Ad Tracker", icon: Workflow },
-        { href: "/launchpad", label: "Launch Pad", icon: Rocket },
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
         { href: "/ad-spy", label: "Ad Spy", icon: Eye },
         { href: "/images", label: "Concepts", icon: Image },
-        { href: "/video-ads", label: "Video Ads", icon: Video },
+        { href: "/launchpad", label: "Launch Pad", icon: Rocket },
+        { href: "/pipeline", label: "Performance", icon: Workflow },
+        { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
       ],
     },
     { href: "/products", label: "Products", icon: Package },
     { href: "/assets", label: "Assets", icon: FolderOpen },
-    { href: "/meta-ads", label: "Meta Ads", icon: BarChart3 },
     { href: "/invoices", label: "Invoices", icon: Receipt },
   ], [pipelineBadgeCount]);
 
