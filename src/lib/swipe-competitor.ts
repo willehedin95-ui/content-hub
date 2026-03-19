@@ -348,7 +348,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
           original_url: urlData.publicUrl,
           filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
           processing_order: index,
-          skip_translation: false,
+          skip_translation: !hasTextOverlay,
           generation_prompt: imgPrompt.prompt,
           generation_style: "competitor-swipe",
           batch: 1,

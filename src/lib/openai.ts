@@ -29,7 +29,7 @@ const COUNTRIES: Record<string, string> = {
   de: "Germany",
 };
 
-const DO_NOT_TRANSLATE = "HappySleep, Hydro13, SwedishBalance, Nordic Cradle, HappySleep Ergo, Hälsobladet";
+const DO_NOT_TRANSLATE = "HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet";
 
 /**
  * Translate the entire HTML body in one shot — GPT sees the full page as a

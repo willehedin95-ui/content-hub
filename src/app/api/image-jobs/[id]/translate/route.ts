@@ -4,8 +4,7 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET, RATE_LIMIT_IMAGE_TRANSLATE } from "@/lib/constants";
-import { Language, LANGUAGES } from "@/types";
-import { getShortLocalizationNote, NEVER_TRANSLATE } from "@/lib/localization";
+import { LANGUAGES } from "@/types";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isValidUUID } from "@/lib/validation";
 
@@ -99,13 +98,11 @@ export async function POST(
   try {
     // Build the prompt
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
-    const langCode = translation.language as Language;
-    const neverTranslateList = NEVER_TRANSLATE.join(", ");
-    let prompt = `Recreate this exact image but translate all text to ${langLabel}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, and design. Only translate the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: ${neverTranslateList}.${getShortLocalizationNote(langCode)}`;
+    let prompt = `Recreate this exact image but translate all visible text to ${langLabel}. Keep the same visual style, layout, colors, and design. Only change the text language — do not add any new text, logos, badges, or visual elements that are not already in the image.`;
 
     // Enhanced prompt for retries with corrections
     if (corrected_text || visual_instructions) {
-      prompt = `Recreate this exact image but translate all text to ${langLabel}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, and design. Only translate the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: ${neverTranslateList}.`;
+      prompt = `Recreate this exact image but translate all visible text to ${langLabel}. Keep the same visual style, layout, colors, and design. Only change the text language — do not add any new text, logos, badges, or visual elements that are not already in the image.`;
       if (corrected_text) {
         prompt += `\n\nIMPORTANT - Use these exact corrected translations:\n${corrected_text}`;
       }

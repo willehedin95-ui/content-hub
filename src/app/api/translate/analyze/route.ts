@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 Your job is to evaluate how natural and fluent the FULL translated page reads as a whole — it should read as if ORIGINALLY WRITTEN in ${langLabel}.
 
 PROTECTED BRAND NAMES — these must NEVER be translated or flagged as issues:
-HappySleep, Hydro13, SwedishBalance, Nordic Cradle, HappySleep Ergo, Hälsobladet, OEKO-TEX, CertiPUR-US, Trustpilot, CPAP.
+HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet, OEKO-TEX, CertiPUR-US, Trustpilot, CPAP.
 These are brand names, product names, company names, or technical terms. Do NOT suggest corrections for them.
 
 PERSON NAMES — character names should be KEPT EXACTLY as they appear in the original English source. They are pre-selected universal Nordic names. Do NOT flag them as issues or suggest renaming them. If a name was CHANGED from the original (e.g. "Ella" in English became "Emma" in the translation), flag that as a context error.

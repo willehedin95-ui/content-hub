@@ -46,7 +46,6 @@ export function formatLocalization(lang: Language): string {
 /** Brand names and certificates that must NEVER be translated in images */
 export const NEVER_TRANSLATE = [
   "HappySleep",
-  "HappySleep Ergo",
   "Hydro13",
   "Hälsobladet",
   "SwedishBalance",

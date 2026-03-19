@@ -49,6 +49,10 @@ interface FormatBudgetInfo {
   campaignBudget: number;
   activeAdSets: number;
   campaignIds: string[];
+  coldStart?: boolean;
+  coldStartCooldown?: boolean;
+  cooldownDaysLeft?: number;
+  recommendedBudget?: number;
 }
 
 interface BudgetInfo {
@@ -61,6 +65,10 @@ interface BudgetInfo {
   campaignBudget: number;
   activeAdSets: number;
   campaignIds: string[];
+  coldStart?: boolean;
+  coldStartCooldown?: boolean;
+  cooldownDaysLeft?: number;
+  recommendedBudget?: number;
 }
 
 interface LaunchpadData {
@@ -89,6 +97,7 @@ const TYPE_BADGE: Record<"image" | "video", { label: string; className: string }
 const MARKETS = ["NO", "DK", "SE"] as const;
 const MARKET_FLAG: Record<string, string> = { NO: "\uD83C\uDDF3\uD83C\uDDF4", DK: "\uD83C\uDDE9\uD83C\uDDF0", SE: "\uD83C\uDDF8\uD83C\uDDEA", DE: "\uD83C\uDDE9\uD83C\uDDEA" };
 const MAX_CONCEPTS_PER_BATCH = 3;
+const COLD_START_BATCH_SIZE = 5;
 const BUDGET_PER_NEW_CONCEPT = 150; // kr/day
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -106,13 +115,15 @@ function sourceBadgeColors(source: string): string {
   return "bg-gray-100 text-gray-500";
 }
 
-function budgetColorClass(canPush: number): string {
+function budgetColorClass(canPush: number, coldStart?: boolean): string {
+  if (coldStart) return "border-blue-200 bg-blue-50";
   if (canPush >= 2) return "border-emerald-200 bg-emerald-50";
   if (canPush === 1) return "border-amber-200 bg-amber-50";
   return "border-gray-200 bg-gray-50"; // Neutral — pushing is always allowed
 }
 
-function budgetTextClass(canPush: number): string {
+function budgetTextClass(canPush: number, coldStart?: boolean): string {
+  if (coldStart) return "text-blue-700";
   if (canPush >= 2) return "text-emerald-700";
   if (canPush === 1) return "text-amber-700";
   return "text-gray-600"; // Neutral — pushing is always allowed
@@ -403,54 +414,81 @@ export default function LaunchpadClient() {
       </div>
 
       {/* Budget indicator — single card for selected market */}
-      {selectedBudget && (
-        <div className={`border rounded-xl p-4 mb-6 ${budgetColorClass(selectedBudget.canPush)}`}>
-          <div className="flex items-center justify-between mb-1.5">
-            <p className={`text-lg font-bold ${budgetTextClass(selectedBudget.canPush)}`}>
-              {Math.min(selectedBudget.canPush, MAX_CONCEPTS_PER_BATCH)} new concept{Math.min(selectedBudget.canPush, MAX_CONCEPTS_PER_BATCH) !== 1 ? "s" : ""}/day
-            </p>
-            <span className="text-xs text-gray-400 font-medium">
-              {selectedBudget.campaignBudget} SEK/day
-            </span>
-          </div>
-          <p className="text-xs text-gray-500">
-            {selectedBudget.canPush > 0 ? (
-              <>{selectedBudget.available} SEK compressible from {selectedBudget.activeAdSets} active ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}</>
-            ) : selectedBudget.activeAdSets > 0 ? (
-              <>Winners at full spend across {selectedBudget.activeAdSets} ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""} — CBO will redistribute when you push</>
-            ) : (
-              <>No active ad sets — push to start testing</>
-            )}
-          </p>
-          {selectedBudget.image.campaignBudget > 0 && selectedBudget.video.campaignBudget > 0 && (
-            <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
-              <span>Images: {selectedBudget.image.canPush}</span>
-              <span>Videos: {selectedBudget.video.canPush}</span>
+      {selectedBudget && (() => {
+        const effectiveMax = selectedBudget.coldStart ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;
+        const displayCount = Math.min(selectedBudget.canPush, effectiveMax);
+        const isCooldown = selectedBudget.coldStartCooldown;
+        return (
+          <div className={`border rounded-xl p-4 mb-6 ${
+            isCooldown ? "border-purple-200 bg-purple-50"
+            : budgetColorClass(selectedBudget.canPush, selectedBudget.coldStart)
+          }`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className={`text-lg font-bold ${
+                isCooldown ? "text-purple-700"
+                : budgetTextClass(selectedBudget.canPush, selectedBudget.coldStart)
+              }`}>
+                {isCooldown
+                  ? `Testing ${selectedBudget.activeAdSets} concepts`
+                  : selectedBudget.coldStart
+                    ? "Cold start"
+                    : `${displayCount} new concept${displayCount !== 1 ? "s" : ""}`
+                }/day
+              </p>
+              <span className="text-xs text-gray-400 font-medium">
+                {selectedBudget.campaignBudget} SEK/day
+              </span>
             </div>
-          )}
-          {(() => {
-            const queuedForMarket = marketConcepts.length;
-            const needsMore = queuedForMarket > 0 && selectedBudget.canPush < Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH);
-            if (!needsMore || selectedBudget.campaignIds.length === 0) return null;
-            const conceptsNeeded = Math.min(queuedForMarket, MAX_CONCEPTS_PER_BATCH) - selectedBudget.canPush;
-            const extraBudget = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
-            return (
-              <button
-                onClick={() => setConfirmBudget({ market: selectedMarket, budget: selectedBudget, conceptsNeeded })}
-                disabled={increasingBudget === selectedMarket}
-                className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              >
-                {increasingBudget === selectedMarket ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                )}
-                +{extraBudget} SEK/day for {conceptsNeeded} more concept{conceptsNeeded !== 1 ? "s" : ""}
-              </button>
-            );
-          })()}
-        </div>
-      )}
+            <p className="text-xs text-gray-500">
+              {isCooldown ? (
+                <>Waiting for performance data — {selectedBudget.cooldownDaysLeft ?? "?"} day{selectedBudget.cooldownDaysLeft !== 1 ? "s" : ""} left before next push</>
+              ) : selectedBudget.coldStart ? (
+                <>No active ads — next push sends up to {Math.min(displayCount, marketConcepts.length)} concepts to find winners</>
+              ) : selectedBudget.canPush > 0 ? (
+                <>{selectedBudget.available} SEK compressible from {selectedBudget.activeAdSets} active ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""}</>
+              ) : selectedBudget.activeAdSets > 0 ? (
+                <>Winners at full spend across {selectedBudget.activeAdSets} ad set{selectedBudget.activeAdSets !== 1 ? "s" : ""} — CBO will redistribute when you push</>
+              ) : (
+                <>No active ad sets — push to start testing</>
+              )}
+            </p>
+            {selectedBudget.coldStart && selectedBudget.recommendedBudget && selectedBudget.campaignBudget > selectedBudget.recommendedBudget * 1.5 && (
+              <p className="text-xs text-amber-600 mt-1.5">
+                Budget is {selectedBudget.campaignBudget} SEK/day — only ~{selectedBudget.recommendedBudget} SEK needed for {COLD_START_BATCH_SIZE} concepts during testing
+              </p>
+            )}
+            {selectedBudget.image.campaignBudget > 0 && selectedBudget.video.campaignBudget > 0 && !isCooldown && (
+              <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
+                <span>Images: {selectedBudget.image.canPush}</span>
+                <span>Videos: {selectedBudget.video.canPush}</span>
+              </div>
+            )}
+            {(() => {
+              // Don't show budget increase button during cold start or cooldown
+              if (selectedBudget.coldStart || isCooldown) return null;
+              const queuedForMarket = marketConcepts.length;
+              const needsMore = queuedForMarket > 0 && selectedBudget.canPush < Math.min(queuedForMarket, effectiveMax);
+              if (!needsMore || selectedBudget.campaignIds.length === 0) return null;
+              const conceptsNeeded = Math.min(queuedForMarket, effectiveMax) - selectedBudget.canPush;
+              const extraBudget = conceptsNeeded * BUDGET_PER_NEW_CONCEPT;
+              return (
+                <button
+                  onClick={() => setConfirmBudget({ market: selectedMarket, budget: selectedBudget, conceptsNeeded })}
+                  disabled={increasingBudget === selectedMarket}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {increasingBudget === selectedMarket ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  )}
+                  +{extraBudget} SEK/day for {conceptsNeeded} more concept{conceptsNeeded !== 1 ? "s" : ""}
+                </button>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {/* Empty state */}
       {marketConcepts.length === 0 && (

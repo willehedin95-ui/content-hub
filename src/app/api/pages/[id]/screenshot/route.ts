@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 
+export const maxDuration = 60;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -8,58 +10,89 @@ export async function POST(
   const { id } = await params;
   const db = createServerSupabase();
 
-  // Find a published translation with HTML
+  // Find a published translation with a URL
   const { data: translation } = await db
     .from("translations")
-    .select("translated_html")
+    .select("published_url, translated_html")
     .eq("page_id", id)
     .eq("status", "published")
-    .not("translated_html", "is", null)
+    .not("published_url", "is", null)
     .limit(1)
     .single();
 
-  if (!translation?.translated_html) {
-    return NextResponse.json({ error: "No published translation found" }, { status: 404 });
+  if (!translation?.published_url) {
+    return NextResponse.json({ error: "No published URL found" }, { status: 404 });
   }
 
-  // Extract the first significant <img src> from the HTML
-  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
-  let match;
-  let thumbnailUrl: string | null = null;
+  // Try Puppeteer screenshot (works locally, may fail on Vercel)
+  try {
+    const puppeteer = await import("puppeteer-core");
+    const isLocal = process.env.NODE_ENV === "development";
 
-  while ((match = imgRegex.exec(translation.translated_html)) !== null) {
-    const src = match[0];
-    const url = match[1];
+    let executablePath: string;
+    let args: string[];
 
-    // Unescape HTML entities
-    const clean = url.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+    if (isLocal) {
+      executablePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+      args = ["--no-sandbox"];
+    } else {
+      const chromium = (await import("@sparticuz/chromium")).default;
+      executablePath = await chromium.executablePath();
+      args = chromium.args;
+    }
 
-    // Skip tiny icons, data URIs, SVGs, tracking pixels
-    if (clean.startsWith("data:")) continue;
-    const pathOnly = clean.split("?")[0];
-    if (pathOnly.endsWith(".svg") || pathOnly.endsWith(".ico")) continue;
-    if (clean.includes("pixel") || clean.includes("tracking") || clean.includes("spacer")) continue;
-    if (clean.includes("favicon")) continue;
+    const browser = await puppeteer.default.launch({
+      args,
+      executablePath,
+      headless: true,
+      defaultViewport: { width: 375, height: 700 },
+    });
 
-    // Skip images with explicit small dimensions (badges, icons)
-    const widthMatch = src.match(/width=["']?(\d+)/i);
-    const heightMatch = src.match(/height=["']?(\d+)/i);
-    if (widthMatch && parseInt(widthMatch[1]) < 80) continue;
-    if (heightMatch && parseInt(heightMatch[1]) < 80) continue;
+    const page = await browser.newPage();
+    await page.goto(translation.published_url, { waitUntil: "networkidle2", timeout: 20000 });
+    await new Promise((r) => setTimeout(r, 1500));
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 85 });
+    await browser.close();
 
-    thumbnailUrl = clean;
-    break;
+    // Upload to Supabase Storage
+    const filename = `${id}.jpg`;
+    const { error: uploadError } = await db.storage
+      .from("page-thumbnails")
+      .upload(filename, screenshot, { contentType: "image/jpeg", upsert: true });
+
+    if (uploadError) {
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    }
+
+    const { data: { publicUrl } } = db.storage
+      .from("page-thumbnails")
+      .getPublicUrl(filename);
+
+    // Add cache-bust to avoid stale thumbnails
+    const thumbnailUrl = `${publicUrl}?v=${Date.now()}`;
+
+    await db.from("pages").update({ thumbnail_url: thumbnailUrl }).eq("id", id);
+    return NextResponse.json({ thumbnail_url: thumbnailUrl });
+  } catch (err) {
+    // Puppeteer failed (common on Vercel) — fall back to extracting hero image from HTML
+    if (translation.translated_html) {
+      const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+      let match;
+      while ((match = imgRegex.exec(translation.translated_html)) !== null) {
+        const tag = match[0];
+        const url = match[1].replace(/&amp;/g, "&");
+        const pathOnly = url.split("?")[0];
+        if (url.startsWith("data:") || pathOnly.endsWith(".svg") || pathOnly.endsWith(".ico")) continue;
+        if (/pixel|tracking|spacer|favicon/i.test(url)) continue;
+        const w = tag.match(/width=["']?(\d+)/i);
+        const h = tag.match(/height=["']?(\d+)/i);
+        if (w && parseInt(w[1]) < 100) continue;
+        if (h && parseInt(h[1]) < 100) continue;
+        await db.from("pages").update({ thumbnail_url: url }).eq("id", id);
+        return NextResponse.json({ thumbnail_url: url, method: "html_fallback" });
+      }
+    }
+    const message = err instanceof Error ? err.message : "Screenshot failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  if (!thumbnailUrl) {
-    return NextResponse.json({ error: "No suitable image found in page HTML" }, { status: 404 });
-  }
-
-  // Save directly to pages table — no storage upload needed, just use the image URL
-  await db
-    .from("pages")
-    .update({ thumbnail_url: thumbnailUrl })
-    .eq("id", id);
-
-  return NextResponse.json({ thumbnail_url: thumbnailUrl });
 }

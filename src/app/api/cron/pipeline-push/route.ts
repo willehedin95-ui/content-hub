@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics, MAX_CONCEPTS_PER_BATCH } from "@/lib/pipeline";
+import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics, MAX_CONCEPTS_PER_BATCH, COLD_START_BATCH_SIZE } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
@@ -61,6 +61,12 @@ export async function GET(req: NextRequest) {
     const pushCounts: Record<string, number> = {}; // key: "market:format"
 
     for (const [market, budget] of Object.entries(budgets)) {
+      // Cold start cooldown: recently pushed to a fresh market, waiting for data
+      if (budget.coldStartCooldown) {
+        console.log(`[Pipeline Push] ${market}: Cold start cooldown (${budget.cooldownDaysLeft ?? "?"} days left) — skipping`);
+        continue;
+      }
+
       for (const format of ["image", "video"] as const) {
         const formatBudget = budget[format];
         // Log compression info but don't block pushing — always allow new creative
@@ -80,7 +86,8 @@ export async function GET(req: NextRequest) {
 
         for (const concept of sortedConcepts) {
           if (concept.type !== format) continue;
-          if (pushCounts[countKey] >= MAX_CONCEPTS_PER_BATCH) break;
+          const batchLimit = formatBudget.activeAdSets === 0 ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;
+          if (pushCounts[countKey] >= batchLimit) break;
 
           const marketEntry = concept.markets.find((m) => m.market === market);
           if (!marketEntry || marketEntry.stage !== "launchpad") continue;

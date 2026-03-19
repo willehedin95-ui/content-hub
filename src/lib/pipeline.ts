@@ -1485,8 +1485,11 @@ export async function getTestingSlots(product: string): Promise<number> {
  * Based on real data: new concepts get ~150 kr/day during learning phase.
  */
 export const MAX_CONCEPTS_PER_BATCH = 3; // max new concepts per market per push — prevents overwhelming Meta's learning
+export const COLD_START_BATCH_SIZE = 5; // More aggressive when no active ads — need to find winners fast
 export const BUDGET_PER_NEW_CONCEPT = 150; // kr/day — empirical from March batch
 const MIN_VIABLE_SPEND = 100; // kr/day — floor before ad set performance degrades
+const COLD_START_BUDGET_PER_CONCEPT = 200; // SEK/day — above 150 learning floor for breathing room
+const COLD_START_COOLDOWN_DAYS = 7; // Days to wait after cold start push before pushing more
 
 export interface FormatBudgetInfo {
   available: number;
@@ -1495,6 +1498,10 @@ export interface FormatBudgetInfo {
   campaignBudget: number;
   activeAdSets: number;
   campaignIds: string[];
+  coldStart?: boolean;
+  coldStartCooldown?: boolean;
+  cooldownDaysLeft?: number;
+  recommendedBudget?: number;
 }
 
 export async function calculateAvailableBudget(): Promise<
@@ -1508,6 +1515,10 @@ export async function calculateAvailableBudget(): Promise<
     campaignBudget: number;
     activeAdSets: number;
     campaignIds: string[];
+    coldStart?: boolean;
+    coldStartCooldown?: boolean;
+    cooldownDaysLeft?: number;
+    recommendedBudget?: number;
   }>
 > {
   const db = createServerSupabase();
@@ -1616,6 +1627,20 @@ export async function calculateAvailableBudget(): Promise<
     const winnerSpend = winnerSpendByKey[key] ?? 0;
     const activeAdSets = activeAdSetsByKey[key] ?? 0;
 
+    // Cold start: no active ad sets but budget exists — push aggressively to find winners
+    if (activeAdSets === 0 && campaignBudget > 0) {
+      return {
+        available: 0,
+        currency: "SEK",
+        canPush: COLD_START_BATCH_SIZE,
+        campaignBudget,
+        activeAdSets: 0,
+        campaignIds: campaignIdsByKey[key] ?? [],
+        coldStart: true,
+        recommendedBudget: COLD_START_BATCH_SIZE * COLD_START_BUDGET_PER_CONCEPT,
+      };
+    }
+
     const avgSpendPerAdSet = activeAdSets > 0 ? winnerSpend / activeAdSets : 0;
     const compressiblePerAdSet = Math.max(0, avgSpendPerAdSet - MIN_VIABLE_SPEND);
     const totalCompressible = Math.round(compressiblePerAdSet * activeAdSets);
@@ -1647,6 +1672,10 @@ export async function calculateAvailableBudget(): Promise<
     campaignBudget: number;
     activeAdSets: number;
     campaignIds: string[];
+    coldStart?: boolean;
+    coldStartCooldown?: boolean;
+    cooldownDaysLeft?: number;
+    recommendedBudget?: number;
   }> = {};
 
   for (const country of allCountries) {
@@ -1665,16 +1694,55 @@ export async function calculateAvailableBudget(): Promise<
     const totalCompressible = Math.round(compressiblePerAdSet * activeAdSets);
     const canPush = Math.floor(totalCompressible / BUDGET_PER_NEW_CONCEPT);
 
+    const isColdStart = activeAdSets === 0 && campaignBudget > 0;
+
+    // Cold start cooldown: ad sets exist but ALL are younger than 7 days
+    // This means we recently did a cold start push — wait for data before pushing more
+    let coldStartCooldown = false;
+    let cooldownDaysLeft: number | undefined;
+    if (!isColdStart && activeAdSets > 0) {
+      const marketCampaigns = campaignIdsByCountry[country] ?? [];
+      if (marketCampaigns.length > 0) {
+        const cooldownCutoff = new Date(Date.now() - COLD_START_COOLDOWN_DAYS * 24 * 60 * 60 * 1000)
+          .toISOString().split("T")[0];
+        const { count: oldDataCount } = await db
+          .from("meta_ad_performance")
+          .select("id", { count: "exact", head: true })
+          .in("campaign_id", marketCampaigns)
+          .lt("date", cooldownCutoff);
+
+        if ((oldDataCount ?? 0) === 0) {
+          coldStartCooldown = true;
+          // Calculate days remaining from earliest data point
+          const { data: earliest } = await db
+            .from("meta_ad_performance")
+            .select("date")
+            .in("campaign_id", marketCampaigns)
+            .order("date", { ascending: true })
+            .limit(1);
+          if (earliest?.[0]?.date) {
+            const pushDate = new Date(earliest[0].date);
+            const cooldownEnd = new Date(pushDate.getTime() + (COLD_START_COOLDOWN_DAYS + 1) * 24 * 60 * 60 * 1000);
+            cooldownDaysLeft = Math.max(0, Math.ceil((cooldownEnd.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+          }
+        }
+      }
+    }
+
     result[country] = {
       image: calcForFormat(country, "image"),
       video: calcForFormat(country, "video"),
       // Combined (backward compat)
       available: totalCompressible,
       currency: "SEK",
-      canPush,
+      canPush: isColdStart ? COLD_START_BATCH_SIZE : coldStartCooldown ? 0 : canPush,
       campaignBudget,
       activeAdSets,
       campaignIds: campaignIdsByCountry[country] ?? [],
+      coldStart: isColdStart || undefined,
+      coldStartCooldown: coldStartCooldown || undefined,
+      cooldownDaysLeft,
+      recommendedBudget: isColdStart ? COLD_START_BATCH_SIZE * COLD_START_BUDGET_PER_CONCEPT : undefined,
     };
   }
 

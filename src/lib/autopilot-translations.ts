@@ -9,7 +9,7 @@ import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST, calcOpenAICost } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET, OPENAI_MODEL } from "@/lib/constants";
 import { Language, LANGUAGES } from "@/types";
-import { getShortLocalizationNote, NEVER_TRANSLATE } from "@/lib/localization";
+import { getShortLocalizationNote } from "@/lib/localization";
 import { deriveCopyGrade, gradeToNumeric } from "@/lib/quality-grades";
 import OpenAI from "openai";
 
@@ -387,11 +387,8 @@ async function processOneTranslation(
   try {
     // Build prompt
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
-    const langCode = translation.language as Language;
-    const neverTranslateList = NEVER_TRANSLATE.join(", ");
-
     let imageInputUrl = translation.source_images.original_url;
-    let prompt = `Recreate this exact image but translate all text to ${langLabel}. The source text may be in any language (English, Swedish, or other). Keep the same visual style, layout, colors, and design. Only translate the text.\n\nNEVER TRANSLATE these brand names and certificates — keep them EXACTLY as-is: ${neverTranslateList}.${getShortLocalizationNote(langCode)}`;
+    let prompt = `Recreate this exact image but translate all visible text to ${langLabel}. Keep the same visual style, layout, colors, and design. Only change the text language — do not add any new text, logos, badges, or visual elements that are not already in the image.`;
 
     // For 9:16: outpaint from completed 4:5 sibling
     if (aspectRatio === "9:16") {
