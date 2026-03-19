@@ -63,12 +63,8 @@ function BuilderShellInner() {
       <PublishModal
         open={showPublishModal}
         translationId={translation.id}
-        onClose={(published) => {
+        onClose={() => {
           setShowPublishModal(false);
-          if (published) {
-            router.push(`/pages/${pageId}`);
-            router.refresh();
-          }
         }}
       />
 

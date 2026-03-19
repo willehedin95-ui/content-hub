@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
-
-export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -12,65 +8,58 @@ export async function POST(
   const { id } = await params;
   const db = createServerSupabase();
 
-  // Find a published translation with a URL
+  // Find a published translation with HTML
   const { data: translation } = await db
     .from("translations")
-    .select("published_url")
+    .select("translated_html")
     .eq("page_id", id)
     .eq("status", "published")
-    .not("published_url", "is", null)
+    .not("translated_html", "is", null)
     .limit(1)
     .single();
 
-  if (!translation?.published_url) {
-    return NextResponse.json({ error: "No published URL found" }, { status: 404 });
+  if (!translation?.translated_html) {
+    return NextResponse.json({ error: "No published translation found" }, { status: 404 });
   }
 
-  let browser;
-  try {
-    const isLocal = process.env.NODE_ENV === "development";
-    browser = await puppeteer.launch({
-      args: isLocal ? ["--no-sandbox"] : chromium.args,
-      executablePath: isLocal
-        ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        : await chromium.executablePath(),
-      headless: true,
-      defaultViewport: { width: 375, height: 812 },
-    });
+  // Extract the first significant <img src> from the HTML
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  let thumbnailUrl: string | null = null;
 
-    const page = await browser.newPage();
-    await page.goto(translation.published_url, { waitUntil: "networkidle2", timeout: 30000 });
-    const screenshot = await page.screenshot({ type: "jpeg", quality: 80 });
-    await browser.close();
-    browser = null;
+  while ((match = imgRegex.exec(translation.translated_html)) !== null) {
+    const src = match[0];
+    const url = match[1];
 
-    // Upload to Supabase Storage
-    const filename = `${id}.jpg`;
-    const { error: uploadError } = await db.storage
-      .from("page-thumbnails")
-      .upload(filename, screenshot, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    // Unescape HTML entities
+    const clean = url.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
 
-    if (uploadError) {
-      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
-    }
+    // Skip tiny icons, data URIs, SVGs, tracking pixels
+    if (clean.startsWith("data:")) continue;
+    const pathOnly = clean.split("?")[0];
+    if (pathOnly.endsWith(".svg") || pathOnly.endsWith(".ico")) continue;
+    if (clean.includes("pixel") || clean.includes("tracking") || clean.includes("spacer")) continue;
+    if (clean.includes("favicon")) continue;
 
-    const { data: { publicUrl } } = db.storage
-      .from("page-thumbnails")
-      .getPublicUrl(filename);
+    // Skip images with explicit small dimensions (badges, icons)
+    const widthMatch = src.match(/width=["']?(\d+)/i);
+    const heightMatch = src.match(/height=["']?(\d+)/i);
+    if (widthMatch && parseInt(widthMatch[1]) < 80) continue;
+    if (heightMatch && parseInt(heightMatch[1]) < 80) continue;
 
-    // Save to pages table
-    await db
-      .from("pages")
-      .update({ thumbnail_url: publicUrl })
-      .eq("id", id);
-
-    return NextResponse.json({ thumbnail_url: publicUrl });
-  } catch (err) {
-    if (browser) await browser.close();
-    const message = err instanceof Error ? err.message : "Screenshot failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    thumbnailUrl = clean;
+    break;
   }
+
+  if (!thumbnailUrl) {
+    return NextResponse.json({ error: "No suitable image found in page HTML" }, { status: 404 });
+  }
+
+  // Save directly to pages table — no storage upload needed, just use the image URL
+  await db
+    .from("pages")
+    .update({ thumbnail_url: thumbnailUrl })
+    .eq("id", id);
+
+  return NextResponse.json({ thumbnail_url: thumbnailUrl });
 }
