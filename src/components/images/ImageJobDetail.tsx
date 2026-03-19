@@ -820,6 +820,16 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Poll when server-side pipeline is running (Finish & Queue / autopilot)
+  // The server processes translations via after() — client needs to poll for progress
+  useEffect(() => {
+    if (job.status !== "processing") return;
+    if (proc.processing) return; // Client-side processing has its own watchdog
+    const interval = setInterval(() => refreshJob(), 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.status, proc.processing]);
+
   // Poll when job is "draft" (importing from Drive or generating competitor images in background)
   // Auto-trigger competitor image generation if pending_competitor_gen is present
   // Also auto-recover: if stuck in draft with source images for >2min, retry create-translations

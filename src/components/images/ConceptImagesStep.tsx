@@ -1129,18 +1129,37 @@ export default function ConceptImagesStep({
         {images.map((si) => (
           <div
             key={si.id}
-            className="group/card relative bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
-            onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
+            className="group/card relative bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-colors"
           >
-            {/* Delete button — top-right, visible on hover */}
-            {onDeleteImage && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDeleteImageId(si.id); }}
-                className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-white/80 text-gray-400 opacity-0 group-hover/card:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
-                title="Delete image"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+            {/* Action buttons — top-right, visible on hover */}
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+              {onReroll && si.generation_style && !rerollingId && (
+                <button
+                  onClick={() => onReroll(si.id)}
+                  className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
+                  title="Re-roll (regenerate this image)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onDeleteImage && (
+                <button
+                  onClick={() => setConfirmDeleteImageId(si.id)}
+                  className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
+                  title="Delete image"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {/* Re-rolling overlay */}
+            {rerollingId === si.id && (
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                  <span className="text-xs text-indigo-600 font-medium">Re-rolling...</span>
+                </div>
+              </div>
             )}
             {/* Thumbnail — show translated version when a specific language tab is active */}
             {(() => {

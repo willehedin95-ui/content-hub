@@ -1,26 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Clock, Image as ImageIcon, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Dna, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
+import { Clock, Image as ImageIcon, Trash2, Search, Loader2, CheckSquare, Square, MinusSquare, Archive, ArchiveRestore } from "lucide-react";
 import { ImageJob, COUNTRY_MAP } from "@/types";
-import { useProducts, getProductLabel } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import { getMarketStatus, getWizardStep, getConceptThumbnail, COUNTRY_FLAGS } from "@/lib/concept-status";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import { TagBadge } from "@/components/ui/tag-input";
-import { useAllTags } from "@/lib/hooks/use-all-tags";
 
 const PAGE_SIZE = 200;
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase();
-}
-
-type SortField = "concept_number" | "name" | "status" | "created_at";
-type SortDir = "asc" | "desc";
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
@@ -43,31 +31,22 @@ const STATUS_PRIORITY: Record<string, number> = {
 };
 
 export default function ImagesPage() {
-  const router = useRouter();
-  const products = useProducts();
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [avgSeconds, setAvgSeconds] = useState(75);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Filter & sort state
+  // Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [productFilter, setProductFilter] = useState<string>("all");
-  const [tagFilter, setTagFilter] = useState<string>("all");
-  const { tags: allTags } = useAllTags();
-  const [sortField, setSortField] = useState<SortField>("status");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [backfillLoading, setBackfillLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
-
-  // Filter and sort jobs client-side
+  // Filter and sort jobs
   const filteredJobs = jobs.filter((job) => {
     if (searchQuery && !job.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (statusFilter !== "all") {
@@ -75,38 +54,14 @@ export default function ImagesPage() {
       const match = statusFilter === ws.label || ws.label.includes(statusFilter);
       if (!match) return false;
     }
-    if (productFilter !== "all" && job.product !== productFilter) return false;
-    if (tagFilter !== "all" && !(job.tags ?? []).includes(tagFilter)) return false;
     return true;
   }).sort((a, b) => {
-    const dir = sortDir === "asc" ? 1 : -1;
-    switch (sortField) {
-      case "concept_number": return ((a.concept_number ?? Infinity) - (b.concept_number ?? Infinity)) * dir;
-      case "name": return a.name.localeCompare(b.name) * dir;
-      case "status": {
-        const aPri = STATUS_PRIORITY[getWizardStep(a).label] ?? 99;
-        const bPri = STATUS_PRIORITY[getWizardStep(b).label] ?? 99;
-        if (aPri !== bPri) return (aPri - bPri) * dir;
-        return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
-      }
-      case "created_at": return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
-      default: return 0;
-    }
+    // Sort by status priority (asc), then by created_at (newest first)
+    const aPri = STATUS_PRIORITY[getWizardStep(a).label] ?? 99;
+    const bPri = STATUS_PRIORITY[getWizardStep(b).label] ?? 99;
+    if (aPri !== bPri) return aPri - bPri;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
-
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir((d) => d === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir(field === "created_at" ? "desc" : "asc");
-    }
-  }
-
-  function SortIcon({ field }: { field: SortField }) {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-0 group-hover/sort:opacity-50" />;
-    return sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
-  }
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -122,21 +77,6 @@ export default function ImagesPage() {
     }
   }, [showArchived]);
 
-  async function handleBackfillDna() {
-    setBackfillLoading(true);
-    try {
-      const res = await fetch("/api/image-jobs/backfill-dna", { method: "POST" });
-      const data = await res.json();
-      alert(`DNA backfill complete: ${data.analyzed}/${data.total} concepts analyzed`);
-      fetchJobs();
-    } catch {
-      alert("Backfill failed");
-    } finally {
-      setBackfillLoading(false);
-    }
-  }
-
-  // Fetch average generation time
   useEffect(() => {
     fetch("/api/image-jobs/progress")
       .then((res) => res.json())
@@ -146,15 +86,12 @@ export default function ImagesPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+  useEffect(() => { fetchJobs(); }, [fetchJobs]);
 
   // Poll when any job is processing
   useEffect(() => {
     const hasProcessing = jobs.some((j) => j.status === "draft" || j.status === "processing");
     if (!hasProcessing) return;
-
     const interval = setInterval(fetchJobs, 10000);
     return () => clearInterval(interval);
   }, [jobs, fetchJobs]);
@@ -216,23 +153,11 @@ export default function ImagesPage() {
     }
   }
 
-
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-7xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-gray-900">Concepts</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleBackfillDna}
-            disabled={backfillLoading}
-            className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 hover:text-gray-800 text-sm font-medium px-3 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-            title="Auto-analyze all concepts without DNA"
-          >
-            {backfillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dna className="w-4 h-4" />}
-            {backfillLoading ? "Analyzing..." : "Backfill DNA"}
-          </button>
-        </div>
       </div>
       <p className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
         <Clock className="w-3.5 h-3.5" />
@@ -281,52 +206,18 @@ export default function ImagesPage() {
               </button>
             ))}
           </div>
-          {/* Product filter */}
-          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
-            <button
-              onClick={() => setProductFilter("all")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                productFilter === "all"
-                  ? "bg-indigo-50 text-indigo-600"
-                  : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              All
-            </button>
-            {products.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setProductFilter(p.value)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  productFilter === p.value
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          {/* Tag filter dropdown */}
-          {allTags.length > 0 && (
-            <div className="relative border-l border-gray-200 pl-3">
-              <select
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
-                className={`appearance-none pl-2.5 pr-7 py-1 rounded-lg text-xs font-medium transition-colors border cursor-pointer ${
-                  tagFilter !== "all"
-                    ? "bg-indigo-50 text-indigo-600 border-indigo-200"
-                    : "text-gray-400 hover:text-gray-600 border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <option value="all">All Tags</option>
-                {[...new Set(allTags)].map((tag) => (
-                  <option key={tag} value={tag}>{tag}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-            </div>
-          )}
+          {/* Select all toggle */}
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-600 border border-gray-200 hover:border-gray-300 transition-colors ml-auto"
+          >
+            {selected.size === filteredJobs.length && filteredJobs.length > 0
+              ? <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+              : selected.size > 0
+              ? <MinusSquare className="w-3.5 h-3.5 text-indigo-600" />
+              : <Square className="w-3.5 h-3.5" />}
+            Select
+          </button>
         </div>
       )}
 
@@ -363,19 +254,16 @@ export default function ImagesPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="animate-pulse">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-gray-100">
-                <div className="h-4 w-8 bg-gray-200 rounded" />
-                <div className="h-4 w-40 bg-gray-200 rounded" />
-                <div className="h-4 w-16 bg-gray-100 rounded" />
-                <div className="h-4 w-24 bg-gray-100 rounded" />
-                <div className="h-4 w-24 bg-gray-100 rounded" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-xl overflow-hidden animate-pulse">
+              <div className="aspect-[4/5] bg-gray-100" />
+              <div className="p-3 space-y-2">
+                <div className="h-4 w-3/4 bg-gray-200 rounded" />
                 <div className="h-5 w-16 bg-gray-100 rounded-full" />
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       ) : jobs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -387,160 +275,111 @@ export default function ImagesPage() {
         </div>
       ) : (
         <>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[32px_48px_48px_1fr_80px_140px_100px_64px_40px] items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
-            <button
-              onClick={toggleSelectAll}
-              className="flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {selected.size === filteredJobs.length && filteredJobs.length > 0
-                ? <CheckSquare className="w-4 h-4 text-indigo-600" />
-                : selected.size > 0
-                ? <MinusSquare className="w-4 h-4 text-indigo-600" />
-                : <Square className="w-4 h-4" />}
-            </button>
-            <button onClick={() => toggleSort("concept_number")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
-              # <SortIcon field="concept_number" />
-            </button>
-            <div></div>
-            <button onClick={() => toggleSort("name")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors text-left">
-              Name <SortIcon field="name" />
-            </button>
-            <div>Product</div>
-            <button onClick={() => toggleSort("status")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
-              Status <SortIcon field="status" />
-            </button>
-            <div>Markets</div>
-            <button onClick={() => toggleSort("created_at")} className="flex items-center gap-1 group/sort hover:text-gray-700 transition-colors">
-              Created <SortIcon field="created_at" />
-            </button>
-            <div></div>
-          </div>
-
-          {/* Table rows */}
           {filteredJobs.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-gray-400">
+            <div className="py-12 text-center text-sm text-gray-400">
               No concepts match your filters
             </div>
-          ) : filteredJobs.map((job) => {
-            const marketStatus = getMarketStatus(job);
-            const status = getWizardStep(job);
-            const conceptNum = job.concept_number;
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {filteredJobs.map((job) => {
+                const status = getWizardStep(job);
+                const conceptNum = job.concept_number;
+                const thumbUrl = getConceptThumbnail(job);
+                const isSelected = selected.has(job.id);
+                const marketStatus = getMarketStatus(job);
+                const isProcessing = job.status === "draft" || job.status === "processing";
 
-            return (
-              <Link
-                key={job.id}
-                href={`/images/${job.id}`}
-                className={cn(
-                  "grid grid-cols-[32px_48px_48px_1fr_80px_140px_100px_64px_40px] items-center gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group",
-                  selected.has(job.id) && "bg-indigo-50/50"
-                )}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={(e) => toggleSelect(job.id, e)}
-                  className="flex items-center justify-center text-gray-300 hover:text-indigo-600 transition-colors"
-                >
-                  {selected.has(job.id)
-                    ? <CheckSquare className="w-4 h-4 text-indigo-600" />
-                    : <Square className="w-4 h-4" />}
-                </button>
-
-                {/* # */}
-                <span className="text-xs font-mono text-gray-400">
-                  {conceptNum ? String(conceptNum).padStart(3, "0") : "\u2014"}
-                </span>
-
-                {/* Thumbnail */}
-                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                  {(() => {
-                    const thumbUrl = getConceptThumbnail(job);
-                    return thumbUrl ? (
-                      <img src={thumbUrl} alt={job.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ImageIcon className="w-4 h-4 text-gray-300" />
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Name + Tags */}
-                <div className="min-w-0">
-                  <span className="text-sm font-medium text-gray-800 truncate block">{job.name}</span>
-                  {(job.tags ?? []).length > 0 && (
-                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                      {(job.tags ?? []).slice(0, 3).map((tag) => (
-                        <TagBadge key={tag} tag={tag} />
-                      ))}
-                      {(job.tags ?? []).length > 3 && (
-                        <span className="text-xs text-gray-400">+{(job.tags ?? []).length - 3}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Product */}
-                <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full text-center truncate">
-                  {getProductLabel(products, job.product ?? null)}
-                </span>
-
-                {/* Status badge */}
-                <span className={`text-xs font-medium px-2 py-1 rounded-full text-center ${status.color}`}>
-                  {status.label}
-                </span>
-
-                {/* Markets (deployment status per country) */}
-                <div className="flex items-center gap-1.5">
-                  {job.target_languages.map((lang) => {
+                // Market deployment dots
+                const deployedCountries = job.target_languages
+                  .map((lang) => {
                     const country = COUNTRY_MAP[lang];
                     const depStatus = marketStatus.get(country);
-                    return (
-                      <span key={country} className="relative inline-flex items-center" title={`${country}: ${depStatus === "pushed" ? "published" : depStatus === "pushing" ? "pushing" : depStatus === "error" ? "error" : "not deployed"}`}>
-                        <span className={`text-sm ${!depStatus ? "opacity-30" : ""}`} role="img" aria-label={country}>{COUNTRY_FLAGS[country]}</span>
-                        {depStatus && (
-                          <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
-                            depStatus === "pushed" ? "bg-emerald-500" : depStatus === "pushing" ? "bg-blue-500" : depStatus === "error" ? "bg-red-500" : "bg-gray-300"
-                          }`} />
+                    return depStatus === "pushed" ? country : null;
+                  })
+                  .filter(Boolean) as string[];
+
+                return (
+                  <Link
+                    key={job.id}
+                    href={`/images/${job.id}`}
+                    className={cn(
+                      "group relative bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md hover:border-gray-300",
+                      isSelected ? "border-indigo-400 ring-2 ring-indigo-200" : "border-gray-200"
+                    )}
+                  >
+                    {/* Thumbnail */}
+                    <div className="aspect-[4/5] bg-gray-50 relative overflow-hidden">
+                      {thumbUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumbUrl}
+                          alt={job.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageIcon className="w-8 h-8 text-gray-200" />
+                        </div>
+                      )}
+
+                      {/* Processing shimmer overlay */}
+                      {isProcessing && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" />
+                      )}
+
+                      {/* Concept number badge (top-left) */}
+                      {conceptNum && (
+                        <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
+                          #{String(conceptNum).padStart(3, "0")}
+                        </span>
+                      )}
+
+                      {/* Live market flags (top-right) */}
+                      {deployedCountries.length > 0 && (
+                        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-black/60 px-1.5 py-0.5 rounded">
+                          {deployedCountries.map((c) => (
+                            <span key={c} className="text-xs" role="img" aria-label={c}>{COUNTRY_FLAGS[c]}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Selection checkbox (top-right on hover, or always if selected) */}
+                      <button
+                        onClick={(e) => toggleSelect(job.id, e)}
+                        className={cn(
+                          "absolute top-2 transition-opacity",
+                          deployedCountries.length > 0 ? "right-2 top-8" : "right-2",
+                          isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                         )}
-                      </span>
-                    );
-                  })}
-                </div>
+                      >
+                        {isSelected
+                          ? <CheckSquare className="w-5 h-5 text-indigo-600 drop-shadow-md" />
+                          : <Square className="w-5 h-5 text-white drop-shadow-md" />}
+                      </button>
+                    </div>
 
-                {/* Created */}
-                <span className="text-xs text-gray-400">{formatDate(job.created_at)}</span>
+                    {/* Info bar */}
+                    <div className="px-3 py-2.5">
+                      <p className="text-sm font-medium text-gray-800 truncate leading-tight">
+                        {job.name}
+                      </p>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${status.color}`}>
+                          {status.label}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
 
-                {/* Actions */}
-                <div className="flex items-center justify-end gap-0.5">
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleArchive([job.id], showArchived ? "unarchive" : "archive");
-                    }}
-                    className="text-gray-300 hover:text-amber-500 p-1 transition-colors opacity-0 group-hover:opacity-100"
-                    title={showArchived ? "Unarchive" : "Archive"}
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(job.id); }}
-                    className="text-gray-300 hover:text-red-500 p-1 transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Concept count */}
-        <p className="text-xs text-gray-400 mt-3">
-          {filteredJobs.length} concept{filteredJobs.length !== 1 ? "s" : ""}
-        </p>
+          {/* Concept count */}
+          <p className="text-xs text-gray-400 mt-4">
+            {filteredJobs.length} concept{filteredJobs.length !== 1 ? "s" : ""}
+            {totalCount > filteredJobs.length && ` of ${totalCount}`}
+          </p>
         </>
       )}
 
