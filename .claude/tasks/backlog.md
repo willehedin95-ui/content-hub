@@ -4,11 +4,14 @@ Updated: 2026-03-19 (workflow optimization plan)
 ## P0 — Blockers
 (none)
 
-## P1 — Do Now (Pipeline Unblock)
-- [ ] **"Finish & Queue" button** — One-click on any concept to run full translation pipeline (images + 9:16 + ad copy) + auto-add to launchpad. Reuses `triggerAutopilotTranslations()`. (added 2026-03-19)
-- [ ] **Fix translation scoring** — Only "needs_fixes" on context errors (mistranslation, wrong meaning) + untranslated English words. Fluency/grammar issues = informational only, never block. Kill the fix-issues re-translate loop. (added 2026-03-19)
-- [ ] **Fix translation bugs** — Investigate why ad copy translations fail/hang. User reports frequent failures. (added 2026-03-19)
-- [ ] **Default Page B setting** — Workspace setting for default A/B test landing page. Every push auto-tests against this page without manual selection. (added 2026-03-19)
+## P1 — Do Now
+(none)
+
+## Recently Completed (Phase 1 — Pipeline Unblock, 2026-03-19)
+- [x] **"Finish & Queue" button** — One-click pipeline + auto-launchpad. Commit `3d1e466`.
+- [x] **Fix translation scoring** — Only context_errors block. Fluency/grammar informational only.
+- [x] **Fix translation bugs** — Root cause: quality analyzer too strict, not actual failures. Prompt rewritten.
+- [x] **Default Page B setting** — Workspace setting + Settings UI dropdown.
 
 ## P1.5 — Do Next
 - [ ] **Test page testing live** — push a concept with 2 landing pages to Meta, verify 2 ad sets created with [A]/[B] suffixes (code verified, needs live push)

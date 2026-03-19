@@ -16,16 +16,23 @@ import {
   X,
   Trash2,
   Zap,
+  MoreHorizontal,
+  Info,
+  Type,
+  Loader2,
+  FileText,
+  Eye,
+  Globe,
+  FlaskConical,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { deriveImageGrade } from "@/lib/quality-grades";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
-import ConceptStepper, { StepDef } from "./ConceptStepper";
 import EditableTags from "@/components/pages/EditableTags";
 import ConceptImagesStep from "./ConceptImagesStep";
-import ConceptAdCopyStep from "./ConceptAdCopyStep";
+import ConceptAdCopyStep, { LandingPageModalTrigger } from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
 import CashDnaEditor from "./CashDnaEditor";
 import SmartIterateModal from "./SmartIterateModal";
@@ -40,41 +47,111 @@ interface Props {
   iteratePerf?: string;
 }
 
-function computeStepCompletion(j: ImageJob, ct: ConceptCopyTranslations): [boolean, boolean, boolean] {
-  // Step 1: Images — all translations complete
-  const allTrans = j.source_images?.flatMap((si) => si.image_translations ?? []) ?? [];
-  const totalTrans = allTrans.length;
-  const completedTrans = allTrans.filter((t) => t.status === "completed").length;
-  const step1 = totalTrans > 0 && completedTrans === totalTrans;
+// --- Status-driven helpers ---
 
-  // Step 2: Ad Copy — has primary text + landing page + all target languages translated
-  const hasPrimary = (j.ad_copy_primary ?? []).some((t: string) => t.trim());
-  const hasLanding = !!j.landing_page_id;
-  const allLangsTranslated = j.target_languages.length > 0 && j.target_languages.every(
-    (lang) => ct[lang]?.status === "completed"
-  );
-  const step2 = hasPrimary && hasLanding && allLangsTranslated;
+type ConceptStatus = "generating" | "processing" | "ready" | "needs_copy" | "on_launchpad" | "live" | "draft";
 
-  // Step 3: Preview & Push — pushed or marked ready
-  const hasPushed = (j.deployments ?? []).some((d) => d.status === "pushed");
-  const step3 = hasPushed || !!j.marked_ready_at;
-
-  return [step1, step2, step3];
+function computeConceptStatus(
+  job: ImageJob,
+  copyTranslations: ConceptCopyTranslations,
+  launchpadPriority: number | null,
+  perfData: { markets: Array<{ market: string }> } | null,
+  proc: { processing: boolean },
+  finishQueue: { started: boolean },
+  completedCount: number,
+  totalCount: number,
+): ConceptStatus {
+  if (perfData?.markets?.length) return "live";
+  if (launchpadPriority !== null) return "on_launchpad";
+  // Check if fully done BEFORE checking processing — processing flags may linger
+  const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
+  const allImgDone = totalCount > 0 && completedCount === totalCount;
+  const allCopyDone = job.target_languages.every((lang) => copyTranslations[lang]?.status === "completed");
+  if (hasPrimary && allImgDone && allCopyDone) return "ready";
+  if (job.status === "draft") return "generating";
+  if (job.status === "processing" || proc.processing || finishQueue.started) return "processing";
+  if (!hasPrimary) return "needs_copy";
+  return "draft";
 }
 
-function computeCurrentStep(j: ImageJob, ct: ConceptCopyTranslations): number {
-  const [step1, step2] = computeStepCompletion(j, ct);
-  if (!step1) return 0;
-  if (!step2) return 1;
-  return 2;
+function StatusBadge({ status }: { status: ConceptStatus }) {
+  const config: Record<ConceptStatus, { label: string; cls: string }> = {
+    generating: { label: "Generating", cls: "bg-amber-50 text-amber-700" },
+    draft: { label: "Draft", cls: "bg-gray-100 text-gray-600" },
+    processing: { label: "Processing", cls: "bg-indigo-50 text-indigo-700" },
+    needs_copy: { label: "Needs Copy", cls: "bg-amber-50 text-amber-700" },
+    ready: { label: "Ready", cls: "bg-blue-50 text-blue-700" },
+    on_launchpad: { label: "Launch Pad", cls: "bg-emerald-50 text-emerald-700" },
+    live: { label: "Live", cls: "bg-green-50 text-green-700" },
+  };
+  const c = config[status];
+  return <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${c.cls}`}>{c.label}</span>;
+}
+
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  badge,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: React.ReactNode;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Icon className="w-4 h-4 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-800">{title}</span>
+          {badge}
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="border-t border-gray-100 px-5 py-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket, iteratePerf }: Props) {
   const router = useRouter();
   const [job, setJob] = useState<ImageJob>(initialJob);
   const [confirmDeleteConcept, setConfirmDeleteConcept] = useState(false);
-  const [step, setStep] = useState<number>(() => computeCurrentStep(initialJob, initialJob.ad_copy_translations ?? {}));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    const sections = new Set<string>(["images"]);
+    const hasPrimary = (initialJob.ad_copy_primary ?? []).some((t: string) => t.trim());
+    const initCt = initialJob.ad_copy_translations ?? {};
+    const allCopyDone = initialJob.target_languages.every((lang) => (initCt as ConceptCopyTranslations)[lang]?.status === "completed");
+    if (!hasPrimary || !allCopyDone) sections.add("adcopy");
+    const hasPushed = (initialJob.deployments ?? []).some((d: { status: string }) => d.status === "pushed");
+    if (hasPushed) sections.add("preview");
+    return sections;
+  });
+  const toggleSection = (id: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const adCopySectionRef = useRef<HTMLDivElement>(null);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
+  const [selectedRatio, setSelectedRatio] = useState<string>("4:5");
+  const [showPageTest, setShowPageTest] = useState(!!initialJob.landing_page_id_b);
   // Processing states
   const [proc, setProc] = useState<{
     processing: boolean;
@@ -374,15 +451,36 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     fetchDeployments();
   }, [fetchDeployments]);
 
-  // Fetch preview data when preview step is opened (lazy load)
+  // Fetch preview data when preview section is first expanded (lazy load)
+  const previewDataFetched = useRef(false);
   useEffect(() => {
-    if (step !== 2) return;
-    // Always refetch when switching to preview step to get fresh data
+    if (!expandedSections.has("preview") || previewDataFetched.current) return;
+    previewDataFetched.current = true;
     fetch(`/api/image-jobs/${initialJob.id}/preview-data`)
       .then((res) => res.json())
       .then((data) => setPreviewData(data))
       .catch(() => {});
-  }, [step, initialJob.id, metaPush.landingPageId]);
+  }, [expandedSections, initialJob.id]);
+  // Refetch when landing page changes (if preview data already loaded)
+  useEffect(() => {
+    if (!previewDataFetched.current) return;
+    fetch(`/api/image-jobs/${initialJob.id}/preview-data`)
+      .then((res) => res.json())
+      .then((data) => setPreviewData(data))
+      .catch(() => {});
+  }, [metaPush.landingPageId, initialJob.id]);
+
+  // Click-outside handler for overflow menu
+  useEffect(() => {
+    if (!showOverflowMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
+        setShowOverflowMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showOverflowMenu]);
 
   // Auto-save ad copy on change (debounced)
   const saveCopy = useCallback(async (primaries: string[], hdlines: string[]) => {
@@ -1237,115 +1335,73 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     langCounts.set(t.language, curr);
   }
 
+  // Concept status for status-driven layout
+  const conceptStatus = computeConceptStatus(job, copyTranslations, launchpad.priority, perfData, proc, finishQueue, completedCount, totalCount);
+
+  // Ad copy completion for badge
+  const adCopyLangsDone = job.target_languages.filter((lang) => copyTranslations[lang]?.status === "completed").length;
+  const adCopyHasPrimary = (metaPush.primaryTexts ?? []).some((t) => t.trim());
+
+  // Scroll to and expand ad copy section
+  function scrollToAdCopy() {
+    setExpandedSections((prev) => { const next = new Set(prev); next.add("adcopy"); return next; });
+    setTimeout(() => adCopySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  }
+
   return (
     <div className="p-8 max-w-5xl">
       {/* Back */}
       <Link
         href="/images"
-        className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-900 text-sm mb-4 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Concepts
       </Link>
 
-      {/* Stall detection banner */}
-      {showRestartBanner && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            <span className="text-sm text-amber-700">Processing appears stalled.</span>
-          </div>
-          <button
-            onClick={handleRestart}
-            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Restart Now
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
+      {/* ===== Slim Header ===== */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            {job.total_images ?? job.source_images?.length ?? 0} images &times;{" "}
-            {job.target_languages.length} languages
-            {job.target_ratios && job.target_ratios.length > 1 && (
-              <> &times; {job.target_ratios.length} ratios</>
-            )}
-          </p>
-          <div className="mt-2">
-            <EditableTags entityId={job.id} entityType="image-job" initialTags={job.tags ?? []} />
-          </div>
-          {/* V3.4: Lineage — parent link */}
-          {parentJob && (
-            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
-              <GitBranch className="w-3 h-3" />
-              <span>Iteration of</span>
-              <Link href={`/images/${parentJob.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
-                {parentJob.name}
-              </Link>
-              {job.iteration_type && (
-                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium">
-                  {job.iteration_type.replace("_", " ")}
-                </span>
-              )}
-            </div>
-          )}
-          {/* V3.4: Lineage — child iterations */}
-          {childJobs.length > 0 && (
-            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
-              <GitBranch className="w-3 h-3" />
-              <span>Iterations:</span>
-              {childJobs.map((child, i) => (
-                <span key={child.id}>
-                  <Link href={`/images/${child.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                    {child.name}
-                  </Link>
-                  <span className="px-1 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium ml-0.5">
-                    {child.iteration_type.replace("_", " ")}
-                  </span>
-                  {i < childJobs.length - 1 && <span className="mx-1">&middot;</span>}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* Linked page(s) */}
-          {job.landing_page_id && (() => {
-            const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
-            const linkedPageB = landingPages.find((p) => p.id === job.landing_page_id_b);
-            if (!linkedPage) return null;
-            return (
-              <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
-                <ExternalLink className="w-3 h-3" />
-                <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                  {linkedPage.name}
-                </Link>
-                {linkedPageB && (
-                  <>
-                    <span className="text-gray-300">vs</span>
-                    <Link href={`/pages/${linkedPageB.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                      {linkedPageB.name}
-                    </Link>
-                  </>
-                )}
-              </div>
-            );
-          })()}
+          <StatusBadge status={conceptStatus} />
         </div>
-        <div className="flex items-center gap-1">
-          {/* Finish & Queue — one-click pipeline button */}
-          {(() => {
+        <div className="flex items-center gap-2">
+          {/* Status-driven primary CTA */}
+          {conceptStatus === "generating" && (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Generating...
+            </span>
+          )}
+          {conceptStatus === "processing" && (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">
+              <Zap className="w-3.5 h-3.5 animate-pulse" />
+              Processing {completedCount}/{totalCount}
+            </span>
+          )}
+          {conceptStatus === "needs_copy" && (
+            <button
+              onClick={scrollToAdCopy}
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Type className="w-3.5 h-3.5" />
+              Write Ad Copy
+            </button>
+          )}
+          {conceptStatus === "ready" && (
+            <button
+              onClick={handleAddToLaunchpad}
+              disabled={launchpad.loading}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Rocket className="w-3.5 h-3.5" />
+              {launchpad.loading ? "Adding..." : "Add to Launch Pad"}
+            </button>
+          )}
+          {conceptStatus === "draft" && (() => {
             const hasSources = (job.source_images?.length ?? 0) > 0;
             const hasPrimary = (metaPush.primaryTexts ?? []).some((t) => t.trim());
-            const isProcessing = job.status === "processing" || finishQueue.started;
-            const allDone = totalCount > 0 && completedCount === totalCount;
-            const copyDone = job.target_languages.every((lang) => copyTranslations[lang]?.status === "completed");
-            const fullyFinished = allDone && copyDone;
-            const showButton = hasSources && hasPrimary && !fullyFinished && !isProcessing;
-            if (showButton) return (
+            if (hasSources && hasPrimary) return (
               <button
                 onClick={handleFinishAndQueue}
                 disabled={finishQueue.loading}
@@ -1356,22 +1412,11 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
                 {finishQueue.loading ? "Starting..." : "Finish & Queue"}
               </button>
             );
-            if (isProcessing && !fullyFinished) return (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">
-                <Zap className="w-3.5 h-3.5 animate-pulse" />
-                Pipeline running...
-              </span>
-            );
             return null;
           })()}
-          {/* Finish & Queue error */}
-          {finishQueue.error && (
-            <span className="text-xs text-red-600 max-w-48 truncate" title={finishQueue.error}>{finishQueue.error}</span>
-          )}
-          {/* Launch Pad button */}
-          {launchpad.priority !== null ? (
+          {conceptStatus === "on_launchpad" && (
             <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg">
                 <Rocket className="w-3.5 h-3.5" />
                 On Launch Pad
               </span>
@@ -1384,75 +1429,328 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-          ) : (
-            <button
-              onClick={handleAddToLaunchpad}
-              disabled={launchpad.loading}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-              title="Add to Launch Pad"
-            >
-              <Rocket className="w-3.5 h-3.5" />
-              {launchpad.loading ? "Adding..." : "Add to Launch Pad"}
-            </button>
           )}
-          {/* V3.4: Iterate button — show when concept has source images */}
-          {sourceImages.length > 0 && (
-            <button
-              onClick={() => setShowIterateDialog(true)}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
-              title="Create iteration of this concept"
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-              Iterate
-            </button>
+          {conceptStatus === "live" && perfData?.totals && (
+            <span className="flex items-center gap-2 text-xs text-gray-600">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+              {Math.round(perfData.totals.spend)} kr &middot;{" "}
+              <span className={perfData.totals.roas >= 1 ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                {perfData.totals.roas}x
+              </span>
+              {" "}&middot; {perfData.totals.sales} sales
+            </span>
           )}
-          <button
-            onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); }}
-            disabled={proc.refreshing}
-            className="text-gray-400 hover:text-gray-700 p-2 transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${proc.refreshing ? "animate-spin" : ""}`} />
-          </button>
-          <button
-            onClick={() => setConfirmDeleteConcept(true)}
-            className="text-gray-400 hover:text-red-500 p-2 transition-colors"
-            title="Delete concept"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {/* Overflow menu */}
+          <div ref={overflowMenuRef} className="relative">
+            <button
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="More actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            {showOverflowMenu && (
+              <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+                {launchpad.priority === null ? (
+                  <button onClick={() => { handleAddToLaunchpad(); setShowOverflowMenu(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                    <Rocket className="w-3.5 h-3.5" /> Add to Launch Pad
+                  </button>
+                ) : (
+                  <button onClick={() => { handleRemoveFromLaunchpad(); setShowOverflowMenu(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors">
+                    <Rocket className="w-3.5 h-3.5" /> Remove from Launch Pad
+                  </button>
+                )}
+                {sourceImages.length > 0 && (
+                  <button onClick={() => { setShowIterateDialog(true); setShowOverflowMenu(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                    <GitBranch className="w-3.5 h-3.5" /> Iterate
+                  </button>
+                )}
+                <button onClick={async () => { setProc(prev => ({ ...prev, refreshing: true })); await refreshJob(); setProc(prev => ({ ...prev, refreshing: false })); setShowOverflowMenu(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                  <RefreshCw className={`w-3.5 h-3.5 ${proc.refreshing ? "animate-spin" : ""}`} /> Refresh
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button onClick={() => { setConfirmDeleteConcept(true); setShowOverflowMenu(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete concept
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Launch Pad error */}
+      {/* ===== Processing Banner (conditional) ===== */}
+      {showRestartBanner && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <span className="text-sm text-amber-700">Processing appears stalled.</span>
+          </div>
+          <button onClick={handleRestart}
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors">
+            <RotateCcw className="w-3.5 h-3.5" /> Restart Now
+          </button>
+        </div>
+      )}
+      {(proc.processing || finishQueue.started) && !showRestartBanner && conceptStatus === "processing" && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+              <span className="text-sm font-medium text-indigo-700">
+                Processing {completedCount}/{totalCount} images
+              </span>
+            </div>
+            {proc.processing && (
+              <button onClick={handleCancel} className="text-xs text-red-600 hover:text-red-700 font-medium">
+                Stop
+              </button>
+            )}
+          </div>
+          <div className="w-full h-1.5 bg-indigo-100 rounded-full overflow-hidden mb-2">
+            <div className="bg-indigo-500 h-full transition-all duration-500 rounded-full"
+              style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }} />
+          </div>
+          <div className="flex gap-2">
+            {(job.target_languages as Language[]).map((lang) => {
+              const langInfo = LANGUAGES.find((l) => l.value === lang);
+              const counts = langCounts.get(lang);
+              const done = counts ? counts.completed === counts.total : false;
+              return (
+                <span key={lang} className={`text-xs px-2 py-0.5 rounded-full ${done ? "bg-emerald-100 text-emerald-700" : "bg-white text-gray-500"}`}>
+                  {langInfo?.flag} {counts?.completed ?? 0}/{counts?.total ?? 0}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Error banners */}
       {launchpad.error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-red-500" />
             <span className="text-sm text-red-700">{launchpad.error}</span>
           </div>
-          <button
-            onClick={() => setLaunchpad(prev => ({ ...prev, error: null }))}
-            className="text-red-400 hover:text-red-600 transition-colors"
-          >
+          <button onClick={() => setLaunchpad(prev => ({ ...prev, error: null }))} className="text-red-400 hover:text-red-600 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
+      {finishQueue.error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-500" />
+          <span className="text-sm text-red-700">{finishQueue.error}</span>
+        </div>
+      )}
 
-      {/* Performance data (from live Meta ads) */}
+      {/* ===== Images (hero section, always visible) ===== */}
+      <ConceptImagesStep
+        job={job}
+        sourceImages={sourceImages}
+        totalCount={totalCount}
+        completedCount={completedCount}
+        failedCount={failedCount}
+        pendingCount={pendingCount}
+        langCounts={langCounts}
+        filteredImages={filteredImages}
+        proc={proc}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        selectedLanguages={selectedLanguages}
+        setSelectedLanguages={setSelectedLanguages}
+        showTranslateConfirm={showTranslateConfirm}
+        setShowTranslateConfirm={setShowTranslateConfirm}
+        handleTranslateAll={handleTranslateAll}
+        showAddLang={showAddLang}
+        setShowAddLang={setShowAddLang}
+        addLangSelected={addLangSelected}
+        setAddLangSelected={setAddLangSelected}
+        addLangLoading={addLangLoading}
+        handleAddLanguages={handleAddLanguages}
+        setPreviewImage={setPreviewImage}
+        setPreviewLang={setPreviewLang}
+        handleCancel={handleCancel}
+        handleRetryAll={handleRetryAll}
+        handleRetrySingle={handleRetrySingle}
+        generateState={{
+          ...genState,
+          setCount: (n: number) => setGenState(prev => ({ ...prev, count: n })),
+          setSelectedStyles: (styles: string[]) => setGenState(prev => ({ ...prev, selectedStyles: styles })),
+          setSegmentId: (id: string | null) => setGenState(prev => ({ ...prev, segmentId: id })),
+          segments: productSegments,
+        }}
+        handleGenerateStatic={handleGenerateStatic}
+        handleCancelGenerate={handleCancelGenerate}
+        onReroll={handleReroll}
+        rerollingId={rerollingId}
+        onToggleSkip={handleToggleSkip}
+        handleGenerate9x16={handleGenerate9x16}
+        show9x16Button={show9x16Button}
+        count9x16={translationsPrimary.length}
+        onDeleteImage={handleDeleteImage}
+        isCompetitorSwipe={isCompetitorSwipe}
+        competitorImageUrls={competitorImageUrls}
+        variationState={{
+          ...varState,
+          setCount: (n: number) => setVarState(prev => ({ ...prev, count: n })),
+        }}
+        handleGenerateVariations={handleGenerateVariations}
+        selectedRatio={selectedRatio}
+        setSelectedRatio={setSelectedRatio}
+      />
+
+      {/* ===== Landing Page (compact row) ===== */}
+      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Globe className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-medium text-gray-700">Landing Page</span>
+        </div>
+        {landingPages.length > 0 ? (
+          <>
+            {(() => {
+              const isNative = (job.cash_dna as { awareness_level?: string } | null)?.awareness_level === "Unaware" ||
+                (job.tags ?? []).some((t: string) => t === "unaware" || t === "native");
+              const hasAdvertorials = landingPages.some((p) => p.page_type === "advertorial");
+              return isNative ? (
+                <p className="text-xs text-amber-600 mb-1.5">
+                  {hasAdvertorials
+                    ? "Advertorial pages are recommended for native/unaware ads."
+                    : "Tip: Native ads convert best with advertorial landing pages."}
+                </p>
+              ) : null;
+            })()}
+            <LandingPageModalTrigger
+              landingPages={landingPages}
+              selectedValue={metaPush.landingPageId}
+              onSelect={(value) => handleWebsiteUrlChange(value)}
+              conceptTags={job.tags ?? undefined}
+              conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
+            />
+            {metaPush.landingPageId && !showPageTest && (
+              <button
+                onClick={() => setShowPageTest(true)}
+                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors mt-2"
+              >
+                <FlaskConical className="w-3.5 h-3.5" />
+                Test against another page
+              </button>
+            )}
+            {showPageTest && metaPush.landingPageId && (
+              <div className="mt-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-indigo-700">
+                    <FlaskConical className="w-3.5 h-3.5" />
+                    A/B Test — Page B
+                  </label>
+                  <button
+                    onClick={() => { setShowPageTest(false); if (metaPush.landingPageIdB) handleWebsiteUrlBChange(""); }}
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <LandingPageModalTrigger
+                  landingPages={landingPages.filter((p) => p.id !== metaPush.landingPageId)}
+                  selectedValue={metaPush.landingPageIdB}
+                  onSelect={(value) => handleWebsiteUrlBChange(value)}
+                  conceptTags={job.tags ?? undefined}
+                  conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
+                  label="Select page B..."
+                />
+                {metaPush.landingPageIdB && (() => {
+                  const pageA = landingPages.find((p) => p.id === metaPush.landingPageId);
+                  const pageB = landingPages.find((p) => p.id === metaPush.landingPageIdB);
+                  return pageA && pageB ? (
+                    <p className="text-xs text-gray-500">
+                      Two ad sets per market: &ldquo;{pageA.name}&rdquo; vs &ldquo;{pageB.name}&rdquo;
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-400">No published pages found</p>
+        )}
+      </div>
+
+      {/* ===== Ad Copy (collapsible) ===== */}
+      <div className="mt-4" ref={adCopySectionRef}>
+        <CollapsibleSection
+          title="Ad Copy"
+          icon={FileText}
+          badge={
+            adCopyHasPrimary ? (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${adCopyLangsDone === job.target_languages.length ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                {adCopyLangsDone}/{job.target_languages.length} languages
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">Not started</span>
+            )
+          }
+          expanded={expandedSections.has("adcopy")}
+          onToggle={() => toggleSection("adcopy")}
+        >
+          <ConceptAdCopyStep
+            job={job}
+            metaPush={metaPush}
+            copyTranslations={copyTranslations}
+            copyState={copyState}
+            handlePrimaryChange={handlePrimaryChange}
+            handleHeadlineChange={handleHeadlineChange}
+            handleTranslatedCopyChange={handleTranslatedCopyChange}
+            addPrimaryText={addPrimaryText}
+            removePrimaryText={removePrimaryText}
+            addHeadline={addHeadline}
+            removeHeadline={removeHeadline}
+            handleTranslateCopy={handleTranslateCopy}
+          />
+        </CollapsibleSection>
+      </div>
+
+      {/* ===== Preview & Push (collapsible) ===== */}
+      <div className="mt-4">
+        <CollapsibleSection
+          title="Preview & Push"
+          icon={Eye}
+          badge={
+            deployments.length > 0 ? (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Pushed</span>
+            ) : null
+          }
+          expanded={expandedSections.has("preview")}
+          onToggle={() => toggleSection("preview")}
+        >
+          <ConceptPreviewStep
+            job={job}
+            copyTranslations={copyTranslations}
+            metaPush={metaPush}
+            deployments={deployments}
+            previewData={previewData}
+            onPushToMeta={handlePushToMeta}
+          />
+        </CollapsibleSection>
+      </div>
+
+      {/* ===== Performance (conditional, only when live) ===== */}
       {perfData && perfData.markets.length > 0 && (
-        <div className="mb-4 border border-gray-100 rounded-lg bg-white overflow-hidden">
+        <div className="mt-4 border border-gray-200 rounded-xl bg-white overflow-hidden">
           <button
             onClick={() => setPerfExpanded(!perfExpanded)}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <TrendingUp className="w-4 h-4 text-gray-400" />
-              <span className="text-sm font-medium text-gray-700">Live Performance</span>
+              <span className="text-sm font-semibold text-gray-800">Live Performance</span>
               {perfData.totals && (
                 <span className="text-xs text-gray-400">
-                  7d: {Math.round(perfData.totals.spend)} kr spend &middot;{" "}
+                  7d: {Math.round(perfData.totals.spend)} kr &middot;{" "}
                   <span className={perfData.totals.roas >= 1 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
                     {perfData.totals.roas}x ROAS
                   </span>
@@ -1463,7 +1761,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${perfExpanded ? "rotate-180" : ""}`} />
           </button>
           {perfExpanded && (
-            <div className="border-t border-gray-100 px-4 py-3">
+            <div className="border-t border-gray-100 px-5 py-3.5">
               <div className="grid gap-3">
                 {perfData.markets.map((m) => {
                   const flag = m.market === "SE" ? "\u{1F1F8}\u{1F1EA}" : m.market === "NO" ? "\u{1F1F3}\u{1F1F4}" : m.market === "DK" ? "\u{1F1E9}\u{1F1F0}" : "";
@@ -1493,113 +1791,94 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         </div>
       )}
 
-      {/* CASH DNA */}
-      <div className="mb-4">
-        <CashDnaEditor
-          jobId={job.id}
-          initialDna={job.cash_dna ?? null}
-          hasAdCopy={(job.ad_copy_primary ?? []).some((t: string) => t.trim())}
-        />
+      {/* ===== Details (collapsed by default) ===== */}
+      <div className="mt-4">
+        <CollapsibleSection
+          title="Details"
+          icon={Info}
+          expanded={expandedSections.has("details")}
+          onToggle={() => toggleSection("details")}
+        >
+          {/* Tags */}
+          <div className="mb-5">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 block">Tags</label>
+            <EditableTags entityId={job.id} entityType="image-job" initialTags={job.tags ?? []} />
+          </div>
+          {/* CASH DNA */}
+          <div className="mb-5">
+            <CashDnaEditor
+              jobId={job.id}
+              initialDna={job.cash_dna ?? null}
+              hasAdCopy={(job.ad_copy_primary ?? []).some((t: string) => t.trim())}
+            />
+          </div>
+          {/* Lineage */}
+          {parentJob && (
+            <div className="mb-3 flex items-center gap-1.5 text-xs text-gray-400">
+              <GitBranch className="w-3 h-3" />
+              <span>Iteration of</span>
+              <Link href={`/images/${parentJob.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
+                {parentJob.name}
+              </Link>
+              {job.iteration_type && (
+                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium">
+                  {job.iteration_type.replace("_", " ")}
+                </span>
+              )}
+            </div>
+          )}
+          {childJobs.length > 0 && (
+            <div className="mb-3 flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
+              <GitBranch className="w-3 h-3" />
+              <span>Iterations:</span>
+              {childJobs.map((child, i) => (
+                <span key={child.id}>
+                  <Link href={`/images/${child.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                    {child.name}
+                  </Link>
+                  <span className="px-1 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-medium ml-0.5">
+                    {child.iteration_type.replace("_", " ")}
+                  </span>
+                  {i < childJobs.length - 1 && <span className="mx-1">&middot;</span>}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Linked pages */}
+          {job.landing_page_id && (() => {
+            const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
+            const linkedPageB = landingPages.find((p) => p.id === job.landing_page_id_b);
+            if (!linkedPage) return null;
+            return (
+              <div className="mb-3 flex items-center gap-1.5 text-xs text-gray-400">
+                <ExternalLink className="w-3 h-3" />
+                <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                  {linkedPage.name}
+                </Link>
+                {linkedPageB && (
+                  <>
+                    <span className="text-gray-300">vs</span>
+                    <Link href={`/pages/${linkedPageB.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
+                      {linkedPageB.name}
+                    </Link>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+          {/* Metadata */}
+          <div className="text-xs text-gray-400 mt-4 pt-3 border-t border-gray-100">
+            {job.total_images ?? job.source_images?.length ?? 0} images &times;{" "}
+            {job.target_languages.length} languages
+            {job.target_ratios && job.target_ratios.length > 1 && (
+              <> &times; {job.target_ratios.length} ratios</>
+            )}
+            {job.source && <> &middot; Source: {job.source}</>}
+          </div>
+        </CollapsibleSection>
       </div>
 
-      {/* Wizard stepper */}
-      {(() => {
-        const [s1, s2, s3] = computeStepCompletion(job, copyTranslations);
-        const steps: StepDef[] = [
-          { label: "Images", complete: s1 },
-          { label: "Ad Copy", complete: s2 },
-          { label: "Preview & Push", complete: s3 },
-        ];
-        return (
-          <div className="mb-6">
-            <ConceptStepper steps={steps} currentStep={step} onStepClick={setStep} />
-          </div>
-        );
-      })()}
-
-      {step === 0 ? (
-        <ConceptImagesStep
-          job={job}
-          sourceImages={sourceImages}
-          totalCount={totalCount}
-          completedCount={completedCount}
-          failedCount={failedCount}
-          pendingCount={pendingCount}
-          langCounts={langCounts}
-          filteredImages={filteredImages}
-          proc={proc}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          selectedLanguages={selectedLanguages}
-          setSelectedLanguages={setSelectedLanguages}
-          showTranslateConfirm={showTranslateConfirm}
-          setShowTranslateConfirm={setShowTranslateConfirm}
-          handleTranslateAll={handleTranslateAll}
-          showAddLang={showAddLang}
-          setShowAddLang={setShowAddLang}
-          addLangSelected={addLangSelected}
-          setAddLangSelected={setAddLangSelected}
-          addLangLoading={addLangLoading}
-          handleAddLanguages={handleAddLanguages}
-          setPreviewImage={setPreviewImage}
-          setPreviewLang={setPreviewLang}
-          handleCancel={handleCancel}
-          handleRetryAll={handleRetryAll}
-          handleRetrySingle={handleRetrySingle}
-          generateState={{
-            ...genState,
-            setCount: (n: number) => setGenState(prev => ({ ...prev, count: n })),
-            setSelectedStyles: (styles: string[]) => setGenState(prev => ({ ...prev, selectedStyles: styles })),
-            setSegmentId: (id: string | null) => setGenState(prev => ({ ...prev, segmentId: id })),
-            segments: productSegments,
-          }}
-          handleGenerateStatic={handleGenerateStatic}
-          handleCancelGenerate={handleCancelGenerate}
-          onReroll={handleReroll}
-          rerollingId={rerollingId}
-          onToggleSkip={handleToggleSkip}
-          handleGenerate9x16={handleGenerate9x16}
-          show9x16Button={show9x16Button}
-          count9x16={translationsPrimary.length}
-          onDeleteImage={handleDeleteImage}
-          isCompetitorSwipe={isCompetitorSwipe}
-          competitorImageUrls={competitorImageUrls}
-          variationState={{
-            ...varState,
-            setCount: (n: number) => setVarState(prev => ({ ...prev, count: n })),
-          }}
-          handleGenerateVariations={handleGenerateVariations}
-        />
-      ) : step === 1 ? (
-        <ConceptAdCopyStep
-          job={job}
-          metaPush={metaPush}
-          copyTranslations={copyTranslations}
-          copyState={copyState}
-          landingPages={landingPages}
-          handlePrimaryChange={handlePrimaryChange}
-          handleHeadlineChange={handleHeadlineChange}
-          handleTranslatedCopyChange={handleTranslatedCopyChange}
-          addPrimaryText={addPrimaryText}
-          removePrimaryText={removePrimaryText}
-          addHeadline={addHeadline}
-          removeHeadline={removeHeadline}
-          handleTranslateCopy={handleTranslateCopy}
-          handleWebsiteUrlChange={handleWebsiteUrlChange}
-          handleWebsiteUrlBChange={handleWebsiteUrlBChange}
-        />
-      ) : (
-        <ConceptPreviewStep
-          job={job}
-          copyTranslations={copyTranslations}
-          metaPush={metaPush}
-          deployments={deployments}
-          previewData={previewData}
-          onPushToMeta={handlePushToMeta}
-        />
-      )}
-
-      {/* V3.4: Smart iterate modal — AI suggests iterations + auto-generates */}
+      {/* ===== Modals ===== */}
       {showIterateDialog && (
         <SmartIterateModal
           job={job}
@@ -1608,8 +1887,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           onClose={() => setShowIterateDialog(false)}
         />
       )}
-
-      {/* Preview modal (always rendered regardless of tab) */}
       {previewImage && (() => {
         const allImages = job.source_images ?? [];
         const currentIdx = allImages.findIndex((si) => si.id === previewImage.id);
@@ -1629,8 +1906,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           />
         );
       })()}
-
-      {/* Confirm delete concept dialog */}
       <ConfirmDialog
         open={confirmDeleteConcept}
         title="Delete concept"

@@ -10,6 +10,7 @@ import {
   createAd,
   setMetaConfig,
 } from "@/lib/meta";
+import { FEED_STORIES_RULES } from "@/lib/meta-push";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
@@ -170,10 +171,13 @@ export async function POST(
 
         const creative = await createAdCreative({
           name: ad.name,
-          images: [{ hash: imageHash }],
+          images: imageHash9x16
+            ? [{ hash: imageHash, label: "feed" }, { hash: imageHash9x16, label: "stories" }]
+            : [{ hash: imageHash }],
           bodies: [ad.ad_copy],
           titles: ad.headline ? [ad.headline] : undefined,
           linkUrl: ad.landing_page_url,
+          assetCustomizationRules: imageHash9x16 ? FEED_STORIES_RULES : undefined,
         });
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);
 

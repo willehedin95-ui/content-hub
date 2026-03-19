@@ -11,7 +11,6 @@ import {
   Type,
   Wrench,
   BookmarkCheck,
-  FlaskConical,
 } from "lucide-react";
 import { ImageJob, Language, LANGUAGES, ConceptCopyTranslation, ConceptCopyTranslations } from "@/types";
 import type { CopyBankEntry, ProductSegment } from "@/types";
@@ -37,7 +36,7 @@ function QualityBadge({ analysis }: { analysis: { fluency_issues?: string[]; gra
 /*  Landing page modal trigger                                         */
 /* ------------------------------------------------------------------ */
 
-function LandingPageModalTrigger({
+export function LandingPageModalTrigger({
   landingPages,
   selectedValue,
   onSelect,
@@ -106,8 +105,6 @@ export interface ConceptAdCopyStepProps {
     translating: boolean;
     translatingLang: Language | null;
   };
-  // Landing pages
-  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>;
   // Handlers
   handlePrimaryChange: (index: number, value: string) => void;
   handleHeadlineChange: (index: number, value: string) => void;
@@ -117,8 +114,6 @@ export interface ConceptAdCopyStepProps {
   addHeadline: () => void;
   removeHeadline: (index: number) => void;
   handleTranslateCopy: (lang?: Language, corrections?: string) => void;
-  handleWebsiteUrlChange: (value: string) => void;
-  handleWebsiteUrlBChange: (value: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -130,7 +125,6 @@ export default function ConceptAdCopyStep({
   metaPush,
   copyTranslations,
   copyState,
-  landingPages,
   handlePrimaryChange,
   handleHeadlineChange,
   handleTranslatedCopyChange,
@@ -139,12 +133,9 @@ export default function ConceptAdCopyStep({
   addHeadline,
   removeHeadline,
   handleTranslateCopy,
-  handleWebsiteUrlChange,
-  handleWebsiteUrlBChange,
 }: ConceptAdCopyStepProps) {
   const [copyBankLang, setCopyBankLang] = useState<string | null>(null);
   const [segments, setSegments] = useState<ProductSegment[]>([]);
-  const [showPageTest, setShowPageTest] = useState(!!metaPush.landingPageIdB);
 
   useEffect(() => {
     if (!job.product) return;
@@ -157,9 +148,6 @@ export default function ConceptAdCopyStep({
     }
     loadSegments();
   }, [job.product]);
-
-  const selectedPageA = landingPages.find((p) => p.id === metaPush.landingPageId);
-  const selectedPageB = landingPages.find((p) => p.id === metaPush.landingPageIdB);
 
   return (
     <div className="space-y-6">
@@ -245,88 +233,6 @@ export default function ConceptAdCopyStep({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Landing Page */}
-      <div>
-        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
-          <Globe className="w-4 h-4" />
-          Landing Page
-        </label>
-        {landingPages.length > 0 ? (
-          <>
-            {(() => {
-              const isNative = (job.cash_dna as { awareness_level?: string } | null)?.awareness_level === "Unaware" ||
-                (job.tags ?? []).some((t) => t === "unaware" || t === "native");
-              const hasAdvertorials = landingPages.some((p) => p.page_type === "advertorial");
-              return isNative ? (
-                <p className="text-xs text-amber-600 mb-1.5">
-                  {hasAdvertorials
-                    ? "Advertorial pages are recommended for native/unaware ads — they convert 3-4x better than direct product pages."
-                    : "Tip: Native ads convert best with advertorial landing pages. Consider creating one for this product."}
-                </p>
-              ) : null;
-            })()}
-            <LandingPageModalTrigger
-              landingPages={landingPages}
-              selectedValue={metaPush.landingPageId}
-              onSelect={(value) => handleWebsiteUrlChange(value)}
-              conceptTags={job.tags ?? undefined}
-              conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
-            />
-
-            {/* A/B Test: Test against another page */}
-            {metaPush.landingPageId && !showPageTest && (
-              <button
-                onClick={() => setShowPageTest(true)}
-                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors mt-2"
-              >
-                <FlaskConical className="w-3.5 h-3.5" />
-                Test against another page
-              </button>
-            )}
-
-            {showPageTest && metaPush.landingPageId && (
-              <div className="mt-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-indigo-700">
-                    <FlaskConical className="w-3.5 h-3.5" />
-                    A/B Test — Page B
-                  </label>
-                  <button
-                    onClick={() => {
-                      setShowPageTest(false);
-                      if (metaPush.landingPageIdB) {
-                        handleWebsiteUrlBChange("");
-                      }
-                    }}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <LandingPageModalTrigger
-                  landingPages={landingPages.filter((p) => p.id !== metaPush.landingPageId)}
-                  selectedValue={metaPush.landingPageIdB}
-                  onSelect={(value) => handleWebsiteUrlBChange(value)}
-                  conceptTags={job.tags ?? undefined}
-                  conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
-                  label="Select page B..."
-                />
-                {metaPush.landingPageIdB && selectedPageA && selectedPageB && (
-                  <p className="text-xs text-gray-500">
-                    Two ad sets will be created per market: one for &ldquo;{selectedPageA.name}&rdquo; and one for &ldquo;{selectedPageB.name}&rdquo;.
-                    Meta will distribute traffic and you can compare performance in the A/B Tests tab.
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-gray-400">
-            No published pages found
-          </p>
-        )}
       </div>
 
       {/* Translate Copy section */}

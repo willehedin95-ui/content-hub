@@ -246,6 +246,9 @@ export interface ConceptImagesStepProps {
     error: string | null;
   };
   handleGenerateVariations?: () => void;
+  // Ratio toggle
+  selectedRatio?: string;
+  setSelectedRatio?: (ratio: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -294,6 +297,8 @@ export default function ConceptImagesStep({
   competitorImageUrls,
   variationState,
   handleGenerateVariations,
+  selectedRatio = "4:5",
+  setSelectedRatio,
 }: ConceptImagesStepProps) {
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
   // Show generate section when job has visual_direction and isn't processing
@@ -973,7 +978,7 @@ export default function ConceptImagesStep({
         </div>
       )}
 
-      {/* Language tabs */}
+      {/* Language tabs + ratio toggle */}
       <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
         <TabButton
           active={activeTab === "all"}
@@ -1067,6 +1072,25 @@ export default function ConceptImagesStep({
             )}
           </div>
         )}
+
+        {/* Ratio toggle — show when 9:16 translations exist */}
+        {setSelectedRatio && (job.target_ratios ?? []).includes("9:16") && (
+          <div className="ml-auto flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+            {(job.target_ratios ?? ["4:5"]).map((ratio) => (
+              <button
+                key={ratio}
+                onClick={() => setSelectedRatio(ratio)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  selectedRatio === ratio
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {ratio}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Image grid — grouped by batch */}
@@ -1119,13 +1143,13 @@ export default function ConceptImagesStep({
               </button>
             )}
             {/* Thumbnail — show translated version when a specific language tab is active */}
-            <div className="aspect-[4/5] bg-gray-50 flex items-center justify-center overflow-hidden">
+            <div className={`${selectedRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"} bg-gray-50 flex items-center justify-center overflow-hidden`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={
                   activeTab !== "all"
                     ? (si.image_translations?.find(
-                        (t) => t.language === activeTab && t.aspect_ratio === "4:5" && t.status === "completed" && t.translated_url
+                        (t) => t.language === activeTab && t.aspect_ratio === selectedRatio && t.status === "completed" && t.translated_url
                       )?.translated_url ?? si.original_url)
                     : si.original_url
                 }
@@ -1141,16 +1165,13 @@ export default function ConceptImagesStep({
                   <EyeOff className="w-3 h-3 text-gray-400" />
                   <span className="text-xs text-gray-400">Original only</span>
                 </div>
-              ) : (si.image_translations ?? []).map((t) => {
+              ) : (si.image_translations ?? []).filter((t) => t.aspect_ratio === selectedRatio).map((t) => {
                 const langInfo = LANGUAGES.find((l) => l.value === t.language);
                 const versionCount = t.versions?.length ?? 0;
                 return (
                   <div key={t.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs" role="img" aria-label={langInfo?.label ?? t.language}>{langInfo?.flag}</span>
-                      {t.aspect_ratio && t.aspect_ratio !== "4:5" && (
-                        <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{t.aspect_ratio}</span>
-                      )}
                       <TranslationStatusBadge status={t.status} />
                       {versionCount > 1 && (
                         <span className="text-xs text-gray-400">v{versionCount}</span>

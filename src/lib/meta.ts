@@ -221,22 +221,50 @@ export async function listPages(): Promise<
 }
 
 /**
- * Create a DCO ad creative with multiple images and copy variants.
- * All images and text go into a single asset_feed_spec — Meta tests all combinations.
- * No asset_customization_rules — they cause cascading issues with Instagram accounts,
- * title limits, and placement validation. Meta handles placement optimization automatically.
+ * Create a DCO ad creative with images and copy variants.
+ *
+ * When `assetCustomizationRules` is provided, images can carry labels and
+ * rules route labeled images to specific placements (e.g. 4:5 → feed,
+ * 9:16 → stories/reels). Note: titles limited to 1 with rules (Meta
+ * rejects multiple unlabeled titles, subcode 1885878).
  */
 export async function createAdCreative(params: {
   name: string;
-  images: Array<{ hash: string }>;
+  images: Array<{ hash: string; label?: string }>;
   bodies: string[];
   titles?: string[];
   linkUrl: string;
   callToAction?: string;
   pageId?: string;
+  assetCustomizationRules?: Array<{
+    customization_spec: Record<string, unknown>;
+    image_label: { name: string };
+  }>;
 }): Promise<{ id: string }> {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
+
+  const images = params.images.map((img) => {
+    if (img.label) {
+      return { hash: img.hash, adlabels: [{ name: img.label }] };
+    }
+    return { hash: img.hash };
+  });
+
+  const assetFeedSpec: Record<string, unknown> = {
+    ad_formats: ["SINGLE_IMAGE"],
+    images,
+    bodies: params.bodies.map((text) => ({ text })),
+    titles: params.titles && params.titles.length > 0
+      ? params.titles.map((text) => ({ text }))
+      : undefined,
+    link_urls: [{ website_url: params.linkUrl }],
+    call_to_action_types: [cta],
+  };
+
+  if (params.assetCustomizationRules && params.assetCustomizationRules.length > 0) {
+    assetFeedSpec.asset_customization_rules = params.assetCustomizationRules;
+  }
 
   return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
@@ -246,16 +274,7 @@ export async function createAdCreative(params: {
       object_story_spec: {
         page_id: pageId,
       },
-      asset_feed_spec: {
-        ad_formats: ["SINGLE_IMAGE"],
-        images: params.images.map((img) => ({ hash: img.hash })),
-        bodies: params.bodies.map((text) => ({ text })),
-        titles: params.titles && params.titles.length > 0
-          ? params.titles.map((text) => ({ text }))
-          : undefined,
-        link_urls: [{ website_url: params.linkUrl }],
-        call_to_action_types: [cta],
-      },
+      asset_feed_spec: assetFeedSpec,
     }),
   });
 }
