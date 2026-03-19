@@ -265,7 +265,8 @@ export async function pushConceptToMeta(
         translatedPrimaries = preTranslated.primary_texts;
         translatedHeadlines = preTranslated.headlines;
       } else {
-        const result = await translateAdCopyBatch(primaryTexts, headlineTexts, lang, db);
+        // Limit to 1 primary + 2 headlines for focused, higher-quality translations
+        const result = await translateAdCopyBatch(primaryTexts.slice(0, 1), headlineTexts.slice(0, 2), lang, db);
         translatedPrimaries = result.translatedPrimaries;
         translatedHeadlines = result.translatedHeadlines;
       }

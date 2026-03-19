@@ -44,12 +44,16 @@ export async function POST(
     return NextResponse.json({ error: "Concept not found" }, { status: 404 });
   }
 
-  const primaryTexts: string[] = (job.ad_copy_primary ?? []).filter((t: string) => t.trim());
-  const headlineTexts: string[] = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
+  const allPrimaryTexts: string[] = (job.ad_copy_primary ?? []).filter((t: string) => t.trim());
+  const allHeadlineTexts: string[] = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
 
-  if (primaryTexts.length === 0) {
+  if (allPrimaryTexts.length === 0) {
     return NextResponse.json({ error: "No primary text to translate" }, { status: 400 });
   }
+
+  // Limit to 1 primary text + 2 headlines for focused, higher-quality translations
+  const primaryTexts = allPrimaryTexts.slice(0, 1);
+  const headlineTexts = allHeadlineTexts.slice(0, 2);
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {

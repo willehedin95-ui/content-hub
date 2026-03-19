@@ -168,10 +168,14 @@ async function translateAdCopy(
   job: { ad_copy_primary: string[] | null; ad_copy_headline: string[] | null; ad_copy_translations: Record<string, unknown> | null },
   languages: Language[]
 ): Promise<void> {
-  const primaryTexts = (job.ad_copy_primary ?? []).filter((t: string) => t.trim());
-  const headlineTexts = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
+  const allPrimaryTexts = (job.ad_copy_primary ?? []).filter((t: string) => t.trim());
+  const allHeadlineTexts = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
 
-  if (primaryTexts.length === 0) return;
+  if (allPrimaryTexts.length === 0) return;
+
+  // Limit to 1 primary text + 2 headlines for focused, higher-quality translations
+  const primaryTexts = allPrimaryTexts.slice(0, 1);
+  const headlineTexts = allHeadlineTexts.slice(0, 2);
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
