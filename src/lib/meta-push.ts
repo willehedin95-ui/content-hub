@@ -71,14 +71,18 @@ export interface PushResult {
  */
 export async function pushConceptToMeta(
   jobId: string,
-  opts?: { languages?: string[]; workspaceId?: string }
+  opts?: { languages?: string[]; workspaceId?: string; metaConfig?: Record<string, unknown> | null; wsSettings?: Record<string, unknown> }
 ): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
   const db = createServerSupabase();
   const wsId = opts?.workspaceId ?? await getWorkspaceId();
 
   // Load workspace Meta config (uses per-workspace creds if configured, else env vars)
-  const ws = await getWorkspace();
-  setMetaConfig(ws.meta_config ?? null);
+  if (opts?.metaConfig !== undefined) {
+    setMetaConfig(opts.metaConfig);
+  } else {
+    const ws = await getWorkspace();
+    setMetaConfig(ws.meta_config ?? null);
+  }
 
   // Load the concept with images + translations
   const { data: job, error: jobError } = await db
@@ -155,7 +159,7 @@ export async function pushConceptToMeta(
 
   // Load default schedule time from workspace settings (e.g. "03:00")
   let scheduledStartTime: string | null = null;
-  const wsSettings = await getWorkspaceSettings();
+  const wsSettings = opts?.wsSettings ?? await getWorkspaceSettings();
   const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
   if (scheduleHHMM) {
     const [hh, mm] = scheduleHHMM.split(":").map(Number);
