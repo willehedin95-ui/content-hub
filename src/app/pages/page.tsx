@@ -54,9 +54,15 @@ export default async function LandingPagesPage({
       .eq("workspace_id", workspaceId),
   ]);
 
-  // Build win/loss records per page
+  // Build win/loss records per page — dedup by page pair so multiple concepts
+  // testing the same page pair count as ONE test, not N
   const testRecords: Record<string, { wins: number; losses: number; active: number }> = {};
+  const pairsSeen = new Set<string>();
   for (const t of completedTests ?? []) {
+    const pairKey = `${t.page_a_id}::${t.page_b_id}`;
+    if (pairsSeen.has(pairKey)) continue;
+    pairsSeen.add(pairKey);
+
     for (const pageId of [t.page_a_id, t.page_b_id]) {
       if (!testRecords[pageId]) testRecords[pageId] = { wins: 0, losses: 0, active: 0 };
     }
