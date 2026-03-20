@@ -491,11 +491,18 @@ export async function pushConceptToMeta(
           nameBase: string,
           targetUrlTags: string,
         ) {
-          // Collect all image hashes (4:5 + 9:16) into a single creative
+          // Collect all image hashes (4:5 + 9:16) into a single creative, deduplicating
+          // to avoid subcode 1815629 (duplicate asset values). Duplicates can occur when
+          // 9:16 outpainting produces the same image as the 4:5 source.
+          const seenHashes = new Set<string>();
           const allImageHashes: Array<{ hash: string }> = [];
           for (const img of uploadedImages) {
-            allImageHashes.push({ hash: img.hash });
-            if (img.hash9x16) {
+            if (!seenHashes.has(img.hash)) {
+              seenHashes.add(img.hash);
+              allImageHashes.push({ hash: img.hash });
+            }
+            if (img.hash9x16 && !seenHashes.has(img.hash9x16)) {
+              seenHashes.add(img.hash9x16);
               allImageHashes.push({ hash: img.hash9x16 });
             }
           }
