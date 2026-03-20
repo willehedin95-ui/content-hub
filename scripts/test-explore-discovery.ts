@@ -47,7 +47,7 @@ const EXPLORE_FILTERS = {
   "run-time": 30, // 30+ days
   language: "EN", // English
   active_ads_count: 100, // brand has 100+ active ads
-  sort_column: "days_active",
+  sort_column: "start_date", // "Newest" — fresh winning ads, not ancient legacy ones
   sort_direction: "desc",
 };
 
@@ -125,13 +125,17 @@ async function scoreAd(ad: GethookdAd): Promise<{ score: number; reasoning: stri
       "- Promotional only (just a discount/sale, no hook or angle)",
       "- Personalized products (custom names, engravings, etc.)",
       "- Purely text-based with no visual interest",
+      "- Sexual, suggestive, or overly provocative imagery (lingerie, cleavage-focused, sexualized poses)",
       "",
       "PASS (score 7-10) ads that have:",
       "- A distinctive visual format that catches attention in a feed",
       "- A clear persuasion structure that can be adapted to any product",
       "- Native/editorial/medical/authority visual language",
       "",
-      "Respond in JSON only: {\"score\": N, \"reasoning\": \"1-2 sentences\"}",
+      "",
+      "Also note whether this is a NATIVE ad (organic-looking, no product visible, creates curiosity/intrigue) or a PRODUCT ad (product prominently featured).",
+      "",
+      "Respond in JSON only: {\"score\": N, \"reasoning\": \"1-2 sentences. Start with [NATIVE] or [PRODUCT].\"}",
     ].join("\n"),
   });
 
