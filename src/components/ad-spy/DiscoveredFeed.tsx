@@ -107,6 +107,14 @@ export default function DiscoveredFeed() {
     fetchAds();
   }, [fetchAds]);
 
+  // Poll every 5s when items are being swiped so user sees transition
+  useEffect(() => {
+    const hasSwiping = ads.some((a) => a.status === "swiping");
+    if (!hasSwiping) return;
+    const interval = setInterval(fetchAds, 5000);
+    return () => clearInterval(interval);
+  }, [ads, fetchAds]);
+
   const handleApprove = async (ad: DiscoveredAd) => {
     // Call the existing swipe endpoint with the ad's data
     try {
@@ -386,8 +394,17 @@ function AdCard({
           <p className="text-[11px] text-gray-500 line-clamp-2 leading-tight">{ad.body}</p>
         )}
 
-        {/* Concept link (image) */}
-        {ad.image_job && (
+        {/* Concept link (image) — swiped concepts get a prominent Review button */}
+        {ad.image_job && ad.status === "swiped" && (
+          <a
+            href={`/images/${ad.image_job.id}`}
+            className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-[11px] font-medium transition-colors"
+          >
+            <Eye className="w-3 h-3" />
+            Review #{ad.image_job.concept_number}
+          </a>
+        )}
+        {ad.image_job && ad.status !== "swiped" && (
           <a
             href={`/images/${ad.image_job.id}`}
             className="inline-flex items-center gap-1 text-[10px] text-indigo-600 hover:underline"

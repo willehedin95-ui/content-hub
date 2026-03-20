@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, Check, X, ExternalLink, Clock } from "lucide-react";
+import { Loader2, Check, ExternalLink, Clock } from "lucide-react";
 
 interface QueueItem {
   id: string;
@@ -18,7 +18,6 @@ interface QueueItem {
     status: string;
     launchpad_priority: number | null;
     archived_at: string | null;
-    source_images: Array<{ id: string; original_url: string; processing_order: number }>;
   } | null;
 }
 
@@ -62,24 +61,6 @@ export default function SwipeQueue({ onCountChange }: { onCountChange: (count: n
     }
   }, [counts.queued, counts.swiping]);
 
-  async function handleApprove(jobId: string) {
-    const res = await fetch(`/api/autopilot/concepts/${jobId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approved: true }),
-    });
-    if (res.ok) fetchQueue();
-  }
-
-  async function handleReject(jobId: string) {
-    const res = await fetch(`/api/autopilot/concepts/${jobId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approved: false }),
-    });
-    if (res.ok) fetchQueue();
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
@@ -91,15 +72,14 @@ export default function SwipeQueue({ onCountChange }: { onCountChange: (count: n
 
   const swipingItems = items.filter((i) => i.status === "swiping");
   const queuedItems = items.filter((i) => i.status === "queued");
-  const readyItems = items.filter((i) => i.status === "swiped" && i.image_job && !i.image_job.launchpad_priority && !i.image_job.archived_at);
-  const approvedItems = items.filter((i) => i.status === "swiped" && i.image_job?.launchpad_priority);
+  const recentDone = items.filter((i) => i.status === "swiped" && i.image_job);
 
   const totalActive = swipingItems.length + queuedItems.length;
 
   if (items.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400 text-sm">
-        No items in the swipe queue. Go to the Board tab to start swiping ads.
+        No items in the swipe queue. Go to the Discovered tab to swipe ads.
       </div>
     );
   }
@@ -166,31 +146,17 @@ export default function SwipeQueue({ onCountChange }: { onCountChange: (count: n
         </Section>
       )}
 
-      {/* Ready for review */}
-      {readyItems.length > 0 && (
-        <Section title={`Ready for Review (${readyItems.length})`}>
-          {readyItems.map((item) => (
-            <ConceptCard
-              key={item.id}
-              item={item}
-              onApprove={() => item.image_job && handleApprove(item.image_job.id)}
-              onReject={() => item.image_job && handleReject(item.image_job.id)}
-            />
-          ))}
-        </Section>
-      )}
-
-      {/* Approved */}
-      {approvedItems.length > 0 && (
-        <Section title={`Approved (${approvedItems.length})`}>
-          {approvedItems.map((item) => (
+      {/* Recently completed — view only, no approve/reject */}
+      {recentDone.length > 0 && (
+        <Section title={`Completed (${recentDone.length})`}>
+          {recentDone.map((item) => (
             <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
               <Check className="w-4 h-4 text-emerald-500 shrink-0" />
               <span className="text-sm text-gray-700 flex-1 truncate">
                 #{item.image_job?.concept_number} {item.image_job?.name}
               </span>
               <a href={`/images/${item.image_job?.id}`} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                View <ExternalLink className="w-3 h-3" />
+                Review <ExternalLink className="w-3 h-3" />
               </a>
             </div>
           ))}
@@ -207,72 +173,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
       </div>
       <div className="px-4">{children}</div>
-    </div>
-  );
-}
-
-function ConceptCard({
-  item,
-  onApprove,
-  onReject,
-}: {
-  item: QueueItem;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  const job = item.image_job;
-  if (!job) return null;
-
-  const images = job.source_images ?? [];
-
-  return (
-    <div className="py-3 border-b border-gray-100 last:border-0">
-      <div className="flex items-start gap-3">
-        {/* Image thumbnails */}
-        <div className="flex gap-0.5 shrink-0">
-          {images.slice(0, 3).map((img) => (
-            <div key={img.id} className="w-16 aspect-[4/5] rounded-lg overflow-hidden bg-gray-100">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.original_url} alt="" className="w-full h-full object-cover" />
-            </div>
-          ))}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">#{job.concept_number}</span>
-            <p className="text-sm font-medium text-gray-800 truncate">{job.name}</p>
-          </div>
-          <p className="text-xs text-gray-400 mt-0.5">
-            From: {item.brand_name} &middot; {images.length} images
-          </p>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 mt-2">
-            <button
-              onClick={onApprove}
-              className="flex items-center gap-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Check className="w-3 h-3" />
-              Approve
-            </button>
-            <button
-              onClick={onReject}
-              className="flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <X className="w-3 h-3" />
-              Reject
-            </button>
-            <a
-              href={`/images/${job.id}`}
-              className="text-xs text-indigo-600 hover:underline ml-auto flex items-center gap-1"
-            >
-              Details <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
