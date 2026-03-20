@@ -55,6 +55,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Filter out image concepts whose translations aren't complete yet
+    const imageConceptIds = launchpadConcepts.filter((c) => c.type === "image").map((c) => c.conceptId);
+    const { data: jobStatuses } = imageConceptIds.length > 0
+      ? await db.from("image_jobs").select("id, status").in("id", imageConceptIds)
+      : { data: [] as { id: string; status: string }[] };
+
+    const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
+    const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
+
     const results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> = [];
 
     // Track how many we've pushed per market+format so we respect MAX_CONCEPTS_PER_BATCH
@@ -86,6 +95,12 @@ export async function GET(req: NextRequest) {
 
         for (const concept of sortedConcepts) {
           if (concept.type !== format) continue;
+          // Skip image concepts whose translations aren't complete
+          if (concept.type === "image" && !completedJobIds.has(concept.conceptId)) {
+            const status = statusMap.get(concept.conceptId) ?? "unknown";
+            console.log(`[Pipeline Push] Skipping "${concept.name}" — translations not complete (status: ${status})`);
+            continue;
+          }
           const batchLimit = formatBudget.activeAdSets === 0 ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;
           if (pushCounts[countKey] >= batchLimit) break;
 

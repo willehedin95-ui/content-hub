@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
     .range(offset, offset + limit - 1);
 
   if (source) query = query.eq("source", source);
+  else query = query.neq("source", "board"); // Board has its own tab
   if (status) query = query.eq("status", status);
   if (minScore) query = query.gte("ai_relevance_score", parseInt(minScore));
   if (search) query = query.ilike("brand_name", `%${search}%`);
@@ -52,11 +53,12 @@ export async function GET(req: NextRequest) {
 
   const videoJobMap = new Map((videoJobs ?? []).map((j) => [j.id, j]));
 
-  // Stats
+  // Stats (exclude board — has its own tab)
   const { data: stats } = await db
     .from("discovered_ads")
     .select("status")
-    .eq("workspace_id", workspaceId);
+    .eq("workspace_id", workspaceId)
+    .neq("source", "board");
 
   const statCounts = {
     total: stats?.length ?? 0,

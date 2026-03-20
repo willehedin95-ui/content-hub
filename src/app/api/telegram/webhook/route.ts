@@ -632,12 +632,18 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
   // Fetch the job
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, target_languages, landing_page_id")
+    .select("id, name, concept_number, target_languages, landing_page_id, launchpad_priority")
     .eq("id", jobId)
     .single();
 
   if (!job) {
     await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    return;
+  }
+
+  // Idempotency: already approved
+  if (job.launchpad_priority != null) {
+    await editMessageCaption(chatId, messageId, `✅ Concept #${job.concept_number ?? "?"} "${job.name}" already approved.`);
     return;
   }
 

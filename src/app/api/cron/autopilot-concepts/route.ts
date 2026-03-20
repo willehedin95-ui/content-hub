@@ -290,31 +290,42 @@ async function discoverCompetitorAd(
     console.error("[Autopilot] Brand spy fetch failed:", err);
   }
 
-  // --- Priority 3: Explore (rotate through search queries) ---
+  // --- Priority 3: Explore (try all queries, paginate up to 3 pages each) ---
   const queries = (settings.gethookd_explore_queries as string[]) ?? DEFAULT_EXPLORE_QUERIES;
-  // Pick a random query to avoid always hitting the same one
-  const query = queries[Math.floor(Math.random() * queries.length)];
+  // Shuffle so we don't always burn credits on the same queries first
+  const shuffled = [...queries].sort(() => Math.random() - 0.5);
+  const MAX_PAGES = 3;
 
-  try {
-    const { ads } = await exploreAds({
-      query,
-      "ad-format": "image",
-      performance_scores: "winning,scaling",
-      ads_per_brand_limit: 2,
-      per_page: 20,
-      sort_column: "days_active",
-      sort_direction: "desc",
-    });
+  for (const query of shuffled) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      try {
+        const { ads, total } = await exploreAds({
+          query,
+          "ad-format": "image",
+          performance_scores: "winning,scaling",
+          ads_per_brand_limit: 2,
+          per_page: 20,
+          page,
+          sort_column: "days_active",
+          sort_direction: "desc",
+        });
 
-    const unseen = ads.filter((a) => !seenIds.has(a.id));
-    if (unseen.length > 0) {
-      console.log(`[Autopilot] Found ${unseen.length} unseen explore ads for query "${query}"`);
-      return { ad: unseen[0], source: "explore" };
+        const unseen = ads.filter((a) => !seenIds.has(a.id));
+        if (unseen.length > 0) {
+          console.log(`[Autopilot] Found ${unseen.length} unseen explore ads for query "${query}" (page ${page})`);
+          return { ad: unseen[0], source: "explore" };
+        }
+
+        // No more pages to check for this query
+        if (page * 20 >= total || ads.length === 0) break;
+      } catch (err) {
+        console.error(`[Autopilot] Explore fetch failed for "${query}" page ${page}:`, err);
+        break; // Skip to next query on error
+      }
     }
-  } catch (err) {
-    console.error("[Autopilot] Explore fetch failed:", err);
   }
 
+  console.log("[Autopilot] All explore queries exhausted — no unseen ads found");
   return null;
 }
 
@@ -655,71 +666,23 @@ async function runFromScratch(
 async function checkConceptNeed(
   db: ReturnType<typeof createServerSupabase>
 ): Promise<{ needed: boolean; reason: string }> {
-  // Check how many concepts were created by autopilot recently (cooldown: 2 days)
-  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-  const { count: recentAutopilot } = await db
+  // Simple: 1 autopilot concept per day, always.
+  // Push scheduling is handled separately by pipeline-push (budget-aware).
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count: todayCount } = await db
     .from("image_jobs")
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
     .eq("source", "autopilot")
-    .gte("created_at", twoDaysAgo);
+    .gte("created_at", todayStart.toISOString());
 
-  if ((recentAutopilot ?? 0) >= 2) {
-    return { needed: false, reason: `Already created ${recentAutopilot} autopilot concepts in last 2 days` };
+  if ((todayCount ?? 0) >= 1) {
+    return { needed: false, reason: "Already created an autopilot concept today" };
   }
 
-  // Check if there are pending autopilot concepts awaiting review
-  const { count: pendingReview } = await db
-    .from("image_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-    .eq("source", "autopilot")
-    .is("launchpad_priority", null)
-    .is("archived_at", null)
-    .gte("created_at", twoDaysAgo);
-
-  if ((pendingReview ?? 0) >= 1) {
-    return { needed: false, reason: `${pendingReview} autopilot concept(s) still awaiting Telegram approval` };
-  }
-
-  // Check active ads across all markets
-  const { data: activeCampaigns } = await db
-    .from("meta_campaigns")
-    .select("id, meta_ads(meta_ad_id, status)")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-    .eq("status", "pushed");
-
-  let totalActiveAds = 0;
-  for (const c of activeCampaigns ?? []) {
-    const ads = (c.meta_ads ?? []) as Array<{ meta_ad_id: string; status: string }>;
-    totalActiveAds += ads.filter((a) => a.status !== "PAUSED").length;
-  }
-
-  // If fewer than 10 active ads total, definitely need more concepts
-  if (totalActiveAds < 10) {
-    return { needed: true, reason: `Only ${totalActiveAds} active ads — need fresh concepts` };
-  }
-
-  // Check concepts on launchpad waiting to be pushed
-  const { count: launchpadCount } = await db
-    .from("image_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-    .not("launchpad_priority", "is", null)
-    .is("archived_at", null);
-
-  // If fewer than 2 on launchpad, create more to maintain pipeline
-  if ((launchpadCount ?? 0) < 2) {
-    return { needed: true, reason: `Only ${launchpadCount} concepts on launchpad — need pipeline replenishment` };
-  }
-
-  // If 15+ active ads and 2+ on launchpad, we're well-stocked
-  if (totalActiveAds >= 15) {
-    return { needed: false, reason: `${totalActiveAds} active ads and ${launchpadCount} on launchpad — well-stocked` };
-  }
-
-  // Default: create if fewer than 12 active ads
-  return { needed: totalActiveAds < 12, reason: `${totalActiveAds} active ads` };
+  return { needed: true, reason: "Daily concept creation" };
 }
 
 // ---------------------------------------------------------------------------

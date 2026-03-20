@@ -21,7 +21,7 @@ export async function POST(
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, target_languages, landing_page_id")
+    .select("id, name, concept_number, target_languages, landing_page_id, launchpad_priority")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -31,6 +31,11 @@ export async function POST(
   }
 
   if (approved) {
+    // Idempotency: already approved
+    if (job.launchpad_priority != null) {
+      return NextResponse.json({ ok: true, action: "already_approved" });
+    }
+
     // Check landing page
     if (!job.landing_page_id) {
       return NextResponse.json(

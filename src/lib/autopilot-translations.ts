@@ -106,6 +106,17 @@ async function createTranslationRows(
 
   if (!sourceImages?.length) return 0;
 
+  // Check which translation rows already exist (e.g. images already translated via client)
+  const sourceImageIds = sourceImages.map((si) => si.id);
+  const { data: existingTranslations } = await db
+    .from("image_translations")
+    .select("source_image_id, language, aspect_ratio")
+    .in("source_image_id", sourceImageIds);
+
+  const existingKeys = new Set(
+    (existingTranslations ?? []).map((t) => `${t.source_image_id}:${t.language}:${t.aspect_ratio}`)
+  );
+
   const translatableImages = sourceImages.filter((si) => !si.skip_translation);
   const skippedImages = sourceImages.filter((si) => si.skip_translation);
   const primaryRatio = targetRatios[0] ?? "4:5";
@@ -115,6 +126,8 @@ async function createTranslationRows(
   for (const si of translatableImages) {
     for (const lang of targetLangs) {
       for (const ratio of targetRatios) {
+        const key = `${si.id}:${lang}:${ratio}`;
+        if (existingKeys.has(key)) continue; // Already exists
         rows.push({
           source_image_id: si.id,
           language: lang,
@@ -129,15 +142,20 @@ async function createTranslationRows(
   // secondary ratios (9:16) as pending so outpainting still runs
   for (const si of skippedImages) {
     for (const lang of targetLangs) {
-      rows.push({
-        source_image_id: si.id,
-        language: lang,
-        aspect_ratio: primaryRatio,
-        status: "completed",
-        translated_url: si.original_url,
-      });
+      const primaryKey = `${si.id}:${lang}:${primaryRatio}`;
+      if (!existingKeys.has(primaryKey)) {
+        rows.push({
+          source_image_id: si.id,
+          language: lang,
+          aspect_ratio: primaryRatio,
+          status: "completed",
+          translated_url: si.original_url,
+        });
+      }
       for (const ratio of targetRatios) {
         if (ratio !== primaryRatio) {
+          const key = `${si.id}:${lang}:${ratio}`;
+          if (existingKeys.has(key)) continue;
           rows.push({
             source_image_id: si.id,
             language: lang,
@@ -184,6 +202,13 @@ async function translateAdCopy(
   const results: Record<string, unknown> = { ...(job.ad_copy_translations ?? {}) };
 
   for (const lang of languages) {
+    // Skip languages already translated
+    const existing = results[lang] as { status?: string } | undefined;
+    if (existing?.status === "completed") {
+      console.log(`[autopilot-translate] Skipping ad copy for ${lang} — already translated`);
+      continue;
+    }
+
     const langLabel = LANGUAGES.find((l) => l.value === lang)?.label ?? lang;
 
     try {

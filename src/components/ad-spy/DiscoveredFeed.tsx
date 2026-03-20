@@ -51,12 +51,11 @@ interface Stats {
   skipped: number;
 }
 
-type SourceFilter = "all" | "board" | "brand_spy" | "explore";
+type SourceFilter = "all" | "brand_spy" | "explore";
 type StatusFilter = "all" | "pending" | "queued" | "swiped" | "skipped";
 
 const SOURCE_LABELS: Record<SourceFilter, string> = {
   all: "All Sources",
-  board: "Board",
   brand_spy: "Brand Spy",
   explore: "Explore",
 };

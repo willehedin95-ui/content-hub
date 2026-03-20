@@ -846,9 +846,12 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         .catch(() => { competitorGenTriggeredRef.current = false; });
     }
 
+    // Auto-recover stale draft jobs that have images but never got create-translations called.
+    // Skip if swipe_progress is set — swipe pipeline is still running and will handle status.
     const staleMs = Date.now() - new Date(job.created_at).getTime();
     const hasImages = (job.source_images?.length ?? 0) > 0;
-    if (staleMs > 2 * 60 * 1000 && hasImages) {
+    const swipeInProgress = !!job.swipe_progress;
+    if (staleMs > 2 * 60 * 1000 && hasImages && !swipeInProgress) {
       fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" })
         .then((res) => { if (res.ok) refreshJob(); })
         .catch(() => {});
@@ -1507,39 +1510,59 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           </button>
         </div>
       )}
-      {(proc.processing || finishQueue.started) && !showRestartBanner && conceptStatus === "processing" && (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-              <span className="text-sm font-medium text-indigo-700">
-                Processing {completedCount}/{totalCount} images
-              </span>
-            </div>
-            {proc.processing && (
-              <button onClick={handleCancel} className="text-xs text-red-600 hover:text-red-700 font-medium">
-                Stop
-              </button>
-            )}
-          </div>
-          <div className="w-full h-1.5 bg-indigo-100 rounded-full overflow-hidden mb-2">
-            <div className="bg-indigo-500 h-full transition-all duration-500 rounded-full"
-              style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }} />
-          </div>
-          <div className="flex gap-2">
-            {(job.target_languages as Language[]).map((lang) => {
-              const langInfo = LANGUAGES.find((l) => l.value === lang);
-              const counts = langCounts.get(lang);
-              const done = counts ? counts.completed === counts.total : false;
-              return (
-                <span key={lang} className={`text-xs px-2 py-0.5 rounded-full ${done ? "bg-emerald-100 text-emerald-700" : "bg-white text-gray-500"}`}>
-                  {langInfo?.flag} {counts?.completed ?? 0}/{counts?.total ?? 0}
+      {(proc.processing || finishQueue.started) && !showRestartBanner && conceptStatus === "processing" && (() => {
+        const imagesAllDone = totalCount > 0 && completedCount === totalCount;
+        const copyDoneCount = job.target_languages.filter((lang) => copyTranslations[lang]?.status === "completed").length;
+        const copyAllDone = copyDoneCount === job.target_languages.length;
+        const onlyCopyLeft = imagesAllDone && !copyAllDone;
+        const onlyImagesLeft = copyAllDone && !imagesAllDone;
+
+        const bannerLabel = onlyCopyLeft
+          ? `Translating ad copy... (${copyDoneCount}/${job.target_languages.length})`
+          : onlyImagesLeft
+          ? `Processing ${completedCount}/${totalCount} images`
+          : `Processing... (${completedCount}/${totalCount} images, ${copyDoneCount}/${job.target_languages.length} copy)`;
+
+        const progress = onlyCopyLeft
+          ? (job.target_languages.length > 0 ? (copyDoneCount / job.target_languages.length) * 100 : 0)
+          : (totalCount > 0 ? (completedCount / totalCount) * 100 : 0);
+
+        return (
+          <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <span className="text-sm font-medium text-indigo-700">
+                  {bannerLabel}
                 </span>
-              );
-            })}
+              </div>
+              {proc.processing && (
+                <button onClick={handleCancel} className="text-xs text-red-600 hover:text-red-700 font-medium">
+                  Stop
+                </button>
+              )}
+            </div>
+            <div className="w-full h-1.5 bg-indigo-100 rounded-full overflow-hidden mb-2">
+              <div className="bg-indigo-500 h-full transition-all duration-500 rounded-full"
+                style={{ width: `${progress}%` }} />
+            </div>
+            <div className="flex gap-2">
+              {(job.target_languages as Language[]).map((lang) => {
+                const langInfo = LANGUAGES.find((l) => l.value === lang);
+                const counts = langCounts.get(lang);
+                const imgDone = counts ? counts.completed === counts.total : false;
+                const copyDone = copyTranslations[lang]?.status === "completed";
+                const allDone = imgDone && copyDone;
+                return (
+                  <span key={lang} className={`text-xs px-2 py-0.5 rounded-full ${allDone ? "bg-emerald-100 text-emerald-700" : "bg-white text-gray-500"}`}>
+                    {langInfo?.flag} {counts?.completed ?? 0}/{counts?.total ?? 0}
+                  </span>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Error banners */}
       {launchpad.error && (
