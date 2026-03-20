@@ -63,6 +63,7 @@ export async function POST(
     const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
     const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
 
+    const now = new Date().toISOString();
     for (const lang of targetLangs) {
       const market = COUNTRY_MAP[lang] ?? lang.toUpperCase();
       const { data: existing } = await db
@@ -72,17 +73,39 @@ export async function POST(
         .eq("market", market)
         .single();
 
+      let marketId: string;
       if (!existing) {
-        await db.from("image_job_markets").insert({
+        const { data: inserted } = await db.from("image_job_markets").insert({
           image_job_id: jobId,
           market,
           launchpad_priority: priority,
-        });
+        }).select("id").single();
+        marketId = inserted?.id ?? "";
       } else {
         await db
           .from("image_job_markets")
           .update({ launchpad_priority: priority })
           .eq("id", existing.id);
+        marketId = existing.id;
+      }
+
+      // Create concept_lifecycle entry so pipeline-push cron can find this concept
+      if (marketId) {
+        const { data: activeLifecycle } = await db
+          .from("concept_lifecycle")
+          .select("stage")
+          .eq("image_job_market_id", marketId)
+          .is("exited_at", null)
+          .single();
+
+        if (!activeLifecycle) {
+          await db.from("concept_lifecycle").insert({
+            image_job_market_id: marketId,
+            stage: "launchpad",
+            entered_at: now,
+            signal: "autopilot_approved",
+          });
+        }
       }
     }
 

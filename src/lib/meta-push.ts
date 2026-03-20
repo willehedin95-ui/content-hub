@@ -30,7 +30,7 @@ export const FEED_STORIES_RULES: Array<{
   { customization_spec: { publisher_platforms: ["audience_network"] }, image_label: { name: "feed" } },
   { customization_spec: { publisher_platforms: ["messenger"], messenger_positions: ["messenger_home", "sponsored_messages"] }, image_label: { name: "feed" } },
   // Stories/Reels placements → 9:16
-  { customization_spec: { publisher_platforms: ["facebook"], facebook_positions: ["story", "reels"] }, image_label: { name: "stories" } },
+  { customization_spec: { publisher_platforms: ["facebook"], facebook_positions: ["story", "facebook_reels"] }, image_label: { name: "stories" } },
   { customization_spec: { publisher_platforms: ["instagram"], instagram_positions: ["story", "reels"] }, image_label: { name: "stories" } },
   { customization_spec: { publisher_platforms: ["messenger"], messenger_positions: ["story"] }, image_label: { name: "stories" } },
 ];
