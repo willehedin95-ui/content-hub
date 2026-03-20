@@ -412,12 +412,8 @@ export async function createAd(params: {
       adset_id: params.adSetId,
       creative: { creative_id: params.creativeId },
       status: params.status || "PAUSED",
-      // Prevent Meta from auto-cropping images for vertical placements (stories/reels).
-      // Without this, a 4:5 image gets zoomed-in to fill 9:16, cutting off content.
-      // Note: this is only compatible with DCO creatives that do NOT use asset_customization_rules.
-      creative_features_spec: {
-        image_cropping: { enroll_status: "OPT_OUT" },
-      },
+      // No creative_features_spec needed — placement asset customization rules
+      // route the correct aspect ratio image to each placement (4:5→feed, 9:16→stories).
       ...(params.urlTags ? { url_tags: params.urlTags } : {}),
     }),
   });

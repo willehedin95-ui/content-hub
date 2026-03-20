@@ -9,7 +9,10 @@ import {
   createAdCreative,
   createAd,
   setMetaConfig,
+  getAdSetConfig,
+  createAdSetFromTemplate,
 } from "@/lib/meta";
+import { FEED_STORIES_RULES } from "@/lib/meta-push";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
@@ -97,9 +100,15 @@ export async function POST(
         );
       }
 
-      const { copied_adset_id } = await duplicateAdSet(mapping.template_adset_id);
-      await updateAdSet(copied_adset_id, { name: campaign.name });
-      metaAdSetId = copied_adset_id;
+      // Create non-DCO ad set from template config (not duplicate, since
+      // duplicating inherits is_dynamic_creative=true which breaks PAC rules)
+      const templateConfig = await getAdSetConfig(mapping.template_adset_id);
+      const newAdSet = await createAdSetFromTemplate({
+        templateConfig,
+        name: campaign.name,
+        isDynamicCreative: false,
+      });
+      metaAdSetId = newAdSet.id;
     } else {
       // Legacy flow: create ad set from scratch
       const metaAdSet = await createAdSet({
@@ -168,16 +177,18 @@ export async function POST(
           await db.from("meta_ads").update({ meta_image_hash_9x16: imageHash9x16 }).eq("id", ad.id);
         }
 
+        // Use labeled images + placement rules when 9:16 variant exists
+        const has9x16 = !!imageHash9x16;
         const creative = await createAdCreative({
           name: ad.name,
-          // Include both 4:5 and 9:16 without labels — DCO optimizes placement routing.
-          // asset_customization_rules removed: incompatible with DCO (subcode 1885702).
-          images: imageHash9x16
-            ? [{ hash: imageHash }, { hash: imageHash9x16 }]
+          images: has9x16
+            ? [{ hash: imageHash, label: "feed" }, { hash: imageHash9x16!, label: "stories" }]
             : [{ hash: imageHash }],
           bodies: [ad.ad_copy],
+          // Titles limited to 1 with asset_customization_rules (subcode 1885878)
           titles: ad.headline ? [ad.headline] : undefined,
           linkUrl: ad.landing_page_url,
+          assetCustomizationRules: has9x16 ? FEED_STORIES_RULES : undefined,
         });
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);
 
