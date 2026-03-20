@@ -10,7 +10,6 @@ import {
   createAd,
   setMetaConfig,
 } from "@/lib/meta";
-import { FEED_STORIES_RULES } from "@/lib/meta-push";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId, getWorkspace } from "@/lib/workspace";
@@ -171,13 +170,14 @@ export async function POST(
 
         const creative = await createAdCreative({
           name: ad.name,
+          // Include both 4:5 and 9:16 without labels — DCO optimizes placement routing.
+          // asset_customization_rules removed: incompatible with DCO (subcode 1885702).
           images: imageHash9x16
-            ? [{ hash: imageHash, label: "feed" }, { hash: imageHash9x16, label: "stories" }]
+            ? [{ hash: imageHash }, { hash: imageHash9x16 }]
             : [{ hash: imageHash }],
           bodies: [ad.ad_copy],
           titles: ad.headline ? [ad.headline] : undefined,
           linkUrl: ad.landing_page_url,
-          assetCustomizationRules: imageHash9x16 ? FEED_STORIES_RULES : undefined,
         });
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);
 

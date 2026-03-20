@@ -476,52 +476,53 @@ export async function pushConceptToMeta(
           throw new Error("All image uploads failed");
         }
 
-        // Phase 2: Create one ad per image pair.
-        // When 9:16 sibling exists → asset_customization_rules route 4:5 to feed, 9:16 to stories/reels.
-        // When no 9:16 → single image creative, no rules needed.
+        // Phase 2: Create ONE DCO creative with ALL images and ONE ad per ad set.
+        // DCO ad sets only allow one ad (subcode 1885553). Meta's DCO optimizes
+        // which image+text combination to show per placement. Both 4:5 and 9:16
+        // images are included without labels — DCO selects the best fit.
+        // Note: asset_customization_rules is incompatible with DCO (subcode 1885702).
         const urlTags = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`;
 
-        // Helper: create ads for a set of images in an ad set
-        async function createAdsForImages(
+        // Helper: create one DCO ad for all images in an ad set
+        async function createDcoAdForImages(
           targetAdSetId: string,
           targetCampaignId: string,
           targetLandingUrl: string,
           nameBase: string,
           targetUrlTags: string,
         ) {
+          // Collect all image hashes (4:5 + 9:16) into a single creative
+          const allImageHashes: Array<{ hash: string }> = [];
+          for (const img of uploadedImages) {
+            allImageHashes.push({ hash: img.hash });
+            if (img.hash9x16) {
+              allImageHashes.push({ hash: img.hash9x16 });
+            }
+          }
+
+          const creative = await withRetry(() => createAdCreative({
+            name: nameBase,
+            images: allImageHashes,
+            bodies: translatedPrimaries,
+            titles: translatedHeadlines.length > 0 ? translatedHeadlines : undefined,
+            linkUrl: targetLandingUrl,
+            pageId: pageConfig?.meta_page_id,
+            // No assetCustomizationRules — incompatible with DCO (subcode 1885702)
+          }));
+
+          const metaAd = await withRetry(() => createAd({
+            name: nameBase,
+            adSetId: targetAdSetId,
+            creativeId: creative.id,
+            status: "ACTIVE",
+            urlTags: targetUrlTags,
+          }));
+
+          // Record one meta_ads row per source image for tracking
           for (const [i, img] of uploadedImages.entries()) {
-            const adName = uploadedImages.length > 1 ? `${nameBase} [${i + 1}]` : nameBase;
-            const has9x16 = !!img.hash9x16;
-
-            const creative = await withRetry(() => createAdCreative({
-              name: adName,
-              images: has9x16
-                ? [{ hash: img.hash, label: "feed" }, { hash: img.hash9x16!, label: "stories" }]
-                : [{ hash: img.hash }],
-              bodies: translatedPrimaries,
-              // Limit titles to 1 when using rules (Meta rejects multiple unlabeled titles with rules)
-              titles: translatedHeadlines.length > 0
-                ? (has9x16 ? translatedHeadlines.slice(0, 1) : translatedHeadlines)
-                : undefined,
-              linkUrl: targetLandingUrl,
-              pageId: pageConfig?.meta_page_id,
-              assetCustomizationRules: has9x16 ? FEED_STORIES_RULES : undefined,
-            }));
-
-            // 500ms delay between ad creation calls to avoid rate limiting
-            if (i > 0) await new Promise((r) => setTimeout(r, 500));
-
-            const metaAd = await withRetry(() => createAd({
-              name: adName,
-              adSetId: targetAdSetId,
-              creativeId: creative.id,
-              status: "ACTIVE",
-              urlTags: targetUrlTags,
-            }));
-
             await db.from("meta_ads").insert({
               campaign_id: targetCampaignId,
-              name: adName,
+              name: uploadedImages.length > 1 ? `${nameBase} [${i + 1}]` : nameBase,
               image_url: img.url,
               image_url_9x16: img.url9x16,
               image_urls: [img.url],
@@ -541,8 +542,8 @@ export async function pushConceptToMeta(
           }
         }
 
-        // Create ads for page A
-        await createAdsForImages(adSetId, campaignId, landingUrl, adSetName, urlTags);
+        // Create DCO ad for page A
+        await createDcoAdForImages(adSetId, campaignId, landingUrl, adSetName, urlTags);
 
         await db
           .from("meta_campaigns")
@@ -590,8 +591,8 @@ export async function pushConceptToMeta(
 
           const urlTagsB = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrlB).pathname.replace(/^\/|\/$/g, ""))}`;
 
-          // Create ads for page B using same uploaded images
-          await createAdsForImages(newAdSetB.id, newCampaignB.id, landingUrlB, adSetNameB, urlTagsB);
+          // Create DCO ad for page B using same uploaded images
+          await createDcoAdForImages(newAdSetB.id, newCampaignB.id, landingUrlB, adSetNameB, urlTagsB);
 
           await db.from("meta_campaigns").update({
             status: "pushed",
