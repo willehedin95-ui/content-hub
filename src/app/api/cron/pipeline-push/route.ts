@@ -95,6 +95,9 @@ export async function GET(req: NextRequest) {
           const lang = MARKET_TO_LANG[market];
           if (!lang) continue;
 
+          // Count attempts (not just successes) to enforce batch limit even on failures
+          pushCounts[countKey]++;
+
           try {
             console.log(`[Pipeline Push] Pushing ${concept.type} "${concept.name}" to ${market} (budget: ${formatBudget.available} ${formatBudget.currency})...`);
 
@@ -105,7 +108,6 @@ export async function GET(req: NextRequest) {
 
               if (langResult?.status === "pushed") {
                 results.push({ concept: concept.name, type: "video", market, status: "pushed" });
-                pushCounts[countKey]++;
 
                 // Check if all markets pushed -> clear from launch pad
                 const allMarkets = concept.markets.map((m) => m.market);
@@ -154,7 +156,6 @@ export async function GET(req: NextRequest) {
                 });
 
                 results.push({ concept: concept.name, type: "image", market, status: "pushed" });
-                pushCounts[countKey]++;
 
                 // Check if concept fully pushed -> clear from launch pad
                 const { data: remaining } = await db
