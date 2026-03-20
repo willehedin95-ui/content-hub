@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, ExternalLink, Check, X, Clock, Search, Filter, Sparkles, Video } from "lucide-react";
+import { Loader2, ExternalLink, Check, X, Clock, Search, Filter, Sparkles, Video, ThumbsUp, ThumbsDown, Eye, ChevronDown, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DiscoveredAd {
@@ -44,6 +44,7 @@ interface DiscoveredAd {
 
 interface Stats {
   total: number;
+  pending: number;
   queued: number;
   swiping: number;
   swiped: number;
@@ -51,7 +52,7 @@ interface Stats {
 }
 
 type SourceFilter = "all" | "board" | "brand_spy" | "explore";
-type StatusFilter = "all" | "queued" | "swiped" | "skipped";
+type StatusFilter = "all" | "pending" | "queued" | "swiped" | "skipped";
 
 const SOURCE_LABELS: Record<SourceFilter, string> = {
   all: "All Sources",
@@ -62,6 +63,7 @@ const SOURCE_LABELS: Record<SourceFilter, string> = {
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
   all: "All Status",
+  pending: "Pending Review",
   queued: "Queued",
   swiped: "Swiped",
   skipped: "Skipped",
@@ -105,6 +107,54 @@ export default function DiscoveredFeed() {
     fetchAds();
   }, [fetchAds]);
 
+  const handleApprove = async (ad: DiscoveredAd) => {
+    // Call the existing swipe endpoint with the ad's data
+    try {
+      const res = await fetch("/api/ad-spy/swipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gethookd_ad_id: ad.gethookd_ad_id,
+          media_urls: ad.media_urls,
+          title: ad.title,
+          body: ad.body,
+          brand_name: ad.brand_name,
+          pain_point: ad.pain_point,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update local state
+        setAds((prev) =>
+          prev.map((a) =>
+            a.id === ad.id ? { ...a, status: "swiping", image_job_id: data.jobId } : a
+          )
+        );
+        if (stats) setStats({ ...stats, pending: stats.pending - 1, swiped: stats.swiped + 1 });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSkip = async (ad: DiscoveredAd) => {
+    try {
+      const res = await fetch(`/api/ad-spy/discovered/${ad.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "skip" }),
+      });
+      if (res.ok) {
+        setAds((prev) =>
+          prev.map((a) => (a.id === ad.id ? { ...a, status: "skipped" } : a))
+        );
+        if (stats) setStats({ ...stats, pending: stats.pending - 1, skipped: stats.skipped + 1 });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Stats bar */}
@@ -112,13 +162,27 @@ export default function DiscoveredFeed() {
         <div className="flex gap-3">
           {[
             { label: "Total", value: stats.total, color: "bg-gray-100 text-gray-700" },
+            { label: "Pending", value: stats.pending, color: "bg-blue-50 text-blue-700" },
             { label: "Queued", value: stats.queued, color: "bg-amber-50 text-amber-700" },
             { label: "Swiped", value: stats.swiped, color: "bg-emerald-50 text-emerald-700" },
             { label: "Skipped", value: stats.skipped, color: "bg-red-50 text-red-600" },
           ].map((s) => (
-            <div key={s.label} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium", s.color)}>
+            <button
+              key={s.label}
+              onClick={() => {
+                const filterMap: Record<string, StatusFilter> = {
+                  Total: "all", Pending: "pending", Queued: "queued", Swiped: "swiped", Skipped: "skipped",
+                };
+                setStatus(filterMap[s.label] || "all");
+              }}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                s.color,
+                status === (s.label === "Total" ? "all" : s.label.toLowerCase()) && "ring-2 ring-offset-1 ring-indigo-400"
+              )}
+            >
               {s.value} {s.label}
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -171,7 +235,7 @@ export default function DiscoveredFeed() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {ads.map((ad) => (
-            <AdCard key={ad.id} ad={ad} />
+            <AdCard key={ad.id} ad={ad} onApprove={handleApprove} onSkip={handleSkip} />
           ))}
         </div>
       )}
@@ -179,12 +243,25 @@ export default function DiscoveredFeed() {
   );
 }
 
-function AdCard({ ad }: { ad: DiscoveredAd }) {
-  const statusInfo = getStatusInfo(ad);
+function AdCard({
+  ad,
+  onApprove,
+  onSkip,
+}: {
+  ad: DiscoveredAd;
+  onApprove: (ad: DiscoveredAd) => void;
+  onSkip: (ad: DiscoveredAd) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [acting, setActing] = useState(false);
   const perfBadge = getPerfBadge(ad);
+  const isPending = ad.status === "pending";
 
   return (
-    <div className="group relative bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-colors">
+    <div className={cn(
+      "group relative bg-white border rounded-xl overflow-hidden shadow-sm transition-colors",
+      isPending ? "border-blue-200 hover:border-blue-300" : "border-gray-200 hover:border-indigo-200"
+    )}>
       {/* Thumbnail */}
       <div className="aspect-[4/5] bg-gray-100 relative overflow-hidden">
         {ad.media_urls?.[0] ? (
@@ -195,21 +272,12 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
             <Sparkles className="w-8 h-8" />
           </div>
         )}
-        {/* Performance badge */}
-        {perfBadge && (
-          <span className={cn(
-            "absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-            perfBadge.className
-          )}>
-            {perfBadge.label}
-          </span>
-        )}
         {/* Source badge */}
         <span className={cn(
           "absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium",
           ad.source === "board" ? "bg-indigo-500/90 text-white" :
           ad.source === "brand_spy" ? "bg-purple-500/90 text-white" :
-          "bg-gray-700/80 text-white"
+          "bg-teal-600/90 text-white"
         )}>
           {ad.source === "brand_spy" ? "Spy" : ad.source === "board" ? "Board" : "Explore"}
         </span>
@@ -220,11 +288,25 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
             Video
           </span>
         )}
-        {/* Status overlay for swiped/skipped */}
+        {/* Status overlays */}
+        {ad.status === "pending" && (
+          <div className="absolute bottom-2 right-2">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-500/90 text-white text-[10px] font-medium">
+              <Eye className="w-3 h-3" /> Review
+            </span>
+          </div>
+        )}
         {ad.status === "swiped" && (
           <div className="absolute bottom-2 right-2">
             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-medium">
               <Check className="w-3 h-3" /> Swiped
+            </span>
+          </div>
+        )}
+        {ad.status === "swiping" && (
+          <div className="absolute bottom-2 right-2">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/90 text-white text-[10px] font-medium">
+              <Loader2 className="w-3 h-3 animate-spin" /> Swiping
             </span>
           </div>
         )}
@@ -235,34 +317,67 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
             </span>
           </div>
         )}
+        {/* Days active badge */}
+        {ad.days_active && ad.days_active >= 30 && (
+          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white flex items-center gap-0.5">
+            <Clock className="w-2.5 h-2.5" /> {ad.days_active}d
+          </span>
+        )}
       </div>
 
       {/* Info */}
       <div className="p-2.5 space-y-1.5">
         <div className="flex items-center justify-between gap-1">
           <span className="text-xs font-medium text-gray-800 truncate">{ad.brand_name}</span>
-          {ad.days_active && (
-            <span className="text-[10px] text-gray-400 whitespace-nowrap flex items-center gap-0.5">
-              <Clock className="w-2.5 h-2.5" /> {ad.days_active}d
+          {perfBadge && (
+            <span className={cn(
+              "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0",
+              perfBadge.className
+            )}>
+              {perfBadge.label}
             </span>
           )}
         </div>
 
         {/* AI score */}
         {ad.ai_relevance_score != null && (
-          <div className="flex items-center gap-1.5" title={ad.ai_reasoning || undefined}>
-            <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  ad.ai_relevance_score >= 8 ? "bg-emerald-500" :
-                  ad.ai_relevance_score >= 6 ? "bg-amber-400" :
-                  "bg-red-400"
-                )}
-                style={{ width: `${ad.ai_relevance_score * 10}%` }}
-              />
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <Brain className="w-3 h-3 text-gray-400 shrink-0" />
+              <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    ad.ai_relevance_score >= 8 ? "bg-emerald-500" :
+                    ad.ai_relevance_score >= 6 ? "bg-amber-400" :
+                    "bg-red-400"
+                  )}
+                  style={{ width: `${ad.ai_relevance_score * 10}%` }}
+                />
+              </div>
+              <span className={cn(
+                "text-[10px] tabular-nums font-semibold",
+                ad.ai_relevance_score >= 8 ? "text-emerald-600" :
+                ad.ai_relevance_score >= 6 ? "text-amber-600" :
+                "text-red-500"
+              )}>
+                {ad.ai_relevance_score}/10
+              </span>
             </div>
-            <span className="text-[10px] text-gray-500 tabular-nums">{ad.ai_relevance_score}/10</span>
+            {ad.ai_reasoning && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
+              >
+                <ChevronDown className={cn("w-2.5 h-2.5 transition-transform", expanded && "rotate-180")} />
+                AI reasoning
+              </button>
+            )}
+            {expanded && ad.ai_reasoning && (
+              <p className="text-[10px] text-gray-500 leading-tight bg-gray-50 rounded p-1.5">
+                {ad.ai_reasoning}
+              </p>
+            )}
           </div>
         )}
 
@@ -292,18 +407,39 @@ function AdCard({ ad }: { ad: DiscoveredAd }) {
             <ExternalLink className="w-2.5 h-2.5" />
           </a>
         )}
+
+        {/* Approve/Skip buttons for pending ads */}
+        {isPending && (
+          <div className="flex gap-1.5 pt-1">
+            <button
+              disabled={acting}
+              onClick={async () => {
+                setActing(true);
+                await onApprove(ad);
+                setActing(false);
+              }}
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-medium transition-colors disabled:opacity-50"
+            >
+              <ThumbsUp className="w-3 h-3" />
+              Swipe
+            </button>
+            <button
+              disabled={acting}
+              onClick={async () => {
+                setActing(true);
+                await onSkip(ad);
+                setActing(false);
+              }}
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-[11px] font-medium transition-colors disabled:opacity-50"
+            >
+              <ThumbsDown className="w-3 h-3" />
+              Skip
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function getStatusInfo(ad: DiscoveredAd) {
-  switch (ad.status) {
-    case "swiped": return { label: "Swiped", icon: Check, className: "bg-emerald-50 text-emerald-600" };
-    case "skipped": return { label: "Skipped", icon: X, className: "bg-red-50 text-red-600" };
-    case "swiping": return { label: "Swiping", icon: Loader2, className: "bg-blue-50 text-blue-600" };
-    default: return { label: "Queued", icon: Clock, className: "bg-amber-50 text-amber-600" };
-  }
 }
 
 function getPerfBadge(ad: DiscoveredAd) {

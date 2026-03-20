@@ -115,7 +115,15 @@ export interface ExploreParams {
   sort_column?: string;
   sort_direction?: string;
   "start-date"?: string;
+  "end-date"?: string;
   page?: number;
+  status?: "active" | "inactive";
+  "run-time"?: number;
+  language?: string;
+  active_ads_count?: number;
+  location?: string;
+  gender_audience?: "all" | "men" | "women";
+  age_audience?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
 
   const statCounts = {
     total: stats?.length ?? 0,
+    pending: stats?.filter((s) => s.status === "pending").length ?? 0,
     queued: stats?.filter((s) => s.status === "queued").length ?? 0,
     swiping: stats?.filter((s) => s.status === "swiping").length ?? 0,
     swiped: stats?.filter((s) => s.status === "swiped").length ?? 0,
