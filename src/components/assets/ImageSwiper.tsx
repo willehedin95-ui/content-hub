@@ -315,13 +315,13 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setError(null);
     setSaved(false);
 
-    // Parse aspect ratio from the JSON prompt
-    let aspectRatio = "4:5";
+    // Parse aspect ratio from the JSON prompt (matches original image)
+    let retryRatio = "4:5";
     try {
       const parsed = JSON.parse(promptUsed);
       const raw = parsed?.composition?.aspect_ratio ?? "";
       const valid = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
-      if (valid.includes(raw)) aspectRatio = raw;
+      if (valid.includes(raw)) retryRatio = raw;
     } catch { /* use default */ }
 
     // If edit instructions provided, inject them into the prompt JSON
@@ -344,7 +344,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         body: JSON.stringify({
           prompt: finalPrompt,
           ...(product && { product }),
-          aspect_ratio: aspectRatio,
+          aspect_ratio: retryRatio,
         }),
       });
 
