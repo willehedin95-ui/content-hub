@@ -49,6 +49,14 @@ export async function POST(
   const competitorImageUrls = refData?.competitor_image_urls ?? [];
   const productHeroUrls = refData?.product_hero_urls ?? [];
 
+  // Build product appearance description for faithful rendering
+  const { data: productData } = job.product
+    ? await db.from("products").select("name, ingredients").eq("slug", job.product).single()
+    : { data: null };
+  const productAppearance = productData?.ingredients
+    ? `The product is: ${productData.name}. Physical appearance from specs: ${productData.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`
+    : "";
+
   // Gather existing prompts to avoid repetition
   const existingPrompts = ((job.source_images ?? []) as Array<{ generation_prompt?: string }>)
     .map((si) => si.generation_prompt)
@@ -186,8 +194,14 @@ IMPORTANT RULES:
         ...(includeProduct ? productHeroUrls : []),
       ];
 
-      // Build full prompt with text overlay
+      // Build full prompt with product appearance + text overlay
       let fullPrompt = variation.prompt;
+
+      // Append product appearance description when product is included
+      if (includeProduct && productAppearance) {
+        fullPrompt += " " + productAppearance;
+      }
+
       if (variation.hook_text || variation.headline_text) {
         const textParts: string[] = [];
         if (variation.hook_text) {

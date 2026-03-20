@@ -125,11 +125,17 @@ export async function POST(
       ? [competitorUrls[0], ...productHeroUrls]
       : productHeroUrls;
 
+    // Append product appearance description for faithful product rendering
+    let rerollPrompt = originalPrompt;
+    if (productHeroUrls.length > 0 && product.ingredients) {
+      rerollPrompt += ` The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`;
+    }
+
     let resultUrls: string[] | undefined;
     let costTimeMs: number | undefined;
     try {
       // Same prompt, different seed → different image from Nano Banana
-      const result = await generateImage(originalPrompt, referenceUrls, "4:5");
+      const result = await generateImage(rerollPrompt, referenceUrls, "4:5");
       resultUrls = result.urls;
       costTimeMs = result.costTimeMs ?? undefined;
     } catch (err) {

@@ -57,6 +57,19 @@ export async function POST(
     ?? (pendingGen.competitor_image_url ? [pendingGen.competitor_image_url] : []);
   const product_hero_urls = pendingGen.product_hero_urls;
 
+  // Fetch product info for appearance description in prompts
+  const { data: jobFull } = await db
+    .from("image_jobs")
+    .select("product")
+    .eq("id", id)
+    .single();
+  const { data: productData } = jobFull?.product
+    ? await db.from("products").select("name, ingredients").eq("slug", jobFull.product).single()
+    : { data: null };
+  const productAppearance = productData?.ingredients
+    ? `The product is: ${productData.name}. Physical appearance from specs: ${productData.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`
+    : "";
+
   // Store competitor reference data persistently for re-roll, then clear pending
   // competitor_reference_data is kept permanently so re-roll can access competitor URLs
   await db
@@ -89,9 +102,15 @@ export async function POST(
         ...(includeProduct ? product_hero_urls : []),
       ];
 
-      // Build the full prompt: scene description + optional text overlay instructions.
+      // Build the full prompt: scene description + product appearance + optional text overlay instructions.
       // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
       let fullPrompt = imgPrompt.prompt;
+
+      // Append product appearance description when product is included
+      if (includeProduct && productAppearance) {
+        fullPrompt += " " + productAppearance;
+      }
+
       const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
       if (hasTextOverlay) {
         const textParts: string[] = [];

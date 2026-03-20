@@ -222,9 +222,15 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     .order("sort_order", { ascending: true });
 
   const productHeroUrls = (productImages ?? [])
-    .filter((i) => i.category === "product")
+    .filter((i) => i.category === "product" || i.category === "hero")
     .slice(0, 3)
     .map((i) => i.url);
+
+  // Build a textual product appearance description for Kie AI prompts
+  // This ensures generated product images match the real product's distinctive features
+  const productAppearance = product.ingredients
+    ? `The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`
+    : "";
 
   let job: { id: string };
 
@@ -304,9 +310,14 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         ...(includeProduct ? productHeroUrls : []),
       ];
 
-      // Build the full prompt: scene description + optional text overlay instructions.
+      // Build the full prompt: scene description + product appearance + optional text overlay instructions.
       // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
       let fullPrompt = imgPrompt.prompt;
+
+      // Append product appearance description when product is included
+      if (includeProduct && productAppearance) {
+        fullPrompt += " " + productAppearance;
+      }
       const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
       if (hasTextOverlay) {
         const textParts: string[] = [];
