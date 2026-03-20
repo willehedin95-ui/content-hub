@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-19 (session 9 — cold start mode)
+Updated: 2026-03-20 (non-DCO PAC fix + Instagram placements)
 
 ## P0 — Blockers
 (none)
@@ -49,8 +49,11 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] Wire untracked `src/app/api/pipeline/import/` route (added 2026-02-28)
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere after AB test removal (added 2026-03-12)
 - [ ] **Launch Pad budget reduction button** — add "Reduce to X SEK" button for cold start markets where budget is too high (added 2026-03-19)
+- [ ] **Clean up duplicate Meta ad sets** — retry failures created multiple copies of same concepts (e.g. 3x NO #129 [A]). Should pause duplicates. (added 2026-03-20)
+- [ ] **Verify Instagram delivery** — check Ads Manager placement breakdown after 24h to confirm ads show on Instagram (page-backed IG, no business account linked to Hälsobladet). (added 2026-03-20)
 
 ## Done (recent)
+- [x] **Non-DCO + PAC placement routing** — Switched from DCO (`is_dynamic_creative=true`) to non-DCO + Placement Asset Customization rules. 4:5→feed, 9:16→stories/reels. Enabled Instagram placements (removed Facebook-only restriction). One ad per image pair. Commits `668560c`, `7e2542c`. (done 2026-03-20)
 - [x] **Launch Pad cold start mode** — When market has 0 active ad sets: push 5 concepts (not 3), 7-day cooldown, blue/purple/green card states, budget recommendation. Cooldown detected from performance data age. Commit `456267b`. (done 2026-03-19)
 - [x] **Video Ad Swiper + Manual Upload** — Two-model pipeline: Gemini 2.5 Pro watches actual competitor video (audio + visual) → transcribes script, identifies hook/format/delivery/character/setting → Claude generates adapted UGC concept with shots → Kie AI keyframe images → Telegram approve/reject. GetHookd board shows video ads (purple badge, play icon, duration). Manual upload via file drop or URL paste bypasses GetHookd entirely. DB: `discovered_ads.video_job_id`, `discovered_ads.ad_type`, `video_jobs.swipe_progress/source/delivery_style`. Commits `5477b85`, `90ccf65`. (done 2026-03-19)
 - [x] **Concepts card grid + re-roll UX + processing poll** — Replaced table-based concepts list with responsive card grid (2-5 columns, 4:5 thumbnails, concept number + market flag overlays, status badges). Moved re-roll button from preview modal to thumbnail hover overlay. Fixed missing polling for server-side `after()` pipeline (Finish & Queue showed "0/0"). Commit `4d28b94`. (done 2026-03-19)
