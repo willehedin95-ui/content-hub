@@ -412,11 +412,9 @@ export async function createAd(params: {
       adset_id: params.adSetId,
       creative: { creative_id: params.creativeId },
       status: params.status || "PAUSED",
-      // Prevent Meta from auto-cropping the image for vertical placements (stories/reels).
-      // Without this, a 4:5 image gets zoomed-in to fill 9:16, cutting off content.
-      creative_features_spec: {
-        image_cropping: { enroll_status: "OPT_OUT" },
-      },
+      // Note: creative_features_spec (image_cropping opt-out) removed because it's
+      // incompatible with is_dynamic_creative=true ad sets (causes subcode 1885702).
+      // 9:16 images are now properly routed via asset_customization_rules instead.
       ...(params.urlTags ? { url_tags: params.urlTags } : {}),
     }),
   });
