@@ -841,17 +841,24 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
 
 // ── Get pipeline data ────────────────────────────────────────
 
-export async function getPipelineData(): Promise<PipelineData> {
+export async function getPipelineData(workspaceId?: string): Promise<PipelineData> {
   const db = createServerSupabase();
+  const wsId = await resolveWsId(workspaceId);
   const { since } = getDateRange(30);
 
   // Fetch everything in parallel
+  let jobsQuery = db
+    .from("image_jobs")
+    .select("id, name, product, concept_number, status, cash_dna, created_at, source_images(thumbnail_url, original_url)")
+    .in("status", ["completed", "reviewing", "ready"]);
+  if (wsId) jobsQuery = jobsQuery.eq("workspace_id", wsId);
+
+  let settingsQuery = db.from("pipeline_settings").select("*");
+  if (wsId) settingsQuery = settingsQuery.eq("workspace_id", wsId);
+
   const [jobsResult, marketsResult, lifecycleResult, metricsResult, settingsResult] =
     await Promise.all([
-      db
-        .from("image_jobs")
-        .select("id, name, product, concept_number, status, cash_dna, created_at, source_images(thumbnail_url, original_url)")
-        .in("status", ["completed", "reviewing", "ready"]),
+      jobsQuery,
       db
         .from("image_job_markets")
         .select("id, image_job_id, market, created_at"),
@@ -860,7 +867,7 @@ export async function getPipelineData(): Promise<PipelineData> {
         .from("concept_metrics")
         .select("*")
         .gte("date", since),
-      db.from("pipeline_settings").select("*"),
+      settingsQuery,
     ]);
 
   const jobs = jobsResult.data ?? [];
@@ -1417,14 +1424,16 @@ export async function getLiveConceptCount(product?: string): Promise<number> {
  *
  * @deprecated Use calculateAvailableBudget() instead. Kept for backward compat.
  */
-export async function getTestingSlots(product: string): Promise<number> {
+export async function getTestingSlots(product: string, workspaceId?: string): Promise<number> {
   const db = createServerSupabase();
 
   // Get pipeline settings for fallback + min_budget_per_concept
-  const { data: settings } = await db
+  let settingsQuery = db
     .from("pipeline_settings")
     .select("testing_slots, min_budget_per_concept, country")
     .eq("product", product);
+  if (workspaceId) settingsQuery = settingsQuery.eq("workspace_id", workspaceId);
+  const { data: settings } = await settingsQuery;
 
   const staticSlots = settings && settings.length > 0
     ? Math.max(...settings.map((r) => r.testing_slots ?? 5))
@@ -1433,10 +1442,12 @@ export async function getTestingSlots(product: string): Promise<number> {
 
   try {
     // Get campaigns for this product
-    const { data: mappings } = await db
+    let mappingsQuery = db
       .from("meta_campaign_mappings")
       .select("meta_campaign_id")
       .eq("product", product);
+    if (workspaceId) mappingsQuery = mappingsQuery.eq("workspace_id", workspaceId);
+    const { data: mappings } = await mappingsQuery;
 
     if (!mappings || mappings.length === 0) return staticSlots;
 
@@ -1504,7 +1515,7 @@ export interface FormatBudgetInfo {
   recommendedBudget?: number;
 }
 
-export async function calculateAvailableBudget(): Promise<
+export async function calculateAvailableBudget(workspaceId?: string): Promise<
   Record<string, {
     image: FormatBudgetInfo;
     video: FormatBudgetInfo;
@@ -1524,9 +1535,11 @@ export async function calculateAvailableBudget(): Promise<
   const db = createServerSupabase();
 
   // Get campaign mappings (including format)
-  const { data: mappings } = await db
+  let mappingsQuery = db
     .from("meta_campaign_mappings")
     .select("product, country, meta_campaign_id, format");
+  if (workspaceId) mappingsQuery = mappingsQuery.eq("workspace_id", workspaceId);
+  const { data: mappings } = await mappingsQuery;
 
   if (!mappings || mappings.length === 0) return {};
 
@@ -1753,7 +1766,7 @@ export async function calculateAvailableBudget(): Promise<
  * Get concepts on the launch pad, ordered by priority.
  * Returns both image and video concepts with per-market push status.
  */
-export async function getLaunchpadConcepts(): Promise<
+export async function getLaunchpadConcepts(workspaceId?: string): Promise<
   Array<{
     conceptId: string;
     type: "image" | "video";
@@ -1776,11 +1789,13 @@ export async function getLaunchpadConcepts(): Promise<
   const db = createServerSupabase();
 
   // --- Image concepts ---
-  const { data: imageJobs } = await db
+  let imageQuery = db
     .from("image_jobs")
     .select("id, name, concept_number, source, product, launchpad_priority, target_languages")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
+  if (workspaceId) imageQuery = imageQuery.eq("workspace_id", workspaceId);
+  const { data: imageJobs } = await imageQuery;
 
   const imageJobIds = (imageJobs ?? []).map((j) => j.id);
 
@@ -1870,11 +1885,13 @@ export async function getLaunchpadConcepts(): Promise<
   });
 
   // --- Video concepts ---
-  const { data: videoJobs } = await db
+  let videoQuery = db
     .from("video_jobs")
     .select("id, concept_name, concept_number, product, target_languages, launchpad_priority, launchpad_market_priorities")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
+  if (workspaceId) videoQuery = videoQuery.eq("workspace_id", workspaceId);
+  const { data: videoJobs } = await videoQuery;
 
   const videoJobIds = (videoJobs ?? []).map((j) => j.id);
 

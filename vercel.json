@@ -29,8 +29,12 @@
       "schedule": "0 7 * * *"
     },
     {
-      "path": "/api/cron/autopilot-concepts",
+      "path": "/api/cron/autopilot-concepts?workspace=happysleep",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/autopilot-concepts?workspace=hydro13",
+      "schedule": "30 8 * * *"
     },
     {
       "path": "/api/cron/invoice-check",

@@ -34,9 +34,6 @@ import type {
 
 export const maxDuration = 300;
 
-const HAPPYSLEEP_WORKSPACE_ID = "c40221e2-96fb-4774-92db-74ec0227b262";
-const PRODUCT_SLUG = "happysleep";
-const TARGET_LANGUAGES = ["sv", "da", "no"];
 const TARGET_RATIOS = ["4:5", "9:16"];
 
 // Autopilot-capable brainstorm modes (no user input required)
@@ -47,19 +44,67 @@ const AUTOPILOT_MODES: BrainstormMode[] = [
   "from_template",
 ];
 
-// Default explore queries to rotate through (any niche — not just health)
+// Fallback explore queries (used when workspace has none configured)
 const DEFAULT_EXPLORE_QUERIES = [
   "supplement health",
   "skincare beauty",
   "fitness equipment",
   "wellness product",
-  "pillow sleep",
-  "mattress bed",
-  "pain relief",
-  "posture corrector",
   "weight loss",
   "anti-aging",
 ];
+
+/** Workspace context resolved from DB — replaces all hardcoded constants */
+interface WorkspaceCtx {
+  id: string;
+  slug: string;
+  productSlug: string;
+  productName: string;
+  targetLanguages: string[];
+  settings: Record<string, unknown>;
+  metaConfig: Record<string, unknown> | null;
+}
+
+/** Resolve workspace from ?workspace= slug or fall back to all autopilot-enabled workspaces */
+async function getAutopilotWorkspaces(
+  db: ReturnType<typeof createServerSupabase>,
+  slugFilter?: string | null
+): Promise<WorkspaceCtx[]> {
+  let query = db.from("workspaces").select("id, slug, settings, meta_config");
+  if (slugFilter) {
+    query = query.eq("slug", slugFilter);
+  }
+  const { data: workspaces } = await query;
+
+  const results: WorkspaceCtx[] = [];
+  for (const ws of workspaces ?? []) {
+    const s = (ws.settings ?? {}) as Record<string, unknown>;
+    const autopilotMode = s.autopilot_mode as string | undefined;
+    if (!slugFilter && (!autopilotMode || autopilotMode === "disabled")) continue;
+
+    const productSlug = (s.default_product as string) || "happysleep";
+    const targetLanguages = (s.target_languages as string[]) ?? ["sv", "da", "no"];
+
+    // Fetch product name for scoring prompt
+    const { data: prod } = await db
+      .from("products")
+      .select("name")
+      .eq("slug", productSlug)
+      .eq("workspace_id", ws.id)
+      .single();
+
+    results.push({
+      id: ws.id,
+      slug: ws.slug,
+      productSlug,
+      productName: prod?.name ?? productSlug,
+      targetLanguages,
+      settings: s,
+      metaConfig: ws.meta_config as Record<string, unknown> | null,
+    });
+  }
+  return results;
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -70,46 +115,55 @@ export async function GET(req: NextRequest) {
 
   const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
   const db = createServerSupabase();
+  const force = req.nextUrl.searchParams.get("force") === "true";
+  const wsSlug = req.nextUrl.searchParams.get("workspace");
 
   try {
-    // --- Step 1: Check if concepts are needed (skip with ?force=true) ---
-    const force = req.nextUrl.searchParams.get("force") === "true";
-    if (!force) {
-      const needResult = await checkConceptNeed(db);
-      if (!needResult.needed) {
-        return NextResponse.json({
-          ok: true,
-          skipped: true,
-          reason: needResult.reason,
-        });
+    const workspaces = await getAutopilotWorkspaces(db, wsSlug);
+    if (workspaces.length === 0) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "No autopilot-enabled workspaces" });
+    }
+
+    const multiWs = workspaces.length > 1;
+    const allResults: Array<{ workspace: string; result: unknown }> = [];
+
+    for (const ws of workspaces) {
+      const label = multiWs ? `[${ws.slug}] ` : "";
+      try {
+        // Check if concepts are needed (skip with ?force=true)
+        if (!force) {
+          const needResult = await checkConceptNeed(db, ws.id);
+          if (!needResult.needed) {
+            allResults.push({ workspace: ws.slug, result: { skipped: true, reason: needResult.reason } });
+            continue;
+          }
+        }
+
+        const autopilotMode = (ws.settings.autopilot_mode as string) ?? "from_scratch";
+
+        // Route to the right code path
+        if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
+          const result = await runCompetitorSwipe(db, chatId, ws, label);
+          allResults.push({ workspace: ws.slug, result });
+        } else {
+          const result = await runFromScratch(db, chatId, ws, label);
+          allResults.push({ workspace: ws.slug, result });
+        }
+      } catch (err) {
+        console.error(`[Autopilot] ${label}Fatal error:`, err);
+        if (chatId) {
+          await sendMessageWithInlineKeyboard(chatId,
+            `❌ ${label}Autopilot concept creation failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+            []
+          ).catch(() => {});
+        }
+        allResults.push({ workspace: ws.slug, result: { error: err instanceof Error ? err.message : "Unknown error" } });
       }
     }
 
-    // --- Step 2: Check autopilot mode from workspace settings ---
-    const { data: workspace } = await db
-      .from("workspaces")
-      .select("settings")
-      .eq("id", HAPPYSLEEP_WORKSPACE_ID)
-      .single();
-
-    const settings = (workspace?.settings ?? {}) as Record<string, unknown>;
-    const autopilotMode = (settings.autopilot_mode as string) ?? "from_scratch";
-
-    // Route to the right code path
-    if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
-      return await runCompetitorSwipe(db, chatId, settings);
-    }
-
-    // Default: from-scratch mode (original flow)
-    return await runFromScratch(db, chatId);
+    return NextResponse.json({ ok: true, results: allResults });
   } catch (err) {
     console.error("[Autopilot] Fatal error:", err);
-    if (chatId) {
-      await sendMessageWithInlineKeyboard(chatId,
-        `❌ Autopilot concept creation failed: ${err instanceof Error ? err.message : "Unknown error"}`,
-        []
-      ).catch(() => {});
-    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }
@@ -124,27 +178,28 @@ export async function GET(req: NextRequest) {
 async function runCompetitorSwipe(
   db: ReturnType<typeof createServerSupabase>,
   chatId: string | undefined,
-  settings: Record<string, unknown>
+  ws: WorkspaceCtx,
+  label: string
 ) {
   // --- Discover a winning competitor ad ---
-  const discovered = await discoverCompetitorAd(db, settings);
+  const discovered = await discoverCompetitorAd(db, ws);
 
   if (!discovered) {
     if (chatId) {
       await sendMessageWithInlineKeyboard(chatId,
-        "🔍 Autopilot swipe: No new ads found to swipe today. Will retry tomorrow.",
+        `🔍 ${label}Autopilot swipe: No new ads found to swipe today. Will retry tomorrow.`,
         []
       );
     }
-    return NextResponse.json({ ok: true, skipped: true, reason: "No new ads discovered" });
+    return { skipped: true, reason: "No new ads discovered" };
   }
 
-  console.log(`[Autopilot] Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}"`);
+  console.log(`[Autopilot] ${label}Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}"`);
 
   // --- Store in discovered_ads ---
   const imageUrls = getImageUrls(discovered.ad);
   await db.from("discovered_ads").upsert({
-    workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+    workspace_id: ws.id,
     gethookd_ad_id: discovered.ad.id,
     external_id: discovered.ad.external_id,
     brand_name: discovered.ad.brand.name,
@@ -163,26 +218,26 @@ async function runCompetitorSwipe(
 
   // --- Score ad (skip for board ads — user already vetted) ---
   if (discovered.source !== "board") {
-    const score = await scoreAd(discovered.ad);
+    const score = await scoreAd(discovered.ad, ws.productName);
     await db.from("discovered_ads")
       .update({ ai_relevance_score: score.score, ai_reasoning: score.reasoning })
       .eq("gethookd_ad_id", discovered.ad.id)
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+      .eq("workspace_id", ws.id);
 
     if (score.score < 6) {
       await db.from("discovered_ads")
         .update({ status: "skipped" })
         .eq("gethookd_ad_id", discovered.ad.id)
-        .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+        .eq("workspace_id", ws.id);
 
-      console.log(`[Autopilot] Ad scored ${score.score}/10 — skipping: ${score.reasoning}`);
+      console.log(`[Autopilot] ${label}Ad scored ${score.score}/10 — skipping: ${score.reasoning}`);
       if (chatId) {
         await sendMessageWithInlineKeyboard(chatId,
-          `🔍 Autopilot skipped ad from ${discovered.ad.brand.name} (score: ${score.score}/10)\nReason: ${score.reasoning}`,
+          `🔍 ${label}Autopilot skipped ad from ${discovered.ad.brand.name} (score: ${score.score}/10)\nReason: ${score.reasoning}`,
           []
         );
       }
-      return NextResponse.json({ ok: true, skipped: true, reason: `Ad scored ${score.score}/10` });
+      return { skipped: true, reason: `Ad scored ${score.score}/10` };
     }
   }
 
@@ -191,15 +246,15 @@ async function runCompetitorSwipe(
     await db.from("discovered_ads")
       .update({ status: "skipped" })
       .eq("gethookd_ad_id", discovered.ad.id)
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
-    return NextResponse.json({ ok: true, skipped: true, reason: "No images in ad" });
+      .eq("workspace_id", ws.id);
+    return { skipped: true, reason: "No images in ad" };
   }
 
   // --- Delegate to shared swipe function ---
   try {
     const result = await swipeCompetitorAd({
-      workspaceId: HAPPYSLEEP_WORKSPACE_ID,
-      productSlug: PRODUCT_SLUG,
+      workspaceId: ws.id,
+      productSlug: ws.productSlug,
       competitorImageUrls,
       competitorAdCopy: discovered.ad.body,
       brandName: discovered.ad.brand.name,
@@ -211,10 +266,9 @@ async function runCompetitorSwipe(
     await db.from("discovered_ads")
       .update({ status: "swiped", image_job_id: result.jobId, updated_at: new Date().toISOString() })
       .eq("gethookd_ad_id", discovered.ad.id)
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+      .eq("workspace_id", ws.id);
 
-    return NextResponse.json({
-      ok: true,
+    return {
       mode: "competitor_swipe",
       concept: {
         id: result.jobId,
@@ -225,16 +279,16 @@ async function runCompetitorSwipe(
         images_generated: result.imagesGenerated,
         landing_page_assigned: result.landingPageAssigned,
       },
-    });
+    };
   } catch (err) {
-    console.error("[Autopilot/swipe] Swipe failed:", err);
+    console.error(`[Autopilot/swipe] ${label}Swipe failed:`, err);
     if (chatId) {
       await sendMessageWithInlineKeyboard(chatId,
-        `⚠️ Autopilot swipe failed for ad from ${discovered.ad.brand.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
+        `⚠️ ${label}Autopilot swipe failed for ad from ${discovered.ad.brand.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
         []
       );
     }
-    return NextResponse.json({ ok: true, error: err instanceof Error ? err.message : "Unknown error" });
+    return { error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
 
@@ -244,18 +298,18 @@ async function runCompetitorSwipe(
 
 async function discoverCompetitorAd(
   db: ReturnType<typeof createServerSupabase>,
-  settings: Record<string, unknown>
+  ws: WorkspaceCtx
 ): Promise<{ ad: GethookdAd; source: "board" | "brand_spy" | "explore" } | null> {
   // Get already-seen ad IDs to avoid duplicates
   const { data: seenAds } = await db
     .from("discovered_ads")
     .select("gethookd_ad_id")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID);
+    .eq("workspace_id", ws.id);
 
   const seenIds = new Set((seenAds ?? []).map((a) => a.gethookd_ad_id));
 
   // --- Priority 1: Board (user-curated) ---
-  const boardId = settings.gethookd_board_id as string | undefined;
+  const boardId = ws.settings.gethookd_board_id as string | undefined;
   if (boardId) {
     try {
       const { ads } = await getBoardAds(boardId, 1, 50);
@@ -291,7 +345,7 @@ async function discoverCompetitorAd(
   }
 
   // --- Priority 3: Explore (try all queries, paginate up to 3 pages each) ---
-  const queries = (settings.gethookd_explore_queries as string[]) ?? DEFAULT_EXPLORE_QUERIES;
+  const queries = (ws.settings.gethookd_explore_queries as string[]) ?? DEFAULT_EXPLORE_QUERIES;
   // Shuffle so we don't always burn credits on the same queries first
   const shuffled = [...queries].sort(() => Math.random() - 0.5);
   const MAX_PAGES = 3;
@@ -333,7 +387,7 @@ async function discoverCompetitorAd(
 // SCORE AD (Claude Haiku quick relevance check)
 // ===========================================================================
 
-async function scoreAd(ad: GethookdAd): Promise<{ score: number; reasoning: string }> {
+async function scoreAd(ad: GethookdAd, productName: string = "sleep pillow"): Promise<{ score: number; reasoning: string }> {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
     const imageUrls = getImageUrls(ad);
@@ -347,7 +401,7 @@ async function scoreAd(ad: GethookdAd): Promise<{ score: number; reasoning: stri
       type: "text",
       text: [
         "Score this ad's VISUAL FORMAT and PERSUASION STRUCTURE for swipe potential.",
-        "We adapt ads from ANY niche to sell a sleep pillow. We don't copy the product or messaging — we swipe the visual format, layout, and persuasion mechanics.",
+        `We adapt ads from ANY niche to sell ${productName}. We don't copy the product or messaging — we swipe the visual format, layout, and persuasion mechanics.`,
         "",
         `Ad title: ${ad.title}`,
         `Brand: ${ad.brand.name}`,
@@ -395,16 +449,19 @@ async function scoreAd(ad: GethookdAd): Promise<{ score: number; reasoning: stri
 
 async function runFromScratch(
   db: ReturnType<typeof createServerSupabase>,
-  chatId: string | undefined
+  chatId: string | undefined,
+  ws: WorkspaceCtx,
+  label: string
 ) {
   // --- Step 2: Pick brainstorm mode ---
-  const mode = await pickBrainstormMode(db);
+  const mode = await pickBrainstormMode(db, ws.id);
 
   // --- Step 3: Fetch product context ---
   const { data: product } = await db
     .from("products")
     .select("*")
-    .eq("slug", PRODUCT_SLUG)
+    .eq("slug", ws.productSlug)
+    .eq("workspace_id", ws.id)
     .single();
 
   if (!product) {
@@ -422,8 +479,8 @@ async function runFromScratch(
     .eq("product_id", product.id);
 
   // --- Step 4: Build prompts and call Claude ---
-  const hookInspiration = await buildHookInspiration(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
-  const learningsContext = await buildLearningsContext(PRODUCT_SLUG, HAPPYSLEEP_WORKSPACE_ID);
+  const hookInspiration = await buildHookInspiration(ws.productSlug, ws.id);
+  const learningsContext = await buildLearningsContext(ws.productSlug, ws.id);
 
   // For from_internal mode, fetch existing concepts for gap analysis
   let existingConcepts: Array<{ name: string; angle: string; awareness: string }> | undefined;
@@ -431,8 +488,8 @@ async function runFromScratch(
     const { data: existing } = await db
       .from("image_jobs")
       .select("name, cash_dna")
-      .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
-      .eq("product", PRODUCT_SLUG)
+      .eq("workspace_id", ws.id)
+      .eq("product", ws.productSlug)
       .not("cash_dna", "is", null)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -456,7 +513,7 @@ async function runFromScratch(
 
   const brainstormRequest: BrainstormRequest = {
     mode,
-    product: PRODUCT_SLUG,
+    product: ws.productSlug,
     count: 1, // One concept at a time to stay within cron limits
   };
 
@@ -481,11 +538,11 @@ async function runFromScratch(
   if (proposals.length === 0) {
     if (chatId) {
       await sendMessageWithInlineKeyboard(chatId,
-        `⚠️ Autopilot brainstorm returned no valid proposals (mode: ${mode}). Will retry tomorrow.`,
+        `⚠️ ${label}Autopilot brainstorm returned no valid proposals (mode: ${mode}). Will retry tomorrow.`,
         []
       );
     }
-    return NextResponse.json({ ok: true, error: "No proposals parsed" });
+    return { error: "No proposals parsed" };
   }
 
   const proposal = proposals[0];
@@ -495,7 +552,7 @@ async function runFromScratch(
   const { data: lastJob } = await db
     .from("image_jobs")
     .select("concept_number")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+    .eq("workspace_id", ws.id)
     .not("concept_number", "is", null)
     .order("concept_number", { ascending: false })
     .limit(1)
@@ -506,13 +563,13 @@ async function runFromScratch(
   const { data: job, error: jobErr } = await db
     .from("image_jobs")
     .insert({
-      workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+      workspace_id: ws.id,
       name: proposal.concept_name,
-      product: PRODUCT_SLUG,
+      product: ws.productSlug,
       status: "draft",
       source: "autopilot",
       concept_number: nextConceptNumber,
-      target_languages: TARGET_LANGUAGES,
+      target_languages: ws.targetLanguages,
       target_ratios: TARGET_RATIOS,
       cash_dna: proposal.cash_dna,
       ad_copy_primary: proposal.ad_copy_primary,
@@ -525,11 +582,11 @@ async function runFromScratch(
 
   if (jobErr || !job) {
     console.error("[Autopilot] Failed to create image_job:", jobErr);
-    return NextResponse.json({ error: "Failed to create job" }, { status: 500 });
+    return { error: "Failed to create job" };
   }
 
   // --- Step 6: Auto-assign landing page ---
-  const landingPageId = await findBestLandingPage(db, HAPPYSLEEP_WORKSPACE_ID, PRODUCT_SLUG);
+  const landingPageId = await findBestLandingPage(db, ws.id, ws.productSlug);
   if (landingPageId) {
     await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
   }
@@ -622,7 +679,7 @@ async function runFromScratch(
     const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
 
     const caption = [
-      `🤖 Autopilot concept #${nextConceptNumber}:`,
+      `🤖 ${label}Autopilot concept #${nextConceptNumber}:`,
       ``,
       `"${proposal.concept_name}"`,
       `Angle: ${angle} | Awareness: ${awareness}`,
@@ -645,8 +702,7 @@ async function runFromScratch(
     }
   }
 
-  return NextResponse.json({
-    ok: true,
+  return {
     mode: "from_scratch",
     concept: {
       id: job.id,
@@ -656,7 +712,7 @@ async function runFromScratch(
       images_generated: imageResults.length,
       landing_page_assigned: !!landingPageId,
     },
-  });
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -664,9 +720,10 @@ async function runFromScratch(
 // ---------------------------------------------------------------------------
 
 async function checkConceptNeed(
-  db: ReturnType<typeof createServerSupabase>
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string
 ): Promise<{ needed: boolean; reason: string }> {
-  // Simple: 1 autopilot concept per day, always.
+  // Simple: 1 autopilot concept per day per workspace.
   // Push scheduling is handled separately by pipeline-push (budget-aware).
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
@@ -674,7 +731,7 @@ async function checkConceptNeed(
   const { count: todayCount } = await db
     .from("image_jobs")
     .select("id", { count: "exact", head: true })
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+    .eq("workspace_id", workspaceId)
     .eq("source", "autopilot")
     .gte("created_at", todayStart.toISOString());
 
@@ -690,14 +747,15 @@ async function checkConceptNeed(
 // ---------------------------------------------------------------------------
 
 async function pickBrainstormMode(
-  db: ReturnType<typeof createServerSupabase>
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string
 ): Promise<BrainstormMode> {
   // Check which modes were used recently
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentJobs } = await db
     .from("image_jobs")
     .select("cash_dna")
-    .eq("workspace_id", HAPPYSLEEP_WORKSPACE_ID)
+    .eq("workspace_id", workspaceId)
     .eq("source", "autopilot")
     .gte("created_at", sevenDaysAgo)
     .order("created_at", { ascending: false })

@@ -2,16 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
 import { withRetry, isTransientError } from "./retry";
 import { CLAUDE_MODEL } from "./constants";
+import { getProductAngles, getAngleDescription, type ProductAngleConfig } from "./product-angles";
 
-export type SwiperAngle = "neck-pain" | "snoring" | "sleep-quality" | "general" | "auto-detect";
-
-const ANGLE_LABELS: Record<SwiperAngle, string> = {
-  "neck-pain": "Neck Pain — morning stiffness, chronic pain, failed treatments",
-  "snoring": "Snoring — relationship destruction, partner rage, kinked airway",
-  "sleep-quality": "Sleep Quality — poor rest, fatigue, tossing and turning",
-  "general": "General / Listicle — not focused on one problem; broad product benefits (\"X reasons why\", multiple selling points, catch-all). Cover a wide range of benefits like comfort, materials, quality, value, guarantee, social proof. The page should work for any audience segment.",
-  "auto-detect": "Auto-detect — match the angle to whatever problem the swiped source addresses",
-};
+/** @deprecated Use string angle values with product-angles.ts configs instead */
+export type SwiperAngle = string;
 
 /**
  * Build the swiper-specific system prompt using a product brief.
@@ -19,8 +13,16 @@ const ANGLE_LABELS: Record<SwiperAngle, string> = {
  */
 export function buildSwiperPrompt(
   productName: string,
-  productBrief: string
+  productBrief: string,
+  productSlug?: string
 ): string {
+  const config = getProductAngles(productSlug ?? "");
+
+  // Build angle list for Step 2 from product config
+  const angleLines = config.angles
+    .map((a) => `- **${a.label}** — ${a.description}`)
+    .join("\n");
+
   return `You are a senior direct-response copywriter who specialises in health & wellness ecommerce for the Scandinavian market. You rewrite competitor advertorials adapted for our products while preserving the original page's persuasion architecture.
 
 You have deep knowledge of advertorial formats, direct-response copywriting frameworks, and the psychology of health-conscious Scandinavian consumers.
@@ -53,10 +55,7 @@ Maintain this SAME format in your rewrite. If the source is a first-person story
 ### Step 2: Match the advertising angle
 
 The rewrite must focus on ONE of these angles:
-- **Neck Pain** — morning stiffness, chronic pain, failed treatments
-- **Snoring** — relationship destruction, partner rage, kinked airway
-- **Sleep Quality** — poor rest, fatigue, tossing and turning
-- **General / Listicle** — NOT focused on one specific problem. Instead, cover a broad range of product benefits (comfort, materials, sleep science, quality, value, guarantee, social proof). Think "X reasons why this pillow is different" — each reason highlights a different selling point. The page should work as a catch-all that any audience segment can relate to.
+${angleLines}
 
 Use the angle specified in the prompt. If none is specified, match the angle to whatever problem the swiped source addresses.
 
@@ -72,13 +71,13 @@ Use the angle specified in the prompt. If none is specified, match the angle to 
 
 **REPLACE:**
 - All competitor product references → ${productName}
-- All competitor brand references → SwedishBalance
+- All competitor brand references → ${config.brandName}
 - Product claims → use ONLY claims from the product brief (never invent claims)
 - Mechanism/how-it-works → use the UMP from the product brief, framed for the selected angle
 - Statistics and proof → use ONLY stats from the product brief proof stack
 - Testimonials → adapt using testimonial highlights from the brief. Keep names realistic for the target market (Swedish/Scandinavian names)
 - Pricing → REMOVE all pricing mentions entirely (see DO NOT rules below)
-- Guarantee → use 100-night money-back guarantee
+- Guarantee → use ${config.guarantee}
 - CTAs → reference ${productName} with appropriate urgency
 
 **ADAPT:**
@@ -113,12 +112,15 @@ export function buildSwiperUserPrompt(
   productName: string,
   angle: SwiperAngle,
   sourceLanguage: string,
-  notes?: string
+  notes?: string,
+  productSlug?: string
 ): string {
+  const angleDesc = getAngleDescription(productSlug ?? "", angle);
+
   const parts = [
     `Rewrite the following competitor advertorial HTML for ${productName}.`,
     ``,
-    `**Advertising angle:** ${ANGLE_LABELS[angle]}`,
+    `**Advertising angle:** ${angleDesc}`,
     `**Source language:** ${sourceLanguage}`,
   ];
 
@@ -215,11 +217,11 @@ export function buildRewritePrompts(
   customInstructions?: string
 ): { systemPrompt: string; userPrompt: string } {
   const systemPrompt = productBrief && angle
-    ? buildSwiperPrompt(product.name, productBrief)
+    ? buildSwiperPrompt(product.name, productBrief, product.slug)
     : buildSystemPrompt(product, guidelines, references);
 
   const userPrompt = productBrief && angle
-    ? buildSwiperUserPrompt(bodyHtml, product.name, angle, sourceLanguage, customInstructions)
+    ? buildSwiperUserPrompt(bodyHtml, product.name, angle, sourceLanguage, customInstructions, product.slug)
     : `Rewrite the competitor landing page HTML below so it promotes ${product.name} instead.
 
 RULES:

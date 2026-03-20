@@ -13,7 +13,6 @@ import {
 
 export const maxDuration = 120;
 
-const HAPPYSLEEP_WORKSPACE_ID = "c40221e2-96fb-4774-92db-74ec0227b262";
 const MAX_KILLS_PER_RUN = 5;
 const DELAY_MS = 500;
 
@@ -31,33 +30,44 @@ export async function GET(req: NextRequest) {
   const db = createServerSupabase();
 
   try {
-    // --- Check workspace settings ---
-    const { data: workspace } = await db
+    // --- Fetch all workspaces with autopilot execution enabled ---
+    const { data: allWorkspaces } = await db
       .from("workspaces")
-      .select("settings, meta_config")
-      .eq("id", HAPPYSLEEP_WORKSPACE_ID)
-      .single();
+      .select("id, slug, settings, meta_config");
 
-    const settings = (workspace?.settings ?? {}) as Record<string, unknown>;
-    const autoKill = settings.autopilot_auto_kill === true;
-    const autoBudget = settings.autopilot_auto_budget === true;
+    const workspaces = (allWorkspaces ?? []).filter((ws) => {
+      const s = (ws.settings ?? {}) as Record<string, unknown>;
+      return s.autopilot_auto_kill === true || s.autopilot_auto_budget === true;
+    });
 
-    if (!autoKill && !autoBudget) {
-      return NextResponse.json({ ok: true, skipped: true, reason: "Autopilot auto-kill and auto-budget both disabled" });
+    if (workspaces.length === 0) {
+      return NextResponse.json({ ok: true, skipped: true, reason: "No workspaces with autopilot execution enabled" });
     }
 
-    // Set Meta credentials for this workspace (crons have no cookies)
-    if (workspace?.meta_config) {
-      setMetaConfig(workspace.meta_config);
-    }
+    const multiWs = workspaces.length > 1;
+    const allResults: Array<{ workspace: string; result: unknown }> = [];
 
-    // --- Gather strategy engine input (same pattern as morning-brief route) ---
+    for (const workspace of workspaces) {
+      const wsId = workspace.id;
+      const label = multiWs ? `[${workspace.slug}] ` : "";
+      const settings = (workspace.settings ?? {}) as Record<string, unknown>;
+      const autoKill = settings.autopilot_auto_kill === true;
+      const autoBudget = settings.autopilot_auto_budget === true;
+
+      try {
+        // Set Meta credentials for this workspace (crons have no cookies)
+        if (workspace.meta_config) {
+          setMetaConfig(workspace.meta_config as Parameters<typeof setMetaConfig>[0]);
+        }
+
+    // --- Gather strategy engine input ---
     const today = new Date().toISOString().slice(0, 10);
 
-    // Pipeline settings for BE-ROAS and target CPA
+    // Pipeline settings for BE-ROAS and target CPA (scoped to workspace)
     const { data: pipelineSettings } = await db
       .from("pipeline_settings")
-      .select("product, country, target_roas, target_cpa");
+      .select("product, country, target_roas, target_cpa")
+      .eq("workspace_id", wsId);
 
     const beRoasMap = new Map<string, number>();
     const targetCpaMap = new Map<string, number>();
@@ -72,15 +82,30 @@ export async function GET(req: NextRequest) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
     const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10);
 
+    // Campaign mappings (scoped to workspace)
+    const { data: campaignMappings } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id, country, product, format")
+      .eq("workspace_id", wsId);
+
+    const wsCampaignIds = (campaignMappings ?? []).map((m) => m.meta_campaign_id).filter(Boolean);
+    if (wsCampaignIds.length === 0) {
+      allResults.push({ workspace: workspace.slug, result: { skipped: true, reason: "No campaign mappings" } });
+      continue;
+    }
+
+    // Fetch adset performance only for this workspace's campaigns
     const { data: adsetRows } = await db
       .from("meta_adset_performance")
       .select("*")
+      .in("campaign_id", wsCampaignIds)
       .gte("date", thirtyDaysStr)
       .lte("date", today)
       .order("date", { ascending: false });
 
     if (!adsetRows?.length) {
-      return NextResponse.json({ ok: true, skipped: true, reason: "No ad-set performance data" });
+      allResults.push({ workspace: workspace.slug, result: { skipped: true, reason: "No ad-set performance data" } });
+      continue;
     }
 
     // Budget snapshots (7 days)
@@ -89,13 +114,9 @@ export async function GET(req: NextRequest) {
     const { data: budgetSnaps } = await db
       .from("campaign_budget_snapshots")
       .select("date, campaign_id, daily_budget")
+      .in("campaign_id", wsCampaignIds)
       .gte("date", sevenDaysBack.toISOString().slice(0, 10))
       .order("date", { ascending: false });
-
-    // Campaign mappings
-    const { data: campaignMappings } = await db
-      .from("meta_campaign_mappings")
-      .select("meta_campaign_id, country, product, format");
 
     // Build campaign info
     const campaignInfoMap = new Map<string, CampaignInfo>();
@@ -197,7 +218,7 @@ export async function GET(req: NextRequest) {
             await sleep(DELAY_MS);
 
             await db.from("autopilot_actions").insert({
-              workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+              workspace_id: wsId,
               action_type: "kill_adset",
               target_id: adsetId,
               target_name: adsetName,
@@ -217,7 +238,7 @@ export async function GET(req: NextRequest) {
             killActions.push({ name: adsetName, reason: rec.title, success: false, error: errorMsg });
 
             await db.from("autopilot_actions").insert({
-              workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+              workspace_id: wsId,
               action_type: "kill_adset",
               target_id: adsetId,
               target_name: adsetName,
@@ -257,7 +278,7 @@ export async function GET(req: NextRequest) {
           await sleep(DELAY_MS);
 
           await db.from("autopilot_actions").insert({
-            workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+            workspace_id: wsId,
             action_type: "increase_budget",
             target_id: campaignId,
             target_name: campName,
@@ -277,7 +298,7 @@ export async function GET(req: NextRequest) {
           budgetActions.push({ name: campName, oldBudget: oldBudgetSek, newBudget: newBudgetSek, success: false, error: errorMsg });
 
           await db.from("autopilot_actions").insert({
-            workspace_id: HAPPYSLEEP_WORKSPACE_ID,
+            workspace_id: wsId,
             action_type: "increase_budget",
             target_id: campaignId,
             target_name: campName,
@@ -299,7 +320,7 @@ export async function GET(req: NextRequest) {
     // --- Send Telegram digest ---
     if (chatId && (killActions.length > 0 || budgetActions.length > 0 || skippedActions.length > 0)) {
       const lines: string[] = [
-        dryRun ? "🤖 Autopilot Daily Actions (DRY RUN)" : "🤖 Autopilot Daily Actions",
+        dryRun ? `🤖 ${label}Autopilot Daily Actions (DRY RUN)` : `🤖 ${label}Autopilot Daily Actions`,
         "",
       ];
 
@@ -337,26 +358,34 @@ export async function GET(req: NextRequest) {
       await sendMessage(chatId, lines.join("\n"));
     }
 
-    // Clean up Meta config
-    setMetaConfig(null);
-
-    return NextResponse.json({
-      ok: true,
-      dry_run: dryRun,
-      headline: guide.headline,
-      headline_tone: guide.headline_tone,
-      kills: killActions,
-      budget_changes: budgetActions,
-      skipped: skippedActions,
+    allResults.push({
+      workspace: workspace.slug,
+      result: {
+        headline: guide.headline,
+        headline_tone: guide.headline_tone,
+        kills: killActions,
+        budget_changes: budgetActions,
+        skipped: skippedActions,
+      },
     });
+
+      } catch (err) {
+        console.error(`[Autopilot Execute] ${label}Error:`, err);
+        if (chatId) {
+          await sendMessage(chatId,
+            `❌ ${label}Autopilot execute failed: ${err instanceof Error ? err.message : "Unknown error"}`
+          ).catch(() => {});
+        }
+        allResults.push({ workspace: workspace.slug, result: { error: err instanceof Error ? err.message : "Unknown error" } });
+      } finally {
+        setMetaConfig(null);
+      }
+    } // end workspace loop
+
+    return NextResponse.json({ ok: true, dry_run: dryRun, results: allResults });
   } catch (err) {
     setMetaConfig(null);
     console.error("[Autopilot Execute] Fatal error:", err);
-    if (chatId) {
-      await sendMessage(chatId,
-        `❌ Autopilot execute failed: ${err instanceof Error ? err.message : "Unknown error"}`
-      ).catch(() => {});
-    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wand2,
@@ -9,6 +9,7 @@ import {
   RotateCcw,
   CheckCircle2,
 } from "lucide-react";
+import { getProductAngles } from "@/lib/product-angles";
 
 interface ProductWithImages {
   id: string;
@@ -39,6 +40,10 @@ export default function SwiperClient({ products }: Props) {
   const [steps, setSteps] = useState<SwipeStep[]>([]);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
+  const angleConfig = useMemo(
+    () => getProductAngles(selectedProduct?.slug ?? ""),
+    [selectedProduct?.slug]
+  );
 
   async function safeJson<T>(res: Response, fallbackMsg: string): Promise<T> {
     const text = await res.text();
@@ -184,7 +189,10 @@ export default function SwiperClient({ products }: Props) {
           ) : (
             <select
               value={selectedProductId}
-              onChange={(e) => setSelectedProductId(e.target.value)}
+              onChange={(e) => {
+                setSelectedProductId(e.target.value);
+                setSelectedAngle("auto-detect");
+              }}
               className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               disabled={submitting}
             >
@@ -208,10 +216,11 @@ export default function SwiperClient({ products }: Props) {
             disabled={submitting}
           >
             <option value="auto-detect">Auto-detect (match source)</option>
-            <option value="neck-pain">Neck Pain</option>
-            <option value="snoring">Snoring</option>
-            <option value="sleep-quality">Sleep Quality</option>
-            <option value="general">General / Listicle (multi-benefit)</option>
+            {angleConfig.angles.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -241,7 +250,7 @@ export default function SwiperClient({ products }: Props) {
           <textarea
             value={customInstructions}
             onChange={(e) => setCustomInstructions(e.target.value)}
-            placeholder="E.g. Use &quot;Hälsobladet&quot; as brand name instead of SwedishBalance. Don't mention the product name HappySleep — keep it curiosity-driven."
+            placeholder={`E.g. Use a specific brand name instead of ${angleConfig.brandName}. Keep it curiosity-driven — don't mention ${selectedProduct?.name ?? "the product"} by name.`}
             rows={3}
             className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
             disabled={submitting}

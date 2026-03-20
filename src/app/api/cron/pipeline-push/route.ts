@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { calculateAvailableBudget, getLaunchpadConcepts, syncPipelineMetrics, MAX_CONCEPTS_PER_BATCH, COLD_START_BATCH_SIZE } from "@/lib/pipeline";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
+import { setMetaConfig } from "@/lib/meta";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
 import { sendMessage } from "@/lib/telegram";
 
@@ -43,187 +44,229 @@ export async function GET(req: NextRequest) {
     // Old AB test conversion sync removed — now using ad-level page testing
 
     // Step 2: Push from launch pad based on available budget per market (format-aware)
-    const budgets = await calculateAvailableBudget();
-    const launchpadConcepts = await getLaunchpadConcepts();
+    // Fetch all workspaces with Meta config (needed for pushing)
+    const { data: allWorkspaces } = await db
+      .from("workspaces")
+      .select("id, slug, settings, meta_config");
 
-    if (launchpadConcepts.length === 0) {
+    const pushWorkspaces = (allWorkspaces ?? []).filter((ws) => ws.meta_config != null);
+
+    if (pushWorkspaces.length === 0) {
       return NextResponse.json({
-        message: "Sync complete, no concepts on launch pad",
+        message: "Sync complete, no workspaces with Meta config",
         syncedMetrics: syncResult.synced,
         stageTransitions: syncResult.transitions.length,
         pushed: 0,
       });
     }
 
-    // Filter out image concepts whose translations aren't complete yet
-    const imageConceptIds = launchpadConcepts.filter((c) => c.type === "image").map((c) => c.conceptId);
-    const { data: jobStatuses } = imageConceptIds.length > 0
-      ? await db.from("image_jobs").select("id, status").in("id", imageConceptIds)
-      : { data: [] as { id: string; status: string }[] };
+    const multiWs = pushWorkspaces.length > 1;
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    const allResults: Array<{ workspace: string; results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> }> = [];
 
-    const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
-    const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
+    for (const workspace of pushWorkspaces) {
+      const wsId = workspace.id;
+      const label = multiWs ? `[${workspace.slug}] ` : "";
+      const wsSettings = (workspace.settings ?? {}) as Record<string, unknown>;
+      const metaConfig = workspace.meta_config as Record<string, unknown>;
 
-    const results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> = [];
+      try {
+        setMetaConfig(metaConfig as Parameters<typeof setMetaConfig>[0]);
 
-    // Track how many we've pushed per market+format so we respect MAX_CONCEPTS_PER_BATCH
-    const pushCounts: Record<string, number> = {}; // key: "market:format"
+        const budgets = await calculateAvailableBudget(wsId);
+        const launchpadConcepts = await getLaunchpadConcepts(wsId);
 
-    for (const [market, budget] of Object.entries(budgets)) {
-      // Cold start cooldown: recently pushed to a fresh market, waiting for data
-      if (budget.coldStartCooldown) {
-        console.log(`[Pipeline Push] ${market}: Cold start cooldown (${budget.cooldownDaysLeft ?? "?"} days left) — skipping`);
-        continue;
-      }
-
-      for (const format of ["image", "video"] as const) {
-        const formatBudget = budget[format];
-        // Log compression info but don't block pushing — always allow new creative
-        if (formatBudget.canPush <= 0) {
-          console.log(`[Pipeline Push] ${market}/${format}: Low compression headroom (${formatBudget.available} ${formatBudget.currency}), pushing anyway`);
+        if (launchpadConcepts.length === 0) {
+          allResults.push({ workspace: workspace.slug, results: [] });
+          continue;
         }
 
-        const countKey = `${market}:${format}`;
-        pushCounts[countKey] = 0;
+        // Filter out image concepts whose translations aren't complete yet
+        const imageConceptIds = launchpadConcepts.filter((c) => c.type === "image").map((c) => c.conceptId);
+        const { data: jobStatuses } = imageConceptIds.length > 0
+          ? await db.from("image_jobs").select("id, status").in("id", imageConceptIds)
+          : { data: [] as { id: string; status: string }[] };
 
-        // Sort concepts by this market's priority (fall back to global priority)
-        const sortedConcepts = [...launchpadConcepts].sort((a, b) => {
-          const aPrio = a.marketPriorities?.[market] ?? a.priority;
-          const bPrio = b.marketPriorities?.[market] ?? b.priority;
-          return aPrio - bPrio;
-        });
+        const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
+        const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
 
-        for (const concept of sortedConcepts) {
-          if (concept.type !== format) continue;
-          // Skip image concepts whose translations aren't complete
-          if (concept.type === "image" && !completedJobIds.has(concept.conceptId)) {
-            const status = statusMap.get(concept.conceptId) ?? "unknown";
-            console.log(`[Pipeline Push] Skipping "${concept.name}" — translations not complete (status: ${status})`);
+        const results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> = [];
+
+        // Track how many we've pushed per market+format so we respect MAX_CONCEPTS_PER_BATCH
+        const pushCounts: Record<string, number> = {}; // key: "market:format"
+
+        for (const [market, budget] of Object.entries(budgets)) {
+          // Cold start cooldown: recently pushed to a fresh market, waiting for data
+          if (budget.coldStartCooldown) {
+            console.log(`[Pipeline Push] ${label}${market}: Cold start cooldown (${budget.cooldownDaysLeft ?? "?"} days left) — skipping`);
             continue;
           }
-          const batchLimit = formatBudget.activeAdSets === 0 ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;
-          if (pushCounts[countKey] >= batchLimit) break;
 
-          const marketEntry = concept.markets.find((m) => m.market === market);
-          if (!marketEntry || marketEntry.stage !== "launchpad") continue;
+          for (const format of ["image", "video"] as const) {
+            const formatBudget = budget[format];
+            // Log compression info but don't block pushing — always allow new creative
+            if (formatBudget.canPush <= 0) {
+              console.log(`[Pipeline Push] ${label}${market}/${format}: Low compression headroom (${formatBudget.available} ${formatBudget.currency}), pushing anyway`);
+            }
 
-          const lang = MARKET_TO_LANG[market];
-          if (!lang) continue;
+            const countKey = `${market}:${format}`;
+            pushCounts[countKey] = 0;
 
-          // Count attempts (not just successes) to enforce batch limit even on failures
-          pushCounts[countKey]++;
+            // Sort concepts by this market's priority (fall back to global priority)
+            const sortedConcepts = [...launchpadConcepts].sort((a, b) => {
+              const aPrio = a.marketPriorities?.[market] ?? a.priority;
+              const bPrio = b.marketPriorities?.[market] ?? b.priority;
+              return aPrio - bPrio;
+            });
 
-          try {
-            console.log(`[Pipeline Push] Pushing ${concept.type} "${concept.name}" to ${market} (budget: ${formatBudget.available} ${formatBudget.currency})...`);
+            for (const concept of sortedConcepts) {
+              if (concept.type !== format) continue;
+              // Skip image concepts whose translations aren't complete
+              if (concept.type === "image" && !completedJobIds.has(concept.conceptId)) {
+                const status = statusMap.get(concept.conceptId) ?? "unknown";
+                console.log(`[Pipeline Push] ${label}Skipping "${concept.name}" — translations not complete (status: ${status})`);
+                continue;
+              }
+              const batchLimit = formatBudget.activeAdSets === 0 ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;
+              if (pushCounts[countKey] >= batchLimit) break;
 
-            if (concept.type === "video") {
-              // Video push — pushVideoToMeta handles meta_campaigns tracking internally
-              const pushResult = await pushVideoToMeta(concept.conceptId, { languages: [lang] });
-              const langResult = pushResult.results.find((r) => r.language === lang);
+              const marketEntry = concept.markets.find((m) => m.market === market);
+              if (!marketEntry || marketEntry.stage !== "launchpad") continue;
 
-              if (langResult?.status === "pushed") {
-                results.push({ concept: concept.name, type: "video", market, status: "pushed" });
+              const lang = MARKET_TO_LANG[market];
+              if (!lang) continue;
 
-                // Check if all markets pushed -> clear from launch pad
-                const allMarkets = concept.markets.map((m) => m.market);
-                const pushedMarkets = new Set<string>();
-                // Re-check from meta_campaigns which markets have been pushed
-                const { data: videoMeta } = await db
-                  .from("meta_campaigns")
-                  .select("language, status")
-                  .eq("video_job_id", concept.conceptId);
+              // Count attempts (not just successes) to enforce batch limit even on failures
+              pushCounts[countKey]++;
 
-                const langToMarket: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
-                for (const mc of videoMeta ?? []) {
-                  if (mc.status === "pushed" || mc.status === "active") {
-                    const mkt = langToMarket[mc.language];
-                    if (mkt) pushedMarkets.add(mkt);
+              try {
+                console.log(`[Pipeline Push] ${label}Pushing ${concept.type} "${concept.name}" to ${market} (budget: ${formatBudget.available} ${formatBudget.currency})...`);
+
+                if (concept.type === "video") {
+                  // Video push — pushVideoToMeta handles meta_campaigns tracking internally
+                  const pushResult = await pushVideoToMeta(concept.conceptId, { languages: [lang], workspaceId: wsId });
+                  const langResult = pushResult.results.find((r) => r.language === lang);
+
+                  if (langResult?.status === "pushed") {
+                    results.push({ concept: concept.name, type: "video", market, status: "pushed" });
+
+                    // Check if all markets pushed -> clear from launch pad
+                    const allMarkets = concept.markets.map((m) => m.market);
+                    const pushedMarkets = new Set<string>();
+                    const { data: videoMeta } = await db
+                      .from("meta_campaigns")
+                      .select("language, status")
+                      .eq("video_job_id", concept.conceptId);
+
+                    const langToMarket: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+                    for (const mc of videoMeta ?? []) {
+                      if (mc.status === "pushed" || mc.status === "active") {
+                        const mkt = langToMarket[mc.language];
+                        if (mkt) pushedMarkets.add(mkt);
+                      }
+                    }
+
+                    const allPushed = allMarkets.every((m) => pushedMarkets.has(m));
+                    if (allPushed) {
+                      await db.from("video_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
+                    }
+                  } else {
+                    results.push({ concept: concept.name, type: "video", market, status: "failed", error: langResult?.error ?? "Unknown" });
+                  }
+                } else {
+                  // Image push (original logic with concept_lifecycle)
+                  const pushResult = await pushConceptToMeta(concept.conceptId, {
+                    languages: [lang],
+                    workspaceId: wsId,
+                    metaConfig,
+                    wsSettings,
+                  });
+                  const langResult = pushResult.results.find((r) => r.language === lang);
+
+                  if (langResult?.status === "pushed") {
+                    const now = new Date().toISOString();
+
+                    await db
+                      .from("concept_lifecycle")
+                      .update({ exited_at: now })
+                      .eq("image_job_market_id", marketEntry.imageJobMarketId)
+                      .eq("stage", "launchpad")
+                      .is("exited_at", null);
+
+                    await db.from("concept_lifecycle").insert({
+                      image_job_market_id: marketEntry.imageJobMarketId,
+                      stage: "testing",
+                      entered_at: now,
+                      signal: "auto_pushed_budget_aware",
+                    });
+
+                    results.push({ concept: concept.name, type: "image", market, status: "pushed" });
+
+                    // Check if concept fully pushed -> clear from launch pad
+                    const { data: remaining } = await db
+                      .from("concept_lifecycle")
+                      .select("stage")
+                      .in("image_job_market_id", concept.markets.map((m) => m.imageJobMarketId))
+                      .eq("stage", "launchpad")
+                      .is("exited_at", null);
+
+                    if (!remaining || remaining.length === 0) {
+                      await db.from("image_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
+                    }
+                  } else {
+                    results.push({ concept: concept.name, type: "image", market, status: "failed", error: langResult?.error ?? "Unknown" });
                   }
                 }
-
-                const allPushed = allMarkets.every((m) => pushedMarkets.has(m));
-                if (allPushed) {
-                  await db.from("video_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
-                }
-              } else {
-                results.push({ concept: concept.name, type: "video", market, status: "failed", error: langResult?.error ?? "Unknown" });
-              }
-            } else {
-              // Image push (original logic with concept_lifecycle)
-              const pushResult = await pushConceptToMeta(concept.conceptId, { languages: [lang] });
-              const langResult = pushResult.results.find((r) => r.language === lang);
-
-              if (langResult?.status === "pushed") {
-                const now = new Date().toISOString();
-
-                await db
-                  .from("concept_lifecycle")
-                  .update({ exited_at: now })
-                  .eq("image_job_market_id", marketEntry.imageJobMarketId)
-                  .eq("stage", "launchpad")
-                  .is("exited_at", null);
-
-                await db.from("concept_lifecycle").insert({
-                  image_job_market_id: marketEntry.imageJobMarketId,
-                  stage: "testing",
-                  entered_at: now,
-                  signal: "auto_pushed_budget_aware",
-                });
-
-                results.push({ concept: concept.name, type: "image", market, status: "pushed" });
-
-                // Check if concept fully pushed -> clear from launch pad
-                const { data: remaining } = await db
-                  .from("concept_lifecycle")
-                  .select("stage")
-                  .in("image_job_market_id", concept.markets.map((m) => m.imageJobMarketId))
-                  .eq("stage", "launchpad")
-                  .is("exited_at", null);
-
-                if (!remaining || remaining.length === 0) {
-                  await db.from("image_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
-                }
-              } else {
-                results.push({ concept: concept.name, type: "image", market, status: "failed", error: langResult?.error ?? "Unknown" });
+              } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : "Unknown error";
+                results.push({ concept: concept.name, type: concept.type, market, status: "failed", error: errorMsg });
               }
             }
-          } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : "Unknown error";
-            results.push({ concept: concept.name, type: concept.type, market, status: "failed", error: errorMsg });
           }
         }
+
+        // Send Telegram summary for this workspace
+        if (results.length > 0 && chatId) {
+          const pushed = results.filter((r) => r.status === "pushed");
+          const failed = results.filter((r) => r.status === "failed");
+          const remaining = await getLaunchpadConcepts(wsId);
+
+          const lines = [
+            `\u{1F680} ${label}Auto-push results:`,
+            ...pushed.map((r) => `  \u2705 [${r.type}] ${r.concept} \u2192 ${r.market}`),
+            ...failed.map((r) => `  \u274C [${r.type}] ${r.concept} \u2192 ${r.market}: ${r.error}`),
+            ``,
+            `\u{1F4CB} Launch pad: ${remaining.length} concepts remaining`,
+            ...Object.entries(budgets).map(([m, b]) => `  ${m}: ${b.available} ${b.currency} available (img: ${b.image.canPush}, vid: ${b.video.canPush})`),
+          ];
+
+          await sendMessage(chatId, lines.join("\n"));
+        }
+
+        allResults.push({ workspace: workspace.slug, results });
+      } catch (err) {
+        console.error(`[Pipeline Push] ${label}Error:`, err);
+        if (chatId) {
+          await sendMessage(chatId,
+            `\u274C ${label}Pipeline push failed: ${err instanceof Error ? err.message : "Unknown error"}`
+          ).catch(() => {});
+        }
+        allResults.push({ workspace: workspace.slug, results: [{ concept: "N/A", type: "N/A", market: "N/A", status: "failed", error: err instanceof Error ? err.message : "Unknown error" }] });
+      } finally {
+        setMetaConfig(null);
       }
-    }
+    } // end workspace loop
 
-    // Send Telegram summary
-    if (results.length > 0) {
-      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-      if (chatId) {
-        const pushed = results.filter((r) => r.status === "pushed");
-        const failed = results.filter((r) => r.status === "failed");
-        const remaining = await getLaunchpadConcepts();
-
-        const lines = [
-          `\u{1F680} Auto-push results:`,
-          ...pushed.map((r) => `  \u2705 [${r.type}] ${r.concept} \u2192 ${r.market}`),
-          ...failed.map((r) => `  \u274C [${r.type}] ${r.concept} \u2192 ${r.market}: ${r.error}`),
-          ``,
-          `\u{1F4CB} Launch pad: ${remaining.length} concepts remaining`,
-          ...Object.entries(budgets).map(([m, b]) => `  ${m}: ${b.available} ${b.currency} available (img: ${b.image.canPush}, vid: ${b.video.canPush})`),
-        ];
-
-        await sendMessage(chatId, lines.join("\n"));
-      }
-    }
-
+    const flatResults = allResults.flatMap((ws) => ws.results);
     return NextResponse.json({
       syncedMetrics: syncResult.synced,
       stageTransitions: syncResult.transitions.length,
-      results,
-      pushed: results.filter((r) => r.status === "pushed").length,
-      failed: results.filter((r) => r.status === "failed").length,
+      workspaces: allResults,
+      pushed: flatResults.filter((r) => r.status === "pushed").length,
+      failed: flatResults.filter((r) => r.status === "failed").length,
     });
   } catch (err) {
+    setMetaConfig(null);
     console.error("[Pipeline Cron] Error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Pipeline cron failed" },

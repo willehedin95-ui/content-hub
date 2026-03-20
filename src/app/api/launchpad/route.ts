@@ -5,9 +5,10 @@ import { calculateAvailableBudget, getLaunchpadConcepts } from "@/lib/pipeline";
 
 // GET: Fetch launch pad concepts + budget info
 export async function GET() {
+  const workspaceId = await getWorkspaceId();
   const [concepts, budgets] = await Promise.all([
-    getLaunchpadConcepts(),
-    calculateAvailableBudget(),
+    getLaunchpadConcepts(workspaceId),
+    calculateAvailableBudget(workspaceId),
   ]);
   return NextResponse.json({ concepts, budgets });
 }

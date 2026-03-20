@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { updateAd, updateAdSet } from "@/lib/meta";
+import { updateAd, updateAdSet, setMetaConfig } from "@/lib/meta";
 import { sendMessage } from "@/lib/telegram";
 
 export const maxDuration = 60;
@@ -8,7 +8,9 @@ export const maxDuration = 60;
 interface Bleeder {
   ad_id: string;
   ad_name: string | null;
+  adset_id: string | null;
   adset_name: string | null;
+  campaign_id: string | null;
   campaign_name: string | null;
   days_bleeding: number;
   total_spend: number;
@@ -25,11 +27,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!process.env.META_SYSTEM_USER_TOKEN || !process.env.META_AD_ACCOUNT_ID) {
-    return NextResponse.json({ error: "Meta not configured" }, { status: 400 });
+  const db = createServerSupabase();
+
+  // Load workspace meta configs for proper API calls
+  const { data: allWorkspaces } = await db
+    .from("workspaces")
+    .select("id, slug, meta_config");
+  const wsConfigMap = new Map<string, Record<string, unknown>>();
+  for (const ws of allWorkspaces ?? []) {
+    if (ws.meta_config) wsConfigMap.set(ws.id, ws.meta_config as Record<string, unknown>);
   }
 
-  const db = createServerSupabase();
+  // Fall back to env vars if no workspace configs exist
+  if (wsConfigMap.size === 0 && (!process.env.META_SYSTEM_USER_TOKEN || !process.env.META_AD_ACCOUNT_ID)) {
+    return NextResponse.json({ error: "Meta not configured" }, { status: 400 });
+  }
 
   // Fetch bleeders from morning brief API
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
@@ -58,6 +70,19 @@ export async function GET(req: NextRequest) {
   const alreadyPausedIds = new Set((alreadyPaused ?? []).map((r) => r.meta_ad_id));
   const toPause = bleeders.filter((b) => !alreadyPausedIds.has(b.ad_id));
 
+  // Build campaign_id -> workspace_id map for workspace scoping
+  const campaignIds = [...new Set(toPause.map((b) => b.campaign_id).filter(Boolean))] as string[];
+  const wsMap = new Map<string, string>();
+  if (campaignIds.length > 0) {
+    const { data: mappings } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id, workspace_id")
+      .in("meta_campaign_id", campaignIds);
+    for (const m of mappings ?? []) {
+      if (m.meta_campaign_id && m.workspace_id) wsMap.set(m.meta_campaign_id, m.workspace_id);
+    }
+  }
+
   if (toPause.length === 0) {
     return NextResponse.json({ ok: true, paused: 0, message: "All bleeders already paused" });
   }
@@ -66,6 +91,12 @@ export async function GET(req: NextRequest) {
 
   for (const bleeder of toPause) {
     try {
+      // Set Meta config for this bleeder's workspace
+      const bleederWsIdForConfig = bleeder.campaign_id ? wsMap.get(bleeder.campaign_id) : undefined;
+      if (bleederWsIdForConfig && wsConfigMap.has(bleederWsIdForConfig)) {
+        setMetaConfig(wsConfigMap.get(bleederWsIdForConfig)! as Parameters<typeof setMetaConfig>[0]);
+      }
+
       await updateAd(bleeder.ad_id, { status: "PAUSED" });
 
       // Record the pause in our tracking table
@@ -80,6 +111,7 @@ export async function GET(req: NextRequest) {
       });
 
       // Record learning for future reference
+      const bleederWsId = bleeder.campaign_id ? wsMap.get(bleeder.campaign_id) : undefined;
       await db.from("ad_learnings").insert({
         meta_ad_id: bleeder.ad_id,
         ad_name: bleeder.ad_name,
@@ -87,6 +119,7 @@ export async function GET(req: NextRequest) {
         event_type: "paused_bleeder",
         detail: `Auto-paused after ${bleeder.days_bleeding}d bleeding: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs target ${money(bleeder.target_cpa)}`,
         metrics: { days_bleeding: bleeder.days_bleeding, total_spend: bleeder.total_spend, avg_ctr: bleeder.avg_ctr, avg_cpa: bleeder.avg_cpa },
+        ...(bleederWsId && { workspace_id: bleederWsId }),
       });
 
       results.push({ ad_id: bleeder.ad_id, ad_name: bleeder.ad_name, success: true });
@@ -102,6 +135,9 @@ export async function GET(req: NextRequest) {
       });
     }
   }
+
+  // Clear workspace-specific meta config after bleeder loop
+  setMetaConfig(null);
 
   const paused = results.filter((r) => r.success).length;
   const failed = results.filter((r) => !r.success).length;

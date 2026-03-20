@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { updateAd, updateCampaign, getCampaignBudget } from "@/lib/meta";
+import { updateAd, updateAdSet, updateCampaign, getCampaignBudget } from "@/lib/meta";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const DELAY = 500;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { action } = body;
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   try {
     switch (action) {
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
         event_type: "paused_bleeder",
         detail: reason || "Paused from Morning Brief",
         metrics: {},
+        workspace_id: workspaceId,
       });
 
       return NextResponse.json({ ok: true, paused: ad_id });
@@ -110,6 +113,7 @@ export async function POST(req: NextRequest) {
               avg_ctr: b.avg_ctr,
               avg_cpa: b.avg_cpa,
             },
+            workspace_id: workspaceId,
           });
 
           results.push({ ad_id: b.ad_id, status: "paused" });
@@ -155,6 +159,7 @@ export async function POST(req: NextRequest) {
         event_type: "graduated_winner",
         detail: `Campaign budget +20% (${(oldBudget / 100).toFixed(0)} → ${(newBudget / 100).toFixed(0)}/day)`,
         metrics: { old_budget: oldBudget, new_budget: newBudget, triggering_ad_id: ad_id },
+        workspace_id: workspaceId,
       });
 
       return NextResponse.json({
@@ -246,6 +251,7 @@ export async function POST(req: NextRequest) {
               recommendation: s.recommendation,
               efficiency_score: s.efficiency_score,
             },
+            workspace_id: workspaceId,
           });
 
           results.push({
@@ -278,23 +284,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Pause ad set via Meta Graph API
-      const token = process.env.META_SYSTEM_USER_TOKEN!;
-      const res = await fetch(
-        `https://graph.facebook.com/v22.0/${adset_id}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: "PAUSED" }),
-        }
-      );
-      if (!res.ok) {
-        const err = await res.text().catch(() => "");
-        throw new Error(`Meta API error (${res.status}): ${err}`);
-      }
+      await updateAdSet(adset_id, { status: "PAUSED" });
 
       // Log to ad_learnings
       await db.from("ad_learnings").insert({
@@ -304,6 +294,7 @@ export async function POST(req: NextRequest) {
         event_type: "paused_adset",
         detail: reason || "Ad set paused from Daily Actions",
         metrics: {},
+        workspace_id: workspaceId,
       });
 
       return NextResponse.json({ ok: true, paused_adset: adset_id });
@@ -318,7 +309,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const token = process.env.META_SYSTEM_USER_TOKEN!;
       const results: Array<{
         adset_id: string;
         status: "paused" | "failed";
@@ -327,21 +317,7 @@ export async function POST(req: NextRequest) {
 
       for (const adsetId of adset_ids) {
         try {
-          const res = await fetch(
-            `https://graph.facebook.com/v22.0/${adsetId}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ status: "PAUSED" }),
-            }
-          );
-          if (!res.ok) {
-            const err = await res.text().catch(() => "");
-            throw new Error(`Meta API error (${res.status}): ${err}`);
-          }
+          await updateAdSet(adsetId, { status: "PAUSED" });
           await sleep(DELAY);
 
           await db.from("ad_learnings").insert({
@@ -349,6 +325,7 @@ export async function POST(req: NextRequest) {
             event_type: "paused_adset",
             detail: "Batch killed from Strategy Guide",
             metrics: {},
+            workspace_id: workspaceId,
           });
 
           results.push({ adset_id: adsetId, status: "paused" });
@@ -413,6 +390,7 @@ export async function POST(req: NextRequest) {
         event_type: "budget_increased_for_testing",
         detail: `Budget increased to fit ${concepts_count} new concept${concepts_count !== 1 ? "s" : ""} in ${market}: ${results.map((r) => `${r.old_budget} → ${r.new_budget}`).join(", ")}/day`,
         metrics: { market, concepts_count, results },
+        workspace_id: workspaceId,
       });
 
       return NextResponse.json({

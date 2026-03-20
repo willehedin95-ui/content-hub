@@ -439,9 +439,16 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 // ---------------------------------------------------------------------------
 
 const PAIN_POINT_TO_PAGE_ANGLE: Record<string, string> = {
+  // HappySleep angles
   "neck-pain": "neck_pain",
   "snoring": "snoring",
   "sleep-quality": "neutral",
+  // Hydro13 angles (all neutral until angle-specific pages exist)
+  "skin-aging": "neutral",
+  "hair-nails": "neutral",
+  "failed-supplements": "neutral",
+  "complete-system": "neutral",
+  // Shared
   "general": "neutral",
 };
 
