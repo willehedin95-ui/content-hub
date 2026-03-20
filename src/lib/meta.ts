@@ -335,8 +335,9 @@ export async function getAdSetConfig(adSetId: string): Promise<AdSetTemplateConf
 
 /**
  * Create a new ad set from scratch using a template's config.
- * Supports is_dynamic_creative=true (required for asset_feed_spec with 9:16 placement rules).
+ * Uses is_dynamic_creative=false for PAC (placement asset customization) rules.
  * Meta's is_dynamic_creative can only be set at creation time, not updated later.
+ * No publisher_platforms override — Meta uses Advantage+ placements (all platforms).
  */
 export async function createAdSetFromTemplate(params: {
   templateConfig: AdSetTemplateConfig;
@@ -363,12 +364,9 @@ export async function createAdSetFromTemplate(params: {
       campaign_id: cfg.campaign_id,
       billing_event: cfg.billing_event,
       optimization_goal: cfg.optimization_goal,
-      targeting: {
-        ...cfg.targeting,
-        // Restrict to Facebook only — Instagram requires instagram_actor_id
-        // which isn't configured on the pages. Audience Network excluded too.
-        publisher_platforms: ["facebook"],
-      },
+      // Use template targeting as-is — no publisher_platforms override.
+      // Meta defaults to Advantage+ placements (all platforms including Instagram).
+      targeting: cfg.targeting,
       promoted_object: cfg.promoted_object,
       attribution_spec: cfg.attribution_spec,
       bid_strategy: cfg.bid_strategy,
