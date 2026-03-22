@@ -631,6 +631,7 @@ export interface ImageGenerationState {
 
 export type BrainstormMode = "from_scratch" | "from_organic" | "from_research" | "from_internal" | "unaware" | "from_template" | "from_competitor_ad" | "video_ugc" | "pixar_animation";
 export type UnawareAdType = "straddle" | "symptom" | "worldview_porn" | "story";
+export type NarrativeArchetype = "confession" | "rage" | "double_standard" | "witness";
 export type AdTemplate =
   | "before_after"
   | "insider_reveal"
@@ -658,6 +659,7 @@ export interface BrainstormRequest {
   template_ids?: AdTemplate[];
   focus_angles?: Angle[];
   focus_awareness?: AwarenessLevel;
+  narrative_archetypes?: NarrativeArchetype[];
   // From Competitor Ad mode
   competitor_image_url?: string;
   competitor_image_urls?: string[];

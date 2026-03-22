@@ -36,9 +36,10 @@ import {
   BrainstormMode,
   AdTemplate,
   ProductSegment,
+  NarrativeArchetype,
 } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
-import { BRAINSTORM_MODES, AD_TEMPLATE_META } from "@/lib/brainstorm";
+import { BRAINSTORM_MODES, AD_TEMPLATE_META, NARRATIVE_ARCHETYPE_META } from "@/lib/brainstorm";
 import { VIDEO_FORMATS, HOOK_TYPES } from "@/lib/constants";
 
 interface LearningEntry {
@@ -121,6 +122,7 @@ export default function BrainstormGenerate() {
   const [segments, setSegments] = useState<ProductSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
   const [selectedTemplates, setSelectedTemplates] = useState<AdTemplate[]>([]);
+  const [selectedArchetypes, setSelectedArchetypes] = useState<NarrativeArchetype[]>([]);
   const [competitorImages, setCompetitorImages] = useState<File[]>([]);
   const [competitorImagePreviews, setCompetitorImagePreviews] = useState<string[]>([]);
   const [competitorImageUrls, setCompetitorImageUrls] = useState<string[]>([]);
@@ -425,6 +427,7 @@ export default function BrainstormGenerate() {
       if (mode === "from_research" && researchText) reqBody.research_text = researchText;
       if (mode === "from_template" && selectedTemplates.length > 0) reqBody.template_ids = selectedTemplates;
       if (selectedSegment) reqBody.segment_id = selectedSegment;
+      if (selectedArchetypes.length > 0) reqBody.narrative_archetypes = selectedArchetypes;
 
       if (mode === "pixar_animation") {
         if (direction.trim()) reqBody.direction = direction.trim();
@@ -853,6 +856,70 @@ export default function BrainstormGenerate() {
               {selectedTemplates.length > 0 && (
                 <p className="text-xs text-amber-600 mt-2">
                   {selectedTemplates.length} template{selectedTemplates.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Narrative archetype selector (for unaware + from_scratch) */}
+          {(mode === "unaware" || mode === "from_scratch") && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Narrative Archetype
+                <span className="font-normal text-gray-400 ml-1">
+                  (optional — story-driven copy framework)
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {NARRATIVE_ARCHETYPE_META.map((a) => {
+                  const selected = selectedArchetypes.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() =>
+                        setSelectedArchetypes((prev) =>
+                          selected
+                            ? prev.filter((id) => id !== a.id)
+                            : [...prev, a.id]
+                        )
+                      }
+                      className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                        selected
+                          ? "bg-rose-50 border-rose-300 ring-1 ring-rose-200"
+                          : "bg-white border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                          selected
+                            ? "bg-rose-500 border-rose-500 text-white"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        {selected && (
+                          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${selected ? "text-rose-900" : "text-gray-900"}`}>
+                            {a.name}
+                          </span>
+                          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                            {a.psychology}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">{a.bestFor}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedArchetypes.length > 0 && (
+                <p className="text-xs text-rose-600 mt-2">
+                  {selectedArchetypes.length} archetype{selectedArchetypes.length !== 1 ? "s" : ""} selected — concepts will use long-form story structure
                 </p>
               )}
             </div>

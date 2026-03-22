@@ -10,6 +10,7 @@ import type {
   AwarenessLevel,
   IterationType,
   CashDna,
+  NarrativeArchetype,
 } from "@/types";
 import { CLAUDE_MODEL } from "./constants";
 import { parseConceptProposals } from "./concept-generator";
@@ -442,6 +443,105 @@ const TEMPLATE_NAMES: Record<AdTemplate, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Narrative archetypes for story-driven native ad copy
+// ---------------------------------------------------------------------------
+
+const NARRATIVE_ARCHETYPES = `## NARRATIVE ARCHETYPES — Story-Driven Copy Frameworks
+
+These are 4 proven story structures for long-form native ads. Each creates a different psychological entry point. The ad copy should read like a personal Facebook post or blog article — NOT like ad copy. 40+ audiences read long copy. Don't be afraid of it.
+
+CORE RULES FOR ALL ARCHETYPES:
+- The opening line is everything. Write it like the reader typed it themselves.
+- Never mention the product in the first 150+ words. Lead with the human, not the product.
+- The product should feel like the next logical step in the story, not the point of it.
+- Use a fictional character (doctor, friend, spouse) to deliver science/claims — the narrator never makes claims directly.
+- Sensory details ("random Tuesday in October", "burgundy scarf", "shaking hands") make it feel like memory, not marketing.
+- Polish kills trust. Real moments, real people, real scenes.
+- Close with a reason to care, not a reason to buy.
+
+### ARCHETYPE 1: THE CONFESSION (Personal Shame → Discovery → Resolution)
+Psychology: Stories bypass the part of the brain that evaluates and resists. Once emotionally invested in a character, rejecting the product feels like abandoning them.
+
+Structure:
+1. Open with a deeply personal confession — a moment of shame, vulnerability, or crisis. Put the reader in the scene.
+2. Voice the thing they secretly blame themselves for. Say it out loud for them before they have to admit it.
+3. List everything they tried that failed. Be exhaustive — the longer this list, the more seen they feel.
+4. The unexpected discovery. A person, a conversation, a turning point that changes everything.
+5. The explanation (delivered by a fictional expert character). Why nothing worked before. This is where you earn trust.
+6. The product enters naturally — just the next step in the story, not forced.
+7. Week by week results. Specific numbers, not vague claims.
+8. Close with a reason to care, not a reason to buy.
+
+Hook style: Raw first-person confession that voices the reader's own shame before they have to admit it.
+Example tone: "My husband came out as gay after 26 years of marriage and it nearly killed me. Literally."
+
+### ARCHETYPE 2: THE RAGE (Systemic Injustice → Validation → Reclaiming Control)
+Psychology: When an ad says what the reader has been feeling but never said out loud, trust is instant. Reframing the problem as systemic failure removes self-blame and makes them ready to act.
+
+Structure:
+1. Open with the reader's exact words — write it like they would type it into a search bar or a Facebook group at 2am. Raw, specific, zero polish.
+2. The comparison that makes the unfairness undeniable. Their situation vs someone who got treated better. Use real numbers.
+3. The list of everything they did right. Show they are NOT the problem.
+4. The one question nobody ever asked them — this is your pivot to the solution.
+5. The explanation of WHY. Science delivered through a trusted character, not a brand voice.
+6. The product as the first thing that addresses the real cause, not just symptoms.
+7. A relationship detail showing what the problem costs beyond the physical pain.
+8. Close with solidarity, not a pitch.
+
+Hook style: Raw frustration that reads like a 2am Facebook group rant. The first line should stop the scroll because it voices suppressed anger.
+Example tone: "I have had 12 UTIs in 18 months. My husband gets his first one in 20 years. He walks out with specialist referrals. I get told to drink cranberry juice."
+
+### ARCHETYPE 3: THE DOUBLE STANDARD (Unfair Comparison → Gaslight List → Permission)
+Psychology: When someone sees their problem is being ignored while an equivalent one gets full attention, shame turns into clarity. That shift from self-blame to clarity is what makes them ready to act.
+
+Structure:
+1. Open with a comparison that shows how differently the reader's problem is treated vs an equivalent one. Make it specific and a little provocative.
+2. The contrast that exposes the gap. Real numbers, real situations.
+3. The gaslight list — every dismissive thing they have been told. Write it in THEIR voice, not yours. Each line should be something the reader has personally heard.
+4. One real data point that validates everything they suspected. Just one — it gives the whole story credibility without feeling like a lecture.
+5. The expert who finally gets it. Deliver the science through them.
+6. The product as an act of reclaiming something that was taken from them.
+7. Close with permission. Tell them they do not have to accept this.
+
+Hook style: A provocative comparison that makes systemic unfairness undeniable. Uses specific contrasts with real numbers.
+Example tone: "He mentioned ED once. Walked out with a prescription. I spent 18 months with four doctors and got told to have a glass of wine."
+
+### ARCHETYPE 4: THE WITNESS (Observer Perspective → Shared Risk → Protection)
+Psychology: Fear for someone you love converts faster than fear for yourself. Perspective shifts capture people who would never have self-identified as the target audience.
+
+Structure:
+1. Open with a scene, not a symptom. Tension first, context second. Write it like a thriller opening.
+2. Tell the story from the observer's perspective — someone watching a person they love go through something.
+3. Sensory details that make the scene feel lived in. What they saw, heard, felt.
+4. The reveal delivered to the observer, not the patient. They are learning alongside the reader.
+5. The moment the observer realises THEY are also at risk. This expands your audience without changing the product.
+6. The product ordered for a loved one that turns out to be needed by both.
+7. Results for two people, not one.
+8. Close with the fear of a phone call they never want to receive.
+
+Hook style: A scene that reads like a thriller opening. Told from the spouse's or loved one's perspective.
+Example tone: "The phone rang at 6am. A voice I didn't recognize told me my husband had collapsed at the gym."
+
+### CHOOSING AN ARCHETYPE
+- THE CONFESSION works best when your audience carries private shame about their problem (weight, sleep, sexual health, aging)
+- THE RAGE works best when the system has failed them (medical gaslighting, double standards in treatment)
+- THE DOUBLE STANDARD works best when there's an obvious comparison where their problem gets less attention than an equivalent one
+- THE WITNESS works best when you want to capture BOTH the sufferer AND their partner/family as audience`;
+
+/** Narrative archetype metadata for UI display */
+export const NARRATIVE_ARCHETYPE_META: {
+  id: NarrativeArchetype;
+  name: string;
+  psychology: string;
+  bestFor: string;
+}[] = [
+  { id: "confession", name: "The Confession", psychology: "Shame → vulnerability → trust", bestFor: "Problems people feel privately ashamed about" },
+  { id: "rage", name: "The Rage", psychology: "Suppressed anger → validation → action", bestFor: "When the system has failed the reader" },
+  { id: "double_standard", name: "The Double Standard", psychology: "Unfairness → clarity → permission", bestFor: "Problems that get dismissed while others get attention" },
+  { id: "witness", name: "The Witness", psychology: "Fear for loved one → shared risk", bestFor: "Capturing both sufferer AND their partner as audience" },
+];
+
+// ---------------------------------------------------------------------------
 // Hook inspiration from curated hook library
 // ---------------------------------------------------------------------------
 
@@ -714,6 +814,8 @@ ${AVATAR_FACTS_FRAMEWORK}
 
 ${HEADLINE_FORMULAS}
 
+${NARRATIVE_ARCHETYPES}
+
 ---
 
 ## PRODUCT KNOWLEDGE
@@ -865,6 +967,8 @@ ${COPY_BLOCKS_DEEP}
 ${UNAWARE_AD_TYPES}
 
 ${NATIVE_AD_PSYCHOLOGY}
+
+${NARRATIVE_ARCHETYPES}
 
 ---
 
@@ -1433,6 +1537,21 @@ export function buildBrainstormUserPrompt(
   }
   if (request.focus_awareness) {
     parts.push(`**Target awareness level:** ${request.focus_awareness}`);
+  }
+  if (request.narrative_archetypes && request.narrative_archetypes.length > 0) {
+    const archetypeLabels: Record<string, string> = {
+      confession: "The Confession (Personal shame → discovery → resolution)",
+      rage: "The Rage (Systemic injustice → validation → action)",
+      double_standard: "The Double Standard (Unfair comparison → gaslight list → permission)",
+      witness: "The Witness (Observer perspective → shared risk → protection)",
+    };
+    const archetypes = request.narrative_archetypes
+      .map((a) => archetypeLabels[a] ?? a)
+      .join(", ");
+    parts.push(`\n**Required narrative archetype(s):** ${archetypes}`);
+    parts.push(
+      `Each concept MUST use one of the specified narrative archetypes. Follow the archetype's story structure exactly — the ad_copy_primary should be a long-form story (200-400 words) using the archetype's emotional progression. Include the archetype name in suggested_tags (e.g. "archetype:confession").`
+    );
   }
 
   // Rejected concepts — avoid similar ideas
