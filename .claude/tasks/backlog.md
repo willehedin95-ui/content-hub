@@ -1,15 +1,15 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-20 (A/B test grouping by page pair)
+Updated: 2026-03-22 (Activity Feed + auto-iterate + Telegram improvements)
 
 ## P0 — Blockers
 (none)
 
 ## P1 — Do Now
-(none)
+- [ ] **Push to Vercel** — fa70b3c is committed but not pushed. Auto-deploys on push.
 
 ## P2 — Visual Cleanup (next week)
 - [x] ~~**Concepts card grid redesign**~~ — done, see Done section
-- [ ] **Sidebar navigation simplification** — Merge scattered pipeline items. (added 2026-03-19)
+- [x] ~~**Sidebar navigation simplification**~~ — Daily Actions removed, Dashboard→Activity. (done 2026-03-22)
 
 ## P2 — Important
 - [ ] **Discovered ads browser UI** — Show what autopilot found/scored/swiped in a table view. Could live at `/concepts?tab=discovered` or similar. (added 2026-03-18)
@@ -51,8 +51,12 @@ Inspired by: Cody Schneider's testing framework, Matt Berman's Meta Ads Copilot 
 - [ ] **Launch Pad budget reduction button** — add "Reduce to X SEK" button for cold start markets where budget is too high (added 2026-03-19)
 - [ ] **Clean up duplicate Meta ad sets** — retry failures created multiple copies of same concepts (e.g. 3x NO #129 [A]). Should pause duplicates. (added 2026-03-20)
 - [ ] **Verify Instagram delivery** — check Ads Manager placement breakdown after 24h to confirm ads show on Instagram (page-backed IG, no business account linked to Hälsobladet). (added 2026-03-20)
+- [ ] **Verify concept_metrics table** — auto-iterate depends on `concept_metrics` having data. Verify table exists and is populated by ad-performance-sync. (added 2026-03-22)
+- [ ] **Merge morning brief + autopilot-execute into single digest** — Currently 2 messages 45 min apart (06:15 + 07:00). Could merge into one comprehensive daily summary. (added 2026-03-22)
+- [ ] **Video ad swipe album notifications** — Video concept notifications could also use sendMediaGroup for keyframe images. (added 2026-03-22)
 
 ## Done (recent)
+- [x] **Activity Feed + auto-iterate + Telegram improvements** — Replaced Daily Actions with Activity Feed homepage (queries autopilot_actions). Added auto-iterate fatiguing concepts (frequency/CTR detection → fresh images → Telegram approve/reject). Telegram concept notifications now show ALL images as album + ad copy. Removed 3 redundant morning brief action messages + auto-pause-bleeders notification. Multiple GetHookd board IDs per workspace. Commit `fa70b3c`. (done 2026-03-22)
 - [x] **A/B test grouping by page pair** — Tests grouped by (page_a_id, page_b_id) in API/UI. One row per page pair with aggregated metrics + per-concept breakdown (ROAS/CPA/CVR per concept, "Favors A/B" indicator). Winner declaration across all concepts with outlier warnings. Fixed badge inflation. No DB migration. Commit `03fd067`. (done 2026-03-20)
 - [x] **Non-DCO + PAC placement routing** — Switched from DCO (`is_dynamic_creative=true`) to non-DCO + Placement Asset Customization rules. 4:5→feed, 9:16→stories/reels. Enabled Instagram placements (removed Facebook-only restriction). One ad per image pair. Commits `668560c`, `7e2542c`. (done 2026-03-20)
 - [x] **Launch Pad cold start mode** — When market has 0 active ad sets: push 5 concepts (not 3), 7-day cooldown, blue/purple/green card states, budget recommendation. Cooldown detected from performance data age. Commit `456267b`. (done 2026-03-19)
