@@ -1,29 +1,34 @@
-# Session: 2026-03-22 (afternoon)
+# Session: 2026-03-22 ~13:30
 
 ## What was done
-- **concept_metrics sync fixed** — Data was stale since 2026-03-07. Added `syncConceptMetricsFromDB()` to ad-performance-sync cron that derives concept_metrics from already-synced meta_ad_performance (no redundant Meta API call). Maps: meta_ad_performance → meta_ads → meta_campaigns → image_job_markets → concept_metrics.
-- **daily-snapshot cookie bug fixed** — `getWorkspaceSettings()` crashes in cron (no cookies). Replaced with direct DB query of workspaces table for GA4 property IDs. Cleaned up unused imports.
-- **Merged morning brief + autopilot-execute** — Combined two separate Telegram messages (morning-brief-telegram at 06:15 + autopilot-execute digest at 07:00) into a single combined daily digest at 07:00. Removed morning-brief-telegram from vercel.json crons. Morning brief API endpoint kept for web UI.
-- **Video album notifications** — Video concept keyframe images now sent as Telegram album (sendMediaGroup) instead of single photo. Buttons sent as follow-up text message (Telegram limitation).
-- **editCallbackMessage helper** — New helper in webhook route that tries editMessageText first, falls back to editMessageCaption. Fixes button feedback for media group notifications (buttons are on text message, not photo).
+- Investigated Google Flow by Google — concluded it's a consumer UI tool, not an API replacement for Kie AI. No action needed.
+- Built **translation quality gate** — full pipeline overhaul:
+  - Replaced GPT-4o quality analysis with Claude Haiku "native reader review"
+  - New review checks: narrative consistency, naturalness, grammar, context errors
+  - Auto-retry loop (up to 3 attempts) with corrections when quality fails
+  - Quality gate blocks launchpad and pipeline-push for review-blocked translations
+  - Telegram approve/hold buttons for edge cases that exhaust retries
+  - UI: "Quality Review" status, per-language issue display, approve/re-translate buttons
+  - New `src/lib/translation-review.ts` module
+  - New `src/app/api/image-jobs/[id]/approve-translations/route.ts` endpoint
 
 ## Decisions made
-- **Derive concept_metrics from DB, not Meta API** — More reliable than the old pipeline.ts approach that made its own Meta API call. Runs in ad-performance-sync (twice daily) instead of pipeline-push (once daily).
-- **Keep morning-brief-telegram route** — Still accessible at `/api/cron/morning-brief-telegram` for manual triggering, just removed from cron schedule. No code deleted.
-- **editCallbackMessage pattern** — Telegram callback messages can be either text (media group follow-up) or photo (single photo with buttons). Helper tries both edit methods to handle both cases gracefully.
+- **Claude Haiku over GPT-4o for quality review**: Haiku is cheaper ($0.003/language vs ~$0.02) and better at narrative/naturalness nuance since the prompt evaluates the translated text as a standalone native reader, not just translation fidelity comparison
+- **Auto-retry over manual review**: User can't read Danish/Norwegian, so manual review is useless for 2/3 languages. System auto-fixes and retries up to 3x, only holds for review as last resort.
+- **"review" status on ConceptCopyTranslation**: New status between "translating" and "completed" that blocks launchpad + push. Keeps existing status flow intact.
+- **Corrections passed to translator**: When retry happens, specific issues from the review are injected as correction instructions to the translation prompt.
 
 ## Current state
-- All changes deployed via commit `608a182`
-- concept_metrics will be populated on next ad-performance-sync run (06:00 or 18:00 UTC)
-- Combined daily digest will send tomorrow at 07:00 UTC
-- Video album notifications active for new video concept swipes
+- Commit `bbd1b63` on main, NOT pushed yet (auto-deploys on push)
+- Build passes clean
+- Ready to push when user confirms
 
 ## Blockers / Open questions
-- concept_metrics backfill: data is stale since 03-07. Next sync will only cover yesterday. May want to trigger a backfill with `?since=2026-03-07&until=2026-03-21` on ad-performance-sync.
-- User noted Hydro13 budget messages already work — same Meta ad account means ad-performance-sync already covers both workspaces.
+- Need to test with a real concept to verify the quality review catches narrative issues like the "Mamma" problem
+- May need to tune the Claude Haiku prompt if it's too strict (flags too many "review" items) or too lenient
+- Video ad copy translations use a different code path — not covered by this change (lower priority since video ads are newer)
 
 ## Next up
-1. Discovered ads browser UI (P2)
-2. Verify concept_metrics populated after next sync
-3. Autosave race condition fix
-4. Cron workspace iteration for remaining crons (daily-snapshot per-workspace, if needed)
+1. Push to deploy and test with a real concept translation
+2. Monitor quality review results — tune thresholds if needed
+3. Consider adding quality review to video ad copy translations
