@@ -380,6 +380,7 @@ export function BuilderProvider({
   const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "", customHeadCode: "" });
   const savingRef = useRef(false);
   const manualSaveActiveRef = useRef(false);
+  const autosaveAbortRef = useRef<AbortController | null>(null);
   const prevLinkUrl = useRef("");
   const excludeModeRef = useRef(false);
   // enteredContainerRef reserved for future Figma-style container selection
@@ -625,6 +626,11 @@ export function BuilderProvider({
       if (savingRef.current || manualSaveActiveRef.current) return;
       savingRef.current = true;
       setAutoSaveStatus("saving");
+
+      // Create abort controller so manual save can cancel this in-flight autosave
+      const abort = new AbortController();
+      autosaveAbortRef.current = abort;
+
       try {
         const html = extractHtmlFromIframe();
         const d = autosaveDataRef.current;
@@ -634,6 +640,7 @@ export function BuilderProvider({
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ original_html: html, custom_head_code: d.customHeadCode }),
+            signal: abort.signal,
           });
         } else {
           // Save translation HTML + save custom code to page (parallel)
@@ -647,15 +654,19 @@ export function BuilderProvider({
                 seo_description: d.seoDesc || undefined,
                 slug: d.slug || undefined,
               }),
+              signal: abort.signal,
             }),
             fetch(`/api/pages/${pageId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ custom_head_code: d.customHeadCode }),
+              signal: abort.signal,
             }),
           ]);
           res = tRes;
         }
+        // If manual save aborted us, don't process the response
+        if (abort.signal.aborted) return;
         if (res.ok) {
           setIsDirty(false);
           setAutoSaveStatus("saved");
@@ -676,6 +687,8 @@ export function BuilderProvider({
           autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
         }
       } catch (err) {
+        // Don't show error for intentional abort (manual save took over)
+        if (err instanceof DOMException && err.name === "AbortError") return;
         const msg = err instanceof Error ? err.message : "Network error";
         console.error("[builder] Autosave error:", msg);
         setSaveError(`Autosave error: ${msg}`);
@@ -683,6 +696,7 @@ export function BuilderProvider({
         // Retry after 8 seconds
         autoSaveRetryRef.current = setTimeout(() => triggerAutosave(), 8000);
       } finally {
+        autosaveAbortRef.current = null;
         savingRef.current = false;
       }
     }, 3000);
@@ -1327,14 +1341,11 @@ export function BuilderProvider({
       clearTimeout(autoSaveRetryRef.current);
       autoSaveRetryRef.current = null;
     }
-    // Wait for in-flight autosave to finish before manual save
-    if (savingRef.current) {
-      await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (!savingRef.current) { clearInterval(check); resolve(); }
-        }, 100);
-        setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-      });
+    // Abort any in-flight autosave — manual save always wins
+    if (autosaveAbortRef.current) {
+      autosaveAbortRef.current.abort();
+      autosaveAbortRef.current = null;
+      savingRef.current = false;
     }
     setAutoSaveStatus("idle");
     setSaving(true);
@@ -1406,6 +1417,12 @@ export function BuilderProvider({
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
+    }
+    // Abort any in-flight autosave — publish save takes priority
+    if (autosaveAbortRef.current) {
+      autosaveAbortRef.current.abort();
+      autosaveAbortRef.current = null;
+      savingRef.current = false;
     }
     setAutoSaveStatus("idle");
     setPublishing(true);
