@@ -1,30 +1,29 @@
-# Session: 2026-03-22 (session 1)
+# Session: 2026-03-22 (afternoon)
 
 ## What was done
-- **Activity Feed homepage**: Replaced Business Pulse/Daily Actions with lightweight Activity Feed. New API at `/api/activity-feed` queries `autopilot_actions` + autopilot `image_jobs`/`video_jobs`. Grouped by date (Today/Yesterday/date), icons per action type, relative timestamps, clickable links.
-- **Auto-iterate fatiguing concepts**: New `src/lib/autopilot-iterate.ts` — detects winning concepts with frequency > 2.5 or CTR drop ≥ 20%, generates 3 fresh images using same CASH DNA/style, sends Telegram approve/reject. On approve, triggers translation + push pipeline. On reject, cleans up iteration images. Integrated into autopilot-execute cron with `autopilot_auto_iterate` toggle.
-- **Better Telegram concept notifications**: Added `sendMediaGroup()` to telegram.ts. Both from-scratch and swipe concepts now send ALL generated images as Telegram album (not just first), include primary text + headline in caption. Approve/Reject buttons sent as separate follow-up message (Telegram limitation: no keyboards on media groups).
-- **Reduced Telegram notification overload**: Removed 3 redundant morning brief follow-up messages (budget shift buttons, winner graduation buttons, strategy kill buttons) — all handled by autopilot-execute now. Suppressed auto-pause-bleeders Telegram notifications (duplicate of autopilot-execute digest). Reduces daily messages from ~8-10 to ~3-5.
-- **Multiple GetHookd board IDs per workspace**: Changed from single `gethookd_board_id` to `gethookd_board_ids` array. UI has dropdown selector with tag chips. Backward compatible migration in settings load.
-- **Autopilot action logging**: Added `autopilot_actions` inserts to all concept/video approve/reject handlers (Telegram webhook + Hub UI) for the Activity Feed.
-- **Sidebar cleanup**: Removed Daily Actions, renamed Dashboard to "Activity" with Radio icon.
+- **concept_metrics sync fixed** — Data was stale since 2026-03-07. Added `syncConceptMetricsFromDB()` to ad-performance-sync cron that derives concept_metrics from already-synced meta_ad_performance (no redundant Meta API call). Maps: meta_ad_performance → meta_ads → meta_campaigns → image_job_markets → concept_metrics.
+- **daily-snapshot cookie bug fixed** — `getWorkspaceSettings()` crashes in cron (no cookies). Replaced with direct DB query of workspaces table for GA4 property IDs. Cleaned up unused imports.
+- **Merged morning brief + autopilot-execute** — Combined two separate Telegram messages (morning-brief-telegram at 06:15 + autopilot-execute digest at 07:00) into a single combined daily digest at 07:00. Removed morning-brief-telegram from vercel.json crons. Morning brief API endpoint kept for web UI.
+- **Video album notifications** — Video concept keyframe images now sent as Telegram album (sendMediaGroup) instead of single photo. Buttons sent as follow-up text message (Telegram limitation).
+- **editCallbackMessage helper** — New helper in webhook route that tries editMessageText first, falls back to editMessageCaption. Fixes button feedback for media group notifications (buttons are on text message, not photo).
 
 ## Decisions made
-- **Media group + separate buttons**: Telegram doesn't support inline keyboards on media groups, so we send images as album then a separate "Approve concept #N?" message with buttons.
-- **Keep morning brief text, remove action buttons**: The morning brief KPI summary is still valuable for passive monitoring. Only removed the 3 follow-up action messages that required manual intervention (now automated).
-- **Webhook handlers kept for old buttons**: Didn't remove budget_apply_all/graduate_all/strategy_kill_all handlers from webhook — old messages still work if tapped.
+- **Derive concept_metrics from DB, not Meta API** — More reliable than the old pipeline.ts approach that made its own Meta API call. Runs in ad-performance-sync (twice daily) instead of pipeline-push (once daily).
+- **Keep morning-brief-telegram route** — Still accessible at `/api/cron/morning-brief-telegram` for manual triggering, just removed from cron schedule. No code deleted.
+- **editCallbackMessage pattern** — Telegram callback messages can be either text (media group follow-up) or photo (single photo with buttons). Helper tries both edit methods to handle both cases gracefully.
 
 ## Current state
-- All changes committed (fa70b3c), NOT pushed. TypeScript passes.
-- Activity Feed is the new homepage at `/`
-- Auto-iterate is behind `autopilot_auto_iterate` toggle (defaults to false)
+- All changes deployed via commit `608a182`
+- concept_metrics will be populated on next ad-performance-sync run (06:00 or 18:00 UTC)
+- Combined daily digest will send tomorrow at 07:00 UTC
+- Video album notifications active for new video concept swipes
 
 ## Blockers / Open questions
-- `concept_metrics` table needs data for auto-iterate to work — verify table exists and is populated
-- Media group approve edits a plain text message (not photo caption) — works correctly
+- concept_metrics backfill: data is stale since 03-07. Next sync will only cover yesterday. May want to trigger a backfill with `?since=2026-03-07&until=2026-03-21` on ad-performance-sync.
+- User noted Hydro13 budget messages already work — same Meta ad account means ad-performance-sync already covers both workspaces.
 
 ## Next up
-1. Push to Vercel when user is ready
-2. Test full flow: autopilot concept → Telegram album → approve → translation → push
-3. Consider merging morning brief + autopilot-execute into single daily digest
-4. Video ad swipe notifications could benefit from album treatment
+1. Discovered ads browser UI (P2)
+2. Verify concept_metrics populated after next sync
+3. Autosave race condition fix
+4. Cron workspace iteration for remaining crons (daily-snapshot per-workspace, if needed)
