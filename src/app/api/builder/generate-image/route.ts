@@ -65,7 +65,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
   "subjects": [
     {
       "type": "person | product | prop | text | graphic",
-      "description": "Detailed visual description — age, clothing, expression, material, color with hex codes",
+      "description": "Detailed visual description — ethnicity/skin tone, hair color and texture, age range, clothing, expression, material, color with hex codes",
       "position": "Where in the frame (center, top-left, bottom-third, etc.)",
       "action": "CRITICAL — describe EXACTLY what they are doing with their body, hands, arms. Not just 'touching' but HOW they are interacting. e.g. 'holding pillow with right hand at arm's length, palm underneath, fingers gripping the side'",
       "visibility": "What parts are visible? Full body, upper body, just hands, etc.",
@@ -93,6 +93,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 - For subjects: mark exactly ONE subject as \`"is_competitor_product": true\` — the main product being advertised
 - **camera_perspective is the MOST important field** — get this wrong and the entire generation will look nothing like the original
 - **action descriptions must be specific and physical** — describe exact hand positions, grip, arm angles, body posture
+- **For person subjects, ALWAYS explicitly describe: ethnicity/skin tone (e.g. "Caucasian woman with fair skin", "East Asian man with warm beige skin tone"), hair color and texture (e.g. "straight dark brown hair", "curly black hair"), and approximate age range (e.g. "mid-40s"). These details are CRITICAL for accurate reproduction.**
 - Be precise about lighting direction (e.g., "soft light from upper-left, no harsh shadows")
 - Be precise about composition (e.g., "product occupies lower-right third, person upper-left")
 - Describe each subject in enough visual detail that an image generator could recreate it
@@ -308,7 +309,7 @@ export async function POST(req: NextRequest) {
 
       // Add generation task + instruction (same as image swiper)
       nanaBananaJson.task = "generate_image";
-      let instruction = `Recreate this visual style featuring ${productName}. The product must match the reference images provided. CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.`;
+      let instruction = `Recreate this visual style featuring ${productName}. The product must match the reference images provided. CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded. CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.`;
       if (hint?.trim()) instruction += ` ${hint.trim()}`;
       nanaBananaJson.instruction = instruction;
 
