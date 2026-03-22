@@ -368,6 +368,14 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Video concept rejected");
       await rejectVideoConceptTelegram(chatId, messageId, jobId);
+    } else if (data.startsWith("iterate_approve:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Approving creative refresh...");
+      await approveIteration(chatId, messageId, jobId);
+    } else if (data.startsWith("iterate_reject:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Creative refresh rejected");
+      await rejectIteration(chatId, messageId, jobId);
     } else if (data.startsWith("hook_product:")) {
       const parts = data.split(":");
       const hookId = parts[1];
@@ -632,7 +640,7 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
   // Fetch the job
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, target_languages, landing_page_id, launchpad_priority")
+    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority")
     .eq("id", jobId)
     .single();
 
@@ -731,6 +739,16 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
     `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...`
   );
 
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "concept_approved",
+    target_id: jobId,
+    target_name: job.name,
+    details: { concept_number: job.concept_number, markets, source: "telegram" },
+    success: true,
+  });
+
   // Trigger translation pipeline in background
   after(async () => {
     try {
@@ -749,7 +767,7 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number")
+    .select("id, name, concept_number, workspace_id")
     .eq("id", jobId)
     .single();
 
@@ -764,6 +782,16 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     updated_at: new Date().toISOString(),
   }).eq("id", jobId);
 
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "concept_rejected",
+    target_id: jobId,
+    target_name: job.name,
+    details: { concept_number: job.concept_number, source: "telegram" },
+    success: true,
+  });
+
   await editMessageCaption(
     chatId,
     messageId,
@@ -777,7 +805,7 @@ async function approveVideoConceptTelegram(chatId: number, messageId: number, jo
 
   const { data: job } = await db
     .from("video_jobs")
-    .select("id, concept_name, concept_number, target_languages")
+    .select("id, concept_name, concept_number, workspace_id, target_languages")
     .eq("id", jobId)
     .single();
 
@@ -813,6 +841,17 @@ async function approveVideoConceptTelegram(chatId: number, messageId: number, jo
   }).eq("id", jobId);
 
   const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
+
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "video_approved",
+    target_id: jobId,
+    target_name: job.concept_name,
+    details: { concept_number: job.concept_number, markets, source: "telegram" },
+    success: true,
+  });
+
   await editMessageCaption(
     chatId,
     messageId,
@@ -825,7 +864,7 @@ async function rejectVideoConceptTelegram(chatId: number, messageId: number, job
 
   const { data: job } = await db
     .from("video_jobs")
-    .select("id, concept_name, concept_number")
+    .select("id, concept_name, concept_number, workspace_id")
     .eq("id", jobId)
     .single();
 
@@ -840,10 +879,102 @@ async function rejectVideoConceptTelegram(chatId: number, messageId: number, job
     updated_at: new Date().toISOString(),
   }).eq("id", jobId);
 
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "video_rejected",
+    target_id: jobId,
+    target_name: job.concept_name,
+    details: { concept_number: job.concept_number, source: "telegram" },
+    success: true,
+  });
+
   await editMessageCaption(
     chatId,
     messageId,
     `🗑️ Video #${job.concept_number ?? "?"} "${job.concept_name}" rejected.`
+  );
+}
+
+// ===========================================================================
+// CREATIVE ITERATION APPROVE / REJECT
+// ===========================================================================
+
+async function approveIteration(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, workspace_id")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    return;
+  }
+
+  await editMessageCaption(
+    chatId,
+    messageId,
+    `✅ Creative refresh approved for #${job.concept_number ?? "?"} "${job.name}"!\n\nTranslating new images + pushing to Meta...`
+  );
+
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "iterate_approved",
+    target_id: jobId,
+    target_name: job.name,
+    details: { concept_number: job.concept_number, source: "telegram" },
+    success: true,
+  });
+
+  // Trigger translation pipeline for the new images
+  after(async () => {
+    try {
+      const { triggerAutopilotTranslations } = await import("@/lib/autopilot-translations");
+      console.log(`[telegram-iterate-approve] Starting translations for job ${jobId}`);
+      const result = await triggerAutopilotTranslations(jobId);
+      console.log(`[telegram-iterate-approve] Translations done:`, result);
+    } catch (err) {
+      console.error(`[telegram-iterate-approve] Translation pipeline failed for ${jobId}:`, err);
+    }
+  });
+}
+
+async function rejectIteration(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const db = createServerSupabase();
+
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, name, concept_number, workspace_id")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) {
+    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    return;
+  }
+
+  // Clean up the iteration images
+  const { cleanupIterationImages } = await import("@/lib/autopilot-iterate");
+  const deleted = await cleanupIterationImages(jobId, db);
+
+  // Log to autopilot_actions
+  await db.from("autopilot_actions").insert({
+    workspace_id: job.workspace_id,
+    action_type: "iterate_rejected",
+    target_id: jobId,
+    target_name: job.name,
+    details: { concept_number: job.concept_number, images_deleted: deleted, source: "telegram" },
+    success: true,
+  });
+
+  await editMessageCaption(
+    chatId,
+    messageId,
+    `🗑️ Creative refresh rejected for #${job.concept_number ?? "?"} "${job.name}" — ${deleted} images removed.`
   );
 }
 

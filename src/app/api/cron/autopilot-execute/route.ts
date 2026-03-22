@@ -11,7 +11,7 @@ import {
   type BudgetSnapshot,
 } from "@/lib/strategy-engine";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const MAX_KILLS_PER_RUN = 5;
 const DELAY_MS = 500;
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const workspaces = (allWorkspaces ?? []).filter((ws) => {
       const s = (ws.settings ?? {}) as Record<string, unknown>;
-      return s.autopilot_auto_kill === true || s.autopilot_auto_budget === true;
+      return s.autopilot_auto_kill === true || s.autopilot_auto_budget === true || s.autopilot_auto_iterate === true;
     });
 
     if (workspaces.length === 0) {
@@ -358,6 +358,20 @@ export async function GET(req: NextRequest) {
       await sendMessage(chatId, lines.join("\n"));
     }
 
+    // --- Auto-iterate fatiguing concepts ---
+    let iterateResult: { iterated: boolean; jobId?: string; reason?: string } | null = null;
+    if (settings.autopilot_auto_iterate === true && !dryRun) {
+      try {
+        const { detectAndIterateFatiguingConcepts } = await import("@/lib/autopilot-iterate");
+        iterateResult = await detectAndIterateFatiguingConcepts(wsId, db, chatId);
+        if (iterateResult?.iterated) {
+          console.log(`[Autopilot Execute] ${label}Iterated concept: ${iterateResult.jobId}`);
+        }
+      } catch (err) {
+        console.error(`[Autopilot Execute] ${label}Iteration failed:`, err);
+      }
+    }
+
     allResults.push({
       workspace: workspace.slug,
       result: {
@@ -366,6 +380,7 @@ export async function GET(req: NextRequest) {
         kills: killActions,
         budget_changes: budgetActions,
         skipped: skippedActions,
+        iterate: iterateResult,
       },
     });
 

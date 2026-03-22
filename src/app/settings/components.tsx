@@ -35,7 +35,8 @@ export interface Settings {
   autopilot_mode: "disabled" | "from_scratch" | "competitor_swipe";
   autopilot_auto_kill: boolean;
   autopilot_auto_budget: boolean;
-  gethookd_board_id: string;
+  autopilot_auto_iterate: boolean;
+  gethookd_board_ids: string[];
   gethookd_explore_queries: string[];
   default_page_b_id: string;
 }

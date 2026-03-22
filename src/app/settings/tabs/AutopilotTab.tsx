@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, X } from "lucide-react";
 import {
   SettingsCard,
@@ -12,11 +12,32 @@ import {
 } from "../components";
 import type { SettingsProps } from "../components";
 
+interface BoardInfo {
+  id: number;
+  name: string;
+  ad_count: number;
+}
+
 export default function AutopilotTab({ settings, setSettings, saved, handleSave }: SettingsProps) {
   const [gethookdTest, setGethookdTest] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [gethookdError, setGethookdError] = useState("");
   const [gethookdInfo, setGethookdInfo] = useState("");
   const [newQuery, setNewQuery] = useState("");
+  const [availableBoards, setAvailableBoards] = useState<BoardInfo[]>([]);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+
+  // Fetch available boards when competitor_swipe mode is active
+  useEffect(() => {
+    if (settings.autopilot_mode !== "competitor_swipe") return;
+    setBoardsLoading(true);
+    fetch("/api/ad-spy/board")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.boards) setAvailableBoards(data.boards);
+      })
+      .catch(() => {})
+      .finally(() => setBoardsLoading(false));
+  }, [settings.autopilot_mode]);
 
   async function testGethookd() {
     setGethookdTest("loading");
@@ -133,21 +154,71 @@ export default function AutopilotTab({ settings, setSettings, saved, handleSave 
               }
             />
             <RowDivider />
-            <Row
-              label="Board ID"
-              description="Ads you save to this GetHookd board will be swiped first"
-              action={
-                <input
-                  type="text"
-                  value={settings.gethookd_board_id}
-                  onChange={(e) =>
-                    setSettings((s) => ({ ...s, gethookd_board_id: e.target.value }))
-                  }
-                  placeholder="e.g. 12345"
-                  className="w-28 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                />
-              }
-            />
+            <div className="py-2">
+              <div className="min-w-0 mr-4">
+                <p className="text-sm font-medium text-gray-800">Boards</p>
+                <p className="text-xs mt-0.5 text-gray-400">
+                  Ads saved to these boards will be swiped first (checked in order)
+                </p>
+              </div>
+              {settings.gethookd_board_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {settings.gethookd_board_ids.map((id) => {
+                    const board = availableBoards.find((b) => String(b.id) === id);
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md"
+                      >
+                        {board ? `${board.name} (${board.ad_count})` : `#${id}`}
+                        <button
+                          onClick={() =>
+                            setSettings((s) => ({
+                              ...s,
+                              gethookd_board_ids: s.gethookd_board_ids.filter((b) => b !== id),
+                            }))
+                          }
+                          className="text-indigo-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {availableBoards.length > 0 && (
+                <div className="mt-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val && !settings.gethookd_board_ids.includes(val)) {
+                        setSettings((s) => ({
+                          ...s,
+                          gethookd_board_ids: [...s.gethookd_board_ids, val],
+                        }));
+                      }
+                    }}
+                    className="bg-white border border-gray-200 text-gray-800 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Add board...</option>
+                    {availableBoards
+                      .filter((b) => !settings.gethookd_board_ids.includes(String(b.id)))
+                      .map((b) => (
+                        <option key={b.id} value={String(b.id)}>
+                          {b.name} ({b.ad_count} ads)
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              {boardsLoading && (
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading boards...
+                </div>
+              )}
+            </div>
             <RowDivider />
             <div className="py-2">
               <div className="flex items-center justify-between">
@@ -219,6 +290,17 @@ export default function AutopilotTab({ settings, setSettings, saved, handleSave 
             <ToggleSwitch
               checked={settings.autopilot_auto_budget}
               onChange={(v) => setSettings((s) => ({ ...s, autopilot_auto_budget: v }))}
+            />
+          }
+        />
+        <RowDivider />
+        <Row
+          label="Auto-iterate fatiguing concepts"
+          description="When a winning concept shows fatigue (high frequency or CTR drop), auto-generate fresh images and send for approval"
+          action={
+            <ToggleSwitch
+              checked={settings.autopilot_auto_iterate}
+              onChange={(v) => setSettings((s) => ({ ...s, autopilot_auto_iterate: v }))}
             />
           }
         />

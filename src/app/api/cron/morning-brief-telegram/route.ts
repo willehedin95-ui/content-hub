@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendMessage, sendMessageWithInlineKeyboard } from "@/lib/telegram";
+import { sendMessage } from "@/lib/telegram";
 
 export const maxDuration = 60;
 
@@ -311,104 +311,12 @@ export async function GET(req: NextRequest) {
 
   await sendMessage(chatId, message, { disable_web_page_preview: true });
 
-  // Send budget shift approval if there are recommendations
-  const shifts = briefData.signals?.efficiency_scoring?.filter(
-    (e) => e.recommendation !== "maintain"
-  ) ?? [];
-
-  let budgetMessageSent = false;
-  if (shifts.length > 0) {
-    const budgetLines = ["⚡ Budget shift recommendations ready:"];
-    for (const s of briefData.signals.efficiency_scoring) {
-      const icon = s.recommendation === "increase" ? "↑" : s.recommendation === "decrease" ? "↓" : "=";
-      budgetLines.push(`  ${icon} ${s.campaign_name}: ${s.current_budget_share}% → ${s.recommended_budget_share}%`);
-    }
-    budgetLines.push("");
-    budgetLines.push("Tap below to apply these budget shifts.");
-
-    await sendMessageWithInlineKeyboard(
-      chatId,
-      budgetLines.join("\n"),
-      [
-        [
-          { text: "✅ Apply Budget Shifts", callback_data: "budget_apply_all" },
-          { text: "❌ Skip", callback_data: "budget_skip" },
-        ],
-      ],
-      { disable_web_page_preview: true }
-    );
-    budgetMessageSent = true;
-  }
-
-  // Send winner graduation suggestions if there are consistent winners
-  const winners = briefData.signals?.consistent_winners ?? [];
-  let winnerMessageSent = false;
-  if (winners.length > 0) {
-    const winnerLines = ["⭐ Consistent winners — ready for graduation:"];
-    for (const w of winners) {
-      winnerLines.push(`  ${w.ad_name || "Unnamed"} (${w.campaign_name}) — ${w.consistent_days}d, ${w.avg_roas.toFixed(1)}x ROAS`);
-    }
-    winnerLines.push("");
-    winnerLines.push("Graduating increases the ad set budget by 20%.");
-
-    // Callback data is limited to 64 bytes, so use "graduate_all" for batch
-    await sendMessageWithInlineKeyboard(
-      chatId,
-      winnerLines.join("\n"),
-      [
-        [
-          { text: "🚀 Graduate All Winners", callback_data: "graduate_all" },
-          { text: "❌ Skip", callback_data: "graduate_skip" },
-        ],
-      ],
-      { disable_web_page_preview: true }
-    );
-    winnerMessageSent = true;
-  }
-
-  // Send strategy kill action if there are ad sets to kill
-  let strategyMessageSent = false;
-  const strategyData = briefData.strategy;
-  if (strategyData) {
-    const killRecs = strategyData.recommendations.filter(
-      (r: { action: string; action_data?: Record<string, unknown> }) =>
-        (r.action === "kill_deadweight" || r.action === "structure_warning") &&
-        r.action_data?.adset_ids
-    );
-    if (killRecs.length > 0) {
-      const allAdsetIds: string[] = [];
-      const killLines = ["🛡️ Strategy recommends killing weak ad sets:"];
-      for (const rec of killRecs) {
-        killLines.push(`  • ${rec.title}`);
-        const ids = rec.action_data?.adset_ids as string[] | undefined;
-        if (ids) allAdsetIds.push(...ids);
-      }
-      killLines.push("");
-      killLines.push(`Total: ${allAdsetIds.length} ad set(s) to kill.`);
-
-      // Store IDs in callback data (64 byte limit) — use a lookup approach
-      // Since callback_data is limited, just use "strategy_kill_all" and re-fetch from API
-      await sendMessageWithInlineKeyboard(
-        chatId,
-        killLines.join("\n"),
-        [
-          [
-            { text: `🗑 Kill ${allAdsetIds.length} ad sets`, callback_data: "strategy_kill_all" },
-            { text: "❌ Skip", callback_data: "strategy_skip" },
-          ],
-        ],
-        { disable_web_page_preview: true }
-      );
-      strategyMessageSent = true;
-    }
-  }
+  // Budget shifts, winner graduation, and ad set kills are now handled
+  // automatically by autopilot-execute cron — no manual action buttons needed.
 
   return NextResponse.json({
     ok: true,
     data_date: briefData.data_date,
     message_length: message.length,
-    budget_message_sent: budgetMessageSent,
-    winner_message_sent: winnerMessageSent,
-    strategy_message_sent: strategyMessageSent,
   });
 }

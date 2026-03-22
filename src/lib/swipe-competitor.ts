@@ -13,7 +13,7 @@
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendPhoto, sendMessageWithInlineKeyboard } from "@/lib/telegram";
+import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -402,22 +402,42 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     if (chatId) {
       const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
-      const caption = [
-        `🔍 Swipe #${nextConceptNumber}:`,
-        ``,
-        `"${parsed.concept.concept_name}"`,
+      const primaryText = parsed.concept.ad_copy_primary?.[0] ?? "";
+      const headline = parsed.concept.ad_copy_headline?.[0] ?? "";
+
+      const captionLines = [
+        `🔍 Swipe #${nextConceptNumber}: "${parsed.concept.concept_name}"`,
         `From: ${brandName}`,
-        `Images: ${imageResults.length}/${parsed.image_prompts.length} | Page: ${landingPageId ? "Yes" : "No"}`,
         ``,
-        `${hubUrl}/concepts/${job.id}`,
-      ].join("\n");
+      ];
+      if (primaryText) {
+        const truncated = primaryText.length > 300 ? primaryText.slice(0, 300) + "..." : primaryText;
+        captionLines.push(truncated);
+        captionLines.push(``);
+      }
+      if (headline) {
+        captionLines.push(`Headline: ${headline}`);
+        captionLines.push(``);
+      }
+      captionLines.push(`Images: ${imageResults.length}/${parsed.image_prompts.length} | Page: ${landingPageId ? "Yes" : "No"}`);
+      captionLines.push(`${hubUrl}/concepts/${job.id}`);
+
+      const caption = captionLines.join("\n");
 
       const buttons = [[
         { text: "\u2705 Approve", callback_data: `concept_approve:${job.id}` },
         { text: "\u274c Reject", callback_data: `concept_reject:${job.id}` },
       ]];
 
-      if (imageResults.length > 0) {
+      if (imageResults.length > 1) {
+        const imageUrls = imageResults.map((r) => r.url);
+        await sendMediaGroup(chatId, imageUrls, caption);
+        await sendMessageWithInlineKeyboard(
+          chatId,
+          `Approve swipe #${nextConceptNumber}?`,
+          buttons
+        );
+      } else if (imageResults.length === 1) {
         await sendPhoto(chatId, imageResults[0].url, caption, buttons);
       } else {
         await sendMessageWithInlineKeyboard(chatId, caption, buttons);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { updateAd, updateAdSet, setMetaConfig } from "@/lib/meta";
-import { sendMessage } from "@/lib/telegram";
+
 
 export const maxDuration = 60;
 
@@ -142,19 +142,10 @@ export async function GET(req: NextRequest) {
   const paused = results.filter((r) => r.success).length;
   const failed = results.filter((r) => !r.success).length;
 
-  // Send Telegram notification about paused ads
+  // Telegram notification suppressed — autopilot-execute handles kills + sends digest
   const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-  if (chatId && paused > 0) {
-    const lines = [`🛑 Auto-paused ${paused} bleeding ad${paused !== 1 ? "s" : ""}:`];
-    for (const r of results.filter((r) => r.success)) {
-      const b = toPause.find((x) => x.ad_id === r.ad_id)!;
-      lines.push(`  • ${r.ad_name || "Unnamed"} (${b.campaign_name}) — ${b.days_bleeding}d, ${money(b.total_spend)} wasted`);
-    }
-    if (failed > 0) {
-      lines.push(`\n⚠️ Failed to pause ${failed} ad${failed !== 1 ? "s" : ""}`);
-    }
-    lines.push(`\n👉 ${process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app"}/morning-brief`);
-    await sendMessage(chatId, lines.join("\n"));
+  if (paused > 0) {
+    console.log(`[auto-pause-bleeders] Paused ${paused} bleeders, ${failed} failed (Telegram suppressed — autopilot-execute sends digest)`);
   }
 
   // === Concept-level kills: zombie ad sets (all ads paused) ===
@@ -231,12 +222,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (killedAdSets.length > 0 && chatId) {
-    await sendMessage(
-      chatId,
-      `\u{1FAA6} Killed ${killedAdSets.length} zombie ad set(s) (all ads paused):\n` +
-      killedAdSets.map((n) => `  \u2022 ${n}`).join("\n")
-    );
+  if (killedAdSets.length > 0) {
+    console.log(`[auto-pause-bleeders] Killed ${killedAdSets.length} zombie ad sets: ${killedAdSets.join(", ")}`);
   }
 
   return NextResponse.json({

@@ -114,6 +114,16 @@ export async function POST(
       }
     }
 
+    // Log to autopilot_actions
+    await db.from("autopilot_actions").insert({
+      workspace_id: workspaceId,
+      action_type: "concept_approved",
+      target_id: jobId,
+      target_name: job.name,
+      details: { concept_number: job.concept_number, source: "hub_ui" },
+      success: true,
+    });
+
     // Trigger translation pipeline in background (after response is sent)
     after(async () => {
       try {
@@ -136,6 +146,16 @@ export async function POST(
       })
       .eq("id", jobId)
       .eq("workspace_id", workspaceId);
+
+    // Log to autopilot_actions
+    await db.from("autopilot_actions").insert({
+      workspace_id: workspaceId,
+      action_type: "concept_rejected",
+      target_id: jobId,
+      target_name: job.name,
+      details: { concept_number: job.concept_number, source: "hub_ui" },
+      success: true,
+    });
 
     return NextResponse.json({ ok: true, action: "rejected" });
   }

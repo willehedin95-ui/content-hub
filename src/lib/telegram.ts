@@ -187,6 +187,41 @@ export async function editMessageCaption(
   }
 }
 
+/**
+ * Send a media group (album) of photos with optional caption on the first.
+ * Returns the message IDs of all sent messages.
+ * NOTE: Telegram does not support inline keyboards on media groups.
+ * Send a follow-up message with sendMessageWithInlineKeyboard for buttons.
+ */
+export async function sendMediaGroup(
+  chatId: number | string,
+  photoUrls: string[],
+  caption?: string
+): Promise<{ message_ids: number[] }> {
+  if (photoUrls.length === 0) return { message_ids: [] };
+  // Telegram allows max 10 media items; we'll cap at that
+  const media = photoUrls.slice(0, 10).map((url, i) => ({
+    type: "photo" as const,
+    media: url,
+    ...(i === 0 && caption ? { caption } : {}),
+  }));
+
+  const token = getBotToken();
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/sendMediaGroup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, media }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    console.error(`[Telegram] sendMediaGroup failed: ${res.status} ${err}`);
+    return { message_ids: [] };
+  }
+  const data = await res.json();
+  const ids = (data.result ?? []).map((m: { message_id: number }) => m.message_id);
+  return { message_ids: ids };
+}
+
 /** Send a photo with caption and optional inline keyboard */
 export async function sendPhoto(
   chatId: number | string,

@@ -61,7 +61,8 @@ export default function SettingsPage() {
     autopilot_mode: "disabled",
     autopilot_auto_kill: false,
     autopilot_auto_budget: false,
-    gethookd_board_id: "",
+    autopilot_auto_iterate: false,
+    gethookd_board_ids: [],
     gethookd_explore_queries: [],
     default_page_b_id: "",
   });
@@ -164,6 +165,11 @@ export default function SettingsPage() {
       .then((r) => r.ok ? r.json() : null)
       .then((dbSettings) => {
         if (dbSettings && Object.keys(dbSettings).length > 0) {
+          // Migrate old gethookd_board_id string → gethookd_board_ids array
+          if (dbSettings.gethookd_board_id && !dbSettings.gethookd_board_ids) {
+            dbSettings.gethookd_board_ids = [dbSettings.gethookd_board_id];
+            delete dbSettings.gethookd_board_id;
+          }
           setSettings((s) => ({ ...s, ...dbSettings }));
           localStorage.setItem("content-hub-settings", JSON.stringify(dbSettings));
         } else {

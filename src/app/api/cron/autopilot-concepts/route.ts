@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendPhoto, sendMessageWithInlineKeyboard } from "@/lib/telegram";
+import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -308,19 +308,26 @@ async function discoverCompetitorAd(
 
   const seenIds = new Set((seenAds ?? []).map((a) => a.gethookd_ad_id));
 
-  // --- Priority 1: Board (user-curated) ---
-  const boardId = ws.settings.gethookd_board_id as string | undefined;
-  if (boardId) {
+  // --- Priority 1: Boards (user-curated) ---
+  // Support both old single gethookd_board_id and new gethookd_board_ids array
+  const boardIds: string[] = (() => {
+    const ids = ws.settings.gethookd_board_ids as string[] | undefined;
+    if (ids && ids.length > 0) return ids;
+    const single = ws.settings.gethookd_board_id as string | undefined;
+    return single ? [single] : [];
+  })();
+
+  for (const boardId of boardIds) {
     try {
       const { ads } = await getBoardAds(boardId, 1, 50);
       const imageAds = filterImageAds(ads);
       const unswiped = imageAds.filter((a) => !seenIds.has(a.id));
       if (unswiped.length > 0) {
-        console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads`);
+        console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads (board ${boardId})`);
         return { ad: unswiped[0], source: "board" };
       }
     } catch (err) {
-      console.error("[Autopilot] Board fetch failed:", err);
+      console.error(`[Autopilot] Board ${boardId} fetch failed:`, err);
     }
   }
 
@@ -674,28 +681,46 @@ async function runFromScratch(
     const angle = proposal.cash_dna?.angle ?? "—";
     const awareness = proposal.cash_dna?.awareness_level ?? "—";
     const hook = proposal.cash_dna?.hooks?.[0] ?? "—";
+    const primaryText = proposal.ad_copy_primary?.[0] ?? "";
+    const headline = proposal.ad_copy_headline?.[0] ?? "";
     const imagesGenerated = imageResults.length;
     const pageAssigned = landingPageId ? "Yes" : "No";
     const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
 
-    const caption = [
-      `🤖 ${label}Autopilot concept #${nextConceptNumber}:`,
+    const captionLines = [
+      `🤖 ${label}Concept #${nextConceptNumber}: "${proposal.concept_name}"`,
+      `${angle} | ${awareness} | ${mode}`,
       ``,
-      `"${proposal.concept_name}"`,
-      `Angle: ${angle} | Awareness: ${awareness}`,
-      `Hook: "${hook.length > 60 ? hook.slice(0, 60) + "..." : hook}"`,
-      `Images: ${imagesGenerated}/3 | Page: ${pageAssigned}`,
-      `Mode: ${mode}`,
-      ``,
-      `${hubUrl}/concepts/${job.id}`,
-    ].join("\n");
+    ];
+    if (primaryText) {
+      const truncated = primaryText.length > 300 ? primaryText.slice(0, 300) + "..." : primaryText;
+      captionLines.push(truncated);
+      captionLines.push(``);
+    }
+    if (headline) {
+      captionLines.push(`Headline: ${headline}`);
+      captionLines.push(``);
+    }
+    captionLines.push(`Images: ${imagesGenerated}/3 | Page: ${pageAssigned}`);
+    captionLines.push(`${hubUrl}/concepts/${job.id}`);
+
+    const caption = captionLines.join("\n");
 
     const buttons = [[
       { text: "✅ Approve", callback_data: `concept_approve:${job.id}` },
       { text: "❌ Reject", callback_data: `concept_reject:${job.id}` },
     ]];
 
-    if (imageResults.length > 0) {
+    if (imageResults.length > 1) {
+      // Send all images as album, then buttons as follow-up
+      const imageUrls = imageResults.map((r) => r.url);
+      await sendMediaGroup(chatId, imageUrls, caption);
+      await sendMessageWithInlineKeyboard(
+        chatId,
+        `Approve concept #${nextConceptNumber}?`,
+        buttons
+      );
+    } else if (imageResults.length === 1) {
       await sendPhoto(chatId, imageResults[0].url, caption, buttons);
     } else {
       await sendMessageWithInlineKeyboard(chatId, caption, buttons);
