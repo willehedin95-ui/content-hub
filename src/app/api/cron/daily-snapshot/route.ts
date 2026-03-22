@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getAccountInsights, getCampaignInsights } from "@/lib/meta";
+import { getCampaignInsights } from "@/lib/meta";
 import { fetchOrdersSince, isShopifyConfigured, convertToUSD, getRatesToUSD } from "@/lib/shopify";
 import { fetchAllGA4Metrics } from "@/lib/ga4";
-import { isGoogleAdsConfigured, getGoogleAdsAccountInsights, getGoogleAdsCampaignInsights } from "@/lib/google-ads";
-import { LANGUAGES } from "@/types";
-import { getWorkspaceSettings } from "@/lib/workspace";
+import { isGoogleAdsConfigured, getGoogleAdsCampaignInsights } from "@/lib/google-ads";
 
 export const maxDuration = 60;
 
@@ -48,9 +46,19 @@ export async function GET(req: NextRequest) {
   const sinceISO = new Date(dateStr).toISOString();
   const untilISO = new Date(dateStr + "T23:59:59Z").toISOString();
 
-  // Get settings for GA4 property IDs
-  const settings = await getWorkspaceSettings();
-  const ga4PropertyIds = (settings.ga4_property_ids ?? {}) as Record<string, string>;
+  // Get GA4 property IDs from workspace settings (query DB directly — no cookies in cron)
+  let ga4PropertyIds: Record<string, string> = {};
+  try {
+    const { data: workspaces } = await db.from("workspaces").select("settings");
+    for (const ws of workspaces ?? []) {
+      const wsSettings = (ws.settings ?? {}) as Record<string, unknown>;
+      if (wsSettings.ga4_property_ids && typeof wsSettings.ga4_property_ids === "object") {
+        ga4PropertyIds = { ...ga4PropertyIds, ...(wsSettings.ga4_property_ids as Record<string, string>) };
+      }
+    }
+  } catch {
+    // If workspace query fails, proceed without GA4
+  }
   const hasGA4 = Object.keys(ga4PropertyIds).length > 0;
 
   // Warm exchange rates

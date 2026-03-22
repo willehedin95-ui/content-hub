@@ -46,6 +46,13 @@ export async function GET(req: NextRequest) {
 
     const multiWs = workspaces.length > 1;
     const allResults: Array<{ workspace: string; result: unknown }> = [];
+    const wsActionResults: Array<{
+      label: string;
+      killActions: Array<{ name: string; reason: string; success: boolean }>;
+      budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean }>;
+      skippedActions: string[];
+      dryRun: boolean;
+    }> = [];
 
     for (const workspace of workspaces) {
       const wsId = workspace.id;
@@ -317,46 +324,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // --- Send Telegram digest ---
-    if (chatId && (killActions.length > 0 || budgetActions.length > 0 || skippedActions.length > 0)) {
-      const lines: string[] = [
-        dryRun ? `🤖 ${label}Autopilot Daily Actions (DRY RUN)` : `🤖 ${label}Autopilot Daily Actions`,
-        "",
-      ];
-
-      if (killActions.length > 0) {
-        lines.push(`📉 Killed ${killActions.length} ad set${killActions.length > 1 ? "s" : ""}:`);
-        for (const k of killActions) {
-          const status = k.success ? "" : " ❌ FAILED";
-          lines.push(`  - ${k.name} (${k.reason})${status}`);
-        }
-        lines.push("");
-      }
-
-      if (budgetActions.length > 0) {
-        lines.push("📈 Budget changes:");
-        for (const b of budgetActions) {
-          const pct = b.oldBudget > 0 ? Math.round((b.newBudget - b.oldBudget) / b.oldBudget * 100) : 0;
-          const status = b.success ? "" : " ❌ FAILED";
-          lines.push(`  - ${b.name}: ${b.oldBudget} → ${b.newBudget} SEK (+${pct}%)${status}`);
-        }
-        lines.push("");
-      }
-
-      if (killActions.length === 0 && budgetActions.length === 0) {
-        lines.push("💤 No actions needed today.");
-        lines.push("");
-      }
-
-      if (skippedActions.length > 0) {
-        lines.push("💡 Skipped (FYI):");
-        for (const s of skippedActions.slice(0, 5)) {
-          lines.push(`  - ${s}`);
-        }
-      }
-
-      await sendMessage(chatId, lines.join("\n"));
-    }
+    // Collect actions for combined digest (sent after workspace loop with morning brief)
+    wsActionResults.push({
+      label,
+      killActions,
+      budgetActions,
+      skippedActions,
+      dryRun,
+    });
 
     // --- Auto-iterate fatiguing concepts ---
     let iterateResult: { iterated: boolean; jobId?: string; reason?: string } | null = null;
@@ -397,6 +372,23 @@ export async function GET(req: NextRequest) {
       }
     } // end workspace loop
 
+    // --- Combined daily digest: morning brief + autopilot actions ---
+    if (chatId && !dryRun) {
+      try {
+        await sendCombinedDailyDigest(chatId, wsActionResults);
+      } catch (err) {
+        console.error("[Autopilot Execute] Combined digest failed:", err);
+      }
+    } else if (chatId && dryRun) {
+      // In dry-run mode, just send autopilot actions without morning brief
+      for (const ws of wsActionResults) {
+        const lines = formatAutopilotActions(ws);
+        if (lines.length > 0) {
+          await sendMessage(chatId, lines.join("\n"));
+        }
+      }
+    }
+
     return NextResponse.json({ ok: true, dry_run: dryRun, results: allResults });
   } catch (err) {
     setMetaConfig(null);
@@ -405,5 +397,158 @@ export async function GET(req: NextRequest) {
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }
     );
+  }
+}
+
+// --- Combined daily digest helpers ---
+
+type WsActions = {
+  label: string;
+  killActions: Array<{ name: string; reason: string; success: boolean }>;
+  budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean }>;
+  skippedActions: string[];
+  dryRun: boolean;
+};
+
+function formatAutopilotActions(ws: WsActions): string[] {
+  const { label, killActions, budgetActions, skippedActions, dryRun } = ws;
+  const lines: string[] = [];
+
+  if (killActions.length === 0 && budgetActions.length === 0 && skippedActions.length === 0) {
+    return lines;
+  }
+
+  lines.push(dryRun ? `🤖 ${label}Autopilot Actions (DRY RUN)` : `🤖 ${label}Autopilot Actions`);
+
+  if (killActions.length > 0) {
+    lines.push(`  📉 Killed ${killActions.length} ad set${killActions.length > 1 ? "s" : ""}:`);
+    for (const k of killActions) {
+      const status = k.success ? "" : " ❌ FAILED";
+      lines.push(`    - ${k.name} (${k.reason})${status}`);
+    }
+  }
+
+  if (budgetActions.length > 0) {
+    lines.push("  📈 Budget changes:");
+    for (const b of budgetActions) {
+      const pct = b.oldBudget > 0 ? Math.round((b.newBudget - b.oldBudget) / b.oldBudget * 100) : 0;
+      const status = b.success ? "" : " ❌ FAILED";
+      lines.push(`    - ${b.name}: ${b.oldBudget} → ${b.newBudget} SEK (+${pct}%)${status}`);
+    }
+  }
+
+  if (killActions.length === 0 && budgetActions.length === 0) {
+    lines.push("  💤 No actions needed today.");
+  }
+
+  return lines;
+}
+
+function money(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return `${n.toFixed(0)}`;
+}
+
+function arrow(trend: string): string {
+  if (trend === "up") return "↗️";
+  if (trend === "down") return "↘️";
+  return "→";
+}
+
+async function sendCombinedDailyDigest(
+  chatId: string,
+  wsActions: WsActions[]
+): Promise<void> {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+  const cronSecret = process.env.CRON_SECRET;
+
+  const lines: string[] = [];
+
+  // --- Morning brief section ---
+  try {
+    const briefRes = await fetch(`${baseUrl}/api/morning-brief`, {
+      headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
+    });
+
+    if (briefRes.ok) {
+      const data = await briefRes.json();
+      const sp = data.questions?.spend_pacing;
+      const trends = data.questions?.performance_trends ?? [];
+      const strategy = data.strategy;
+
+      // Header
+      lines.push(`☀️ DAILY DIGEST — ${data.data_date}`);
+      lines.push("");
+
+      // KPI summary
+      if (sp) {
+        const cpa = sp.total_purchases > 0 ? money(sp.total_spend / sp.total_purchases) : "—";
+        lines.push(`📊 Spend: ${money(sp.total_spend)} SEK | Purchases: ${sp.total_purchases} | Revenue: ${money(sp.total_revenue)} SEK`);
+        lines.push(`   ROAS: ${sp.blended_roas.toFixed(2)}x | CPA: ${cpa} SEK`);
+        lines.push("");
+      }
+
+      // Campaign trends (condensed)
+      if (trends.length > 0) {
+        lines.push("📈 Campaigns (7d):");
+        for (const ct of trends) {
+          const name = ct.campaign_name.length > 25 ? ct.campaign_name.slice(0, 24) + "…" : ct.campaign_name;
+          lines.push(`  ${name}: ${ct.current_7d.roas.toFixed(1)}x ${arrow(ct.trend.roas)} | ${money(ct.current_7d.spend)} SEK`);
+        }
+        lines.push("");
+      }
+
+      // Alerts (critical only)
+      const criticals = data.questions?.fatigue_signals?.critical ?? [];
+      const bleeders = data.signals?.bleeders ?? [];
+      if (criticals.length > 0 || bleeders.length > 0) {
+        lines.push("🚨 Alerts:");
+        for (const s of criticals.slice(0, 3)) {
+          lines.push(`  ⚠️ ${s.ad_name || "Unnamed"}: ${s.detail}`);
+        }
+        for (const b of bleeders.slice(0, 3)) {
+          lines.push(`  🔥 ${b.ad_name || "Unnamed"} — ${b.days_bleeding}d bleeding, ${money(b.total_spend)} SEK`);
+        }
+        lines.push("");
+      }
+
+      // Strategy headline
+      if (strategy) {
+        const tone = strategy.headline_tone === "positive" ? "🟢" : strategy.headline_tone === "cautious" ? "🟡" : "🔴";
+        lines.push(`${tone} ${strategy.headline}`);
+        lines.push("");
+      }
+
+      // Top performers
+      const winners = data.questions?.winners_losers?.winners ?? [];
+      if (winners.length > 0) {
+        lines.push("🏆 Top:");
+        for (const w of winners.slice(0, 2)) {
+          lines.push(`  ${w.ad_name || "Unnamed"} — ${w.roas.toFixed(1)}x, ${w.purchases} purchases`);
+        }
+        lines.push("");
+      }
+    }
+  } catch (err) {
+    console.error("[Daily Digest] Morning brief fetch failed:", err);
+    lines.push("☀️ DAILY DIGEST");
+    lines.push("⚠️ Morning brief data unavailable");
+    lines.push("");
+  }
+
+  // --- Autopilot actions section ---
+  for (const ws of wsActions) {
+    const actionLines = formatAutopilotActions(ws);
+    if (actionLines.length > 0) {
+      lines.push(...actionLines);
+      lines.push("");
+    }
+  }
+
+  // Footer
+  lines.push(`👉 ${baseUrl}`);
+
+  if (lines.length > 2) {
+    await sendMessage(chatId, lines.join("\n"), { disable_web_page_preview: true });
   }
 }

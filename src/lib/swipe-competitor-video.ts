@@ -11,7 +11,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendPhoto, sendMessageWithInlineKeyboard } from "@/lib/telegram";
+import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import { callGeminiVideo, createImageTask, pollTaskResult } from "@/lib/kie";
 import {
   loadVideoUgcContext,
@@ -629,17 +629,27 @@ Return ONLY valid JSON. No markdown fences.`;
         ],
       ];
 
-      // Try to send with keyframe image, fall back to text
+      // Send all unique keyframe images as album, then buttons as follow-up
       try {
-        const { data: firstShot } = await db
+        const { data: shots } = await db
           .from("video_shots")
-          .select("image_url")
+          .select("image_url, shot_number")
           .eq("video_job_id", videoJobId)
-          .eq("shot_number", 1)
-          .single();
+          .not("image_url", "is", null)
+          .order("shot_number");
 
-        if (firstShot?.image_url) {
-          await sendPhoto(chatId, firstShot.image_url, caption, buttons);
+        // Deduplicate URLs (reuse_first_frame mode = all shots share same image)
+        const uniqueUrls = [...new Set((shots ?? []).map((s) => s.image_url as string))];
+
+        if (uniqueUrls.length > 1) {
+          await sendMediaGroup(chatId, uniqueUrls, caption);
+          await sendMessageWithInlineKeyboard(
+            chatId,
+            `Approve video #${nextConceptNumber}?`,
+            buttons
+          );
+        } else if (uniqueUrls.length === 1) {
+          await sendPhoto(chatId, uniqueUrls[0], caption, buttons);
         } else {
           await sendMessageWithInlineKeyboard(chatId, caption, buttons);
         }

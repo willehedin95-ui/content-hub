@@ -236,12 +236,164 @@ export async function GET(req: NextRequest) {
     console.error("[Ad Perf Sync] Budget snapshot error (non-fatal):", err);
   }
 
+  // --- Concept metrics (derive from synced meta_ad_performance) ---
+  let conceptMetricsSynced = 0;
+  try {
+    conceptMetricsSynced = await syncConceptMetricsFromDB(db, sinceStr, untilStr);
+    if (conceptMetricsSynced > 0) {
+      console.log(`[Ad Perf Sync] Concept metrics: ${conceptMetricsSynced} rows synced`);
+    }
+  } catch (err) {
+    console.error("[Ad Perf Sync] Concept metrics sync error (non-fatal):", err);
+  }
+
   return NextResponse.json({
     ok: true,
     rows_synced: totalSynced,
     adset_rows_synced: adsetSynced,
     budgets_synced: budgetsSynced,
+    concept_metrics_synced: conceptMetricsSynced,
     date_range: { since: sinceStr, until: untilStr },
     is_backfill: isBackfill,
   });
+}
+
+/**
+ * Derive concept_metrics from already-synced meta_ad_performance data.
+ * Maps: meta_ad_performance.meta_ad_id → meta_ads.campaign_id → meta_campaigns.id →
+ *        image_job_markets.meta_campaign_id → concept_metrics.image_job_market_id
+ */
+async function syncConceptMetricsFromDB(
+  db: ReturnType<typeof createServerSupabase>,
+  sinceStr: string,
+  untilStr: string
+): Promise<number> {
+  // Build mapping: meta_ad_id → image_job_market_id
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .select("id, meta_campaign_id")
+    .not("meta_campaign_id", "is", null);
+
+  if (!markets?.length) return 0;
+
+  const campaignToMarketMap = new Map<string, string>();
+  for (const m of markets) {
+    if (m.meta_campaign_id) campaignToMarketMap.set(m.meta_campaign_id, m.id);
+  }
+
+  // Get all meta_ads that belong to these campaigns
+  const campaignIds = [...campaignToMarketMap.keys()];
+  const { data: ads } = await db
+    .from("meta_ads")
+    .select("meta_ad_id, campaign_id")
+    .in("campaign_id", campaignIds);
+
+  if (!ads?.length) return 0;
+
+  const adToMarketMap = new Map<string, string>();
+  for (const ad of ads) {
+    if (ad.meta_ad_id && ad.campaign_id) {
+      const marketId = campaignToMarketMap.get(ad.campaign_id);
+      if (marketId) adToMarketMap.set(ad.meta_ad_id, marketId);
+    }
+  }
+
+  if (adToMarketMap.size === 0) return 0;
+
+  // Fetch synced ad performance for the date range
+  const metaAdIds = [...adToMarketMap.keys()];
+  const allPerf: Array<Record<string, unknown>> = [];
+
+  // Query in batches (Supabase .in() has limits)
+  const CHUNK = 200;
+  for (let i = 0; i < metaAdIds.length; i += CHUNK) {
+    const chunk = metaAdIds.slice(i, i + CHUNK);
+    const { data } = await db
+      .from("meta_ad_performance")
+      .select("date, meta_ad_id, spend, impressions, clicks, purchases, purchase_value, frequency")
+      .in("meta_ad_id", chunk)
+      .gte("date", sinceStr)
+      .lte("date", untilStr);
+    if (data) allPerf.push(...data);
+  }
+
+  if (allPerf.length === 0) return 0;
+
+  // Aggregate per image_job_market_id per day
+  const aggregated = new Map<string, {
+    image_job_market_id: string;
+    date: string;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    revenue: number;
+    frequencySum: number;
+    frequencyCount: number;
+  }>();
+
+  for (const row of allPerf) {
+    const marketId = adToMarketMap.get(row.meta_ad_id as string);
+    if (!marketId) continue;
+
+    const date = row.date as string;
+    const key = `${marketId}:${date}`;
+    const existing = aggregated.get(key) ?? {
+      image_job_market_id: marketId,
+      date,
+      spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0,
+      frequencySum: 0, frequencyCount: 0,
+    };
+
+    existing.spend += Number(row.spend) || 0;
+    existing.impressions += Number(row.impressions) || 0;
+    existing.clicks += Number(row.clicks) || 0;
+    existing.conversions += Number(row.purchases) || 0;
+    existing.revenue += Number(row.purchase_value) || 0;
+
+    const freq = Number(row.frequency) || 0;
+    if (freq > 0) {
+      existing.frequencySum += freq;
+      existing.frequencyCount++;
+    }
+
+    aggregated.set(key, existing);
+  }
+
+  // Upsert into concept_metrics
+  let synced = 0;
+  const BATCH = 500;
+  const rows = [...aggregated.values()].map((agg) => {
+    const frequency = agg.frequencyCount > 0 ? agg.frequencySum / agg.frequencyCount : 0;
+    return {
+      image_job_market_id: agg.image_job_market_id,
+      date: agg.date,
+      spend: agg.spend,
+      impressions: agg.impressions,
+      clicks: agg.clicks,
+      ctr: agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : 0,
+      cpc: agg.clicks > 0 ? agg.spend / agg.clicks : 0,
+      cpm: agg.impressions > 0 ? (agg.spend / agg.impressions) * 1000 : 0,
+      frequency,
+      conversions: agg.conversions,
+      cpa: agg.conversions > 0 ? agg.spend / agg.conversions : 0,
+      roas: agg.spend > 0 ? agg.revenue / agg.spend : 0,
+      revenue: agg.revenue,
+      synced_at: new Date().toISOString(),
+    };
+  });
+
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    const { error } = await db
+      .from("concept_metrics")
+      .upsert(batch, { onConflict: "image_job_market_id,date" });
+    if (error) {
+      console.error("[Ad Perf Sync] Concept metrics upsert error:", error);
+    } else {
+      synced += batch.length;
+    }
+  }
+
+  return synced;
 }

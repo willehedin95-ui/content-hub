@@ -16,6 +16,26 @@ import { getCampaignBudget, updateCampaign, listCampaigns } from "@/lib/meta";
 
 export const maxDuration = 300;
 
+/**
+ * Edit a callback button message — handles both text messages (media group follow-up)
+ * and photo messages (single photo with buttons).
+ * Tries editMessageText first; if that fails (photo message), falls back to editMessageCaption.
+ */
+async function editCallbackMessage(chatId: number, messageId: number, text: string): Promise<void> {
+  // Try text first — works for media group follow-up buttons (text message)
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
+  });
+  if (res.ok) return;
+
+  // Fall back to caption — works for single photo with buttons
+  await editMessageCaption(chatId, messageId, text);
+}
+
 interface AnalyzeResult {
   croppedBuffer: Buffer;
   brandName: string | null;
@@ -645,19 +665,19 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
   // Idempotency: already approved
   if (job.launchpad_priority != null) {
-    await editMessageCaption(chatId, messageId, `✅ Concept #${job.concept_number ?? "?"} "${job.name}" already approved.`);
+    await editCallbackMessage(chatId, messageId, `✅ Concept #${job.concept_number ?? "?"} "${job.name}" already approved.`);
     return;
   }
 
   // Check landing page is assigned
   if (!job.landing_page_id) {
-    await editMessageCaption(
+    await editCallbackMessage(
       chatId,
       messageId,
       `⚠️ Concept "${job.name}" has no landing page assigned. Assign one in the Hub before approving.\n\n${hubBase}/concepts/${jobId}`
@@ -733,7 +753,7 @@ async function approveAutopilotConcept(chatId: number, messageId: number, jobId:
   }
 
   const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...`
@@ -772,7 +792,7 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
@@ -792,7 +812,7 @@ async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: 
     success: true,
   });
 
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `🗑️ Concept #${job.concept_number ?? "?"} "${job.name}" rejected and archived.`
@@ -810,7 +830,7 @@ async function approveVideoConceptTelegram(chatId: number, messageId: number, jo
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Video concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Video concept not found.");
     return;
   }
 
@@ -852,7 +872,7 @@ async function approveVideoConceptTelegram(chatId: number, messageId: number, jo
     success: true,
   });
 
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `✅ Video #${job.concept_number ?? "?"} "${job.concept_name}" approved!\n\nAdded to launchpad for ${markets}.\n\n${hubBase}/video-ads/${jobId}`
@@ -869,7 +889,7 @@ async function rejectVideoConceptTelegram(chatId: number, messageId: number, job
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Video concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Video concept not found.");
     return;
   }
 
@@ -889,7 +909,7 @@ async function rejectVideoConceptTelegram(chatId: number, messageId: number, job
     success: true,
   });
 
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `🗑️ Video #${job.concept_number ?? "?"} "${job.concept_name}" rejected.`
@@ -910,11 +930,11 @@ async function approveIteration(chatId: number, messageId: number, jobId: string
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `✅ Creative refresh approved for #${job.concept_number ?? "?"} "${job.name}"!\n\nTranslating new images + pushing to Meta...`
@@ -953,7 +973,7 @@ async function rejectIteration(chatId: number, messageId: number, jobId: string)
     .single();
 
   if (!job) {
-    await editMessageCaption(chatId, messageId, "❌ Concept not found.");
+    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
     return;
   }
 
@@ -971,7 +991,7 @@ async function rejectIteration(chatId: number, messageId: number, jobId: string)
     success: true,
   });
 
-  await editMessageCaption(
+  await editCallbackMessage(
     chatId,
     messageId,
     `🗑️ Creative refresh rejected for #${job.concept_number ?? "?"} "${job.name}" — ${deleted} images removed.`
