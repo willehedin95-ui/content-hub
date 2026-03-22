@@ -278,6 +278,9 @@ export interface BuilderContextValue {
     payload: { type: "block"; blockId: string } | { type: "saved"; html: string }
   ) => void;
 
+  // --- Responsive styles ---
+  applyResponsiveStyle: (prop: string, value: string) => void;
+
   // --- Convenience methods ---
   selectElementInIframe: (el: HTMLElement) => void;
   deselectElement: () => void;
@@ -524,6 +527,71 @@ export function BuilderProvider({
   }, [excludeMode]);
 
   // -----------------------------------------------------------------------
+  // Responsive styles — per-element mobile @media overrides
+  // -----------------------------------------------------------------------
+  const mobileStylesRef = useRef<Map<string, Map<string, string>>>(new Map());
+
+  function ensureResponsiveId(el: HTMLElement): string {
+    let rid = el.getAttribute("data-cc-rid");
+    if (!rid) {
+      rid = Math.random().toString(36).slice(2, 8);
+      el.setAttribute("data-cc-rid", rid);
+    }
+    return rid;
+  }
+
+  function updateResponsiveStyleTag() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+
+    let styleTag = doc.querySelector("style[data-cc-responsive]") as HTMLStyleElement | null;
+    if (!styleTag) {
+      styleTag = doc.createElement("style");
+      styleTag.setAttribute("data-cc-responsive", "");
+      doc.head.appendChild(styleTag);
+    }
+
+    const rules: string[] = [];
+    for (const [rid, props] of mobileStylesRef.current) {
+      const declarations = [...props.entries()]
+        .map(([prop, val]) => `  ${prop}: ${val} !important;`)
+        .join("\n");
+      rules.push(`[data-cc-rid="${rid}"] {\n${declarations}\n}`);
+    }
+
+    if (rules.length > 0) {
+      styleTag.textContent = `@media (max-width: 768px) {\n${rules.join("\n")}\n}`;
+    } else {
+      styleTag.textContent = "";
+    }
+  }
+
+  function applyResponsiveStyle(prop: string, value: string) {
+    const el = selectedElRef.current;
+    if (!el) return;
+
+    if (viewMode === "desktop") {
+      // Desktop: write inline style (existing behavior)
+      el.style.setProperty(prop, value);
+    } else {
+      // Mobile: write to @media stylesheet
+      const rid = ensureResponsiveId(el);
+      const elStyles = mobileStylesRef.current.get(rid) ?? new Map();
+      if (value === "" || value === "initial") {
+        elStyles.delete(prop);
+      } else {
+        elStyles.set(prop, value);
+      }
+      if (elStyles.size > 0) {
+        mobileStylesRef.current.set(rid, elStyles);
+      } else {
+        mobileStylesRef.current.delete(rid);
+      }
+      updateResponsiveStyleTag();
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // extractHtmlFromIframe — declared early because callbacks below need it
   // -----------------------------------------------------------------------
   function extractHtmlFromIframe(): string {
@@ -607,6 +675,13 @@ export function BuilderProvider({
       customStyle.removeAttribute("data-pad-mh");
       customStyle.removeAttribute("data-pad-mv");
       if (!customStyle.textContent.trim()) customStyle.remove();
+    }
+
+    // Clean the responsive styles tag (keep rules, remove editor attribute)
+    const responsiveStyle = clone.querySelector("style[data-cc-responsive]");
+    if (responsiveStyle) {
+      responsiveStyle.removeAttribute("data-cc-responsive");
+      if (!responsiveStyle.textContent?.trim()) responsiveStyle.remove();
     }
 
     return "<!DOCTYPE html>\n" + clone.outerHTML;
@@ -1080,6 +1155,34 @@ export function BuilderProvider({
     }
     doc.head.appendChild(elStyle);
 
+    // Re-hydrate responsive styles from saved HTML
+    // Look for a style tag with @media rules targeting [data-cc-rid] selectors
+    const existingStyles = doc.querySelectorAll("style");
+    existingStyles.forEach((styleEl) => {
+      const css = styleEl.textContent || "";
+      if (!css.includes("data-cc-rid")) return;
+      // Parse @media (max-width: 768px) { [data-cc-rid="xxx"] { prop: val; } }
+      const ruleMatches = css.matchAll(
+        /\[data-cc-rid="([^"]+)"\]\s*\{([^}]+)\}/g
+      );
+      for (const match of ruleMatches) {
+        const rid = match[1];
+        const declarations = match[2];
+        const elStyles = new Map<string, string>();
+        for (const decl of declarations.split(";")) {
+          const [prop, ...valParts] = decl.split(":");
+          const p = prop?.trim();
+          const v = valParts.join(":").replace(/!important/g, "").trim();
+          if (p && v) elStyles.set(p, v);
+        }
+        if (elStyles.size > 0) {
+          mobileStylesRef.current.set(rid, elStyles);
+        }
+      }
+      // Tag it as responsive so we manage it going forward
+      styleEl.setAttribute("data-cc-responsive", "");
+    });
+
     // Clear placeholder styling when user focuses a placeholder element
     doc.addEventListener("focusin", (e) => {
       const target = e.target as HTMLElement;
@@ -1202,6 +1305,8 @@ export function BuilderProvider({
     };
     let hoverLabel: HTMLElement | null = null;
     let hoveredEl: HTMLElement | null = null;
+    let pendingHoverTarget: HTMLElement | null = null;
+    let hoverRafId: number | null = null;
 
     doc.addEventListener("mouseover", function (e: Event) {
       const me = e as MouseEvent;
@@ -1219,19 +1324,26 @@ export function BuilderProvider({
       hoveredEl = hoverTarget;
       hoverTarget.setAttribute("data-cc-hover", "");
 
-      // Create or update floating label
-      if (!hoverLabel) {
-        hoverLabel = doc.createElement("div");
-        hoverLabel.setAttribute("data-cc-hover-label", "");
-        doc.body.appendChild(hoverLabel);
+      // Batch label position update via rAF to avoid layout thrashing
+      pendingHoverTarget = hoverTarget;
+      if (hoverRafId === null) {
+        hoverRafId = requestAnimationFrame(() => {
+          hoverRafId = null;
+          if (!pendingHoverTarget) return;
+          if (!hoverLabel) {
+            hoverLabel = doc.createElement("div");
+            hoverLabel.setAttribute("data-cc-hover-label", "");
+            doc.body.appendChild(hoverLabel);
+          }
+          const customName = pendingHoverTarget.getAttribute("data-cc-name");
+          const labelText = customName || TAG_LABELS[pendingHoverTarget.tagName] || pendingHoverTarget.tagName.toLowerCase();
+          hoverLabel.textContent = labelText;
+          const rect = pendingHoverTarget.getBoundingClientRect();
+          hoverLabel.style.left = rect.left + "px";
+          hoverLabel.style.top = Math.max(0, rect.top - 18) + "px";
+          hoverLabel.style.display = "block";
+        });
       }
-      const customName = hoverTarget.getAttribute("data-cc-name");
-      const labelText = customName || TAG_LABELS[hoverTarget.tagName] || hoverTarget.tagName.toLowerCase();
-      hoverLabel.textContent = labelText;
-      const rect = hoverTarget.getBoundingClientRect();
-      hoverLabel.style.left = rect.left + "px";
-      hoverLabel.style.top = Math.max(0, rect.top - 18) + "px";
-      hoverLabel.style.display = "block";
     }, true);
 
     doc.addEventListener("mouseout", function (e: Event) {
@@ -2356,6 +2468,9 @@ export function BuilderProvider({
     isDraggingFromComponents,
     setIsDraggingFromComponents,
     insertAtPosition,
+
+    // Responsive styles
+    applyResponsiveStyle,
 
     // Convenience methods
     selectElementInIframe,

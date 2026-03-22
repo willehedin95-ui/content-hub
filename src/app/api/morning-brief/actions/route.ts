@@ -346,6 +346,59 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    case "reduce_budget": {
+      const { campaign_ids, target_budget, market } = body as {
+        campaign_ids: string[];
+        target_budget: number; // in cents (Meta format)
+        market: string;
+      };
+      if (!campaign_ids?.length || !target_budget) {
+        return NextResponse.json(
+          { error: "campaign_ids and target_budget are required" },
+          { status: 400 }
+        );
+      }
+
+      const targetPerCampaign = Math.round(target_budget / campaign_ids.length);
+
+      const results: Array<{
+        campaign_id: string;
+        old_budget: number;
+        new_budget: number;
+      }> = [];
+
+      for (const campaignId of campaign_ids) {
+        const info = await getCampaignBudget(campaignId);
+        const oldBudget = Number(info.daily_budget || 0);
+
+        await updateCampaign(campaignId, {
+          daily_budget: String(targetPerCampaign),
+        });
+        await sleep(DELAY);
+
+        results.push({
+          campaign_id: campaignId,
+          old_budget: oldBudget / 100,
+          new_budget: targetPerCampaign / 100,
+        });
+      }
+
+      // Log to ad_learnings
+      await db.from("ad_learnings").insert({
+        meta_ad_id: campaign_ids[0],
+        campaign_name: market,
+        event_type: "budget_reduced_for_testing",
+        detail: `Budget reduced for ${market} cold start: ${results.map((r) => `${r.old_budget} → ${r.new_budget}`).join(", ")} SEK/day`,
+        metrics: { market, target_budget: target_budget / 100, results },
+        workspace_id: workspaceId,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        results,
+      });
+    }
+
     case "increase_budget": {
       const { campaign_ids, extra_per_campaign, market, concepts_count } = body as {
         campaign_ids: string[];

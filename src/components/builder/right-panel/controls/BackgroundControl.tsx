@@ -31,7 +31,7 @@ function hexToRgba(hex: string, opacity: number): string {
 }
 
 export default function BackgroundControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [bgColor, setBgColor] = useState("#ffffff");
   const [bgOpacity, setBgOpacity] = useState(100);
@@ -72,10 +72,8 @@ export default function BackgroundControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 

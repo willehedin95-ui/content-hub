@@ -27,7 +27,7 @@ const FLEX_DIRECTION_BUTTONS = [
 const ALIGNMENT_VALUES = ["flex-start", "center", "flex-end"] as const;
 
 export default function LayoutControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [display, setDisplay] = useState("block");
   const [flexDirection, setFlexDirection] = useState("row");
@@ -67,10 +67,8 @@ export default function LayoutControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 

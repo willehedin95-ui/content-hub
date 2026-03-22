@@ -12,22 +12,23 @@
 // Constants (all tunable)
 // ---------------------------------------------------------------------------
 
-const BUDGET_COOLDOWN_DAYS = 3; // Wait N days after any budget change
-const PROFITABLE_ROAS_MULTIPLIER = 1.3; // 30% above BE = clearly profitable
+// Tuned 2026-03-22 with 30d real data (DK/NO/SE campaigns, ~120 purchases total)
+const BUDGET_COOLDOWN_DAYS = 3; // Wait N days after any budget change — weekly ROAS swings up to 200% are normal
+const PROFITABLE_ROAS_MULTIPLIER = 1.2; // 20% above BE = clearly profitable (was 1.3 — most campaigns hover 1.0-1.2x BE, 1.3 almost never triggered)
 const MARGINAL_ROAS_MULTIPLIER = 0.8; // 20% below BE = marginal zone
 
 const MIN_BUDGET_PER_ADSET = 100; // SEK/day floor per ad set
-const CRITICAL_BUDGET_PER_ADSET = 80; // Below this is wasteful
-const ZOMBIE_SPEND_THRESHOLD = 50; // SEK total over 7 days = zombie
+const CRITICAL_BUDGET_PER_ADSET = 80; // Below this is wasteful — Meta can't optimize
+const ZOMBIE_SPEND_THRESHOLD = 50; // SEK total over 7 days = zombie — validated: 15 ad sets fit this, all genuinely deprioritized by Meta
 const SPEND_DOMINANCE_THRESHOLD = 0.6; // 60% of campaign spend = one dominating
 
 const MIN_WINNING_ADSETS = 2; // Below = concept starvation
 const MIN_ACTIVE_ADSETS = 3; // Below = urgently need concepts
-const CONCEPT_COOLDOWN_DAYS = 7; // Wait 7 days after push before judging
-const MAX_AVG_AGE_DAYS = 21; // After 3 weeks, concepts may fatigue
-const FATIGUE_RATIO_THRESHOLD = 0.5; // 50% of ad sets fatiguing
+const CONCEPT_COOLDOWN_DAYS = 7; // Wait 7 days after push before judging — protects cold-start ad sets from premature kills
+const MAX_AVG_AGE_DAYS = 14; // After 2 weeks, concepts may fatigue (was 21 — real data shows ROAS decline by day 14 in most ad sets)
+const FATIGUE_RATIO_THRESHOLD = 0.5; // 50% of ad sets fatiguing (currently unused — future use)
 
-const MIN_PURCHASES_TO_JUDGE = 5; // Need at least 5 purchases to make budget decisions
+const MIN_PURCHASES_TO_JUDGE = 5; // Need at least 5 purchases in 30d window to make budget decisions
 
 // ---------------------------------------------------------------------------
 // Types

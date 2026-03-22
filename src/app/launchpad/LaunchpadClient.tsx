@@ -12,6 +12,7 @@ import {
   Zap,
   XCircle,
   TrendingUp,
+  TrendingDown,
   Play,
   Film,
   CheckCircle2,
@@ -139,6 +140,7 @@ export default function LaunchpadClient() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [increasingBudget, setIncreasingBudget] = useState<string | null>(null);
+  const [reducingBudget, setReducingBudget] = useState<string | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<string>("SE");
   const [confirmBudget, setConfirmBudget] = useState<{ market: string; budget: BudgetInfo; conceptsNeeded: number } | null>(null);
   const [pushResult, setPushResult] = useState<PushResult | null>(null);
@@ -310,6 +312,33 @@ export default function LaunchpadClient() {
     }
   }
 
+  async function handleReduceBudget(market: string, budget: BudgetInfo, targetBudget: number) {
+    setReducingBudget(market);
+    setError(null);
+    try {
+      const res = await fetch("/api/morning-brief/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reduce_budget",
+          campaign_ids: budget.campaignIds,
+          target_budget: targetBudget * 100, // SEK → cents for Meta
+          market,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error || "Budget reduction failed");
+      }
+      await fetchData();
+    } catch (err) {
+      console.error("Budget reduce error:", err);
+      setError(err instanceof Error ? err.message : "Failed to reduce budget");
+    } finally {
+      setReducingBudget(null);
+    }
+  }
+
   // ── Rendering ──────────────────────────────────────────────
 
   if (loading) {
@@ -453,9 +482,23 @@ export default function LaunchpadClient() {
               )}
             </p>
             {selectedBudget.coldStart && selectedBudget.recommendedBudget && selectedBudget.campaignBudget > selectedBudget.recommendedBudget * 1.5 && (
-              <p className="text-xs text-amber-600 mt-1.5">
-                Budget is {selectedBudget.campaignBudget} SEK/day — only ~{selectedBudget.recommendedBudget} SEK needed for {COLD_START_BATCH_SIZE} concepts during testing
-              </p>
+              <div className="mt-1.5">
+                <p className="text-xs text-amber-600">
+                  Budget is {selectedBudget.campaignBudget} SEK/day — only ~{selectedBudget.recommendedBudget} SEK needed for {COLD_START_BATCH_SIZE} concepts during testing
+                </p>
+                <button
+                  onClick={() => handleReduceBudget(selectedMarket, selectedBudget, selectedBudget.recommendedBudget!)}
+                  disabled={reducingBudget === selectedMarket}
+                  className="mt-1.5 w-full flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {reducingBudget === selectedMarket ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5" />
+                  )}
+                  Reduce to {selectedBudget.recommendedBudget} SEK/day
+                </button>
+              </div>
             )}
             {selectedBudget.image.campaignBudget > 0 && selectedBudget.video.campaignBudget > 0 && !isCooldown && (
               <div className="flex gap-3 mt-1.5 text-xs text-gray-400">

@@ -175,6 +175,11 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     if (firstBrace > 0) {
       cleaned = cleaned.slice(firstBrace);
     }
+    // Remove trailing text after the last } (Claude sometimes adds commentary)
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (lastBrace >= 0 && lastBrace < cleaned.length - 1) {
+      cleaned = cleaned.slice(0, lastBrace + 1);
+    }
     cleaned = cleaned.trim();
     parsed = JSON.parse(cleaned);
   } catch (parseErr) {

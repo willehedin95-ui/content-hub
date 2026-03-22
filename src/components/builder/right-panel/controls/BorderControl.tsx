@@ -12,7 +12,7 @@ function parsePx(v: string): string {
 }
 
 export default function BorderControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   // Border
   const [uniform, setUniform] = useState(true);
@@ -81,10 +81,8 @@ export default function BorderControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 

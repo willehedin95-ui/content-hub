@@ -40,7 +40,7 @@ interface ExtractedImage {
   generateAsVideo?: boolean; // for video items: generate replacement video (true) or static image (false)
 }
 
-type ImageGenStatus = "pending" | "generating" | "done" | "error" | "keyframe" | "video_polling";
+type ImageGenStatus = "pending" | "generating" | "retrying" | "done" | "error" | "keyframe" | "video_polling";
 
 /** Parse display dimensions from an element's attributes and inline styles */
 function parseDisplayDimensions(el: Element): { width: number; height: number } {
@@ -602,42 +602,57 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       (img) => img.mediaType === "video" && img.generateAsVideo
     );
 
-    // --- Phase 1: Generate images (parallel, max 3 concurrent) ---
+    // --- Phase 1: Generate images (parallel, max 3 concurrent, with retry) ---
     const CONCURRENCY = 3;
+    const MAX_RETRIES = 2;
     let idx = 0;
+
+    async function generateSingleImage(img: (typeof imageItems)[0]): Promise<void> {
+      const isVideo = img.mediaType === "video";
+      const hasPoster = isVideo && img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") && !img.src.includes(".mov");
+
+      const res = await fetch("/api/builder/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...((!isVideo || hasPoster) && { imageSrc: img.src }),
+          surroundingText: img.surroundingText,
+          productId,
+          aspectRatio: computeAspectRatio(img.width, img.height),
+          pageId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Generation failed");
+      }
+
+      const { imageUrl } = await res.json();
+      replacements[img.index] = { url: imageUrl, asVideo: false };
+    }
 
     async function processImageNext(): Promise<void> {
       while (idx < imageItems.length) {
         const img = imageItems[idx++];
         if (!img) break;
 
-        setImageGenStatuses((prev) => ({ ...prev, [img.index]: "generating" }));
-
-        try {
-          const isVideo = img.mediaType === "video";
-          const hasPoster = isVideo && img.src && !img.src.includes(".mp4") && !img.src.includes(".webm") && !img.src.includes(".mov");
-
-          const res = await fetch("/api/builder/generate-image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...((!isVideo || hasPoster) && { imageSrc: img.src }),
-              surroundingText: img.surroundingText,
-              productId,
-              aspectRatio: computeAspectRatio(img.width, img.height),
-              pageId,
-            }),
-          });
-
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || "Generation failed");
+        let succeeded = false;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          setImageGenStatuses((prev) => ({
+            ...prev,
+            [img.index]: attempt > 0 ? "retrying" : "generating",
+          }));
+          try {
+            await generateSingleImage(img);
+            setImageGenStatuses((prev) => ({ ...prev, [img.index]: "done" }));
+            succeeded = true;
+            break;
+          } catch {
+            // Retry unless last attempt
           }
-
-          const { imageUrl } = await res.json();
-          replacements[img.index] = { url: imageUrl, asVideo: false };
-          setImageGenStatuses((prev) => ({ ...prev, [img.index]: "done" }));
-        } catch {
+        }
+        if (!succeeded) {
           setImageGenStatuses((prev) => ({ ...prev, [img.index]: "error" }));
         }
       }
@@ -647,44 +662,47 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       { length: Math.min(CONCURRENCY, imageItems.length) },
       () => processImageNext()
     );
-    await Promise.all(imageWorkers);
+    await Promise.allSettled(imageWorkers);
 
-    // --- Phase 2: Generate videos (one at a time — each takes ~2 min) ---
-    for (const vid of videoItems) {
+    // --- Phase 2: Generate videos (parallel — all start at once, poll concurrently) ---
+    async function processVideo(vid: (typeof videoItems)[0]): Promise<void> {
       setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "keyframe" }));
 
-      try {
-        // Step 1: Start video generation (keyframe + Kling)
-        const res = await fetch("/api/builder/generate-video", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            surroundingText: vid.surroundingText,
-            productId,
-            aspectRatio: computeAspectRatio(vid.width, vid.height),
-            pageId,
-          }),
-        });
+      const res = await fetch("/api/builder/generate-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          surroundingText: vid.surroundingText,
+          productId,
+          aspectRatio: computeAspectRatio(vid.width, vid.height),
+          pageId,
+        }),
+      });
 
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Video generation failed");
-        }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Video generation failed");
+      }
 
-        const { taskId } = await res.json();
+      const { taskId } = await res.json();
 
-        // Step 2: Poll Kling for completion
-        setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "video_polling" }));
+      setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "video_polling" }));
 
-        const videoUrl = await pollVideoTask(taskId, product || "happysleep");
-        if (videoUrl) {
-          replacements[vid.index] = { url: videoUrl, asVideo: true };
-          setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "done" }));
-        } else {
-          setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "error" }));
-        }
-      } catch {
-        setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "error" }));
+      const videoUrl = await pollVideoTask(taskId, product || "happysleep");
+      if (videoUrl) {
+        replacements[vid.index] = { url: videoUrl, asVideo: true };
+        setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "done" }));
+      } else {
+        throw new Error("Video polling timed out");
+      }
+    }
+
+    const videoResults = await Promise.allSettled(
+      videoItems.map((vid) => processVideo(vid))
+    );
+    for (let i = 0; i < videoResults.length; i++) {
+      if (videoResults[i].status === "rejected") {
+        setImageGenStatuses((prev) => ({ ...prev, [videoItems[i].index]: "error" }));
       }
     }
 
@@ -933,7 +951,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
         </div>
         <p className="text-xs text-gray-500 mb-4">
           {doneCount + errorCount} of {totalCount} complete
-          {hasVideos && <span className="text-gray-400"> — videos take 1-3 min each</span>}
+          {hasVideos && <span className="text-gray-400"> — videos take 1-3 min (running in parallel)</span>}
         </p>
 
         {/* Progress bar */}
@@ -969,7 +987,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                   )}
                   <div
                     className={`absolute inset-0 flex flex-col items-center justify-center ${
-                      status === "generating" || status === "keyframe"
+                      status === "generating" || status === "keyframe" || status === "retrying"
                         ? "bg-black/40"
                         : status === "video_polling"
                           ? "bg-indigo-600/30"
@@ -980,11 +998,14 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
                               : "bg-black/20"
                     }`}
                   >
-                    {(status === "generating" || status === "keyframe") && (
+                    {(status === "generating" || status === "keyframe" || status === "retrying") && (
                       <>
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
                         {status === "keyframe" && (
                           <span className="text-[9px] text-white mt-1">Keyframe...</span>
+                        )}
+                        {status === "retrying" && (
+                          <span className="text-[9px] text-white mt-1">Retrying...</span>
                         )}
                       </>
                     )}

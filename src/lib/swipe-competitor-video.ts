@@ -351,6 +351,8 @@ Return ONLY valid JSON. No markdown fences.`;
       .trim();
     const firstBrace = cleaned.indexOf("{");
     if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (lastBrace >= 0 && lastBrace < cleaned.length - 1) cleaned = cleaned.slice(0, lastBrace + 1);
 
     const parsed = JSON.parse(cleaned);
     // Handle both { proposals: [...] } and direct object

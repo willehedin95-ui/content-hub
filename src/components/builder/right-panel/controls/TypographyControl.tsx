@@ -28,7 +28,7 @@ const ALIGN_BUTTONS = [
 ];
 
 export default function TypographyControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [fontSize, setFontSize] = useState("");
   const [fontWeight, setFontWeight] = useState("400");
@@ -83,10 +83,8 @@ export default function TypographyControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 
@@ -108,13 +106,11 @@ export default function TypographyControl() {
               value={fontSize}
               onChange={(e) => {
                 setFontSize(e.target.value);
-                const el = selectedElRef.current;
-                if (!el) return;
                 pushUndoSnapshot();
                 if (e.target.value === "") {
-                  el.style.removeProperty("font-size");
+                  applyResponsiveStyle("font-size", "initial");
                 } else {
-                  el.style.setProperty("font-size", `${e.target.value}px`);
+                  applyResponsiveStyle("font-size", `${e.target.value}px`);
                 }
                 markDirty();
               }}
@@ -190,13 +186,11 @@ export default function TypographyControl() {
             min={0}
             onChange={(e) => {
               setLineHeight(e.target.value);
-              const el = selectedElRef.current;
-              if (!el) return;
               pushUndoSnapshot();
               if (e.target.value === "") {
-                el.style.removeProperty("line-height");
+                applyResponsiveStyle("line-height", "initial");
               } else {
-                el.style.setProperty("line-height", e.target.value);
+                applyResponsiveStyle("line-height", e.target.value);
               }
               markDirty();
             }}

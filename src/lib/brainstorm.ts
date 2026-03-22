@@ -1809,8 +1809,12 @@ export async function generateIterationCopy(opts: {
 
   if (!content) throw new Error("No response from AI");
 
-  // Parse JSON — strip markdown fences if present
-  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  // Parse JSON — strip markdown fences and surrounding text if present
+  let cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (lastBrace >= 0 && lastBrace < cleaned.length - 1) cleaned = cleaned.slice(0, lastBrace + 1);
   const parsed = JSON.parse(cleaned);
 
   const primary: string[] = Array.isArray(parsed.ad_copy_primary)

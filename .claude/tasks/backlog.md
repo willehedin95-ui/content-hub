@@ -2,19 +2,11 @@
 Updated: 2026-03-22
 
 ## Tier 1 — Revenue & Automation
-- [ ] **Tune Strategy Guide thresholds** — autopilot budget/kill decisions depend on these. Adjust constants in strategy-engine.ts after seeing real data. (added 2026-03-11)
-- [ ] **Discovered ads browser UI** — Show what autopilot found/scored/swiped in a table view. Visibility into a core automation loop. (added 2026-03-18)
-- [ ] **Launch Pad budget reduction button** — add "Reduce to X SEK" button for cold start markets where budget is too high. Quick win. (added 2026-03-19)
-- [ ] **Verify Instagram delivery** — check Ads Manager placement breakdown to confirm ads show on Instagram (page-backed IG, no business account linked to Hälsobladet). (added 2026-03-20)
-- [ ] **Landing Page Recommender** — data-driven page selection based on product + angle + current performance. (added 2025-02-25)
+(all completed this session)
 
 ## Tier 2 — Builder & UX Quality
 - [x] ~~**Autosave race condition**~~ — Fixed in commit `f382c9b`. (done 2026-03-22)
 - [ ] **Tune translation quality review prompt** — monitor Claude Haiku review results for false positives/negatives. Adjust strictness if needed. (added 2026-03-22)
-- [ ] **Per-breakpoint responsive styles** — mobile vs desktop style editing via media queries (viewMode toggle exists, needs to write @media rules). (added 2026-03-10)
-- [ ] **Hover label layout thrashing** — `getBoundingClientRect()` on every mouseover in builder canvas needs throttling. (added 2026-03-17)
-- [ ] **Video generation sequential timeout** — ImportProgressPanel processes videos one-at-a-time with 5min timeout each. Refactor to `Promise.allSettled`. (added 2026-03-17)
-- [ ] **No partial retry for failed image generation** — must restart entire batch if some images fail. (added 2026-03-17)
 
 ## Tier 3 — Housekeeping
 - [ ] **Storage cleanup tool** — UI to browse/delete old image-jobs (2.5 GB of 3.4 GB total storage). (added 2026-03-10)
@@ -36,6 +28,16 @@ Updated: 2026-03-22
 - [ ] **Google Ads integration** — second ad platform. (added 2025-02-25)
 
 ## Done (recent)
+- [x] **Per-breakpoint responsive styles** — All 9 design controls now write @media (max-width: 768px) rules when editing in mobile viewMode. `data-cc-rid` per-element selectors, `<style data-cc-responsive>` tag, re-hydration on load. (done 2026-03-22)
+- [x] **Hover label layout thrashing** — mouseover handler now batches `getBoundingClientRect()` + label positioning via `requestAnimationFrame`. (done 2026-03-22)
+- [x] **Video generation parallel** — ImportProgressPanel now runs all videos concurrently via `Promise.allSettled` instead of sequential for-loop. (done 2026-03-22)
+- [x] **Image generation partial retry** — Each failed image retries up to 2x before marking error. "Retrying..." status in UI. `Promise.allSettled` for worker pool. (done 2026-03-22)
+- [x] **Landing Page Recommender** — API at `/api/pages/recommendations` aggregates 30-day concept_metrics per page. Modal shows ROAS, conversions, concept count badges. Top pick badge. Sorted by performance. (done 2026-03-22)
+- [x] **Tune Strategy Guide thresholds** — `PROFITABLE_ROAS_MULTIPLIER` 1.3→1.2, `MAX_AVG_AGE_DAYS` 21→14 based on real ad set data analysis. (done 2026-03-22)
+- [x] **Discovered ads browser UI** — Already existed at `/ad-spy?tab=discovered` with DiscoveredFeed.tsx. (done 2026-03-22)
+- [x] **Launch Pad budget reduction button** — "Reduce to X SEK" button in cold start warning. New `reduce_budget` + `increase_budget` actions in morning-brief API. (done 2026-03-22)
+- [x] **Verify Instagram delivery** — Confirmed via Meta API placement breakdown: ~8.6% of spend on Instagram with purchases. (done 2026-03-22)
+- [x] **Clean up duplicate Meta ad sets** — Archived 61 duplicate ad sets (60 dupes + 1 test). 23 were actively spending. (done 2026-03-22)
 - [x] **Translation quality gate with auto-retry** — Claude Haiku native reader review replaces GPT-4o. Auto-retries 3x. Blocks launchpad+push on failure. Telegram approve/hold. Commit `bbd1b63`. (done 2026-03-22)
 - [x] **Narrative archetypes for ad copy** — 4 story-driven frameworks (Confession, Rage, Double Standard, Witness) embedded in brainstorm system prompts. UI selector + autopilot integration. Commit `d0ab2db`. (done 2026-03-22)
 - [x] **Clean up duplicate Meta ad sets** — Archived 61 duplicate ad sets (60 dupes + 1 test). 23 were actively spending. (done 2026-03-22)

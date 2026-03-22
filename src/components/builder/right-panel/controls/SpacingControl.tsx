@@ -16,7 +16,7 @@ function validateNumber(value: string): string {
 }
 
 export default function SpacingControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [marginTop, setMarginTop] = useState("");
   const [marginRight, setMarginRight] = useState("");
@@ -52,9 +52,7 @@ export default function SpacingControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
   }
 
   function handleMarginChange(side: "top" | "right" | "bottom" | "left", value: string) {

@@ -42,7 +42,7 @@ function buildShadowString(s: Shadow): string {
 }
 
 export default function EffectsControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [hasShadow, setHasShadow] = useState(false);
   const [shadow, setShadow] = useState<Shadow>({
@@ -82,10 +82,8 @@ export default function EffectsControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 

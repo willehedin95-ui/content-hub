@@ -14,6 +14,7 @@ export default function PositionControl() {
     pushUndoSnapshot,
     hasSelectedEl,
     layersRefreshKey,
+    applyResponsiveStyle,
   } = useBuilder();
 
   const [position, setPosition] = useState("static");
@@ -63,18 +64,14 @@ export default function PositionControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue, selectedElRef]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 
   function removeStyle(prop: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.removeProperty(prop);
+    applyResponsiveStyle(prop, "initial");
     markDirty();
   }
 
@@ -82,13 +79,11 @@ export default function PositionControl() {
     setPosition(newPos);
     applyStyle("position", newPos);
     if (newPos === "static") {
-      const el = selectedElRef.current;
-      if (!el) return;
-      el.style.removeProperty("top");
-      el.style.removeProperty("right");
-      el.style.removeProperty("bottom");
-      el.style.removeProperty("left");
-      el.style.removeProperty("z-index");
+      applyResponsiveStyle("top", "initial");
+      applyResponsiveStyle("right", "initial");
+      applyResponsiveStyle("bottom", "initial");
+      applyResponsiveStyle("left", "initial");
+      applyResponsiveStyle("z-index", "initial");
       setTop("");
       setRight("");
       setBottom("");

@@ -26,7 +26,7 @@ interface SizeField {
 }
 
 export default function SizeControl() {
-  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey } = useBuilder();
+  const { selectedElRef, iframeRef, markDirty, pushUndoSnapshot, hasSelectedEl, layersRefreshKey, applyResponsiveStyle } = useBuilder();
 
   const [widthVal, setWidthVal] = useState("");
   const [widthUnit, setWidthUnit] = useState<Unit>("px");
@@ -119,10 +119,8 @@ export default function SizeControl() {
   }, [hasSelectedEl, layersRefreshKey, getComputedValue, getInlineValue, selectedElRef]);
 
   function applyStyle(prop: string, value: string) {
-    const el = selectedElRef.current;
-    if (!el) return;
     pushUndoSnapshot();
-    el.style.setProperty(prop, value);
+    applyResponsiveStyle(prop, value);
     markDirty();
   }
 

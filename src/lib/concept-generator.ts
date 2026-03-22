@@ -126,11 +126,18 @@ CRITICAL RULES:
  * Parse and validate concept proposals from Claude's raw JSON response.
  */
 export function parseConceptProposals(raw: string): ConceptProposal[] {
-  // Strip markdown fences if present
+  // Strip markdown fences and surrounding text if present
   let cleaned = raw.trim();
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  }
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
+  // Also handle array responses
+  const firstBracket = cleaned.indexOf("[");
+  if (firstBrace < 0 && firstBracket > 0) cleaned = cleaned.slice(firstBracket);
+  const lastBrace = cleaned.lastIndexOf("}");
+  const lastBracket = cleaned.lastIndexOf("]");
+  const lastClose = Math.max(lastBrace, lastBracket);
+  if (lastClose >= 0 && lastClose < cleaned.length - 1) cleaned = cleaned.slice(0, lastClose + 1);
 
   const parsed = JSON.parse(cleaned);
   const proposals: ConceptProposal[] = parsed.proposals ?? parsed;
