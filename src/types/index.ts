@@ -387,7 +387,10 @@ export interface AdCopyQualityAnalysis {
   fluency_issues: string[];
   grammar_issues: string[];
   context_errors: string[];
+  narrative_issues?: string[];
+  naturalness_issues?: string[];
   overall_assessment: string;
+  review_verdict?: "pass" | "review" | "fail";
 }
 
 // Per-language translated ad copy stored on image_jobs.ad_copy_translations
@@ -396,13 +399,13 @@ export interface ConceptCopyTranslation {
   headlines: string[];
   quality_score: number | null;
   quality_analysis: AdCopyQualityAnalysis | null;
-  status: "pending" | "translating" | "completed" | "error";
+  status: "pending" | "translating" | "completed" | "review" | "error";
   error?: string;
 }
 
 export type ConceptCopyTranslations = Record<string, ConceptCopyTranslation>;
 
-export type AdCopyTranslationStatus = "pending" | "translating" | "completed" | "error" | "failed";
+export type AdCopyTranslationStatus = "pending" | "translating" | "completed" | "review" | "error" | "failed";
 
 export interface AdCopyTranslation {
   id: string;

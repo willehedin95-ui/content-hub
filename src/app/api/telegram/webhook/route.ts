@@ -396,6 +396,31 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Creative refresh rejected");
       await rejectIteration(chatId, messageId, jobId);
+    } else if (data.startsWith("quality_approve:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Approving translations...");
+      const db = createServerSupabase();
+      const { data: job } = await db.from("image_jobs")
+        .select("id, name, concept_number, ad_copy_translations")
+        .eq("id", jobId).single();
+      if (job?.ad_copy_translations) {
+        const translations = { ...(job.ad_copy_translations as Record<string, { status?: string }>) };
+        for (const value of Object.values(translations)) {
+          if (value.status === "review") value.status = "completed";
+        }
+        await db.from("image_jobs").update({ ad_copy_translations: translations }).eq("id", jobId);
+      }
+      const label = job?.concept_number ? `#${job.concept_number} "${job.name}"` : job?.name ?? jobId;
+      await editCallbackMessage(chatId, messageId,
+        `✅ Translations approved for ${label}\nReady for pipeline push.`
+      );
+    } else if (data.startsWith("quality_hold:")) {
+      const jobId = data.split(":")[1];
+      await answerCallbackQuery(query.id, "Held for editing");
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+      await editCallbackMessage(chatId, messageId,
+        `✏️ Translations held for editing.\nEdit in Hub: ${baseUrl}/images/${jobId}`
+      );
     } else if (data.startsWith("hook_product:")) {
       const parts = data.split(":");
       const hookId = parts[1];

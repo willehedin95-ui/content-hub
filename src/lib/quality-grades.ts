@@ -72,20 +72,24 @@ export function deriveImageGrade(analysis: {
 
 /**
  * Derive grade for ad copy text analysis.
- * Only blocks on context_errors (mistranslations, untranslated English words).
- * Grammar/fluency issues are informational — never block publishing.
+ * Blocks on context_errors and narrative_issues (broken stories, wrong relationships).
+ * Flags naturalness_issues and grammar as "good" (review recommended).
  */
 export function deriveCopyGrade(analysis: {
   fluency_issues?: string[];
   grammar_issues?: string[];
   context_errors?: string[];
+  narrative_issues?: string[];
+  naturalness_issues?: string[];
 }): QualityGrade {
   const context = analysis.context_errors?.length ?? 0;
+  const narrative = analysis.narrative_issues?.length ?? 0;
+  const naturalness = analysis.naturalness_issues?.length ?? 0;
   const grammar = analysis.grammar_issues?.length ?? 0;
   const fluency = analysis.fluency_issues?.length ?? 0;
 
-  if (context > 0) return "needs_fixes";
-  if (grammar > 0 || fluency > 2) return "good";
+  if (context > 0 || narrative > 0) return "needs_fixes";
+  if (naturalness > 0 || grammar > 0 || fluency > 2) return "good";
   return "great";
 }
 

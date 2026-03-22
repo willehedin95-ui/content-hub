@@ -49,7 +49,7 @@ interface Props {
 
 // --- Status-driven helpers ---
 
-type ConceptStatus = "generating" | "processing" | "ready" | "needs_copy" | "on_launchpad" | "live" | "draft";
+type ConceptStatus = "generating" | "processing" | "ready" | "needs_copy" | "needs_review" | "on_launchpad" | "live" | "draft";
 
 function computeConceptStatus(
   job: ImageJob,
@@ -67,7 +67,9 @@ function computeConceptStatus(
   const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
   const allImgDone = totalCount > 0 && completedCount === totalCount;
   const allCopyDone = job.target_languages.every((lang) => copyTranslations[lang]?.status === "completed");
+  const anyReview = job.target_languages.some((lang) => copyTranslations[lang]?.status === "review");
   if (hasPrimary && allImgDone && allCopyDone) return "ready";
+  if (hasPrimary && allImgDone && anyReview) return "needs_review";
   if (job.status === "draft") return "generating";
   if (job.status === "processing" || proc.processing || finishQueue.started) return "processing";
   if (!hasPrimary) return "needs_copy";
@@ -80,6 +82,7 @@ function StatusBadge({ status }: { status: ConceptStatus }) {
     draft: { label: "Draft", cls: "bg-gray-100 text-gray-600" },
     processing: { label: "Processing", cls: "bg-indigo-50 text-indigo-700" },
     needs_copy: { label: "Needs Copy", cls: "bg-amber-50 text-amber-700" },
+    needs_review: { label: "Quality Review", cls: "bg-amber-50 text-amber-700" },
     ready: { label: "Ready", cls: "bg-blue-50 text-blue-700" },
     on_launchpad: { label: "Launch Pad", cls: "bg-emerald-50 text-emerald-700" },
     live: { label: "Live", cls: "bg-green-50 text-green-700" },
@@ -676,6 +679,29 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       }
     } catch {
       setLaunchpad(prev => ({ ...prev, loading: false, error: "Network error" }));
+    }
+  }
+
+  async function handleApproveCopy(lang?: string) {
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/approve-translations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lang ? { language: lang } : {}),
+      });
+      if (res.ok) {
+        setCopyTranslations((prev) => {
+          const next = { ...prev };
+          for (const [key, val] of Object.entries(next)) {
+            if (val.status === "review" && (!lang || key === lang)) {
+              next[key] = { ...val, status: "completed" };
+            }
+          }
+          return next;
+        });
+      }
+    } catch {
+      // Silently fail — user can retry
     }
   }
 
@@ -1402,6 +1428,15 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
               Write Ad Copy
             </button>
           )}
+          {conceptStatus === "needs_review" && (
+            <button
+              onClick={() => handleApproveCopy()}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Approve Translations
+            </button>
+          )}
           {conceptStatus === "ready" && (
             <button
               onClick={handleAddToLaunchpad}
@@ -1744,6 +1779,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
             addHeadline={addHeadline}
             removeHeadline={removeHeadline}
             handleTranslateCopy={handleTranslateCopy}
+            handleApproveCopy={handleApproveCopy}
           />
         </CollapsibleSection>
       </div>

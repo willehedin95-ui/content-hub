@@ -22,7 +22,17 @@ import LandingPageModal from "./LandingPageModal";
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function QualityBadge({ analysis }: { analysis: { fluency_issues?: string[]; grammar_issues?: string[]; context_errors?: string[] } }) {
+function QualityBadge({ analysis, status }: {
+  analysis: { fluency_issues?: string[]; grammar_issues?: string[]; context_errors?: string[]; narrative_issues?: string[]; naturalness_issues?: string[] };
+  status?: string;
+}) {
+  if (status === "review") {
+    return (
+      <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">
+        Needs Review
+      </span>
+    );
+  }
   const grade = deriveCopyGrade(analysis);
   const cfg = gradeConfig(grade);
   return (
@@ -114,6 +124,7 @@ export interface ConceptAdCopyStepProps {
   addHeadline: () => void;
   removeHeadline: (index: number) => void;
   handleTranslateCopy: (lang?: Language, corrections?: string) => void;
+  handleApproveCopy?: (lang?: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -133,6 +144,7 @@ export default function ConceptAdCopyStep({
   addHeadline,
   removeHeadline,
   handleTranslateCopy,
+  handleApproveCopy,
 }: ConceptAdCopyStepProps) {
   const [copyBankLang, setCopyBankLang] = useState<string | null>(null);
   const [segments, setSegments] = useState<ProductSegment[]>([]);
@@ -272,8 +284,8 @@ export default function ConceptAdCopyStep({
                     <div className="flex items-center gap-2">
                       <span className="text-base" role="img" aria-label={langInfo?.label ?? lang}>{langInfo?.flag}</span>
                       <span className="text-sm font-medium text-gray-700">{langInfo?.label}</span>
-                      {ct?.status === "completed" && ct.quality_analysis && (
-                        <QualityBadge analysis={ct.quality_analysis} />
+                      {(ct?.status === "completed" || ct?.status === "review") && ct.quality_analysis && (
+                        <QualityBadge analysis={ct.quality_analysis} status={ct.status} />
                       )}
                       {ct?.status === "translating" && (
                         <span className="flex items-center gap-1 text-xs text-indigo-600">
@@ -313,7 +325,7 @@ export default function ConceptAdCopyStep({
                   </div>
 
                   {/* Translation content */}
-                  {ct?.status === "completed" && (
+                  {(ct?.status === "completed" || ct?.status === "review") && (
                     <div className="px-4 py-3 space-y-3">
                       {/* Primary texts */}
                       {ct.primary_texts.map((text, i) => (
@@ -351,27 +363,116 @@ export default function ConceptAdCopyStep({
 
                       {/* Quality analysis summary */}
                       {ct.quality_analysis && (
-                        <div className="border-t border-gray-100 pt-2 flex items-start justify-between gap-2">
+                        <div className="border-t border-gray-100 pt-2 space-y-2">
                           <p className="text-xs text-gray-500">{ct.quality_analysis.overall_assessment}</p>
-                          {/* Only show Fix button for context errors (untranslated words, wrong meaning) */}
+
+                          {/* Narrative issues (most critical — red) */}
+                          {(ct.quality_analysis.narrative_issues?.length ?? 0) > 0 && (
+                            <div className="text-xs text-red-600">
+                              <p className="font-medium">Narrative issues:</p>
+                              <ul className="list-disc pl-4 space-y-0.5">
+                                {ct.quality_analysis.narrative_issues!.map((issue, i) => (
+                                  <li key={i}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Naturalness issues (amber) */}
+                          {(ct.quality_analysis.naturalness_issues?.length ?? 0) > 0 && (
+                            <div className="text-xs text-amber-600">
+                              <p className="font-medium">Naturalness issues:</p>
+                              <ul className="list-disc pl-4 space-y-0.5">
+                                {ct.quality_analysis.naturalness_issues!.map((issue, i) => (
+                                  <li key={i}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Grammar issues */}
+                          {(ct.quality_analysis.grammar_issues?.length ?? 0) > 0 && (
+                            <div className="text-xs text-amber-600">
+                              <p className="font-medium">Grammar issues:</p>
+                              <ul className="list-disc pl-4 space-y-0.5">
+                                {ct.quality_analysis.grammar_issues!.map((issue, i) => (
+                                  <li key={i}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Context errors */}
                           {(ct.quality_analysis.context_errors?.length ?? 0) > 0 && (
-                            <button
-                              onClick={() => {
-                                const issues: string[] = [];
-                                if (ct.quality_analysis!.context_errors?.length)
-                                  issues.push(`Context errors: ${ct.quality_analysis!.context_errors.join("; ")}`);
-                                handleTranslateCopy(lang as Language, issues.join("\n"));
-                              }}
-                              disabled={copyState.translatingLang === lang || copyState.translating}
-                              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors shrink-0"
-                            >
-                              {copyState.translatingLang === lang ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Wrench className="w-3 h-3" />
+                            <div className="text-xs text-red-600">
+                              <p className="font-medium">Context errors:</p>
+                              <ul className="list-disc pl-4 space-y-0.5">
+                                {ct.quality_analysis.context_errors!.map((issue, i) => (
+                                  <li key={i}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Action buttons for review status */}
+                          {ct.status === "review" && (
+                            <div className="flex items-center gap-3 pt-1">
+                              {handleApproveCopy && (
+                                <button
+                                  onClick={() => handleApproveCopy(lang)}
+                                  className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
+                                >
+                                  <Globe className="w-3 h-3" />
+                                  Approve as-is
+                                </button>
                               )}
-                              Fix issues
-                            </button>
+                              <button
+                                onClick={() => {
+                                  const issues: string[] = [];
+                                  if (ct.quality_analysis!.narrative_issues?.length)
+                                    issues.push(`Narrative issues: ${ct.quality_analysis!.narrative_issues.join("; ")}`);
+                                  if (ct.quality_analysis!.naturalness_issues?.length)
+                                    issues.push(`Naturalness issues: ${ct.quality_analysis!.naturalness_issues.join("; ")}`);
+                                  if (ct.quality_analysis!.grammar_issues?.length)
+                                    issues.push(`Grammar issues: ${ct.quality_analysis!.grammar_issues.join("; ")}`);
+                                  if (ct.quality_analysis!.context_errors?.length)
+                                    issues.push(`Context errors: ${ct.quality_analysis!.context_errors.join("; ")}`);
+                                  handleTranslateCopy(lang as Language, issues.join("\n"));
+                                }}
+                                disabled={copyState.translatingLang === lang || copyState.translating}
+                                className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-50 transition-colors"
+                              >
+                                {copyState.translatingLang === lang ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="w-3 h-3" />
+                                )}
+                                Re-translate with fixes
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Fix button for completed translations with context errors */}
+                          {ct.status === "completed" && (ct.quality_analysis.context_errors?.length ?? 0) > 0 && (
+                            <div className="flex justify-end">
+                              <button
+                                onClick={() => {
+                                  const issues: string[] = [];
+                                  if (ct.quality_analysis!.context_errors?.length)
+                                    issues.push(`Context errors: ${ct.quality_analysis!.context_errors.join("; ")}`);
+                                  handleTranslateCopy(lang as Language, issues.join("\n"));
+                                }}
+                                disabled={copyState.translatingLang === lang || copyState.translating}
+                                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                              >
+                                {copyState.translatingLang === lang ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Wrench className="w-3 h-3" />
+                                )}
+                                Fix issues
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}

@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   // --- Image concept (original logic) ---
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, product, source, target_languages, landing_page_id, ad_copy_primary")
+    .select("id, name, product, source, target_languages, landing_page_id, ad_copy_primary, ad_copy_translations")
     .eq("id", conceptId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -106,6 +106,16 @@ export async function POST(req: NextRequest) {
   if (!job.product) errors.push("Product not set");
   if (!job.landing_page_id) errors.push("No landing page selected");
   if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
+
+  // Quality gate: check that all translations passed review
+  const translations = job.ad_copy_translations as Record<string, { status?: string }> | null;
+  if (translations) {
+    const targetLangs = (job.target_languages as string[]) ?? [];
+    const reviewLangs = targetLangs.filter((lang) => translations[lang]?.status === "review");
+    if (reviewLangs.length > 0) {
+      errors.push(`Translation quality review needed for: ${reviewLangs.join(", ")}`);
+    }
+  }
 
   if (errors.length > 0) {
     return NextResponse.json({ error: "Concept not ready", details: errors }, { status: 422 });

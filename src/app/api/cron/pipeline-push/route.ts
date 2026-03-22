@@ -84,11 +84,20 @@ export async function GET(req: NextRequest) {
         // Filter out image concepts whose translations aren't complete yet
         const imageConceptIds = launchpadConcepts.filter((c) => c.type === "image").map((c) => c.conceptId);
         const { data: jobStatuses } = imageConceptIds.length > 0
-          ? await db.from("image_jobs").select("id, status").in("id", imageConceptIds)
-          : { data: [] as { id: string; status: string }[] };
+          ? await db.from("image_jobs").select("id, status, ad_copy_translations").in("id", imageConceptIds)
+          : { data: [] as { id: string; status: string; ad_copy_translations: unknown }[] };
 
         const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
         const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
+
+        // Quality gate: block concepts with translations in "review" status
+        const reviewBlockedIds = new Set(
+          (jobStatuses ?? []).filter((j) => {
+            const t = j.ad_copy_translations as Record<string, { status?: string }> | null;
+            if (!t) return false;
+            return Object.values(t).some((v) => v.status === "review");
+          }).map((j) => j.id)
+        );
 
         const results: Array<{ concept: string; type: string; market: string; status: string; error?: string }> = [];
 
@@ -125,6 +134,11 @@ export async function GET(req: NextRequest) {
               if (concept.type === "image" && !completedJobIds.has(concept.conceptId)) {
                 const status = statusMap.get(concept.conceptId) ?? "unknown";
                 console.log(`[Pipeline Push] ${label}Skipping "${concept.name}" — translations not complete (status: ${status})`);
+                continue;
+              }
+              // Skip image concepts with translations pending quality review
+              if (concept.type === "image" && reviewBlockedIds.has(concept.conceptId)) {
+                console.log(`[Pipeline Push] ${label}Skipping "${concept.name}" — translation quality review pending`);
                 continue;
               }
               const batchLimit = formatBudget.activeAdSets === 0 ? COLD_START_BATCH_SIZE : MAX_CONCEPTS_PER_BATCH;

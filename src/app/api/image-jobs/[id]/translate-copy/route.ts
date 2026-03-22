@@ -8,6 +8,7 @@ import { OPENAI_MODEL } from "@/lib/constants";
 import OpenAI from "openai";
 import { isValidUUID } from "@/lib/validation";
 import { deriveCopyGrade, gradeToNumeric } from "@/lib/quality-grades";
+import { reviewTranslationQuality, calcHaikuCost } from "@/lib/translation-review";
 
 export const maxDuration = 120;
 
@@ -80,131 +81,109 @@ export async function POST(
     .update({ ad_copy_translations: results })
     .eq("id", jobId);
 
+  const MAX_QUALITY_RETRIES = 3;
+  const conceptName = job!.name ?? "Unnamed concept";
+
   // Translate all languages in parallel to avoid sequential timeout
   async function translateLang(lang: Language): Promise<ConceptCopyTranslation> {
     const langLabel = LANGUAGES.find((l) => l.value === lang)?.label ?? lang;
+    let currentPrimary: string[] = [];
+    let currentHeadlines: string[] = [];
+    let lastReview: Awaited<ReturnType<typeof reviewTranslationQuality>>["result"] | null = null;
+    let retryCorrections: string | undefined = corrections; // use user-provided corrections on first attempt
 
-    // Step 1: Translate
-    const translateResponse = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      max_completion_tokens: 4000,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
-Maintain the tone, style, and persuasive power of the original.
-Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}${corrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${corrections}` : ""}
-Return a JSON object with exactly two keys:
-- "primary_texts": an array of translated primary texts (same order as input)
-- "headlines": an array of translated headlines (same order as input)
-No other text.`,
-        },
-        {
-          role: "user",
-          content: JSON.stringify({ primary_texts: primaryTexts, headlines: headlineTexts }),
-        },
-      ],
-    });
-
-    const translateContent = translateResponse.choices[0]?.message?.content?.trim();
-    if (!translateContent) throw new Error("No translation returned");
-
-    let parsed: { primary_texts: string[]; headlines: string[] };
-    try {
-      parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
-    } catch {
-      throw new Error("Translation returned invalid JSON");
-    }
-
-    // Log translation usage
-    const tInput = translateResponse.usage?.prompt_tokens ?? 0;
-    const tOutput = translateResponse.usage?.completion_tokens ?? 0;
-    await db.from("usage_logs").insert({
-      type: "translation",
-      model: OPENAI_MODEL,
-      input_tokens: tInput,
-      output_tokens: tOutput,
-      cost_usd: calcOpenAICost(tInput, tOutput),
-      metadata: { purpose: "concept_copy_translation", language: lang, job_id: jobId },
-    });
-
-    // Step 2: Quality analysis (non-critical — translation is saved even if this fails)
-    let analysis = null;
-    let qualityScore = null;
-    try {
-      const allOriginal = [...primaryTexts, ...headlineTexts].join("\n---\n");
-      const allTranslated = [...parsed.primary_texts, ...parsed.headlines].join("\n---\n");
-
-      const analyzeResponse = await openai.chat.completions.create({
+    for (let attempt = 1; attempt <= MAX_QUALITY_RETRIES; attempt++) {
+      const translateResponse = await openai.chat.completions.create({
         model: OPENAI_MODEL,
-        max_completion_tokens: 1500,
+        max_completion_tokens: 4000,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: `You are a quality analyst for translated ad copy. Compare the original English ad copy with its ${langLabel} translation.
-
-Respond with JSON:
-{
-  "fluency_issues": [<list of unnatural or awkward phrasings>],
-  "grammar_issues": [<list of grammar problems>],
-  "context_errors": [<list of CRITICAL errors only — see rules below>],
-  "overall_assessment": "<1-2 sentence summary>"
-}
-
-CONTEXT_ERROR RULES — only flag these as context_errors:
-- English words left untranslated (e.g. "Dad", "stroke", "sleep" used as-is). Brand names (HappySleep, etc.) and common loanwords are fine.
-- Completely wrong meaning (sentence says the opposite of the original)
-- Wrong target language (e.g. Swedish words in a Danish translation)
-
-DO NOT flag these as context_errors (put them in fluency_issues instead):
-- Minor tone/register shifts ("conversational" vs "clinical")
-- Slightly different nuance that preserves the core meaning
-- Technical terms translated differently but still correct
-- Product feature names like "cervical cradle" kept in English (this is intentional)
-- Currency references (SEK/DKK/NOK) — these are handled elsewhere
-- Minor meaning softening or strengthening
-
-The bar for context_errors should be HIGH. If a native ${langLabel} speaker would understand the intended message correctly, it is NOT a context_error.
-IMPORTANT: Write ALL feedback in English.`,
+            content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
+Maintain the tone, style, and persuasive power of the original.
+Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}${retryCorrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${retryCorrections}` : ""}
+Return a JSON object with exactly two keys:
+- "primary_texts": an array of translated primary texts (same order as input)
+- "headlines": an array of translated headlines (same order as input)
+No other text.`,
           },
           {
             role: "user",
-            content: `Original (English):\n${allOriginal}\n\nTranslation (${langLabel}):\n${allTranslated}`,
+            content: JSON.stringify({ primary_texts: primaryTexts, headlines: headlineTexts }),
           },
         ],
       });
 
-      const analyzeContent = analyzeResponse.choices[0]?.message?.content?.trim();
-      if (analyzeContent) {
-        analysis = JSON.parse(analyzeContent);
-        const grade = deriveCopyGrade(analysis);
-        analysis.quality_score = gradeToNumeric(grade);
-        qualityScore = analysis.quality_score;
-      }
+      const translateContent = translateResponse.choices[0]?.message?.content?.trim();
+      if (!translateContent) throw new Error("No translation returned");
 
-      // Log analysis usage
-      const aInput = analyzeResponse.usage?.prompt_tokens ?? 0;
-      const aOutput = analyzeResponse.usage?.completion_tokens ?? 0;
+      let parsed: { primary_texts: string[]; headlines: string[] };
+      try {
+        parsed = JSON.parse(translateContent) as { primary_texts: string[]; headlines: string[] };
+      } catch {
+        throw new Error("Translation returned invalid JSON");
+      }
+      currentPrimary = parsed.primary_texts;
+      currentHeadlines = parsed.headlines;
+
+      // Log translation usage
+      const tInput = translateResponse.usage?.prompt_tokens ?? 0;
+      const tOutput = translateResponse.usage?.completion_tokens ?? 0;
       await db.from("usage_logs").insert({
         type: "translation",
         model: OPENAI_MODEL,
-        input_tokens: aInput,
-        output_tokens: aOutput,
-        cost_usd: calcOpenAICost(aInput, aOutput),
-        metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId },
+        input_tokens: tInput,
+        output_tokens: tOutput,
+        cost_usd: calcOpenAICost(tInput, tOutput),
+        metadata: { purpose: "concept_copy_translation", language: lang, job_id: jobId, attempt },
       });
-    } catch (analysisErr) {
-      console.warn(`[translate-copy] Quality analysis failed for ${lang}, saving translation without analysis:`, analysisErr);
+
+      // Quality review
+      try {
+        const { result: review, inputTokens: rInput, outputTokens: rOutput } = await reviewTranslationQuality(
+          currentPrimary,
+          currentHeadlines,
+          lang,
+          primaryTexts,
+          conceptName,
+        );
+        lastReview = review;
+
+        await db.from("usage_logs").insert({
+          type: "translation",
+          model: "claude-haiku-4-5-20251001",
+          input_tokens: rInput,
+          output_tokens: rOutput,
+          cost_usd: calcHaikuCost(rInput, rOutput),
+          metadata: { purpose: "concept_copy_quality_analysis", language: lang, job_id: jobId, attempt },
+        });
+
+        if (review.review_verdict === "pass") break;
+
+        // Build corrections for next attempt
+        const issues: string[] = [];
+        if (review.narrative_issues?.length) issues.push(`Narrative issues: ${review.narrative_issues.join("; ")}`);
+        if (review.naturalness_issues?.length) issues.push(`Naturalness issues: ${review.naturalness_issues.join("; ")}`);
+        if (review.grammar_issues?.length) issues.push(`Grammar issues: ${review.grammar_issues.join("; ")}`);
+        if (review.context_errors?.length) issues.push(`Context errors: ${review.context_errors.join("; ")}`);
+        retryCorrections = issues.join("\n");
+      } catch (analysisErr) {
+        console.warn(`[translate-copy] Quality review failed for ${lang} attempt ${attempt}:`, analysisErr);
+        break; // Can't review → save what we have
+      }
     }
 
+    const grade = deriveCopyGrade(lastReview ?? {});
+    const qualityScore = gradeToNumeric(grade);
+    const copyStatus = lastReview?.review_verdict === "pass" ? "completed" : "review";
+
     return {
-      primary_texts: parsed.primary_texts,
-      headlines: parsed.headlines,
+      primary_texts: currentPrimary,
+      headlines: currentHeadlines,
       quality_score: qualityScore,
-      quality_analysis: analysis,
-      status: "completed",
+      quality_analysis: lastReview ? { ...lastReview, quality_score: qualityScore } : null,
+      status: copyStatus,
     };
   }
 
