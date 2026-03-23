@@ -18,6 +18,13 @@ interface BoardInfo {
   ad_count: number;
 }
 
+interface CreditUsage {
+  used: number;
+  remaining: number;
+  limit: number;
+  callCount: number;
+}
+
 export default function AutopilotTab({ settings, setSettings, saved, handleSave }: SettingsProps) {
   const [gethookdTest, setGethookdTest] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [gethookdError, setGethookdError] = useState("");
@@ -25,6 +32,8 @@ export default function AutopilotTab({ settings, setSettings, saved, handleSave 
   const [newQuery, setNewQuery] = useState("");
   const [availableBoards, setAvailableBoards] = useState<BoardInfo[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
+  const [credits, setCredits] = useState<CreditUsage | null>(null);
+  const [creditsLoading, setCreditsLoading] = useState(false);
 
   // Fetch available boards when competitor_swipe mode is active
   useEffect(() => {
@@ -37,6 +46,19 @@ export default function AutopilotTab({ settings, setSettings, saved, handleSave 
       })
       .catch(() => {})
       .finally(() => setBoardsLoading(false));
+  }, [settings.autopilot_mode]);
+
+  // Fetch GetHookd credit usage when competitor_swipe mode is active
+  useEffect(() => {
+    if (settings.autopilot_mode !== "competitor_swipe") return;
+    setCreditsLoading(true);
+    fetch("/api/gethookd/credits")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data && !data.error) setCredits(data);
+      })
+      .catch(() => {})
+      .finally(() => setCreditsLoading(false));
   }, [settings.autopilot_mode]);
 
   async function testGethookd() {
@@ -263,6 +285,46 @@ export default function AutopilotTab({ settings, setSettings, saved, handleSave 
                     </span>
                   ))}
                 </div>
+              )}
+            </div>
+            <RowDivider />
+            <div className="py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-800">Monthly credits</p>
+                <p className="text-xs mt-0.5 text-gray-400">
+                  GetHookd Grow plan: 200 credits/month (0.01 per ad result). Board ads are free.
+                </p>
+              </div>
+              {creditsLoading ? (
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Loading credits...
+                </div>
+              ) : credits ? (
+                <div className="mt-2.5">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-gray-500">
+                      {credits.used.toFixed(1)} / {credits.limit} credits used
+                    </span>
+                    <span className={`font-medium ${
+                      credits.remaining < 30 ? "text-red-500" : credits.remaining < 80 ? "text-amber-500" : "text-gray-500"
+                    }`}>
+                      {credits.remaining.toFixed(1)} remaining
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        credits.remaining < 30 ? "bg-red-400" : credits.remaining < 80 ? "bg-amber-400" : "bg-indigo-400"
+                      }`}
+                      style={{ width: `${Math.min(100, (credits.used / credits.limit) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    {credits.callCount} API calls this month
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">No usage data yet</p>
               )}
             </div>
           </SettingsCard>

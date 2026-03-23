@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-22
+Updated: 2026-03-23
 
 ## Tier 1 — Revenue & Automation
 (all completed)
@@ -9,6 +9,7 @@ Updated: 2026-03-22
 - [ ] **Tune translation quality review prompt** — monitor Claude Haiku review results for false positives/negatives. Adjust strictness if needed. (added 2026-03-22)
 
 ## Tier 3 — Housekeeping
+- [ ] **GetHookd credit usage Settings UI** — `getMonthlyCreditsUsed()` is exported but no UI page shows it yet. Add to Settings > Autopilot tab. (added 2026-03-23)
 - [ ] **Storage cleanup tool** — UI to browse/delete old image-jobs (2.5 GB of 3.4 GB total storage). (added 2026-03-10)
 - [ ] **Drop `app_settings` table** — fully migrated to `workspaces.settings`, only 2 legacy fallback references left. (added 2026-03-12)
 - [ ] **Clean up dead code in shopify.ts** — `getConversionsForTest()` is no longer imported anywhere. (added 2026-03-12)
@@ -27,7 +28,11 @@ Updated: 2026-03-22
 - [ ] **Auto-scheduling** — AI picks optimal publish time based on historical performance. (added 2025-02-25)
 - [ ] **Google Ads integration** — second ad platform. (added 2025-02-25)
 
+## Hydro13 iOS App
+- [ ] **App Store screenshots with AI** — Use [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) to generate professional ASO screenshots. Scaffolds a Next.js project, exports all 4 Apple sizes. Swedish locale. `npx skills add ParthJadhav/app-store-screenshots`. (added 2026-03-23)
+
 ## Done (recent)
+- [x] **7 autopilot pipeline improvements** — Auto-assign landing page on approve, 12h quality gate (was 48h), Telegram alerts for failures, ROAS-based page recommender, angle diversity enforcement, GetHookd credit tracking, dynamic generation count (0-2→3/day, 3-5→2, 6-9→1, 10+→skip). Commit `bc40e23`. (done 2026-03-23)
 - [x] **One-Click Ad Pipeline** — Auto-generate images + auto-assign landing page on concept creation. Inline approve in brainstorm UI. 48h translation auto-approve. Activity Feed pending actions. Commit `6aa852f`. (done 2026-03-22)
 - [x] **Per-breakpoint responsive styles** — All 9 design controls now write @media (max-width: 768px) rules when editing in mobile viewMode. `data-cc-rid` per-element selectors, `<style data-cc-responsive>` tag, re-hydration on load. (done 2026-03-22)
 - [x] **Hover label layout thrashing** — mouseover handler now batches `getBoundingClientRect()` + label positioning via `requestAnimationFrame`. (done 2026-03-22)

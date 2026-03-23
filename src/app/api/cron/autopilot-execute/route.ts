@@ -204,11 +204,28 @@ export async function GET(req: NextRequest) {
           r.action_data?.adset_ids
       );
 
+      // Skip ad sets already killed in last 7 days to avoid redundant pauses
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentKills } = await db
+        .from("autopilot_actions")
+        .select("target_id")
+        .eq("workspace_id", wsId)
+        .eq("action_type", "kill_adset")
+        .eq("success", true)
+        .gte("created_at", sevenDaysAgo);
+      const recentlyKilledIds = new Set((recentKills ?? []).map((k) => k.target_id));
+
       let killCount = 0;
       for (const rec of killRecs) {
         const adsetIds = rec.action_data!.adset_ids as string[];
         for (const adsetId of adsetIds) {
           if (killCount >= MAX_KILLS_PER_RUN) break;
+
+          // Skip if already killed recently
+          if (recentlyKilledIds.has(adsetId)) {
+            skippedActions.push(`${adsetId} (already killed recently)`);
+            continue;
+          }
 
           // Find ad set name from breakdown
           const breakdown = guide.adset_breakdown.find((b) => b.adset_id === adsetId);
