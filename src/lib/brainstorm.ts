@@ -1367,7 +1367,8 @@ export function buildBrainstormUserPrompt(
   request: BrainstormRequest,
   segments: ProductSegment[],
   existingConcepts?: Array<{ name: string; angle: string; awareness: string }>,
-  rejectedConcepts?: Array<{ angle: string | null; awareness_level: string | null; concept_description: string | null }>
+  rejectedConcepts?: Array<{ angle: string | null; awareness_level: string | null; concept_description: string | null }>,
+  recentAngles?: string[]
 ): string {
   const parts: string[] = [];
   const { mode, count } = request;
@@ -1566,6 +1567,14 @@ export function buildBrainstormUserPrompt(
       parts.push(`- ${desc}`);
     }
     parts.push("Do NOT generate concepts with similar angles, themes, or approaches to the rejected ones above.");
+  }
+
+  // Diversity enforcement: avoid angles used in the past 7 days
+  if (recentAngles && recentAngles.length > 0) {
+    const uniqueAngles = [...new Set(recentAngles)];
+    parts.push(`\n### RECENTLY USED ANGLES (last 7 days — DO NOT repeat these)`);
+    parts.push(uniqueAngles.join(", "));
+    parts.push(`You MUST pick a different angle than the ${uniqueAngles.length} listed above. There are 20+ angles in the framework — explore the ones NOT on this list.`);
   }
 
   parts.push(

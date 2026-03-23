@@ -8,6 +8,8 @@
  */
 
 const BASE_URL = "https://app.gethookd.ai/api/v1";
+const MONTHLY_CREDIT_LIMIT = 200;
+const LOW_CREDIT_THRESHOLD = 30; // Alert when remaining < 30 credits (15%)
 
 function getToken(): string {
   const token = process.env.GETHOOKD_API_TOKEN;
@@ -47,7 +49,108 @@ async function gethookdFetch<T>(
     throw new Error(`GetHookd API error: ${json.message ?? JSON.stringify(json)}`);
   }
 
+  // Track credit usage
+  const creditsUsed = json.used_credits ?? 0;
+  const remaining = parseFloat(json.remaining_credits ?? "0");
+  if (creditsUsed > 0) {
+    logCreditUsage(path, creditsUsed, remaining).catch(() => {});
+  }
+
   return json;
+}
+
+/** Log credit usage to usage_logs and alert if running low */
+async function logCreditUsage(endpoint: string, creditsUsed: number, remaining: number): Promise<void> {
+  try {
+    const { createServerSupabase } = await import("@/lib/supabase-admin");
+    const db = createServerSupabase();
+
+    // Log to usage_logs
+    await db.from("usage_logs").insert({
+      type: "gethookd_api",
+      model: "gethookd",
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0, // GetHookd is subscription-based, not per-token
+      metadata: {
+        endpoint,
+        credits_used: creditsUsed,
+        credits_remaining: remaining,
+        monthly_limit: MONTHLY_CREDIT_LIMIT,
+      },
+    });
+
+    // Alert if credits running low (only once per day to avoid spam)
+    if (remaining > 0 && remaining < LOW_CREDIT_THRESHOLD) {
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      if (!chatId) return;
+
+      // Check if we already sent a low-credit alert today
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const { count } = await db
+        .from("usage_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("type", "gethookd_api")
+        .gte("created_at", todayStart.toISOString())
+        .contains("metadata", { alert_sent: true });
+
+      if ((count ?? 0) === 0) {
+        const { sendMessage } = await import("@/lib/telegram");
+        await sendMessage(chatId, [
+          `⚠️ GetHookd credits running low`,
+          `Remaining: ${remaining.toFixed(1)} / ${MONTHLY_CREDIT_LIMIT}`,
+          `Used this call: ${creditsUsed}`,
+          `Consider reducing explore mode usage.`,
+        ].join("\n"));
+
+        // Mark that we sent an alert
+        await db.from("usage_logs").insert({
+          type: "gethookd_api",
+          model: "gethookd",
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: 0,
+          metadata: { alert_sent: true, remaining },
+        });
+      }
+    }
+  } catch {
+    // Don't let credit tracking break the main flow
+  }
+}
+
+/** Get current month's credit usage from usage_logs */
+export async function getMonthlyCreditsUsed(): Promise<{
+  used: number;
+  remaining: number;
+  limit: number;
+  callCount: number;
+}> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const db = createServerSupabase();
+
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { data, count } = await db
+    .from("usage_logs")
+    .select("metadata", { count: "exact" })
+    .eq("type", "gethookd_api")
+    .gte("created_at", monthStart.toISOString());
+
+  const totalUsed = (data ?? []).reduce((sum, row) => {
+    const meta = row.metadata as Record<string, unknown> | null;
+    return sum + ((meta?.credits_used as number) ?? 0);
+  }, 0);
+
+  return {
+    used: totalUsed,
+    remaining: MONTHLY_CREDIT_LIMIT - totalUsed,
+    limit: MONTHLY_CREDIT_LIMIT,
+    callCount: count ?? 0,
+  };
 }
 
 // ---------------------------------------------------------------------------

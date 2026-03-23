@@ -130,24 +130,30 @@ export async function GET(req: NextRequest) {
     for (const ws of workspaces) {
       const label = multiWs ? `[${ws.slug}] ` : "";
       try {
-        // Check if concepts are needed (skip with ?force=true)
-        if (!force) {
-          const needResult = await checkConceptNeed(db, ws.id);
-          if (!needResult.needed) {
-            allResults.push({ workspace: ws.slug, result: { skipped: true, reason: needResult.reason } });
-            continue;
-          }
-        }
-
         const autopilotMode = (ws.settings.autopilot_mode as string) ?? "from_scratch";
 
-        // Route to the right code path
-        if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
-          const result = await runCompetitorSwipe(db, chatId, ws, label);
-          allResults.push({ workspace: ws.slug, result });
-        } else {
-          const result = await runFromScratch(db, chatId, ws, label);
-          allResults.push({ workspace: ws.slug, result });
+        // Dynamic loop: create multiple concepts if launchpad is thin
+        const MAX_PER_CRON_RUN = 3;
+        for (let i = 0; i < MAX_PER_CRON_RUN; i++) {
+          // Check if more concepts are needed (skip with ?force=true on first iteration only)
+          if (!force || i > 0) {
+            const needResult = await checkConceptNeed(db, ws.id);
+            if (!needResult.needed) {
+              if (i === 0) {
+                allResults.push({ workspace: ws.slug, result: { skipped: true, reason: needResult.reason } });
+              }
+              break;
+            }
+          }
+
+          // Route to the right code path
+          if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
+            const result = await runCompetitorSwipe(db, chatId, ws, label);
+            allResults.push({ workspace: ws.slug, result });
+          } else {
+            const result = await runFromScratch(db, chatId, ws, label);
+            allResults.push({ workspace: ws.slug, result });
+          }
         }
       } catch (err) {
         console.error(`[Autopilot] ${label}Fatal error:`, err);
@@ -489,24 +495,28 @@ async function runFromScratch(
   const hookInspiration = await buildHookInspiration(ws.productSlug, ws.id);
   const learningsContext = await buildLearningsContext(ws.productSlug, ws.id);
 
-  // For from_internal mode, fetch existing concepts for gap analysis
-  let existingConcepts: Array<{ name: string; angle: string; awareness: string }> | undefined;
-  if (mode === "from_internal") {
-    const { data: existing } = await db
-      .from("image_jobs")
-      .select("name, cash_dna")
-      .eq("workspace_id", ws.id)
-      .eq("product", ws.productSlug)
-      .not("cash_dna", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(30);
+  // Fetch recent concepts for diversity enforcement (all modes, not just from_internal)
+  const { data: recentConceptData } = await db
+    .from("image_jobs")
+    .select("name, cash_dna, created_at")
+    .eq("workspace_id", ws.id)
+    .eq("product", ws.productSlug)
+    .not("cash_dna", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(30);
 
-    existingConcepts = (existing ?? []).map((j) => ({
-      name: j.name,
-      angle: (j.cash_dna as Record<string, unknown>)?.angle as string ?? "unknown",
-      awareness: (j.cash_dna as Record<string, unknown>)?.awareness_level as string ?? "unknown",
-    }));
-  }
+  const existingConcepts = (recentConceptData ?? []).map((j) => ({
+    name: j.name,
+    angle: (j.cash_dna as Record<string, unknown>)?.angle as string ?? "unknown",
+    awareness: (j.cash_dna as Record<string, unknown>)?.awareness_level as string ?? "unknown",
+  }));
+
+  // Extract angles from last 7 days for diversity enforcement across ALL modes
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentAngles = (recentConceptData ?? [])
+    .filter((j) => new Date(j.created_at) >= sevenDaysAgo)
+    .map((j) => (j.cash_dna as Record<string, unknown>)?.angle as string)
+    .filter(Boolean);
 
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
@@ -527,7 +537,9 @@ async function runFromScratch(
   const userPrompt = buildBrainstormUserPrompt(
     brainstormRequest,
     (segments ?? []) as ProductSegment[],
-    existingConcepts
+    mode === "from_internal" ? existingConcepts : undefined,
+    undefined, // rejectedConcepts
+    recentAngles
   );
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -596,6 +608,11 @@ async function runFromScratch(
   const landingPageId = await findBestLandingPage(db, ws.id, ws.productSlug);
   if (landingPageId) {
     await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
+  } else if (chatId) {
+    await sendMessageWithInlineKeyboard(chatId,
+      `⚠️ ${label}Concept #${nextConceptNumber} has no landing page — no published pages found for ${ws.productSlug}. Approval will be blocked until a page is assigned.`,
+      []
+    );
   }
 
   // --- Step 7: Generate images ---
@@ -659,12 +676,23 @@ async function runFromScratch(
       })
     );
 
+    const failedImages: string[] = [];
     for (const outcome of settled) {
       if (outcome.status === "fulfilled") {
         imageResults.push(outcome.value);
       } else {
+        const errMsg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        failedImages.push(errMsg);
         console.error("[Autopilot] Image generation failed:", outcome.reason);
       }
+    }
+
+    // Alert on significant image generation failures
+    if (failedImages.length > 0 && failedImages.length >= imageResults.length && chatId) {
+      await sendMessageWithInlineKeyboard(chatId,
+        `⚠️ ${label}Concept #${nextConceptNumber} image generation: ${imageResults.length}/3 succeeded, ${failedImages.length} failed\n${failedImages.slice(0, 2).join("; ")}`,
+        []
+      );
     }
 
     // Update job status
@@ -747,9 +775,33 @@ async function runFromScratch(
 async function checkConceptNeed(
   db: ReturnType<typeof createServerSupabase>,
   workspaceId: string
-): Promise<{ needed: boolean; reason: string }> {
-  // Simple: 1 autopilot concept per day per workspace.
-  // Push scheduling is handled separately by pipeline-push (budget-aware).
+): Promise<{ needed: boolean; reason: string; maxToday?: number }> {
+  // Dynamic: generate more concepts when launchpad is thin, fewer when full.
+  // Count how many are already on the launchpad (waiting to be pushed)
+  const { count: launchpadCount } = await db
+    .from("image_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .not("launchpad_priority", "is", null);
+
+  // Dynamic daily limit based on launchpad fullness
+  // Thin launchpad (0-2): generate up to 3/day (need more concepts)
+  // Normal launchpad (3-5): generate 2/day
+  // Full launchpad (6+): generate 1/day
+  // Stuffed launchpad (10+): skip generation
+  const queueSize = launchpadCount ?? 0;
+  let maxToday: number;
+  if (queueSize >= 10) {
+    return { needed: false, reason: `Launchpad full (${queueSize} concepts queued)` };
+  } else if (queueSize >= 6) {
+    maxToday = 1;
+  } else if (queueSize >= 3) {
+    maxToday = 2;
+  } else {
+    maxToday = 3;
+  }
+
+  // Count how many autopilot concepts were created today
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
 
@@ -760,11 +812,11 @@ async function checkConceptNeed(
     .eq("source", "autopilot")
     .gte("created_at", todayStart.toISOString());
 
-  if ((todayCount ?? 0) >= 1) {
-    return { needed: false, reason: "Already created an autopilot concept today" };
+  if ((todayCount ?? 0) >= maxToday) {
+    return { needed: false, reason: `Already created ${todayCount}/${maxToday} autopilot concepts today (launchpad: ${queueSize})` };
   }
 
-  return { needed: true, reason: "Daily concept creation" };
+  return { needed: true, reason: `Launchpad has ${queueSize} concepts, creating up to ${maxToday} today (${todayCount ?? 0} done so far)`, maxToday };
 }
 
 // ---------------------------------------------------------------------------

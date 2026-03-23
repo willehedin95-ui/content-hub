@@ -90,8 +90,9 @@ export async function GET(req: NextRequest) {
         const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
         const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
 
-        // Auto-approve translations stuck in "review" for 48+ hours
-        const TRANSLATION_AUTO_APPROVE_MS = 48 * 60 * 60 * 1000;
+        // Auto-approve translations stuck in "review" for 12+ hours
+        // (reduced from 48h — most Haiku complaints are minor grammar/style issues)
+        const TRANSLATION_AUTO_APPROVE_MS = 12 * 60 * 60 * 1000;
         const autoApprovedJobIds: string[] = [];
         for (const j of jobStatuses ?? []) {
           const t = j.ad_copy_translations as Record<string, { status?: string; reviewed_at?: string }> | null;
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
             if (Date.now() - reviewedAt >= TRANSLATION_AUTO_APPROVE_MS) {
               t[lang] = { ...trans, status: "completed" };
               updated = true;
-              console.log(`[Pipeline Push] ${label}Auto-approved ${lang} translation for job ${j.id} (48h timeout)`);
+              console.log(`[Pipeline Push] ${label}Auto-approved ${lang} translation for job ${j.id} (12h timeout)`);
             }
           }
           if (updated) {

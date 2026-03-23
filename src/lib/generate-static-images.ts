@@ -297,6 +297,24 @@ export async function generateStaticImages(
     .update({ updated_at: new Date().toISOString() })
     .eq("id", jobId);
 
+  // Alert on significant image generation failures (>50% failed)
+  if (errors.length > 0 && errors.length >= results.length) {
+    try {
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      if (chatId) {
+        const { sendMessage } = await import("@/lib/telegram");
+        const { data: jobInfo } = await db.from("image_jobs").select("name, concept_number").eq("id", jobId).single();
+        const label = jobInfo?.concept_number ? `#${jobInfo.concept_number} ${jobInfo.name}` : jobId.slice(0, 8);
+        await sendMessage(chatId, [
+          `⚠️ Image generation partial failure`,
+          `Concept: ${label}`,
+          `${results.length}/${results.length + errors.length} images succeeded`,
+          `Errors: ${errors.slice(0, 3).join("; ")}`,
+        ].join("\n"));
+      }
+    } catch { /* don't let notification failure break the flow */ }
+  }
+
   return {
     generated: results.length,
     failed: errors.length,

@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
+import { findBestLandingPage } from "@/lib/landing-page-recommender";
 
 export const maxDuration = 300;
 
@@ -21,7 +22,7 @@ export async function POST(
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, target_languages, landing_page_id, launchpad_priority")
+    .select("id, name, concept_number, target_languages, landing_page_id, launchpad_priority, product")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -36,10 +37,19 @@ export async function POST(
       return NextResponse.json({ ok: true, action: "already_approved" });
     }
 
-    // Check landing page
+    // Auto-assign landing page if missing
+    if (!job.landing_page_id) {
+      const autoPageId = await findBestLandingPage(db, workspaceId, job.product as string);
+      if (autoPageId) {
+        await db.from("image_jobs").update({ landing_page_id: autoPageId }).eq("id", jobId);
+        job.landing_page_id = autoPageId;
+      }
+    }
+
+    // Check landing page (still fail if none available at all)
     if (!job.landing_page_id) {
       return NextResponse.json(
-        { error: "No landing page assigned. Assign one before approving." },
+        { error: "No landing page available. Create and publish a page first." },
         { status: 400 }
       );
     }
