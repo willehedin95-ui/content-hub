@@ -315,6 +315,7 @@ No other text.`,
         quality_score: qualityScore,
         quality_analysis: { ...(lastReview ?? {}), quality_score: qualityScore },
         status: copyStatus,
+        ...(copyStatus === "review" ? { reviewed_at: new Date().toISOString() } : {}),
       };
     } catch (err) {
       results[lang] = {

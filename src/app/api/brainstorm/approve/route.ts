@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
+import { findBestLandingPage } from "@/lib/landing-page-recommender";
+import { generateStaticImages } from "@/lib/generate-static-images";
+
+export const maxDuration = 300;
 
 // POST /api/brainstorm/approve — create image_job from approved brainstorm proposal
 export async function POST(req: NextRequest) {
@@ -55,6 +60,9 @@ export async function POST(req: NextRequest) {
       (h: string) => !regularHeadlines.includes(h)
     )];
 
+    // Auto-assign landing page
+    const landingPageId = await findBestLandingPage(db, workspaceId, product, proposal.pain_point);
+
     // Create the image_job
     const { data: job, error: jobErr } = await db
       .from("image_jobs")
@@ -71,6 +79,7 @@ export async function POST(req: NextRequest) {
         ad_copy_headline: allHeadlines,
         visual_direction: proposal.visual_direction ?? null,
         workspace_id: workspaceId,
+        ...(landingPageId ? { landing_page_id: landingPageId } : {}),
       })
       .select()
       .single();
@@ -82,9 +91,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Auto-generate images in background (after response is sent)
+    after(async () => {
+      try {
+        console.log(`[brainstorm-approve] Starting image generation for job ${job.id}`);
+        const result = await generateStaticImages({
+          jobId: job.id,
+          workspaceId,
+          styles: body.styles,
+          segmentId: body.segment_id,
+        });
+        console.log(`[brainstorm-approve] Image generation done: ${result.generated} generated, ${result.failed} failed`);
+      } catch (err) {
+        console.error(`[brainstorm-approve] Image generation failed for ${job.id}:`, err);
+        // Mark job as failed so UI can show error state
+        const errDb = createServerSupabase();
+        await errDb
+          .from("image_jobs")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", job.id);
+      }
+    });
+
     return NextResponse.json({
       job_id: job.id,
       concept_number: nextNumber,
+      landing_page_id: landingPageId,
+      images_generating: true,
     });
   } catch (err) {
     return safeError(err, "Failed to create concept");

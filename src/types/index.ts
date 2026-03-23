@@ -401,6 +401,7 @@ export interface ConceptCopyTranslation {
   quality_analysis: AdCopyQualityAnalysis | null;
   status: "pending" | "translating" | "completed" | "review" | "error";
   error?: string;
+  reviewed_at?: string;
 }
 
 export type ConceptCopyTranslations = Record<string, ConceptCopyTranslation>;

@@ -186,6 +186,55 @@ export default function BrainstormGenerate() {
   const [rejectingIdx, setRejectingIdx] = useState<number | null>(null);
   const [approvingIdx, setApprovingIdx] = useState<number | null>(null);
 
+  // Inline concept creation tracking
+  type CreatedJob = {
+    jobId: string;
+    conceptNumber: number;
+    landingPageId: string | null;
+    status: "generating" | "ready" | "failed" | "approved";
+    images: Array<{ url: string; id: string }>;
+  };
+  const [createdJobs, setCreatedJobs] = useState<Record<number, CreatedJob>>({});
+  const [inlineApproving, setInlineApproving] = useState<number | null>(null);
+
+  // Poll generating jobs for completion
+  useEffect(() => {
+    const generatingEntries = Object.entries(createdJobs).filter(
+      ([, j]) => j.status === "generating"
+    );
+    if (generatingEntries.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const [idxStr, job] of generatingEntries) {
+        const idx = Number(idxStr);
+        try {
+          const res = await fetch(`/api/image-jobs/${job.jobId}?compact=true`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.status === "ready") {
+            const imgs = (data.source_images ?? []).map((si: { id: string; original_url: string }) => ({
+              id: si.id,
+              url: si.original_url,
+            }));
+            setCreatedJobs((prev) => ({
+              ...prev,
+              [idx]: { ...prev[idx], status: "ready", images: imgs },
+            }));
+          } else if (data.status === "failed") {
+            setCreatedJobs((prev) => ({
+              ...prev,
+              [idx]: { ...prev[idx], status: "failed" },
+            }));
+          }
+        } catch {
+          // retry next tick
+        }
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [createdJobs]);
+
   // Common
   const [error, setError] = useState("");
   const [loadingMsg, setLoadingMsg] = useState(0);
@@ -580,11 +629,49 @@ export default function BrainstormGenerate() {
       }
 
       const data = await res.json();
-      router.push(`/images/${data.job_id}`);
+      // Track inline — don't redirect
+      setCreatedJobs((prev) => ({
+        ...prev,
+        [idx]: {
+          jobId: data.job_id,
+          conceptNumber: data.concept_number,
+          landingPageId: data.landing_page_id ?? null,
+          status: "generating",
+          images: [],
+        },
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-      setApprovingIdx(null);
     }
+    setApprovingIdx(null);
+  }
+
+  async function handleInlineApprove(idx: number) {
+    const job = createdJobs[idx];
+    if (!job || inlineApproving !== null) return;
+    setInlineApproving(idx);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/autopilot/concepts/${job.jobId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to approve concept");
+      }
+
+      setCreatedJobs((prev) => ({
+        ...prev,
+        [idx]: { ...prev[idx], status: "approved" },
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+    setInlineApproving(null);
   }
 
   async function handleApproveVideo(proposal: VideoConceptProposal, idx: number) {
@@ -2039,46 +2126,62 @@ export default function BrainstormGenerate() {
                           </p>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={async () => {
-                              setRejectingIdx(i);
-                              try {
-                                await fetch("/api/brainstorm/reject", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    product,
-                                    angle: proposal.cash_dna.angle ?? null,
-                                    awareness_level: proposal.cash_dna.awareness_level ?? null,
-                                    concept_description: proposal.concept_description ?? null,
-                                  }),
-                                });
-                                setProposals((prev) => prev.filter((_, idx) => idx !== i));
-                              } catch {}
-                              setRejectingIdx(null);
-                            }}
-                            disabled={rejectingIdx === i}
-                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Reject — avoid similar concepts in future"
-                          >
-                            {rejectingIdx === i ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <ThumbsDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => handleApprove(proposal, i)}
-                            disabled={approvingIdx !== null}
-                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {approvingIdx === i ? (
+                          {!createdJobs[i] && (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  setRejectingIdx(i);
+                                  try {
+                                    await fetch("/api/brainstorm/reject", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        product,
+                                        angle: proposal.cash_dna.angle ?? null,
+                                        awareness_level: proposal.cash_dna.awareness_level ?? null,
+                                        concept_description: proposal.concept_description ?? null,
+                                      }),
+                                    });
+                                    setProposals((prev) => prev.filter((_, idx) => idx !== i));
+                                  } catch {}
+                                  setRejectingIdx(null);
+                                }}
+                                disabled={rejectingIdx === i}
+                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Reject — avoid similar concepts in future"
+                              >
+                                {rejectingIdx === i ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <ThumbsDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleApprove(proposal, i)}
+                                disabled={approvingIdx !== null}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                {approvingIdx === i ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Wand2 className="w-3 h-3" />
+                                )}
+                                Create Concept
+                              </button>
+                            </>
+                          )}
+                          {createdJobs[i]?.status === "generating" && (
+                            <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg border border-amber-200">
                               <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Wand2 className="w-3 h-3" />
-                            )}
-                            Use This
-                          </button>
+                              Generating images...
+                            </span>
+                          )}
+                          {createdJobs[i]?.status === "approved" && (
+                            <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-lg border border-green-200">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Approved — translating
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -2214,6 +2317,75 @@ export default function BrainstormGenerate() {
                       <p className="text-[10px] text-gray-400 mt-2 italic">
                         {proposal.differentiation_note}
                       </p>
+
+                      {/* Inline image generation result */}
+                      {createdJobs[i] && createdJobs[i].status !== "generating" && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          {createdJobs[i].status === "failed" && (
+                            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
+                              <X className="w-3.5 h-3.5 shrink-0" />
+                              Image generation failed.{" "}
+                              <button
+                                onClick={() => router.push(`/images/${createdJobs[i].jobId}`)}
+                                className="underline hover:no-underline"
+                              >
+                                View details
+                              </button>
+                            </div>
+                          )}
+                          {(createdJobs[i].status === "ready" || createdJobs[i].status === "approved") && (
+                            <>
+                              <div className="flex gap-2 mb-3 overflow-x-auto">
+                                {createdJobs[i].images.map((img) => (
+                                  <img
+                                    key={img.id}
+                                    src={img.url}
+                                    alt=""
+                                    className="w-20 h-25 object-cover rounded-lg border border-gray-200 shrink-0"
+                                  />
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {createdJobs[i].status === "ready" && (
+                                  <>
+                                    <button
+                                      onClick={() => handleInlineApprove(i)}
+                                      disabled={inlineApproving !== null || !createdJobs[i].landingPageId}
+                                      className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50"
+                                      title={!createdJobs[i].landingPageId ? "No landing page assigned — assign one in concept details" : undefined}
+                                    >
+                                      {inlineApproving === i ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <CheckCircle2 className="w-3 h-3" />
+                                      )}
+                                      Approve & Queue
+                                    </button>
+                                    {!createdJobs[i].landingPageId && (
+                                      <span className="text-[10px] text-amber-600">
+                                        No landing page — assign in details
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                                {createdJobs[i].status === "approved" && (
+                                  <span className="flex items-center gap-1.5 text-xs text-green-700">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Queued — translations in progress
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => router.push(`/images/${createdJobs[i].jobId}`)}
+                                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors ml-auto"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  View Details
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

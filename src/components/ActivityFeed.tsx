@@ -12,8 +12,11 @@ import {
   Video,
   Loader2,
   Radio,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
 } from "lucide-react";
-import type { FeedItem } from "@/app/api/activity-feed/route";
+import type { FeedItem, PendingItem } from "@/app/api/activity-feed/route";
 
 const ICONS: Record<string, { icon: typeof Skull; color: string; bg: string }> = {
   kill_adset: { icon: Skull, color: "text-red-600", bg: "bg-red-50" },
@@ -62,8 +65,10 @@ function groupByDate(items: FeedItem[]): { label: string; items: FeedItem[] }[] 
 
 export default function ActivityFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
+  const [pending, setPending] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchFeed = useCallback(async () => {
     try {
@@ -71,6 +76,7 @@ export default function ActivityFeed() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items);
+        setPending(data.pending ?? []);
       }
     } catch {
       // Silently fail
@@ -82,6 +88,57 @@ export default function ActivityFeed() {
   useEffect(() => {
     fetchFeed();
   }, [fetchFeed]);
+
+  async function handlePendingApprove(item: PendingItem) {
+    setActionLoading(item.id);
+    try {
+      const res = await fetch(`/api/autopilot/concepts/${item.jobId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: true }),
+      });
+      if (res.ok) {
+        setPending((prev) => prev.filter((p) => p.id !== item.id));
+      }
+    } catch {
+      // Silently fail
+    }
+    setActionLoading(null);
+  }
+
+  async function handlePendingReject(item: PendingItem) {
+    setActionLoading(item.id);
+    try {
+      const res = await fetch(`/api/autopilot/concepts/${item.jobId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: false }),
+      });
+      if (res.ok) {
+        setPending((prev) => prev.filter((p) => p.id !== item.id));
+      }
+    } catch {
+      // Silently fail
+    }
+    setActionLoading(null);
+  }
+
+  async function handleApproveTranslation(item: PendingItem) {
+    setActionLoading(item.id);
+    try {
+      const res = await fetch(`/api/image-jobs/${item.jobId}/approve-translations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        setPending((prev) => prev.filter((p) => p.id !== item.id));
+      }
+    } catch {
+      // Silently fail
+    }
+    setActionLoading(null);
+  }
 
   const groups = groupByDate(items);
 
@@ -104,12 +161,96 @@ export default function ActivityFeed() {
         </select>
       </div>
 
+      {/* Pending actions section */}
+      {!loading && pending.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-semibold text-gray-900">
+              Needs Your Attention ({pending.length})
+            </h2>
+          </div>
+          <div className="space-y-2">
+            {pending.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-xl"
+              >
+                {item.thumbnail && (
+                  <img
+                    src={item.thumbnail}
+                    alt=""
+                    className="w-12 h-15 object-cover rounded-lg border border-gray-200 shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">
+                    {item.details ? `${item.details} ` : ""}{item.title}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {item.type === "pending_concept" ? "Ready for approval" : item.details}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {item.type === "pending_concept" && (
+                    <>
+                      <button
+                        onClick={() => handlePendingReject(item)}
+                        disabled={actionLoading !== null}
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Reject"
+                      >
+                        {actionLoading === item.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <X className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handlePendingApprove(item)}
+                        disabled={actionLoading !== null || !item.landingPageId}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50"
+                        title={!item.landingPageId ? "No landing page assigned" : "Approve & queue"}
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        Approve
+                      </button>
+                    </>
+                  )}
+                  {item.type === "pending_translation_review" && (
+                    <button
+                      onClick={() => handleApproveTranslation(item)}
+                      disabled={actionLoading !== null}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {actionLoading === item.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Check className="w-3 h-3" />
+                      )}
+                      Approve
+                    </button>
+                  )}
+                  <Link
+                    href={item.linkUrl}
+                    className="p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="View details"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-20 text-gray-400">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />
           Loading activity...
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && pending.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <Radio className="w-8 h-8 mx-auto mb-3 opacity-50" />
           <p className="text-sm">No autopilot activity in the last {days} days</p>

@@ -90,7 +90,57 @@ export async function GET(req: NextRequest) {
         const completedJobIds = new Set((jobStatuses ?? []).filter((j) => j.status === "completed").map((j) => j.id));
         const statusMap = new Map((jobStatuses ?? []).map((j) => [j.id, j.status]));
 
-        // Quality gate: block concepts with translations in "review" status
+        // Auto-approve translations stuck in "review" for 48+ hours
+        const TRANSLATION_AUTO_APPROVE_MS = 48 * 60 * 60 * 1000;
+        const autoApprovedJobIds: string[] = [];
+        for (const j of jobStatuses ?? []) {
+          const t = j.ad_copy_translations as Record<string, { status?: string; reviewed_at?: string }> | null;
+          if (!t) continue;
+          let updated = false;
+          for (const [lang, trans] of Object.entries(t)) {
+            if (trans.status !== "review") continue;
+            const reviewedAt = trans.reviewed_at ? new Date(trans.reviewed_at).getTime() : 0;
+            if (!reviewedAt) {
+              // Legacy data: set reviewed_at now, will auto-approve in 48h
+              t[lang] = { ...trans, reviewed_at: new Date().toISOString() };
+              updated = true;
+              continue;
+            }
+            if (Date.now() - reviewedAt >= TRANSLATION_AUTO_APPROVE_MS) {
+              t[lang] = { ...trans, status: "completed" };
+              updated = true;
+              console.log(`[Pipeline Push] ${label}Auto-approved ${lang} translation for job ${j.id} (48h timeout)`);
+            }
+          }
+          if (updated) {
+            await db.from("image_jobs")
+              .update({ ad_copy_translations: t, updated_at: new Date().toISOString() })
+              .eq("id", j.id);
+            // Check if all translations are now completed
+            const allCompleted = Object.values(t).every((v) => v.status === "completed");
+            if (allCompleted && j.status !== "completed") {
+              await db.from("image_jobs").update({ status: "completed" }).eq("id", j.id);
+              completedJobIds.add(j.id);
+              autoApprovedJobIds.push(j.id);
+            }
+          }
+        }
+
+        if (autoApprovedJobIds.length > 0) {
+          console.log(`[Pipeline Push] ${label}Auto-approved translations for ${autoApprovedJobIds.length} concepts`);
+          await db.from("autopilot_actions").insert(
+            autoApprovedJobIds.map((id) => ({
+              workspace_id: wsId,
+              action_type: "translation_auto_approved",
+              target_id: id,
+              target_name: `Job ${id.slice(0, 8)}`,
+              details: { reason: "48h_timeout" },
+              success: true,
+            }))
+          );
+        }
+
+        // Quality gate: block concepts with translations still in "review" status
         const reviewBlockedIds = new Set(
           (jobStatuses ?? []).filter((j) => {
             const t = j.ad_copy_translations as Record<string, { status?: string }> | null;

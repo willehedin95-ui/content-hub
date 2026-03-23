@@ -24,13 +24,25 @@ export interface FeedItem {
   linkUrl?: string;
 }
 
+export interface PendingItem {
+  id: string;
+  type: "pending_concept" | "pending_translation_review";
+  title: string;
+  details?: string;
+  thumbnail?: string;
+  linkUrl: string;
+  jobId: string;
+  conceptNumber?: number;
+  landingPageId?: string | null;
+}
+
 export async function GET(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
   const db = createServerSupabase();
   const days = parseInt(req.nextUrl.searchParams.get("days") ?? "7");
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [actionsRes, imageJobsRes, videoJobsRes] = await Promise.all([
+  const [actionsRes, imageJobsRes, videoJobsRes, pendingConceptsRes, reviewConceptsRes] = await Promise.all([
     // 1. Autopilot actions (kills, budgets, approvals, iterations)
     db
       .from("autopilot_actions")
@@ -57,6 +69,28 @@ export async function GET(req: NextRequest) {
       .eq("workspace_id", workspaceId)
       .eq("source", "autopilot")
       .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(50),
+
+    // 4. Pending concepts: ready, not on launchpad, not archived
+    db
+      .from("image_jobs")
+      .select("id, name, concept_number, landing_page_id, source, source_images(original_url)")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "ready")
+      .is("launchpad_priority", null)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .limit(20),
+
+    // 5. Concepts with translations pending review
+    db
+      .from("image_jobs")
+      .select("id, name, concept_number, ad_copy_translations, source_images(original_url)")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "completed")
+      .is("archived_at", null)
+      .not("ad_copy_translations", "is", null)
       .order("created_at", { ascending: false })
       .limit(50),
   ]);
@@ -166,5 +200,46 @@ export async function GET(req: NextRequest) {
   // Sort by timestamp descending
   items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  return NextResponse.json({ items });
+  // Build pending items
+  const pending: PendingItem[] = [];
+
+  // Pending concepts (ready but not approved)
+  for (const j of pendingConceptsRes.data ?? []) {
+    const imgs = j.source_images as Array<{ original_url: string }> | null;
+    pending.push({
+      id: `pending-${j.id}`,
+      type: "pending_concept",
+      title: j.name,
+      details: j.concept_number ? `#${j.concept_number}` : undefined,
+      thumbnail: imgs?.[0]?.original_url,
+      linkUrl: `/images/${j.id}`,
+      jobId: j.id,
+      conceptNumber: j.concept_number,
+      landingPageId: j.landing_page_id,
+    });
+  }
+
+  // Translation reviews (concepts with at least one "review" translation)
+  for (const j of reviewConceptsRes.data ?? []) {
+    const t = j.ad_copy_translations as Record<string, { status?: string }> | null;
+    if (!t) continue;
+    const reviewLangs = Object.entries(t)
+      .filter(([, v]) => v.status === "review")
+      .map(([lang]) => lang.toUpperCase());
+    if (reviewLangs.length === 0) continue;
+
+    const imgs = j.source_images as Array<{ original_url: string }> | null;
+    pending.push({
+      id: `review-${j.id}`,
+      type: "pending_translation_review",
+      title: j.name,
+      details: `${reviewLangs.join(", ")} translation${reviewLangs.length > 1 ? "s" : ""} need review`,
+      thumbnail: imgs?.[0]?.original_url,
+      linkUrl: `/images/${j.id}`,
+      jobId: j.id,
+      conceptNumber: j.concept_number,
+    });
+  }
+
+  return NextResponse.json({ items, pending });
 }
