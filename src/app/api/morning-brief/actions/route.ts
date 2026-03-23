@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { updateAd, updateAdSet, updateCampaign, getCampaignBudget } from "@/lib/meta";
+import { updateAd, updateAdSet, updateCampaign, getCampaignBudget, pauseAdSetAndAds } from "@/lib/meta";
 import { getWorkspaceId } from "@/lib/workspace";
 
 const DELAY = 500;
@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await updateAdSet(adset_id, { status: "PAUSED" });
+      await pauseAdSetAndAds(adset_id);
 
       // Log to ad_learnings
       await db.from("ad_learnings").insert({
@@ -317,7 +317,7 @@ export async function POST(req: NextRequest) {
 
       for (const adsetId of adset_ids) {
         try {
-          await updateAdSet(adsetId, { status: "PAUSED" });
+          await pauseAdSetAndAds(adsetId);
           await sleep(DELAY);
 
           await db.from("ad_learnings").insert({

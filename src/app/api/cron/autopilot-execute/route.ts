@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage } from "@/lib/telegram";
-import { updateAdSet, updateCampaign, setMetaConfig } from "@/lib/meta";
+import { updateAdSet, updateCampaign, setMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
 import {
   computeStrategyGuide,
   type StrategyInput,
@@ -238,7 +238,7 @@ export async function GET(req: NextRequest) {
           }
 
           try {
-            await updateAdSet(adsetId, { status: "PAUSED" });
+            await pauseAdSetAndAds(adsetId);
             await sleep(DELAY_MS);
 
             await db.from("autopilot_actions").insert({

@@ -313,6 +313,28 @@ export async function updateAd(adId: string, params: { status?: string; name?: s
   });
 }
 
+/**
+ * Pause an ad set AND all ads within it.
+ * Prevents killed ad sets from showing ads as "active" in Meta Ads Manager.
+ */
+export async function pauseAdSetAndAds(adSetId: string): Promise<void> {
+  await updateAdSet(adSetId, { status: "PAUSED" });
+  try {
+    const ads = await listAdsInAdSet(adSetId);
+    for (const ad of ads) {
+      if (ad.status !== "PAUSED" && ad.status !== "DELETED") {
+        try {
+          await updateAd(ad.id, { status: "PAUSED" });
+        } catch (err) {
+          console.error(`[pauseAdSetAndAds] Failed to pause ad ${ad.id}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[pauseAdSetAndAds] Failed to list/pause ads in ad set ${adSetId}:`, err);
+  }
+}
+
 interface AdSetTemplateConfig {
   campaign_id: string;
   billing_event: string;

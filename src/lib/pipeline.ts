@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd } from "./meta";
+import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd, pauseAdSetAndAds, listAdsInAdSet } from "./meta";
 import { createServerSupabase } from "./supabase-admin";
 import { getWorkspaceId } from "./workspace";
 import type {
@@ -502,9 +502,9 @@ export async function detectStageTransitions(workspaceId?: string): Promise<Stag
                 }
               }
             } else if (campaignDetail.meta_adset_id) {
-              // Legacy: pause the entire ad set
+              // Legacy: pause the entire ad set + all ads within it
               try {
-                await updateAdSet(campaignDetail.meta_adset_id, { status: "PAUSED" });
+                await pauseAdSetAndAds(campaignDetail.meta_adset_id);
               } catch (err) {
                 console.error(`[Kill] Failed to pause ad set ${campaignDetail.meta_adset_id}:`, err);
               }
@@ -592,9 +592,9 @@ async function ensureKilledAdSetsPaused(): Promise<string[]> {
         }
       }
     } else {
-      // Legacy: pause the entire ad set
+      // Legacy: pause the entire ad set + all ads within it
       try {
-        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+        await pauseAdSetAndAds(campaign.meta_adset_id);
         paused.push(campaign.meta_adset_id);
       } catch (err) {
         console.error(`[EnsureKilled] Failed to pause ad set ${campaign.meta_adset_id}:`, err);
@@ -2234,7 +2234,7 @@ export async function killConcept(
 
     if (campaign?.meta_adset_id) {
       try {
-        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+        await pauseAdSetAndAds(campaign.meta_adset_id);
       } catch (err) {
         console.error(`[Kill] Failed to pause ad set ${campaign.meta_adset_id}:`, err);
       }
