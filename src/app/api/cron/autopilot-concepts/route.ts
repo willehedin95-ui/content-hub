@@ -288,6 +288,13 @@ async function runCompetitorSwipe(
     };
   } catch (err) {
     console.error(`[Autopilot/swipe] ${label}Swipe failed:`, err);
+
+    // Mark discovered_ad as skipped so it doesn't stay stuck in "swiping"
+    await db.from("discovered_ads")
+      .update({ status: "skipped", updated_at: new Date().toISOString() })
+      .eq("gethookd_ad_id", discovered.ad.id)
+      .eq("workspace_id", ws.id);
+
     if (chatId) {
       await sendMessageWithInlineKeyboard(chatId,
         `⚠️ ${label}Autopilot swipe failed for ad from ${discovered.ad.brand.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
