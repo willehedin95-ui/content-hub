@@ -2,7 +2,7 @@
 Updated: 2026-03-22
 
 ## Tier 1 — Revenue & Automation
-(all completed this session)
+(all completed)
 
 ## Tier 2 — Builder & UX Quality
 - [x] ~~**Autosave race condition**~~ — Fixed in commit `f382c9b`. (done 2026-03-22)
@@ -28,6 +28,7 @@ Updated: 2026-03-22
 - [ ] **Google Ads integration** — second ad platform. (added 2025-02-25)
 
 ## Done (recent)
+- [x] **One-Click Ad Pipeline** — Auto-generate images + auto-assign landing page on concept creation. Inline approve in brainstorm UI. 48h translation auto-approve. Activity Feed pending actions. Commit `6aa852f`. (done 2026-03-22)
 - [x] **Per-breakpoint responsive styles** — All 9 design controls now write @media (max-width: 768px) rules when editing in mobile viewMode. `data-cc-rid` per-element selectors, `<style data-cc-responsive>` tag, re-hydration on load. (done 2026-03-22)
 - [x] **Hover label layout thrashing** — mouseover handler now batches `getBoundingClientRect()` + label positioning via `requestAnimationFrame`. (done 2026-03-22)
 - [x] **Video generation parallel** — ImportProgressPanel now runs all videos concurrently via `Promise.allSettled` instead of sequential for-loop. (done 2026-03-22)
@@ -40,7 +41,6 @@ Updated: 2026-03-22
 - [x] **Clean up duplicate Meta ad sets** — Archived 61 duplicate ad sets (60 dupes + 1 test). 23 were actively spending. (done 2026-03-22)
 - [x] **Translation quality gate with auto-retry** — Claude Haiku native reader review replaces GPT-4o. Auto-retries 3x. Blocks launchpad+push on failure. Telegram approve/hold. Commit `bbd1b63`. (done 2026-03-22)
 - [x] **Narrative archetypes for ad copy** — 4 story-driven frameworks (Confession, Rage, Double Standard, Witness) embedded in brainstorm system prompts. UI selector + autopilot integration. Commit `d0ab2db`. (done 2026-03-22)
-- [x] **Clean up duplicate Meta ad sets** — Archived 61 duplicate ad sets (60 dupes + 1 test). 23 were actively spending. (done 2026-03-22)
 - [x] **Cron fixes + merged daily digest + video albums** — concept_metrics derived from meta_ad_performance. daily-snapshot cookie bug fixed. Morning brief + autopilot-execute merged into single digest. Commit `608a182`. (done 2026-03-22)
 - [x] **Activity Feed + auto-iterate + Telegram improvements** — Replaced Daily Actions with Activity Feed. Auto-iterate fatiguing concepts. Telegram album notifications. Commit `fa70b3c`. (done 2026-03-22)
 - [x] **A/B test grouping by page pair** — Grouped by (page_a_id, page_b_id) with aggregated metrics + per-concept breakdown. Commit `03fd067`. (done 2026-03-20)
