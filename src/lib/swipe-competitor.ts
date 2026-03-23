@@ -184,8 +184,32 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     cleaned = cleaned.trim();
     parsed = JSON.parse(cleaned);
   } catch (parseErr) {
-    console.error("[swipe-competitor] Failed to parse Claude response. First 500 chars:", rawContent.slice(0, 500));
-    throw new Error("Failed to parse Claude response");
+    console.error("[swipe-competitor] JSON parse failed, attempting repair. First 500 chars:", rawContent.slice(0, 500));
+    // Retry: ask Claude to fix the JSON
+    try {
+      const repairResponse = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 8000,
+        temperature: 0,
+        messages: [{
+          role: "user",
+          content: `The following text was supposed to be valid JSON but failed to parse. Extract and return ONLY the valid JSON object, fixing any syntax errors. Return nothing but the JSON — no markdown fences, no explanation.\n\n${rawContent}`,
+        }],
+      });
+      const repairContent = repairResponse.content[0]?.type === "text" ? repairResponse.content[0].text.trim() : "";
+      let repairCleaned = repairContent;
+      repairCleaned = repairCleaned.replace(/^```(?:json)?\s*\n?/i, "");
+      repairCleaned = repairCleaned.replace(/\n?\s*```\s*$/i, "");
+      const firstBraceRepair = repairCleaned.indexOf("{");
+      if (firstBraceRepair > 0) repairCleaned = repairCleaned.slice(firstBraceRepair);
+      const lastBraceRepair = repairCleaned.lastIndexOf("}");
+      if (lastBraceRepair >= 0 && lastBraceRepair < repairCleaned.length - 1) repairCleaned = repairCleaned.slice(0, lastBraceRepair + 1);
+      parsed = JSON.parse(repairCleaned.trim());
+      console.log("[swipe-competitor] JSON repair succeeded");
+    } catch (repairErr) {
+      console.error("[swipe-competitor] JSON repair also failed. First 500 chars:", rawContent.slice(0, 500));
+      throw new Error("Failed to parse Claude response");
+    }
   }
 
   if (!parsed.concept || !parsed.image_prompts?.length) {
