@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio } from "lucide-react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 import type { Workspace } from "@/types";
@@ -77,6 +77,7 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
     },
     { href: "/products", label: "Products", icon: Package },
     { href: "/assets", label: "Assets", icon: FolderOpen },
+    { href: "/seo", label: "SEO", icon: Search },
     { href: "/invoices", label: "Invoices", icon: Receipt },
   ], [pipelineBadgeCount]);
 

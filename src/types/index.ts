@@ -53,6 +53,7 @@ export interface Page {
   swiped_from_url: string | null;
   status: PageStatus;
   swipe_job_id: string | null;
+  content_type?: "landing_page" | "seo_blog";
   created_at: string;
   translations?: Translation[];
 }
@@ -1277,4 +1278,94 @@ export interface InvoiceUnmatched {
   period: string;
   has_pdf: boolean;
   created_at: string;
+}
+
+// ── SEO / Google Search Console ─────────────────────────────
+
+export interface GscKeyword {
+  id: string;
+  workspace_id: string;
+  property: string;
+  query: string;
+  page: string;
+  country: string;
+  date: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  synced_at: string;
+  created_at: string;
+}
+
+export interface GscKeywordAggregated {
+  query: string;
+  page: string | null;
+  country: string;
+  property: string;
+  avgPosition: number;
+  totalClicks: number;
+  totalImpressions: number;
+  avgCtr: number;
+  positionTrend: number; // negative = improving (moved up)
+  clicksTrend: number;
+}
+
+export interface GscSyncLog {
+  id: string;
+  workspace_id: string;
+  property: string;
+  sync_type: string;
+  rows_synced: number;
+  date_from: string | null;
+  date_to: string | null;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export type SeoContentPlanStatus = "planned" | "researching" | "generating" | "review" | "published" | "rejected";
+
+export interface SeoContentPlan {
+  id: string;
+  workspace_id: string;
+  target_keyword: string;
+  secondary_keywords: string[];
+  language: Language;
+  current_position: number | null;
+  current_impressions: number | null;
+  search_intent: string | null;
+  content_type: string;
+  status: SeoContentPlanStatus;
+  page_id: string | null;
+  product: string | null;
+  outline: Record<string, unknown> | null;
+  serp_analysis: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GscProperty {
+  property: string;
+  language: Language;
+  label: string;
+}
+
+export interface SeoOverview {
+  totalKeywords: number;
+  totalClicks: number;
+  totalImpressions: number;
+  avgPosition: number;
+  clicksTrend: number;
+  impressionsTrend: number;
+  positionTrend: number;
+  byProperty: Array<{
+    property: string;
+    language: Language;
+    label: string;
+    totalClicks: number;
+    totalImpressions: number;
+    avgPosition: number;
+  }>;
+  lastSyncedAt: string | null;
 }

@@ -47,6 +47,7 @@ export default async function LandingPagesPage({
       .from("pages")
       .select(`*, translations (id, language, status, published_url, seo_title)`)
       .eq("workspace_id", workspaceId)
+      .neq("content_type", "seo_blog")
       .order("created_at", { ascending: false }),
     db
       .from("page_tests")
