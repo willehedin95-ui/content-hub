@@ -5,7 +5,7 @@ import { CheckCircle, XCircle, RefreshCw, Loader2, Plus, Trash2, Info } from "lu
 import type { GscProperty, Language } from "@/types";
 
 const LANG_OPTIONS: { value: Language; label: string; defaultProperty: string; defaultLabel: string }[] = [
-  { value: "sv", label: "Swedish", defaultProperty: "https://blog.halsobladet.com/", defaultLabel: "Halsobladet (SV)" },
+  { value: "sv", label: "Swedish", defaultProperty: "https://halsobladet.com/", defaultLabel: "Halsobladet (SV)" },
   { value: "da", label: "Danish", defaultProperty: "https://smarthelse.dk/", defaultLabel: "SmartHelse (DA)" },
   { value: "no", label: "Norwegian", defaultProperty: "https://helseguiden.com/", defaultLabel: "Helseguiden (NO)" },
 ];
@@ -126,7 +126,7 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
                         type="text"
                         value={prop.property}
                         onChange={(e) => updateProperty(idx, "property", e.target.value)}
-                        placeholder="https://blog.halsobladet.com/"
+                        placeholder="https://halsobladet.com/"
                         className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                       />
                     </div>

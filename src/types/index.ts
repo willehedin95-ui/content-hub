@@ -118,7 +118,7 @@ export const LANGUAGES: {
     value: "sv",
     label: "Swedish",
     flag: "🇸🇪",
-    domain: "blog.halsobladet.com",
+    domain: "halsobladet.com",
   },
   { value: "da", label: "Danish", flag: "🇩🇰", domain: "smarthelse.dk" },
   {
