@@ -33,6 +33,7 @@ const sharedStyles = `
     img { max-width: 100%; height: auto; border-radius: 8px; }
     .hero-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 12px; margin: 0 0 24px; }
     .section-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; margin: 24px 0; }
+    .product-img { display: block; max-width: 400px; margin: 32px auto 8px; border-radius: 12px; }
     .intro { font-size: 1.1rem; color: #374151; margin: 0 0 32px; }
     .tldr { background: #f0f9ff; border-left: 4px solid #0284c7; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 0 0 32px; }
     .tldr strong { display: block; margin-bottom: 6px; color: #0369a1; }

@@ -46,28 +46,28 @@ export interface BlogImageResult {
   costUsd: number;
 }
 
-type NativeStyle = "native-medical" | "native-closeup" | "native-messy";
+type BlogImageStyle = "editorial" | "detail" | "scene";
 
 // ---------------------------------------------------------------------------
 // Category → style mapping
 // ---------------------------------------------------------------------------
 
-const CATEGORY_STYLE_MAP: Record<string, NativeStyle[]> = {
-  "Forskning": ["native-medical", "native-closeup", "native-messy"],
-  "Sömnproblem": ["native-medical", "native-messy", "native-closeup"],
-  "Hudvård inifrån": ["native-medical", "native-closeup", "native-messy"],
-  "Kollagen & Tillskott": ["native-medical", "native-closeup", "native-messy"],
-  "Bäst i test": ["native-closeup", "native-messy", "native-medical"],
-  "Köpguider": ["native-messy", "native-closeup", "native-medical"],
-  "Jämförelser": ["native-closeup", "native-medical", "native-messy"],
-  "Skötselguider": ["native-messy", "native-closeup", "native-medical"],
-  "Sov Bättre": ["native-messy", "native-closeup", "native-medical"],
-  "Hår & Naglar": ["native-closeup", "native-messy", "native-medical"],
+const CATEGORY_STYLE_MAP: Record<string, BlogImageStyle[]> = {
+  "Forskning": ["scene", "detail", "editorial"],
+  "Sömnproblem": ["editorial", "scene", "detail"],
+  "Hudvård inifrån": ["detail", "editorial", "scene"],
+  "Kollagen & Tillskott": ["detail", "scene", "editorial"],
+  "Bäst i test": ["detail", "editorial", "scene"],
+  "Köpguider": ["editorial", "detail", "scene"],
+  "Jämförelser": ["detail", "scene", "editorial"],
+  "Skötselguider": ["scene", "editorial", "detail"],
+  "Sov Bättre": ["editorial", "scene", "detail"],
+  "Hår & Naglar": ["detail", "editorial", "scene"],
 };
 
-const DEFAULT_STYLES: NativeStyle[] = ["native-medical", "native-messy", "native-closeup"];
+const DEFAULT_STYLES: BlogImageStyle[] = ["editorial", "detail", "scene"];
 
-function selectNativeStyle(category: string, imageIndex: number): NativeStyle {
+function selectBlogStyle(category: string, imageIndex: number): BlogImageStyle {
   const styles = CATEGORY_STYLE_MAP[category] ?? DEFAULT_STYLES;
   return styles[imageIndex % styles.length];
 }
@@ -112,30 +112,38 @@ export function findPlaceholderImages(html: string): PlaceholderImage[] {
 // Claude Haiku — generate Nano Banana prompts
 // ---------------------------------------------------------------------------
 
-const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create editorial images for a Swedish health blog. Images must look like real photography from a health magazine — NOT like ads, stock photos, or AI art.
+const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create editorial images for a Swedish health & wellness blog. Images must look like real photography from a Scandinavian lifestyle magazine — warm, inviting, and pleasant to look at.
+
+The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully — the image should illustrate THAT specific topic, not a generic health image.
 
 Three styles:
 
-1. native-medical: Scientific/educational imagery. Cross-sections, anatomical diagrams, CT scans, microscopy, infographic diagrams, vintage anatomical plates. Use detailed technical language, specific camera specs ("Canon EOS R5 with 100mm macro, f/8"), resolution refs ("8k resolution, extraordinarily detailed"). Clinical color palette. OK to use "hyperrealistic" for this style only.
+1. editorial: Warm lifestyle magazine photography. Cozy bedroom scenes, soft morning light through sheer curtains, neatly arranged pillows on a bed, a person sleeping peacefully (seen from behind, no face), Scandinavian-style interiors with light wood and neutral tones. Camera: Canon EOS R5, 35mm f/1.8. Soft golden hour or overcast daylight. Slight film grain, Kodak Portra 400 tones. Warm whites and muted earth tones.
 
-2. native-closeup: Raw editorial photography. Close-ups of relevant objects, textures, conditions, or scenes. Use camera references (Canon EOS R5, iPhone 15 Pro, 35mm lens), film stocks (Kodak Portra 400, Cinestill 800T), imperfection keywords (natural noise, slight vignetting, soft focus, film grain). Muted desaturated colors. Describe the light SOURCE and direction.
+2. detail: Clean close-up photography. Fabric textures, pillow stitching, soft linen folds, water droplets on skin, supplement bottles on a marble counter, a hand resting on a pillow. Shallow depth of field (f/2.0), macro feel. Camera: Sony A7IV with 90mm macro. Soft directional window light. Minimal composition — one subject, clean background. Warm neutral palette.
 
-3. native-messy: Lifestyle documentary photography. iPhone aesthetic — flat lays, nightstand scenes, bathroom counter, kitchen, bedroom. Natural light, film grain, muted tones. Objects tell the story through their CONDITION (crumpled, half-empty, stained). Real-life feel.
+3. scene: Environmental context photography. Wider establishing shots — a tidy bedroom at dawn, a bathroom shelf with neatly arranged products, a reading nook with a pillow and blanket, a bright kitchen counter with morning light. Natural light from a specific direction (e.g., "warm light from a left-side window"). Light grain, slightly desaturated. Think Kinfolk magazine aesthetic.
+
+CRITICAL — NEVER generate:
+- Medical/clinical imagery (no cross-sections, CT scans, anatomy, blood, wounds, rashes, skin conditions)
+- Messy, dirty, or unpleasant scenes (no stains, crumpled tissues, cluttered spaces)
+- Anything gross, disturbing, or uncomfortable to look at
+- Generic stock photo compositions (posed people smiling at camera, thumbs up)
+- Dark or gloomy lighting
 
 RULES:
-- Prompts must be 80-150 words with obsessive visual detail
-- Always name the light SOURCE and direction
-- Include at least 1 imperfection keyword per prompt
-- Include at least 1 texture keyword per prompt
-- Muted/desaturated colors for photo styles, clinical palette for medical
+- Prompts must be 80-120 words with specific visual detail
+- Always name the light SOURCE and direction ("warm morning light from a right-side window")
+- Include 1 texture keyword per prompt (linen, cotton, wood grain, marble, etc.)
+- Warm, calming color palette — Scandinavian minimalism
 - NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional lighting", "high quality"
 - All images are 16:9 LANDSCAPE format — compose horizontally
-- No text overlays, no brand names, no product shots, no people's faces
-- Each image must be visually distinct from the others
-- End each prompt with a style anchor: "Editorial health photography." or "Scientific documentation." or "Candid lifestyle photograph, phone camera quality."
+- No text overlays, no brand names, no logos, no people's faces
+- Each image must illustrate a DIFFERENT aspect of the article
+- End each prompt with: "Editorial lifestyle photography, Scandinavian aesthetic."
 
 Output ONLY a JSON array, no markdown fences:
-[{"index": 0, "prompt": "...", "style": "native-medical"}]`;
+[{"index": 0, "prompt": "...", "style": "editorial"}]`;
 
 async function generateImagePrompts(
   placeholders: PlaceholderImage[],
@@ -148,7 +156,7 @@ async function generateImagePrompts(
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
   const imageDescriptions = placeholders.map((p) => {
-    const style = selectNativeStyle(category, p.index);
+    const style = selectBlogStyle(category, p.index);
     const role = p.cssClass.includes("hero") ? "HERO" : "SECTION";
     return `Image ${p.index} (${role}, style: ${style}):
 Section: "${p.sectionHeading || articleTitle}"
@@ -319,4 +327,51 @@ export function replacePlaceholderImages(
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Inject product photo from product bank before the CTA box
+// ---------------------------------------------------------------------------
+
+export async function injectProductImage(
+  html: string,
+  productSlug: string
+): Promise<string> {
+  const db = createServerSupabase();
+
+  // Get product ID + name
+  const { data: product } = await db
+    .from("products")
+    .select("id, name")
+    .eq("slug", productSlug)
+    .single();
+
+  if (!product) {
+    console.log(`[blog-images] No product found for slug "${productSlug}", skipping product image`);
+    return html;
+  }
+
+  // Get the hero image (primary product photo)
+  const { data: images } = await db
+    .from("product_images")
+    .select("url")
+    .eq("product_id", product.id)
+    .eq("category", "hero")
+    .limit(1);
+
+  const imageUrl = images?.[0]?.url;
+  if (!imageUrl) {
+    console.log(`[blog-images] No hero image for product "${productSlug}", skipping`);
+    return html;
+  }
+
+  // Insert product image before the first .cta-box
+  const ctaIndex = html.indexOf('<div class="cta-box">');
+  if (ctaIndex === -1) {
+    console.log("[blog-images] No .cta-box found in article HTML, skipping product image");
+    return html;
+  }
+
+  const productImgTag = `<img class="product-img" src="${imageUrl}" alt="${product.name}">\n    `;
+  return html.slice(0, ctaIndex) + productImgTag + html.slice(ctaIndex);
 }

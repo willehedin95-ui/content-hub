@@ -382,7 +382,7 @@ export async function runBlogAutopilot(
   let imageCost = 0;
   let imageCount = 0;
   try {
-    const { generateBlogImages, replacePlaceholderImages } = await import("./blog-images");
+    const { generateBlogImages, replacePlaceholderImages, injectProductImage } = await import("./blog-images");
     const imageResult = await generateBlogImages({
       articleTitle: article.seoTitle,
       primaryKeyword: nextArticle.primaryKeyword,
@@ -397,6 +397,8 @@ export async function runBlogAutopilot(
       imageCount = imageResult.generated;
       console.log(`[blog-autopilot] Generated ${imageCount} images, cost: $${imageCost.toFixed(3)}`);
     }
+    // Inject real product photo from product bank before the CTA box
+    finalHtml = await injectProductImage(finalHtml, nextArticle.productSlug);
   } catch (err) {
     console.warn("[blog-autopilot] Image generation failed, publishing with placeholders:", err);
   }
