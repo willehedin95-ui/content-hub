@@ -90,7 +90,7 @@ export function getDefaultBlogConfig(): BlogConfig {
     languages: {
       sv: {
         blog_name: "Hälsobladet",
-        blog_tagline: "Oberoende hälsorådgivning",
+        blog_tagline: "",
         about_text:
           "Hälsobladet är en oberoende hälsosajt som testar och jämför produkter för bättre sömn och hälsa. Vi köper alla produkter själva och delar ärliga omdömen.",
         affiliate_disclosure:
@@ -100,7 +100,7 @@ export function getDefaultBlogConfig(): BlogConfig {
       },
       da: {
         blog_name: "SmartHelse",
-        blog_tagline: "Uafhængig sundhedsrådgivning",
+        blog_tagline: "",
         about_text:
           "SmartHelse er en uafhængig sundhedsside, der tester og sammenligner produkter til bedre søvn og sundhed. Vi køber alle produkter selv og deler ærlige anmeldelser.",
         affiliate_disclosure:
@@ -110,7 +110,7 @@ export function getDefaultBlogConfig(): BlogConfig {
       },
       no: {
         blog_name: "Helseguiden",
-        blog_tagline: "Uavhengig helserådgivning",
+        blog_tagline: "",
         about_text:
           "Helseguiden er en uavhengig helseside som tester og sammenligner produkter for bedre søvn og helse. Vi kjøper alle produkter selv og deler ærlige anmeldelser.",
         affiliate_disclosure:
@@ -407,6 +407,14 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     ""
   );
 
+  // Format publish date
+  const publishDate = new Date(opts.publishedAt);
+  const dateFormatted = publishDate.toLocaleDateString(
+    opts.language === "sv" ? "sv-SE" : opts.language === "da" ? "da-DK" : "nb-NO",
+    { year: "numeric", month: "long", day: "numeric" }
+  );
+  const authorName = opts.language === "sv" ? "Redaktionen" : opts.language === "da" ? "Redaktionen" : "Redaksjonen";
+
   return `<!DOCTYPE html>
 <html lang="${opts.language}">
 <head>
@@ -434,22 +442,27 @@ export function wrapInBlogShell(opts: WrapOptions): string {
 <body>
   <header class="blog-shell-header">
     <div class="blog-shell-container">
-      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">${esc(langConfig.blog_name)}</a>
-      <span class="blog-shell-tagline">${esc(langConfig.blog_tagline)}</span>
+      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        ${esc(langConfig.blog_name)}
+      </a>
+      <nav class="blog-shell-nav">
+        <a href="${esc(opts.baseUrl)}/">${esc(langConfig.nav_home_label)}</a>
+      </nav>
     </div>
   </header>
-
-  <div class="blog-shell-disclosure">
-    <div class="blog-shell-container">
-      ${esc(langConfig.affiliate_disclosure)}
-    </div>
-  </div>
 
   <main class="blog-shell-main">
     <div class="blog-shell-container">
       <nav class="blog-shell-breadcrumbs" aria-label="Breadcrumb">
         ${breadcrumbHtml}
       </nav>
+
+      <div class="blog-shell-meta">
+        <span class="blog-shell-author">${esc(authorName)}</span>
+        <time datetime="${opts.publishedAt}">${dateFormatted}</time>
+        ${opts.blogCategory ? `<span class="blog-shell-category-tag">${esc(opts.blogCategory)}</span>` : ""}
+      </div>
 
       <article class="blog-shell-article">
         ${opts.articleBodyHtml}
@@ -462,6 +475,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <footer class="blog-shell-footer">
     <div class="blog-shell-container">
       <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      <p class="blog-shell-disclosure">${esc(langConfig.affiliate_disclosure)}</p>
       <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
     </div>
   </footer>
@@ -516,8 +530,10 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
 <body>
   <header class="blog-shell-header">
     <div class="blog-shell-container">
-      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">${esc(langConfig.blog_name)}</a>
-      <span class="blog-shell-tagline">${esc(langConfig.blog_tagline)}</span>
+      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        ${esc(langConfig.blog_name)}
+      </a>
     </div>
   </header>
 
@@ -589,8 +605,10 @@ export function generateCategoryPage(opts: CategoryPageOptions): string {
 <body>
   <header class="blog-shell-header">
     <div class="blog-shell-container">
-      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">${esc(langConfig.blog_name)}</a>
-      <span class="blog-shell-tagline">${esc(langConfig.blog_tagline)}</span>
+      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        ${esc(langConfig.blog_name)}
+      </a>
     </div>
   </header>
 
@@ -680,16 +698,22 @@ function BLOG_SHELL_CSS(primaryColor: string): string {
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1f2937;line-height:1.6;background:#fff}
 .blog-shell-container{max-width:800px;margin:0 auto;padding:0 20px}
-.blog-shell-header{background:${primaryColor};color:#fff;padding:16px 0}
-.blog-shell-header .blog-shell-container{display:flex;align-items:center;gap:12px}
-.blog-shell-logo{color:#fff;text-decoration:none;font-size:1.25rem;font-weight:700}
-.blog-shell-logo:hover{opacity:.9}
-.blog-shell-tagline{color:rgba(255,255,255,.75);font-size:.85rem}
-.blog-shell-disclosure{background:#fef3c7;border-bottom:1px solid #fcd34d;padding:8px 0;font-size:.8rem;color:#92400e}
-.blog-shell-breadcrumbs{padding:12px 0;font-size:.85rem;color:#6b7280}
+.blog-shell-header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 0;position:sticky;top:0;z-index:100}
+.blog-shell-header .blog-shell-container{display:flex;align-items:center;justify-content:space-between}
+.blog-shell-logo{color:${primaryColor};text-decoration:none;font-size:1.2rem;font-weight:700;display:flex;align-items:center;gap:8px}
+.blog-shell-logo:hover{opacity:.85}
+.blog-shell-logo-icon{width:22px;height:22px;color:${primaryColor}}
+.blog-shell-nav{display:flex;gap:20px;font-size:.9rem}
+.blog-shell-nav a{color:#6b7280;text-decoration:none;font-weight:500}
+.blog-shell-nav a:hover{color:${primaryColor}}
+.blog-shell-breadcrumbs{padding:16px 0 0;font-size:.85rem;color:#6b7280}
 .blog-shell-breadcrumbs a{color:${primaryColor};text-decoration:none}
 .blog-shell-breadcrumbs a:hover{text-decoration:underline}
 .blog-shell-sep{margin:0 6px;color:#d1d5db}
+.blog-shell-meta{display:flex;align-items:center;gap:12px;padding:8px 0 4px;font-size:.85rem;color:#6b7280;flex-wrap:wrap}
+.blog-shell-author{font-weight:600;color:#374151}
+.blog-shell-meta time{color:#9ca3af}
+.blog-shell-category-tag{background:#f0f9ff;color:#0369a1;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:500}
 .blog-shell-main{padding:0 0 40px}
 .blog-shell-article{padding:12px 0 32px}
 .blog-shell-related{border-top:1px solid #e5e7eb;padding:32px 0 0}
@@ -701,11 +725,12 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-card h3,.blog-shell-card h2{font-size:.95rem;margin:12px 12px 4px;line-height:1.3}
 .blog-shell-card p{font-size:.8rem;color:#6b7280;margin:0 12px 12px;line-height:1.4}
 .blog-shell-footer{background:#f9fafb;border-top:1px solid #e5e7eb;padding:32px 0;font-size:.85rem;color:#6b7280}
-.blog-shell-about{margin:0 0 8px}
-.blog-shell-copyright{margin:0}
+.blog-shell-about{margin:0 0 12px}
+.blog-shell-disclosure{margin:0 0 12px;font-size:.8rem;color:#9ca3af;font-style:italic}
+.blog-shell-copyright{margin:0;color:#9ca3af}
 @media(max-width:640px){
   .blog-shell-related-grid{grid-template-columns:1fr}
-  .blog-shell-header .blog-shell-container{flex-direction:column;align-items:flex-start;gap:4px}
+  .blog-shell-meta{flex-direction:column;align-items:flex-start;gap:4px}
 }
 `;
 }

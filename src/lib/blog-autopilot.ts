@@ -66,13 +66,13 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
   {
     order: 1,
     slug: "basta-kudden",
-    title: "Bästa kudden 2026 — Test av 12 kuddar",
+    title: "Bästa kudden 2026 — Test av 11 kuddar",
     category: "Bäst i test",
     templateId: "listicle",
     primaryKeyword: "bästa kudden",
     secondaryKeywords: ["bästa kudden 2026", "kudde bäst i test"],
     wordCount: "4000-5000",
-    contentBrief: `Comprehensive pillow review. Test 12 pillows including HappySleep, Tempur, IKEA Rosenskärm, Dunlopillo, Jensen, Carpe Diem, Bäddmadrassen. Compare by sleep position, material, firmness, price. Ranking table. HappySleep featured as winner/top pick. Be genuine about competitors. This is a MONEY PAGE. Include buying guide section.`,
+    contentBrief: `Comprehensive pillow review. Test 11 pillows: HappySleep (our product, top pick), Tempur Original, IKEA KLUBBSPORRE, Dunlopillo Serenity, Pillowise, Sissel Soft, Curaprox, IKEA ROSENSKÄRM, Bäddmadrassen Original, Casper Original Pillow, Emma Diamond Degree. Compare by sleep position (sido/rygg/mage), material (minnesskum/latex/polyester), firmness, price. Ranking table with scores. HappySleep wins for ergonomic design and value. Be honest about competitors — praise where deserved, note weaknesses. MONEY PAGE. Include buying guide section about choosing right pillow for your sleep position. USE ONLY the verified competitor products from the system prompt — NEVER invent products.`,
     productSlug: "happysleep",
     internalLinkSlugs: ["kudde-for-sidosovare", "nacksmarta-pa-natten", "minnesskum-vs-latex-kudde"],
   },
@@ -189,7 +189,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     primaryKeyword: "ergonomisk kudde bäst i test",
     secondaryKeywords: ["ergonomisk kudde", "nackstöd bäst i test", "nackkudde bäst i test", "bästa ergonomiska kudden"],
     wordCount: "3000-4000",
-    contentBrief: `Focused buying guide specifically for ergonomic/cervical pillows — different angle than the general "bästa kudden" article. What makes a pillow ergonomic: contoured design, cervical support curve, height zones for different sleep positions. Medical perspective: cervical lordosis support, pressure distribution, alignment (cite physiotherapy sources). Test 8-10 ergonomic pillows including HappySleep. Compare: contour shape, height adjustability, material (memory foam, latex, buckwheat), firmness, washability. Include section on who needs an ergonomic pillow (neck pain sufferers, office workers, post-surgery). HappySleep as top pick. This exact keyword has heavy Google Ads spend. Link to 1177.se for chronic neck issues.`,
+    contentBrief: `Focused buying guide specifically for ergonomic/cervical pillows — different angle than the general "bästa kudden" article. What makes a pillow ergonomic: contoured design, cervical support curve, height zones for different sleep positions. Medical perspective: cervical lordosis support, pressure distribution, alignment (cite physiotherapy sources). Test these ergonomic pillows: HappySleep (our product, top pick), Tempur Original, Pillowise, Sissel Soft, Curaprox, Dunlopillo Serenity. Compare: contour shape, height adjustability, material, firmness, washability. Include section on who needs an ergonomic pillow (neck pain sufferers, office workers). HappySleep as top pick. USE ONLY verified competitor products from the system prompt. Link to 1177.se for chronic neck issues.`,
     productSlug: "happysleep",
     internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten", "kudde-for-sidosovare"],
   },
@@ -393,6 +393,7 @@ export async function runBlogAutopilot(
       category: nextArticle.category,
       articleHtml: article.html,
       slug: nextArticle.slug,
+      productSlug: nextArticle.productSlug,
     });
     if (imageResult.generated > 0) {
       finalHtml = replacePlaceholderImages(article.html, imageResult.urlMap);

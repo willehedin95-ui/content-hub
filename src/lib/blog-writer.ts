@@ -40,6 +40,211 @@ export interface ArticleRequest {
   blogDomain: string;
 }
 
+// ---------------------------------------------------------------------------
+// Product URLs per market (Shopify store links)
+// ---------------------------------------------------------------------------
+
+const PRODUCT_URLS: Record<string, Record<string, string>> = {
+  happysleep: {
+    sv: "https://swedishbalance.se/products/happysleep",
+    da: "https://swedishbalance.se/products/happysleep",
+    no: "https://swedishbalance.se/products/happysleep",
+  },
+  hydro13: {
+    sv: "https://swedishbalance.se/products/hydro13",
+    da: "https://swedishbalance.se/products/hydro13",
+    no: "https://swedishbalance.se/products/hydro13",
+  },
+};
+
+export function getProductUrl(productSlug: string, language: string): string {
+  return PRODUCT_URLS[productSlug]?.[language] ?? PRODUCT_URLS[productSlug]?.sv ?? "#";
+}
+
+// ---------------------------------------------------------------------------
+// Verified competitor products — ONLY these may appear in articles
+// NEVER fabricate product names. If a product isn't listed here, don't mention it.
+// ---------------------------------------------------------------------------
+
+export interface CompetitorProduct {
+  /** Swedish product name as sold in Sweden */
+  nameSv: string;
+  /** Brand */
+  brand: string;
+  /** Approximate price in SEK (2026) */
+  priceSek: number;
+  /** Material type */
+  material: string;
+  /** Where to buy (Swedish store URL or brand website) */
+  url: string;
+  /** Brief description for the writer */
+  description: string;
+}
+
+const PILLOW_COMPETITORS: CompetitorProduct[] = [
+  {
+    nameSv: "Tempur Original",
+    brand: "Tempur",
+    priceSek: 1599,
+    material: "Minnesskum (TEMPUR-material)",
+    url: "https://se.tempur.com/kuddar/",
+    description: "Klassisk ergonomisk kudde från Tempur. Mycket stöd men kan kännas hård. Sover varmt.",
+  },
+  {
+    nameSv: "IKEA KLUBBSPORRE",
+    brand: "IKEA",
+    priceSek: 199,
+    material: "Minnesskum/latex",
+    url: "https://www.ikea.com/se/sv/cat/ergonomiska-kuddar-20533/",
+    description: "Billigaste ergonomiska alternativet. Bra för budgeten men sämre hållbarhet.",
+  },
+  {
+    nameSv: "Dunlopillo Serenity",
+    brand: "Dunlopillo",
+    priceSek: 899,
+    material: "Latex",
+    url: "https://www.dunlopillo.se/kuddar/",
+    description: "Premium latexkudde. Naturligt sval, bra fjädring, lång livslängd.",
+  },
+  {
+    nameSv: "Pillowise",
+    brand: "Pillowise",
+    priceSek: 1295,
+    material: "Minnesskum",
+    url: "https://www.pillowise.se/",
+    description: "Individuellt anpassad kudde baserat på axelbredd och sovställning. Säljs via fysioterapeuter.",
+  },
+  {
+    nameSv: "Sissel Soft",
+    brand: "Sissel",
+    priceSek: 649,
+    material: "Minnesskum",
+    url: "https://www.sissel.se/kuddar/",
+    description: "Tysk medicinteknisk kudde. Mjukare ergonomisk profil. Populär hos fysioterapeuter.",
+  },
+  {
+    nameSv: "Curaprox",
+    brand: "Curaprox",
+    priceSek: 1890,
+    material: "Minnesskum",
+    url: "https://www.curaprox.com/se-sv/sleep",
+    description: "Schweizisk premiumkudde med patenterad konturdesign. Dyrast i test.",
+  },
+  {
+    nameSv: "IKEA ROSENSKÄRM",
+    brand: "IKEA",
+    priceSek: 149,
+    material: "Polyester",
+    url: "https://www.ikea.com/se/sv/cat/ergonomiska-kuddar-20533/",
+    description: "Enkel ergonomisk kudde. Bra som instegspris men byter form snabbt.",
+  },
+  {
+    nameSv: "Bäddmadrassen Original",
+    brand: "Bäddmadrassen",
+    priceSek: 795,
+    material: "Minnesskum",
+    url: "https://www.baddmadrassen.se/",
+    description: "Svensk e-handelskudde. Bra pris/prestanda. Mjukare minnesskum.",
+  },
+  {
+    nameSv: "Casper Original Pillow",
+    brand: "Casper",
+    priceSek: 750,
+    material: "Polyester/dun",
+    url: "https://casper.com/se/sv/kuddar/",
+    description: "Populär online-kudde. Tre lager, justerbar höjd. Inte ergonomisk profil.",
+  },
+  {
+    nameSv: "Emma Diamond Degree",
+    brand: "Emma",
+    priceSek: 899,
+    material: "Minnesskum med gel",
+    url: "https://www.emma-sleep.se/kuddar/",
+    description: "Kylande gelkudde. Bra för varma sovare. Justerbar höjd med uttagbara lager.",
+  },
+];
+
+const COLLAGEN_COMPETITORS: CompetitorProduct[] = [
+  {
+    nameSv: "Oslo Skin Lab The Solution",
+    brand: "Oslo Skin Lab",
+    priceSek: 359,
+    material: "Kollagenpulver (2 500 mg)",
+    url: "https://osloskinlab.se/",
+    description: "Populärt norskt kollagen. Bara 2 500 mg — underdoserat jämfört med studiedoser.",
+  },
+  {
+    nameSv: "Great Earth Marine Collagen",
+    brand: "Great Earth",
+    priceSek: 299,
+    material: "Kollagenpulver (5 000 mg)",
+    url: "https://www.greatearth.se/",
+    description: "Prisvärt hälsokostmärke. Marint kollagen men saknar kompletterande ingredienser.",
+  },
+  {
+    nameSv: "Biosalma Collagen Beauty",
+    brand: "Biosalma",
+    priceSek: 229,
+    material: "Kollagentabletter (500 mg)",
+    url: "https://www.biosalma.se/",
+    description: "Billigt men kraftigt underdoserat. 500 mg per tablett — långt under kliniska doser.",
+  },
+  {
+    nameSv: "Elexir Pharma Collagen",
+    brand: "Elexir Pharma",
+    priceSek: 189,
+    material: "Kollagenpulver",
+    url: "https://www.elexirpharma.se/",
+    description: "Svenskt apoteksmärke. Enbart kollagen utan tillsatser.",
+  },
+];
+
+/** Get verified competitors for a product category */
+export function getCompetitorProducts(productSlug: string): CompetitorProduct[] {
+  if (productSlug === "happysleep") return PILLOW_COMPETITORS;
+  if (productSlug === "hydro13") return COLLAGEN_COMPETITORS;
+  return [];
+}
+
+// ---------------------------------------------------------------------------
+// Verified external links for health content
+// ---------------------------------------------------------------------------
+
+const VERIFIED_EXTERNAL_LINKS: Record<string, { url: string; description: string }> = {
+  "1177": {
+    url: "https://www.1177.se/",
+    description: "1177 Vårdguiden — Sveriges officiella hälsoinformationstjänst",
+  },
+  "1177_nacke": {
+    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/nacke-och-rygg/ont-i-nacken/",
+    description: "1177 — Ont i nacken",
+  },
+  "1177_somn": {
+    url: "https://www.1177.se/liv--halsa/sova-bra/",
+    description: "1177 — Sova bra",
+  },
+  "1177_rygg": {
+    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/nacke-och-rygg/ont-i-ryggen/",
+    description: "1177 — Ont i ryggen",
+  },
+  internetmedicin: {
+    url: "https://www.internetmedicin.se/",
+    description: "Internetmedicin — medicinsk kunskapsbas för vårdpersonal",
+  },
+  ki: {
+    url: "https://ki.se/",
+    description: "Karolinska Institutet — Sveriges ledande medicinska universitet",
+  },
+  livsmedelsverket: {
+    url: "https://www.livsmedelsverket.se/",
+    description: "Livsmedelsverket — råd om kost och nutrition",
+  },
+  sbu: {
+    url: "https://www.sbu.se/",
+    description: "SBU — Statens beredning för medicinsk och social utvärdering",
+  },
+};
+
 export interface ArticleResult {
   html: string;
   seoTitle: string;
@@ -144,7 +349,40 @@ function buildWriterSystemPrompt(
         ? "SmartHelse"
         : "Helseguiden";
 
+  // Get verified competitor products
+  const competitors = getCompetitorProducts(request.productSlug);
+  const productUrl = getProductUrl(request.productSlug, request.language);
+
+  // Build competitor data section
+  const competitorSection = competitors.length > 0
+    ? `## Verified Competitor Products
+ONLY use products from this list. NEVER invent, fabricate, or guess product names.
+
+${competitors.map((c) =>
+  `- **${c.nameSv}** (${c.brand}) — ${c.priceSek} kr — ${c.material}
+  ${c.description}
+  URL: ${c.url}`
+).join("\n")}
+
+CRITICAL: If you need more products than listed above, leave them out. Do NOT make up product names like "Jensen Dream", "Carpe Diem Cloud", "Hästens Comfort", or "DUX Form" — these do NOT exist.`
+    : "";
+
+  // Build verified external links section
+  const externalLinksSection = `## Verified External Links (use these exact URLs)
+${Object.entries(VERIFIED_EXTERNAL_LINKS).map(([key, { url, description }]) =>
+  `- ${description}: ${url}`
+).join("\n")}
+
+NEVER fabricate URLs. Only link to URLs listed above or to well-known Swedish domains you are 100% certain exist. If unsure about a URL, omit the link.`;
+
   return `You are a senior ${langName} health & wellness journalist writing for ${blogName} (https://${request.blogDomain}). You write thoroughly researched, honest editorial content that ranks well in Google.
+
+## CRITICAL: Language Rules
+- Write ENTIRELY in ${langName}. Every word, including product descriptions, must be in ${langName}.
+- Product names stay in their original brand form (e.g. "HappySleep", "Tempur Original", "IKEA KLUBBSPORRE")
+- NEVER translate brand names into English. "HappySleep" is the brand name — do NOT write "HappySleep Cervical Pillow" or any English descriptor. Write "HappySleep ergonomisk kudde" or just "HappySleep".
+- Swedish compound words: nackstöd (not "nack stöd"), sovställning (not "sov ställning"), minnesskum (not "minnes skum"), ryggsmärta (not "rygg smärta"), sidosovare (not "sido sovare")
+- Use correct Swedish grammar and natural Swedish sentence structures. Do NOT translate from English.
 
 ## Your Identity
 - You are the editorial team at ${blogName}, a small independent health review site
@@ -153,12 +391,28 @@ function buildWriterSystemPrompt(
 - You have personally tested every product you review
 - You buy all products yourself — no sponsorships
 
-## Product Knowledge
+## Our Product (the one we recommend)
 ${productContext}
+
+**Our product URL (ALWAYS use this exact link for CTA buttons and product recommendations):**
+${productUrl}
+
+${competitorSection}
 
 ## Internal Links
 These are published articles on ${blogName}. Link to them where relevant using descriptive anchor text:
 ${internalLinks || "(No other articles published yet)"}
+
+${externalLinksSection}
+
+## ANTI-FABRICATION RULES — CRITICAL
+
+1. NEVER invent product names. Only mention products from the "Verified Competitor Products" list above or our own product.
+2. NEVER fabricate URLs. Only use URLs from the verified lists above.
+3. NEVER invent prices. Only use prices from the verified competitor data.
+4. NEVER fabricate study citations. Only cite studies you know are real (author, journal, year).
+5. NEVER make up expert quotes or testimonials.
+6. If the content brief asks for 12 products but you only have 10 verified ones, write about 10. Do NOT pad with made-up products.
 
 ## Anti-Slop Rules — CRITICAL
 
@@ -200,9 +454,9 @@ holistisk, revolutionerande, banbrytande, game-changer, optimal, transformera, n
 - Secondary keywords ${request.secondaryKeywords.map((k) => `"${k}"`).join(", ")} woven in naturally — never forced
 - H2s phrased as questions where natural (Google featured snippet targeting)
 - Every factual claim needs a source: real studies, 1177.se, medical journals
-- IMPORTANT: Use real source URLs where possible. For Swedish health: 1177.se, ki.se, livsmedelsverket.se, internetmedicin.se
+- IMPORTANT: Only use verified external link URLs from the list above.
 - At least 3 FAQ items in a .faq-item section at the bottom
-- Include a TL;DR box (.tldr class) near the top
+- Include a TL;DR box (.tldr class) near the top — each point as a separate <li> inside a <ul>
 - Year "2026" in title and body
 
 ## YMYL Compliance (Health Content)
@@ -226,6 +480,8 @@ function buildWriterUserPrompt(
   request: ArticleRequest,
   templateHtml: string
 ): string {
+  const productUrl = getProductUrl(request.productSlug, request.language);
+
   return `Write the complete article based on this brief:
 
 ## Content Brief
@@ -239,15 +495,17 @@ ${templateHtml}
 ## Requirements
 1. Output a complete HTML document matching the template structure
 2. Replace ALL placeholder text — every heading, paragraph, product card, FAQ, and link
-3. All product reviews must be specific and detailed (not generic filler)
-4. Include at least 3 real source citations with URLs
+3. All product reviews must use ONLY products from the "Verified Competitor Products" list in your system prompt. NEVER invent product names.
+4. Include at least 3 real source citations with verified URLs from the external links list
 5. FAQ section must have 3-5 real, useful questions and answers
-6. TL;DR box must be specific (not vague summaries)
-7. CTA links should point to relevant product pages
+6. TL;DR box: use a <ul> with <li> items, not a run-on sentence. Be specific.
+7. ALL CTA links and "buy" buttons for our product must point to: ${productUrl}
 8. Word count target: ${request.wordCount}
 9. Include 2 editorial image placeholders between major sections using this exact format:
-   <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+Image" alt="[descriptive alt text matching section topic]">
-   Place them after H2 sections where a visual break would help readability. Use descriptive alt text that describes what the image should show.
+   <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+Image" alt="[descriptive alt text in Swedish matching section topic]">
+   Place them after H2 sections where a visual break would help readability. Alt text must be in Swedish and describe what the image should show.
+10. Write the ENTIRE article in Swedish. No English words except brand names.
+11. If the title says "12 kuddar" but you only have 10 verified products, adjust the title number to match (e.g. "Test av 10 kuddar"). NEVER pad with fabricated products.
 
 Return ONLY the HTML document. No explanations, no code fences, no commentary.`;
 }

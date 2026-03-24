@@ -46,30 +46,16 @@ export interface BlogImageResult {
   costUsd: number;
 }
 
-type BlogImageStyle = "editorial" | "detail" | "scene";
+type BlogImageStyle = "native-messy" | "native-closeup";
 
 // ---------------------------------------------------------------------------
-// Category → style mapping
+// Style selection — alternate between native-messy and native-closeup
+// These produce realistic phone-photo style images (not stock photos)
 // ---------------------------------------------------------------------------
 
-const CATEGORY_STYLE_MAP: Record<string, BlogImageStyle[]> = {
-  "Forskning": ["scene", "detail", "editorial"],
-  "Sömnproblem": ["editorial", "scene", "detail"],
-  "Hudvård inifrån": ["detail", "editorial", "scene"],
-  "Kollagen & Tillskott": ["detail", "scene", "editorial"],
-  "Bäst i test": ["detail", "editorial", "scene"],
-  "Köpguider": ["editorial", "detail", "scene"],
-  "Jämförelser": ["detail", "scene", "editorial"],
-  "Skötselguider": ["scene", "editorial", "detail"],
-  "Sov Bättre": ["editorial", "scene", "detail"],
-  "Hår & Naglar": ["detail", "editorial", "scene"],
-};
-
-const DEFAULT_STYLES: BlogImageStyle[] = ["editorial", "detail", "scene"];
-
-function selectBlogStyle(category: string, imageIndex: number): BlogImageStyle {
-  const styles = CATEGORY_STYLE_MAP[category] ?? DEFAULT_STYLES;
-  return styles[imageIndex % styles.length];
+function selectBlogStyle(_category: string, imageIndex: number): BlogImageStyle {
+  // Alternate between the two native styles for variety
+  return imageIndex % 2 === 0 ? "native-messy" : "native-closeup";
 }
 
 // ---------------------------------------------------------------------------
@@ -112,38 +98,42 @@ export function findPlaceholderImages(html: string): PlaceholderImage[] {
 // Claude Haiku — generate Nano Banana prompts
 // ---------------------------------------------------------------------------
 
-const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create editorial images for a Swedish health & wellness blog. Images must look like real photography from a Scandinavian lifestyle magazine — warm, inviting, and pleasant to look at.
+const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create REALISTIC phone-style images for a Swedish health & wellness blog. Images must look like someone took them with their iPhone — NOT stock photos, NOT polished studio shots.
 
-The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully — the image should illustrate THAT specific topic, not a generic health image.
+The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully.
 
-Three styles:
+Two styles:
 
-1. editorial: Warm lifestyle magazine photography. Cozy bedroom scenes, soft morning light through sheer curtains, neatly arranged pillows on a bed, a person sleeping peacefully (seen from behind, no face), Scandinavian-style interiors with light wood and neutral tones. Camera: Canon EOS R5, 35mm f/1.8. Soft golden hour or overcast daylight. Slight film grain, Kodak Portra 400 tones. Warm whites and muted earth tones.
+1. native-messy: iPhone snapshot aesthetic. Slightly messy real-life scenes — a bedroom with rumpled sheets and a pillow half-off the bed, a nightstand with a water glass and phone, someone's hand adjusting a pillow on a messy bed. Shot on iPhone 15, slightly off-center composition, natural room lighting (not perfect). Warm yellowish indoor light or blue morning window light. Slight motion blur on edges. Real life, not staged. Think "photo someone texted you" not "magazine shoot."
 
-2. detail: Clean close-up photography. Fabric textures, pillow stitching, soft linen folds, water droplets on skin, supplement bottles on a marble counter, a hand resting on a pillow. Shallow depth of field (f/2.0), macro feel. Camera: Sony A7IV with 90mm macro. Soft directional window light. Minimal composition — one subject, clean background. Warm neutral palette.
+2. native-closeup: Close-up phone photo with shallow depth of field. A pillow's memory foam texture with a thumb pressing into it, the tag on a pillow showing the brand, the zipper detail on a pillow cover, someone's neck/shoulder from behind resting on a pillow. iPhone portrait mode bokeh. Natural window light from one side. Slightly warm white balance. Imperfect framing — subject slightly off-center.
 
-3. scene: Environmental context photography. Wider establishing shots — a tidy bedroom at dawn, a bathroom shelf with neatly arranged products, a reading nook with a pillow and blanket, a bright kitchen counter with morning light. Natural light from a specific direction (e.g., "warm light from a left-side window"). Light grain, slightly desaturated. Think Kinfolk magazine aesthetic.
+TOPIC-SPECIFIC RULES:
+- For PILLOW articles: Show actual SLEEPING pillows — ergonomic shapes, memory foam contours, cervical support curves. NEVER show decorative throw pillows, couch cushions, or accent pillows. These are functional sleep pillows on beds.
+- For SLEEP articles: Real bedrooms, actual sleeping situations, alarm clocks, morning light
+- For COLLAGEN articles: Liquid supplement bottles on a bathroom counter, someone holding a supplement glass, kitchen counter morning routines
+- For HAIR/SKIN articles: Natural close-ups of skin texture, hair texture, bathroom mirrors
 
 CRITICAL — NEVER generate:
-- Medical/clinical imagery (no cross-sections, CT scans, anatomy, blood, wounds, rashes, skin conditions)
-- Messy, dirty, or unpleasant scenes (no stains, crumpled tissues, cluttered spaces)
-- Anything gross, disturbing, or uncomfortable to look at
-- Generic stock photo compositions (posed people smiling at camera, thumbs up)
-- Dark or gloomy lighting
+- Decorative throw pillows or couch cushions (these are NOT sleep pillows)
+- Medical/clinical imagery (no anatomy, blood, wounds)
+- Generic stock photo compositions (no posed smiling people)
+- Overly polished or studio-lit scenes
+- Perfect symmetrical compositions
 
 RULES:
 - Prompts must be 80-120 words with specific visual detail
-- Always name the light SOURCE and direction ("warm morning light from a right-side window")
-- Include 1 texture keyword per prompt (linen, cotton, wood grain, marble, etc.)
-- Warm, calming color palette — Scandinavian minimalism
-- NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional lighting", "high quality"
+- Always specify "shot on iPhone" or "phone camera" aesthetic
+- Include 1 imperfection per prompt (slightly crooked angle, edge of frame cut off, shadow from photographer's hand, etc.)
+- Muted, slightly warm color palette — real indoor lighting
+- NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional"
 - All images are 16:9 LANDSCAPE format — compose horizontally
-- No text overlays, no brand names, no logos, no people's faces
+- No text overlays, no brand names, no logos
 - Each image must illustrate a DIFFERENT aspect of the article
-- End each prompt with: "Editorial lifestyle photography, Scandinavian aesthetic."
+- End each prompt with: "iPhone photo, candid, natural light."
 
 Output ONLY a JSON array, no markdown fences:
-[{"index": 0, "prompt": "...", "style": "editorial"}]`;
+[{"index": 0, "prompt": "...", "style": "native-messy"}]`;
 
 async function generateImagePrompts(
   placeholders: PlaceholderImage[],
@@ -201,10 +191,15 @@ ${imageDescriptions}`;
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
+export interface GenerateBlogImagesExtendedOptions extends GenerateBlogImagesOptions {
+  /** Product slug — if provided, uses asset bank images for hero */
+  productSlug?: string;
+}
+
 export async function generateBlogImages(
-  opts: GenerateBlogImagesOptions
+  opts: GenerateBlogImagesExtendedOptions
 ): Promise<BlogImageResult> {
-  const { articleTitle, primaryKeyword, contentBrief, category, articleHtml, slug } = opts;
+  const { articleTitle, primaryKeyword, contentBrief, category, articleHtml, slug, productSlug } = opts;
 
   // Step 1: Find placeholders
   const placeholders = findPlaceholderImages(articleHtml);
@@ -215,9 +210,40 @@ export async function generateBlogImages(
 
   console.log(`[blog-images] Found ${placeholders.length} placeholder images`);
 
-  // Step 2: Generate prompts via Claude Haiku
+  // Step 1b: Try to use asset bank images for hero image (our own product)
+  const urlMap: Record<string, string> = {};
+  let assetBankUsed = 0;
+  const remainingPlaceholders: PlaceholderImage[] = [];
+
+  if (productSlug) {
+    const assetUrls = await getAssetBankImages(productSlug, placeholders.length);
+    if (assetUrls.length > 0) {
+      // Use asset bank images for as many placeholders as we have assets
+      for (let i = 0; i < placeholders.length; i++) {
+        if (i < assetUrls.length) {
+          urlMap[placeholders[i].originalUrl] = assetUrls[i];
+          assetBankUsed++;
+          console.log(`[blog-images] Image ${i}: Using asset bank image`);
+        } else {
+          remainingPlaceholders.push(placeholders[i]);
+        }
+      }
+    } else {
+      remainingPlaceholders.push(...placeholders);
+    }
+  } else {
+    remainingPlaceholders.push(...placeholders);
+  }
+
+  // If all placeholders filled from asset bank, we're done (no AI generation cost)
+  if (remainingPlaceholders.length === 0) {
+    console.log(`[blog-images] All ${assetBankUsed} images from asset bank (free)`);
+    return { urlMap, generated: assetBankUsed, failed: 0, costUsd: 0 };
+  }
+
+  // Step 2: Generate prompts via Claude Haiku for remaining placeholders
   const { prompts, cost: haikuCost } = await generateImagePrompts(
-    placeholders,
+    remainingPlaceholders,
     articleTitle,
     primaryKeyword,
     category,
@@ -228,17 +254,16 @@ export async function generateBlogImages(
 
   // Step 3: Generate images in parallel
   const db = createServerSupabase();
-  const urlMap: Record<string, string> = {};
-  let generated = 0;
+  let generated = assetBankUsed;
   let failed = 0;
   let totalImageCost = 0;
 
   const settled = await Promise.allSettled(
     prompts.map(async (imgPrompt) => {
-      const placeholder = placeholders[imgPrompt.index];
+      const placeholder = remainingPlaceholders[imgPrompt.index];
       if (!placeholder) return;
 
-      const label = `[blog-images] Image ${imgPrompt.index}`;
+      const label = `[blog-images] Image ${placeholder.index}`;
       console.log(`${label}: Generating (style: ${imgPrompt.style})...`);
 
       // Generate via Kie AI — 16:9 landscape
@@ -256,7 +281,7 @@ export async function generateBlogImages(
       const buffer = Buffer.from(await imageRes.arrayBuffer());
 
       // Upload to Supabase storage
-      const filePath = `blog/${slug}/${imgPrompt.index}.png`;
+      const filePath = `blog/${slug}/${placeholder.index}.png`;
       const { error: uploadError } = await db.storage
         .from(STORAGE_BUCKET)
         .upload(filePath, buffer, { contentType: "image/png", upsert: true });
@@ -276,7 +301,7 @@ export async function generateBlogImages(
         cost_usd: KIE_IMAGE_COST,
         metadata: {
           slug,
-          image_index: imgPrompt.index,
+          image_index: placeholder.index,
           style: imgPrompt.style,
           prompt: imgPrompt.prompt.slice(0, 200),
         },
@@ -297,16 +322,18 @@ export async function generateBlogImages(
     }
   }
 
-  // Log Haiku prompt cost
-  await db.from("usage_logs").insert({
-    type: "blog_image_prompt",
-    model: "claude-haiku",
-    cost_usd: haikuCost,
-    metadata: { slug, prompt_count: prompts.length },
-  });
+  // Log Haiku prompt cost (only if we actually used Haiku)
+  if (prompts.length > 0) {
+    await db.from("usage_logs").insert({
+      type: "blog_image_prompt",
+      model: "claude-haiku",
+      cost_usd: haikuCost,
+      metadata: { slug, prompt_count: prompts.length, asset_bank_used: assetBankUsed },
+    });
+  }
 
   const totalCost = totalImageCost + haikuCost;
-  console.log(`[blog-images] Done: ${generated} generated, ${failed} failed, cost: $${totalCost.toFixed(4)}`);
+  console.log(`[blog-images] Done: ${generated} generated (${assetBankUsed} from asset bank), ${failed} failed, cost: $${totalCost.toFixed(4)}`);
 
   return { urlMap, generated, failed, costUsd: totalCost };
 }
@@ -374,4 +401,50 @@ export async function injectProductImage(
 
   const productImgTag = `<img class="product-img" src="${imageUrl}" alt="${product.name}">\n    `;
   return html.slice(0, ctaIndex) + productImgTag + html.slice(ctaIndex);
+}
+
+// ---------------------------------------------------------------------------
+// Get asset bank images for own product (lifestyle/product/model categories)
+// Used as hero + section images instead of AI-generated ones
+// ---------------------------------------------------------------------------
+
+export async function getAssetBankImages(
+  productSlug: string,
+  count: number
+): Promise<string[]> {
+  const db = createServerSupabase();
+
+  // Get lifestyle and product images from the asset bank
+  const { data: assets } = await db
+    .from("assets")
+    .select("url, category")
+    .eq("product", productSlug)
+    .in("category", ["lifestyle", "product", "model"])
+    .limit(count * 3); // Fetch extra to have variety
+
+  if (!assets?.length) {
+    console.log(`[blog-images] No asset bank images for "${productSlug}"`);
+    return [];
+  }
+
+  // Prioritize: lifestyle first (most editorial), then product, then model
+  const prioritized = [
+    ...assets.filter((a) => a.category === "lifestyle"),
+    ...assets.filter((a) => a.category === "product"),
+    ...assets.filter((a) => a.category === "model"),
+  ];
+
+  // Shuffle within each priority group for variety between articles
+  const shuffled = shuffleArray(prioritized);
+
+  return shuffled.slice(0, count).map((a) => a.url);
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
