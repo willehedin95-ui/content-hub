@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   const language = (settings.blog_language as Language) || languageMap[wsSlug] || "sv";
 
   try {
-    const result = await runBlogAutopilot(workspace.id, language);
+    const result = await runBlogAutopilot(workspace.id, language, { force });
 
     return NextResponse.json({
       ok: true,

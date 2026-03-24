@@ -321,24 +321,27 @@ interface AutopilotResult {
  */
 export async function runBlogAutopilot(
   workspaceId: string,
-  language: Language = "sv"
+  language: Language = "sv",
+  opts?: { force?: boolean }
 ): Promise<AutopilotResult> {
   const db = createServerSupabase();
 
-  // Check rate: max 1 article per day
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { count: recentCount } = await db
-    .from("pages")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId)
-    .eq("content_type", "seo_blog")
-    .gte("created_at", oneDayAgo);
+  // Check rate: max 1 article per day (skip with force)
+  if (!opts?.force) {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: recentCount } = await db
+      .from("pages")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("content_type", "seo_blog")
+      .gte("created_at", oneDayAgo);
 
-  if ((recentCount ?? 0) >= 1) {
-    return {
-      action: "skipped",
-      message: "Already published a blog article today. Max 1/day.",
-    };
+    if ((recentCount ?? 0) >= 1) {
+      return {
+        action: "skipped",
+        message: "Already published a blog article today. Max 1/day.",
+      };
+    }
   }
 
   // Find next article to write
