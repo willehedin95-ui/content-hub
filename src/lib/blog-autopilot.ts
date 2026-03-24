@@ -248,7 +248,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     productSlug: "hydro13",
     internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
   },
-  // --- Articles 16-20: Google Ads keyword gap coverage ---
+  // --- Articles 16-18: Google Ads keyword gap coverage (HappySleep + Hydro13 only) ---
   {
     order: 16,
     slug: "sluta-snarka",
@@ -264,32 +264,6 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
   },
   {
     order: 17,
-    slug: "siden-orngott-bast-i-test",
-    title: "Sidenörngott bäst i test 2026 — Expertens val",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "siden örngott",
-    secondaryKeywords: ["sidenörngott bäst i test", "bästa sidenörngottet", "silke örngott", "mulberry silk pillowcase"],
-    wordCount: "2500-3500",
-    contentBrief: `Product roundup of silk pillowcases. Why silk: less friction = less frizz/breakage (Draelos 2011), less moisture absorption than cotton = better for skin hydration, hypoallergenic, temperature regulating. Compare 6-8 brands including HappySleep sidenörngott. Grading criteria: momme weight (19-25mm ideal), silk type (Mulberry Grade 6A best), closure type, certifications (OEKO-TEX), price per use, care difficulty. Comparison table. Honest reviews — note cheaper options too. MONEY PAGE for HappySleep silk pillowcase. Mention that a silk pillowcase + ergonomic pillow = the complete sleep setup. This keyword cluster has ~26K SEK/mo Google Ads spend.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "somn-och-hudhalsa", "tvatta-kudde"],
-  },
-  {
-    order: 18,
-    slug: "sovmask-bast-i-test",
-    title: "Sovmask bäst i test 2026 — Vi testar 10 sovmasker",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "sovmask bäst i test",
-    secondaryKeywords: ["bästa sovmasken", "sovmask", "sovmask silke", "sleep mask"],
-    wordCount: "2500-3000",
-    contentBrief: `Product roundup of sleep masks. Why light-blocking matters: melatonin suppression from even small light exposure (Harvard study on blue light), shift workers, summer light in Scandinavia. Test criteria: blackout effectiveness, comfort (pressure on eyes), material (silk vs foam vs cotton), strap design, weight, breathability, durability, travel-friendliness. Compare 10 masks including HappySleep sovmask. Comparison table with scores. Mention silk masks for beauty benefits (less eye wrinkle friction). MONEY PAGE for HappySleep sleep mask. ~8K SEK/mo Google Ads spend on this cluster.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "somn-och-halsa", "siden-orngott-bast-i-test"],
-  },
-  {
-    order: 19,
     slug: "ergonomisk-kudde-bast-i-test",
     title: "Ergonomisk kudde bäst i test 2026 — Test & guide",
     category: "Bäst i test",
@@ -302,7 +276,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten", "kudde-for-sidosovare"],
   },
   {
-    order: 20,
+    order: 18,
     slug: "basta-kollagen-mot-rynkor",
     title: "Bästa kollagen mot rynkor 2026 — Test & jämförelse",
     category: "Bäst i test",
