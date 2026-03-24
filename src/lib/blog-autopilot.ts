@@ -410,7 +410,13 @@ export async function runBlogAutopilot(
   const { data: page, error: pageError } = await db
     .from("pages")
     .insert({
+      name: nextArticle.title,
       slug: nextArticle.slug,
+      product: nextArticle.productSlug,
+      page_type: "blog",
+      source_url: "",
+      original_html: finalHtml,
+      source_language: language,
       workspace_id: workspaceId,
       content_type: "seo_blog",
       blog_category: nextArticle.category,
@@ -435,7 +441,6 @@ export async function runBlogAutopilot(
       seo_description: article.seoDescription,
       translated_html: finalHtml,
       status: "draft",
-      workspace_id: workspaceId,
     })
     .select("id, created_at")
     .single();
