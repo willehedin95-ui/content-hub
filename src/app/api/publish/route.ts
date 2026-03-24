@@ -207,6 +207,7 @@ async function doPublish(
       metaPixelId: (appSettings.meta_pixel_id as string) || undefined,
       hubUrl: process.env.APP_URL || undefined,
       excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
+      contentType: pageDataEarly?.content_type || undefined,
     };
 
     // Report progress: deploying to Cloudflare

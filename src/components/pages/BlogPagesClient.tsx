@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, ExternalLink, Globe, FileText, ChevronDown, LayoutTemplate } from "lucide-react";
 import type { Page, Translation, Language, LANGUAGES as LangType } from "@/types";
 import { BLOG_TEMPLATES } from "@/lib/blog-templates";
+import BlogAnalytics from "./BlogAnalytics";
 
 const LANGUAGES: { value: Language; label: string; flag: string }[] = [
   { value: "sv", label: "Swedish", flag: "🇸🇪" },
@@ -72,6 +73,9 @@ export default function BlogPagesClient({ pages }: Props) {
           ))}
         </div>
       )}
+
+      {/* Analytics dashboard */}
+      <BlogAnalytics />
 
       {/* Create new blog article */}
       <div className="space-y-3 mb-6">

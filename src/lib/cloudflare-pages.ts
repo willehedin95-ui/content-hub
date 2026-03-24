@@ -326,6 +326,8 @@ export interface PageAnalyticsConfig {
   hubUrl?: string;
   /** IPs excluded from tracking (baked into page for fast check) */
   excludedIps?: string[];
+  /** Content type — "seo_blog" uses utm_source=blog instead of page */
+  contentType?: string;
 }
 
 /** Meta Pixel — tracks page views and outbound CTA clicks for Meta ad optimization */
@@ -419,7 +421,7 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
 
   // GA4 (with cross-domain linking to Shopify)
   if (config.ga4MeasurementId) {
-    html = injectGA4ScriptBasic(html, config.ga4MeasurementId, config.shopifyDomains);
+    html = injectGA4ScriptBasic(html, config.ga4MeasurementId, config.shopifyDomains, config.contentType);
   }
 
   // Clarity
@@ -439,7 +441,7 @@ function injectPageAnalytics(html: string, config: PageAnalyticsConfig): string 
 
   // UTM link rewriting
   if (config.shopifyDomains?.length && config.slug) {
-    html = injectUTMRewriterPage(html, config.slug, config.shopifyDomains);
+    html = injectUTMRewriterPage(html, config.slug, config.shopifyDomains, config.contentType);
   }
 
   return html;
@@ -593,11 +595,15 @@ document.addEventListener('click',function(e){
 })();`;
 
 /** GA4 injection for pages */
-function injectGA4ScriptBasic(html: string, measurementId: string, shopifyDomains?: string[]): string {
+function injectGA4ScriptBasic(html: string, measurementId: string, shopifyDomains?: string[], contentType?: string): string {
   if (html.includes('data-cc-ga4="true"')) return html;
   // Cross-domain linker config so GA4 session continues to Shopify
   const linkerConfig = shopifyDomains?.length
     ? `,{linker:{domains:${JSON.stringify(shopifyDomains)},accept_incoming:true}}`
+    : "";
+  // Set content_group dimension for GA4 reports (blog vs landing_page)
+  const contentGroup = contentType === "seo_blog"
+    ? `\ngtag('set',{content_group:'blog'});`
     : "";
   const script = `<!-- GA4 -->
 <script data-cc-ga4="true">
@@ -608,7 +614,7 @@ document.head.appendChild(_gs);
 window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
 window.gtag=gtag;
 gtag('js',new Date());
-gtag('config',${JSON.stringify(measurementId)}${linkerConfig});
+gtag('config',${JSON.stringify(measurementId)}${linkerConfig});${contentGroup}
 ${GA4_ENGAGEMENT_TRACKING}
 }
 </script>`;
@@ -623,10 +629,14 @@ ${GA4_ENGAGEMENT_TRACKING}
 function injectUTMRewriterPage(
   html: string,
   slug: string,
-  shopifyDomains: string[]
+  shopifyDomains: string[],
+  contentType?: string
 ): string {
   if (shopifyDomains.length === 0) return html;
   if (html.includes('data-cc-utm="true"')) return html;
+  const isBlog = contentType === "seo_blog";
+  const defaultSource = isBlog ? "blog" : "page";
+  const defaultMedium = isBlog ? "article" : "landingpage";
   const script = `<script data-cc-utm="true">
 (function(){
   var s=${JSON.stringify(slug)};
@@ -647,8 +657,8 @@ function injectUTMRewriterPage(
           u.searchParams.set('utm_term',s);
         }else{
           // Direct/organic visit — set page-level UTMs
-          u.searchParams.set('utm_source','page');
-          u.searchParams.set('utm_medium','landingpage');
+          u.searchParams.set('utm_source',${JSON.stringify(defaultSource)});
+          u.searchParams.set('utm_medium',${JSON.stringify(defaultMedium)});
           u.searchParams.set('utm_campaign',s);
         }
         a.href=u.toString();
