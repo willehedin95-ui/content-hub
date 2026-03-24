@@ -303,14 +303,31 @@ export async function generateBlogArticle(
   const userPrompt = buildWriterUserPrompt(request, templateHtml);
 
   const client = new Anthropic({ apiKey });
-  const response = await client.messages.create({
+
+  // Use streaming for large articles (required by Anthropic SDK for long requests)
+  let html = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  const stream = client.messages.stream({
     model: CLAUDE_MODEL,
     max_tokens: 32000,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  const html = (response.content[0] as { type: string; text: string }).text;
+  for await (const event of stream) {
+    if (event.type === "content_block_delta") {
+      const delta = event.delta as unknown as { type: string; text?: string };
+      if (delta.type === "text_delta" && delta.text) {
+        html += delta.text;
+      }
+    }
+  }
+
+  const finalMessage = await stream.finalMessage();
+  inputTokens = finalMessage.usage?.input_tokens ?? 0;
+  outputTokens = finalMessage.usage?.output_tokens ?? 0;
 
   // Strip code fences if Claude added them
   const cleanHtml = html
@@ -333,8 +350,6 @@ export async function generateBlogArticle(
       : rawDesc;
 
   // Calculate cost (Sonnet input/output pricing)
-  const inputTokens = response.usage?.input_tokens ?? 0;
-  const outputTokens = response.usage?.output_tokens ?? 0;
   const cost = (inputTokens * 3 + outputTokens * 15) / 1_000_000; // Sonnet 4.5 pricing
 
   return {
