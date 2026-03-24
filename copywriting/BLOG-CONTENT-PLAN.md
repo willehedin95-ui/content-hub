@@ -1,64 +1,16 @@
-# Blog Content Plan — First 15 Articles
+# Blog Content Plan — 18 Articles
 
 Based on SEO research (see `SEO-BLOG-RESEARCH.md`), the launch strategy focuses on establishing topical authority with a pillar + cluster approach across both product verticals (pillows/sleep + marine collagen/beauty).
 
-## Priority: Collagen & Beauty Content
-
-The collagen supplement market is huge but most Swedish content is brand-owned (Oslo Skin Lab, Källa) or thin affiliate pages. Independent, science-backed editorial content that actually compares products honestly is rare. Norwegian and Danish have almost nothing.
-
-### Pillar Article (publish first)
-
-**1. "Kollagentillskott — Komplett guide 2026"** (Science template)
-- Slug: `kollagentillskott-guide`
-- Category: Kollagen & Tillskott
-- Target keywords: kollagentillskott, kollagen tillskott, kollagen hud, kollagen supplement
-- Content: What collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results
-- Word count: 3000-4000
-- Internal links TO: articles 2-5 below
-- YMYL note: Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest", "users report". Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health.
-- **This is the main hub page — everything links back here**
-
-### Cluster Articles (support the pillar)
-
-**2. "Bästa kollagentillskottet 2026 — Test & jämförelse"** (Listicle template)
-- Slug: `basta-kollagentillskottet`
-- Category: Bäst i test
-- Target keywords: bästa kollagentillskottet, kollagen bäst i test, kollagentillskott test
-- Content: Review 6-8 products (Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth). Compare dosage, format, ingredients, price per day. Ranking table.
-- Internal links: → pillar article, → article 3
-- **MONEY PAGE** — Hydro13 wins on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone)
-
-**3. "Funkar kollagentillskott? Vad forskningen visar"** (Science template)
-- Slug: `funkar-kollagentillskott`
-- Category: Forskning
-- Target keywords: funkar kollagen, kollagen forskning, kollagen bluff, kollagentillskott effekt
-- Content: Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion
-- Internal links: → pillar, → article 2
-- Note: Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing.
-
-**4. "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?"** (Comparison template)
-- Slug: `flytande-kollagen-vs-pulver`
-- Category: Jämförelser
-- Target keywords: flytande kollagen, kollagen pulver, kollagen kapslar, kollagen absorption
-- Content: Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price
-- Internal links: → pillar, → article 2
-
-**5. "Kollagen för hud & rynkor — Så fungerar det inifrån"** (Problem-solution template)
-- Slug: `kollagen-for-hud-rynkor`
-- Category: Hudvård inifrån
-- Target keywords: kollagen hud, kollagen rynkor, hudvård inifrån, kollagen anti-aging
-- Content: How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13)
-- Internal links: → pillar, → article 2, → article 3
+> **Current strategy**: HappySleep articles publish first (1-10). Collagen/Hydro13 articles (11-18) are **deferred** until the Renew brand (get-renew.com) Shopify store is live. Once ready, remove `hydro13` from `DEFERRED_PRODUCT_SLUGS` in `blog-autopilot.ts` and update product URLs.
 
 ---
 
-## Priority: Sleep/Pillow Content (Supporting Authority)
-
-Sleep is more competitive but essential for HappySleep's brand. Long-tail keywords work well here.
+## Phase 1: HappySleep / Sleep Content (Articles 1-10) — ACTIVE
 
 ### Pillar Article
 
-**6. "Bästa kudden 2026 — Test av 12 kuddar"** (Listicle template)
+**1. "Bästa kudden 2026 — Test av 12 kuddar"** (Listicle template)
 - Slug: `basta-kudden`
 - Category: Bäst i test
 - Target keywords: bästa kudden, bästa kudden 2026, kudde bäst i test
@@ -68,130 +20,167 @@ Sleep is more competitive but essential for HappySleep's brand. Long-tail keywor
 
 ### Cluster Articles
 
-**7. "Kudde för sidosovare — Guide & rekommendationer"** (Buying guide template)
+**2. "Kudde för sidosovare — Guide & rekommendationer"** (Buying guide template)
 - Slug: `kudde-for-sidosovare`
 - Category: Köpguider
 - Target keywords: kudde sidosovare, bästa kudden för sidosovare, sidosovarkudde
-- Internal links: → pillar (article 6), → article 9
+- Internal links: → pillar (article 1), → article 3
 
-**8. "Nacksmärta på natten — Orsaker & lösningar"** (Problem-solution template)
+**3. "Nacksmärta på natten — Orsaker & lösningar"** (Problem-solution template)
 - Slug: `nacksmarta-pa-natten`
 - Category: Sömnproblem
 - Target keywords: nacksmärta på natten, nackvärk kudde, ont i nacken sömn
-- Internal links: → pillar, → article 7, → article 9
+- Internal links: → pillar, → article 2
 
-**9. "Minnesskum vs latex kudde — Vilken passar dig?"** (Comparison template)
+**4. "Minnesskum vs latex kudde — Vilken passar dig?"** (Comparison template)
 - Slug: `minnesskum-vs-latex-kudde`
 - Category: Jämförelser
 - Target keywords: minnesskum kudde, latex kudde, minnesskum vs latex
-- Internal links: → pillar, → article 7
+- Internal links: → pillar, → article 2
 
-**10. "Hur ofta ska man byta kudde? (Expertguide)"** (How-to template)
+**5. "Hur ofta ska man byta kudde? (Expertguide)"** (How-to template)
 - Slug: `hur-ofta-byta-kudde`
 - Category: Skötselguider
 - Target keywords: byta kudde hur ofta, kudde livslängd, när byta kudde
-- Internal links: → pillar, → article 11
+- Internal links: → pillar, → article 6
 
-**11. "Tvätta kudde — Steg-för-steg-guide"** (How-to template)
+**6. "Tvätta kudde — Steg-för-steg-guide"** (How-to template)
 - Slug: `tvatta-kudde`
 - Category: Skötselguider
 - Target keywords: tvätta kudde, tvätta minnesskumskudde, kudde tvättmaskin
-- Internal links: → pillar, → article 10
+- Internal links: → pillar, → article 5
 
----
-
-## Cross-Topic Authority Builders
-
-**12. "Sömn och hälsa — Så påverkar sömnen din kropp"** (Science template)
+**7. "Sömn och hälsa — Så påverkar sömnen din kropp"** (Science template)
 - Slug: `somn-och-halsa`
 - Category: Forskning
 - Target keywords: sömn hälsa, sömnbrist konsekvenser, varför sömn är viktigt
-- Internal links: → both pillars (articles 1 + 6)
-- Note: Broad authority builder. Include section on how sleep affects skin/collagen production (bridges both verticals naturally).
+- Internal links: → pillar (article 1), → article 8
+- Note: Broad authority builder. Bridges both verticals (sleep + skin/collagen production).
 
-**13. "Sömn och hudhälsa — Varför skönhetssömn fungerar"** (Science template)
-- Slug: `somn-och-hudhalsa`
-- Category: Hudvård inifrån
-- Target keywords: skönhetssömn, sömn hud, sömn rynkor, sova bättre hud
-- Internal links: → article 1 (kollagen), → article 6 (kudde), → article 5 (hud)
-- Note: Perfect bridge between both products — good sleep (HappySleep pillow) + collagen (Hydro13) = the complete approach
-
-**14. "Sovställningar — Guide till hur du sover bäst"** (Problem-solution template)
+**8. "Sovställningar — Guide till hur du sover bäst"** (Problem-solution template)
 - Slug: `sovstallningar`
 - Category: Sov Bättre
 - Target keywords: bästa sovställningen, sova på sidan, sovställning rygg
-- Internal links: → article 7 (sidosovare), → pillar 6
+- Internal links: → article 2 (sidosovare), → pillar
 
-**15. "Kollagen för hår & naglar — Fungerar det?"** (Problem-solution template)
-- Slug: `kollagen-for-har-naglar`
-- Category: Hår & Naglar
-- Target keywords: kollagen hår, kollagen naglar, tillskott för hår, biotin kollagen
-- Internal links: → article 1 (kollagen pillar), → article 2 (bäst i test)
-- Note: Secondary Hydro13 angle (hair & nails). Many women discover this as a bonus. Include testimonials about hair thickness and nail strength.
+### Google Ads Keyword Gap (HappySleep)
 
----
-
-## Google Ads Keyword Gap Coverage (Articles 16-18)
-
-These articles target high-spend Google Ads keyword clusters (HappySleep pillow + Hydro13 collagen only) that had zero blog coverage. Silk pillowcase, sleep mask, and insoles deferred for now.
-
-**16. "Sluta snarka — 8 bevisade metoder som fungerar 2026"** (Listicle template)
+**9. "Sluta snarka — 8 bevisade metoder som fungerar 2026"** (Listicle template)
 - Slug: `sluta-snarka`
 - Category: Sömnproblem
 - Target keywords: sluta snarka, bästa mot snarkning, snarkning, anti snark
 - Google Ads spend: ~15K SEK/month
 - Content: Why people snore, when it's dangerous (sleep apnea signs → 1177.se), 8 evidence-based methods ranked. Pillow elevation angle → HappySleep placement.
-- Internal links: → article 6 (bästa kudden), → article 14 (sovställningar), → article 12 (sömn & hälsa)
+- Internal links: → pillar, → article 8 (sovställningar), → article 7 (sömn & hälsa)
 
-**17. "Ergonomisk kudde bäst i test 2026 — Test & guide"** (Buying guide template)
+**10. "Ergonomisk kudde bäst i test 2026 — Test & guide"** (Buying guide template)
 - Slug: `ergonomisk-kudde-bast-i-test`
 - Category: Bäst i test
 - Target keywords: ergonomisk kudde bäst i test, ergonomisk kudde, nackstöd bäst i test
 - Google Ads spend: heavy (part of 80K SEK/month pillow cluster)
 - Content: Focused on ergonomic/cervical pillows specifically (different from general "bästa kudden"). Medical perspective, test 8-10 products. **MONEY PAGE**.
-- Internal links: → article 6 (bästa kudden), → article 8 (nacksmärta), → article 7 (sidosovare)
+- Internal links: → pillar, → article 3 (nacksmärta), → article 2 (sidosovare)
+
+---
+
+## Phase 2: Collagen / Hydro13 Content (Articles 11-18) — DEFERRED
+
+> Waiting for Renew brand (get-renew.com) Shopify store to go live. Product URLs will change from SwedishBalance to get-renew.com.
+
+### Pillar Article
+
+**11. "Kollagentillskott — Komplett guide 2026"** (Science template)
+- Slug: `kollagentillskott-guide`
+- Category: Kollagen & Tillskott
+- Target keywords: kollagentillskott, kollagen tillskott, kollagen hud, kollagen supplement
+- Content: What collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results
+- Word count: 3000-4000
+- Internal links TO: articles 12-15 below
+- YMYL note: Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest", "users report". Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health.
+- **This is the main hub page — everything collagen links back here**
+
+### Cluster Articles
+
+**12. "Bästa kollagentillskottet 2026 — Test & jämförelse"** (Listicle template)
+- Slug: `basta-kollagentillskottet`
+- Category: Bäst i test
+- Target keywords: bästa kollagentillskottet, kollagen bäst i test, kollagentillskott test
+- Content: Review 6-8 products (Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth). Compare dosage, format, ingredients, price per day. Ranking table.
+- Internal links: → pillar article, → article 13
+- **MONEY PAGE** — Hydro13 wins on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone)
+
+**13. "Funkar kollagentillskott? Vad forskningen visar"** (Science template)
+- Slug: `funkar-kollagentillskott`
+- Category: Forskning
+- Target keywords: funkar kollagen, kollagen forskning, kollagen bluff, kollagentillskott effekt
+- Content: Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion
+- Internal links: → pillar, → article 12
+- Note: Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing.
+
+**14. "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?"** (Comparison template)
+- Slug: `flytande-kollagen-vs-pulver`
+- Category: Jämförelser
+- Target keywords: flytande kollagen, kollagen pulver, kollagen kapslar, kollagen absorption
+- Content: Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price
+- Internal links: → pillar, → article 12
+
+**15. "Kollagen för hud & rynkor — Så fungerar det inifrån"** (Problem-solution template)
+- Slug: `kollagen-for-hud-rynkor`
+- Category: Hudvård inifrån
+- Target keywords: kollagen hud, kollagen rynkor, hudvård inifrån, kollagen anti-aging
+- Content: How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13)
+- Internal links: → pillar, → article 12, → article 13
+
+### Bridge + Secondary Angles
+
+**16. "Sömn och hudhälsa — Varför skönhetssömn fungerar"** (Science template)
+- Slug: `somn-och-hudhalsa`
+- Category: Hudvård inifrån
+- Target keywords: skönhetssömn, sömn hud, sömn rynkor, sova bättre hud
+- Internal links: → article 11 (kollagen), → article 1 (kudde), → article 15 (hud)
+- Note: Perfect bridge between both products — good sleep (HappySleep pillow) + collagen (Hydro13) = the complete approach
+
+**17. "Kollagen för hår & naglar — Fungerar det?"** (Problem-solution template)
+- Slug: `kollagen-for-har-naglar`
+- Category: Hår & Naglar
+- Target keywords: kollagen hår, kollagen naglar, tillskott för hår, biotin kollagen
+- Internal links: → article 11 (kollagen pillar), → article 12 (bäst i test)
+- Note: Secondary Hydro13 angle (hair & nails). Many women discover this as a bonus. Include testimonials about hair thickness and nail strength.
+
+### Google Ads Keyword Gap (Hydro13)
 
 **18. "Bästa kollagen mot rynkor 2026 — Test & jämförelse"** (Listicle template)
 - Slug: `basta-kollagen-mot-rynkor`
 - Category: Bäst i test
 - Target keywords: bästa kollagen mot rynkor, kollagen mot rynkor, anti-aging kollagen
 - Google Ads spend: ~22K SEK/month
-- Content: Product comparison specifically for anti-wrinkle collagen. Different from article 5 (science of collagen for skin). Compare 6-8 products by dosage, peptide type, supporting ingredients. **MONEY PAGE** for Hydro13.
-- Internal links: → article 1 (kollagen guide), → article 2 (bästa kollagentillskottet), → article 5 (kollagen hud)
+- Content: Product comparison specifically for anti-wrinkle collagen. Different from article 15 (science of collagen for skin). Compare 6-8 products by dosage, peptide type, supporting ingredients. **MONEY PAGE** for Hydro13.
+- Internal links: → article 11 (kollagen guide), → article 12 (bästa kollagentillskottet), → article 15 (kollagen hud)
 
 ---
 
 ## Publishing Schedule
 
-### Week 1: Foundation (collagen pillar + cluster)
-- Day 1: Article 1 (Kollagentillskott guide — pillar)
-- Day 3: Article 2 (Bästa kollagentillskottet — money page)
-- Day 5: Article 3 (Funkar kollagentillskott)
+### Phase 1: HappySleep articles (1 per day, ~2 weeks)
 
-### Week 2: Collagen depth + sleep start
-- Day 1: Article 4 (Flytande vs pulver vs kapslar)
-- Day 3: Article 5 (Kollagen för hud & rynkor)
-- Day 5: Article 6 (Bästa kudden — pillar)
+Autopilot publishes articles in order 1→10. One article per day.
 
-### Week 3: Sleep cluster
-- Day 1: Article 7 (Kudde sidosovare)
-- Day 3: Article 8 (Nacksmärta)
-- Day 5: Article 9 (Minnesskum vs latex)
+| Day | Article | Type |
+|-----|---------|------|
+| 1 | Bästa kudden (pillar, MONEY PAGE) | Listicle |
+| 2 | Kudde för sidosovare | Buying guide |
+| 3 | Nacksmärta på natten | Problem-solution |
+| 4 | Minnesskum vs latex | Comparison |
+| 5 | Hur ofta byta kudde | How-to |
+| 6 | Tvätta kudde | How-to |
+| 7 | Sömn och hälsa | Science |
+| 8 | Sovställningar | Problem-solution |
+| 9 | Sluta snarka (Google Ads gap) | Listicle |
+| 10 | Ergonomisk kudde bäst i test (MONEY PAGE) | Buying guide |
 
-### Week 4: Supporting + care guides
-- Day 1: Article 10 (Hur ofta byta kudde)
-- Day 3: Article 11 (Tvätta kudde)
-- Day 5: Article 12 (Sömn och hälsa)
+### Phase 2: Collagen articles (after Renew launch)
 
-### Week 5: Bridge + secondary angles
-- Day 1: Article 13 (Sömn och hudhälsa)
-- Day 3: Article 14 (Sovställningar)
-- Day 5: Article 15 (Kollagen för hår & naglar)
-
-### Week 6: Google Ads keyword gap coverage (MONEY PAGES)
-- Day 1: Article 16 (Sluta snarka — 15K SEK/mo ads spend)
-- Day 3: Article 17 (Ergonomisk kudde bäst i test — top pillow keyword)
-- Day 5: Article 18 (Bästa kollagen mot rynkor — 22K SEK/mo ads spend)
+Same cadence: 1 per day, articles 11→18.
 
 ## Translation Strategy
 
@@ -205,8 +194,8 @@ These articles target high-spend Google Ads keyword clusters (HappySleep pillow 
 - Every article links back to its pillar
 - Every article links to 2-3 sibling articles in the same cluster
 - Pillar articles link down to all their cluster articles
-- Cross-topic articles (12-15) bridge both pillars
-- All "bäst i test" articles include CTA to product page (SwedishBalance.se for Hydro13, HappySleep.se for pillows)
+- Cross-topic articles (7, 16) bridge both pillars
+- All "bäst i test" articles include CTA to product page (get-renew.com for Hydro13, HappySleep.se for pillows)
 - Use descriptive anchor text (not "click here")
 
 ## Content Quality Checklist

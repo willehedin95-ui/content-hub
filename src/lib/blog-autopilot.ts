@@ -53,74 +53,18 @@ interface ContentPlanArticle {
   internalLinkSlugs: string[];
 }
 
+// Collagen/Hydro13 articles are deferred until the Renew brand (get-renew.com)
+// Shopify store is live. Currently only HappySleep articles are published.
+// To re-enable collagen articles: remove the "deferred" flag below and update
+// product URLs from SwedishBalance to get-renew.com.
+const DEFERRED_PRODUCT_SLUGS = ["hydro13"];
+
 const CONTENT_PLAN: ContentPlanArticle[] = [
+  // =====================================================================
+  // HappySleep articles (publish now) — orders 1-10
+  // =====================================================================
   {
     order: 1,
-    slug: "kollagentillskott-guide",
-    title: "Kollagentillskott — Komplett guide 2026",
-    category: "Kollagen & Tillskott",
-    templateId: "science",
-    primaryKeyword: "kollagentillskott",
-    secondaryKeywords: ["kollagen tillskott", "kollagen hud", "kollagen supplement"],
-    wordCount: "3000-4000",
-    contentBrief: `Comprehensive pillar article about collagen supplements. Cover: what collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results. Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest" language. Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health. This is the main hub page — everything links back here.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["basta-kollagentillskottet", "funkar-kollagentillskott", "flytande-kollagen-vs-pulver", "kollagen-for-hud-rynkor"],
-  },
-  {
-    order: 2,
-    slug: "basta-kollagentillskottet",
-    title: "Bästa kollagentillskottet 2026 — Test & jämförelse",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "bästa kollagentillskottet",
-    secondaryKeywords: ["kollagen bäst i test", "kollagentillskott test"],
-    wordCount: "3000-4000",
-    contentBrief: `Product roundup/listicle reviewing 6-8 collagen supplements: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth. Compare dosage, format (liquid vs powder vs capsule), ingredients, price per day. Create ranking table. Hydro13 should win on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone). Be genuinely honest about competitors — give them fair ratings. This is a MONEY PAGE.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "funkar-kollagentillskott"],
-  },
-  {
-    order: 3,
-    slug: "funkar-kollagentillskott",
-    title: "Funkar kollagentillskott? Vad forskningen visar",
-    category: "Forskning",
-    templateId: "science",
-    primaryKeyword: "funkar kollagen",
-    secondaryKeywords: ["kollagen forskning", "kollagen bluff", "kollagentillskott effekt"],
-    wordCount: "2500-3500",
-    contentBrief: `Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion. Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing. Cite Proksch et al., Borumand & Sibilla 2015, Hexsel et al.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  {
-    order: 4,
-    slug: "flytande-kollagen-vs-pulver",
-    title: "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?",
-    category: "Jämförelser",
-    templateId: "comparison",
-    primaryKeyword: "flytande kollagen",
-    secondaryKeywords: ["kollagen pulver", "kollagen kapslar", "kollagen absorption"],
-    wordCount: "2000-3000",
-    contentBrief: `Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price. Create comparison table. Liquid format wins on absorption and convenience. Mention that most studies use hydrolyzed collagen peptides, which is what liquid and powder forms typically contain.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  {
-    order: 5,
-    slug: "kollagen-for-hud-rynkor",
-    title: "Kollagen för hud & rynkor — Så fungerar det inifrån",
-    category: "Hudvård inifrån",
-    templateId: "problem-solution",
-    primaryKeyword: "kollagen hud",
-    secondaryKeywords: ["kollagen rynkor", "hudvård inifrån", "kollagen anti-aging"],
-    wordCount: "2500-3500",
-    contentBrief: `How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts to produce new collagen, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13). Focus on the science but make it accessible.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "funkar-kollagentillskott"],
-  },
-  {
-    order: 6,
     slug: "basta-kudden",
     title: "Bästa kudden 2026 — Test av 12 kuddar",
     category: "Bäst i test",
@@ -133,7 +77,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["kudde-for-sidosovare", "nacksmarta-pa-natten", "minnesskum-vs-latex-kudde"],
   },
   {
-    order: 7,
+    order: 2,
     slug: "kudde-for-sidosovare",
     title: "Kudde för sidosovare — Guide & rekommendationer 2026",
     category: "Köpguider",
@@ -146,7 +90,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten"],
   },
   {
-    order: 8,
+    order: 3,
     slug: "nacksmarta-pa-natten",
     title: "Nacksmärta på natten — Orsaker & lösningar",
     category: "Sömnproblem",
@@ -159,7 +103,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
   },
   {
-    order: 9,
+    order: 4,
     slug: "minnesskum-vs-latex-kudde",
     title: "Minnesskum vs latex kudde — Vilken passar dig?",
     category: "Jämförelser",
@@ -172,7 +116,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
   },
   {
-    order: 10,
+    order: 5,
     slug: "hur-ofta-byta-kudde",
     title: "Hur ofta ska man byta kudde? (Expertguide 2026)",
     category: "Skötselguider",
@@ -185,7 +129,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "tvatta-kudde"],
   },
   {
-    order: 11,
+    order: 6,
     slug: "tvatta-kudde",
     title: "Tvätta kudde — Steg-för-steg-guide",
     category: "Skötselguider",
@@ -198,7 +142,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "hur-ofta-byta-kudde"],
   },
   {
-    order: 12,
+    order: 7,
     slug: "somn-och-halsa",
     title: "Sömn och hälsa — Så påverkar sömnen din kropp 2026",
     category: "Forskning",
@@ -206,25 +150,12 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     primaryKeyword: "sömn hälsa",
     secondaryKeywords: ["sömnbrist konsekvenser", "varför sömn är viktigt"],
     wordCount: "2500-3500",
-    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production (bridges both product verticals). Cite Matthew Walker's "Why We Sleep" research, Swedish sleep studies. Bridge article connecting sleep (HappySleep) and skin/collagen (Hydro13).`,
+    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production (bridges both product verticals). Cite Matthew Walker's "Why We Sleep" research, Swedish sleep studies. Bridge article connecting sleep and skin health.`,
     productSlug: "happysleep",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden"],
+    internalLinkSlugs: ["basta-kudden", "sovstallningar"],
   },
   {
-    order: 13,
-    slug: "somn-och-hudhalsa",
-    title: "Sömn och hudhälsa — Varför skönhetssömn fungerar",
-    category: "Hudvård inifrån",
-    templateId: "science",
-    primaryKeyword: "skönhetssömn",
-    secondaryKeywords: ["sömn hud", "sömn rynkor", "sova bättre hud"],
-    wordCount: "2000-3000",
-    contentBrief: `Perfect bridge article between both products. How sleep quality directly affects skin health: growth hormone release during deep sleep, cortisol/collagen degradation from poor sleep, skin barrier repair overnight. The complete approach: good sleep (HappySleep pillow) + collagen supplement (Hydro13) = maximum results.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden", "kollagen-for-hud-rynkor"],
-  },
-  {
-    order: 14,
+    order: 8,
     slug: "sovstallningar",
     title: "Sovställningar — Guide till hur du sover bäst 2026",
     category: "Sov Bättre",
@@ -237,21 +168,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["kudde-for-sidosovare", "basta-kudden"],
   },
   {
-    order: 15,
-    slug: "kollagen-for-har-naglar",
-    title: "Kollagen för hår & naglar — Fungerar det?",
-    category: "Hår & Naglar",
-    templateId: "problem-solution",
-    primaryKeyword: "kollagen hår",
-    secondaryKeywords: ["kollagen naglar", "tillskott för hår", "biotin kollagen"],
-    wordCount: "2000-2500",
-    contentBrief: `Secondary Hydro13 angle for hair and nails. Scientific evidence for collagen's effect on hair thickness and nail strength. Hexsel et al. 2017 nail study. Proline/glycine as building blocks for keratin. Realistic timeline (2-3 months for nails, 3-6 months for hair). Why Hydro13's formula includes biotin + zinc alongside collagen.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  // --- Articles 16-18: Google Ads keyword gap coverage (HappySleep + Hydro13 only) ---
-  {
-    order: 16,
+    order: 9,
     slug: "sluta-snarka",
     title: "Sluta snarka — 8 bevisade metoder som fungerar 2026",
     category: "Sömnproblem",
@@ -264,7 +181,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     internalLinkSlugs: ["basta-kudden", "sovstallningar", "somn-och-halsa"],
   },
   {
-    order: 17,
+    order: 10,
     slug: "ergonomisk-kudde-bast-i-test",
     title: "Ergonomisk kudde bäst i test 2026 — Test & guide",
     category: "Bäst i test",
@@ -276,6 +193,102 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     productSlug: "happysleep",
     internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten", "kudde-for-sidosovare"],
   },
+
+  // =====================================================================
+  // Collagen/Hydro13 articles (DEFERRED until Renew brand is live)
+  // Orders 11-18 — skipped by pickNextArticle() while hydro13 is deferred
+  // =====================================================================
+  {
+    order: 11,
+    slug: "kollagentillskott-guide",
+    title: "Kollagentillskott — Komplett guide 2026",
+    category: "Kollagen & Tillskott",
+    templateId: "science",
+    primaryKeyword: "kollagentillskott",
+    secondaryKeywords: ["kollagen tillskott", "kollagen hud", "kollagen supplement"],
+    wordCount: "3000-4000",
+    contentBrief: `Pillar article for all collagen content. What collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results. This is the main hub page — everything collagen links back here. YMYL: Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest", "users report". Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["basta-kollagentillskottet", "funkar-kollagentillskott", "flytande-kollagen-vs-pulver", "kollagen-for-hud-rynkor"],
+  },
+  {
+    order: 12,
+    slug: "basta-kollagentillskottet",
+    title: "Bästa kollagentillskottet 2026 — Test & jämförelse",
+    category: "Bäst i test",
+    templateId: "listicle",
+    primaryKeyword: "bästa kollagentillskottet",
+    secondaryKeywords: ["kollagen bäst i test", "kollagentillskott test"],
+    wordCount: "3000-4000",
+    contentBrief: `Review 6-8 collagen products: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth. Compare dosage, format, ingredients, price per day. Ranking table. MONEY PAGE — Hydro13 wins on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone).`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "funkar-kollagentillskott"],
+  },
+  {
+    order: 13,
+    slug: "funkar-kollagentillskott",
+    title: "Funkar kollagentillskott? Vad forskningen visar",
+    category: "Forskning",
+    templateId: "science",
+    primaryKeyword: "funkar kollagen",
+    secondaryKeywords: ["kollagen forskning", "kollagen bluff", "kollagentillskott effekt"],
+    wordCount: "2000-3000",
+    contentBrief: `Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion. Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
+  {
+    order: 14,
+    slug: "flytande-kollagen-vs-pulver",
+    title: "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?",
+    category: "Jämförelser",
+    templateId: "comparison",
+    primaryKeyword: "flytande kollagen",
+    secondaryKeywords: ["kollagen pulver", "kollagen kapslar", "kollagen absorption"],
+    wordCount: "2000-2500",
+    contentBrief: `Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price. Comparison table with pros/cons for each format.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
+  {
+    order: 15,
+    slug: "kollagen-for-hud-rynkor",
+    title: "Kollagen för hud & rynkor — Så fungerar det inifrån",
+    category: "Hudvård inifrån",
+    templateId: "problem-solution",
+    primaryKeyword: "kollagen hud",
+    secondaryKeywords: ["kollagen rynkor", "hudvård inifrån", "kollagen anti-aging"],
+    wordCount: "2000-3000",
+    contentBrief: `How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13).`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "funkar-kollagentillskott"],
+  },
+  {
+    order: 16,
+    slug: "somn-och-hudhalsa",
+    title: "Sömn och hudhälsa — Varför skönhetssömn fungerar",
+    category: "Hudvård inifrån",
+    templateId: "science",
+    primaryKeyword: "skönhetssömn",
+    secondaryKeywords: ["sömn hud", "sömn rynkor", "sova bättre hud"],
+    wordCount: "2000-3000",
+    contentBrief: `Perfect bridge article between both products. How sleep quality directly affects skin health: growth hormone release during deep sleep, cortisol/collagen degradation from poor sleep, skin barrier repair overnight. The complete approach: good sleep (HappySleep pillow) + collagen supplement (Hydro13) = maximum results.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden", "kollagen-for-hud-rynkor"],
+  },
+  {
+    order: 17,
+    slug: "kollagen-for-har-naglar",
+    title: "Kollagen för hår & naglar — Fungerar det?",
+    category: "Hår & Naglar",
+    templateId: "problem-solution",
+    primaryKeyword: "kollagen hår",
+    secondaryKeywords: ["kollagen naglar", "tillskott för hår", "biotin kollagen"],
+    wordCount: "2000-2500",
+    contentBrief: `Secondary Hydro13 angle for hair and nails. Scientific evidence for collagen's effect on hair thickness and nail strength. Hexsel et al. 2017 nail study. Proline/glycine as building blocks for keratin. Realistic timeline (2-3 months for nails, 3-6 months for hair). Why Hydro13's formula includes biotin + zinc alongside collagen.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
   {
     order: 18,
     slug: "basta-kollagen-mot-rynkor",
@@ -285,7 +298,7 @@ const CONTENT_PLAN: ContentPlanArticle[] = [
     primaryKeyword: "bästa kollagen mot rynkor",
     secondaryKeywords: ["kollagen mot rynkor", "kollagentillskott rynkor", "anti-aging kollagen", "kollagen ansikte"],
     wordCount: "2500-3500",
-    contentBrief: `Buyer-intent money page specifically about collagen for wrinkles. Different from article 5 (general "kollagen hud" science article) — this is a product comparison focused on anti-wrinkle results. Review 6-8 products: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Medic Collagen. Compare: collagen dosage, peptide type (hydrolyzed marine vs bovine), supporting ingredients for skin (vitamin C, hyaluronic acid, zinc), clinical evidence per product, price per month. Why Hydro13 wins: 12,500mg marine collagen + hyaluronic acid + vitamin C + 10 more ingredients in ONE liquid shot. Studies: Proksch et al. 2014 (wrinkle reduction at 2.5g/day — imagine 12.5g), Borumand & Sibilla 2015. Include before/after timeline section. MONEY PAGE. ~22K SEK/mo Google Ads spend on this keyword.`,
+    contentBrief: `Buyer-intent money page specifically about collagen for wrinkles. Different from the general "kollagen hud" science article — this is a product comparison focused on anti-wrinkle results. Review 6-8 products: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Medic Collagen. Compare: collagen dosage, peptide type (hydrolyzed marine vs bovine), supporting ingredients for skin (vitamin C, hyaluronic acid, zinc), clinical evidence per product, price per month. Why Hydro13 wins: 12,500mg marine collagen + hyaluronic acid + vitamin C + 10 more ingredients in ONE liquid shot. Studies: Proksch et al. 2014, Borumand & Sibilla 2015. MONEY PAGE. ~22K SEK/mo Google Ads spend on this keyword.`,
     productSlug: "hydro13",
     internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "kollagen-for-hud-rynkor"],
   },
@@ -521,8 +534,9 @@ async function pickNextArticle(
 
   const existingSlugs = new Set((existingPages ?? []).map((p) => p.slug));
 
-  // First: try the content plan (ordered)
+  // First: try the content plan (ordered, skipping deferred products)
   for (const planned of CONTENT_PLAN) {
+    if (DEFERRED_PRODUCT_SLUGS.includes(planned.productSlug)) continue;
     if (!existingSlugs.has(planned.slug)) {
       const blogDomain = getProjectCustomDomain(language) || "";
       return {
