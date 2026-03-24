@@ -491,7 +491,8 @@ holistisk, revolutionerande, banbrytande, game-changer, optimal, transformera, n
 - Every factual claim needs a source: real studies, 1177.se, medical journals
 - IMPORTANT: Only use verified external link URLs from the list above.
 - At least 3 FAQ items in a .faq-item section at the bottom
-- Include a TL;DR box (.tldr class) near the top — each point as a separate <li> inside a <ul>
+- Include a summary box (.tldr class) near the top with heading "Kort sammanfattning" (NOT "TL;DR") — each point as a separate <li> inside a <ul>
+- Wrap ALL <table> elements in <div class="table-wrap">...</div> for mobile scrollability
 - Year "2026" in title and body
 
 ## YMYL Compliance (Health Content)
@@ -533,17 +534,17 @@ ${templateHtml}
 3. All product reviews must use ONLY products from the "Verified Competitor Products" list in your system prompt. NEVER invent product names.
 4. Include at least 3 real source citations with verified URLs from the external links list
 5. FAQ section must have 3-5 real, useful questions and answers
-6. TL;DR box: use a <ul> with <li> items, not a run-on sentence. Be specific.
+6. Summary box: heading must be "Kort sammanfattning" (NOT "TL;DR"). Use a <ul> with <li> items, not a run-on sentence. Be specific.
 7. ALL CTA links and "buy" buttons for our product must point to: ${productUrl}
 8. Word count target: ${request.wordCount}
 9. IMAGES — Include exactly these 3 image placeholders (they will be replaced with AI-generated images). Each MUST have a UNIQUE URL:
-   a. ONE hero image right after the TL;DR box:
+   a. ONE hero image immediately after the H1 heading (before the intro paragraph):
       <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Hero" alt="[descriptive alt text in Swedish]">
    b. FIRST section image (between major sections):
       <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+1" alt="[descriptive alt text in Swedish]">
    c. SECOND section image (between later sections):
       <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+2" alt="[descriptive alt text in Swedish]">
-   CRITICAL: Each placeholder URL must be different (text=Hero, text=Section+1, text=Section+2). Place section images after H2 sections where a visual break would help readability. Alt text must be in Swedish.
+   CRITICAL: Each placeholder URL must be different (text=Hero, text=Section+1, text=Section+2). The hero image MUST be directly after the H1. Place section images after H2 sections where a visual break would help readability. Alt text must be in Swedish.
 10. Write the ENTIRE article in Swedish. No English words except brand names.
 11. If the title says "12 kuddar" but you only have 10 verified products, adjust the title number to match (e.g. "Test av 10 kuddar"). NEVER pad with fabricated products.
 

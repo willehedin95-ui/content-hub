@@ -50,9 +50,11 @@ const sharedStyles = `
     .faq-item { margin: 0 0 20px; }
     .faq-item h3 { margin: 0 0 6px; font-size: 1.05rem; }
     .faq-item p { margin: 0; color: #4b5563; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.9rem; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 20px 0; max-width: 100%; display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 400px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
     th { background: #f9fafb; font-weight: 600; }
+    td:first-child, th:first-child { white-space: normal; }
     .vs-table { margin: 24px 0; }
     .score { display: inline-block; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
     .timeline { border-left: 3px solid #e5e7eb; padding-left: 24px; margin: 24px 0; }
@@ -69,7 +71,21 @@ const sharedStyles = `
     .before-after .label { font-weight: 600; text-align: center; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .before-after .before .label { color: #9ca3af; }
     .before-after .after .label { color: #059669; }
-    @media(max-width: 640px) { .pros-cons { grid-template-columns: 1fr; } .article { padding: 16px; } .before-after { grid-template-columns: 1fr; } }
+    @media(max-width: 640px) {
+      h1 { font-size: 1.45rem; margin: 0 0 8px; }
+      h2 { font-size: 1.2rem; margin: 28px 0 10px; }
+      .intro { font-size: 1rem; margin: 0 0 24px; }
+      .hero-img { border-radius: 8px; margin: 0 0 16px; }
+      .section-img { margin: 20px 0; border-radius: 6px; }
+      .tldr { padding: 12px 16px; margin: 0 0 24px; }
+      .info-box { padding: 12px 16px; margin: 20px 0; }
+      .cta-box { padding: 16px; margin: 24px 0; }
+      .product-card { padding: 16px; }
+      .product-img { max-width: 280px; margin: 24px auto 8px; }
+      .pros-cons { grid-template-columns: 1fr; }
+      .article { padding: 16px; }
+      .before-after { grid-template-columns: 1fr; }
+    }
   </style>
 `;
 
@@ -90,14 +106,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Produktbild" alt="Produktjämförelse">
     <p class="intro">Vi har testat och jämfört de mest populära alternativen på marknaden. Här är våra rekommendationer efter veckor av noggranna tester.</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p>Bäst totalt: <strong>Produkt 1</strong> — bäst kombination av kvalitet och pris. Bäst budget: <strong>Produkt 2</strong>. Bäst premium: <strong>Produkt 3</strong>.</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Produktbild" alt="Produktjämförelse">
 
     <div class="info-box">
       <strong>Så testar vi:</strong> Vi köper alla produkter själva och testar dem under minst 2 veckor innan vi gör vårt omdöme. Ingen tillverkare har inflytande över våra resultat.
@@ -196,14 +211,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Artikelbild" alt="Illustration">
     <p class="intro">Många lider av detta problem utan att veta att det finns enkla lösningar. I den här artikeln går vi igenom orsaker, forskning och konkreta tips som faktiskt fungerar.</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p>Problemet beror oftast på [orsak]. De mest effektiva lösningarna är [lösning 1] och [lösning 2], enligt <a href="#">forskning från [källa]</a>. Sökvård om [varningssignal].</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Artikelbild" alt="Illustration">
 
     <h2>Vad orsakar [problemet]?</h2>
     <p>Beskriv problemet. Hur vanligt är det? Vilka drabbas? Enligt <a href="https://www.1177.se/">1177 Vårdguiden</a> drabbas ungefär X% av befolkningen.</p>
@@ -283,14 +297,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Guidebild" alt="Köpguide">
     <p class="intro">Att välja rätt kan vara svårt med alla alternativ på marknaden. Den här guiden hjälper dig att hitta precis den produkt som passar dina behov.</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p>De viktigaste faktorerna vid val av [produkt] är [faktor 1], [faktor 2] och [faktor 3]. För de flesta rekommenderar vi mellanprissegmentet (XXX–XXX kr).</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Guidebild" alt="Köpguide">
 
     <h2>Vad ska man tänka på vid köp av [produkt]?</h2>
     <ul>
@@ -372,14 +385,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=A+vs+B" alt="Jämförelse">
     <p class="intro">Vilken är bäst — Produkt A eller Produkt B? Vi har testat båda och jämfört dem sida vid sida. Här är vår ärliga bedömning.</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p><strong>Välj Produkt A</strong> om du prioriterar [egenskap]. <strong>Välj Produkt B</strong> om du prioriterar [egenskap]. För de flesta rekommenderar vi Produkt X.</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=A+vs+B" alt="Jämförelse">
 
     <h2>Hur skiljer sig Produkt A från Produkt B?</h2>
     <table class="vs-table">
@@ -457,14 +469,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Forskning" alt="Forskning">
     <p class="intro">Vad säger egentligen forskningen? Vi har gått igenom de senaste studierna och sammanfattar vad vetenskapen visar — utan överdrifter.</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p>Forskningen visar att [huvudslutsats]. Evidensnivån är [stark/måttlig/svag] baserat på [antal studier]. Den viktigaste insikten: [insikt].</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Forskning" alt="Forskning">
 
     <div class="info-box">
       <strong>Vetenskaplig artikel:</strong> Denna artikel sammanfattar publicerade studier. Vi refererar till originalkällorna så att du kan verifiera informationen själv. Artikeln är inte medicinsk rådgivning.
@@ -546,14 +557,13 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
+    <img class="hero-img" src="https://placehold.co/1200x675/f5f3ff/a78bfa?text=Resultat" alt="Resultat och upplevelser">
     <p class="intro">En ärlig genomgång av resultat och upplevelser — vecka för vecka. Vad kan man realistiskt förvänta sig, och vad säger forskningen?</p>
 
     <div class="tldr">
-      <strong>Kort sammanfattning (TL;DR)</strong>
+      <strong>Kort sammanfattning</strong>
       <p>Första skillnaden märks efter [X veckor]: [effekt 1]. Efter [Y veckor]: [effekt 2]. Enligt <a href="#">kliniska studier</a> behöver man minst [Z veckor] för att se tydliga resultat.</p>
     </div>
-
-    <img class="hero-img" src="https://placehold.co/1200x675/f5f3ff/a78bfa?text=Resultat" alt="Resultat och upplevelser">
 
     <h2>Varför testade vi detta?</h2>
     <p>Bakgrunden till testet. Vad var utgångspunkten? Beskriv problemet eller behovet som startade resan. Enligt <a href="#">en studie publicerad i [tidskrift]</a> är detta ett vanligt problem bland [målgrupp].</p>

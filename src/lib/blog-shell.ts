@@ -413,7 +413,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     opts.language === "sv" ? "sv-SE" : opts.language === "da" ? "da-DK" : "nb-NO",
     { year: "numeric", month: "long", day: "numeric" }
   );
-  const authorName = opts.language === "sv" ? "Redaktionen" : opts.language === "da" ? "Redaktionen" : "Redaksjonen";
+  const authorName = opts.language === "sv" ? "Erik Lindberg" : opts.language === "da" ? "Erik Lindberg" : "Erik Lindberg";
 
   return `<!DOCTYPE html>
 <html lang="${opts.language}">
@@ -459,7 +459,8 @@ export function wrapInBlogShell(opts: WrapOptions): string {
       </nav>
 
       <div class="blog-shell-meta">
-        <span class="blog-shell-author">${esc(authorName)}</span>
+        <span class="blog-shell-author">Av ${esc(authorName)}</span>
+        <span class="blog-shell-meta-sep">·</span>
         <time datetime="${opts.publishedAt}">${dateFormatted}</time>
         ${opts.blogCategory ? `<span class="blog-shell-category-tag">${esc(opts.blogCategory)}</span>` : ""}
       </div>
@@ -696,6 +697,7 @@ ${items}
 function BLOG_SHELL_CSS(primaryColor: string): string {
   return `
 *,*::before,*::after{box-sizing:border-box}
+html,body{overflow-x:hidden;max-width:100vw}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1f2937;line-height:1.6;background:#fff}
 .blog-shell-container{max-width:800px;margin:0 auto;padding:0 20px}
 .blog-shell-header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 0;position:sticky;top:0;z-index:100}
@@ -712,9 +714,14 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-sep{margin:0 6px;color:#d1d5db}
 .blog-shell-meta{display:flex;align-items:center;gap:12px;padding:8px 0 4px;font-size:.85rem;color:#6b7280;flex-wrap:wrap}
 .blog-shell-author{font-weight:600;color:#374151}
+.blog-shell-meta-sep{color:#d1d5db}
 .blog-shell-meta time{color:#9ca3af}
 .blog-shell-category-tag{background:#f0f9ff;color:#0369a1;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:500}
 .blog-shell-main{padding:0 0 40px}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;max-width:100%;display:block}
+.table-wrap table{min-width:400px;width:100%}
+.table-wrap th,.table-wrap td{white-space:nowrap;padding:8px 12px}
+.table-wrap td:first-child,.table-wrap th:first-child{white-space:normal}
 .blog-shell-article{padding:12px 0 32px}
 .blog-shell-related{border-top:1px solid #e5e7eb;padding:32px 0 0}
 .blog-shell-related h2{font-size:1.25rem;margin:0 0 16px}
@@ -729,8 +736,13 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-disclosure{margin:0 0 12px;font-size:.8rem;color:#9ca3af;font-style:italic}
 .blog-shell-copyright{margin:0;color:#9ca3af}
 @media(max-width:640px){
+  .blog-shell-container{padding:0 16px}
+  .blog-shell-breadcrumbs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:10px 0 0;font-size:.78rem}
+  .blog-shell-meta{font-size:.78rem;gap:8px;padding:6px 0 0}
+  .blog-shell-category-tag{font-size:.72rem;padding:1px 8px}
+  .blog-shell-article{padding:4px 0 24px}
   .blog-shell-related-grid{grid-template-columns:1fr}
-  .blog-shell-meta{flex-direction:column;align-items:flex-start;gap:4px}
+  .blog-shell-footer{padding:24px 0}
 }
 `;
 }

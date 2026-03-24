@@ -329,6 +329,12 @@ export async function injectProductImage(
   html: string,
   productSlug: string
 ): Promise<string> {
+  // Idempotent: skip if product image already exists
+  if (html.includes('class="product-img"')) {
+    console.log("[blog-images] Product image already exists, skipping injection");
+    return html;
+  }
+
   const db = createServerSupabase();
 
   // Get product ID + name
@@ -343,17 +349,29 @@ export async function injectProductImage(
     return html;
   }
 
-  // Get the hero image (primary product photo)
-  const { data: images } = await db
-    .from("product_images")
+  // Get product image from assets library (category: product)
+  const { data: assets } = await db
+    .from("assets")
     .select("url")
-    .eq("product_id", product.id)
-    .eq("category", "hero")
+    .eq("product", productSlug)
+    .eq("category", "product")
     .limit(1);
 
-  const imageUrl = images?.[0]?.url;
+  let imageUrl = assets?.[0]?.url;
+
+  // Fallback to product_images table (hero category)
   if (!imageUrl) {
-    console.log(`[blog-images] No hero image for product "${productSlug}", skipping`);
+    const { data: images } = await db
+      .from("product_images")
+      .select("url")
+      .eq("product_id", product.id)
+      .eq("category", "hero")
+      .limit(1);
+    imageUrl = images?.[0]?.url;
+  }
+
+  if (!imageUrl) {
+    console.log(`[blog-images] No product image for "${productSlug}", skipping`);
     return html;
   }
 
