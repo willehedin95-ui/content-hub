@@ -216,15 +216,15 @@ const VERIFIED_EXTERNAL_LINKS: Record<string, { url: string; description: string
     description: "1177 Vårdguiden — Sveriges officiella hälsoinformationstjänst",
   },
   "1177_nacke": {
-    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/nacke-och-rygg/ont-i-nacken/",
-    description: "1177 — Ont i nacken",
+    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/",
+    description: "1177 — Ont i nacke och axlar",
   },
   "1177_somn": {
-    url: "https://www.1177.se/liv--halsa/sova-bra/",
-    description: "1177 — Sova bra",
+    url: "https://www.1177.se/liv--halsa/stresshantering-och-somn/somnen-ar-viktig-for-din-halsa/",
+    description: "1177 — Sömnen är viktig för din hälsa",
   },
   "1177_rygg": {
-    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/nacke-och-rygg/ont-i-ryggen/",
+    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-ryggen/",
     description: "1177 — Ont i ryggen",
   },
   internetmedicin: {
@@ -244,6 +244,26 @@ const VERIFIED_EXTERNAL_LINKS: Record<string, { url: string; description: string
     description: "SBU — Statens beredning för medicinsk och social utvärdering",
   },
 };
+
+// Post-processing: fix any remaining wrong 1177.se URLs that Claude might hallucinate
+const URL_REPLACEMENTS: [RegExp, string][] = [
+  // Common hallucinated 1177 paths → real URLs
+  [/https:\/\/www\.1177\.se\/sjukdomar--besvar\/skelett-leder-och-muskler\/nacke-och-rygg\/ont-i-nacken\/?/g,
+   "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/"],
+  [/https:\/\/www\.1177\.se\/liv--halsa\/sova-bra\/?/g,
+   "https://www.1177.se/liv--halsa/stresshantering-och-somn/somnen-ar-viktig-for-din-halsa/"],
+  [/https:\/\/www\.1177\.se\/sjukdomar--besvar\/skelett-leder-och-muskler\/nacke-och-rygg\/ont-i-ryggen\/?/g,
+   "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-ryggen/"],
+];
+
+/** Fix known hallucinated URLs in article HTML */
+export function fixHallucinatedUrls(html: string): string {
+  let result = html;
+  for (const [pattern, replacement] of URL_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
 
 export interface ArticleResult {
   html: string;
@@ -285,7 +305,7 @@ export async function generateBlogArticle(
   const client = new Anthropic({ apiKey });
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 16000,
+    max_tokens: 32000,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });

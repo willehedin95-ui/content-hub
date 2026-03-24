@@ -5,7 +5,7 @@
  */
 
 import { createServerSupabase } from "./supabase-admin";
-import { generateBlogArticle, type ArticleRequest } from "./blog-writer";
+import { generateBlogArticle, fixHallucinatedUrls, type ArticleRequest } from "./blog-writer";
 import {
   extractArticleBody,
   extractFirstImage,
@@ -379,6 +379,9 @@ export async function runBlogAutopilot(
   }
 
   console.log(`[blog-autopilot] Generated ${article.wordCount} words, cost: $${article.cost.toFixed(4)}`);
+
+  // Post-process: fix any hallucinated URLs that Claude might still produce
+  article.html = fixHallucinatedUrls(article.html);
 
   // Generate native-style editorial images for the article
   let finalHtml = article.html;
