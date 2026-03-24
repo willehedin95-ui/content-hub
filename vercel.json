@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/gsc-sync",
       "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/blog-autopilot?workspace=happysleep",
+      "schedule": "0 9 * * *"
     }
   ]
 }

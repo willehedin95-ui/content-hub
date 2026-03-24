@@ -148,6 +148,52 @@ export default function BlogTab({ settings, setSettings, saved, handleSave }: Se
         );
       })}
 
+      <SectionHeader>Autopilot</SectionHeader>
+      <SettingsCard>
+        <Row
+          label="Blog autopilot"
+          description="Automatically write and publish SEO articles daily using the content plan and keyword research"
+          action={
+            <button
+              onClick={() =>
+                setSettings((s) => ({
+                  ...s,
+                  blog_autopilot_enabled: !s.blog_autopilot_enabled,
+                }))
+              }
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                settings.blog_autopilot_enabled ? "bg-green-500" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                  settings.blog_autopilot_enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          }
+        />
+        <Row
+          label="Articles per day"
+          description="Maximum articles the autopilot can publish per day (default: 1)"
+          action={
+            <input
+              type="number"
+              min={1}
+              max={3}
+              value={settings.blog_articles_per_day ?? 1}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  blog_articles_per_day: Math.max(1, Math.min(3, parseInt(e.target.value) || 1)),
+                }))
+              }
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 w-16 text-center"
+            />
+          }
+        />
+      </SettingsCard>
+
       <SaveButton saved={saved} onSave={handleSave} />
     </>
   );

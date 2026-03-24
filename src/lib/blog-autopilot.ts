@@ -1,0 +1,647 @@
+/**
+ * Blog autopilot orchestrator.
+ * Fully automated: keyword selection → article writing → publishing → notification.
+ * No manual steps. Runs as a daily cron.
+ */
+
+import { createServerSupabase } from "./supabase-admin";
+import { generateBlogArticle, type ArticleRequest } from "./blog-writer";
+import {
+  extractArticleBody,
+  extractFirstImage,
+  extractMetaDescription,
+  autoFillAltText,
+  wrapInBlogShell,
+  getDefaultBlogConfig,
+  slugifyCategory,
+  type BlogConfig,
+} from "./blog-shell";
+import {
+  publishPage,
+  getProjectCustomDomain,
+  deploySitemapAndRobots,
+  type PageAnalyticsConfig,
+} from "./cloudflare-pages";
+import {
+  getPublishedBlogArticles,
+  deployBlogHomepage,
+  deployBlogRssFeed,
+} from "./blog-deploy";
+import { sendTelegramNotification } from "./telegram";
+import {
+  isDataForSeoConfigured,
+  getKeywordSuggestions,
+} from "./dataforseo";
+import type { Language } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Content plan — the first 15 articles (from BLOG-CONTENT-PLAN.md)
+// ---------------------------------------------------------------------------
+
+interface ContentPlanArticle {
+  order: number;
+  slug: string;
+  title: string;
+  category: string;
+  templateId: string;
+  primaryKeyword: string;
+  secondaryKeywords: string[];
+  wordCount: string;
+  contentBrief: string;
+  productSlug: string;
+  internalLinkSlugs: string[];
+}
+
+const CONTENT_PLAN: ContentPlanArticle[] = [
+  {
+    order: 1,
+    slug: "kollagentillskott-guide",
+    title: "Kollagentillskott — Komplett guide 2026",
+    category: "Kollagen & Tillskott",
+    templateId: "science",
+    primaryKeyword: "kollagentillskott",
+    secondaryKeywords: ["kollagen tillskott", "kollagen hud", "kollagen supplement"],
+    wordCount: "3000-4000",
+    contentBrief: `Comprehensive pillar article about collagen supplements. Cover: what collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results. Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest" language. Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health. This is the main hub page — everything links back here.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["basta-kollagentillskottet", "funkar-kollagentillskott", "flytande-kollagen-vs-pulver", "kollagen-for-hud-rynkor"],
+  },
+  {
+    order: 2,
+    slug: "basta-kollagentillskottet",
+    title: "Bästa kollagentillskottet 2026 — Test & jämförelse",
+    category: "Bäst i test",
+    templateId: "listicle",
+    primaryKeyword: "bästa kollagentillskottet",
+    secondaryKeywords: ["kollagen bäst i test", "kollagentillskott test"],
+    wordCount: "3000-4000",
+    contentBrief: `Product roundup/listicle reviewing 6-8 collagen supplements: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth. Compare dosage, format (liquid vs powder vs capsule), ingredients, price per day. Create ranking table. Hydro13 should win on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone). Be genuinely honest about competitors — give them fair ratings. This is a MONEY PAGE.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "funkar-kollagentillskott"],
+  },
+  {
+    order: 3,
+    slug: "funkar-kollagentillskott",
+    title: "Funkar kollagentillskott? Vad forskningen visar",
+    category: "Forskning",
+    templateId: "science",
+    primaryKeyword: "funkar kollagen",
+    secondaryKeywords: ["kollagen forskning", "kollagen bluff", "kollagentillskott effekt"],
+    wordCount: "2500-3500",
+    contentBrief: `Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion. Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing. Cite Proksch et al., Borumand & Sibilla 2015, Hexsel et al.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
+  {
+    order: 4,
+    slug: "flytande-kollagen-vs-pulver",
+    title: "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?",
+    category: "Jämförelser",
+    templateId: "comparison",
+    primaryKeyword: "flytande kollagen",
+    secondaryKeywords: ["kollagen pulver", "kollagen kapslar", "kollagen absorption"],
+    wordCount: "2000-3000",
+    contentBrief: `Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price. Create comparison table. Liquid format wins on absorption and convenience. Mention that most studies use hydrolyzed collagen peptides, which is what liquid and powder forms typically contain.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
+  {
+    order: 5,
+    slug: "kollagen-for-hud-rynkor",
+    title: "Kollagen för hud & rynkor — Så fungerar det inifrån",
+    category: "Hudvård inifrån",
+    templateId: "problem-solution",
+    primaryKeyword: "kollagen hud",
+    secondaryKeywords: ["kollagen rynkor", "hudvård inifrån", "kollagen anti-aging"],
+    wordCount: "2500-3500",
+    contentBrief: `How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts to produce new collagen, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13). Focus on the science but make it accessible.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "funkar-kollagentillskott"],
+  },
+  {
+    order: 6,
+    slug: "basta-kudden",
+    title: "Bästa kudden 2026 — Test av 12 kuddar",
+    category: "Bäst i test",
+    templateId: "listicle",
+    primaryKeyword: "bästa kudden",
+    secondaryKeywords: ["bästa kudden 2026", "kudde bäst i test"],
+    wordCount: "4000-5000",
+    contentBrief: `Comprehensive pillow review. Test 12 pillows including HappySleep, Tempur, IKEA Rosenskärm, Dunlopillo, Jensen, Carpe Diem, Bäddmadrassen. Compare by sleep position, material, firmness, price. Ranking table. HappySleep featured as winner/top pick. Be genuine about competitors. This is a MONEY PAGE. Include buying guide section.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["kudde-for-sidosovare", "nacksmarta-pa-natten", "minnesskum-vs-latex-kudde"],
+  },
+  {
+    order: 7,
+    slug: "kudde-for-sidosovare",
+    title: "Kudde för sidosovare — Guide & rekommendationer 2026",
+    category: "Köpguider",
+    templateId: "buying-guide",
+    primaryKeyword: "kudde sidosovare",
+    secondaryKeywords: ["bästa kudden för sidosovare", "sidosovarkudde"],
+    wordCount: "2000-3000",
+    contentBrief: `Buying guide for side sleepers. What makes a good side-sleeper pillow (height, firmness, neck alignment). Common mistakes. Recommend specific pillows. Include section on how pillow height relates to shoulder width. Link to 1177.se for neck health.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten"],
+  },
+  {
+    order: 8,
+    slug: "nacksmarta-pa-natten",
+    title: "Nacksmärta på natten — Orsaker & lösningar",
+    category: "Sömnproblem",
+    templateId: "problem-solution",
+    primaryKeyword: "nacksmärta på natten",
+    secondaryKeywords: ["nackvärk kudde", "ont i nacken sömn"],
+    wordCount: "2000-3000",
+    contentBrief: `Problem-solution article about night-time neck pain. Causes: wrong pillow, sleep position, tension. Research on cervical spine alignment during sleep. Concrete solutions: pillow selection, stretches, sleep position adjustments. When to see a doctor (1177.se reference). HappySleep as solution for neck alignment.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
+  },
+  {
+    order: 9,
+    slug: "minnesskum-vs-latex-kudde",
+    title: "Minnesskum vs latex kudde — Vilken passar dig?",
+    category: "Jämförelser",
+    templateId: "comparison",
+    primaryKeyword: "minnesskum kudde",
+    secondaryKeywords: ["latex kudde", "minnesskum vs latex"],
+    wordCount: "2000-2500",
+    contentBrief: `Head-to-head comparison of memory foam vs latex pillows. Material properties, heat retention, durability, support, price. Comparison table. Memory foam: body-conforming but heat-retaining. Latex: responsive but firmer. Guide on which to choose based on sleep style and preferences.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
+  },
+  {
+    order: 10,
+    slug: "hur-ofta-byta-kudde",
+    title: "Hur ofta ska man byta kudde? (Expertguide 2026)",
+    category: "Skötselguider",
+    templateId: "problem-solution",
+    primaryKeyword: "byta kudde hur ofta",
+    secondaryKeywords: ["kudde livslängd", "när byta kudde"],
+    wordCount: "1500-2000",
+    contentBrief: `How often to replace pillows (general: 1-2 years, memory foam: 2-3 years). Signs it's time: lumps, flat spots, neck pain, allergies worse. Hygiene angle: dust mites, sweat absorption. Quick test: fold the pillow in half — if it doesn't spring back, replace it.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["basta-kudden", "tvatta-kudde"],
+  },
+  {
+    order: 11,
+    slug: "tvatta-kudde",
+    title: "Tvätta kudde — Steg-för-steg-guide",
+    category: "Skötselguider",
+    templateId: "problem-solution",
+    primaryKeyword: "tvätta kudde",
+    secondaryKeywords: ["tvätta minnesskumskudde", "kudde tvättmaskin"],
+    wordCount: "1500-2000",
+    contentBrief: `How to wash different pillow types: down, synthetic, memory foam. Step-by-step for each type. Machine wash settings, drying tips. Why memory foam should never go in the washing machine. How often to wash. Pillow protectors.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["basta-kudden", "hur-ofta-byta-kudde"],
+  },
+  {
+    order: 12,
+    slug: "somn-och-halsa",
+    title: "Sömn och hälsa — Så påverkar sömnen din kropp 2026",
+    category: "Forskning",
+    templateId: "science",
+    primaryKeyword: "sömn hälsa",
+    secondaryKeywords: ["sömnbrist konsekvenser", "varför sömn är viktigt"],
+    wordCount: "2500-3500",
+    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production (bridges both product verticals). Cite Matthew Walker's "Why We Sleep" research, Swedish sleep studies. Bridge article connecting sleep (HappySleep) and skin/collagen (Hydro13).`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden"],
+  },
+  {
+    order: 13,
+    slug: "somn-och-hudhalsa",
+    title: "Sömn och hudhälsa — Varför skönhetssömn fungerar",
+    category: "Hudvård inifrån",
+    templateId: "science",
+    primaryKeyword: "skönhetssömn",
+    secondaryKeywords: ["sömn hud", "sömn rynkor", "sova bättre hud"],
+    wordCount: "2000-3000",
+    contentBrief: `Perfect bridge article between both products. How sleep quality directly affects skin health: growth hormone release during deep sleep, cortisol/collagen degradation from poor sleep, skin barrier repair overnight. The complete approach: good sleep (HappySleep pillow) + collagen supplement (Hydro13) = maximum results.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden", "kollagen-for-hud-rynkor"],
+  },
+  {
+    order: 14,
+    slug: "sovstallningar",
+    title: "Sovställningar — Guide till hur du sover bäst 2026",
+    category: "Sov Bättre",
+    templateId: "problem-solution",
+    primaryKeyword: "bästa sovställningen",
+    secondaryKeywords: ["sova på sidan", "sovställning rygg"],
+    wordCount: "2000-2500",
+    contentBrief: `Guide to sleep positions. Side sleeping (most common, best for most), back sleeping (good for spine, bad for snoring), stomach sleeping (worst for neck). How each position affects neck, back, and breathing. Pillow recommendations for each position. Connection to pillow choice.`,
+    productSlug: "happysleep",
+    internalLinkSlugs: ["kudde-for-sidosovare", "basta-kudden"],
+  },
+  {
+    order: 15,
+    slug: "kollagen-for-har-naglar",
+    title: "Kollagen för hår & naglar — Fungerar det?",
+    category: "Hår & Naglar",
+    templateId: "problem-solution",
+    primaryKeyword: "kollagen hår",
+    secondaryKeywords: ["kollagen naglar", "tillskott för hår", "biotin kollagen"],
+    wordCount: "2000-2500",
+    contentBrief: `Secondary Hydro13 angle for hair and nails. Scientific evidence for collagen's effect on hair thickness and nail strength. Hexsel et al. 2017 nail study. Proline/glycine as building blocks for keratin. Realistic timeline (2-3 months for nails, 3-6 months for hair). Why Hydro13's formula includes biotin + zinc alongside collagen.`,
+    productSlug: "hydro13",
+    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Main orchestrator
+// ---------------------------------------------------------------------------
+
+interface AutopilotResult {
+  action: "published" | "skipped" | "error";
+  message: string;
+  slug?: string;
+  url?: string;
+}
+
+/**
+ * Run one cycle of the blog autopilot.
+ * Returns what happened (published/skipped/error).
+ */
+export async function runBlogAutopilot(
+  workspaceId: string,
+  language: Language = "sv"
+): Promise<AutopilotResult> {
+  const db = createServerSupabase();
+
+  // Check rate: max 1 article per day
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: recentCount } = await db
+    .from("pages")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("content_type", "seo_blog")
+    .gte("created_at", oneDayAgo);
+
+  if ((recentCount ?? 0) >= 1) {
+    return {
+      action: "skipped",
+      message: "Already published a blog article today. Max 1/day.",
+    };
+  }
+
+  // Find next article to write
+  const nextArticle = await pickNextArticle(db, workspaceId, language);
+  if (!nextArticle) {
+    return {
+      action: "skipped",
+      message: "No articles to write. Content plan complete and no new keyword opportunities found.",
+    };
+  }
+
+  // Get blog domain
+  const blogDomain = getProjectCustomDomain(language);
+  if (!blogDomain) {
+    return {
+      action: "error",
+      message: `No blog domain configured for language: ${language}`,
+    };
+  }
+
+  console.log(`[blog-autopilot] Writing article: "${nextArticle.title}" (${nextArticle.slug})`);
+
+  // Generate the article
+  let article;
+  try {
+    article = await generateBlogArticle({
+      ...nextArticle,
+      language,
+      blogDomain,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Article generation failed";
+    console.error("[blog-autopilot] Generation failed:", msg);
+    return { action: "error", message: `Article generation failed: ${msg}` };
+  }
+
+  console.log(`[blog-autopilot] Generated ${article.wordCount} words, cost: $${article.cost.toFixed(4)}`);
+
+  // Create page record
+  const { data: page, error: pageError } = await db
+    .from("pages")
+    .insert({
+      slug: nextArticle.slug,
+      workspace_id: workspaceId,
+      content_type: "seo_blog",
+      blog_category: nextArticle.category,
+      blog_featured_image_url: extractFirstImage(article.html) || null,
+    })
+    .select("id")
+    .single();
+
+  if (pageError || !page) {
+    console.error("[blog-autopilot] Failed to create page:", pageError);
+    return { action: "error", message: `DB error creating page: ${pageError?.message}` };
+  }
+
+  // Create translation record
+  const { data: translation, error: transError } = await db
+    .from("translations")
+    .insert({
+      page_id: page.id,
+      language,
+      slug: nextArticle.slug,
+      seo_title: article.seoTitle,
+      seo_description: article.seoDescription,
+      translated_html: article.html,
+      status: "draft",
+      workspace_id: workspaceId,
+    })
+    .select("id, created_at")
+    .single();
+
+  if (transError || !translation) {
+    console.error("[blog-autopilot] Failed to create translation:", transError);
+    return { action: "error", message: `DB error creating translation: ${transError?.message}` };
+  }
+
+  // Publish directly (no cookie context needed)
+  let publishUrl: string;
+  try {
+    publishUrl = await publishBlogArticle(
+      article.html,
+      nextArticle.slug,
+      nextArticle.category,
+      article.seoTitle,
+      article.seoDescription,
+      language,
+      workspaceId,
+      translation.id,
+      translation.created_at,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Publish failed";
+    console.error("[blog-autopilot] Publish failed:", msg);
+    // Update translation status to error
+    await db
+      .from("translations")
+      .update({ status: "error", publish_error: msg })
+      .eq("id", translation.id);
+    return { action: "error", message: `Publish failed: ${msg}` };
+  }
+
+  // Update translation status
+  await db
+    .from("translations")
+    .update({
+      status: "published",
+      published_url: publishUrl,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", translation.id);
+
+  // Log cost
+  await db.from("usage_logs").insert({
+    type: "blog_autopilot",
+    model: "claude-sonnet",
+    cost_usd: article.cost,
+    metadata: {
+      slug: nextArticle.slug,
+      word_count: article.wordCount,
+      source: CONTENT_PLAN.some((p) => p.slug === nextArticle.slug) ? "content_plan" : "keyword_research",
+    },
+  });
+
+  // Fire-and-forget: homepage, RSS, sitemap
+  deployBlogHomepage(language).catch((err) =>
+    console.warn("[blog-autopilot] Homepage deploy failed:", err)
+  );
+  deployBlogRssFeed(language).catch((err) =>
+    console.warn("[blog-autopilot] RSS deploy failed:", err)
+  );
+  deploySitemapAndRobots(language).catch((err) =>
+    console.warn("[blog-autopilot] Sitemap deploy failed:", err)
+  );
+
+  // Send Telegram notification
+  try {
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    if (chatId) {
+      await sendTelegramNotification(
+        chatId,
+        `📝 *Blog article published*\n\n` +
+          `*${escTg(article.seoTitle)}*\n` +
+          `Category: ${escTg(nextArticle.category)}\n` +
+          `Words: ${article.wordCount}\n` +
+          `Cost: $${article.cost.toFixed(4)}\n\n` +
+          `[Read article](${publishUrl})`
+      );
+    }
+  } catch {
+    // Non-critical — don't fail the whole operation
+    console.warn("[blog-autopilot] Telegram notification failed");
+  }
+
+  console.log(`[blog-autopilot] Published: ${publishUrl}`);
+  return {
+    action: "published",
+    message: `Published "${article.seoTitle}" (${article.wordCount} words)`,
+    slug: nextArticle.slug,
+    url: publishUrl,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Article selection
+// ---------------------------------------------------------------------------
+
+async function pickNextArticle(
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string,
+  language: Language
+): Promise<ArticleRequest | null> {
+  // Get existing blog slugs
+  const { data: existingPages } = await db
+    .from("pages")
+    .select("slug")
+    .eq("workspace_id", workspaceId)
+    .eq("content_type", "seo_blog");
+
+  const existingSlugs = new Set((existingPages ?? []).map((p) => p.slug));
+
+  // First: try the content plan (ordered)
+  for (const planned of CONTENT_PLAN) {
+    if (!existingSlugs.has(planned.slug)) {
+      const blogDomain = getProjectCustomDomain(language) || "";
+      return {
+        title: planned.title,
+        slug: planned.slug,
+        category: planned.category,
+        templateId: planned.templateId,
+        primaryKeyword: planned.primaryKeyword,
+        secondaryKeywords: planned.secondaryKeywords,
+        wordCount: planned.wordCount,
+        contentBrief: planned.contentBrief,
+        productSlug: planned.productSlug,
+        internalLinkSlugs: planned.internalLinkSlugs,
+        language,
+        blogDomain,
+      };
+    }
+  }
+
+  // Content plan complete — use DataForSEO to find new opportunities
+  if (!isDataForSeoConfigured()) {
+    return null;
+  }
+
+  try {
+    const market = language === "sv" ? "SE" : language === "da" ? "DK" : "NO";
+    const seeds =
+      language === "sv"
+        ? ["sömn tips", "bästa kudden", "kollagen hud", "sömnproblem"]
+        : language === "da"
+          ? ["bedste pude", "kollagen tilskud", "søvn tips"]
+          : ["beste pute", "kollagen tilskudd", "søvn tips"];
+
+    const { suggestions } = await getKeywordSuggestions(seeds, market);
+
+    // Filter: volume > 200, competition index < 50, not already covered
+    const candidates = suggestions
+      .filter(
+        (s) =>
+          (s.searchVolume ?? 0) > 200 &&
+          (s.competitionIndex ?? 100) < 50 &&
+          !existingSlugs.has(slugifyKeyword(s.keyword))
+      )
+      .sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0))
+      .slice(0, 1);
+
+    if (!candidates.length) return null;
+
+    const kw = candidates[0];
+    const slug = slugifyKeyword(kw.keyword);
+    const isCollagen = /kollagen|collagen|hud|hår|naglar|skönhet/i.test(kw.keyword);
+    const isSleep = /sömn|kudde|pude|søvn|nacke|nack|rygg/i.test(kw.keyword);
+
+    const blogDomain = getProjectCustomDomain(language) || "";
+    return {
+      title: capitalizeFirst(kw.keyword) + " 2026",
+      slug,
+      category: isCollagen ? "Hälsa" : isSleep ? "Sov Bättre" : "Hälsa",
+      templateId: "problem-solution",
+      primaryKeyword: kw.keyword,
+      secondaryKeywords: [],
+      wordCount: "2000-3000",
+      contentBrief: `Write a comprehensive article about "${kw.keyword}". This keyword has ${kw.searchVolume} monthly searches with ${kw.competition || "unknown"} competition. Cover the topic thoroughly with practical advice, scientific backing, and product recommendations where relevant.`,
+      productSlug: isCollagen ? "hydro13" : "happysleep",
+      internalLinkSlugs: [
+        isCollagen ? "kollagentillskott-guide" : "basta-kudden",
+      ],
+      language,
+      blogDomain,
+    };
+  } catch (err) {
+    console.warn("[blog-autopilot] DataForSEO keyword lookup failed:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Direct publish (bypasses cookie-based API route)
+// ---------------------------------------------------------------------------
+
+async function publishBlogArticle(
+  articleHtml: string,
+  slug: string,
+  category: string,
+  seoTitle: string,
+  seoDescription: string,
+  language: Language,
+  workspaceId: string,
+  translationId: string,
+  createdAt: string
+): Promise<string> {
+  const db = createServerSupabase();
+
+  // Get workspace settings for analytics
+  const { data: workspace } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+
+  const settings = (workspace?.settings ?? {}) as Record<string, unknown>;
+  const blogConfig = (settings.blog_config as BlogConfig) ?? getDefaultBlogConfig();
+  const domain = getProjectCustomDomain(language);
+  const baseUrl = domain ? `https://${domain}` : "";
+
+  // Extract and wrap in blog shell
+  const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(articleHtml);
+  const bodyHtml = autoFillAltText(rawBodyHtml, seoTitle);
+  const relatedArticles = await getPublishedBlogArticles(language, slug);
+  const featuredImage = extractFirstImage(bodyHtml);
+
+  const categorySlug = slugifyCategory(category);
+  const deploySlug = categorySlug ? `${categorySlug}/${slug}` : slug;
+
+  const wrappedHtml = wrapInBlogShell({
+    articleBodyHtml: bodyHtml,
+    articleHeadHtml: headHtml,
+    seoTitle,
+    seoDescription: seoDescription || extractMetaDescription(bodyHtml),
+    slug,
+    language,
+    blogConfig,
+    relatedArticles,
+    featuredImageUrl: featuredImage,
+    blogCategory: category,
+    publishedAt: createdAt,
+    updatedAt: new Date().toISOString(),
+    baseUrl,
+  });
+
+  // Build analytics config
+  const ga4Ids = (settings.ga4_measurement_ids as Record<string, string>) ?? {};
+  const excludedIps = (settings.excluded_ips as string[]) ?? [];
+  const analytics: PageAnalyticsConfig = {
+    ga4MeasurementId: ga4Ids[language] || undefined,
+    clarityProjectId:
+      (settings.clarity_project_ids as Record<string, string>)?.[language] ||
+      (settings.clarity_project_id as string) ||
+      undefined,
+    shopifyDomains: ((settings.shopify_domains as string) || "")
+      .split(",")
+      .map((d: string) => d.trim())
+      .filter(Boolean),
+    metaPixelId: (settings.meta_pixel_id as string) || undefined,
+    hubUrl: process.env.APP_URL || undefined,
+    excludedIps: excludedIps.length > 0 ? excludedIps : undefined,
+    contentType: "seo_blog",
+  };
+
+  // Deploy to Cloudflare Pages
+  const result = await publishPage(wrappedHtml, deploySlug, language, [], undefined, analytics);
+  return result.url.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function slugifyKeyword(keyword: string): string {
+  return keyword
+    .toLowerCase()
+    .replace(/[åä]/g, "a")
+    .replace(/ö/g, "o")
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Escape special Markdown characters for Telegram */
+function escTg(s: string): string {
+  return s.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
+}

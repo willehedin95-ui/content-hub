@@ -41,6 +41,8 @@ export interface Settings {
   gethookd_explore_queries: string[];
   default_page_b_id: string;
   blog_config?: BlogConfig;
+  blog_autopilot_enabled: boolean;
+  blog_articles_per_day: number;
 }
 
 /* ─── Common props interface ────────────────────────── */
