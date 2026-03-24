@@ -131,6 +131,52 @@ Sleep is more competitive but essential for HappySleep's brand. Long-tail keywor
 
 ---
 
+## Google Ads Keyword Gap Coverage (Articles 16-20)
+
+These articles target high-spend Google Ads keyword clusters that had zero blog coverage. Writing organic articles for these terms captures additional traffic for free and supports the paid campaigns.
+
+**16. "Sluta snarka — 8 bevisade metoder som fungerar 2026"** (Listicle template)
+- Slug: `sluta-snarka`
+- Category: Sömnproblem
+- Target keywords: sluta snarka, bästa mot snarkning, snarkning, anti snark
+- Google Ads spend: ~15K SEK/month
+- Content: Why people snore, when it's dangerous (sleep apnea signs → 1177.se), 8 evidence-based methods ranked. Pillow elevation angle → HappySleep placement.
+- Internal links: → article 6 (bästa kudden), → article 14 (sovställningar), → article 12 (sömn & hälsa)
+
+**17. "Sidenörngott bäst i test 2026 — Expertens val"** (Listicle template)
+- Slug: `siden-orngott-bast-i-test`
+- Category: Bäst i test
+- Target keywords: siden örngott, sidenörngott bäst i test, bästa sidenörngottet
+- Google Ads spend: ~26K SEK/month
+- Content: Silk pillowcase product roundup. Compare 6-8 brands. Grading: momme weight, silk type (Mulberry 6A), closure, certs. **MONEY PAGE** for HappySleep silk pillowcase.
+- Internal links: → article 6 (bästa kudden), → article 13 (sömn & hudhälsa), → article 11 (tvätta kudde)
+
+**18. "Sovmask bäst i test 2026 — Vi testar 10 sovmasker"** (Listicle template)
+- Slug: `sovmask-bast-i-test`
+- Category: Bäst i test
+- Target keywords: sovmask bäst i test, bästa sovmasken, sovmask silke
+- Google Ads spend: ~8K SEK/month
+- Content: Sleep mask roundup. Why light-blocking matters (melatonin, Scandinavian summer light). Test 10 masks. **MONEY PAGE** for HappySleep sovmask.
+- Internal links: → article 6 (bästa kudden), → article 12 (sömn & hälsa), → article 17 (sidenörngott)
+
+**19. "Ergonomisk kudde bäst i test 2026 — Test & guide"** (Buying guide template)
+- Slug: `ergonomisk-kudde-bast-i-test`
+- Category: Bäst i test
+- Target keywords: ergonomisk kudde bäst i test, ergonomisk kudde, nackstöd bäst i test
+- Google Ads spend: heavy (part of 80K SEK/month pillow cluster)
+- Content: Focused on ergonomic/cervical pillows specifically (different from general "bästa kudden"). Medical perspective, test 8-10 products. **MONEY PAGE**.
+- Internal links: → article 6 (bästa kudden), → article 8 (nacksmärta), → article 7 (sidosovare)
+
+**20. "Bästa kollagen mot rynkor 2026 — Test & jämförelse"** (Listicle template)
+- Slug: `basta-kollagen-mot-rynkor`
+- Category: Bäst i test
+- Target keywords: bästa kollagen mot rynkor, kollagen mot rynkor, anti-aging kollagen
+- Google Ads spend: ~22K SEK/month
+- Content: Product comparison specifically for anti-wrinkle collagen. Different from article 5 (science of collagen for skin). Compare 6-8 products by dosage, peptide type, supporting ingredients. **MONEY PAGE** for Hydro13.
+- Internal links: → article 1 (kollagen guide), → article 2 (bästa kollagentillskottet), → article 5 (kollagen hud)
+
+---
+
 ## Publishing Schedule
 
 ### Week 1: Foundation (collagen pillar + cluster)
@@ -158,9 +204,16 @@ Sleep is more competitive but essential for HappySleep's brand. Long-tail keywor
 - Day 3: Article 14 (Sovställningar)
 - Day 5: Article 15 (Kollagen för hår & naglar)
 
+### Week 6-7: Google Ads keyword gap coverage (MONEY PAGES)
+- Day 1: Article 16 (Sluta snarka — 15K SEK/mo ads spend)
+- Day 3: Article 17 (Sidenörngott bäst i test — 26K SEK/mo ads spend)
+- Day 5: Article 18 (Sovmask bäst i test — 8K SEK/mo ads spend)
+- Day 7: Article 19 (Ergonomisk kudde bäst i test — top pillow keyword)
+- Day 9: Article 20 (Bästa kollagen mot rynkor — 22K SEK/mo ads spend)
+
 ## Translation Strategy
 
-1. Write all 15 articles in Swedish first (blog.halsobladet.com)
+1. Write all 20 articles in Swedish first (blog.halsobladet.com)
 2. After Swedish pillar + cluster is published: translate collagen articles to Norwegian (helseguiden.com) — least competition
 3. Then Danish (smarthelse.dk)
 4. Sleep articles can be translated on a rolling basis
