@@ -659,3 +659,104 @@ function injectUTMRewriterPage(
   return html.replace(/<\/body>/i, script + "</body>");
 }
 
+/**
+ * Generate and deploy sitemap.xml + robots.txt for a CF Pages project.
+ * Queries published translations for the language, builds XML sitemap,
+ * and deploys both files merged with the existing manifest.
+ */
+export async function deploySitemapAndRobots(
+  language: Language
+): Promise<{ sitemapUrl: string; deploy_id: string }> {
+  const { accountId, apiToken } = getConfig();
+  const projectName = getProjectName(language);
+  const domain = getProjectCustomDomain(language);
+  if (!domain) throw new Error(`No custom domain configured for language: ${language}`);
+  const baseUrl = `https://${domain}`;
+
+  // Fetch all published translations for this language
+  const db = createServerSupabase();
+  const { data: translations } = await db
+    .from("translations")
+    .select("slug, updated_at, seo_title")
+    .eq("language", language)
+    .eq("status", "published")
+    .not("slug", "is", null);
+
+  const pages = (translations ?? []).filter((t) => t.slug);
+
+  // Build sitemap.xml
+  const urls = pages.map((t) => {
+    const loc = `${baseUrl}/${t.slug}`;
+    const lastmod = t.updated_at
+      ? new Date(t.updated_at).toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`;
+  });
+
+  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.join("\n")}
+</urlset>`;
+
+  // Build robots.txt
+  const robotsTxt = `User-agent: *
+Allow: /
+
+Sitemap: ${baseUrl}/sitemap.xml
+`;
+
+  // Prepare files
+  const sitemapBuffer = Buffer.from(sitemapXml, "utf-8");
+  const robotsBuffer = Buffer.from(robotsTxt, "utf-8");
+
+  const newFiles = [
+    {
+      path: "/sitemap.xml",
+      hash: md5hex(sitemapBuffer),
+      content: sitemapBuffer,
+      contentType: "application/xml",
+    },
+    {
+      path: "/robots.txt",
+      hash: md5hex(robotsBuffer),
+      content: robotsBuffer,
+      contentType: "text/plain",
+    },
+  ];
+
+  // Load existing manifest and merge
+  const existingManifest = await loadManifest(projectName);
+  const manifest: Record<string, string> = { ...existingManifest };
+  for (const f of newFiles) {
+    manifest[f.path] = f.hash;
+  }
+
+  // Upload and deploy
+  const existingHashes = new Set(Object.values(existingManifest));
+  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
+
+  const jwt = await getUploadToken(accountId, apiToken, projectName);
+
+  if (filesToUpload.length > 0) {
+    await uploadFiles(jwt, filesToUpload);
+    await upsertHashes(jwt, filesToUpload.map((f) => f.hash));
+  }
+
+  const deploy = await createDeployment(accountId, apiToken, projectName, manifest);
+  await saveManifest(projectName, manifest);
+
+  return {
+    sitemapUrl: `${baseUrl}/sitemap.xml`,
+    deploy_id: deploy.id,
+  };
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+

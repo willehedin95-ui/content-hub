@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { publishPage, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
+import { publishPage, deploySitemapAndRobots, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
@@ -192,6 +192,11 @@ async function doPublish(
         updated_at: new Date().toISOString(),
       })
       .eq("id", translationId);
+
+    // Fire-and-forget: regenerate sitemap for this language
+    deploySitemapAndRobots(language).catch((err) =>
+      console.warn("[publish] Sitemap update failed:", err)
+    );
 
     // Fire-and-forget: capture page thumbnail for the selector modal
     const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");

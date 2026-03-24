@@ -2,14 +2,18 @@ import { google } from "googleapis";
 
 const searchconsole = google.searchconsole("v1");
 
-function getAuth() {
+function getAuth(readonly = true) {
   const email = process.env.GDRIVE_SERVICE_ACCOUNT_EMAIL?.trim();
   const key = process.env.GDRIVE_PRIVATE_KEY?.replace(/\\n/g, "\n");
   if (!email || !key) throw new Error("Google service account not configured");
   return new google.auth.JWT({
     email,
     key,
-    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
+    scopes: [
+      readonly
+        ? "https://www.googleapis.com/auth/webmasters.readonly"
+        : "https://www.googleapis.com/auth/webmasters",
+    ],
   });
 }
 
@@ -135,6 +139,47 @@ export async function testGscConnection(
       ok: false,
       error: err instanceof Error ? err.message : "Unknown error",
     };
+  }
+}
+
+/** Submit a sitemap URL to a GSC property */
+export async function submitSitemap(
+  property: string,
+  sitemapUrl: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const auth = getAuth(false); // Need write scope
+    await searchconsole.sitemaps.submit({
+      auth,
+      siteUrl: property,
+      feedpath: sitemapUrl,
+    });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/** List sitemaps for a GSC property */
+export async function listSitemaps(
+  property: string
+): Promise<Array<{ path: string; lastSubmitted?: string; isPending: boolean }>> {
+  try {
+    const auth = getAuth();
+    const res = await searchconsole.sitemaps.list({
+      auth,
+      siteUrl: property,
+    });
+    return (res.data.sitemap ?? []).map((s) => ({
+      path: s.path ?? "",
+      lastSubmitted: s.lastSubmitted ?? undefined,
+      isPending: s.isPending ?? false,
+    }));
+  } catch {
+    return [];
   }
 }
 

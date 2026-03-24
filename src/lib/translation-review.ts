@@ -53,75 +53,72 @@ export async function reviewTranslationQuality(
     ...originalTexts.map((t, i) => `Original text ${i + 1}:\n${t}`),
   ].join("\n\n---\n\n");
 
-  const prompt = `You are a native ${langLabel} speaker and professional ad copy editor. You are reviewing ad copy that will run as a Meta/Facebook ad in Scandinavia.
+  const prompt = `You are a native ${langLabel} speaker reviewing ad copy for a Meta/Facebook ad in Scandinavia.
 
-Your job is to evaluate the ${langLabel} text below AS IF YOU ARE THE AUDIENCE READING IT FOR THE FIRST TIME. The text must read naturally, make logical sense, and be grammatically correct.
+Your job: check if a native ${langLabel} reader would understand the text and not be confused. This is AD COPY, not literary prose — it can be dramatic, use borrowed idioms, and have a casual or journalistic tone. That's normal and expected.
 
 TRANSLATED AD COPY (${langLabel}):
 ${allTranslated}
 
-ORIGINAL ENGLISH (for context only — your review is of the ${langLabel} text above):
+ORIGINAL ENGLISH (for reference):
 ${allOriginal}
 
 Concept name: "${conceptName}"
 
-Evaluate the ${langLabel} text and return a JSON object with these fields:
+Return a JSON object:
 
 {
   "narrative_issues": [
-    // CRITICAL: List any problems with the story/narrative making sense:
-    // - Characters behaving inconsistently (e.g. husband calling wife "Mamma" for no reason)
-    // - Relationships that don't make sense (child's voice mixed with adult's actions)
-    // - Perspective shifts within the same text (1st person to 3rd person unexpectedly)
-    // - Story events that are illogical or contradictory
-    // - Emotional tone that doesn't match the situation described
+    // ONLY flag if a reader would genuinely be CONFUSED by the story:
+    // - A character is called by two different names with no explanation
+    // - Perspective switches mid-sentence (1st person suddenly becomes 3rd person)
+    // - An event directly contradicts something stated 1-2 sentences earlier in the SAME text
+    // DO NOT flag: rhetorical techniques, dramatic license, conspiracy-style narrative tension,
+    // or logical gaps that exist in the original English (those are not translation issues)
     // Empty array if no issues.
   ],
   "naturalness_issues": [
-    // List phrases that sound like machine translation or non-native writing:
-    // - Awkward word order that no native speaker would use
-    // - Literal translations of English idioms that don't work in ${langLabel}
-    // - Unnatural pronoun usage (e.g. "de hade" when referring to a singular pillow — should be "den hade")
-    // - Register/formality mismatches (too formal for a Facebook ad, or too casual)
-    // - Words that exist but are wrong in this context
+    // ONLY flag if the phrasing is SO unnatural that it would make a reader stop and re-read:
+    // - Word order that is grammatically wrong (not just unusual)
+    // - Idioms that genuinely don't exist in ${langLabel} and would confuse readers
+    // DO NOT flag: borrowed idioms that are commonly used (e.g. "fra radaren" in Norwegian),
+    // slightly formal register, stylistic choices, or phrasing you'd personally write differently.
+    // The question is NOT "would a copywriter write it this way?" but "would a reader be confused?"
     // Empty array if no issues.
   ],
   "grammar_issues": [
-    // Definite grammar/spelling errors:
-    // - Wrong gender (en/ett in Swedish, en/et in Danish/Norwegian)
-    // - Wrong verb conjugation
-    // - Spelling mistakes
-    // - Missing conditional words (e.g. missing "om" in an if-clause)
+    // Actual grammar/spelling errors only:
+    // - Wrong gender (en/ett, en/et)
+    // - Misspelled words
+    // - Broken sentence structure
+    // DO NOT flag: stylistic comma usage, "could be smoother" suggestions, or word choices
+    // that are correct but not your personal preference.
     // Empty array if no issues.
   ],
   "fluency_issues": [
-    // Minor style preferences that don't block publication:
-    // - Could be phrased slightly better
-    // - Unusual but not incorrect word choices
+    // Optional style notes (these never affect the verdict):
+    // - Suggestions that would improve the text but aren't necessary
     // Empty array if no issues.
   ],
   "context_errors": [
-    // CRITICAL translation failures:
-    // - English words left untranslated (except brand names: HappySleep, Hydro13, etc.)
-    // - Completely wrong meaning (says the opposite)
-    // - Wrong target language (Swedish words in Danish text, etc.)
+    // Actual translation failures:
+    // - English words left untranslated (except brand names)
+    // - Meaning is completely wrong (says the opposite of the original)
+    // - Wrong language used (Swedish words in Danish text)
     // Empty array if no issues.
   ],
-  "overall_assessment": "1-2 sentence summary of the translation quality from a native reader's perspective.",
+  "overall_assessment": "1-2 sentence summary.",
   "review_verdict": "pass | review | fail"
 }
 
 VERDICT RULES:
-- "fail" = has ANY narrative_issues OR context_errors (MUST be fixed before going live — the ad will look broken to readers)
-- "review" = has naturalness_issues OR grammar_issues (should be reviewed, may be acceptable but risky)
-- "pass" = only fluency_issues or no issues (good to go)
+- "fail" = context_errors exist (wrong language, wrong meaning, untranslated text)
+- "review" = narrative_issues that would genuinely confuse readers, OR grammar errors
+- "pass" = everything else (naturalness notes, fluency suggestions, stylistic preferences)
 
-IMPORTANT:
-1. Be STRICT about narrative coherence. If the story doesn't make sense to a ${langLabel} reader, that's a fail.
-2. Be STRICT about naturalness. If a phrase sounds obviously translated rather than natively written, flag it.
-3. The bar for "pass" should be: "Would a native ${langLabel} copywriter approve this for a paid ad?"
-4. Write ALL feedback in English so the developer can understand it.
-5. Return ONLY the JSON object, no markdown fences or extra text.`;
+KEY PRINCIPLE: This is a Facebook ad, not a newspaper article. The bar is "would a native reader understand this and keep reading?" — NOT "would a professional copywriter write it identically?" Most translations are good enough. Only flag things that would actually hurt ad performance.
+
+Write all feedback in English. Return ONLY the JSON object, no markdown fences.`;
 
   const response = await client.messages.create({
     model: CLAUDE_HAIKU_MODEL,
@@ -141,12 +138,11 @@ IMPORTANT:
   // Validate verdict matches the rules (Haiku might disagree with itself)
   const hasNarrative = (result.narrative_issues?.length ?? 0) > 0;
   const hasContext = (result.context_errors?.length ?? 0) > 0;
-  const hasNaturalness = (result.naturalness_issues?.length ?? 0) > 0;
   const hasGrammar = (result.grammar_issues?.length ?? 0) > 0;
 
-  if (hasNarrative || hasContext) {
+  if (hasContext) {
     result.review_verdict = "fail";
-  } else if (hasNaturalness || hasGrammar) {
+  } else if (hasNarrative || hasGrammar) {
     result.review_verdict = "review";
   } else {
     result.review_verdict = "pass";
