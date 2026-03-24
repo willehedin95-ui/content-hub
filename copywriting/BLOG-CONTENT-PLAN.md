@@ -195,7 +195,7 @@ These articles target high-spend Google Ads keyword clusters (HappySleep pillow 
 
 ## Translation Strategy
 
-1. Write all 18 articles in Swedish first (blog.halsobladet.com)
+1. Write all 18 articles in Swedish first (halsobladet.com)
 2. After Swedish pillar + cluster is published: translate collagen articles to Norwegian (helseguiden.com) — least competition
 3. Then Danish (smarthelse.dk)
 4. Sleep articles can be translated on a rolling basis

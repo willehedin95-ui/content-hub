@@ -32,6 +32,7 @@ import {
   isDataForSeoConfigured,
   getKeywordSuggestions,
 } from "./dataforseo";
+import { submitSitemap, isGscConfigured } from "./gsc";
 import type { Language } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -449,16 +450,30 @@ export async function runBlogAutopilot(
     },
   });
 
-  // Fire-and-forget: homepage, RSS, sitemap
+  // Fire-and-forget: homepage, RSS, sitemap + GSC submission
   deployBlogHomepage(language).catch((err) =>
     console.warn("[blog-autopilot] Homepage deploy failed:", err)
   );
   deployBlogRssFeed(language).catch((err) =>
     console.warn("[blog-autopilot] RSS deploy failed:", err)
   );
-  deploySitemapAndRobots(language).catch((err) =>
-    console.warn("[blog-autopilot] Sitemap deploy failed:", err)
-  );
+  deploySitemapAndRobots(language)
+    .then(() => {
+      // Submit sitemap to Google Search Console so Google discovers new pages faster
+      if (isGscConfigured()) {
+        const domain = getProjectCustomDomain(language);
+        if (domain) {
+          const sitemapUrl = `https://${domain}/sitemap.xml`;
+          const property = `sc-domain:${domain}`;
+          submitSitemap(property, sitemapUrl).catch((err) =>
+            console.warn("[blog-autopilot] GSC sitemap submit failed:", err)
+          );
+        }
+      }
+    })
+    .catch((err) =>
+      console.warn("[blog-autopilot] Sitemap deploy failed:", err)
+    );
 
   // Send Telegram notification
   try {

@@ -247,6 +247,49 @@ export function autoFillAltText(html: string, articleTitle: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Hreflang tags for cross-language linking
+// ---------------------------------------------------------------------------
+
+const HREFLANG_MAP: Record<string, string> = {
+  sv: "sv-SE",
+  da: "da-DK",
+  no: "nb-NO",
+};
+
+function getBlogDomain(lang: Language): string | undefined {
+  return process.env[`CF_PAGES_DOMAIN_${lang.toUpperCase()}`]?.trim() || undefined;
+}
+
+function buildHreflangTags(
+  slug: string,
+  categorySlug: string | undefined,
+  currentLang: Language,
+  currentBaseUrl: string
+): string {
+  const urlPath = getArticlePath(slug, categorySlug);
+  const tags: string[] = [];
+
+  // Self-referencing hreflang (required by Google)
+  const hreflang = HREFLANG_MAP[currentLang] || currentLang;
+  tags.push(`<link rel="alternate" hreflang="${hreflang}" href="${esc(currentBaseUrl)}/${esc(urlPath)}">`);
+
+  // Other languages — only include if the domain is configured
+  const allLangs: Language[] = ["sv", "da", "no"];
+  for (const lang of allLangs) {
+    if (lang === currentLang) continue;
+    const domain = getBlogDomain(lang);
+    if (!domain) continue;
+    const hl = HREFLANG_MAP[lang] || lang;
+    tags.push(`<link rel="alternate" hreflang="${hl}" href="https://${esc(domain)}/${esc(urlPath)}">`);
+  }
+
+  // x-default points to Swedish version
+  tags.push(`<link rel="alternate" hreflang="x-default" href="${esc(currentBaseUrl)}/${esc(urlPath)}">`);
+
+  return tags.join("\n  ");
+}
+
+// ---------------------------------------------------------------------------
 // Wrap article body in blog shell
 // ---------------------------------------------------------------------------
 
@@ -381,6 +424,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta name="twitter:description" content="${esc(opts.seoDescription)}">
   ${opts.featuredImageUrl ? `<meta name="twitter:image" content="${esc(opts.featuredImageUrl)}">` : ""}
   <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}">
+  ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl)}
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
   <script type="application/ld+json">${articleSchema}</script>
   <script type="application/ld+json">${breadcrumbSchema}</script>${faqSchema ? `\n  <script type="application/ld+json">${faqSchema}</script>` : ""}
