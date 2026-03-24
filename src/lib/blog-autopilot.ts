@@ -377,6 +377,30 @@ export async function runBlogAutopilot(
 
   console.log(`[blog-autopilot] Generated ${article.wordCount} words, cost: $${article.cost.toFixed(4)}`);
 
+  // Generate native-style editorial images for the article
+  let finalHtml = article.html;
+  let imageCost = 0;
+  let imageCount = 0;
+  try {
+    const { generateBlogImages, replacePlaceholderImages } = await import("./blog-images");
+    const imageResult = await generateBlogImages({
+      articleTitle: article.seoTitle,
+      primaryKeyword: nextArticle.primaryKeyword,
+      contentBrief: nextArticle.contentBrief,
+      category: nextArticle.category,
+      articleHtml: article.html,
+      slug: nextArticle.slug,
+    });
+    if (imageResult.generated > 0) {
+      finalHtml = replacePlaceholderImages(article.html, imageResult.urlMap);
+      imageCost = imageResult.costUsd;
+      imageCount = imageResult.generated;
+      console.log(`[blog-autopilot] Generated ${imageCount} images, cost: $${imageCost.toFixed(3)}`);
+    }
+  } catch (err) {
+    console.warn("[blog-autopilot] Image generation failed, publishing with placeholders:", err);
+  }
+
   // Create page record
   const { data: page, error: pageError } = await db
     .from("pages")
@@ -385,7 +409,7 @@ export async function runBlogAutopilot(
       workspace_id: workspaceId,
       content_type: "seo_blog",
       blog_category: nextArticle.category,
-      blog_featured_image_url: extractFirstImage(article.html) || null,
+      blog_featured_image_url: extractFirstImage(finalHtml) || null,
     })
     .select("id")
     .single();
@@ -404,7 +428,7 @@ export async function runBlogAutopilot(
       slug: nextArticle.slug,
       seo_title: article.seoTitle,
       seo_description: article.seoDescription,
-      translated_html: article.html,
+      translated_html: finalHtml,
       status: "draft",
       workspace_id: workspaceId,
     })
@@ -420,7 +444,7 @@ export async function runBlogAutopilot(
   let publishUrl: string;
   try {
     publishUrl = await publishBlogArticle(
-      article.html,
+      finalHtml,
       nextArticle.slug,
       nextArticle.category,
       article.seoTitle,
@@ -451,7 +475,7 @@ export async function runBlogAutopilot(
     })
     .eq("id", translation.id);
 
-  // Log cost
+  // Log cost (article generation only — images logged separately in blog-images.ts)
   await db.from("usage_logs").insert({
     type: "blog_autopilot",
     model: "claude-sonnet",
@@ -459,6 +483,8 @@ export async function runBlogAutopilot(
     metadata: {
       slug: nextArticle.slug,
       word_count: article.wordCount,
+      images_generated: imageCount,
+      image_cost_usd: imageCost,
       source: CONTENT_PLAN.some((p) => p.slug === nextArticle.slug) ? "content_plan" : "keyword_research",
     },
   });
@@ -492,13 +518,15 @@ export async function runBlogAutopilot(
   try {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     if (chatId) {
+      const totalCost = article.cost + imageCost;
       await sendTelegramNotification(
         chatId,
         `📝 *Blog article published*\n\n` +
           `*${escTg(article.seoTitle)}*\n` +
           `Category: ${escTg(nextArticle.category)}\n` +
           `Words: ${article.wordCount}\n` +
-          `Cost: $${article.cost.toFixed(4)}\n\n` +
+          `Images: ${imageCount}\n` +
+          `Cost: $${totalCost.toFixed(4)}\n\n` +
           `[Read article](${publishUrl})`
       );
     }

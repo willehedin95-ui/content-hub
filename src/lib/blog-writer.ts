@@ -245,6 +245,9 @@ ${templateHtml}
 6. TL;DR box must be specific (not vague summaries)
 7. CTA links should point to relevant product pages
 8. Word count target: ${request.wordCount}
+9. Include 2 editorial image placeholders between major sections using this exact format:
+   <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+Image" alt="[descriptive alt text matching section topic]">
+   Place them after H2 sections where a visual break would help readability. Use descriptive alt text that describes what the image should show.
 
 Return ONLY the HTML document. No explanations, no code fences, no commentary.`;
 }
