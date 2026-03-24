@@ -6,6 +6,7 @@ import { Plus, ExternalLink, Globe, FileText, ChevronDown, LayoutTemplate } from
 import type { Page, Translation, Language, LANGUAGES as LangType } from "@/types";
 import { BLOG_TEMPLATES } from "@/lib/blog-templates";
 import BlogAnalytics from "./BlogAnalytics";
+import KeywordResearch from "./KeywordResearch";
 
 const LANGUAGES: { value: Language; label: string; flag: string }[] = [
   { value: "sv", label: "Swedish", flag: "🇸🇪" },
@@ -76,6 +77,9 @@ export default function BlogPagesClient({ pages }: Props) {
 
       {/* Analytics dashboard */}
       <BlogAnalytics />
+
+      {/* Keyword research tool */}
+      <KeywordResearch />
 
       {/* Create new blog article */}
       <div className="space-y-3 mb-6">
