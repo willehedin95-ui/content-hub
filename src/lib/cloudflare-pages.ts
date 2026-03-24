@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { Language } from "@/types";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchWithRetry } from "./retry";
+import { slugifyCategory, getArticlePath } from "@/lib/blog-shell";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
 
@@ -677,7 +678,7 @@ export async function deploySitemapAndRobots(
   const db = createServerSupabase();
   const { data: translations } = await db
     .from("translations")
-    .select("slug, updated_at, seo_title, pages!inner(content_type)")
+    .select("slug, updated_at, seo_title, pages!inner(content_type, blog_category)")
     .eq("language", language)
     .eq("status", "published")
     .not("slug", "is", null);
@@ -697,16 +698,30 @@ export async function deploySitemapAndRobots(
     );
   }
 
+  // Collect unique category slugs for category pages
+  const categorySlugs = new Set<string>();
+
   for (const t of pages) {
-    const loc = `${baseUrl}/${t.slug}`;
+    const pageInfo = t.pages as unknown as { content_type?: string; blog_category?: string };
+    const isBlog = pageInfo?.content_type === "seo_blog";
+    const catSlug = isBlog && pageInfo?.blog_category ? slugifyCategory(pageInfo.blog_category) : undefined;
+    const urlPath = isBlog ? getArticlePath(t.slug!, catSlug) : t.slug!;
+    const loc = `${baseUrl}/${urlPath}`;
     const lastmod = t.updated_at
       ? new Date(t.updated_at).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0];
-    const isBlog = (t.pages as unknown as { content_type?: string })?.content_type === "seo_blog";
     const priority = isBlog ? "0.8" : "0.6";
     const changefreq = isBlog ? "weekly" : "monthly";
     urls.push(
       `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`
+    );
+    if (catSlug) categorySlugs.add(catSlug);
+  }
+
+  // Add category index pages to sitemap
+  for (const catSlug of categorySlugs) {
+    urls.push(
+      `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(catSlug)}/</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`
     );
   }
 

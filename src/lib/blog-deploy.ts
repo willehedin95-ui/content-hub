@@ -13,8 +13,10 @@ import {
 } from "@/lib/cloudflare-pages";
 import {
   generateBlogHomepage,
+  generateCategoryPage,
   generateRssFeed,
   getDefaultBlogConfig,
+  slugifyCategory,
   type BlogArticleSummary,
   type BlogConfig,
 } from "@/lib/blog-shell";
@@ -51,12 +53,14 @@ export async function getPublishedBlogArticles(
       blog_category?: string;
       blog_featured_image_url?: string;
     };
+    const category = page?.blog_category || undefined;
     return {
       title: t.seo_title || t.slug || "",
       slug: t.slug || "",
+      categorySlug: category ? slugifyCategory(category) : undefined,
       excerpt: t.seo_description || "",
       featuredImageUrl: page?.blog_featured_image_url || undefined,
-      category: page?.blog_category || undefined,
+      category,
       publishedAt: t.created_at,
     };
   });
@@ -90,7 +94,7 @@ export async function deployBlogHomepage(
   const htmlBuffer = Buffer.from(homepageHtml, "utf-8");
   const htmlHash = md5hex(htmlBuffer);
 
-  const newFiles = [
+  const newFiles: Array<{ path: string; hash: string; content: Buffer; contentType: string }> = [
     {
       path: "/index.html",
       hash: htmlHash,
@@ -98,6 +102,34 @@ export async function deployBlogHomepage(
       contentType: "text/html",
     },
   ];
+
+  // Generate category index pages
+  const categoryMap = new Map<string, { name: string; slug: string; articles: BlogArticleSummary[] }>();
+  for (const a of articles) {
+    if (a.category && a.categorySlug) {
+      if (!categoryMap.has(a.categorySlug)) {
+        categoryMap.set(a.categorySlug, { name: a.category, slug: a.categorySlug, articles: [] });
+      }
+      categoryMap.get(a.categorySlug)!.articles.push(a);
+    }
+  }
+  for (const [, cat] of categoryMap) {
+    const catHtml = generateCategoryPage({
+      categoryName: cat.name,
+      categorySlug: cat.slug,
+      articles: cat.articles,
+      language,
+      blogConfig: config,
+      baseUrl,
+    });
+    const catBuffer = Buffer.from(catHtml, "utf-8");
+    newFiles.push({
+      path: `/${cat.slug}/index.html`,
+      hash: md5hex(catBuffer),
+      content: catBuffer,
+      contentType: "text/html",
+    });
+  }
 
   // Load existing manifest and merge
   const existingManifest = await loadManifest(projectName);

@@ -30,6 +30,7 @@ import {
   wrapInBlogShell,
   getDefaultBlogConfig,
   generateBlogHomepage,
+  slugifyCategory,
   type BlogArticleSummary,
 } from "../src/lib/blog-shell";
 
@@ -56,7 +57,7 @@ const articles: { templateId: string; name: string; slug: string; category: stri
   { templateId: "buying-guide", name: "Hur väljer du rätt kollagentillskott?", slug: "test-valja-kollagentillskott", category: "Guider" },
   { templateId: "comparison", name: "Flytande kollagen vs pulver — Vilken form är bäst?", slug: "test-flytande-vs-pulver", category: "Jämförelser" },
   { templateId: "science", name: "Funkar kollagentillskott? Vad säger forskningen", slug: "test-funkar-kollagentillskott", category: "Forskning" },
-  { templateId: "how-to", name: "Hur tvättar du din kudde — Komplett guide", slug: "test-tvatta-kudde", category: "Guider" },
+  { templateId: "testimonial", name: "8 veckor med Hydro13 — Min hud före och efter", slug: "test-hydro13-resultat", category: "Upplevelser" },
 ];
 
 const homepageArticles: BlogArticleSummary[] = [];
@@ -116,6 +117,13 @@ for (const article of articles) {
   assert(wrapped.includes("breadcrumb"), "Has breadcrumbs");
   assert(wrapped.includes("application/ld+json"), "Has JSON-LD schema");
 
+  // Test: Category URL prefix in canonical
+  const expectedCatSlug = slugifyCategory(article.category);
+  const expectedPath = `${expectedCatSlug}/${article.slug}`;
+  assert(wrapped.includes(`canonical" href="https://blog.halsobladet.com/${expectedPath}"`), `Canonical has category prefix: /${expectedPath}`);
+  // Test: Category breadcrumb links to category page
+  assert(wrapped.includes(`href="https://blog.halsobladet.com/${expectedCatSlug}/"`), `Breadcrumb links to category page: /${expectedCatSlug}/`);
+
   // Test 6: Schema validation
   const schemaMatch = wrapped.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g);
   assert(!!schemaMatch && schemaMatch.length >= 1, `Has ${schemaMatch?.length ?? 0} JSON-LD blocks`);
@@ -147,6 +155,7 @@ for (const article of articles) {
   homepageArticles.push({
     title: article.name,
     slug: article.slug,
+    categorySlug: article.category ? slugifyCategory(article.category) : undefined,
     excerpt: metaDesc,
     featuredImageUrl: featuredImage,
     category: article.category,
@@ -170,6 +179,9 @@ assert(homepage.includes("<header"), "Homepage has header");
 assert(homepage.includes("<footer"), "Homepage has footer");
 assert(homepageArticles.every((a) => homepage.includes(a.slug)), "Homepage links to all articles");
 assert(homepage.includes("article-card") || homepage.includes("blog-shell-card"), "Homepage has article cards");
+// Verify category prefix in homepage links
+assert(homepage.includes("produktguider/test-basta-kudden"), "Homepage uses category prefix for listicle");
+assert(homepage.includes("somn-halsa/test-nacksmarta-natten"), "Homepage uses category prefix for problem-solution");
 
 const homepageFile = path.join(outputDir, "homepage.html");
 fs.writeFileSync(homepageFile, homepage, "utf-8");

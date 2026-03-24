@@ -5,7 +5,7 @@ import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
-import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, type BlogConfig } from "@/lib/blog-shell";
+import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, type BlogConfig } from "@/lib/blog-shell";
 import { getPublishedBlogArticles, deployBlogHomepage, deployBlogRssFeed } from "@/lib/blog-deploy";
 
 export const maxDuration = 120;
@@ -102,6 +102,14 @@ async function doPublish(
     const pages = translation.pages as { slug: string; source_url: string };
     const slug = (translation.slug as string) || pages.slug;
     const slugPrefix = slug;
+
+    // Compute deploy path (includes category prefix for blog pages)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pageDataEarly = translation.pages as any;
+    const blogCategorySlug = pageDataEarly?.content_type === "seo_blog" && pageDataEarly?.blog_category
+      ? slugifyCategory(pageDataEarly.blog_category)
+      : undefined;
+    const deploySlug = blogCategorySlug ? `${blogCategorySlug}/${slug}` : slug;
 
     // Fix font-display: optional → swap
     html = html.replace(/font-display:\s*optional/g, "font-display: swap");
@@ -212,7 +220,7 @@ async function doPublish(
 
     const result = await publishPage(
       html,
-      slug,
+      deploySlug,
       language,
       additionalFiles,
       undefined,

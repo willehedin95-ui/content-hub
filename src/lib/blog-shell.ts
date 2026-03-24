@@ -23,10 +23,38 @@ export interface BlogLanguageConfig {
 export interface BlogArticleSummary {
   title: string;
   slug: string;
+  categorySlug?: string;
   excerpt: string;
   featuredImageUrl?: string;
   category?: string;
   publishedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Category URL helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a display category name to a URL-safe slug.
+ * "Sömn & Hälsa" → "somn-halsa", "Produktguider" → "produktguider"
+ */
+export function slugifyCategory(category: string): string {
+  return category
+    .toLowerCase()
+    .replace(/[åä]/g, "a")
+    .replace(/ö/g, "o")
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Build the full URL path for a blog article, including category prefix.
+ * getArticlePath("nacksmarta-natten", "somn-halsa") → "somn-halsa/nacksmarta-natten"
+ */
+export function getArticlePath(slug: string, categorySlug?: string): string {
+  return categorySlug ? `${categorySlug}/${slug}` : slug;
 }
 
 interface WrapOptions {
@@ -229,6 +257,8 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     getDefaultBlogConfig().languages.sv;
 
   const color = opts.blogConfig.primary_color || "#1a365d";
+  const categorySlug = opts.blogCategory ? slugifyCategory(opts.blogCategory) : undefined;
+  const urlPath = getArticlePath(opts.slug, categorySlug);
   const ogImage = opts.featuredImageUrl
     ? `<meta property="og:image" content="${esc(opts.featuredImageUrl)}">`
     : "";
@@ -237,10 +267,10 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   const breadcrumbItems: { name: string; url: string }[] = [
     { name: langConfig.nav_home_label, url: `${opts.baseUrl}/` },
   ];
-  if (opts.blogCategory) {
-    breadcrumbItems.push({ name: opts.blogCategory, url: "" });
+  if (categorySlug && opts.blogCategory) {
+    breadcrumbItems.push({ name: opts.blogCategory, url: `${opts.baseUrl}/${categorySlug}/` });
   }
-  breadcrumbItems.push({ name: opts.seoTitle, url: `${opts.baseUrl}/${opts.slug}` });
+  breadcrumbItems.push({ name: opts.seoTitle, url: `${opts.baseUrl}/${urlPath}` });
 
   const breadcrumbHtml = breadcrumbItems
     .map((item, i) => {
@@ -263,7 +293,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
           ${opts.relatedArticles
             .slice(0, 4)
             .map(
-              (a) => `<a href="${esc(opts.baseUrl)}/${esc(a.slug)}" class="blog-shell-card">
+              (a) => `<a href="${esc(opts.baseUrl)}/${esc(getArticlePath(a.slug, a.categorySlug))}" class="blog-shell-card">
               ${a.featuredImageUrl ? `<img src="${esc(a.featuredImageUrl)}" alt="${esc(a.title)}" loading="lazy">` : ""}
               <h3>${esc(a.title)}</h3>
               ${a.excerpt ? `<p>${esc(a.excerpt)}</p>` : ""}
@@ -297,7 +327,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     "@type": "Article",
     headline: opts.seoTitle,
     description: opts.seoDescription,
-    url: `${opts.baseUrl}/${opts.slug}`,
+    url: `${opts.baseUrl}/${urlPath}`,
     datePublished: opts.publishedAt,
     dateModified: opts.updatedAt,
     ...(opts.featuredImageUrl ? { image: opts.featuredImageUrl } : {}),
@@ -344,13 +374,13 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta property="og:type" content="article">
   <meta property="og:title" content="${esc(opts.seoTitle)}">
   <meta property="og:description" content="${esc(opts.seoDescription)}">
-  <meta property="og:url" content="${esc(opts.baseUrl)}/${esc(opts.slug)}">
+  <meta property="og:url" content="${esc(opts.baseUrl)}/${esc(urlPath)}">
   ${ogImage}
   <meta name="twitter:card" content="${opts.featuredImageUrl ? "summary_large_image" : "summary"}">
   <meta name="twitter:title" content="${esc(opts.seoTitle)}">
   <meta name="twitter:description" content="${esc(opts.seoDescription)}">
   ${opts.featuredImageUrl ? `<meta name="twitter:image" content="${esc(opts.featuredImageUrl)}">` : ""}
-  <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(opts.slug)}">
+  <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}">
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
   <script type="application/ld+json">${articleSchema}</script>
   <script type="application/ld+json">${breadcrumbSchema}</script>${faqSchema ? `\n  <script type="application/ld+json">${faqSchema}</script>` : ""}
@@ -409,7 +439,7 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
 
   const articleCards = opts.articles
     .map(
-      (a) => `<a href="${esc(opts.baseUrl)}/${esc(a.slug)}" class="blog-shell-card">
+      (a) => `<a href="${esc(opts.baseUrl)}/${esc(getArticlePath(a.slug, a.categorySlug))}" class="blog-shell-card">
         ${a.featuredImageUrl ? `<img src="${esc(a.featuredImageUrl)}" alt="${esc(a.title)}" loading="lazy">` : `<div class="blog-shell-card-placeholder"></div>`}
         <div class="blog-shell-card-body">
           ${a.category ? `<span class="blog-shell-card-cat">${esc(a.category)}</span>` : ""}
@@ -468,6 +498,81 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
 }
 
 // ---------------------------------------------------------------------------
+// Category index page
+// ---------------------------------------------------------------------------
+
+interface CategoryPageOptions {
+  categoryName: string;
+  categorySlug: string;
+  articles: BlogArticleSummary[];
+  language: Language;
+  blogConfig: BlogConfig;
+  baseUrl: string;
+}
+
+export function generateCategoryPage(opts: CategoryPageOptions): string {
+  const langConfig =
+    opts.blogConfig.languages[opts.language] ??
+    getDefaultBlogConfig().languages[opts.language] ??
+    getDefaultBlogConfig().languages.sv;
+
+  const color = opts.blogConfig.primary_color || "#1a365d";
+
+  const articleCards = opts.articles
+    .map(
+      (a) => `<a href="${esc(opts.baseUrl)}/${esc(getArticlePath(a.slug, a.categorySlug))}" class="blog-shell-card">
+        ${a.featuredImageUrl ? `<img src="${esc(a.featuredImageUrl)}" alt="${esc(a.title)}" loading="lazy">` : `<div class="blog-shell-card-placeholder"></div>`}
+        <div class="blog-shell-card-body">
+          <h2>${esc(a.title)}</h2>
+          ${a.excerpt ? `<p>${esc(a.excerpt)}</p>` : ""}
+        </div>
+      </a>`
+    )
+    .join("\n      ");
+
+  const breadcrumbHtml = `<a href="${esc(opts.baseUrl)}/">${esc(langConfig.nav_home_label)}</a> <span class="blog-shell-sep">/</span> <span>${esc(opts.categoryName)}</span>`;
+
+  return `<!DOCTYPE html>
+<html lang="${opts.language}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${esc(opts.categoryName)} | ${esc(langConfig.blog_name)}</title>
+  <meta name="description" content="${esc(opts.categoryName)} — ${esc(langConfig.blog_tagline)}">
+  <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(opts.categorySlug)}/">
+  <style>${BLOG_SHELL_CSS(color)}${HOMEPAGE_EXTRA_CSS}</style>
+</head>
+<body>
+  <header class="blog-shell-header">
+    <div class="blog-shell-container">
+      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">${esc(langConfig.blog_name)}</a>
+      <span class="blog-shell-tagline">${esc(langConfig.blog_tagline)}</span>
+    </div>
+  </header>
+
+  <main class="blog-shell-main">
+    <div class="blog-shell-container">
+      <nav class="blog-shell-breadcrumbs" aria-label="Breadcrumb">
+        ${breadcrumbHtml}
+      </nav>
+      <h1 class="blog-shell-home-title">${esc(opts.categoryName)}</h1>
+      <div class="blog-shell-home-grid">
+        ${articleCards}
+      </div>
+    </div>
+  </main>
+
+  <footer class="blog-shell-footer">
+    <div class="blog-shell-container">
+      <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
+    </div>
+  </footer>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
 // RSS feed
 // ---------------------------------------------------------------------------
 
@@ -493,7 +598,7 @@ export function generateRssFeed(opts: RssFeedOptions): string {
       const pubDate = a.publishedAt
         ? new Date(a.publishedAt).toUTCString()
         : new Date().toUTCString();
-      const link = `${opts.baseUrl}/${a.slug}`;
+      const link = `${opts.baseUrl}/${getArticlePath(a.slug, a.categorySlug)}`;
       return `    <item>
       <title>${escXml(a.title)}</title>
       <link>${escXml(link)}</link>

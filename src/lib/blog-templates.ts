@@ -53,7 +53,21 @@ const sharedStyles = `
     th { background: #f9fafb; font-weight: 600; }
     .vs-table { margin: 24px 0; }
     .score { display: inline-block; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
-    @media(max-width: 640px) { .pros-cons { grid-template-columns: 1fr; } .article { padding: 16px; } }
+    .timeline { border-left: 3px solid #e5e7eb; padding-left: 24px; margin: 24px 0; }
+    .timeline-entry { position: relative; margin: 0 0 28px; }
+    .timeline-entry::before { content: ""; position: absolute; left: -30px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: #059669; border: 2px solid #fff; box-shadow: 0 0 0 2px #059669; }
+    .timeline-entry h3 { margin: 0 0 6px; color: #059669; }
+    .quote-block { background: #faf5ff; border-left: 4px solid #a855f7; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 24px 0; font-style: italic; }
+    .quote-block .attribution { font-style: normal; font-weight: 600; color: #7c3aed; margin-top: 8px; font-size: 0.9rem; }
+    .results-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin: 24px 0; }
+    .results-box h3 { margin: 0 0 12px; color: #059669; }
+    .results-box ul { margin: 0; padding-left: 18px; }
+    .results-box li { margin-bottom: 6px; }
+    .before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+    .before-after .label { font-weight: 600; text-align: center; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .before-after .before .label { color: #9ca3af; }
+    .before-after .after .label { color: #059669; }
+    @media(max-width: 640px) { .pros-cons { grid-template-columns: 1fr; } .article { padding: 16px; } .before-after { grid-template-columns: 1fr; } }
   </style>
 `;
 
@@ -515,10 +529,10 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
   },
 
   {
-    id: "how-to",
-    name: "Skötselguide / How-to",
-    description: "Step-by-step guide — low competition, builds supporting authority",
-    category: "Guider",
+    id: "testimonial",
+    name: "Resultat & upplevelser",
+    description: "Before/after story with timeline — high trust, perfect for collagen/supplement results",
+    category: "Upplevelser",
     getHtml: (name) => `<!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -530,61 +544,102 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 <body>
   <div class="article">
     <h1>${esc(name)}</h1>
-    <p class="intro">En steg-för-steg-guide som visar dig exakt hur du gör. Följ instruktionerna nedan för bästa resultat.</p>
+    <p class="intro">En ärlig genomgång av resultat och upplevelser — vecka för vecka. Vad kan man realistiskt förvänta sig, och vad säger forskningen?</p>
 
     <div class="tldr">
       <strong>Kort sammanfattning (TL;DR)</strong>
-      <p>Du behöver [sak 1] och [sak 2]. Följ dessa 5 steg: [steg 1], [steg 2], [steg 3], [steg 4], [steg 5]. Hela processen tar ungefär X minuter.</p>
+      <p>Första skillnaden märks efter [X veckor]: [effekt 1]. Efter [Y veckor]: [effekt 2]. Enligt <a href="#">kliniska studier</a> behöver man minst [Z veckor] för att se tydliga resultat.</p>
     </div>
 
-    <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Guide" alt="Steg-för-steg-guide">
+    <img class="hero-img" src="https://placehold.co/1200x675/f5f3ff/a78bfa?text=Resultat" alt="Resultat och upplevelser">
 
-    <h2>Vad behöver du?</h2>
-    <ul>
-      <li>Sak 1</li>
-      <li>Sak 2</li>
-      <li>Sak 3</li>
-    </ul>
+    <h2>Varför testade vi detta?</h2>
+    <p>Bakgrunden till testet. Vad var utgångspunkten? Beskriv problemet eller behovet som startade resan. Enligt <a href="#">en studie publicerad i [tidskrift]</a> är detta ett vanligt problem bland [målgrupp].</p>
+
+    <h2>Vad sa forskningen innan vi började?</h2>
+    <p>Sammanfatta relevant forskning. Vilka resultat har kliniska studier visat? Var realistisk — citera faktiska studier och ange doser/tidsramar. Exempelvis visade <a href="#">Proksch et al. (2014)</a> att [effekt] efter [X veckor] med [dos].</p>
 
     <div class="info-box">
-      <strong>Bra att veta:</strong> Ett snabbt tips eller varning innan man börjar.
+      <strong>Viktigt att veta:</strong> Individuella resultat varierar. Det vi beskriver här är en personlig upplevelse — inte ett medicinskt löfte. Kontakta alltid din läkare vid hälsofrågor.
     </div>
 
-    <h2>Steg 1: Hur gör man [första steget]?</h2>
-    <p>Beskriv det första steget i detalj. Var tydlig och konkret.</p>
+    <h2>Hur såg resan ut vecka för vecka?</h2>
 
-    <h2>Steg 2: Hur hanterar man [andra steget]?</h2>
-    <p>Beskriv det andra steget.</p>
+    <div class="timeline">
+      <div class="timeline-entry">
+        <h3>Vecka 1–2: Start</h3>
+        <p>Beskriv de första intrycken. Hur kändes det? Var det någon skillnad alls? Smak, konsistens, rutin — allt som är relevant för läsaren.</p>
+      </div>
+      <div class="timeline-entry">
+        <h3>Vecka 3–4: Första förändringarna</h3>
+        <p>Beskriv de första märkbara skillnaderna. Var specifik — vad förändrades och hur märkte man det?</p>
+      </div>
+      <div class="timeline-entry">
+        <h3>Vecka 5–8: Tydliga resultat</h3>
+        <p>Beskriv hur resultaten utvecklades. Vilka förändringar blev tydliga? Stämmer detta överens med vad forskningen förutspådde?</p>
+      </div>
+      <div class="timeline-entry">
+        <h3>Vecka 9–12: Långtidseffekt</h3>
+        <p>Beskriv resultat efter längre tid. Fortsatte förbättringen? Planade den ut? Vad blev slutresultatet?</p>
+      </div>
+    </div>
 
-    <h2>Steg 3: Vad gör man med [tredje steget]?</h2>
-    <p>Beskriv det tredje steget. Enligt <a href="#">[källa]</a> ger detta bäst resultat.</p>
+    <h2>Före och efter — vad förändrades egentligen?</h2>
 
-    <h2>Steg 4: Hur vet man att [fjärde steget] är klart?</h2>
-    <p>Beskriv det fjärde steget.</p>
+    <div class="before-after">
+      <div class="before">
+        <div class="label">Före</div>
+        <img src="https://placehold.co/560x400/f3f4f6/9ca3af?text=Före" alt="Före behandling">
+      </div>
+      <div class="after">
+        <div class="label">Efter</div>
+        <img src="https://placehold.co/560x400/f0fdf4/059669?text=Efter" alt="Efter behandling">
+      </div>
+    </div>
 
-    <h2>Steg 5: Hur avslutar man?</h2>
-    <p>Beskriv det femte steget.</p>
+    <div class="results-box">
+      <h3>Sammanfattning av resultat</h3>
+      <ul>
+        <li><strong>Effekt 1:</strong> Beskriv den tydligaste förändringen</li>
+        <li><strong>Effekt 2:</strong> Beskriv den näst tydligaste</li>
+        <li><strong>Effekt 3:</strong> Eventuell bonus-effekt</li>
+        <li><strong>Tid till resultat:</strong> X veckor</li>
+      </ul>
+    </div>
 
-    <h2>Vilka misstag bör man undvika?</h2>
-    <p><strong>Misstag 1:</strong> Beskriv vad folk gör fel och hur man undviker det.</p>
-    <p><strong>Misstag 2:</strong> Beskriv ett annat vanligt misstag.</p>
+    <h2>Vad tyckte andra som testat?</h2>
 
-    <h2>Har du fler tips för bästa resultat?</h2>
-    <ul>
-      <li>Tips 1</li>
-      <li>Tips 2</li>
-      <li>Tips 3</li>
-    </ul>
+    <div class="quote-block">
+      <p>"Citat från en person som testat. Beskriv upplevelsen med egna ord — autentiskt och specifikt."</p>
+      <div class="attribution">— Namn, ålder, stad</div>
+    </div>
+
+    <div class="quote-block">
+      <p>"Ytterligare ett citat. Visa variation — inte alla behöver vara överdrivet positiva. Ärlighet bygger förtroende."</p>
+      <div class="attribution">— Namn, ålder, stad</div>
+    </div>
 
     <p><em>Läs även: <a href="#">Relaterad artikel på bloggen</a></em></p>
 
+    <h2>Vad är vår slutsats?</h2>
+    <p>Sammanfatta den ärliga bedömningen. Vem passar detta för? Vem bör eventuellt välja något annat? Var realistisk med förväntningar.</p>
+
+    <div class="cta-box">
+      <p><strong>Vill du prova själv?</strong></p>
+      <a href="#">Läs mer om produkten</a>
+    </div>
+
     <h2>Vanliga frågor</h2>
     <div class="faq-item">
-      <h3>Hur ofta bör man göra detta?</h3>
-      <p>Svar.</p>
+      <h3>Hur lång tid tar det innan man ser resultat?</h3>
+      <p>Svar baserat på forskning och upplevelser.</p>
     </div>
     <div class="faq-item">
-      <h3>Fråga 2?</h3>
+      <h3>Finns det några biverkningar?</h3>
+      <p>Svar — var ärlig och citera relevanta studier.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Hur länge behöver man fortsätta?</h3>
       <p>Svar.</p>
     </div>
   </div>
