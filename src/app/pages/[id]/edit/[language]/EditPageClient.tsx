@@ -9,6 +9,9 @@ interface Props {
   pageSlug: string;
   pageProduct?: string;
   customHeadCode?: string;
+  contentType?: string;
+  blogCategory?: string;
+  blogFeaturedImageUrl?: string;
   originalHtml: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];

@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { Language, AspectRatio } from "@/types";
+import type { BlogConfig } from "@/lib/blog-shell";
 
 /* ─── Settings type ─────────────────────────────────── */
 
@@ -39,6 +40,7 @@ export interface Settings {
   gethookd_board_ids: string[];
   gethookd_explore_queries: string[];
   default_page_b_id: string;
+  blog_config?: BlogConfig;
 }
 
 /* ─── Common props interface ────────────────────────── */

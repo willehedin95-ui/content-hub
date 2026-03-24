@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { publishPage, deploySitemapAndRobots, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
+import { publishPage, deploySitemapAndRobots, getProjectCustomDomain, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
+import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, type BlogConfig } from "@/lib/blog-shell";
+import { getPublishedBlogArticles, deployBlogHomepage, deployBlogRssFeed } from "@/lib/blog-deploy";
 
 export const maxDuration = 120;
 
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
   // Fetch translation + page (with workspace verification)
   const { data: translation, error: tError } = await db
     .from("translations")
-    .select(`*, pages (slug, source_url, custom_head_code, workspace_id)`)
+    .select(`*, pages (slug, source_url, custom_head_code, workspace_id, content_type, blog_category, blog_featured_image_url)`)
     .eq("id", translation_id)
     .single();
 
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify workspace access through parent page
-  const publishPages = translation.pages as { slug: string; source_url: string; custom_head_code?: string; workspace_id?: string } | null;
+  const publishPages = translation.pages as { slug: string; source_url: string; custom_head_code?: string; workspace_id?: string; content_type?: string; blog_category?: string; blog_featured_image_url?: string } | null;
   if (publishPages?.workspace_id && publishPages.workspace_id !== workspaceId) {
     return NextResponse.json(
       { error: "Translation not found" },
@@ -144,6 +146,42 @@ async function doPublish(
       body: img.buffer,
     }));
 
+    // Blog shell: wrap seo_blog pages in blog template
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pageData = translation.pages as any;
+    const isBlogPage = pageData?.content_type === "seo_blog";
+
+    if (isBlogPage) {
+      const appSettings_ = await getWorkspaceSettings();
+      const blogConfig = (appSettings_.blog_config as BlogConfig) ?? getDefaultBlogConfig();
+      const domain = getProjectCustomDomain(language);
+      const baseUrl = domain ? `https://${domain}` : "";
+
+      const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(html);
+      const articleTitle = (translation.seo_title as string) || slug;
+      // Auto-fill empty/placeholder alt text on images before wrapping
+      const bodyHtml = autoFillAltText(rawBodyHtml, articleTitle);
+      const relatedArticles = await getPublishedBlogArticles(language, slug);
+      const featuredImage =
+        pageData?.blog_featured_image_url || extractFirstImage(bodyHtml);
+
+      html = wrapInBlogShell({
+        articleBodyHtml: bodyHtml,
+        articleHeadHtml: headHtml,
+        seoTitle: articleTitle,
+        seoDescription: (translation.seo_description as string) || extractMetaDescription(bodyHtml),
+        slug,
+        language,
+        blogConfig,
+        relatedArticles,
+        featuredImageUrl: featuredImage,
+        blogCategory: pageData?.blog_category || undefined,
+        publishedAt: translation.created_at as string,
+        updatedAt: (translation.updated_at as string) || new Date().toISOString(),
+        baseUrl,
+      });
+    }
+
     // Load analytics settings
     const appSettings = await getWorkspaceSettings();
     const ga4Ids = (appSettings.ga4_measurement_ids as Record<string, string>) ?? {};
@@ -197,6 +235,16 @@ async function doPublish(
     deploySitemapAndRobots(language).catch((err) =>
       console.warn("[publish] Sitemap update failed:", err)
     );
+
+    // Fire-and-forget: regenerate blog homepage + RSS feed if this is a blog page
+    if (isBlogPage) {
+      deployBlogHomepage(language).catch((err) =>
+        console.warn("[publish] Blog homepage update failed:", err)
+      );
+      deployBlogRssFeed(language).catch((err) =>
+        console.warn("[publish] Blog RSS feed update failed:", err)
+      );
+    }
 
     // Fire-and-forget: capture page thumbnail for the selector modal
     const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");

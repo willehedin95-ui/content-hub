@@ -177,8 +177,8 @@ export default function ImagePanel({
     onImageTranslating?.(false);
   }
 
-  /** Swap an image in the iframe */
-  function swapImageInIframe(imageIndex: number, newUrl: string) {
+  /** Swap an image in the iframe, optionally setting alt text */
+  function swapImageInIframe(imageIndex: number, newUrl: string, altText?: string) {
     const doc = iframeRef.current?.contentDocument;
     if (doc) {
       const imgs = doc.querySelectorAll("img");
@@ -192,6 +192,17 @@ export default function ImagePanel({
           picture.querySelectorAll("source").forEach((s) => s.remove());
         }
         img.removeAttribute("data-cc-img-highlight");
+        // Set descriptive alt text if provided and current alt is empty/placeholder
+        if (altText) {
+          const currentAlt = img.getAttribute("alt") || "";
+          const isPlaceholder = !currentAlt || currentAlt === "Illustration" || currentAlt === "Image"
+            || currentAlt.startsWith("Produktbild") || currentAlt.startsWith("Artikelbild")
+            || currentAlt.startsWith("Guidebild") || currentAlt.startsWith("Forskning")
+            || currentAlt.includes("placehold");
+          if (isPlaceholder) {
+            img.setAttribute("alt", altText);
+          }
+        }
       }
     }
     onImageReplaced();
@@ -326,9 +337,9 @@ export default function ImagePanel({
         throw new Error(data.error || "Generation failed");
       }
 
-      const { imageUrl, prompt: usedPrompt } = await res.json();
+      const { imageUrl, prompt: usedPrompt, suggestedAltText } = await res.json();
       setPrompt(usedPrompt);
-      swapImageInIframe(imageToProcess.index, imageUrl);
+      swapImageInIframe(imageToProcess.index, imageUrl, suggestedAltText);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Smart image generation failed:", err);

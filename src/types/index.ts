@@ -54,6 +54,8 @@ export interface Page {
   status: PageStatus;
   swipe_job_id: string | null;
   content_type?: "landing_page" | "seo_blog";
+  blog_category?: string | null;
+  blog_featured_image_url?: string | null;
   created_at: string;
   translations?: Translation[];
 }

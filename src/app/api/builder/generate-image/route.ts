@@ -416,10 +416,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Generate SEO-friendly alt text from context
+    const suggestedAltText = buildAltText(
+      nanaBananaJson,
+      productName,
+      surroundingText
+    );
+
     return NextResponse.json({
       imageUrl: urlData.publicUrl,
       prompt: nanaBananaPrompt,
       analysis: `${nanaBananaJson.style?.feel || "Image analyzed"}. ${nanaBananaJson.scene?.atmosphere || ""}`,
+      suggestedAltText,
     });
   } catch (err) {
     const message =
@@ -458,4 +466,49 @@ function summarizeTheme(text: string): string {
   const trimmed = text.trim().slice(0, 150);
   const lastSpace = trimmed.lastIndexOf(" ");
   return lastSpace > 50 ? trimmed.slice(0, lastSpace) + "..." : trimmed;
+}
+
+/**
+ * Build a descriptive, SEO-friendly alt text from the image generation context.
+ * Combines the visual scene description with the product name.
+ * Keeps it under 125 chars (Google's recommended max for alt text).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildAltText(json: Record<string, any>, productName: string, surroundingText?: string): string {
+  const parts: string[] = [];
+
+  // Use the style feel if available (e.g. "Clean Scandinavian lifestyle shot")
+  const feel = json.style?.feel;
+  if (feel && typeof feel === "string") {
+    parts.push(feel);
+  }
+
+  // Add scene setting for context
+  const setting = json.scene?.setting;
+  if (setting && typeof setting === "string" && setting.length < 60) {
+    parts.push(setting);
+  }
+
+  // Always mention the product
+  if (!parts.some((p) => p.toLowerCase().includes(productName.toLowerCase()))) {
+    parts.push(productName);
+  }
+
+  let alt = parts.join(" — ");
+
+  // If we got nothing useful from the JSON, fall back to surrounding text
+  if (alt.length < 10 && surroundingText?.trim()) {
+    const text = surroundingText.trim().slice(0, 100);
+    const lastSpace = text.lastIndexOf(" ");
+    alt = `${productName} — ${lastSpace > 30 ? text.slice(0, lastSpace) : text}`;
+  }
+
+  // Truncate to 125 chars on word boundary
+  if (alt.length > 125) {
+    const truncated = alt.slice(0, 125);
+    const lastSpace = truncated.lastIndexOf(" ");
+    alt = lastSpace > 50 ? truncated.slice(0, lastSpace) : truncated;
+  }
+
+  return alt || productName;
 }

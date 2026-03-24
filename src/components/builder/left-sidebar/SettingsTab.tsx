@@ -105,6 +105,12 @@ export default function SettingsTab() {
     excludeMode,
     setExcludeMode,
     excludeCount,
+    // Blog
+    isBlogPage,
+    blogCategory,
+    setBlogCategory,
+    blogFeaturedImageUrl,
+    setBlogFeaturedImageUrl,
   } = useBuilder();
 
   return (
@@ -169,6 +175,39 @@ export default function SettingsTab() {
           />
         </div>
       </CollapsibleSection>
+
+      {/* Blog Section — only shown for seo_blog pages */}
+      {isBlogPage && (
+        <CollapsibleSection title="Blog" defaultOpen>
+          <div>
+            <label className="text-[11px] font-medium text-gray-600 mb-1 block">
+              Category
+            </label>
+            <input
+              type="text"
+              value={blogCategory}
+              onChange={(e) => setBlogCategory(e.target.value)}
+              placeholder="e.g. Bäst i test"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-gray-600 mb-1 block">
+              Featured image URL
+            </label>
+            <input
+              type="text"
+              value={blogFeaturedImageUrl}
+              onChange={(e) => setBlogFeaturedImageUrl(e.target.value)}
+              placeholder="Auto-detected from content if empty"
+              className={inputClass}
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              Used for homepage card and og:image. Leave empty to auto-detect from first image.
+            </p>
+          </div>
+        </CollapsibleSection>
+      )}
 
       {/* Destination URL — default open */}
       <CollapsibleSection title="Destination URL" defaultOpen>

@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-type Tab = "pages" | "ab-tests" | "swipe";
+type Tab = "pages" | "blog" | "ab-tests" | "swipe";
 
 const TABS: { value: Tab; label: string; href: string }[] = [
   { value: "pages", label: "Pages", href: "/pages" },
+  { value: "blog", label: "Blog", href: "/pages?tab=blog" },
   { value: "ab-tests", label: "A/B Tests", href: "/pages?tab=ab-tests" },
   { value: "swipe", label: "Swipe Page", href: "/pages?tab=swipe" },
 ];

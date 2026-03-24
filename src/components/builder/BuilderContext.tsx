@@ -55,6 +55,9 @@ export interface BuilderProps {
   pageSlug: string;
   pageProduct?: string;
   customHeadCode?: string;
+  contentType?: string;
+  blogCategory?: string;
+  blogFeaturedImageUrl?: string;
   originalHtml: string;
   translation: Translation;
   language: (typeof LANGUAGES)[number];
@@ -97,6 +100,14 @@ export interface BuilderContextValue {
   // --- Refs ---
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selectedElRef: RefObject<HTMLElement | null>;
+
+  // --- Blog metadata ---
+  contentType: string;
+  blogCategory: string;
+  setBlogCategory: (v: string) => void;
+  blogFeaturedImageUrl: string;
+  setBlogFeaturedImageUrl: (v: string) => void;
+  isBlogPage: boolean;
 
   // --- Core state ---
   seoTitle: string;
@@ -359,6 +370,9 @@ export function BuilderProvider({
     pageSlug,
     pageProduct,
     customHeadCode: initialCustomHeadCode,
+    contentType: initialContentType,
+    blogCategory: initialBlogCategory,
+    blogFeaturedImageUrl: initialBlogFeaturedImageUrl,
     originalHtml,
     translation,
     language,
@@ -380,7 +394,7 @@ export function BuilderProvider({
   const baselineHtmlRef = useRef<string>("");
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const autoSavedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "", customHeadCode: "" });
+  const autosaveDataRef = useRef({ seoTitle: "", seoDesc: "", slug: "", customHeadCode: "", blogCategory: "", blogFeaturedImageUrl: "" });
   const savingRef = useRef(false);
   const manualSaveActiveRef = useRef(false);
   const autosaveAbortRef = useRef<AbortController | null>(null);
@@ -398,6 +412,10 @@ export function BuilderProvider({
   const [seoTitle, setSeoTitle] = useState(translation.seo_title ?? "");
   const [seoDesc, setSeoDesc] = useState(translation.seo_description ?? "");
   const [customHeadCode, setCustomHeadCode] = useState(initialCustomHeadCode ?? "");
+  const contentType = initialContentType ?? "landing_page";
+  const isBlogPage = contentType === "seo_blog";
+  const [blogCategory, setBlogCategory] = useState(initialBlogCategory ?? "");
+  const [blogFeaturedImageUrl, setBlogFeaturedImageUrl] = useState(initialBlogFeaturedImageUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [retranslating, setRetranslating] = useState(false);
@@ -503,8 +521,8 @@ export function BuilderProvider({
   // Ref-sync effects
   // -----------------------------------------------------------------------
   useEffect(() => {
-    autosaveDataRef.current = { seoTitle, seoDesc, slug, customHeadCode };
-  }, [seoTitle, seoDesc, slug, customHeadCode]);
+    autosaveDataRef.current = { seoTitle, seoDesc, slug, customHeadCode, blogCategory, blogFeaturedImageUrl };
+  }, [seoTitle, seoDesc, slug, customHeadCode, blogCategory, blogFeaturedImageUrl]);
 
   // Trigger autosave when customHeadCode changes (skip initial render)
   const customHeadCodeInitRef = useRef(true);
@@ -710,11 +728,16 @@ export function BuilderProvider({
         const html = extractHtmlFromIframe();
         const d = autosaveDataRef.current;
         let res: Response;
+        const pagePatch: Record<string, unknown> = { custom_head_code: d.customHeadCode };
+        if (isBlogPage) {
+          pagePatch.blog_category = d.blogCategory || null;
+          pagePatch.blog_featured_image_url = d.blogFeaturedImageUrl || null;
+        }
         if (isSource) {
           res = await fetch(`/api/pages/${pageId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ original_html: html, custom_head_code: d.customHeadCode }),
+            body: JSON.stringify({ original_html: html, ...pagePatch }),
             signal: abort.signal,
           });
         } else {
@@ -734,7 +757,7 @@ export function BuilderProvider({
             fetch(`/api/pages/${pageId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ custom_head_code: d.customHeadCode }),
+              body: JSON.stringify(pagePatch),
               signal: abort.signal,
             }),
           ]);
@@ -1469,11 +1492,17 @@ export function BuilderProvider({
     try {
       const html = extractHtmlFromIframe();
 
+      const pagePatch: Record<string, unknown> = { custom_head_code: customHeadCode };
+      if (isBlogPage) {
+        pagePatch.blog_category = blogCategory || null;
+        pagePatch.blog_featured_image_url = blogFeaturedImageUrl || null;
+      }
+
       if (isSource) {
         const res = await fetch(`/api/pages/${pageId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ original_html: html, custom_head_code: customHeadCode }),
+          body: JSON.stringify({ original_html: html, ...pagePatch }),
         });
 
         if (!res.ok) {
@@ -1496,7 +1525,7 @@ export function BuilderProvider({
           fetch(`/api/pages/${pageId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ custom_head_code: customHeadCode }),
+            body: JSON.stringify(pagePatch),
           }),
         ]);
 
@@ -2296,6 +2325,14 @@ export function BuilderProvider({
     // Refs
     iframeRef,
     selectedElRef,
+
+    // Blog metadata
+    contentType,
+    blogCategory,
+    setBlogCategory,
+    blogFeaturedImageUrl,
+    setBlogFeaturedImageUrl,
+    isBlogPage,
 
     // Core state
     seoTitle,

@@ -16,13 +16,13 @@ export interface DeployFile {
   body: Uint8Array;
 }
 
-function md5hex(data: Buffer | string): string {
+export function md5hex(data: Buffer | string): string {
   return createHash("md5")
     .update(typeof data === "string" ? Buffer.from(data, "utf-8") : data)
     .digest("hex");
 }
 
-function getConfig() {
+export function getConfig() {
   const accountId = process.env.CF_PAGES_ACCOUNT_ID;
   const apiToken = process.env.CF_PAGES_API_TOKEN;
   if (!accountId || !apiToken) {
@@ -31,14 +31,14 @@ function getConfig() {
   return { accountId, apiToken };
 }
 
-function getProjectName(language: Language): string {
+export function getProjectName(language: Language): string {
   const key = `CF_PAGES_PROJECT_${language.toUpperCase()}`;
   const name = process.env[key];
   if (!name) throw new Error(`${key} not configured for language: ${language}`);
   return name;
 }
 
-async function getUploadToken(
+export async function getUploadToken(
   accountId: string,
   apiToken: string,
   projectName: string
@@ -54,7 +54,7 @@ async function getUploadToken(
   return json.result.jwt;
 }
 
-async function uploadFiles(
+export async function uploadFiles(
   jwt: string,
   files: Array<{ hash: string; content: Buffer; contentType: string }>
 ): Promise<void> {
@@ -103,7 +103,7 @@ async function uploadFiles(
   }
 }
 
-async function upsertHashes(jwt: string, hashes: string[]): Promise<void> {
+export async function upsertHashes(jwt: string, hashes: string[]): Promise<void> {
   if (hashes.length === 0) return;
   const res = await fetchWithRetry(`${CF_API}/pages/assets/upsert-hashes`, {
     method: "POST",
@@ -118,7 +118,7 @@ async function upsertHashes(jwt: string, hashes: string[]): Promise<void> {
   }
 }
 
-async function createDeployment(
+export async function createDeployment(
   accountId: string,
   apiToken: string,
   projectName: string,
@@ -145,7 +145,7 @@ async function createDeployment(
   return { id: json.result.id, url: json.result.url };
 }
 
-function getProjectCustomDomain(language: Language): string | undefined {
+export function getProjectCustomDomain(language: Language): string | undefined {
   const key = `CF_PAGES_DOMAIN_${language.toUpperCase()}`;
   return process.env[key]?.trim() || undefined;
 }
@@ -178,7 +178,7 @@ async function getProjectBaseUrl(
     : `https://${json.result.subdomain}`;
 }
 
-async function loadManifest(
+export async function loadManifest(
   projectName: string
 ): Promise<Record<string, string>> {
   const db = createServerSupabase();
@@ -190,7 +190,7 @@ async function loadManifest(
   return (data?.manifest as Record<string, string>) ?? {};
 }
 
-async function saveManifest(
+export async function saveManifest(
   projectName: string,
   manifest: Record<string, string>
 ): Promise<void> {
@@ -673,25 +673,42 @@ export async function deploySitemapAndRobots(
   if (!domain) throw new Error(`No custom domain configured for language: ${language}`);
   const baseUrl = `https://${domain}`;
 
-  // Fetch all published translations for this language
+  // Fetch all published translations for this language (with content_type)
   const db = createServerSupabase();
   const { data: translations } = await db
     .from("translations")
-    .select("slug, updated_at, seo_title")
+    .select("slug, updated_at, seo_title, pages!inner(content_type)")
     .eq("language", language)
     .eq("status", "published")
     .not("slug", "is", null);
 
   const pages = (translations ?? []).filter((t) => t.slug);
+  const hasBlogPages = pages.some(
+    (t) => (t.pages as unknown as { content_type?: string })?.content_type === "seo_blog"
+  );
 
   // Build sitemap.xml
-  const urls = pages.map((t) => {
+  const urls: string[] = [];
+
+  // Add homepage if blog pages exist
+  if (hasBlogPages) {
+    urls.push(
+      `  <url>\n    <loc>${escapeXml(baseUrl)}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`
+    );
+  }
+
+  for (const t of pages) {
     const loc = `${baseUrl}/${t.slug}`;
     const lastmod = t.updated_at
       ? new Date(t.updated_at).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0];
-    return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`;
-  });
+    const isBlog = (t.pages as unknown as { content_type?: string })?.content_type === "seo_blog";
+    const priority = isBlog ? "0.8" : "0.6";
+    const changefreq = isBlog ? "weekly" : "monthly";
+    urls.push(
+      `  <url>\n    <loc>${escapeXml(loc)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`
+    );
+  }
 
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
