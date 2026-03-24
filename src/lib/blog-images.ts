@@ -191,15 +191,10 @@ ${imageDescriptions}`;
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
-export interface GenerateBlogImagesExtendedOptions extends GenerateBlogImagesOptions {
-  /** Product slug — if provided, uses asset bank images for hero */
-  productSlug?: string;
-}
-
 export async function generateBlogImages(
-  opts: GenerateBlogImagesExtendedOptions
+  opts: GenerateBlogImagesOptions
 ): Promise<BlogImageResult> {
-  const { articleTitle, primaryKeyword, contentBrief, category, articleHtml, slug, productSlug } = opts;
+  const { articleTitle, primaryKeyword, contentBrief, category, articleHtml, slug } = opts;
 
   // Step 1: Find placeholders
   const placeholders = findPlaceholderImages(articleHtml);
@@ -208,42 +203,11 @@ export async function generateBlogImages(
     return { urlMap: {}, generated: 0, failed: 0, costUsd: 0 };
   }
 
-  console.log(`[blog-images] Found ${placeholders.length} placeholder images`);
+  console.log(`[blog-images] Found ${placeholders.length} placeholder images — generating ALL via Nano Banana`);
 
-  // Step 1b: Try to use asset bank images for hero image (our own product)
-  const urlMap: Record<string, string> = {};
-  let assetBankUsed = 0;
-  const remainingPlaceholders: PlaceholderImage[] = [];
-
-  if (productSlug) {
-    const assetUrls = await getAssetBankImages(productSlug, placeholders.length);
-    if (assetUrls.length > 0) {
-      // Use asset bank images for as many placeholders as we have assets
-      for (let i = 0; i < placeholders.length; i++) {
-        if (i < assetUrls.length) {
-          urlMap[placeholders[i].originalUrl] = assetUrls[i];
-          assetBankUsed++;
-          console.log(`[blog-images] Image ${i}: Using asset bank image`);
-        } else {
-          remainingPlaceholders.push(placeholders[i]);
-        }
-      }
-    } else {
-      remainingPlaceholders.push(...placeholders);
-    }
-  } else {
-    remainingPlaceholders.push(...placeholders);
-  }
-
-  // If all placeholders filled from asset bank, we're done (no AI generation cost)
-  if (remainingPlaceholders.length === 0) {
-    console.log(`[blog-images] All ${assetBankUsed} images from asset bank (free)`);
-    return { urlMap, generated: assetBankUsed, failed: 0, costUsd: 0 };
-  }
-
-  // Step 2: Generate prompts via Claude Haiku for remaining placeholders
+  // Step 2: Generate prompts via Claude Haiku
   const { prompts, cost: haikuCost } = await generateImagePrompts(
-    remainingPlaceholders,
+    placeholders,
     articleTitle,
     primaryKeyword,
     category,
@@ -252,15 +216,16 @@ export async function generateBlogImages(
 
   console.log(`[blog-images] Generated ${prompts.length} image prompts (Haiku cost: $${haikuCost.toFixed(4)})`);
 
-  // Step 3: Generate images in parallel
+  // Step 3: Generate images in parallel via Kie AI
   const db = createServerSupabase();
-  let generated = assetBankUsed;
+  const urlMap: Record<string, string> = {};
+  let generated = 0;
   let failed = 0;
   let totalImageCost = 0;
 
   const settled = await Promise.allSettled(
     prompts.map(async (imgPrompt) => {
-      const placeholder = remainingPlaceholders[imgPrompt.index];
+      const placeholder = placeholders[imgPrompt.index];
       if (!placeholder) return;
 
       const label = `[blog-images] Image ${placeholder.index}`;
@@ -322,18 +287,18 @@ export async function generateBlogImages(
     }
   }
 
-  // Log Haiku prompt cost (only if we actually used Haiku)
+  // Log Haiku prompt cost
   if (prompts.length > 0) {
     await db.from("usage_logs").insert({
       type: "blog_image_prompt",
       model: "claude-haiku",
       cost_usd: haikuCost,
-      metadata: { slug, prompt_count: prompts.length, asset_bank_used: assetBankUsed },
+      metadata: { slug, prompt_count: prompts.length },
     });
   }
 
   const totalCost = totalImageCost + haikuCost;
-  console.log(`[blog-images] Done: ${generated} generated (${assetBankUsed} from asset bank), ${failed} failed, cost: $${totalCost.toFixed(4)}`);
+  console.log(`[blog-images] Done: ${generated} generated, ${failed} failed, cost: $${totalCost.toFixed(4)}`);
 
   return { urlMap, generated, failed, costUsd: totalCost };
 }
@@ -403,48 +368,3 @@ export async function injectProductImage(
   return html.slice(0, ctaIndex) + productImgTag + html.slice(ctaIndex);
 }
 
-// ---------------------------------------------------------------------------
-// Get asset bank images for own product (lifestyle/product/model categories)
-// Used as hero + section images instead of AI-generated ones
-// ---------------------------------------------------------------------------
-
-export async function getAssetBankImages(
-  productSlug: string,
-  count: number
-): Promise<string[]> {
-  const db = createServerSupabase();
-
-  // Get lifestyle and product images from the asset bank
-  const { data: assets } = await db
-    .from("assets")
-    .select("url, category")
-    .eq("product", productSlug)
-    .in("category", ["lifestyle", "product", "model"])
-    .limit(count * 3); // Fetch extra to have variety
-
-  if (!assets?.length) {
-    console.log(`[blog-images] No asset bank images for "${productSlug}"`);
-    return [];
-  }
-
-  // Prioritize: lifestyle first (most editorial), then product, then model
-  const prioritized = [
-    ...assets.filter((a) => a.category === "lifestyle"),
-    ...assets.filter((a) => a.category === "product"),
-    ...assets.filter((a) => a.category === "model"),
-  ];
-
-  // Shuffle within each priority group for variety between articles
-  const shuffled = shuffleArray(prioritized);
-
-  return shuffled.slice(0, count).map((a) => a.url);
-}
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const result = [...arr];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}

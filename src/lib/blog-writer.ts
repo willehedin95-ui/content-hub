@@ -536,9 +536,12 @@ ${templateHtml}
 6. TL;DR box: use a <ul> with <li> items, not a run-on sentence. Be specific.
 7. ALL CTA links and "buy" buttons for our product must point to: ${productUrl}
 8. Word count target: ${request.wordCount}
-9. Include 2 editorial image placeholders between major sections using this exact format:
-   <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+Image" alt="[descriptive alt text in Swedish matching section topic]">
-   Place them after H2 sections where a visual break would help readability. Alt text must be in Swedish and describe what the image should show.
+9. IMAGES — Include exactly these image placeholders (they will be replaced with AI-generated images):
+   a. ONE hero image right after the TL;DR box:
+      <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Hero" alt="[descriptive alt text in Swedish]">
+   b. TWO section images between major sections:
+      <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+Image" alt="[descriptive alt text in Swedish matching section topic]">
+   Place section images after H2 sections where a visual break would help readability. Alt text must be in Swedish and describe what the image should show. All 3 images MUST use placehold.co URLs exactly as shown.
 10. Write the ENTIRE article in Swedish. No English words except brand names.
 11. If the title says "12 kuddar" but you only have 10 verified products, adjust the title number to match (e.g. "Test av 10 kuddar"). NEVER pad with fabricated products.
 

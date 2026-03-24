@@ -396,7 +396,6 @@ export async function runBlogAutopilot(
       category: nextArticle.category,
       articleHtml: article.html,
       slug: nextArticle.slug,
-      productSlug: nextArticle.productSlug,
     });
     if (imageResult.generated > 0) {
       finalHtml = replacePlaceholderImages(article.html, imageResult.urlMap);
