@@ -114,12 +114,21 @@ TOPIC-SPECIFIC RULES:
 - For COLLAGEN articles: Liquid supplement bottles on a bathroom counter, someone holding a supplement glass, kitchen counter morning routines
 - For HAIR/SKIN articles: Natural close-ups of skin texture, hair texture, bathroom mirrors
 
+ANATOMY — AI image generators often produce impossible body positions. Your prompts MUST prevent this:
+- If a person is lying on their BACK, their face must face UP (toward the ceiling)
+- If a person is lying on their STOMACH, their face can face down or to the side
+- If a person is on their SIDE, face and body must face the same direction
+- NEVER describe a pose where the head is twisted 180° relative to the torso
+- When in doubt, describe the FULL body position explicitly (e.g. "woman lying on her right side, face resting sideways on pillow, both shoulders facing the same direction")
+- Prefer showing people from behind, or just showing hands/shoulders/neck — avoid full face shots which AI tends to distort
+
 CRITICAL — NEVER generate:
 - Decorative throw pillows or couch cushions (these are NOT sleep pillows)
 - Medical/clinical imagery (no anatomy, blood, wounds)
 - Generic stock photo compositions (no posed smiling people)
 - Overly polished or studio-lit scenes
 - Perfect symmetrical compositions
+- Anatomically impossible poses (twisted necks, bent-wrong limbs, extra fingers)
 
 RULES:
 - Prompts must be 80-120 words with specific visual detail
