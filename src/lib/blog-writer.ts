@@ -446,7 +446,7 @@ ${externalLinksSection}
 2. NEVER fabricate URLs. Only use URLs from the verified lists above.
 3. NEVER invent prices. Only use prices from the verified competitor data.
 4. NEVER fabricate study citations. Only cite studies you know are real (author, journal, year).
-5. NEVER make up expert quotes or testimonials.
+5. NEVER make up expert quotes, testimonials, or named people. DO NOT use the .quote-block CSS class at all — you are not allowed to attribute statements to specific people (doctors, physiotherapists, researchers, etc.) because you cannot verify they exist or said those things. This is a YMYL health site and fabricated expert quotes destroy trust and violate Google's E-E-A-T guidelines. Instead, paraphrase findings from real studies using "forskning visar att..." or "enligt [källa]...".
 6. If the content brief asks for 12 products but you only have 10 verified ones, write about 10. Do NOT pad with made-up products.
 
 ## Anti-Slop Rules — CRITICAL

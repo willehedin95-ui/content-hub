@@ -13,6 +13,7 @@ import {
   extractMetaDescription,
   autoFillAltText,
   wrapInBlogShell,
+  fixMetaImageUrls,
   getDefaultBlogConfig,
   slugifyCategory,
   type BlogConfig,
@@ -769,6 +770,9 @@ async function publishBlogArticle(
   } catch (err) {
     console.warn("[blog-publish] Image optimization failed, using original URLs:", err);
   }
+
+  // Fix OG/Twitter/JSON-LD image URLs that image optimizer made relative
+  finalHtml = fixMetaImageUrls(finalHtml, baseUrl);
 
   // Deploy to Cloudflare Pages
   const result = await publishPage(finalHtml, deploySlug, language, deployFiles, undefined, analytics);

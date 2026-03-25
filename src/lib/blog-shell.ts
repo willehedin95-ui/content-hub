@@ -248,7 +248,25 @@ export function autoFillAltText(html: string, articleTitle: string): string {
     img.attr("alt", alt);
   });
 
-  return $.html();
+  // Return just the body content — cheerio.load() wraps fragments in <html><body>
+  return $("body").html() || $.html();
+}
+
+/**
+ * After image optimization replaces absolute Supabase URLs with relative WebP paths
+ * (global string replace), OG/Twitter/JSON-LD image URLs become relative too.
+ * This function fixes them back to absolute URLs.
+ */
+export function fixMetaImageUrls(html: string, baseUrl: string): string {
+  // Fix og:image and twitter:image meta tags with relative paths
+  return html.replace(
+    /(<meta\s+(?:property|name)=["'](?:og:image|twitter:image)["']\s+content=["'])(\/[^"']+)(["'])/gi,
+    `$1${baseUrl}$2$3`
+  ).replace(
+    // Fix JSON-LD "image":"/relative/path"
+    /"image"\s*:\s*"(\/[^"]+)"/g,
+    `"image":"${baseUrl}$1"`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -307,8 +325,15 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   const color = opts.blogConfig.primary_color || "#1a365d";
   const categorySlug = opts.blogCategory ? slugifyCategory(opts.blogCategory) : undefined;
   const urlPath = getArticlePath(opts.slug, categorySlug);
-  const ogImage = opts.featuredImageUrl
-    ? `<meta property="og:image" content="${esc(opts.featuredImageUrl)}">`
+
+  // Ensure featured image URL is absolute (image optimizer produces relative paths)
+  const absoluteImageUrl = opts.featuredImageUrl
+    ? opts.featuredImageUrl.startsWith("http")
+      ? opts.featuredImageUrl
+      : `${opts.baseUrl}${opts.featuredImageUrl.startsWith("/") ? "" : "/"}${opts.featuredImageUrl}`
+    : undefined;
+  const ogImage = absoluteImageUrl
+    ? `<meta property="og:image" content="${esc(absoluteImageUrl)}">`
     : "";
 
   // Breadcrumbs
@@ -378,7 +403,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     url: `${opts.baseUrl}/${urlPath}`,
     datePublished: opts.publishedAt,
     dateModified: opts.updatedAt,
-    ...(opts.featuredImageUrl ? { image: opts.featuredImageUrl } : {}),
+    ...(absoluteImageUrl ? { image: absoluteImageUrl } : {}),
     publisher: {
       "@type": "Organization",
       name: langConfig.blog_name,
@@ -403,12 +428,12 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   });
 
   // Merge article's original <head> content (stylesheets, fonts, etc.)
-  // but strip title/meta tags since we set our own
+  // but strip tags that the blog shell already provides
   let preservedHead = opts.articleHeadHtml;
-  // Remove title and meta description/og from original head (we define our own)
+  // Remove title, meta tags we already define, and charset/viewport (avoid duplicates)
   preservedHead = preservedHead.replace(/<title[^>]*>[\s\S]*?<\/title>/gi, "");
   preservedHead = preservedHead.replace(
-    /<meta[^>]+(name=["'](description|robots)["']|property=["']og:[^"']*["'])[^>]*>/gi,
+    /<meta[^>]+(name=["'](description|robots|viewport)["']|property=["']og:[^"']*["']|charset=)[^>]*>/gi,
     ""
   );
 
@@ -460,10 +485,10 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta property="og:description" content="${esc(opts.seoDescription)}">
   <meta property="og:url" content="${esc(opts.baseUrl)}/${esc(urlPath)}">
   ${ogImage}
-  <meta name="twitter:card" content="${opts.featuredImageUrl ? "summary_large_image" : "summary"}">
+  <meta name="twitter:card" content="${absoluteImageUrl ? "summary_large_image" : "summary"}">
   <meta name="twitter:title" content="${esc(opts.seoTitle)}">
   <meta name="twitter:description" content="${esc(opts.seoDescription)}">
-  ${opts.featuredImageUrl ? `<meta name="twitter:image" content="${esc(opts.featuredImageUrl)}">` : ""}
+  ${absoluteImageUrl ? `<meta name="twitter:image" content="${esc(absoluteImageUrl)}">` : ""}
   <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}">
   ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl)}
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
