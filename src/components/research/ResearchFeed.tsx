@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Star, Globe, Tag, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Star,
+  Globe,
+  Tag,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  X,
+  Filter,
+} from "lucide-react";
 
 interface Nugget {
   id: string;
@@ -28,13 +37,19 @@ interface Nugget {
   };
 }
 
+interface Source {
+  id: string;
+  name: string;
+  platform: string;
+}
+
 const LANG_FLAGS: Record<string, string> = {
-  sv: "🇸🇪",
-  da: "🇩🇰",
-  no: "🇳🇴",
-  en: "🇬🇧",
-  de: "🇩🇪",
-  fi: "🇫🇮",
+  sv: "\u{1F1F8}\u{1F1EA}",
+  da: "\u{1F1E9}\u{1F1F0}",
+  no: "\u{1F1F3}\u{1F1F4}",
+  en: "\u{1F1EC}\u{1F1E7}",
+  de: "\u{1F1E9}\u{1F1EA}",
+  fi: "\u{1F1EB}\u{1F1EE}",
 };
 
 const SENTIMENT_COLORS: Record<string, string> = {
@@ -44,20 +59,47 @@ const SENTIMENT_COLORS: Record<string, string> = {
   mixed: "bg-amber-100 text-amber-800",
 };
 
+const SENTIMENTS = ["positive", "negative", "neutral", "mixed"] as const;
+
 export default function ResearchFeed() {
   const [nuggets, setNuggets] = useState<Nugget[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [sources, setSources] = useState<Source[]>([]);
+
+  // Filters
   const [minSig, setMinSig] = useState(4);
+  const [sourceId, setSourceId] = useState("");
+  const [sentiment, setSentiment] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+
+  // Fetch sources for the dropdown
+  useEffect(() => {
+    fetch("/api/research/sources")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setSources(data.map((s: Source) => ({ id: s.id, name: s.name, platform: s.platform })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchNuggets = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/research/nuggets?page=${page}&perPage=20&minSignificance=${minSig}`
-      );
+      const params = new URLSearchParams({
+        page: String(page),
+        perPage: "20",
+        minSignificance: String(minSig),
+      });
+      if (sourceId) params.set("sourceId", sourceId);
+      if (sentiment) params.set("sentiment", sentiment);
+      if (activeTag) params.set("tag", activeTag);
+
+      const res = await fetch(`/api/research/nuggets?${params}`);
       const data = await res.json();
       setNuggets(data.nuggets ?? []);
       setTotal(data.total ?? 0);
@@ -67,35 +109,116 @@ export default function ResearchFeed() {
     } finally {
       setLoading(false);
     }
-  }, [page, minSig]);
+  }, [page, minSig, sourceId, sentiment, activeTag]);
 
   useEffect(() => {
     fetchNuggets();
   }, [fetchNuggets]);
 
+  const resetPage = () => setPage(1);
+  const activeFilterCount =
+    (sourceId ? 1 : 0) +
+    (sentiment ? 1 : 0) +
+    (activeTag ? 1 : 0) +
+    (minSig !== 4 ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setMinSig(4);
+    setSourceId("");
+    setSentiment("");
+    setActiveTag("");
+    setPage(1);
+  };
+
   return (
     <div>
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-4">
-        <label className="text-sm text-gray-600 flex items-center gap-2">
-          Min significance:
-          <select
-            value={minSig}
-            onChange={(e) => {
-              setMinSig(parseInt(e.target.value));
-              setPage(1);
-            }}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value={1}>All (1+)</option>
-            <option value={4}>Useful (4+)</option>
-            <option value={6}>Good (6+)</option>
-            <option value={8}>Gold (8+)</option>
-          </select>
-        </label>
-        <span className="text-sm text-gray-500">
-          {total} nugget{total !== 1 ? "s" : ""}
-        </span>
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-1 text-sm text-gray-500">
+          <Filter className="w-3.5 h-3.5" />
+          Filters
+        </div>
+
+        {/* Significance */}
+        <select
+          value={minSig}
+          onChange={(e) => {
+            setMinSig(parseInt(e.target.value));
+            resetPage();
+          }}
+          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+        >
+          <option value={1}>All scores</option>
+          <option value={4}>Useful (4+)</option>
+          <option value={6}>Good (6+)</option>
+          <option value={8}>Gold (8+)</option>
+        </select>
+
+        {/* Source */}
+        <select
+          value={sourceId}
+          onChange={(e) => {
+            setSourceId(e.target.value);
+            resetPage();
+          }}
+          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+        >
+          <option value="">All sources</option>
+          {sources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Sentiment */}
+        <select
+          value={sentiment}
+          onChange={(e) => {
+            setSentiment(e.target.value);
+            resetPage();
+          }}
+          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+        >
+          <option value="">All sentiments</option>
+          {SENTIMENTS.map((s) => (
+            <option key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </option>
+          ))}
+        </select>
+
+        {/* Active tag filter pill */}
+        {activeTag && (
+          <span className="inline-flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+            <Tag className="w-3 h-3" />
+            {activeTag}
+            <button
+              onClick={() => {
+                setActiveTag("");
+                resetPage();
+              }}
+              className="hover:text-indigo-900"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        )}
+
+        {/* Result count + clear */}
+        <div className="flex items-center gap-2 ml-auto">
+          {activeFilterCount > 0 && (
+            <button
+              onClick={clearAllFilters}
+              className="text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              Clear filters
+            </button>
+          )}
+          <span className="text-sm text-gray-500">
+            {total} nugget{total !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
 
       {/* Nugget cards */}
@@ -103,7 +226,9 @@ export default function ResearchFeed() {
         <div className="text-center text-gray-400 py-12">Loading...</div>
       ) : nuggets.length === 0 ? (
         <div className="text-center text-gray-400 py-12">
-          No research nuggets yet. Add sources and run a scan to get started.
+          {activeFilterCount > 0
+            ? "No nuggets match the current filters."
+            : "No research nuggets yet. Add sources and run a scan to get started."}
         </div>
       ) : (
         <div className="space-y-3">
@@ -118,18 +243,25 @@ export default function ResearchFeed() {
                   <span className="text-sm font-medium text-gray-900">
                     {n.research_sources?.name ?? n.competitor_name}
                   </span>
-                  <div className="flex items-center gap-0.5">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`w-3 h-3 ${
-                          i < n.review_stars
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-gray-200"
-                        }`}
-                      />
-                    ))}
-                  </div>
+                  {n.research_sources?.platform === "trustpilot" ? (
+                    <div className="flex items-center gap-0.5">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`w-3 h-3 ${
+                            i < n.review_stars
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-gray-200"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      <FileText className="w-3 h-3" />
+                      Manual
+                    </span>
+                  )}
                   <span className="text-xs" title={n.language}>
                     {LANG_FLAGS[n.language] ?? n.language}
                   </span>
@@ -178,17 +310,25 @@ export default function ResearchFeed() {
                 </div>
               )}
 
-              {/* Tags */}
+              {/* Tags — clickable to filter */}
               {n.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {n.tags.map((tag) => (
-                    <span
+                    <button
                       key={tag}
-                      className="inline-flex items-center gap-0.5 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded"
+                      onClick={() => {
+                        setActiveTag(tag === activeTag ? "" : tag);
+                        resetPage();
+                      }}
+                      className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded transition-colors ${
+                        tag === activeTag
+                          ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
                     >
                       <Tag className="w-2.5 h-2.5" />
                       {tag}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}

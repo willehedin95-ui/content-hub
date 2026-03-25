@@ -138,7 +138,7 @@ async function analyzeThemes(
 
   const response = await client.messages.create({
     model: CLAUDE_SONNET_MODEL,
-    max_tokens: 3000,
+    max_tokens: 8000,
     temperature: 0,
     messages: [
       {
