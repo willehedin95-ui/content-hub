@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle, XCircle, RefreshCw, Loader2, Plus, Trash2, Info } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle, XCircle, RefreshCw, Loader2, Plus, Trash2, Info, ChevronDown, ChevronUp } from "lucide-react";
 import type { GscProperty, Language } from "@/types";
 
 const LANG_OPTIONS: { value: Language; label: string; defaultProperty: string; defaultLabel: string }[] = [
@@ -18,9 +18,10 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Collapse setup guide if properties are already configured
+  const [showGuide, setShowGuide] = useState(initialProperties.length === 0);
 
   const addProperty = () => {
-    // Find first language not yet added
     const used = new Set(properties.map((p) => p.language));
     const next = LANG_OPTIONS.find((l) => !used.has(l.value));
     if (!next) return;
@@ -42,7 +43,6 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
     setSaving(true);
     setSaved(false);
     try {
-      // Fetch current settings to merge (PATCH replaces entire settings JSONB)
       const wsRes = await fetch("/api/workspace");
       const wsData = await wsRes.json();
       const currentSettings = (wsData.settings as Record<string, unknown>) ?? {};
@@ -94,21 +94,34 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
   };
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      {/* Setup guide */}
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-        <div className="flex gap-3">
-          <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-800">
-            <p className="font-medium mb-2">Setup Guide</p>
-            <ol className="list-decimal list-inside space-y-1 text-blue-700">
+    <div className="space-y-8 max-w-3xl">
+      {/* Setup guide — collapsible */}
+      <div className="bg-blue-50 border border-blue-100 rounded-lg">
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="flex items-center justify-between w-full p-4 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-500 shrink-0" />
+            <span className="text-sm font-medium text-blue-800">Setup Guide</span>
+            {properties.length > 0 && !showGuide && (
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                {properties.length} properties configured
+              </span>
+            )}
+          </div>
+          {showGuide ? <ChevronUp className="w-4 h-4 text-blue-500" /> : <ChevronDown className="w-4 h-4 text-blue-500" />}
+        </button>
+        {showGuide && (
+          <div className="px-4 pb-4 pt-0">
+            <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700 ml-7">
               <li>Make sure the Google Search Console API is enabled in your Google Cloud project</li>
               <li>The service account email (<code className="text-xs bg-blue-100 px-1 rounded">GDRIVE_SERVICE_ACCOUNT_EMAIL</code>) needs access to each GSC property</li>
-              <li>Go to <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer" className="underline">Search Console</a> → each property → Settings → Users → Add the service account email as a user</li>
+              <li>Go to <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer" className="underline">Search Console</a> &rarr; each property &rarr; Settings &rarr; Users &rarr; Add the service account email as a user</li>
               <li>Add your blog domains below and click &quot;Test Connection&quot;</li>
             </ol>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Properties config */}
@@ -119,7 +132,7 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
             <div key={idx} className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="flex items-start gap-4">
                 <div className="flex-1 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">Property URL</label>
                       <input
@@ -130,28 +143,26 @@ export default function SeoSettings({ initialProperties }: { initialProperties: 
                         className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Language</label>
-                        <select
-                          value={prop.language}
-                          onChange={(e) => updateProperty(idx, "language", e.target.value)}
-                          className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        >
-                          {LANG_OPTIONS.map((l) => (
-                            <option key={l.value} value={l.value}>{l.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Label</label>
-                        <input
-                          type="text"
-                          value={prop.label}
-                          onChange={(e) => updateProperty(idx, "label", e.target.value)}
-                          className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Label</label>
+                      <input
+                        type="text"
+                        value={prop.label}
+                        onChange={(e) => updateProperty(idx, "label", e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Language</label>
+                      <select
+                        value={prop.language}
+                        onChange={(e) => updateProperty(idx, "language", e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        {LANG_OPTIONS.map((l) => (
+                          <option key={l.value} value={l.value}>{l.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 

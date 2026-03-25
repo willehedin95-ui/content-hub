@@ -1,9 +1,9 @@
+import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import PageTestsClient from "@/components/pages/PageTestsClient";
 import SwiperClient from "@/components/swiper/SwiperClient";
-import BlogPagesClient from "@/components/pages/BlogPagesClient";
 import PagesTabBar from "@/components/pages/PagesTabBar";
 import { Page } from "@/types";
 
@@ -15,6 +15,12 @@ export default async function LandingPagesPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
+
+  // Blog moved to /seo?tab=articles
+  if (tab === "blog") {
+    redirect("/seo?tab=articles");
+  }
+
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
 
@@ -38,22 +44,6 @@ export default async function LandingPagesPage({
       <div className="p-8">
         <PagesTabBar activeTab="swipe" />
         <SwiperClient products={products ?? []} />
-      </div>
-    );
-  }
-
-  if (tab === "blog") {
-    const { data: blogPages } = await db
-      .from("pages")
-      .select(`*, translations (id, language, status, published_url, seo_title)`)
-      .eq("workspace_id", workspaceId)
-      .eq("content_type", "seo_blog")
-      .order("created_at", { ascending: false });
-
-    return (
-      <div className="p-8">
-        <PagesTabBar activeTab="blog" />
-        <BlogPagesClient pages={(blogPages as Page[]) ?? []} />
       </div>
     );
   }

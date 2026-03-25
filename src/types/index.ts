@@ -1357,17 +1357,17 @@ export interface SeoOverview {
   totalKeywords: number;
   totalClicks: number;
   totalImpressions: number;
-  avgPosition: number;
-  clicksTrend: number;
-  impressionsTrend: number;
-  positionTrend: number;
+  avgPosition: number | null;
+  clicksTrend: number | null;
+  impressionsTrend: number | null;
+  positionTrend: number | null;
   byProperty: Array<{
     property: string;
     language: Language;
     label: string;
     totalClicks: number;
     totalImpressions: number;
-    avgPosition: number;
+    avgPosition: number | null;
   }>;
   lastSyncedAt: string | null;
 }

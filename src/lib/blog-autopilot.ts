@@ -39,553 +39,9 @@ import { submitSitemap, isGscConfigured } from "./gsc";
 import type { Language } from "@/types";
 
 // ---------------------------------------------------------------------------
-// Content plans — per language (SV/DA/NO)
-// Keywords sourced from DataForSEO (March 2026)
+// Content plans are now stored in the blog_content_plan DB table.
+// Manage via /seo?tab=content-plan in the Hub UI.
 // ---------------------------------------------------------------------------
-
-interface ContentPlanArticle {
-  order: number;
-  slug: string;
-  title: string;
-  category: string;
-  templateId: string;
-  primaryKeyword: string;
-  secondaryKeywords: string[];
-  wordCount: string;
-  contentBrief: string;
-  productSlug: string;
-  internalLinkSlugs: string[];
-}
-
-// Collagen/Hydro13 articles are deferred until the Renew brand (get-renew.com)
-// Shopify store is live. Currently only HappySleep articles are published.
-// To re-enable collagen articles: remove the "deferred" flag below and update
-// product URLs from SwedishBalance to get-renew.com.
-const DEFERRED_PRODUCT_SLUGS = ["hydro13"];
-
-const CONTENT_PLAN_SV: ContentPlanArticle[] = [
-  // =====================================================================
-  // HappySleep articles (publish now) — orders 1-10
-  // =====================================================================
-  {
-    order: 1,
-    slug: "basta-kudden",
-    title: "Bästa kudden 2026 — Test av 11 kuddar",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "bästa kudden",
-    secondaryKeywords: ["bästa kudden 2026", "kudde bäst i test"],
-    wordCount: "4000-5000",
-    contentBrief: `Comprehensive pillow review. Test 11 pillows: HappySleep (our product, top pick), Tempur Original, IKEA KLUBBSPORRE, Dunlopillo Serenity, Pillowise, Sissel Soft, Curaprox, IKEA ROSENSKÄRM, Bäddmadrassen Original, Casper Original Pillow, Emma Diamond Degree. Compare by sleep position (sido/rygg/mage), material (minnesskum/latex/polyester), firmness, price. Ranking table with scores. HappySleep wins for ergonomic design and value. Be honest about competitors — praise where deserved, note weaknesses. MONEY PAGE. Include buying guide section about choosing right pillow for your sleep position. USE ONLY the verified competitor products from the system prompt — NEVER invent products.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["kudde-for-sidosovare", "nacksmarta-pa-natten", "minnesskum-vs-latex-kudde"],
-  },
-  {
-    order: 2,
-    slug: "kudde-for-sidosovare",
-    title: "Kudde för sidosovare — Guide & rekommendationer 2026",
-    category: "Köpguider",
-    templateId: "buying-guide",
-    primaryKeyword: "kudde sidosovare",
-    secondaryKeywords: ["bästa kudden för sidosovare", "sidosovarkudde"],
-    wordCount: "2000-3000",
-    contentBrief: `Buying guide for side sleepers. What makes a good side-sleeper pillow (height, firmness, neck alignment). Common mistakes. Recommend specific pillows. Include section on how pillow height relates to shoulder width. Link to 1177.se for neck health.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten"],
-  },
-  {
-    order: 3,
-    slug: "nacksmarta-pa-natten",
-    title: "Nacksmärta på natten — Orsaker & lösningar",
-    category: "Sömnproblem",
-    templateId: "problem-solution",
-    primaryKeyword: "nacksmärta på natten",
-    secondaryKeywords: ["nackvärk kudde", "ont i nacken sömn"],
-    wordCount: "2000-3000",
-    contentBrief: `Problem-solution article about night-time neck pain. Causes: wrong pillow, sleep position, tension. Research on cervical spine alignment during sleep. Concrete solutions: pillow selection, stretches, sleep position adjustments. When to see a doctor (1177.se reference). HappySleep as solution for neck alignment.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
-  },
-  {
-    order: 4,
-    slug: "minnesskum-vs-latex-kudde",
-    title: "Minnesskum vs latex kudde — Vilken passar dig?",
-    category: "Jämförelser",
-    templateId: "comparison",
-    primaryKeyword: "minnesskum kudde",
-    secondaryKeywords: ["latex kudde", "minnesskum vs latex"],
-    wordCount: "2000-2500",
-    contentBrief: `Head-to-head comparison of memory foam vs latex pillows. Material properties, heat retention, durability, support, price. Comparison table. Memory foam: body-conforming but heat-retaining. Latex: responsive but firmer. Guide on which to choose based on sleep style and preferences.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "kudde-for-sidosovare"],
-  },
-  {
-    order: 5,
-    slug: "hur-ofta-byta-kudde",
-    title: "Hur ofta ska man byta kudde? (Expertguide 2026)",
-    category: "Skötselguider",
-    templateId: "problem-solution",
-    primaryKeyword: "byta kudde hur ofta",
-    secondaryKeywords: ["kudde livslängd", "när byta kudde"],
-    wordCount: "1500-2000",
-    contentBrief: `How often to replace pillows (general: 1-2 years, memory foam: 2-3 years). Signs it's time: lumps, flat spots, neck pain, allergies worse. Hygiene angle: dust mites, sweat absorption. Quick test: fold the pillow in half — if it doesn't spring back, replace it.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "tvatta-kudde"],
-  },
-  {
-    order: 6,
-    slug: "tvatta-kudde",
-    title: "Tvätta kudde — Steg-för-steg-guide",
-    category: "Skötselguider",
-    templateId: "problem-solution",
-    primaryKeyword: "tvätta kudde",
-    secondaryKeywords: ["tvätta minnesskumskudde", "kudde tvättmaskin"],
-    wordCount: "1500-2000",
-    contentBrief: `How to wash different pillow types: down, synthetic, memory foam. Step-by-step for each type. Machine wash settings, drying tips. Why memory foam should never go in the washing machine. How often to wash. Pillow protectors.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "hur-ofta-byta-kudde"],
-  },
-  {
-    order: 7,
-    slug: "somn-och-halsa",
-    title: "Sömn och hälsa — Så påverkar sömnen din kropp 2026",
-    category: "Forskning",
-    templateId: "science",
-    primaryKeyword: "sömn hälsa",
-    secondaryKeywords: ["sömnbrist konsekvenser", "varför sömn är viktigt"],
-    wordCount: "2500-3500",
-    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production (bridges both product verticals). Cite Matthew Walker's "Why We Sleep" research, Swedish sleep studies. Bridge article connecting sleep and skin health.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "sovstallningar"],
-  },
-  {
-    order: 8,
-    slug: "sovstallningar",
-    title: "Sovställningar — Guide till hur du sover bäst 2026",
-    category: "Sov Bättre",
-    templateId: "problem-solution",
-    primaryKeyword: "bästa sovställningen",
-    secondaryKeywords: ["sova på sidan", "sovställning rygg"],
-    wordCount: "2000-2500",
-    contentBrief: `Guide to sleep positions. Side sleeping (most common, best for most), back sleeping (good for spine, bad for snoring), stomach sleeping (worst for neck). How each position affects neck, back, and breathing. Pillow recommendations for each position. Connection to pillow choice.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["kudde-for-sidosovare", "basta-kudden"],
-  },
-  {
-    order: 9,
-    slug: "sluta-snarka",
-    title: "Sluta snarka — 8 bevisade metoder som fungerar 2026",
-    category: "Sömnproblem",
-    templateId: "listicle",
-    primaryKeyword: "sluta snarka",
-    secondaryKeywords: ["bästa mot snarkning", "snarkning", "anti snark", "snarkningslösningar"],
-    wordCount: "2500-3500",
-    contentBrief: `Comprehensive anti-snoring guide. Cover: why people snore (soft palate, tongue position, nasal congestion, weight, alcohol), when snoring is dangerous (sleep apnea signs — refer to 1177.se). 8 methods ranked by evidence: sleep position change (side sleeping), pillow elevation, weight management, nasal strips/sprays, mouth exercises (myofunctional therapy), humidifier, anti-snore devices, when to see a doctor. Section on how pillow height/angle affects airway — natural HappySleep product placement. Studies: Ravesloot et al. 2013 on positional therapy. Include partner impact section (Swedish couples data). This is a HIGH-SPEND Google Ads keyword cluster (~15K SEK/mo).`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "sovstallningar", "somn-och-halsa"],
-  },
-  {
-    order: 10,
-    slug: "ergonomisk-kudde-bast-i-test",
-    title: "Ergonomisk kudde bäst i test 2026 — Test & guide",
-    category: "Bäst i test",
-    templateId: "buying-guide",
-    primaryKeyword: "ergonomisk kudde bäst i test",
-    secondaryKeywords: ["ergonomisk kudde", "nackstöd bäst i test", "nackkudde bäst i test", "bästa ergonomiska kudden"],
-    wordCount: "3000-4000",
-    contentBrief: `Focused buying guide specifically for ergonomic/cervical pillows — different angle than the general "bästa kudden" article. What makes a pillow ergonomic: contoured design, cervical support curve, height zones for different sleep positions. Medical perspective: cervical lordosis support, pressure distribution, alignment (cite physiotherapy sources). Test these ergonomic pillows: HappySleep (our product, top pick), Tempur Original, Pillowise, Sissel Soft, Curaprox, Dunlopillo Serenity. Compare: contour shape, height adjustability, material, firmness, washability. Include section on who needs an ergonomic pillow (neck pain sufferers, office workers). HappySleep as top pick. USE ONLY verified competitor products from the system prompt. Link to 1177.se for chronic neck issues.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["basta-kudden", "nacksmarta-pa-natten", "kudde-for-sidosovare"],
-  },
-
-  // =====================================================================
-  // Collagen/Hydro13 articles (DEFERRED until Renew brand is live)
-  // Orders 11-18 — skipped by pickNextArticle() while hydro13 is deferred
-  // =====================================================================
-  {
-    order: 11,
-    slug: "kollagentillskott-guide",
-    title: "Kollagentillskott — Komplett guide 2026",
-    category: "Kollagen & Tillskott",
-    templateId: "science",
-    primaryKeyword: "kollagentillskott",
-    secondaryKeywords: ["kollagen tillskott", "kollagen hud", "kollagen supplement"],
-    wordCount: "3000-4000",
-    contentBrief: `Pillar article for all collagen content. What collagen is, types (I, II, III), how supplements work (bioactive peptide signaling — Pro-Hyp, Hyp-Gly), formats (liquid vs powder vs capsule), dosing (why 10,000+ mg matters), what to look for, realistic timeline for results. This is the main hub page — everything collagen links back here. YMYL: Cite Proksch et al. 2014, Hexsel et al. 2017. Use "studies suggest", "users report". Acknowledge EFSA hasn't approved collagen claims yet. Link to 1177.se for general skin health.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["basta-kollagentillskottet", "funkar-kollagentillskott", "flytande-kollagen-vs-pulver", "kollagen-for-hud-rynkor"],
-  },
-  {
-    order: 12,
-    slug: "basta-kollagentillskottet",
-    title: "Bästa kollagentillskottet 2026 — Test & jämförelse",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "bästa kollagentillskottet",
-    secondaryKeywords: ["kollagen bäst i test", "kollagentillskott test"],
-    wordCount: "3000-4000",
-    contentBrief: `Review 6-8 collagen products: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Great Earth. Compare dosage, format, ingredients, price per day. Ranking table. MONEY PAGE — Hydro13 wins on dosage (12,500 mg vs competitors' 2,000-5,000 mg), format (liquid = higher absorption), and completeness (13+ active ingredients vs collagen alone).`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "funkar-kollagentillskott"],
-  },
-  {
-    order: 13,
-    slug: "funkar-kollagentillskott",
-    title: "Funkar kollagentillskott? Vad forskningen visar",
-    category: "Forskning",
-    templateId: "science",
-    primaryKeyword: "funkar kollagen",
-    secondaryKeywords: ["kollagen forskning", "kollagen bluff", "kollagentillskott effekt"],
-    wordCount: "2000-3000",
-    contentBrief: `Skeptical angle → balanced review of actual peer-reviewed studies → what works and what doesn't → dosing matters → conclusion. Captures skeptic search traffic. Many Swedish women have tried cheap collagen and seen zero results — validate their experience, explain WHY it failed (underdosed, wrong format), then show what science says about clinical dosing.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  {
-    order: 14,
-    slug: "flytande-kollagen-vs-pulver",
-    title: "Flytande kollagen vs pulver vs kapslar — Vilken form är bäst?",
-    category: "Jämförelser",
-    templateId: "comparison",
-    primaryKeyword: "flytande kollagen",
-    secondaryKeywords: ["kollagen pulver", "kollagen kapslar", "kollagen absorption"],
-    wordCount: "2000-2500",
-    contentBrief: `Head-to-head format comparison. Bioavailability (liquid ~90% vs tablets 20-30%), convenience, taste, dosing precision, price. Comparison table with pros/cons for each format.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  {
-    order: 15,
-    slug: "kollagen-for-hud-rynkor",
-    title: "Kollagen för hud & rynkor — Så fungerar det inifrån",
-    category: "Hudvård inifrån",
-    templateId: "problem-solution",
-    primaryKeyword: "kollagen hud",
-    secondaryKeywords: ["kollagen rynkor", "hudvård inifrån", "kollagen anti-aging"],
-    wordCount: "2000-3000",
-    contentBrief: `How skin aging works (collagen loss ~1%/year after 25), why topical creams aren't enough, how oral collagen peptides signal fibroblasts, realistic timeline (4-8 weeks hydration, 3-6 months wrinkle reduction), what to combine with (vitamin C, hyaluronic acid — both in Hydro13).`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "funkar-kollagentillskott"],
-  },
-  {
-    order: 16,
-    slug: "somn-och-hudhalsa",
-    title: "Sömn och hudhälsa — Varför skönhetssömn fungerar",
-    category: "Hudvård inifrån",
-    templateId: "science",
-    primaryKeyword: "skönhetssömn",
-    secondaryKeywords: ["sömn hud", "sömn rynkor", "sova bättre hud"],
-    wordCount: "2000-3000",
-    contentBrief: `Perfect bridge article between both products. How sleep quality directly affects skin health: growth hormone release during deep sleep, cortisol/collagen degradation from poor sleep, skin barrier repair overnight. The complete approach: good sleep (HappySleep pillow) + collagen supplement (Hydro13) = maximum results.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kudden", "kollagen-for-hud-rynkor"],
-  },
-  {
-    order: 17,
-    slug: "kollagen-for-har-naglar",
-    title: "Kollagen för hår & naglar — Fungerar det?",
-    category: "Hår & Naglar",
-    templateId: "problem-solution",
-    primaryKeyword: "kollagen hår",
-    secondaryKeywords: ["kollagen naglar", "tillskott för hår", "biotin kollagen"],
-    wordCount: "2000-2500",
-    contentBrief: `Secondary Hydro13 angle for hair and nails. Scientific evidence for collagen's effect on hair thickness and nail strength. Hexsel et al. 2017 nail study. Proline/glycine as building blocks for keratin. Realistic timeline (2-3 months for nails, 3-6 months for hair). Why Hydro13's formula includes biotin + zinc alongside collagen.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet"],
-  },
-  {
-    order: 18,
-    slug: "basta-kollagen-mot-rynkor",
-    title: "Bästa kollagen mot rynkor 2026 — Test & jämförelse",
-    category: "Bäst i test",
-    templateId: "listicle",
-    primaryKeyword: "bästa kollagen mot rynkor",
-    secondaryKeywords: ["kollagen mot rynkor", "kollagentillskott rynkor", "anti-aging kollagen", "kollagen ansikte"],
-    wordCount: "2500-3500",
-    contentBrief: `Buyer-intent money page specifically about collagen for wrinkles. Different from the general "kollagen hud" science article — this is a product comparison focused on anti-wrinkle results. Review 6-8 products: Hydro13, Oslo Skin Lab, Källa, Biosalma, Elexir Pharma, Medic Collagen. Compare: collagen dosage, peptide type (hydrolyzed marine vs bovine), supporting ingredients for skin (vitamin C, hyaluronic acid, zinc), clinical evidence per product, price per month. Why Hydro13 wins: 12,500mg marine collagen + hyaluronic acid + vitamin C + 10 more ingredients in ONE liquid shot. Studies: Proksch et al. 2014, Borumand & Sibilla 2015. MONEY PAGE. ~22K SEK/mo Google Ads spend on this keyword.`,
-    productSlug: "hydro13",
-    internalLinkSlugs: ["kollagentillskott-guide", "basta-kollagentillskottet", "kollagen-for-hud-rynkor"],
-  },
-];
-
-// =====================================================================
-// Danish content plan — keywords from DataForSEO (DK market, March 2026)
-// =====================================================================
-const CONTENT_PLAN_DA: ContentPlanArticle[] = [
-  {
-    order: 1,
-    slug: "bedste-nakkepude",
-    title: "Bedste nakkepude 2026 — Test af 11 puder",
-    category: "Bedst i test",
-    templateId: "listicle",
-    primaryKeyword: "nakkepude",
-    secondaryKeywords: ["bedste nakkepude", "nakkepuder", "ergonomisk nakkepude"],
-    wordCount: "4000-5000",
-    contentBrief: `Comprehensive neck pillow review. Test 11 pillows: HappySleep (our product, top pick), Tempur Original, IKEA KLUBBSPORRE, Dunlopillo Serenity, Pillowise, Sissel Soft, Curaprox, IKEA ROSENSKÄRM, Bäddmadrassen Original, Casper Original Pillow, Emma Diamond Degree. Compare by sleep position (side/ryg/mave), material (memory foam/latex/polyester), firmness, price. Ranking table with scores. HappySleep wins for ergonomic design and value. Be honest about competitors. MONEY PAGE. USE ONLY the verified competitor products from the system prompt — NEVER invent products.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["hovedpude-bedst-i-test", "ergonomisk-hovedpude", "nakkesmerter-om-natten"],
-  },
-  {
-    order: 2,
-    slug: "hovedpude-bedst-i-test",
-    title: "Hovedpude bedst i test 2026 — Test & guide",
-    category: "Bedst i test",
-    templateId: "listicle",
-    primaryKeyword: "hovedpude bedst i test",
-    secondaryKeywords: ["bedste hovedpude test", "bedste hovedpude", "hovedpude test"],
-    wordCount: "3000-4000",
-    contentBrief: `Focused review of the best hovedpude (head pillows) in Denmark. Different angle than the nakkepude article — broader scope covering all pillow types. Test memory foam, latex, down, and polyester pillows. Ranking table. Include buying guide section about choosing the right pillow for your sleep position. HappySleep as top pick for ergonomic support and value.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "memory-foam-pude", "sovestillinger"],
-  },
-  {
-    order: 3,
-    slug: "ergonomisk-hovedpude",
-    title: "Ergonomisk hovedpude — Guide & anbefalinger 2026",
-    category: "Købsguider",
-    templateId: "buying-guide",
-    primaryKeyword: "ergonomisk hovedpude",
-    secondaryKeywords: ["hovedpude ergonomisk", "ergonomisk pude", "bedste ergonomiske pude"],
-    wordCount: "2500-3500",
-    contentBrief: `Buying guide for ergonomic pillows. What makes a pillow ergonomic: contoured design, cervical support curve, height zones for different sleep positions. Medical perspective: cervical lordosis support, pressure distribution, alignment. Test ergonomic pillows: HappySleep, Tempur, Pillowise, Sissel, Curaprox, Dunlopillo. Include section on who needs an ergonomic pillow.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "hovedpude-bedst-i-test", "nakkesmerter-om-natten"],
-  },
-  {
-    order: 4,
-    slug: "stop-snorken",
-    title: "Stop snorken — 8 metoder der virker 2026",
-    category: "Søvnproblemer",
-    templateId: "listicle",
-    primaryKeyword: "stop snorken",
-    secondaryKeywords: ["snorken", "snorkeskinne", "stop med at snorke", "snorke behandling"],
-    wordCount: "2500-3500",
-    contentBrief: `Comprehensive anti-snoring guide. Cover: why people snore (soft palate, tongue position, nasal congestion, weight, alcohol), when snoring is dangerous (sleep apnea signs — refer to sundhed.dk). 8 methods ranked by evidence: sleep position change (side sleeping), pillow elevation, weight management, nasal strips/sprays, mouth exercises, humidifier, anti-snore devices, when to see a doctor. Section on how pillow height/angle affects airway — natural HappySleep placement. Include partner impact section.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "sovestillinger", "sovnloshed"],
-  },
-  {
-    order: 5,
-    slug: "sovnloshed",
-    title: "Søvnløshed — Årsager & løsninger 2026",
-    category: "Søvnproblemer",
-    templateId: "problem-solution",
-    primaryKeyword: "søvnløshed",
-    secondaryKeywords: ["søvnløshed overgangsalder", "søvnproblemer", "kan ikke sove"],
-    wordCount: "2500-3500",
-    contentBrief: `Problem-solution article about insomnia. Causes: stress, anxiety, poor sleep hygiene, hormonal changes (menopause angle — "søvnløshed overgangsalder" has volume). Evidence-based solutions: CBT-i, sleep restriction, stimulus control, relaxation techniques. When to seek medical help (sundhed.dk reference). Sleep environment optimization including pillow choice.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedre-sovn", "sovestillinger", "sovn-og-sundhed"],
-  },
-  {
-    order: 6,
-    slug: "bedre-sovn",
-    title: "Sov bedre — 12 tips til bedre søvn 2026",
-    category: "Sov Bedre",
-    templateId: "listicle",
-    primaryKeyword: "bedre søvn",
-    secondaryKeywords: ["sov bedre", "sov bedre om natten", "sove bedre", "god søvn"],
-    wordCount: "2000-3000",
-    contentBrief: `Practical sleep improvement guide. 12 evidence-based tips: consistent sleep schedule, dark room, cool temperature, no screens before bed, caffeine cutoff, exercise timing, stress management, right pillow, sleep position, no alcohol before bed, white noise, sunlight exposure in morning. HappySleep as part of sleep optimization.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["sovnloshed", "sovestillinger", "sovn-og-sundhed"],
-  },
-  {
-    order: 7,
-    slug: "memory-foam-pude",
-    title: "Memory foam pude — Alt du skal vide 2026",
-    category: "Sammenligninger",
-    templateId: "comparison",
-    primaryKeyword: "memory foam pude",
-    secondaryKeywords: ["memory foam hovedpude", "memory foam vs latex", "skumpude"],
-    wordCount: "2000-2500",
-    contentBrief: `Head-to-head comparison of memory foam vs latex pillows. Material properties, heat retention, durability, support, price. Comparison table. Memory foam: body-conforming but heat-retaining. Latex: responsive but firmer. Guide on which to choose based on sleep style and preferences.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "hovedpude-bedst-i-test"],
-  },
-  {
-    order: 8,
-    slug: "vask-af-hovedpude",
-    title: "Vask af hovedpude — Trin-for-trin guide",
-    category: "Plejeguider",
-    templateId: "problem-solution",
-    primaryKeyword: "vask af hovedpude",
-    secondaryKeywords: ["vaske hovedpude", "rengøring af hovedpude", "vask af dyner"],
-    wordCount: "1500-2000",
-    contentBrief: `How to wash different pillow types: down, synthetic, memory foam. Step-by-step for each type. Machine wash settings, drying tips. Why memory foam should never go in the washing machine. How often to wash. Pillow protectors.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "hovedpude-bedst-i-test"],
-  },
-  {
-    order: 9,
-    slug: "sovestillinger",
-    title: "Sovestillinger — Guide til den bedste sovestilling 2026",
-    category: "Sov Bedre",
-    templateId: "problem-solution",
-    primaryKeyword: "sovestilling",
-    secondaryKeywords: ["sovestillinger", "sovestilling gravid", "sove på siden"],
-    wordCount: "2000-2500",
-    contentBrief: `Guide to sleep positions. Side sleeping (most common, best for most), back sleeping (good for spine, bad for snoring), stomach sleeping (worst for neck). How each position affects neck, back, and breathing. Pillow recommendations for each position. Special section on pregnancy sleep positions (sovestilling gravid has volume).`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "stop-snorken"],
-  },
-  {
-    order: 10,
-    slug: "sovn-og-sundhed",
-    title: "Søvn og sundhed — Sådan påvirker søvn din krop 2026",
-    category: "Forskning",
-    templateId: "science",
-    primaryKeyword: "søvn og sundhed",
-    secondaryKeywords: ["søvn sundhed", "søvnmangel konsekvenser", "hvorfor er søvn vigtigt"],
-    wordCount: "2500-3500",
-    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production. Cite research. Bridge article connecting sleep and skin health.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["bedste-nakkepude", "sovestillinger", "sovnloshed"],
-  },
-];
-
-// =====================================================================
-// Norwegian content plan — keywords from DataForSEO (NO market, March 2026)
-// =====================================================================
-const CONTENT_PLAN_NO: ContentPlanArticle[] = [
-  {
-    order: 1,
-    slug: "beste-nakkepute",
-    title: "Beste nakkepute 2026 — Test av 11 puter",
-    category: "Best i test",
-    templateId: "listicle",
-    primaryKeyword: "nakkepute",
-    secondaryKeywords: ["beste nakkepute", "nakkeputer", "ergonomisk nakkepute"],
-    wordCount: "4000-5000",
-    contentBrief: `Comprehensive neck pillow review. Test 11 pillows: HappySleep (our product, top pick), Tempur Original, IKEA KLUBBSPORRE, Dunlopillo Serenity, Pillowise, Sissel Soft, Curaprox, IKEA ROSENSKÄRM, Bäddmadrassen Original, Casper Original Pillow, Emma Diamond Degree. Compare by sleep position (side/rygg/mage), material (memory foam/latex/polyester), firmness, price. Ranking table with scores. HappySleep wins for ergonomic design and value. Be honest about competitors. MONEY PAGE. USE ONLY the verified competitor products from the system prompt — NEVER invent products.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["ergonomisk-pute", "pute-for-vond-nakke", "hodepute-best-i-test"],
-  },
-  {
-    order: 2,
-    slug: "ergonomisk-pute",
-    title: "Ergonomisk pute — Guide & anbefalinger 2026",
-    category: "Kjopsguider",
-    templateId: "buying-guide",
-    primaryKeyword: "ergonomisk pute",
-    secondaryKeywords: ["ergonomisk hodepute", "ergonomisk nakkepute", "ortopedisk nakkepute"],
-    wordCount: "2500-3500",
-    contentBrief: `Buying guide for ergonomic pillows. What makes a pillow ergonomic: contoured design, cervical support curve, height zones for different sleep positions. Medical perspective: cervical lordosis support, pressure distribution, alignment. Test ergonomic pillows: HappySleep, Tempur, Pillowise, Sissel, Curaprox, Dunlopillo. Include section on who needs an ergonomic pillow.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "pute-for-vond-nakke", "hodepute-best-i-test"],
-  },
-  {
-    order: 3,
-    slug: "snorking-behandling",
-    title: "Snorking — 8 metoder som faktisk virker 2026",
-    category: "Sovnproblemer",
-    templateId: "listicle",
-    primaryKeyword: "snorking",
-    secondaryKeywords: ["snorkeskinne", "snorking behandling", "kjerringråd mot snorking", "mot snorking"],
-    wordCount: "2500-3500",
-    contentBrief: `Comprehensive anti-snoring guide. Cover: why people snore (soft palate, tongue position, nasal congestion, weight, alcohol), when snoring is dangerous (sleep apnea signs — refer to helsenorge.no). 8 methods ranked by evidence: sleep position change (side sleeping), pillow elevation, weight management, nasal strips/sprays, mouth exercises, humidifier, anti-snore devices, when to see a doctor. Section on how pillow height/angle affects airway — natural HappySleep placement. Include partner impact section.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "soveposisjoner", "sovnloshet"],
-  },
-  {
-    order: 4,
-    slug: "pute-for-vond-nakke",
-    title: "Beste pute for vond nakke — Slik velger du riktig 2026",
-    category: "Kjopsguider",
-    templateId: "problem-solution",
-    primaryKeyword: "beste pute for vond nakke",
-    secondaryKeywords: ["pute for nakkesmerter", "beste hodepute for nakken", "nakkesmerter pute"],
-    wordCount: "2000-3000",
-    contentBrief: `Problem-solution article about choosing the right pillow for neck pain. Causes: wrong pillow, sleep position, tension. Research on cervical spine alignment during sleep. Concrete solutions: pillow selection, stretches, sleep position adjustments. When to see a doctor (helsenorge.no reference). HappySleep as solution for neck alignment.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "ergonomisk-pute", "soveposisjoner"],
-  },
-  {
-    order: 5,
-    slug: "hodepute-best-i-test",
-    title: "Hodepute best i test 2026 — Test & guide",
-    category: "Best i test",
-    templateId: "listicle",
-    primaryKeyword: "best i test hodepute",
-    secondaryKeywords: ["hodepute best i test", "beste hodepute", "hodepute test"],
-    wordCount: "3000-4000",
-    contentBrief: `Focused review of the best hodepute (head pillows) in Norway. Broader scope than nakkepute article — covers all pillow types. Test memory foam, latex, down, and polyester pillows. Ranking table. Include buying guide section about choosing the right pillow for your sleep position.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "ergonomisk-pute", "memory-foam-pute"],
-  },
-  {
-    order: 6,
-    slug: "pute-for-sidesovere",
-    title: "Pute for sidesovere — Guide & anbefalinger 2026",
-    category: "Kjopsguider",
-    templateId: "buying-guide",
-    primaryKeyword: "pute for sidesovere",
-    secondaryKeywords: ["sidesover pute", "beste pute for sidesovere"],
-    wordCount: "2000-3000",
-    contentBrief: `Buying guide for side sleepers. What makes a good side-sleeper pillow (height, firmness, neck alignment). Common mistakes. Recommend specific pillows. Include section on how pillow height relates to shoulder width. Link to helsenorge.no for neck health.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "pute-for-vond-nakke", "soveposisjoner"],
-  },
-  {
-    order: 7,
-    slug: "sovnloshet",
-    title: "Søvnløshet — Årsaker og løsninger 2026",
-    category: "Sovnproblemer",
-    templateId: "problem-solution",
-    primaryKeyword: "søvnløshet",
-    secondaryKeywords: ["søvnproblemer", "kan ikke sove", "insomni"],
-    wordCount: "2500-3500",
-    contentBrief: `Problem-solution article about insomnia. Causes: stress, anxiety, poor sleep hygiene, hormonal changes. Evidence-based solutions: CBT-i, sleep restriction, stimulus control, relaxation techniques. When to seek medical help (helsenorge.no reference). Sleep environment optimization including pillow choice.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["sov-bedre", "soveposisjoner", "sovn-og-helse"],
-  },
-  {
-    order: 8,
-    slug: "sov-bedre",
-    title: "Sov bedre — 12 tips for god søvn 2026",
-    category: "Sov Bedre",
-    templateId: "listicle",
-    primaryKeyword: "sove bedre",
-    secondaryKeywords: ["sov bedre", "god søvn", "god natt søvn", "sovbedre"],
-    wordCount: "2000-3000",
-    contentBrief: `Practical sleep improvement guide. 12 evidence-based tips: consistent sleep schedule, dark room, cool temperature, no screens before bed, caffeine cutoff, exercise timing, stress management, right pillow, sleep position, no alcohol before bed, white noise, sunlight exposure in morning.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["sovnloshet", "soveposisjoner", "sovn-og-helse"],
-  },
-  {
-    order: 9,
-    slug: "soveposisjoner",
-    title: "Soveposisjoner — Guide til den beste sovepositsjonen 2026",
-    category: "Sov Bedre",
-    templateId: "problem-solution",
-    primaryKeyword: "soveposisjon",
-    secondaryKeywords: ["soveposisjoner", "sove på siden", "beste sovestilling"],
-    wordCount: "2000-2500",
-    contentBrief: `Guide to sleep positions. Side sleeping (most common, best for most), back sleeping (good for spine, bad for snoring), stomach sleeping (worst for neck). How each position affects neck, back, and breathing. Pillow recommendations for each position.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "snorking-behandling", "pute-for-sidesovere"],
-  },
-  {
-    order: 10,
-    slug: "sovn-og-helse",
-    title: "Søvn og helse — Slik påvirker søvn kroppen din 2026",
-    category: "Forskning",
-    templateId: "science",
-    primaryKeyword: "søvn og helse",
-    secondaryKeywords: ["søvn helse", "søvnmangel konsekvenser", "hvorfor er søvn viktig"],
-    wordCount: "2500-3500",
-    contentBrief: `Broad authority builder about sleep and health. How sleep affects immune system, mental health, weight, skin, cognitive function. Include section on how sleep affects skin/collagen production. Cite research. Bridge article connecting sleep and skin health.`,
-    productSlug: "happysleep",
-    internalLinkSlugs: ["beste-nakkepute", "soveposisjoner", "sovnloshet"],
-  },
-];
-
-// Map of content plans per language
-const CONTENT_PLANS: Record<string, ContentPlanArticle[]> = {
-  sv: CONTENT_PLAN_SV,
-  da: CONTENT_PLAN_DA,
-  no: CONTENT_PLAN_NO,
-};
 
 // ---------------------------------------------------------------------------
 // Main orchestrator
@@ -755,6 +211,19 @@ export async function runBlogAutopilot(
     return { action: "error", message: `DB error creating translation: ${transError?.message}` };
   }
 
+  // Update blog_content_plan row if this article came from the plan
+  await db
+    .from("blog_content_plan")
+    .update({
+      status: "published",
+      page_id: page.id,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("slug", nextArticle.slug);
+
   // Publish directly (no cookie context needed)
   let publishUrl: string;
   try {
@@ -790,6 +259,16 @@ export async function runBlogAutopilot(
     })
     .eq("id", translation.id);
 
+  // Determine source for usage log: check if a blog_content_plan row exists for this slug
+  const { count: planCount } = await db
+    .from("blog_content_plan")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("slug", nextArticle.slug);
+
+  const articleSource = (planCount ?? 0) > 0 ? "content_plan" : "keyword_research";
+
   // Log cost (article generation only — images logged separately in blog-images.ts)
   await db.from("usage_logs").insert({
     type: "blog_autopilot",
@@ -800,7 +279,7 @@ export async function runBlogAutopilot(
       word_count: article.wordCount,
       images_generated: imageCount,
       image_cost_usd: imageCost,
-      source: (CONTENT_PLANS[language] ?? []).some((p: ContentPlanArticle) => p.slug === nextArticle.slug) ? "content_plan" : "keyword_research",
+      source: articleSource,
     },
   });
 
@@ -821,7 +300,7 @@ export async function runBlogAutopilot(
         const domain = getProjectCustomDomain(language);
         if (domain) {
           const sitemapUrl = `https://${domain}/sitemap.xml`;
-          const property = `sc-domain:${domain}`;
+          const property = `https://${domain}/`;
           submitSitemap(property, sitemapUrl).catch((err) =>
             console.warn("[blog-autopilot] GSC sitemap submit failed:", err)
           );
@@ -871,7 +350,49 @@ async function pickNextArticle(
   workspaceId: string,
   language: Language
 ): Promise<ArticleRequest | null> {
-  // Get existing blog slugs for this language
+  const blogDomain = getProjectCustomDomain(language) || "";
+
+  // 1. Try the blog_content_plan table: pick the highest-priority "planned" article
+  const { data: planned } = await db
+    .from("blog_content_plan")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("status", "planned")
+    .order("priority", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (planned) {
+    // Mark as "writing" so concurrent runs don't pick the same article
+    await db
+      .from("blog_content_plan")
+      .update({ status: "writing", updated_at: new Date().toISOString() })
+      .eq("id", planned.id);
+
+    return {
+      title: planned.title,
+      slug: planned.slug,
+      category: planned.category || "General",
+      templateId: planned.template_id || "problem-solution",
+      primaryKeyword: planned.primary_keyword,
+      secondaryKeywords: planned.secondary_keywords ?? [],
+      wordCount: planned.word_count || "2000-3000",
+      contentBrief: planned.content_brief || `Write a comprehensive article about "${planned.primary_keyword}".`,
+      productSlug: planned.product_slug || "happysleep",
+      internalLinkSlugs: planned.internal_link_slugs ?? [],
+      language,
+      blogDomain,
+    };
+  }
+
+  // 2. Content plan exhausted — fall back to DataForSEO keyword research
+  if (!isDataForSeoConfigured()) {
+    return null;
+  }
+
+  // Get existing blog slugs for this language to avoid duplicates
   const { data: existingPages } = await db
     .from("pages")
     .select("slug")
@@ -880,34 +401,6 @@ async function pickNextArticle(
     .eq("source_language", language);
 
   const existingSlugs = new Set((existingPages ?? []).map((p) => p.slug));
-
-  // First: try the content plan for this language (ordered, skipping deferred products)
-  const plan = CONTENT_PLANS[language] ?? CONTENT_PLANS.sv;
-  for (const planned of plan) {
-    if (DEFERRED_PRODUCT_SLUGS.includes(planned.productSlug)) continue;
-    if (!existingSlugs.has(planned.slug)) {
-      const blogDomain = getProjectCustomDomain(language) || "";
-      return {
-        title: planned.title,
-        slug: planned.slug,
-        category: planned.category,
-        templateId: planned.templateId,
-        primaryKeyword: planned.primaryKeyword,
-        secondaryKeywords: planned.secondaryKeywords,
-        wordCount: planned.wordCount,
-        contentBrief: planned.contentBrief,
-        productSlug: planned.productSlug,
-        internalLinkSlugs: planned.internalLinkSlugs,
-        language,
-        blogDomain,
-      };
-    }
-  }
-
-  // Content plan complete — use DataForSEO to find new opportunities
-  if (!isDataForSeoConfigured()) {
-    return null;
-  }
 
   try {
     const market = language === "sv" ? "SE" : language === "da" ? "DK" : "NO";
@@ -944,7 +437,6 @@ async function pickNextArticle(
     const fallbackSlug = language === "da" ? "bedste-nakkepude" : language === "no" ? "beste-nakkepute" : "basta-kudden";
     const collagenFallbackSlug = language === "da" ? "kollagentilskud-guide" : language === "no" ? "kollagentilskudd-guide" : "kollagentillskott-guide";
 
-    const blogDomain = getProjectCustomDomain(language) || "";
     return {
       title: capitalizeFirst(kw.keyword) + " 2026",
       slug,

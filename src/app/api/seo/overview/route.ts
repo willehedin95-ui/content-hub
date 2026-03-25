@@ -14,37 +14,39 @@ export async function GET(req: NextRequest) {
       totalKeywords: 0,
       totalClicks: 0,
       totalImpressions: 0,
-      avgPosition: 0,
-      clicksTrend: 0,
-      impressionsTrend: 0,
-      positionTrend: 0,
+      avgPosition: null,
+      clicksTrend: null,
+      impressionsTrend: null,
+      positionTrend: null,
       byProperty: [],
       lastSyncedAt: null,
     } satisfies SeoOverview);
   }
 
   // Last 7 days vs previous 7 days for trends
+  // GSC has 2-3 day delay, so "last 7 days" = 10 days ago to 3 days ago
   const now = new Date();
-  const d7 = new Date(now);
-  d7.setDate(d7.getDate() - 10); // GSC has 2-3 day delay, so "last 7 days" = 10 days ago to 3 days ago
-  const d14 = new Date(now);
-  d14.setDate(d14.getDate() - 17);
   const d3 = new Date(now);
   d3.setDate(d3.getDate() - 3);
+  const d10 = new Date(now);
+  d10.setDate(d10.getDate() - 10);
+  const d17 = new Date(now);
+  d17.setDate(d17.getDate() - 17);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-  // Fetch current period (last 7 days) and previous period in parallel
-  const [currentRes, prevRes, syncLogRes] = await Promise.all([
-    db.rpc("gsc_overview_agg", {
-      p_workspace_id: workspaceId,
-      p_date_from: fmt(d7),
-      p_date_to: fmt(d3),
-    }),
-    db.rpc("gsc_overview_agg", {
-      p_workspace_id: workspaceId,
-      p_date_from: fmt(d14),
-      p_date_to: fmt(d7),
-    }),
+  const [cur, prev, syncLogRes] = await Promise.all([
+    db
+      .from("gsc_keywords")
+      .select("property, query, clicks, impressions, position")
+      .eq("workspace_id", workspaceId)
+      .gte("date", fmt(d10))
+      .lte("date", fmt(d3)),
+    db
+      .from("gsc_keywords")
+      .select("property, query, clicks, impressions, position")
+      .eq("workspace_id", workspaceId)
+      .gte("date", fmt(d17))
+      .lt("date", fmt(d10)),
     db
       .from("gsc_sync_log")
       .select("completed_at")
@@ -54,78 +56,64 @@ export async function GET(req: NextRequest) {
       .limit(1),
   ]);
 
-  // If RPC doesn't exist yet, fall back to raw query approach
-  if (currentRes.error?.code === "PGRST202") {
-    // RPC not found — use direct queries instead
-    const [cur, prev] = await Promise.all([
-      db
-        .from("gsc_keywords")
-        .select("property, query, clicks, impressions, position")
-        .eq("workspace_id", workspaceId)
-        .gte("date", fmt(d7))
-        .lte("date", fmt(d3)),
-      db
-        .from("gsc_keywords")
-        .select("property, query, clicks, impressions, position")
-        .eq("workspace_id", workspaceId)
-        .gte("date", fmt(d14))
-        .lt("date", fmt(d7)),
-    ]);
+  const curRows = cur.data ?? [];
+  const prevRows = prev.data ?? [];
 
-    const curRows = cur.data ?? [];
-    const prevRows = prev.data ?? [];
+  // Aggregate current period
+  const curClicks = curRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
+  const curImpressions = curRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
+  const curPositionSum = curRows.reduce((s, r) => s + (r.position ?? 0), 0);
+  const curAvgPosition = curRows.length > 0 ? Math.round((curPositionSum / curRows.length) * 10) / 10 : null;
+  const curUniqueKeywords = new Set(curRows.map((r) => r.query)).size;
 
-    // Aggregate current period
-    const curClicks = curRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
-    const curImpressions = curRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
-    const curPositionSum = curRows.reduce((s, r) => s + (r.position ?? 0), 0);
-    const curAvgPosition = curRows.length > 0 ? curPositionSum / curRows.length : 0;
-    const curUniqueKeywords = new Set(curRows.map((r) => r.query)).size;
+  // Aggregate previous period
+  const prevClicks = prevRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
+  const prevImpressions = prevRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
+  const prevPositionSum = prevRows.reduce((s, r) => s + (r.position ?? 0), 0);
+  const prevAvgPosition = prevRows.length > 0 ? prevPositionSum / prevRows.length : null;
 
-    // Aggregate previous period
-    const prevClicks = prevRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
-    const prevImpressions = prevRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
-    const prevPositionSum = prevRows.reduce((s, r) => s + (r.position ?? 0), 0);
-    const prevAvgPosition = prevRows.length > 0 ? prevPositionSum / prevRows.length : 0;
+  // Calculate trends — null when no comparison data available
+  const clicksTrend = prevClicks > 0 ? Math.round(((curClicks - prevClicks) / prevClicks) * 100) : null;
+  const impressionsTrend = prevImpressions > 0 ? Math.round(((curImpressions - prevImpressions) / prevImpressions) * 100) : null;
+  const positionTrend = prevAvgPosition !== null && curAvgPosition !== null
+    ? Math.round((prevAvgPosition - curAvgPosition) * 10) / 10
+    : null;
 
-    // Per-property breakdown
-    const byProp = new Map<string, { clicks: number; impressions: number; posSum: number; count: number }>();
-    for (const r of curRows) {
-      const key = r.property;
-      const existing = byProp.get(key) ?? { clicks: 0, impressions: 0, posSum: 0, count: 0 };
-      existing.clicks += r.clicks ?? 0;
-      existing.impressions += r.impressions ?? 0;
-      existing.posSum += r.position ?? 0;
-      existing.count += 1;
-      byProp.set(key, existing);
-    }
-
-    const byProperty = gscProperties.map((p) => {
-      const agg = byProp.get(p.property);
-      return {
-        property: p.property,
-        language: p.language,
-        label: p.label,
-        totalClicks: agg?.clicks ?? 0,
-        totalImpressions: agg?.impressions ?? 0,
-        avgPosition: agg && agg.count > 0 ? Math.round((agg.posSum / agg.count) * 10) / 10 : 0,
-      };
-    });
-
-    const lastSyncedAt = syncLogRes.data?.[0]?.completed_at ?? null;
-
-    return NextResponse.json({
-      totalKeywords: curUniqueKeywords,
-      totalClicks: curClicks,
-      totalImpressions: curImpressions,
-      avgPosition: Math.round(curAvgPosition * 10) / 10,
-      clicksTrend: prevClicks > 0 ? Math.round(((curClicks - prevClicks) / prevClicks) * 100) : 0,
-      impressionsTrend: prevImpressions > 0 ? Math.round(((curImpressions - prevImpressions) / prevImpressions) * 100) : 0,
-      positionTrend: prevAvgPosition > 0 ? Math.round((prevAvgPosition - curAvgPosition) * 10) / 10 : 0,
-      byProperty,
-      lastSyncedAt,
-    } satisfies SeoOverview);
+  // Per-property breakdown
+  const byProp = new Map<string, { clicks: number; impressions: number; posSum: number; count: number }>();
+  for (const r of curRows) {
+    const key = r.property;
+    const existing = byProp.get(key) ?? { clicks: 0, impressions: 0, posSum: 0, count: 0 };
+    existing.clicks += r.clicks ?? 0;
+    existing.impressions += r.impressions ?? 0;
+    existing.posSum += r.position ?? 0;
+    existing.count += 1;
+    byProp.set(key, existing);
   }
 
-  return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+  const byProperty = gscProperties.map((p) => {
+    const agg = byProp.get(p.property);
+    return {
+      property: p.property,
+      language: p.language,
+      label: p.label,
+      totalClicks: agg?.clicks ?? 0,
+      totalImpressions: agg?.impressions ?? 0,
+      avgPosition: agg && agg.count > 0 ? Math.round((agg.posSum / agg.count) * 10) / 10 : null,
+    };
+  });
+
+  const lastSyncedAt = syncLogRes.data?.[0]?.completed_at ?? null;
+
+  return NextResponse.json({
+    totalKeywords: curUniqueKeywords,
+    totalClicks: curClicks,
+    totalImpressions: curImpressions,
+    avgPosition: curAvgPosition,
+    clicksTrend,
+    impressionsTrend,
+    positionTrend,
+    byProperty,
+    lastSyncedAt,
+  } satisfies SeoOverview);
 }
