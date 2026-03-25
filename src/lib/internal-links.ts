@@ -1,0 +1,209 @@
+/**
+ * Internal linking for blog articles.
+ * Injects contextual <a> links between published blog articles.
+ *
+ * Two modes:
+ * 1. Forward: At write time, inject links to already-published articles
+ *    (supplements what Claude adds via prompt — catches any it missed)
+ * 2. Retroactive: After publishing a new article, update older articles
+ *    to link to it (and fill any other missing cross-links)
+ */
+
+import * as cheerio from "cheerio";
+import { createServerSupabase } from "./supabase-admin";
+import { slugifyCategory, getArticlePath } from "./blog-shell";
+import { getProjectCustomDomain } from "./cloudflare-pages";
+import type { Language } from "@/types";
+
+// ---------------------------------------------------------------------------
+// Primary keyword mapping (from CONTENT_PLAN in blog-autopilot.ts)
+// Keep in sync when adding new articles to the content plan.
+// For articles NOT in this map, keyword is extracted from the SEO title.
+// ---------------------------------------------------------------------------
+
+const SLUG_KEYWORDS: Record<string, string> = {
+  "basta-kudden": "bästa kudden",
+  "kudde-for-sidosovare": "kudde för sidosovare",
+  "nacksmarta-pa-natten": "nacksmärta på natten",
+  "minnesskum-vs-latex-kudde": "minnesskum vs latex",
+  "hur-ofta-byta-kudde": "byta kudde",
+  "tvatta-kudde": "tvätta kudde",
+  "somn-och-halsa": "sömn och hälsa",
+  "sovstallningar": "sovställningar",
+  "sluta-snarka": "sluta snarka",
+  "ergonomisk-kudde-bast-i-test": "ergonomisk kudde",
+  "kollagentillskott-guide": "kollagentillskott",
+  "basta-kollagentillskottet": "bästa kollagentillskottet",
+  "funkar-kollagentillskott": "funkar kollagen",
+  "flytande-kollagen-vs-pulver": "flytande kollagen",
+  "kollagen-for-hud-rynkor": "kollagen hud",
+  "somn-och-hudhalsa": "skönhetssömn",
+  "kollagen-for-har-naglar": "kollagen hår",
+  "basta-kollagen-mot-rynkor": "kollagen mot rynkor",
+};
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface LinkTarget {
+  slug: string;
+  title: string;
+  keyword: string;
+  url: string;
+}
+
+// ---------------------------------------------------------------------------
+// Core: inject internal links into article HTML
+// ---------------------------------------------------------------------------
+
+const MAX_LINKS = 5;
+
+/**
+ * Inject internal links into article body HTML.
+ * Finds the first natural occurrence of each target's keyword in <p> or <li>
+ * elements and wraps it in an <a> tag. Skips already-linked URLs.
+ *
+ * @param html Article body HTML (not wrapped in blog shell)
+ * @param targets Articles to link to
+ * @param ownSlug Current article's slug (to avoid self-links)
+ */
+export function injectInternalLinks(
+  html: string,
+  targets: LinkTarget[],
+  ownSlug?: string
+): { html: string; linksInjected: number } {
+  if (!targets.length) return { html, linksInjected: 0 };
+
+  const $ = cheerio.load(html);
+  let linksInjected = 0;
+
+  // Collect URLs already linked in the article
+  const linkedUrls = new Set<string>();
+  $("a[href]").each((_, el) => {
+    linkedUrls.add($(el).attr("href") || "");
+  });
+
+  for (const target of targets) {
+    if (linksInjected >= MAX_LINKS) break;
+    if (target.slug === ownSlug) continue;
+    if (linkedUrls.has(target.url)) continue;
+
+    // Search terms: primary keyword first, then title's first segment
+    const titleFirst = target.title
+      .split(/\s*[—|:]\s*/)[0]
+      ?.trim()
+      .replace(/\s*\d{4}\s*$/, "")
+      .trim();
+    const terms = [target.keyword];
+    if (titleFirst && titleFirst.toLowerCase() !== target.keyword.toLowerCase()) {
+      terms.push(titleFirst);
+    }
+
+    let linked = false;
+
+    for (const term of terms) {
+      if (linked || !term || term.length < 3) continue;
+
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
+
+      // Only search in paragraphs and list items (text-heavy, safe to modify)
+      $("p, li").each(function () {
+        if (linked) return false;
+
+        const elem = $(this);
+        // Skip if inside heading, existing link, or button
+        if (elem.parents("a, h1, h2, h3, h4, h5, button").length > 0) return;
+
+        // Walk through text nodes
+        elem.contents().each(function () {
+          if (linked) return false;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((this as any).type !== "text") return;
+
+          const textNode = $(this);
+          const text = textNode.text();
+          const match = text.match(regex);
+          if (!match || match.index === undefined) return;
+
+          // Don't link inside an <a> ancestor
+          if (textNode.parents("a").length > 0) return;
+
+          const before = text.slice(0, match.index);
+          const matched = match[0];
+          const after = text.slice(match.index + matched.length);
+
+          textNode.replaceWith(
+            `${esc(before)}<a href="${target.url}">${esc(matched)}</a>${esc(after)}`
+          );
+
+          linked = true;
+          linksInjected++;
+          linkedUrls.add(target.url);
+        });
+      });
+    }
+  }
+
+  return { html: $.html(), linksInjected };
+}
+
+/** Minimal HTML entity escaping for text nodes */
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ---------------------------------------------------------------------------
+// Build link targets from published articles in the database
+// ---------------------------------------------------------------------------
+
+/**
+ * Query all published blog articles and build LinkTarget array.
+ * Uses SLUG_KEYWORDS for known content-plan articles, extracts from
+ * SEO title for dynamically-generated articles.
+ */
+export async function buildLinkTargetsFromDB(
+  language: Language,
+  excludeSlug?: string
+): Promise<LinkTarget[]> {
+  const db = createServerSupabase();
+  const domain = getProjectCustomDomain(language);
+  if (!domain) return [];
+
+  const { data: articles } = await db
+    .from("translations")
+    .select("slug, seo_title, pages!inner(blog_category, content_type)")
+    .eq("language", language)
+    .eq("status", "published")
+    .eq("pages.content_type", "seo_blog");
+
+  if (!articles?.length) return [];
+
+  return articles
+    .filter((a) => a.slug !== excludeSlug)
+    .map((a) => {
+      const page = a.pages as unknown as { blog_category?: string };
+      const catSlug = page.blog_category
+        ? slugifyCategory(page.blog_category)
+        : "";
+      const path = getArticlePath(a.slug, catSlug);
+
+      // Use known keyword from content plan, or extract from title
+      const keyword =
+        SLUG_KEYWORDS[a.slug] ||
+        (a.seo_title || "")
+          .split(/\s*[—|:]\s*/)[0]
+          ?.trim()
+          .replace(/\s*\d{4}\s*$/, "")
+          .trim() ||
+        a.slug;
+
+      return {
+        slug: a.slug,
+        title: a.seo_title || a.slug,
+        keyword,
+        url: `https://${domain}/${path}`,
+      };
+    });
+}

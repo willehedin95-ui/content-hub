@@ -6,6 +6,7 @@
 
 import { createServerSupabase } from "./supabase-admin";
 import { generateBlogArticle, fixHallucinatedUrls, type ArticleRequest } from "./blog-writer";
+import { injectInternalLinks, buildLinkTargetsFromDB } from "./internal-links";
 import {
   extractArticleBody,
   extractFirstImage,
@@ -384,6 +385,24 @@ export async function runBlogAutopilot(
   // Post-process: fix any hallucinated URLs that Claude might still produce
   article.html = fixHallucinatedUrls(article.html);
 
+  // Post-process: inject internal links that Claude may have missed
+  try {
+    const linkTargets = await buildLinkTargetsFromDB(language, nextArticle.slug);
+    if (linkTargets.length > 0) {
+      const { html: linkedHtml, linksInjected } = injectInternalLinks(
+        article.html,
+        linkTargets,
+        nextArticle.slug
+      );
+      if (linksInjected > 0) {
+        article.html = linkedHtml;
+        console.log(`[blog-autopilot] Injected ${linksInjected} internal links`);
+      }
+    }
+  } catch (err) {
+    console.warn("[blog-autopilot] Internal link injection failed (non-critical):", err);
+  }
+
   // Generate native-style editorial images for the article
   let finalHtml = article.html;
   let imageCost = 0;
@@ -503,12 +522,15 @@ export async function runBlogAutopilot(
     },
   });
 
-  // Fire-and-forget: homepage, RSS, sitemap + GSC submission
+  // Fire-and-forget: homepage, RSS, sitemap, GSC submission, retroactive links
   deployBlogHomepage(language).catch((err) =>
     console.warn("[blog-autopilot] Homepage deploy failed:", err)
   );
   deployBlogRssFeed(language).catch((err) =>
     console.warn("[blog-autopilot] RSS deploy failed:", err)
+  );
+  retroactivelyUpdateLinks(language, workspaceId).catch((err) =>
+    console.warn("[blog-autopilot] Retroactive link update failed:", err)
   );
   deploySitemapAndRobots(language)
     .then(() => {
@@ -751,6 +773,91 @@ async function publishBlogArticle(
   // Deploy to Cloudflare Pages
   const result = await publishPage(finalHtml, deploySlug, language, deployFiles, undefined, analytics);
   return result.url.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Retroactive internal link update
+// ---------------------------------------------------------------------------
+
+/**
+ * After publishing a new article, scan all existing published articles
+ * and inject any missing internal links. Re-publishes modified articles.
+ * Called fire-and-forget — failures are logged but don't block anything.
+ */
+async function retroactivelyUpdateLinks(
+  language: Language,
+  workspaceId: string
+): Promise<void> {
+  const db = createServerSupabase();
+
+  // Get all published blog translations
+  const { data: translations } = await db
+    .from("translations")
+    .select(
+      "id, slug, seo_title, seo_description, translated_html, created_at, pages!inner(id, blog_category, content_type, workspace_id)"
+    )
+    .eq("language", language)
+    .eq("status", "published")
+    .eq("pages.content_type", "seo_blog")
+    .eq("pages.workspace_id", workspaceId);
+
+  if (!translations?.length || translations.length < 2) return;
+
+  // Build link targets for ALL published articles
+  const allTargets = await buildLinkTargetsFromDB(language);
+  if (!allTargets.length) return;
+
+  let updated = 0;
+
+  for (const trans of translations) {
+    const html = trans.translated_html;
+    if (!html) continue;
+
+    const { html: linkedHtml, linksInjected } = injectInternalLinks(
+      html,
+      allTargets,
+      trans.slug
+    );
+
+    if (linksInjected === 0) continue;
+
+    console.log(
+      `[internal-links] Injected ${linksInjected} links into "${trans.slug}"`
+    );
+
+    // Save updated HTML to DB
+    await db
+      .from("translations")
+      .update({ translated_html: linkedHtml })
+      .eq("id", trans.id);
+
+    // Re-publish the article with updated HTML
+    const page = trans.pages as unknown as { blog_category?: string };
+    const category = page?.blog_category || "";
+
+    try {
+      await publishBlogArticle(
+        linkedHtml,
+        trans.slug,
+        category,
+        trans.seo_title || trans.slug,
+        trans.seo_description || "",
+        language,
+        workspaceId,
+        trans.id,
+        trans.created_at
+      );
+      updated++;
+    } catch (err) {
+      console.error(`[internal-links] Re-publish failed for "${trans.slug}":`, err);
+    }
+  }
+
+  if (updated > 0) {
+    console.log(
+      `[internal-links] Retroactively updated ${updated} articles with new internal links`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
