@@ -1,5 +1,14 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-25
+Updated: 2026-03-25 (evening)
+
+## Renew Launch
+- [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
+- [x] ~~**Shopify Pixel + CAPI**~~ — Facebook & Instagram sales channel (Maximum), verified pixel firing on get-renew.com. (done 2026-03-25)
+- [x] ~~**Email DNS (SPF/DKIM/DMARC)**~~ — All records configured on Hostinger. Klaviyo branded sending domain `send.get-renew.com` verified. (done 2026-03-25)
+- [ ] **GA4 + GTM + GSC** — Set up new GA4 property, GTM container, and verify get-renew.com in GSC. (added 2026-03-25)
+- [ ] **Shopify policies** — kontaktformulär + returformulär still missing. (added 2026-03-25)
+- [ ] **Klaviyo from-address** — Set `hello@get-renew.com` as sender default. (added 2026-03-25)
+- [ ] **Ad account warmup** — Start small campaigns once store has products. Initial limit ~500 SEK/day. (added 2026-03-25)
 
 ## Tier 1 — Revenue & Automation
 - [x] ~~**Push `855ffcc` + `6cad110` to deploy**~~ — Blog mobile UX + WebP + author byline + internal linking. Pushed and auto-deploying to Vercel. (done 2026-03-25)
@@ -32,7 +41,15 @@ Updated: 2026-03-25
 ## Hydro13 iOS App
 - [ ] **App Store screenshots with AI** — Use [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) to generate professional ASO screenshots. Scaffolds a Next.js project, exports all 4 Apple sizes. Swedish locale. `npx skills add ParthJadhav/app-store-screenshots`. (added 2026-03-23)
 
+## Research System Follow-ups
+- [ ] **Run seed data import** — `npx tsx scripts/import-research-seed.ts` to backfill existing VOC files into nuggets. (added 2026-03-25)
+- [ ] **Wire research into blog-writer.ts** — Inject research context into blog article prompts. (added 2026-03-25)
+- [ ] **Add more Trustpilot sources** — User will provide additional brands to monitor. (added 2026-03-25)
+- [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
+
 ## Done (recent)
+- [x] **Research Intelligence System** — Full Trustpilot scraping + Haiku evaluation + theme detection + brainstorm integration + UI. 7 Nordic collagen sources pre-configured for Hydro13. Commit `6d9e2f4`. (done 2026-03-25)
+- [x] **Renew Meta + Shopify + Email infrastructure** — Full Meta setup (ad account, page, pixel, CAPI), Shopify custom app + Facebook & Instagram sales channel, SPF/DKIM/DMARC + Klaviyo branded sending domain. All via API. (done 2026-03-25)
 - [x] **Move blog to SEO tab + content plan DB + SEO audit** — Blog under /seo with 5 tabs. `blog_content_plan` table. Autopilot reads from DB. GSC configured. 6 bug fixes (API 500 path, null positions, stats filtering, edit link language, label truncation, setup guide). Commit `a44bbf4`. (done 2026-03-25)
 - [x] **Blog mobile UX + WebP images** — Author byline with avatar, mobile table column hiding (first+last), WebP image optimization in blog publish flow (97% size reduction), reduced mobile padding. Republished all 4 articles. Commit `855ffcc`. (done 2026-03-25)
 - [x] **Blog autopilot native images + mobile fixes** — blog-images.ts (Haiku prompts → Kie AI → Supabase upload), mobile overflow-x fix, table-wrap CSS, author name, template improvements. Restored 4 missing CF Pages. Full Meta ads audit (47 URLs verified). Commit `91474ac`. (done 2026-03-24)

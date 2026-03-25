@@ -1,38 +1,32 @@
-# Session: 2026-03-25 afternoon (session 4)
+# Session: 2026-03-25 late evening (session 6)
 
 ## What was done
-- **Moved blog from /pages to /seo tab** — Blog was under Landing Pages which made no sense since blogs are purely for SEO. Now consolidated under SEO with 5 tabs: Dashboard, Articles, Content Plan, Gap Keywords, Settings
-- **Created `blog_content_plan` database table** — Replaced ~500 lines of hardcoded content plan arrays with a proper DB table. Migrated 38 articles (18 SV, 10 DA, 10 NO) via migration script
-- **Rewrote blog-autopilot.ts** — `pickNextArticle()` now reads from `blog_content_plan` DB. Marks articles as "writing" then "published" with page_id linkage. Falls back to DataForSEO when plan is exhausted
-- **Built Content Plan UI** — `/seo?tab=content-plan` with language tabs (SV/DA/NO), status filters, priority up/down controls, expandable article details
-- **Configured GSC properties** — Added halsobladet.com, smarthelse.dk, helseguiden.com as URL prefix properties in workspace settings
-- **Ran initial GSC sync** — 0 rows (expected, articles published <2 days ago)
-- **Full SEO audit and bug fixes:**
-  - Fixed overview API: removed broken RPC call that would 500 if it ever existed
-  - Fixed dashboard: "—" instead of "0" for avg position, hide empty trends
-  - Fixed content plan stats: always show full counts regardless of status filter
-  - Fixed content plan edit link: used item.language instead of hardcoded /sv/
-  - Fixed settings: 3-col layout for wider label inputs, collapsible setup guide
+- **Research Intelligence System — full implementation:**
+  - 4 database tables: `research_sources`, `research_nuggets`, `research_themes`, `research_nugget_themes`
+  - Trustpilot scraper (`src/lib/trustpilot.ts`) — no API key, parses `__NEXT_DATA__` JSON from HTML. Fixed 308 redirect bug (page=1 strips query params, losing `languages=all` filter)
+  - AI evaluation pipeline (`src/lib/research-evaluate.ts`) — Claude Haiku extracts sentiment, significance (1-10), customer phrases, pain points, desires, tags
+  - Daily scanner cron (`/api/cron/research-scan`, 10:00 UTC) — loops research-enabled workspaces, scrapes all active sources, evaluates with Haiku, upserts nuggets
+  - Weekly theme detection cron (`/api/cron/research-themes`, Sunday 11:00 UTC) — Claude Sonnet synthesizes patterns from recent nuggets, creates/updates themes, sends Telegram weekly digest
+  - Research context injection (`src/lib/research-context.ts`) — `buildResearchContext()` feeds real customer language into brainstorm/autopilot/swipe prompts (same pattern as learnings/hooks)
+  - Wired into: `brainstorm.ts` (all 7 mode builders), `brainstorm/route.ts`, `autopilot-concepts/route.ts`, `swipe-competitor.ts`
+  - 4 API routes: sources (CRUD), nuggets (paginated with filters), themes, stats
+  - UI: `/research` page with Feed/Themes/Sources tabs, added to sidebar with BookOpen icon
+  - Seed data import script (`scripts/import-research-seed.ts`) — parses CORE INSIGHTS and RAW MARKET COMMENTS files
+  - Pre-configured 7 Trustpilot sources for Hydro13 workspace (Oslo Skin Lab SE/NO/DK, SwedishBalance, Copenhagen Health, Collaxan, Elexir Pharma)
+  - Enabled `research_enabled: true` on Hydro13 workspace
 
-## Decisions made
-- **Blog under SEO, not Landing Pages** — Blogs are purely for SEO, so they belong with the SEO tools. Landing Pages is for ad landing pages
-- **Content plan as DB table, not code** — Enables future auto-discovery of topics via DataForSEO/GSC without code deployments
-- **Client-side filtering for content plan** — Fetch all items, filter client-side. Simpler than two API calls and the data set is small (<50 items per language)
-- **Null instead of 0 for empty positions/trends** — Position 0 doesn't exist in GSC. Using null and displaying "—" is more honest than showing 0
+## Key decisions
+- Scraping approach (not API) — Trustpilot API keys are hard to get; `__NEXT_DATA__` works perfectly
+- Significance threshold: only store nuggets >= 4/10, show gold >= 8/10
+- Nordic languages = "primary" (direct copy ammunition), English = "reference" (trend scouting)
+- Full automation — no human review step
+- Per-workspace — currently Hydro13 only
 
-## Current state
-- SEO tab fully functional with all 5 tabs
-- Blog autopilot reads from DB content plan (tested, compiles clean)
-- GSC properties configured, weekly sync cron exists in vercel.json
-- No GSC data yet (Google needs weeks to index newly published articles)
-- Build passes, commit `a44bbf4` ready (not pushed)
+## Commits
+- `6d9e2f4` — Research Intelligence System (21 files, +2,617 lines)
 
-## Blockers / Open questions
-- None — everything works. GSC data will appear naturally as Google indexes the blog articles
-
-## Next up
-1. Push to deploy when user is ready
-2. Monitor GSC data appearing over next few weeks
-3. When content plan is exhausted, the DataForSEO auto-discovery will kick in
-4. Consider adding "Add Article" button to Content Plan UI for manual additions
-5. Blog performance will populate as articles get indexed
+## What's next
+- Run seed data import to backfill existing VOC research
+- Monitor first automated scan (tomorrow 10:00 UTC)
+- Send additional Trustpilot brands to add as sources
+- Wire research into blog-writer.ts (planned but not done yet)
