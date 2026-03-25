@@ -45,8 +45,8 @@ async function main() {
   const buffer = Buffer.from(await imageRes.arrayBuffer());
   console.log(`Downloaded: ${(buffer.length / 1024).toFixed(0)}KB`);
 
-  // Upload to Supabase, replacing the old image
-  const filePath = "blog/kudde-for-sidosovare/0.png";
+  // Upload to Supabase, replacing the old section image (index 1, NOT the hero)
+  const filePath = "blog/kudde-for-sidosovare/1.png";
   const { error } = await db.storage
     .from(STORAGE_BUCKET)
     .upload(filePath, buffer, { contentType: "image/png", upsert: true });
