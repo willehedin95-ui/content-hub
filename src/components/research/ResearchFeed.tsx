@@ -10,6 +10,8 @@ import {
   FileText,
   X,
   Filter,
+  MessageSquare,
+  ShoppingCart,
 } from "lucide-react";
 
 interface Nugget {
@@ -74,6 +76,7 @@ export default function ResearchFeed() {
   const [sourceId, setSourceId] = useState("");
   const [sentiment, setSentiment] = useState("");
   const [activeTag, setActiveTag] = useState("");
+  const [platform, setPlatform] = useState("");
 
   // Fetch sources for the dropdown
   useEffect(() => {
@@ -120,6 +123,7 @@ export default function ResearchFeed() {
     (sourceId ? 1 : 0) +
     (sentiment ? 1 : 0) +
     (activeTag ? 1 : 0) +
+    (platform ? 1 : 0) +
     (minSig !== 4 ? 1 : 0);
 
   const clearAllFilters = () => {
@@ -127,8 +131,14 @@ export default function ResearchFeed() {
     setSourceId("");
     setSentiment("");
     setActiveTag("");
+    setPlatform("");
     setPage(1);
   };
+
+  // Filter sources list by platform for source dropdown
+  const filteredSources = platform
+    ? sources.filter((s) => s.platform === platform)
+    : sources;
 
   return (
     <div>
@@ -154,6 +164,23 @@ export default function ResearchFeed() {
           <option value={8}>Gold (8+)</option>
         </select>
 
+        {/* Platform */}
+        <select
+          value={platform}
+          onChange={(e) => {
+            setPlatform(e.target.value);
+            setSourceId(""); // Reset source when changing platform
+            resetPage();
+          }}
+          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+        >
+          <option value="">All platforms</option>
+          <option value="trustpilot">Trustpilot</option>
+          <option value="reddit">Reddit</option>
+          <option value="amazon">Amazon</option>
+          <option value="manual_import">Manual</option>
+        </select>
+
         {/* Source */}
         <select
           value={sourceId}
@@ -164,7 +191,7 @@ export default function ResearchFeed() {
           className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
         >
           <option value="">All sources</option>
-          {sources.map((s) => (
+          {filteredSources.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
@@ -232,7 +259,13 @@ export default function ResearchFeed() {
         </div>
       ) : (
         <div className="space-y-3">
-          {nuggets.map((n) => (
+          {nuggets
+            .filter((n) =>
+              platform
+                ? n.research_sources?.platform === platform
+                : true
+            )
+            .map((n) => (
             <div
               key={n.id}
               className="bg-white border border-gray-200 rounded-lg p-4"
@@ -243,25 +276,7 @@ export default function ResearchFeed() {
                   <span className="text-sm font-medium text-gray-900">
                     {n.research_sources?.name ?? n.competitor_name}
                   </span>
-                  {n.research_sources?.platform === "trustpilot" ? (
-                    <div className="flex items-center gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`w-3 h-3 ${
-                            i < n.review_stars
-                              ? "fill-yellow-400 text-yellow-400"
-                              : "text-gray-200"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                      <FileText className="w-3 h-3" />
-                      Manual
-                    </span>
-                  )}
+                  <PlatformBadge nugget={n} />
                   <span className="text-xs" title={n.language}>
                     {LANG_FLAGS[n.language] ?? n.language}
                   </span>
@@ -361,4 +376,72 @@ export default function ResearchFeed() {
       )}
     </div>
   );
+}
+
+/** Platform-specific badge for nugget cards */
+function PlatformBadge({ nugget }: { nugget: Nugget }) {
+  const platform = nugget.research_sources?.platform;
+
+  switch (platform) {
+    case "trustpilot":
+      return (
+        <div className="flex items-center gap-0.5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Star
+              key={i}
+              className={`w-3 h-3 ${
+                i < nugget.review_stars
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-gray-200"
+              }`}
+            />
+          ))}
+        </div>
+      );
+    case "reddit":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
+          <MessageSquare className="w-3 h-3" />
+          Reddit
+        </span>
+      );
+    case "amazon":
+      if (nugget.review_stars > 0) {
+        return (
+          <div className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-0.5 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
+              <ShoppingCart className="w-3 h-3" />
+              Amazon
+            </span>
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    i < nugget.review_stars
+                      ? "fill-yellow-400 text-yellow-400"
+                      : "text-gray-200"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
+          <ShoppingCart className="w-3 h-3" />
+          Amazon
+        </span>
+      );
+    case "manual_import":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+          <FileText className="w-3 h-3" />
+          Manual
+        </span>
+      );
+    default:
+      return null;
+  }
 }

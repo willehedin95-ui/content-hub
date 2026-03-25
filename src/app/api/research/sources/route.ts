@@ -31,8 +31,9 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { domain, name, platform, is_own_brand, language } = body;
-  const isManual = platform === "manual_import";
+  const { domain, name, platform, is_own_brand, language, config } = body;
+  const validPlatforms = ["trustpilot", "manual_import", "reddit", "amazon"];
+  const sourcePlatform = validPlatforms.includes(platform) ? platform : "trustpilot";
 
   if (!name) {
     return NextResponse.json(
@@ -41,9 +42,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isManual && !domain) {
+  // Validate per-platform requirements
+  if (sourcePlatform === "trustpilot" && !domain) {
     return NextResponse.json(
       { error: "domain is required for Trustpilot sources" },
+      { status: 400 }
+    );
+  }
+  if (sourcePlatform === "reddit" && !domain) {
+    return NextResponse.json(
+      { error: "Subreddit name or search query is required" },
+      { status: 400 }
+    );
+  }
+  if (sourcePlatform === "amazon" && !domain) {
+    return NextResponse.json(
+      { error: "ASIN or Amazon URL is required" },
       { status: 400 }
     );
   }
@@ -56,13 +70,32 @@ export async function POST(req: NextRequest) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
 
-  // Try to resolve Trustpilot business info (skip for manual imports)
+  // Resolve external info for Trustpilot only
   let externalId: string | null = null;
-  if (!isManual) {
+  if (sourcePlatform === "trustpilot") {
     const info = await getBusinessInfo(sourceDomain);
     if (info) {
       externalId = info.id;
     }
+  }
+
+  // For Amazon, extract and validate ASIN
+  let finalDomain = sourceDomain;
+  if (sourcePlatform === "amazon") {
+    const { extractAsin } = await import("@/lib/amazon");
+    const asin = extractAsin(sourceDomain);
+    if (!asin) {
+      return NextResponse.json(
+        { error: "Could not extract a valid ASIN from the provided URL" },
+        { status: 400 }
+      );
+    }
+    finalDomain = asin; // Store just the ASIN
+  }
+
+  // For Reddit, clean up subreddit name (strip r/ prefix)
+  if (sourcePlatform === "reddit") {
+    finalDomain = sourceDomain.replace(/^r\//, "").trim();
   }
 
   const db = createServerSupabase();
@@ -71,12 +104,13 @@ export async function POST(req: NextRequest) {
     .upsert(
       {
         workspace_id: workspaceId,
-        platform: isManual ? "manual_import" : "trustpilot",
+        platform: sourcePlatform,
         name,
-        domain: sourceDomain,
+        domain: finalDomain,
         external_id: externalId,
         is_own_brand: is_own_brand ?? false,
         language: language ?? null,
+        config: config ?? null,
         status: "active",
       },
       { onConflict: "workspace_id,platform,domain" }

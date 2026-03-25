@@ -2,13 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import {
   scrapeReviews,
-  logScrapeUsage,
-  type TrustpilotReview,
+  logScrapeUsage as logTrustpilotUsage,
 } from "@/lib/trustpilot";
+import {
+  scrapeSubreddit,
+  searchReddit,
+  logScrapeUsage as logRedditUsage,
+} from "@/lib/reddit";
+import {
+  scrapeAmazonReviews,
+  extractAsin,
+  logScrapeUsage as logAmazonUsage,
+} from "@/lib/amazon";
 import {
   evaluateReview,
   getMarketRelevance,
-  type NuggetEvaluation,
 } from "@/lib/research-evaluate";
 
 export const maxDuration = 300; // 5 minutes — scraping + AI eval
@@ -17,6 +25,16 @@ const MAX_PAGES_BACKFILL = 10; // First scan: up to 200 reviews per source
 const MAX_PAGES_INCREMENTAL = 3; // Daily scan: up to 60 new reviews per source
 const EVAL_DELAY_MS = 150; // Delay between Haiku calls
 const MIN_SIGNIFICANCE = 4; // Only store nuggets >= this score
+
+interface RawReview {
+  id: string;
+  text: string;
+  title: string | null;
+  rating: number;
+  language: string;
+  date: string;
+  author: string;
+}
 
 export async function GET(req: NextRequest) {
   // Auth
@@ -45,6 +63,7 @@ export async function GET(req: NextRequest) {
   const results: Array<{
     workspace: string;
     source: string;
+    platform: string;
     reviewsScraped: number;
     nuggetsStored: number;
     error?: string;
@@ -54,13 +73,13 @@ export async function GET(req: NextRequest) {
     const settings = ws.settings as Record<string, unknown>;
     if (!settings?.research_enabled) continue;
 
-    // Get active sources for this workspace
+    // Get ALL active sources (any platform except manual_import)
     const { data: sources } = await db
       .from("research_sources")
       .select("*")
       .eq("workspace_id", ws.id)
-      .eq("platform", "trustpilot")
-      .eq("status", "active");
+      .eq("status", "active")
+      .neq("platform", "manual_import");
 
     if (!sources?.length) continue;
 
@@ -72,25 +91,113 @@ export async function GET(req: NextRequest) {
           ? new Date(source.last_review_date)
           : undefined;
 
-        // Scrape reviews
-        const scrapeResult = await scrapeReviews(source.domain, {
-          maxPages,
-          sinceDate,
-        });
+        // Dispatch to the right scraper
+        let rawReviews: RawReview[] = [];
+        let externalId = source.external_id;
+        let blocked = false;
 
-        await logScrapeUsage(
-          source.domain,
-          scrapeResult.reviews.length,
-          scrapeResult.pagesScraped
-        );
+        switch (source.platform) {
+          case "trustpilot": {
+            const scrapeResult = await scrapeReviews(source.domain, {
+              maxPages,
+              sinceDate,
+            });
 
-        if (scrapeResult.reviews.length === 0) {
-          // Update last_scanned_at even if no new reviews
+            await logTrustpilotUsage(
+              source.domain,
+              scrapeResult.reviews.length,
+              scrapeResult.pagesScraped
+            );
+
+            externalId = scrapeResult.businessInfo.id || source.external_id;
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: r.text,
+              title: r.title,
+              rating: r.rating,
+              language: r.language,
+              date: r.publishedDate,
+              author: r.consumerName,
+            }));
+            break;
+          }
+
+          case "reddit": {
+            // domain field stores subreddit name or search query
+            const isSearch = source.domain.includes(" ");
+            const scrapeResult = isSearch
+              ? await searchReddit(source.domain, { maxPages, sinceDate })
+              : await scrapeSubreddit(source.domain, { maxPages, sinceDate });
+
+            await logRedditUsage(
+              source.domain,
+              scrapeResult.totalScraped,
+              scrapeResult.pagesScraped
+            );
+
+            rawReviews = scrapeResult.posts.map((p) => ({
+              id: p.id,
+              text: `${p.title ? p.title + "\n\n" : ""}${p.selftext}`,
+              title: p.title,
+              rating: 0, // Reddit has no star rating
+              language: detectLanguage(p.selftext),
+              date: new Date(p.createdUtc * 1000).toISOString(),
+              author: p.author,
+            }));
+            break;
+          }
+
+          case "amazon": {
+            // domain field stores ASIN or URL, config has marketplace
+            const sourceConfig = (source.config as Record<string, string>) ?? {};
+            const asin = extractAsin(source.domain);
+            if (!asin) {
+              throw new Error(`Invalid ASIN or URL: ${source.domain}`);
+            }
+
+            const scrapeResult = await scrapeAmazonReviews(asin, {
+              marketplace: sourceConfig.marketplace ?? "se",
+              maxPages,
+              sinceDate,
+            });
+
+            await logAmazonUsage(
+              asin,
+              scrapeResult.totalScraped,
+              scrapeResult.pagesScraped
+            );
+
+            blocked = scrapeResult.blocked;
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: `${r.title ? r.title + "\n\n" : ""}${r.text}`,
+              title: r.title,
+              rating: r.rating,
+              language: detectAmazonLanguage(sourceConfig.marketplace ?? "se"),
+              date: r.date, // Amazon date text (best effort)
+              author: r.author,
+            }));
+
+            // Update product info
+            if (scrapeResult.productInfo?.title) {
+              externalId = scrapeResult.productInfo.asin;
+            }
+            break;
+          }
+
+          default:
+            continue; // Skip unknown platforms
+        }
+
+        // Handle blocked (Amazon CAPTCHA)
+        if (blocked && rawReviews.length === 0) {
           await db
             .from("research_sources")
             .update({
-              last_scanned_at: new Date().toISOString(),
-              external_id: scrapeResult.businessInfo.id || source.external_id,
+              status: "error",
+              error_message: "CAPTCHA detected — will retry next scan",
               updated_at: new Date().toISOString(),
             })
             .eq("id", source.id);
@@ -98,6 +205,28 @@ export async function GET(req: NextRequest) {
           results.push({
             workspace: ws.slug,
             source: source.name,
+            platform: source.platform,
+            reviewsScraped: 0,
+            nuggetsStored: 0,
+            error: "CAPTCHA blocked",
+          });
+          continue;
+        }
+
+        if (rawReviews.length === 0) {
+          await db
+            .from("research_sources")
+            .update({
+              last_scanned_at: new Date().toISOString(),
+              external_id: externalId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", source.id);
+
+          results.push({
+            workspace: ws.slug,
+            source: source.name,
+            platform: source.platform,
             reviewsScraped: 0,
             nuggetsStored: 0,
           });
@@ -112,8 +241,8 @@ export async function GET(req: NextRequest) {
 
         const nuggetBatch: Array<Record<string, unknown>> = [];
 
-        for (let i = 0; i < scrapeResult.reviews.length; i++) {
-          const review = scrapeResult.reviews[i];
+        for (let i = 0; i < rawReviews.length; i++) {
+          const review = rawReviews[i];
 
           if (i > 0) {
             await new Promise((r) => setTimeout(r, EVAL_DELAY_MS));
@@ -128,11 +257,10 @@ export async function GET(req: NextRequest) {
               competitorName: source.name,
             });
 
-            // Only store significant nuggets
             if (result.evaluation.significance < MIN_SIGNIFICANCE) continue;
 
-            const reviewDate = new Date(review.publishedDate);
-            if (reviewDate > latestReviewDate) {
+            const reviewDate = new Date(review.date);
+            if (!isNaN(reviewDate.getTime()) && reviewDate > latestReviewDate) {
               latestReviewDate = reviewDate;
             }
 
@@ -141,8 +269,8 @@ export async function GET(req: NextRequest) {
               source_id: source.id,
               external_review_id: review.id,
               review_stars: review.rating,
-              review_date: review.publishedDate,
-              reviewer_name: review.consumerName,
+              review_date: review.date,
+              reviewer_name: review.author,
               review_title: review.title,
               review_text: review.text,
               language: review.language,
@@ -158,7 +286,6 @@ export async function GET(req: NextRequest) {
               ai_evaluation: result.evaluation as unknown as Record<string, unknown>,
             });
 
-            // Log cost
             await db.from("usage_logs").insert({
               type: "research_evaluation",
               model: "claude-haiku-4-5",
@@ -168,12 +295,13 @@ export async function GET(req: NextRequest) {
               metadata: {
                 source_id: source.id,
                 review_id: review.id,
+                platform: source.platform,
                 significance: result.evaluation.significance,
               },
             });
           } catch (evalErr) {
             console.error(
-              `Eval failed for review ${review.id} from ${source.domain}:`,
+              `Eval failed for review ${review.id} from ${source.name} (${source.platform}):`,
               evalErr
             );
           }
@@ -202,9 +330,8 @@ export async function GET(req: NextRequest) {
             last_scanned_at: new Date().toISOString(),
             last_review_date: latestReviewDate.toISOString(),
             total_reviews_fetched:
-              (source.total_reviews_fetched || 0) +
-              scrapeResult.reviews.length,
-            external_id: scrapeResult.businessInfo.id || source.external_id,
+              (source.total_reviews_fetched || 0) + rawReviews.length,
+            external_id: externalId,
             updated_at: new Date().toISOString(),
           })
           .eq("id", source.id);
@@ -212,17 +339,17 @@ export async function GET(req: NextRequest) {
         results.push({
           workspace: ws.slug,
           source: source.name,
-          reviewsScraped: scrapeResult.reviews.length,
+          platform: source.platform,
+          reviewsScraped: rawReviews.length,
           nuggetsStored,
         });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
         console.error(
-          `Research scan failed for ${source.domain}:`,
+          `Research scan failed for ${source.name} (${source.platform}):`,
           errorMsg
         );
 
-        // Mark source as errored
         await db
           .from("research_sources")
           .update({
@@ -235,6 +362,7 @@ export async function GET(req: NextRequest) {
         results.push({
           workspace: ws.slug,
           source: source.name,
+          platform: source.platform,
           reviewsScraped: 0,
           nuggetsStored: 0,
           error: errorMsg,
@@ -247,4 +375,43 @@ export async function GET(req: NextRequest) {
     scanned_at: new Date().toISOString(),
     results,
   });
+}
+
+// --- Helpers ---
+
+function detectLanguage(text: string): string {
+  const hasSwedish =
+    /[åäöÅÄÖ]/.test(text) ||
+    /\b(och|att|för|det|har|inte|med|som|kan|man|på|är|var)\b/i.test(text);
+  const hasNorwegian =
+    /\b(og|det|har|ikke|med|som|kan|på|er|var|etter|veldig)\b/i.test(text) &&
+    !hasSwedish;
+  const hasDanish =
+    /[æøÆØ]/.test(text) ||
+    (/\b(og|det|har|ikke|med|som|kan|på|er|var|efter|meget)\b/i.test(text) &&
+      !hasSwedish &&
+      !hasNorwegian);
+
+  if (hasSwedish) return "sv";
+  if (hasNorwegian) return "no";
+  if (hasDanish) return "da";
+  return "en";
+}
+
+function detectAmazonLanguage(marketplace: string): string {
+  switch (marketplace) {
+    case "se":
+      return "sv";
+    case "de":
+      return "de";
+    case "uk":
+    case "us":
+      return "en";
+    case "dk":
+      return "da";
+    case "no":
+      return "no";
+    default:
+      return "en";
+  }
 }

@@ -13,6 +13,8 @@ import {
   FileText,
   X,
   Loader2,
+  MessageSquare,
+  ShoppingCart,
 } from "lucide-react";
 
 interface Source {
@@ -20,6 +22,7 @@ interface Source {
   name: string;
   domain: string;
   platform: string;
+  config: Record<string, string> | null;
   is_own_brand: boolean;
   language: string | null;
   last_scanned_at: string | null;
@@ -28,6 +31,13 @@ interface Source {
   status: string;
   error_message: string | null;
 }
+
+const AMAZON_MARKETPLACES = [
+  { value: "se", label: "Amazon.se (Sweden)" },
+  { value: "de", label: "Amazon.de (Germany)" },
+  { value: "uk", label: "Amazon.co.uk (UK)" },
+  { value: "us", label: "Amazon.com (US)" },
+];
 
 export default function ResearchSources() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -38,6 +48,19 @@ export default function ResearchSources() {
   const [newDomain, setNewDomain] = useState("");
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
+
+  // Reddit add form
+  const [showAddReddit, setShowAddReddit] = useState(false);
+  const [redditName, setRedditName] = useState("");
+  const [redditSubreddit, setRedditSubreddit] = useState("");
+  const [addingReddit, setAddingReddit] = useState(false);
+
+  // Amazon add form
+  const [showAddAmazon, setShowAddAmazon] = useState(false);
+  const [amazonName, setAmazonName] = useState("");
+  const [amazonAsin, setAmazonAsin] = useState("");
+  const [amazonMarketplace, setAmazonMarketplace] = useState("se");
+  const [addingAmazon, setAddingAmazon] = useState(false);
 
   // Manual source add form
   const [showAddManual, setShowAddManual] = useState(false);
@@ -75,12 +98,10 @@ export default function ResearchSources() {
     fetchSources();
   }, [fetchSources]);
 
-  const trustpilotSources = sources.filter(
-    (s) => s.platform === "trustpilot"
-  );
-  const manualSources = sources.filter(
-    (s) => s.platform === "manual_import"
-  );
+  const trustpilotSources = sources.filter((s) => s.platform === "trustpilot");
+  const redditSources = sources.filter((s) => s.platform === "reddit");
+  const amazonSources = sources.filter((s) => s.platform === "amazon");
+  const manualSources = sources.filter((s) => s.platform === "manual_import");
 
   const addTrustpilotSource = async () => {
     if (!newDomain.trim() || !newName.trim()) return;
@@ -92,6 +113,7 @@ export default function ResearchSources() {
         body: JSON.stringify({
           domain: newDomain.trim(),
           name: newName.trim(),
+          platform: "trustpilot",
         }),
       });
       if (res.ok) {
@@ -104,6 +126,60 @@ export default function ResearchSources() {
       console.error("Failed to add source:", e);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const addRedditSource = async () => {
+    if (!redditSubreddit.trim() || !redditName.trim()) return;
+    setAddingReddit(true);
+    try {
+      const res = await fetch("/api/research/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: redditSubreddit.trim(),
+          name: redditName.trim(),
+          platform: "reddit",
+        }),
+      });
+      if (res.ok) {
+        setRedditSubreddit("");
+        setRedditName("");
+        setShowAddReddit(false);
+        await fetchSources();
+      }
+    } catch (e) {
+      console.error("Failed to add Reddit source:", e);
+    } finally {
+      setAddingReddit(false);
+    }
+  };
+
+  const addAmazonSource = async () => {
+    if (!amazonAsin.trim() || !amazonName.trim()) return;
+    setAddingAmazon(true);
+    try {
+      const res = await fetch("/api/research/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: amazonAsin.trim(),
+          name: amazonName.trim(),
+          platform: "amazon",
+          config: { marketplace: amazonMarketplace },
+        }),
+      });
+      if (res.ok) {
+        setAmazonAsin("");
+        setAmazonName("");
+        setAmazonMarketplace("se");
+        setShowAddAmazon(false);
+        await fetchSources();
+      }
+    } catch (e) {
+      console.error("Failed to add Amazon source:", e);
+    } finally {
+      setAddingAmazon(false);
     }
   };
 
@@ -272,7 +348,216 @@ export default function ResearchSources() {
             sources={trustpilotSources}
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
-            showDomainLink
+            domainLink={(s) =>
+              `https://www.trustpilot.com/review/${s.domain}`
+            }
+          />
+        )}
+      </section>
+
+      {/* ===== REDDIT SOURCES ===== */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Reddit Sources
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Subreddits and search queries — auto-scanned daily
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddReddit(!showAddReddit)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+          >
+            <Plus className="w-4 h-4" />
+            Add Reddit Source
+          </button>
+        </div>
+
+        {showAddReddit && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Display name
+                </label>
+                <input
+                  type="text"
+                  value={redditName}
+                  onChange={(e) => setRedditName(e.target.value)}
+                  placeholder='e.g. "Skincare Addiction" or "Collagen Search"'
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Subreddit or search query
+                </label>
+                <input
+                  type="text"
+                  value={redditSubreddit}
+                  onChange={(e) => setRedditSubreddit(e.target.value)}
+                  placeholder='e.g. "SkincareAddiction" or "collagen supplement review"'
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Subreddit name (without r/) or a search query with spaces
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowAddReddit(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addRedditSource}
+                disabled={
+                  addingReddit ||
+                  !redditSubreddit.trim() ||
+                  !redditName.trim()
+                }
+                className="px-3 py-1.5 text-sm font-medium text-white bg-orange-600 rounded hover:bg-orange-700 disabled:opacity-50"
+              >
+                {addingReddit ? "Adding..." : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {redditSources.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border border-gray-200 rounded-lg">
+            No Reddit sources. Add a subreddit or search query.
+          </div>
+        ) : (
+          <SourceTable
+            sources={redditSources}
+            onToggle={toggleSource}
+            onDelete={setDeleteTarget}
+            domainLink={(s) =>
+              s.domain.includes(" ")
+                ? `https://www.reddit.com/search/?q=${encodeURIComponent(s.domain)}`
+                : `https://www.reddit.com/r/${s.domain}`
+            }
+            domainPrefix={(s) => (s.domain.includes(" ") ? "search: " : "r/")}
+            icon={<MessageSquare className="w-4 h-4 text-orange-500" />}
+          />
+        )}
+      </section>
+
+      {/* ===== AMAZON SOURCES ===== */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Amazon Sources
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Product reviews — auto-scanned daily (may fail on CAPTCHA)
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddAmazon(!showAddAmazon)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-yellow-600 rounded-lg hover:bg-yellow-700"
+          >
+            <Plus className="w-4 h-4" />
+            Add Amazon Source
+          </button>
+        </div>
+
+        {showAddAmazon && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Display name
+                </label>
+                <input
+                  type="text"
+                  value={amazonName}
+                  onChange={(e) => setAmazonName(e.target.value)}
+                  placeholder='e.g. "Oslo Skin Lab Collagen"'
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  ASIN or Amazon URL
+                </label>
+                <input
+                  type="text"
+                  value={amazonAsin}
+                  onChange={(e) => setAmazonAsin(e.target.value)}
+                  placeholder="e.g. B0XXXXXX or full URL"
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Marketplace
+                </label>
+                <select
+                  value={amazonMarketplace}
+                  onChange={(e) => setAmazonMarketplace(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                >
+                  {AMAZON_MARKETPLACES.map((mp) => (
+                    <option key={mp.value} value={mp.value}>
+                      {mp.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowAddAmazon(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addAmazonSource}
+                disabled={
+                  addingAmazon ||
+                  !amazonAsin.trim() ||
+                  !amazonName.trim()
+                }
+                className="px-3 py-1.5 text-sm font-medium text-white bg-yellow-600 rounded hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {addingAmazon ? "Adding..." : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {amazonSources.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border border-gray-200 rounded-lg">
+            No Amazon sources. Add a product ASIN to start scanning reviews.
+          </div>
+        ) : (
+          <SourceTable
+            sources={amazonSources}
+            onToggle={toggleSource}
+            onDelete={setDeleteTarget}
+            domainLink={(s) => {
+              const mp = s.config?.marketplace ?? "se";
+              const domains: Record<string, string> = {
+                se: "www.amazon.se",
+                de: "www.amazon.de",
+                uk: "www.amazon.co.uk",
+                us: "www.amazon.com",
+              };
+              return `https://${domains[mp] ?? domains.se}/dp/${s.domain}`;
+            }}
+            domainSuffix={(s) => {
+              const mp = s.config?.marketplace ?? "se";
+              return ` (${mp.toUpperCase()})`;
+            }}
+            icon={<ShoppingCart className="w-4 h-4 text-yellow-600" />}
           />
         )}
       </section>
@@ -457,16 +742,12 @@ export default function ResearchSources() {
                     Upload complete
                   </p>
                   <ul className="text-sm text-emerald-700 space-y-0.5">
-                    <li>
-                      {uploadResult.chunks_found} text chunks found
-                    </li>
+                    <li>{uploadResult.chunks_found} text chunks found</li>
                     <li>
                       {uploadResult.nuggets_created} nuggets created
                       (significance 4+)
                     </li>
-                    <li>
-                      {uploadResult.skipped} below threshold
-                    </li>
+                    <li>{uploadResult.skipped} below threshold</li>
                     {uploadResult.errors > 0 && (
                       <li className="text-red-600">
                         {uploadResult.errors} errors
@@ -476,9 +757,7 @@ export default function ResearchSources() {
                 </div>
                 <div className="flex justify-end gap-2">
                   <button
-                    onClick={() => {
-                      setUploadResult(null);
-                    }}
+                    onClick={() => setUploadResult(null)}
                     className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
                   >
                     Upload More
@@ -553,17 +832,23 @@ export default function ResearchSources() {
   );
 }
 
-/** Reusable source table for Trustpilot sources */
+/** Reusable source table for auto-scanned sources */
 function SourceTable({
   sources,
   onToggle,
   onDelete,
-  showDomainLink,
+  domainLink,
+  domainPrefix,
+  domainSuffix,
+  icon,
 }: {
   sources: Source[];
   onToggle: (s: Source) => void;
   onDelete: (s: Source) => void;
-  showDomainLink?: boolean;
+  domainLink?: (s: Source) => string;
+  domainPrefix?: (s: Source) => string;
+  domainSuffix?: (s: Source) => string;
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -593,6 +878,7 @@ function SourceTable({
             <tr key={s.id} className="hover:bg-gray-50">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
+                  {icon}
                   <span className="font-medium text-gray-900">{s.name}</span>
                   {s.is_own_brand && (
                     <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
@@ -602,14 +888,16 @@ function SourceTable({
                 </div>
               </td>
               <td className="px-4 py-3">
-                {showDomainLink ? (
+                {domainLink ? (
                   <a
-                    href={`https://www.trustpilot.com/review/${s.domain}`}
+                    href={domainLink(s)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-gray-600 hover:text-indigo-600 flex items-center gap-1"
                   >
+                    {domainPrefix?.(s)}
                     {s.domain}
+                    {domainSuffix?.(s)}
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 ) : (
