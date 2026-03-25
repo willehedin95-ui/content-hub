@@ -1,9 +1,9 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-24
+Updated: 2026-03-25
 
 ## Tier 1 — Revenue & Automation
-- [ ] **Test blog autopilot with image generation** — Push `91474ac` to deploy, then trigger `?force=true` to verify end-to-end: article writing → Haiku prompts → Kie AI images → Supabase upload → placeholder replacement → publish. (added 2026-03-24)
-- [ ] **Republish existing blog articles with new CSS** — Run republish script for all published articles to get mobile fixes (overflow-x, table-wrap, author name, meta separator). (added 2026-03-24)
+- [x] ~~**Push `855ffcc` + `6cad110` to deploy**~~ — Blog mobile UX + WebP + author byline + internal linking. Pushed and auto-deploying to Vercel. (done 2026-03-25)
+- [x] ~~**Test blog autopilot end-to-end on Vercel**~~ — Tested across 3 templates. Found+fixed 6 HTML/SEO issues (nested tags, relative OG images, duplicate meta, test articles, fabricated quotes). Added anatomy rules to image prompts. Regenerated bad image. Commits `eca4ad8`, `bb6f838`. (done 2026-03-25)
 - [ ] **Pause ads pointing to dead domains** — coolafynd.se (50 ads, domain dead) and woofie.se (118 ads, all 404) are burning ad spend. Plus 4 broken swedishbalance.se URLs (8 ads). (added 2026-03-24)
 
 ## Tier 2 — Builder & UX Quality
@@ -31,6 +31,7 @@ Updated: 2026-03-24
 - [ ] **App Store screenshots with AI** — Use [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) to generate professional ASO screenshots. Scaffolds a Next.js project, exports all 4 Apple sizes. Swedish locale. `npx skills add ParthJadhav/app-store-screenshots`. (added 2026-03-23)
 
 ## Done (recent)
+- [x] **Blog mobile UX + WebP images** — Author byline with avatar, mobile table column hiding (first+last), WebP image optimization in blog publish flow (97% size reduction), reduced mobile padding. Republished all 4 articles. Commit `855ffcc`. (done 2026-03-25)
 - [x] **Blog autopilot native images + mobile fixes** — blog-images.ts (Haiku prompts → Kie AI → Supabase upload), mobile overflow-x fix, table-wrap CSS, author name, template improvements. Restored 4 missing CF Pages. Full Meta ads audit (47 URLs verified). Commit `91474ac`. (done 2026-03-24)
 - [x] **GetHookd credit UI + zombie kill dedup** — Settings > Autopilot credit progress bar. Fix daily re-killing of same ad sets (7-day dedup). Cleaned up failed concept #132 from launchpad. Commit `5db744b`. (done 2026-03-23)
 - [x] **7 autopilot pipeline improvements** — Auto-assign landing page on approve, 12h quality gate (was 48h), Telegram alerts for failures, ROAS-based page recommender, angle diversity enforcement, GetHookd credit tracking, dynamic generation count (0-2→3/day, 3-5→2, 6-9→1, 10+→skip). Commit `bc40e23`. (done 2026-03-23)
