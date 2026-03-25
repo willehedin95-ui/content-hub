@@ -108,10 +108,33 @@ DESIRES — what outcomes, wishes, or goals does the reviewer describe? In Engli
 
   const raw =
     response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = raw
+
+  // Haiku sometimes wraps JSON in markdown fences or adds notes after the JSON.
+  // Strategy: strip fences, then extract the first valid JSON object.
+  let cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(/\s*```\s*$/i, "")
     .trim();
+
+  // If there's text after the closing brace, extract just the JSON object
+  const firstBrace = cleaned.indexOf("{");
+  if (firstBrace >= 0) {
+    let depth = 0;
+    let lastBrace = -1;
+    for (let i = firstBrace; i < cleaned.length; i++) {
+      if (cleaned[i] === "{") depth++;
+      else if (cleaned[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          lastBrace = i;
+          break;
+        }
+      }
+    }
+    if (lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+  }
 
   const inputTokens = response.usage.input_tokens;
   const outputTokens = response.usage.output_tokens;

@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
       .from("research_sources")
       .select("*")
       .eq("workspace_id", ws.id)
+      .eq("platform", "trustpilot")
       .eq("status", "active");
 
     if (!sources?.length) continue;

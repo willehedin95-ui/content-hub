@@ -19,7 +19,7 @@ import { evaluateReview, getMarketRelevance } from "../src/lib/research-evaluate
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const WORKSPACE_ID = process.env.WORKSPACE_ID || "6a18a542-c1c4-44c5-bcf0-c6d38e432e7a"; // Hydro13
+const WORKSPACE_ID = process.env.WORKSPACE_ID || "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7"; // Hydro13
 
 const MIN_SIGNIFICANCE = 4;
 const EVAL_DELAY_MS = 200;
