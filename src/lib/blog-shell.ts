@@ -1,5 +1,10 @@
 import * as cheerio from "cheerio";
 import type { Language } from "@/types";
+import { STORAGE_BUCKET } from "./constants";
+
+// Author avatar stored in Supabase storage
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://fbpefeqqqfrcmfmjmeij.supabase.co";
+const AUTHOR_AVATAR_URL = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/blog/author-erik-lindberg.png`;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -413,7 +418,35 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     opts.language === "sv" ? "sv-SE" : opts.language === "da" ? "da-DK" : "nb-NO",
     { year: "numeric", month: "long", day: "numeric" }
   );
-  const authorName = opts.language === "sv" ? "Erik Lindberg" : opts.language === "da" ? "Erik Lindberg" : "Erik Lindberg";
+  const authorName = "Erik Lindberg";
+  const lastUpdatedLabel =
+    opts.language === "sv" ? "Senast uppdaterad" :
+    opts.language === "da" ? "Sidst opdateret" : "Sist oppdatert";
+  const byPrefix = opts.language === "da" ? "Af" : "Av";
+
+  // Build author byline HTML — injected into article after hero image
+  const authorBylineHtml = `
+    <div class="blog-shell-byline">
+      <img class="blog-shell-avatar" src="${AUTHOR_AVATAR_URL}" alt="${authorName}">
+      <div>
+        <span class="blog-shell-byline-name">${byPrefix} ${esc(authorName)}</span>
+        <span class="blog-shell-byline-date">${lastUpdatedLabel} ${dateFormatted}</span>
+      </div>
+    </div>`;
+
+  // Inject author byline after hero image (or after H1 if no hero)
+  let articleHtml = opts.articleBodyHtml;
+  const heroMatch = articleHtml.match(/<img\s+class="hero-img"[^>]*>/i);
+  if (heroMatch) {
+    const insertPos = heroMatch.index! + heroMatch[0].length;
+    articleHtml = articleHtml.slice(0, insertPos) + authorBylineHtml + articleHtml.slice(insertPos);
+  } else {
+    const h1End = articleHtml.indexOf("</h1>");
+    if (h1End !== -1) {
+      const insertPos = h1End + "</h1>".length;
+      articleHtml = articleHtml.slice(0, insertPos) + authorBylineHtml + articleHtml.slice(insertPos);
+    }
+  }
 
   return `<!DOCTYPE html>
 <html lang="${opts.language}">
@@ -458,15 +491,8 @@ export function wrapInBlogShell(opts: WrapOptions): string {
         ${breadcrumbHtml}
       </nav>
 
-      <div class="blog-shell-meta">
-        <span class="blog-shell-author">Av ${esc(authorName)}</span>
-        <span class="blog-shell-meta-sep">·</span>
-        <time datetime="${opts.publishedAt}">${dateFormatted}</time>
-        ${opts.blogCategory ? `<span class="blog-shell-category-tag">${esc(opts.blogCategory)}</span>` : ""}
-      </div>
-
       <article class="blog-shell-article">
-        ${opts.articleBodyHtml}
+        ${articleHtml}
       </article>
 
       ${relatedHtml}
@@ -712,17 +738,16 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-breadcrumbs a{color:${primaryColor};text-decoration:none}
 .blog-shell-breadcrumbs a:hover{text-decoration:underline}
 .blog-shell-sep{margin:0 6px;color:#d1d5db}
-.blog-shell-meta{display:flex;align-items:center;gap:12px;padding:8px 0 4px;font-size:.85rem;color:#6b7280;flex-wrap:wrap}
-.blog-shell-author{font-weight:600;color:#374151}
-.blog-shell-meta-sep{color:#d1d5db}
-.blog-shell-meta time{color:#9ca3af}
-.blog-shell-category-tag{background:#f0f9ff;color:#0369a1;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:500}
+.blog-shell-byline{display:flex;align-items:center;gap:12px;padding:8px 0 12px}
+.blog-shell-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.blog-shell-byline-name{display:block;font-weight:600;color:#374151;font-size:.9rem}
+.blog-shell-byline-date{display:block;font-size:.8rem;color:#9ca3af;margin-top:2px}
 .blog-shell-main{padding:0 0 40px}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;max-width:100%;display:block}
 .table-wrap table{min-width:400px;width:100%}
 .table-wrap th,.table-wrap td{white-space:nowrap;padding:8px 12px}
 .table-wrap td:first-child,.table-wrap th:first-child{white-space:normal}
-.blog-shell-article{padding:12px 0 32px}
+.blog-shell-article{padding:4px 0 32px}
 .blog-shell-related{border-top:1px solid #e5e7eb;padding:32px 0 0}
 .blog-shell-related h2{font-size:1.25rem;margin:0 0 16px}
 .blog-shell-related-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -736,11 +761,16 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-disclosure{margin:0 0 12px;font-size:.8rem;color:#9ca3af;font-style:italic}
 .blog-shell-copyright{margin:0;color:#9ca3af}
 @media(max-width:640px){
-  .blog-shell-container{padding:0 16px}
+  .blog-shell-container{padding:0 12px}
   .blog-shell-breadcrumbs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:10px 0 0;font-size:.78rem}
-  .blog-shell-meta{font-size:.78rem;gap:8px;padding:6px 0 0}
-  .blog-shell-category-tag{font-size:.72rem;padding:1px 8px}
+  .blog-shell-byline{padding:6px 0 8px;gap:10px}
+  .blog-shell-avatar{width:40px;height:40px}
+  .blog-shell-byline-name{font-size:.82rem}
+  .blog-shell-byline-date{font-size:.75rem}
   .blog-shell-article{padding:4px 0 24px}
+  .table-wrap table{min-width:0}
+  .table-wrap th,.table-wrap td{white-space:normal;padding:6px 8px;font-size:.85rem}
+  .table-wrap th:not(:first-child):not(:last-child),.table-wrap td:not(:first-child):not(:last-child){display:none}
   .blog-shell-related-grid{grid-template-columns:1fr}
   .blog-shell-footer{padding:24px 0}
 }

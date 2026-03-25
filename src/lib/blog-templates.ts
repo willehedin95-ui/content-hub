@@ -25,16 +25,16 @@ export interface BlogTemplate {
 const sharedStyles = `
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1f2937; line-height: 1.7; }
-    .article { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+    .article { max-width: 720px; margin: 0 auto; padding: 12px 0 40px; }
     h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 12px; }
     h2 { font-size: 1.4rem; margin: 40px 0 12px; color: #111827; }
     h3 { font-size: 1.15rem; margin: 28px 0 8px; }
     p { margin: 0 0 16px; }
     img { max-width: 100%; height: auto; border-radius: 8px; }
-    .hero-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 12px; margin: 0 0 24px; }
+    .hero-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 12px; margin: 0 0 4px; }
     .section-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; margin: 24px 0; }
     .product-img { display: block; max-width: 400px; margin: 32px auto 8px; border-radius: 12px; }
-    .intro { font-size: 1.1rem; color: #374151; margin: 0 0 32px; }
+    .intro { font-size: 1.1rem; color: #374151; margin: 0 0 20px; }
     .tldr { background: #f0f9ff; border-left: 4px solid #0284c7; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 0 0 32px; }
     .tldr strong { display: block; margin-bottom: 6px; color: #0369a1; }
     .product-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 0 0 20px; }
@@ -75,7 +75,7 @@ const sharedStyles = `
       h1 { font-size: 1.45rem; margin: 0 0 8px; }
       h2 { font-size: 1.2rem; margin: 28px 0 10px; }
       .intro { font-size: 1rem; margin: 0 0 24px; }
-      .hero-img { border-radius: 8px; margin: 0 0 16px; }
+      .hero-img { border-radius: 8px; margin: 0 0 2px; }
       .section-img { margin: 20px 0; border-radius: 6px; }
       .tldr { padding: 12px 16px; margin: 0 0 24px; }
       .info-box { padding: 12px 16px; margin: 20px 0; }
@@ -83,8 +83,11 @@ const sharedStyles = `
       .product-card { padding: 16px; }
       .product-img { max-width: 280px; margin: 24px auto 8px; }
       .pros-cons { grid-template-columns: 1fr; }
-      .article { padding: 16px; }
+      .article { padding: 8px 0; }
       .before-after { grid-template-columns: 1fr; }
+      table { min-width: 0; }
+      th, td { white-space: normal; padding: 6px 8px; font-size: 0.85rem; }
+      th:not(:first-child):not(:last-child), td:not(:first-child):not(:last-child) { display: none; }
     }
   </style>
 `;

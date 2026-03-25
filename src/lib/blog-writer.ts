@@ -547,6 +547,7 @@ ${templateHtml}
    CRITICAL: Each placeholder URL must be different (text=Hero, text=Section+1, text=Section+2). The hero image MUST be directly after the H1. Place section images after H2 sections where a visual break would help readability. Alt text must be in Swedish.
 10. Write the ENTIRE article in Swedish. No English words except brand names.
 11. If the title says "12 kuddar" but you only have 10 verified products, adjust the title number to match (e.g. "Test av 10 kuddar"). NEVER pad with fabricated products.
+12. TABLES: Put the 2 most important columns FIRST — on mobile only the first 2 columns are visible. Example: "Kudde" + "Betyg" as columns 1-2, then "Pris" + "Bäst för" as 3-4. Always wrap tables in <div class="table-wrap">...</div>.
 
 Return ONLY the HTML document. No explanations, no code fences, no commentary.`;
 }

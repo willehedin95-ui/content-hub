@@ -21,6 +21,7 @@ import {
   getProjectCustomDomain,
   deploySitemapAndRobots,
   type PageAnalyticsConfig,
+  type DeployFile,
 } from "./cloudflare-pages";
 import {
   getPublishedBlogArticles,
@@ -727,8 +728,28 @@ async function publishBlogArticle(
     contentType: "seo_blog",
   };
 
+  // Optimize images: download → convert to WebP → embed in deployment
+  let finalHtml = wrappedHtml;
+  const deployFiles: DeployFile[] = [];
+  try {
+    const { optimizeImages } = await import("./image-optimizer");
+    const imgResult = await optimizeImages(wrappedHtml, deploySlug);
+    if (imgResult.stats.optimized > 0) {
+      finalHtml = wrappedHtml;
+      for (const [originalUrl, deployPath] of imgResult.urlMap) {
+        finalHtml = finalHtml.split(originalUrl).join(deployPath);
+      }
+      for (const img of imgResult.images) {
+        deployFiles.push({ path: img.deployPath, sha1: img.sha1, body: new Uint8Array(img.buffer) });
+      }
+      console.log(`[blog-publish] Optimized ${imgResult.stats.optimized} images, saved ${(imgResult.stats.savedBytes / 1024).toFixed(0)}KB`);
+    }
+  } catch (err) {
+    console.warn("[blog-publish] Image optimization failed, using original URLs:", err);
+  }
+
   // Deploy to Cloudflare Pages
-  const result = await publishPage(wrappedHtml, deploySlug, language, [], undefined, analytics);
+  const result = await publishPage(finalHtml, deploySlug, language, deployFiles, undefined, analytics);
   return result.url.trim();
 }
 
