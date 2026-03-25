@@ -42,27 +42,22 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Determine language from workspace
-  // HappySleep → sv (halsobladet.com), future: could be per-workspace
-  const languageMap: Record<string, Language> = {
-    happysleep: "sv",
-    hydro13: "sv",
-  };
-  const language = (settings.blog_language as Language) || languageMap[wsSlug] || "sv";
+  // Determine which languages to process
+  // blog_autopilot_languages: ["sv", "da", "no"] — defaults to ["sv"] for backward compat
+  const enabledLanguages = (settings.blog_autopilot_languages as string[]) || ["sv"];
 
-  try {
-    const result = await runBlogAutopilot(workspace.id, language, { force });
+  const results: Record<string, unknown> = {};
 
-    return NextResponse.json({
-      ok: true,
-      ...result,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Blog autopilot failed";
-    console.error("[blog-autopilot] Cron error:", message);
-    return NextResponse.json(
-      { ok: false, error: message },
-      { status: 500 }
-    );
+  for (const lang of enabledLanguages) {
+    try {
+      const result = await runBlogAutopilot(workspace.id, lang as Language, { force });
+      results[lang] = result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Blog autopilot failed";
+      console.error(`[blog-autopilot] Cron error (${lang}):`, message);
+      results[lang] = { action: "error", message };
+    }
   }
+
+  return NextResponse.json({ ok: true, results });
 }

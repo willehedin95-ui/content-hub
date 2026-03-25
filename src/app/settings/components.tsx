@@ -42,6 +42,7 @@ export interface Settings {
   default_page_b_id: string;
   blog_config?: BlogConfig;
   blog_autopilot_enabled: boolean;
+  blog_autopilot_languages: string[];
   blog_articles_per_day: number;
 }
 

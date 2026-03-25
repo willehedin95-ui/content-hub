@@ -4,7 +4,7 @@ Updated: 2026-03-25
 ## Tier 1 — Revenue & Automation
 - [x] ~~**Push `855ffcc` + `6cad110` to deploy**~~ — Blog mobile UX + WebP + author byline + internal linking. Pushed and auto-deploying to Vercel. (done 2026-03-25)
 - [x] ~~**Test blog autopilot end-to-end on Vercel**~~ — Tested across 3 templates. Found+fixed 6 HTML/SEO issues (nested tags, relative OG images, duplicate meta, test articles, fabricated quotes). Added anatomy rules to image prompts. Regenerated bad image. Commits `eca4ad8`, `bb6f838`. (done 2026-03-25)
-- [ ] **Pause ads pointing to dead domains** — coolafynd.se (50 ads, domain dead) and woofie.se (118 ads, all 404) are burning ad spend. Plus 4 broken swedishbalance.se URLs (8 ads). (added 2026-03-24)
+- [x] ~~**Pause ads pointing to dead domains**~~ — Verified: all 480 ads (coolafynd.se + woofie.se) already PAUSED/ADSET_PAUSED. Zero active spend. No action needed. (verified 2026-03-25)
 
 ## Tier 2 — Builder & UX Quality
 - [x] ~~**Autosave race condition**~~ — Fixed in commit `f382c9b`. (done 2026-03-22)

@@ -199,9 +199,39 @@ const COLLAGEN_COMPETITORS: CompetitorProduct[] = [
   },
 ];
 
-/** Get verified competitors for a product category */
-export function getCompetitorProducts(productSlug: string): CompetitorProduct[] {
-  if (productSlug === "happysleep") return PILLOW_COMPETITORS;
+// Danish pillow competitors — same brands, local descriptions/URLs/prices
+const PILLOW_COMPETITORS_DA: CompetitorProduct[] = [
+  { nameSv: "Tempur Original", brand: "Tempur", priceSek: 1599, material: "Memory foam (TEMPUR-materiale)", url: "https://dk.tempur.com/puder/", description: "Klassisk ergonomisk pude fra Tempur. Meget støtte men kan føles hård. Sover varmt." },
+  { nameSv: "IKEA KLUBBSPORRE", brand: "IKEA", priceSek: 199, material: "Memory foam/latex", url: "https://www.ikea.com/dk/da/cat/ergonomiske-puder-20533/", description: "Billigste ergonomiske alternativ. God til budgettet men dårligere holdbarhed." },
+  { nameSv: "Dunlopillo Serenity", brand: "Dunlopillo", priceSek: 899, material: "Latex", url: "https://www.dunlopillo.dk/puder/", description: "Premium latexpude. Naturligt kølig, god fjedring, lang levetid." },
+  { nameSv: "Pillowise", brand: "Pillowise", priceSek: 1295, material: "Memory foam", url: "https://www.pillowise.dk/", description: "Individuelt tilpasset pude baseret på skulderbredde og sovestilling. Sælges via fysioterapeuter." },
+  { nameSv: "Sissel Soft", brand: "Sissel", priceSek: 649, material: "Memory foam", url: "https://www.sissel-online.com/da/", description: "Tysk medicinteknisk pude. Blødere ergonomisk profil. Populær hos fysioterapeuter." },
+  { nameSv: "Curaprox", brand: "Curaprox", priceSek: 1890, material: "Memory foam", url: "https://www.curaprox.com/dk-da/sleep", description: "Schweizisk premiumpude med patenteret konturdesign. Dyrest i test." },
+  { nameSv: "IKEA ROSENSKÄRM", brand: "IKEA", priceSek: 149, material: "Polyester", url: "https://www.ikea.com/dk/da/cat/ergonomiske-puder-20533/", description: "Enkel ergonomisk pude. God som indgangspris men mister form hurtigt." },
+  { nameSv: "Casper Original Pillow", brand: "Casper", priceSek: 750, material: "Polyester/dun", url: "https://casper.com/dk/da/puder/", description: "Populær online-pude. Tre lag, justerbar højde. Ikke ergonomisk profil." },
+  { nameSv: "Emma Diamond Degree", brand: "Emma", priceSek: 899, material: "Memory foam med gel", url: "https://www.emma-sleep.dk/puder/", description: "Kølende gelpude. God til varme sovere. Justerbar højde med udtagelige lag." },
+];
+
+// Norwegian pillow competitors — same brands, local descriptions/URLs/prices
+const PILLOW_COMPETITORS_NO: CompetitorProduct[] = [
+  { nameSv: "Tempur Original", brand: "Tempur", priceSek: 1599, material: "Memory foam (TEMPUR-materiale)", url: "https://no.tempur.com/puter/", description: "Klassisk ergonomisk pute fra Tempur. Mye støtte men kan kjennes hard. Sover varmt." },
+  { nameSv: "IKEA KLUBBSPORRE", brand: "IKEA", priceSek: 199, material: "Memory foam/latex", url: "https://www.ikea.com/no/no/cat/ergonomiske-puter-20533/", description: "Billigste ergonomiske alternativ. Bra for budsjettet men dårligere holdbarhet." },
+  { nameSv: "Dunlopillo Serenity", brand: "Dunlopillo", priceSek: 899, material: "Latex", url: "https://www.dunlopillo.no/puter/", description: "Premium latexpute. Naturlig kjølig, god fjæring, lang levetid." },
+  { nameSv: "Pillowise", brand: "Pillowise", priceSek: 1295, material: "Memory foam", url: "https://www.pillowise.no/", description: "Individuelt tilpasset pute basert på skulderbredde og sovestilling. Selges via fysioterapeuter." },
+  { nameSv: "Sissel Soft", brand: "Sissel", priceSek: 649, material: "Memory foam", url: "https://www.sissel-online.com/no/", description: "Tysk medisinteknisk pute. Mykere ergonomisk profil. Populær hos fysioterapeuter." },
+  { nameSv: "Curaprox", brand: "Curaprox", priceSek: 1890, material: "Memory foam", url: "https://www.curaprox.com/no-no/sleep", description: "Sveitsisk premiumpute med patentert konturdesign. Dyrest i test." },
+  { nameSv: "IKEA ROSENSKÄRM", brand: "IKEA", priceSek: 149, material: "Polyester", url: "https://www.ikea.com/no/no/cat/ergonomiske-puter-20533/", description: "Enkel ergonomisk pute. Bra som inngangspris men mister form raskt." },
+  { nameSv: "Casper Original Pillow", brand: "Casper", priceSek: 750, material: "Polyester/dun", url: "https://casper.com/no/no/puter/", description: "Populær nettbasert pute. Tre lag, justerbar høyde. Ikke ergonomisk profil." },
+  { nameSv: "Emma Diamond Degree", brand: "Emma", priceSek: 899, material: "Memory foam med gel", url: "https://www.emma-sleep.no/puter/", description: "Kjølende gelpute. Bra for varme sovere. Justerbar høyde med uttakbare lag." },
+];
+
+/** Get verified competitors for a product category and language */
+export function getCompetitorProducts(productSlug: string, language: string = "sv"): CompetitorProduct[] {
+  if (productSlug === "happysleep") {
+    if (language === "da") return PILLOW_COMPETITORS_DA;
+    if (language === "no") return PILLOW_COMPETITORS_NO;
+    return PILLOW_COMPETITORS;
+  }
   if (productSlug === "hydro13") return COLLAGEN_COMPETITORS;
   return [];
 }
@@ -210,50 +240,58 @@ export function getCompetitorProducts(productSlug: string): CompetitorProduct[] 
 // Verified external links for health content
 // ---------------------------------------------------------------------------
 
-const VERIFIED_EXTERNAL_LINKS: Record<string, { url: string; description: string }> = {
-  "1177": {
-    url: "https://www.1177.se/",
-    description: "1177 Vårdguiden — Sveriges officiella hälsoinformationstjänst",
+type ExternalLink = { url: string; description: string };
+
+const VERIFIED_EXTERNAL_LINKS: Record<string, Record<string, ExternalLink>> = {
+  sv: {
+    "1177": { url: "https://www.1177.se/", description: "1177 Vårdguiden — Sveriges officiella hälsoinformationstjänst" },
+    "1177_nacke": { url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/", description: "1177 — Ont i nacke och axlar" },
+    "1177_somn": { url: "https://www.1177.se/liv--halsa/stresshantering-och-somn/somnen-ar-viktig-for-din-halsa/", description: "1177 — Sömnen är viktig för din hälsa" },
+    "1177_rygg": { url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-ryggen/", description: "1177 — Ont i ryggen" },
+    internetmedicin: { url: "https://www.internetmedicin.se/", description: "Internetmedicin — medicinsk kunskapsbas för vårdpersonal" },
+    ki: { url: "https://ki.se/", description: "Karolinska Institutet — Sveriges ledande medicinska universitet" },
+    livsmedelsverket: { url: "https://www.livsmedelsverket.se/", description: "Livsmedelsverket — råd om kost och nutrition" },
+    sbu: { url: "https://www.sbu.se/", description: "SBU — Statens beredning för medicinsk och social utvärdering" },
   },
-  "1177_nacke": {
-    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/",
-    description: "1177 — Ont i nacke och axlar",
+  da: {
+    sundhed: { url: "https://www.sundhed.dk/", description: "Sundhed.dk — Danmarks officielle sundhedsportal" },
+    sundhed_nakke: { url: "https://www.sundhed.dk/borger/patienthaandbogen/knogler-muskler-og-led/sygdomme/nakke/nakkesmerter/", description: "Sundhed.dk — Nakkesmerter" },
+    sundhed_sovn: { url: "https://www.sundhed.dk/borger/patienthaandbogen/psyke/sygdomme/soevn/soevnloeshed/", description: "Sundhed.dk — Søvnløshed" },
+    sundhed_ryg: { url: "https://www.sundhed.dk/borger/patienthaandbogen/knogler-muskler-og-led/sygdomme/ryg/rygsmerter/", description: "Sundhed.dk — Rygsmerter" },
+    sst: { url: "https://www.sst.dk/", description: "Sundhedsstyrelsen — Danmarks sundhedsmyndighed" },
+    netdoktor: { url: "https://www.netdoktor.dk/", description: "NetDoktor.dk — Lægereviewed sundhedsinformation" },
+    foedevarestyrelsen: { url: "https://www.foedevarestyrelsen.dk/", description: "Fødevarestyrelsen — råd om kost og ernæring" },
   },
-  "1177_somn": {
-    url: "https://www.1177.se/liv--halsa/stresshantering-och-somn/somnen-ar-viktig-for-din-halsa/",
-    description: "1177 — Sömnen är viktig för din hälsa",
-  },
-  "1177_rygg": {
-    url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-ryggen/",
-    description: "1177 — Ont i ryggen",
-  },
-  internetmedicin: {
-    url: "https://www.internetmedicin.se/",
-    description: "Internetmedicin — medicinsk kunskapsbas för vårdpersonal",
-  },
-  ki: {
-    url: "https://ki.se/",
-    description: "Karolinska Institutet — Sveriges ledande medicinska universitet",
-  },
-  livsmedelsverket: {
-    url: "https://www.livsmedelsverket.se/",
-    description: "Livsmedelsverket — råd om kost och nutrition",
-  },
-  sbu: {
-    url: "https://www.sbu.se/",
-    description: "SBU — Statens beredning för medicinsk och social utvärdering",
+  no: {
+    helsenorge: { url: "https://www.helsenorge.no/", description: "Helsenorge.no — Norges offisielle helseportal" },
+    helsenorge_nakke: { url: "https://www.helsenorge.no/sykdom/muskel-og-skjelett/nakkesmerter/", description: "Helsenorge — Nakkesmerter" },
+    helsenorge_sovn: { url: "https://www.helsenorge.no/sykdom/psykiske-lidelser/sovnproblemer-insomni/", description: "Helsenorge — Søvnproblemer og insomni" },
+    helsenorge_rygg: { url: "https://www.helsenorge.no/sykdom/muskel-og-skjelett/ryggsmerter/", description: "Helsenorge — Ryggsmerter" },
+    fhi: { url: "https://www.fhi.no/", description: "Folkehelseinstituttet — Norges folkehelseinstitutt" },
+    nhi: { url: "https://nhi.no/", description: "NHI.no — Norsk helseinformatikk (legereviewed)" },
+    mattilsynet: { url: "https://www.mattilsynet.no/", description: "Mattilsynet — råd om mat og ernæring" },
   },
 };
 
-// Post-processing: fix any remaining wrong 1177.se URLs that Claude might hallucinate
+// Post-processing: fix any remaining wrong health site URLs that Claude might hallucinate
 const URL_REPLACEMENTS: [RegExp, string][] = [
-  // Common hallucinated 1177 paths → real URLs
+  // Common hallucinated Swedish 1177 paths → real URLs
   [/https:\/\/www\.1177\.se\/sjukdomar--besvar\/skelett-leder-och-muskler\/nacke-och-rygg\/ont-i-nacken\/?/g,
    "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/"],
   [/https:\/\/www\.1177\.se\/liv--halsa\/sova-bra\/?/g,
    "https://www.1177.se/liv--halsa/stresshantering-och-somn/somnen-ar-viktig-for-din-halsa/"],
   [/https:\/\/www\.1177\.se\/sjukdomar--besvar\/skelett-leder-och-muskler\/nacke-och-rygg\/ont-i-ryggen\/?/g,
    "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-ryggen/"],
+  // Danish: sundhed.dk common hallucinated paths
+  [/https:\/\/www\.sundhed\.dk\/borger\/sygdomme\/nakke\/?/g,
+   "https://www.sundhed.dk/borger/patienthaandbogen/knogler-muskler-og-led/sygdomme/nakke/nakkesmerter/"],
+  [/https:\/\/www\.sundhed\.dk\/borger\/sygdomme\/soevn\/?/g,
+   "https://www.sundhed.dk/borger/patienthaandbogen/psyke/sygdomme/soevn/soevnloeshed/"],
+  // Norwegian: helsenorge.no common hallucinated paths
+  [/https:\/\/www\.helsenorge\.no\/sykdom\/nakkesmerter\/?/g,
+   "https://www.helsenorge.no/sykdom/muskel-og-skjelett/nakkesmerter/"],
+  [/https:\/\/www\.helsenorge\.no\/sykdom\/sovnproblemer\/?/g,
+   "https://www.helsenorge.no/sykdom/psykiske-lidelser/sovnproblemer-insomni/"],
 ];
 
 /** Fix known hallucinated URLs in article HTML */
@@ -384,17 +422,18 @@ function buildWriterSystemPrompt(
         ? "SmartHelse"
         : "Helseguiden";
 
-  // Get verified competitor products
-  const competitors = getCompetitorProducts(request.productSlug);
+  // Get verified competitor products for this language
+  const competitors = getCompetitorProducts(request.productSlug, request.language);
   const productUrl = getProductUrl(request.productSlug, request.language);
 
   // Build competitor data section
+  const currency = request.language === "da" ? "DKK" : request.language === "no" ? "NOK" : "kr";
   const competitorSection = competitors.length > 0
     ? `## Verified Competitor Products
 ONLY use products from this list. NEVER invent, fabricate, or guess product names.
 
 ${competitors.map((c) =>
-  `- **${c.nameSv}** (${c.brand}) — ${c.priceSek} kr — ${c.material}
+  `- **${c.nameSv}** (${c.brand}) — ~${c.priceSek} ${currency} — ${c.material}
   ${c.description}
   URL: ${c.url}`
 ).join("\n")}
@@ -402,22 +441,37 @@ ${competitors.map((c) =>
 CRITICAL: If you need more products than listed above, leave them out. Do NOT make up product names like "Jensen Dream", "Carpe Diem Cloud", "Hästens Comfort", or "DUX Form" — these do NOT exist.`
     : "";
 
-  // Build verified external links section
+  // Build verified external links section (language-specific)
+  const langLinks = VERIFIED_EXTERNAL_LINKS[request.language] ?? VERIFIED_EXTERNAL_LINKS.sv;
+  const domainNote = request.language === "da"
+    ? "well-known Danish domains"
+    : request.language === "no"
+      ? "well-known Norwegian domains"
+      : "well-known Swedish domains";
   const externalLinksSection = `## Verified External Links (use these exact URLs)
-${Object.entries(VERIFIED_EXTERNAL_LINKS).map(([key, { url, description }]) =>
+${Object.entries(langLinks).map(([key, { url, description }]) =>
   `- ${description}: ${url}`
 ).join("\n")}
 
-NEVER fabricate URLs. Only link to URLs listed above or to well-known Swedish domains you are 100% certain exist. If unsure about a URL, omit the link.`;
+NEVER fabricate URLs. Only link to URLs listed above or to ${domainNote} you are 100% certain exist. If unsure about a URL, omit the link.`;
 
   return `You are a senior ${langName} health & wellness journalist writing for ${blogName} (https://${request.blogDomain}). You write thoroughly researched, honest editorial content that ranks well in Google.
 
 ## CRITICAL: Language Rules
 - Write ENTIRELY in ${langName}. Every word, including product descriptions, must be in ${langName}.
 - Product names stay in their original brand form (e.g. "HappySleep", "Tempur Original", "IKEA KLUBBSPORRE")
-- NEVER translate brand names into English. "HappySleep" is the brand name — do NOT write "HappySleep Cervical Pillow" or any English descriptor. Write "HappySleep ergonomisk kudde" or just "HappySleep".
+- NEVER translate brand names into English. "HappySleep" is the brand name — do NOT write "HappySleep Cervical Pillow" or any English descriptor.
+${request.language === "da"
+  ? `- Write "HappySleep ergonomisk pude" or just "HappySleep".
+- Danish compound words: nakkestøtte (not "nakke støtte"), sovestilling (not "sove stilling"), hukommelseskum (not "hukommelses skum"), rygsmerter (not "ryg smerter")
+- Use correct Danish grammar and natural Danish sentence structures. Do NOT translate from English.`
+  : request.language === "no"
+    ? `- Write "HappySleep ergonomisk pute" or just "HappySleep".
+- Norwegian compound words: nakkestøtte (not "nakke støtte"), sovestilling (not "sove stilling"), minneskum (not "minne skum"), ryggsmerter (not "rygg smerter"), sidesover (not "side sover")
+- Use correct Norwegian (bokmål) grammar and natural Norwegian sentence structures. Do NOT translate from English.`
+    : `- Write "HappySleep ergonomisk kudde" or just "HappySleep".
 - Swedish compound words: nackstöd (not "nack stöd"), sovställning (not "sov ställning"), minnesskum (not "minnes skum"), ryggsmärta (not "rygg smärta"), sidosovare (not "sido sovare")
-- Use correct Swedish grammar and natural Swedish sentence structures. Do NOT translate from English.
+- Use correct Swedish grammar and natural Swedish sentence structures. Do NOT translate from English.`}
 
 ## Your Identity
 - You are the editorial team at ${blogName}, a small independent health review site

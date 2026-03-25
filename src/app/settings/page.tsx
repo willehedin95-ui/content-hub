@@ -70,6 +70,7 @@ export default function SettingsPage() {
     default_page_b_id: "",
     blog_config: undefined,
     blog_autopilot_enabled: false,
+    blog_autopilot_languages: ["sv"],
     blog_articles_per_day: 1,
   });
   const [saved, setSaved] = useState(false);

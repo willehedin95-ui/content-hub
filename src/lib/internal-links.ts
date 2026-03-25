@@ -22,6 +22,7 @@ import type { Language } from "@/types";
 // ---------------------------------------------------------------------------
 
 const SLUG_KEYWORDS: Record<string, string> = {
+  // Swedish (SV)
   "basta-kudden": "bästa kudden",
   "kudde-for-sidosovare": "kudde för sidosovare",
   "nacksmarta-pa-natten": "nacksmärta på natten",
@@ -40,6 +41,29 @@ const SLUG_KEYWORDS: Record<string, string> = {
   "somn-och-hudhalsa": "skönhetssömn",
   "kollagen-for-har-naglar": "kollagen hår",
   "basta-kollagen-mot-rynkor": "kollagen mot rynkor",
+  // Danish (DA)
+  "bedste-nakkepude": "nakkepude",
+  "hovedpude-bedst-i-test": "hovedpude bedst i test",
+  "ergonomisk-hovedpude": "ergonomisk hovedpude",
+  "stop-snorken": "stop snorken",
+  "sovnloshed": "søvnløshed",
+  "bedre-sovn": "bedre søvn",
+  "memory-foam-pude": "memory foam pude",
+  "vask-af-hovedpude": "vask af hovedpude",
+  "sovestillinger": "sovestilling",
+  "sovn-og-sundhed": "søvn og sundhed",
+  "nakkesmerter-om-natten": "nakkesmerter",
+  // Norwegian (NO)
+  "beste-nakkepute": "nakkepute",
+  "ergonomisk-pute": "ergonomisk pute",
+  "snorking-behandling": "snorking",
+  "pute-for-vond-nakke": "pute for vond nakke",
+  "hodepute-best-i-test": "hodepute best i test",
+  "pute-for-sidesovere": "pute for sidesovere",
+  "sovnloshet": "søvnløshet",
+  "sov-bedre": "sove bedre",
+  "soveposisjoner": "soveposisjon",
+  "sovn-og-helse": "søvn og helse",
 };
 
 // ---------------------------------------------------------------------------

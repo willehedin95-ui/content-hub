@@ -174,8 +174,36 @@ export default function BlogTab({ settings, setSettings, saved, handleSave }: Se
           }
         />
         <Row
+          label="Autopilot languages"
+          description="Which languages the autopilot publishes articles for (1 article/day per language)"
+          action={
+            <div className="flex gap-3">
+              {LANGUAGES.map((lang) => {
+                const enabled = (settings.blog_autopilot_languages as string[] ?? ["sv"]).includes(lang.code);
+                return (
+                  <label key={lang.code} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(e) => {
+                        const current = (settings.blog_autopilot_languages as string[]) ?? ["sv"];
+                        const next = e.target.checked
+                          ? [...current, lang.code]
+                          : current.filter((c: string) => c !== lang.code);
+                        setSettings((s) => ({ ...s, blog_autopilot_languages: next }));
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    {lang.flag} {lang.label}
+                  </label>
+                );
+              })}
+            </div>
+          }
+        />
+        <Row
           label="Articles per day"
-          description="Maximum articles the autopilot can publish per day (default: 1)"
+          description="Maximum articles the autopilot can publish per day per language (default: 1)"
           action={
             <input
               type="number"
