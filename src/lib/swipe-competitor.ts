@@ -93,6 +93,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   const { data: segments } = await db.from("product_segments").select("*").eq("product_id", product.id);
   const hookInspiration = await buildHookInspiration(productSlug, workspaceId);
   const learningsContext = await buildLearningsContext(productSlug, workspaceId);
+  const { buildResearchContext } = await import("@/lib/research-context");
+  const researchContext = await buildResearchContext(productSlug, workspaceId);
 
   // --- Build prompts ---
   const systemPrompt = buildBrainstormSystemPrompt(
@@ -105,7 +107,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     learningsContext,
     competitorImageUrls.length,
     3,
-    input.painPoint
+    input.painPoint,
+    researchContext
   );
 
   const userPrompt = buildBrainstormUserPrompt(

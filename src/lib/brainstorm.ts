@@ -696,7 +696,8 @@ export function buildProductContext(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
   const parts: string[] = [];
 
@@ -742,6 +743,10 @@ export function buildProductContext(
 
   if (hookInspiration) {
     parts.push(hookInspiration);
+  }
+
+  if (researchContext) {
+    parts.push(researchContext);
   }
 
   return parts.join("\n\n");
@@ -796,9 +801,10 @@ function buildFromScratchSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets (Sweden, Norway, Denmark). You generate original ad concept ideas from first principles — product knowledge, audience psychology, and proven creative frameworks.
 
@@ -833,9 +839,10 @@ function buildFromOrganicSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in adapting organic content — viral posts, articles, Reddit threads, comments — into paid ad concepts.
 
@@ -870,9 +877,10 @@ function buildFromResearchSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in turning research findings, statistics, studies, and customer comments into compelling ad concepts.
 
@@ -909,9 +917,10 @@ function buildFromInternalSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in creative coverage analysis — finding gaps in existing ad portfolios and filling them with fresh concepts.
 
@@ -950,9 +959,10 @@ function buildUnawareSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in UNAWARE ads — the hardest but highest-scaling ad type. You create ads that grab people who aren't looking for a solution and make them feel a gap they didn't know existed.
 
@@ -1063,9 +1073,10 @@ function buildFromTemplateSystem(
   guidelines: CopywritingGuideline[],
   segments: ProductSegment[],
   hookInspiration?: string,
-  learningsContext?: string
+  learningsContext?: string,
+  researchContext?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist specializing in health & wellness ecommerce for Scandinavian markets. You specialize in template-based ad creation — using proven 3-part ad structures (Opening → Middle → Close) to generate high-converting ad concepts.
 
@@ -1114,11 +1125,12 @@ function buildFromCompetitorAdSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
+  researchContext?: string,
   imageCount?: number,
   variationsPerImage?: number,
   painPoint?: string
 ): string {
-  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
   return `You are a senior direct-response creative strategist and visual analyst specializing in health & wellness ecommerce for Scandinavian markets (Sweden, Norway, Denmark). You reverse-engineer competitor ads — analyzing their visual structure, persuasion techniques, and copy approach — then generate adapted concepts for our product with image generation prompts that faithfully reproduce the competitor's visual format.
 
@@ -1314,7 +1326,8 @@ const SYSTEM_BUILDERS: Record<
     guidelines: CopywritingGuideline[],
     segments: ProductSegment[],
     hookInspiration?: string,
-    learningsContext?: string
+    learningsContext?: string,
+    researchContext?: string
   ) => string
 > = {
   from_scratch: buildFromScratchSystem,
@@ -1345,19 +1358,21 @@ export function buildBrainstormSystemPrompt(
   learningsContext?: string,
   competitorImageCount?: number,
   variationsPerImage?: number,
-  painPoint?: string
+  painPoint?: string,
+  researchContext?: string
 ): string {
   // from_competitor_ad needs extra params (image count + variations + pain point)
   if (mode === "from_competitor_ad") {
     return buildFromCompetitorAdSystem(
       product, productBrief, guidelines, segments,
       hookInspiration, learningsContext,
+      researchContext,
       competitorImageCount, variationsPerImage,
       painPoint
     );
   }
   const builder = SYSTEM_BUILDERS[mode];
-  return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext);
+  return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 }
 
 /**

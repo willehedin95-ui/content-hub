@@ -501,6 +501,8 @@ async function runFromScratch(
   // --- Step 4: Build prompts and call Claude ---
   const hookInspiration = await buildHookInspiration(ws.productSlug, ws.id);
   const learningsContext = await buildLearningsContext(ws.productSlug, ws.id);
+  const { buildResearchContext } = await import("@/lib/research-context");
+  const researchContext = await buildResearchContext(ws.productSlug, ws.id);
 
   // Fetch recent concepts for diversity enforcement (all modes, not just from_internal)
   const { data: recentConceptData } = await db
@@ -532,7 +534,9 @@ async function runFromScratch(
     (segments ?? []) as ProductSegment[],
     mode,
     hookInspiration,
-    learningsContext
+    learningsContext,
+    undefined, undefined, undefined, // competitor params
+    researchContext
   );
 
   const brainstormRequest: BrainstormRequest = {

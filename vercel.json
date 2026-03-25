@@ -43,6 +43,18 @@
     {
       "path": "/api/cron/blog-autopilot?workspace=happysleep",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/research-scan",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/research-themes",
+      "schedule": "0 11 * * 0"
+    },
+    {
+      "path": "/api/cron/pagespeed-check",
+      "schedule": "0 6 * * *"
     }
   ]
 }

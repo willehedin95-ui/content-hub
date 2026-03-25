@@ -136,6 +136,10 @@ export async function POST(req: NextRequest) {
   // Fetch learnings from past ad tests
   const learningsContext = await buildLearningsContext(productSlug, workspaceId);
 
+  // Fetch customer research context (Trustpilot reviews, competitor insights)
+  const { buildResearchContext } = await import("@/lib/research-context");
+  const researchContext = await buildResearchContext(productSlug, workspaceId);
+
   // -----------------------------------------------------------------------
   // FROM COMPETITOR AD — separate code path (vision + image generation)
   // -----------------------------------------------------------------------
@@ -163,7 +167,8 @@ export async function POST(req: NextRequest) {
       learningsContext,
       competitorImageUrls.length,
       competitorVariations,
-      competitorPainPoint
+      competitorPainPoint,
+      researchContext
     );
 
     const userPrompt = buildBrainstormUserPrompt(
@@ -710,7 +715,12 @@ export async function POST(req: NextRequest) {
     guidelines,
     segments,
     mode,
-    hookInspiration
+    hookInspiration,
+    learningsContext,
+    undefined, // competitorImageCount
+    undefined, // variationsPerImage
+    undefined, // painPoint
+    researchContext
   );
 
   const userPrompt = buildBrainstormUserPrompt(
