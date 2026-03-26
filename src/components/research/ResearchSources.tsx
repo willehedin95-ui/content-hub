@@ -43,10 +43,10 @@ interface Source {
 }
 
 const AMAZON_MARKETPLACES = [
+  { value: "us", label: "Amazon.com (US)" },
   { value: "se", label: "Amazon.se (Sweden)" },
   { value: "de", label: "Amazon.de (Germany)" },
   { value: "uk", label: "Amazon.co.uk (UK)" },
-  { value: "us", label: "Amazon.com (US)" },
 ];
 
 export default function ResearchSources() {
@@ -69,7 +69,7 @@ export default function ResearchSources() {
   const [showAddAmazon, setShowAddAmazon] = useState(false);
   const [amazonName, setAmazonName] = useState("");
   const [amazonAsin, setAmazonAsin] = useState("");
-  const [amazonMarketplace, setAmazonMarketplace] = useState("se");
+  const [amazonMarketplace, setAmazonMarketplace] = useState("us");
   const [addingAmazon, setAddingAmazon] = useState(false);
   const [fetchingAmazonName, setFetchingAmazonName] = useState(false);
 
@@ -262,11 +262,16 @@ export default function ResearchSources() {
         }),
       });
       if (res.ok) {
+        const newSource = await res.json();
         setAmazonAsin("");
         setAmazonName("");
-        setAmazonMarketplace("se");
+        setAmazonMarketplace("us");
         setShowAddAmazon(false);
         await fetchSources();
+        // Auto-trigger one-time scan immediately (Amazon has no daily cron)
+        if (newSource?.id) {
+          scanSource(newSource as Source);
+        }
       }
     } catch (e) {
       console.error("Failed to add Amazon source:", e);
@@ -598,7 +603,7 @@ export default function ResearchSources() {
               Amazon Sources
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Product reviews — auto-scanned daily (may fail on CAPTCHA)
+              Product reviews — scanned once on add (Amazon limits to ~25 reviews)
             </p>
           </div>
           <button

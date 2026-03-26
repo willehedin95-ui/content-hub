@@ -9,12 +9,10 @@ import {
   searchReddit,
   logScrapeUsage as logRedditUsage,
 } from "@/lib/reddit";
-import { extractAsin } from "@/lib/amazon";
 import {
   scrapeInstagramComments,
   scrapeFacebookComments,
   scrapeTikTokComments,
-  scrapeAmazonReviewsViaApify,
   logApifyUsage,
   APIFY_ACTORS,
 } from "@/lib/apify";
@@ -84,7 +82,8 @@ export async function GET(req: NextRequest) {
       .eq("workspace_id", ws.id)
       .eq("status", "active")
       .neq("platform", "manual_import")
-      .neq("platform", "facebook_group");
+      .neq("platform", "facebook_group")
+      .neq("platform", "amazon"); // Amazon shows same ~8 curated reviews — one-time scan on add only
 
     if (!sources?.length) continue;
 
@@ -153,38 +152,8 @@ export async function GET(req: NextRequest) {
             break;
           }
 
-          case "amazon": {
-            // domain field stores ASIN or URL, config has marketplace
-            const sourceConfig = (source.config as Record<string, string>) ?? {};
-            const asin = extractAsin(source.domain);
-            if (!asin) {
-              throw new Error(`Invalid ASIN or URL: ${source.domain}`);
-            }
-
-            // Use Apify actor — Amazon blocks HTTP scraping (JS-rendered pages)
-            const maxReviews = isBackfill ? 100 : 30;
-            const scrapeResult = await scrapeAmazonReviewsViaApify(asin, {
-              marketplace: sourceConfig.marketplace ?? "us",
-              maxReviews,
-            });
-
-            await logApifyUsage(APIFY_ACTORS.amazon_reviews, "amazon", scrapeResult.totalScraped);
-
-            rawReviews = scrapeResult.reviews.map((r) => ({
-              id: r.id,
-              text: `${r.title ? r.title + "\n\n" : ""}${r.text}`,
-              title: r.title,
-              rating: r.rating,
-              language: r.language || detectAmazonLanguage(sourceConfig.marketplace ?? "us"),
-              date: r.date,
-              author: r.author,
-            }));
-
-            if (scrapeResult.productInfo) {
-              externalId = scrapeResult.productInfo.asin;
-            }
-            break;
-          }
+          // Amazon excluded from daily cron — one-time scan on add only
+          // (Amazon shows same ~8 curated reviews regardless of pagination)
 
           case "apify_instagram": {
             const sourceConfig = (source.config as Record<string, string>) ?? {};
@@ -463,20 +432,3 @@ function detectLanguage(text: string): string {
   return "en";
 }
 
-function detectAmazonLanguage(marketplace: string): string {
-  switch (marketplace) {
-    case "se":
-      return "sv";
-    case "de":
-      return "de";
-    case "uk":
-    case "us":
-      return "en";
-    case "dk":
-      return "da";
-    case "no":
-      return "no";
-    default:
-      return "en";
-  }
-}

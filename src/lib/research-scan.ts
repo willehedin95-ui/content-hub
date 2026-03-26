@@ -139,10 +139,11 @@ export async function scanSingleSource(
       if (!asin) {
         return { reviewsScraped: 0, nuggetsStored: 0, error: `Invalid ASIN: ${source.domain}` };
       }
-      // Use Apify actor — Amazon blocks HTTP scraping (JS-rendered pages)
-      const maxReviews = isDeep ? 500 : isBackfill ? 100 : 30;
+      const marketplace = sourceConfig.marketplace ?? "se";
+      // Deep mode requests more reviews; Amazon caps at ~26 per Apify run
+      const maxReviews = isDeep ? 150 : isBackfill ? 100 : 30;
       const scrapeResult = await scrapeAmazonReviewsViaApify(asin, {
-        marketplace: sourceConfig.marketplace ?? "us",
+        marketplace,
         maxReviews,
       });
       await logApifyUsage(APIFY_ACTORS.amazon_reviews, "amazon", scrapeResult.totalScraped);
@@ -151,28 +152,13 @@ export async function scanSingleSource(
         text: `${r.title ? r.title + "\n\n" : ""}${r.text}`,
         title: r.title,
         rating: r.rating,
-        language: r.language || detectAmazonLanguage(sourceConfig.marketplace ?? "us"),
+        language: r.language || detectAmazonLanguage(marketplace),
         date: r.date,
         author: r.author,
       }));
       if (scrapeResult.productInfo) {
         externalId = scrapeResult.productInfo.asin;
-        // Auto-update source name from product title if name looks like a placeholder or ASIN
-        if (scrapeResult.productInfo.title && scrapeResult.productInfo.title !== asin) {
-          const currentName = source.name.trim();
-          const looksLikePlaceholder =
-            /^B0[A-Z0-9]{8}$/i.test(currentName) ||
-            currentName.toLowerCase().startsWith("amazon ") ||
-            currentName === "";
-          if (looksLikePlaceholder) {
-            // Truncate long product titles
-            const title = scrapeResult.productInfo.title.slice(0, 80);
-            await db
-              .from("research_sources")
-              .update({ name: title })
-              .eq("id", source.id);
-          }
-        }
+        autoUpdateSourceName(db, source, scrapeResult.productInfo.title, asin);
       }
       break;
     }
@@ -367,6 +353,28 @@ export async function scanSingleSource(
     .eq("id", source.id);
 
   return { reviewsScraped: rawReviews.length, nuggetsStored };
+}
+
+// --- Source name auto-update ---
+
+async function autoUpdateSourceName(
+  db: ReturnType<typeof createServerSupabase>,
+  source: SourceRecord,
+  productTitle: string | undefined,
+  asin: string
+) {
+  if (!productTitle || productTitle === asin) return;
+  const currentName = source.name.trim();
+  const looksLikePlaceholder =
+    /^B0[A-Z0-9]{8}$/i.test(currentName) ||
+    currentName.toLowerCase().startsWith("amazon ") ||
+    currentName === "";
+  if (looksLikePlaceholder) {
+    await db
+      .from("research_sources")
+      .update({ name: productTitle.slice(0, 80) })
+      .eq("id", source.id);
+  }
 }
 
 // --- Language detection helpers ---
