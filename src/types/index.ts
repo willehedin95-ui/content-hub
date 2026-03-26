@@ -1371,3 +1371,27 @@ export interface SeoOverview {
   }>;
   lastSyncedAt: string | null;
 }
+
+// ── PageSpeed Monitoring ────────────────────────────────────
+
+export interface PageSpeedResult {
+  id: string;
+  workspace_id: string;
+  url: string;
+  strategy: "mobile" | "desktop";
+  performance_score: number | null;
+  lcp_ms: number | null;
+  fcp_ms: number | null;
+  cls: number | null;
+  tbt_ms: number | null;
+  si_ms: number | null;
+  ttfb_ms: number | null;
+  opportunities: PageSpeedOpportunityRow[];
+  checked_at: string;
+}
+
+export interface PageSpeedOpportunityRow {
+  id: string;
+  title: string;
+  savings_ms: number;
+}

@@ -6,6 +6,7 @@ import GapKeywords from "@/components/seo/GapKeywords";
 import SeoSettings from "@/components/seo/SeoSettings";
 import BlogPagesClient from "@/components/pages/BlogPagesClient";
 import ContentPlanClient from "@/components/seo/ContentPlanClient";
+import PageSpeed from "@/components/seo/PageSpeed";
 import type { GscProperty, Page } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export default async function SeoPage({
       {activeTab === "articles" && <BlogPagesClient pages={blogPages} />}
       {activeTab === "content-plan" && <ContentPlanClient />}
       {activeTab === "gap-keywords" && <GapKeywords />}
+      {activeTab === "speed" && <PageSpeed />}
       {activeTab === "settings" && <SeoSettings initialProperties={gscProperties} />}
     </div>
   );

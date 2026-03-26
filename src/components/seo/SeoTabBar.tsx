@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type SeoTab = "dashboard" | "articles" | "content-plan" | "gap-keywords" | "settings";
+export type SeoTab = "dashboard" | "articles" | "content-plan" | "gap-keywords" | "speed" | "settings";
 
 const TABS: { value: SeoTab; label: string; href: string }[] = [
   { value: "dashboard", label: "Dashboard", href: "/seo" },
   { value: "articles", label: "Articles", href: "/seo?tab=articles" },
   { value: "content-plan", label: "Content Plan", href: "/seo?tab=content-plan" },
   { value: "gap-keywords", label: "Gap Keywords", href: "/seo?tab=gap-keywords" },
+  { value: "speed", label: "Speed", href: "/seo?tab=speed" },
   { value: "settings", label: "Settings", href: "/seo?tab=settings" },
 ];
 
