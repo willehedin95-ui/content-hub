@@ -2,7 +2,7 @@
  * Apify integration for research scraping.
  *
  * Wraps the Apify REST API v2 to run actors and retrieve results.
- * Used for: Instagram Comments, Facebook Page Comments, TikTok Comments, Flashback.org
+ * Used for: Instagram Comments, Facebook Page Comments, TikTok Comments
  *
  * All actors use the synchronous run endpoint for simplicity (results in one call).
  * Falls back to async polling for long-running actors.
@@ -17,7 +17,6 @@ export const APIFY_ACTORS = {
   instagram_comments: "apify/instagram-comment-scraper",
   facebook_comments: "apify/facebook-comments-scraper",
   tiktok_comments: "clockworks/tiktok-comments-scraper",
-  flashback: "apify/web-scraper", // Generic web scraper — cheaper than rental
 } as const;
 
 export type ApifyPlatform = keyof typeof APIFY_ACTORS;
@@ -230,73 +229,6 @@ export async function scrapeTikTokComments(
   });
 
   return { reviews: reviews.filter((r) => r.text.length >= 10), totalScraped: reviews.length };
-}
-
-export async function scrapeFlashback(
-  searchQuery: string,
-  opts?: { maxThreads?: number; maxPostsPerThread?: number }
-): Promise<{ reviews: ApifyReview[]; totalScraped: number }> {
-  // Use generic web scraper with Flashback search URL
-  const searchUrl = `https://www.flashback.org/sok/?so=pd&query=${encodeURIComponent(searchQuery)}&sp=0`;
-
-  const result = await runActorSync(
-    APIFY_ACTORS.flashback,
-    {
-      startUrls: [{ url: searchUrl }],
-      linkSelector: "a.thread-title, a.pagination-next",
-      pageFunction: `async function pageFunction(context) {
-        const { request, log, jQuery: $ } = context;
-        const results = [];
-
-        // Thread listing page — follow links
-        if (request.url.includes('/sok/')) {
-          return results;
-        }
-
-        // Thread page — extract posts
-        const threadTitle = $('h1').first().text().trim();
-        $('.post_message').each(function() {
-          const $post = $(this);
-          const $wrapper = $post.closest('.post');
-          const text = $post.text().trim();
-          const author = $wrapper.find('.bigusername, .poster_info a').first().text().trim();
-          const dateText = $wrapper.find('.post_date, .date').first().text().trim();
-
-          if (text.length > 15) {
-            results.push({
-              threadTitle,
-              threadUrl: request.url,
-              text,
-              author: author || 'Anonymous',
-              date: dateText,
-            });
-          }
-        });
-
-        return results;
-      }`,
-      maxPagesPerCrawl: opts?.maxThreads ?? 10,
-      maxConcurrency: 2,
-      proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
-    },
-    180 // 3 min timeout for web scraping
-  );
-
-  const reviews: ApifyReview[] = result.items.map((item, i) => ({
-    id: `fb_${i}_${Date.now()}`,
-    text: String(item.text ?? ""),
-    title: String(item.threadTitle ?? null),
-    author: String(item.author ?? "Anonymous"),
-    date: String(item.date ?? new Date().toISOString()),
-    rating: 0,
-    language: "sv", // Flashback is Swedish
-    metadata: {
-      threadUrl: item.threadUrl,
-      platform: "flashback",
-    },
-  }));
-
-  return { reviews: reviews.filter((r) => r.text.length >= 15), totalScraped: reviews.length };
 }
 
 // --- Usage logging ---

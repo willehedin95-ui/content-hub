@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const { domain, name, platform, is_own_brand, language, config } = body;
   const validPlatforms = [
     "trustpilot", "manual_import", "reddit", "amazon", "facebook_group",
-    "apify_instagram", "apify_facebook", "apify_tiktok", "apify_flashback",
+    "apify_instagram", "apify_facebook", "apify_tiktok",
   ];
   const sourcePlatform = validPlatforms.includes(platform) ? platform : "trustpilot";
 

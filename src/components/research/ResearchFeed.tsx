@@ -187,7 +187,6 @@ export default function ResearchFeed() {
           <option value="apify_instagram">Instagram</option>
           <option value="apify_facebook">Facebook</option>
           <option value="apify_tiktok">TikTok</option>
-          <option value="apify_flashback">Flashback</option>
           <option value="facebook_group">FB Groups</option>
           <option value="manual_import">Manual</option>
         </select>
@@ -467,13 +466,6 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
         <span className="inline-flex items-center gap-1 text-xs text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
           <SiTiktok className="w-3.5 h-3.5" />
           TikTok
-        </span>
-      );
-    case "apify_flashback":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
-          <FileText className="w-3 h-3" />
-          Flashback
         </span>
       );
     case "facebook_group":

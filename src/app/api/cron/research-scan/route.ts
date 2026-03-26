@@ -18,7 +18,6 @@ import {
   scrapeInstagramComments,
   scrapeFacebookComments,
   scrapeTikTokComments,
-  scrapeFlashback,
   logApifyUsage,
   APIFY_ACTORS,
 } from "@/lib/apify";
@@ -249,24 +248,6 @@ export async function GET(req: NextRequest) {
               maxComments: isBackfill ? 200 : 100,
             });
             await logApifyUsage(APIFY_ACTORS.tiktok_comments, "tiktok", scrapeResult.totalScraped);
-
-            rawReviews = scrapeResult.reviews.map((r) => ({
-              id: r.id,
-              text: r.text,
-              title: r.title,
-              rating: 0,
-              language: r.language,
-              date: r.date,
-              author: r.author,
-            }));
-            break;
-          }
-
-          case "apify_flashback": {
-            const scrapeResult = await scrapeFlashback(source.domain, {
-              maxThreads: isBackfill ? 10 : 5,
-            });
-            await logApifyUsage(APIFY_ACTORS.flashback, "flashback", scrapeResult.totalScraped);
 
             rawReviews = scrapeResult.reviews.map((r) => ({
               id: r.id,

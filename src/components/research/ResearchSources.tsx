@@ -624,7 +624,7 @@ export default function ResearchSources() {
         )}
       </section>
 
-      {/* ===== APIFY SOURCES (Instagram, Facebook, TikTok, Flashback) ===== */}
+      {/* ===== APIFY SOURCES (Instagram, Facebook, TikTok) ===== */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -632,7 +632,7 @@ export default function ResearchSources() {
               Apify Sources
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Instagram, Facebook pages, TikTok, Flashback — via Apify API
+              Instagram, Facebook pages, TikTok — via Apify API
             </p>
           </div>
           <button
@@ -659,7 +659,6 @@ export default function ResearchSources() {
                   <option value="apify_instagram">Instagram Comments</option>
                   <option value="apify_facebook">Facebook Page Comments</option>
                   <option value="apify_tiktok">TikTok Comments</option>
-                  <option value="apify_flashback">Flashback.org</option>
                 </select>
               </div>
               <div>
@@ -670,19 +669,13 @@ export default function ResearchSources() {
                   type="text"
                   value={apifyName}
                   onChange={(e) => setApifyName(e.target.value)}
-                  placeholder={
-                    apifyPlatform === "apify_flashback"
-                      ? 'e.g. "Kollagen Flashback"'
-                      : 'e.g. "Oslo Skin Lab IG"'
-                  }
+                  placeholder='e.g. "Oslo Skin Lab IG"'
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
-                  {apifyPlatform === "apify_flashback"
-                    ? "Search query"
-                    : "URL(s) — comma-separated"}
+                  URL(s) — comma-separated
                 </label>
                 <input
                   type="text"
@@ -693,16 +686,14 @@ export default function ResearchSources() {
                       ? "https://instagram.com/p/..."
                       : apifyPlatform === "apify_facebook"
                         ? "https://facebook.com/page/posts/..."
-                        : apifyPlatform === "apify_tiktok"
-                          ? "https://tiktok.com/@user/video/..."
-                          : "kollagen tillskott"
+                        : "https://tiktok.com/@user/video/..."
                   }
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
                 />
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              Requires APIFY_TOKEN env var. Costs per 1K items: Instagram ~$2.30, Facebook ~$0.50, TikTok ~$5.00, Flashback ~CU-based
+              Requires APIFY_TOKEN env var. Costs per 1K items: Instagram ~$2.30, Facebook ~$0.50, TikTok ~$5.00
             </p>
             <div className="flex justify-end gap-2 mt-3">
               <button
