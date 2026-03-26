@@ -13,12 +13,17 @@ import {
   FileText,
   X,
   Loader2,
-  MessageSquare,
-  ShoppingCart,
   Pencil,
   Check,
-  Zap,
 } from "lucide-react";
+import {
+  SiTrustpilot,
+  SiReddit,
+  SiFacebook,
+  SiInstagram,
+  SiTiktok,
+} from "react-icons/si";
+import { FaAmazon } from "react-icons/fa";
 
 interface Source {
   id: string;
@@ -405,6 +410,7 @@ export default function ResearchSources() {
             domainLink={(s) =>
               `https://www.trustpilot.com/review/${s.domain}`
             }
+            icon={<SiTrustpilot className="w-4 h-4 text-[#00B67A]" />}
           />
         )}
       </section>
@@ -498,7 +504,7 @@ export default function ResearchSources() {
                 : `https://www.reddit.com/r/${s.domain}`
             }
             domainPrefix={(s) => (s.domain.includes(" ") ? "search: " : "r/")}
-            icon={<MessageSquare className="w-4 h-4 text-orange-500" />}
+            icon={<SiReddit className="w-4 h-4 text-orange-500" />}
           />
         )}
       </section>
@@ -613,7 +619,7 @@ export default function ResearchSources() {
               const mp = s.config?.marketplace ?? "se";
               return ` (${mp.toUpperCase()})`;
             }}
-            icon={<ShoppingCart className="w-4 h-4 text-yellow-600" />}
+            icon={<FaAmazon className="w-4 h-4 text-[#FF9900]" />}
           />
         )}
       </section>
@@ -730,7 +736,18 @@ export default function ResearchSources() {
               const p = s.platform.replace("apify_", "");
               return `[${p}] `;
             }}
-            icon={<Zap className="w-4 h-4 text-purple-500" />}
+            icon={(s) => {
+              switch (s.platform) {
+                case "apify_instagram":
+                  return <SiInstagram className="w-4 h-4 text-[#E4405F]" />;
+                case "apify_facebook":
+                  return <SiFacebook className="w-4 h-4 text-[#1877F2]" />;
+                case "apify_tiktok":
+                  return <SiTiktok className="w-4 h-4 text-black" />;
+                default:
+                  return <FileText className="w-4 h-4 text-purple-500" />;
+              }
+            }}
           />
         )}
       </section>
@@ -769,7 +786,7 @@ export default function ResearchSources() {
                   <tr key={s.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-blue-500" />
+                        <SiFacebook className="w-4 h-4 text-[#1877F2]" />
                         <EditableName
                           name={s.name}
                           onSave={(name) => renameSource(s.id, name)}
@@ -1168,7 +1185,7 @@ function SourceTable({
   domainLink?: (s: Source) => string;
   domainPrefix?: (s: Source) => string;
   domainSuffix?: (s: Source) => string;
-  icon?: React.ReactNode;
+  icon?: React.ReactNode | ((s: Source) => React.ReactNode);
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -1198,7 +1215,7 @@ function SourceTable({
             <tr key={s.id} className="hover:bg-gray-50">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  {icon}
+                  {typeof icon === "function" ? icon(s) : icon}
                   <EditableName
                     name={s.name}
                     onSave={(name) => onRename(s.id, name)}

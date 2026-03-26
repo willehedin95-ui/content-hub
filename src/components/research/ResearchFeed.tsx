@@ -10,11 +10,15 @@ import {
   FileText,
   X,
   Filter,
-  MessageSquare,
-  ShoppingCart,
-  Zap,
-  Users,
 } from "lucide-react";
+import {
+  SiTrustpilot,
+  SiReddit,
+  SiFacebook,
+  SiInstagram,
+  SiTiktok,
+} from "react-icons/si";
+import { FaAmazon } from "react-icons/fa";
 
 interface Nugget {
   id: string;
@@ -392,23 +396,26 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
   switch (platform) {
     case "trustpilot":
       return (
-        <div className="flex items-center gap-0.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star
-              key={i}
-              className={`w-3 h-3 ${
-                i < nugget.review_stars
-                  ? "fill-yellow-400 text-yellow-400"
-                  : "text-gray-200"
-              }`}
-            />
-          ))}
+        <div className="flex items-center gap-1">
+          <SiTrustpilot className="w-3.5 h-3.5 text-[#00B67A]" />
+          <div className="flex items-center gap-0.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star
+                key={i}
+                className={`w-3 h-3 ${
+                  i < nugget.review_stars
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "fill-gray-200 text-gray-200"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       );
     case "reddit":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
-          <MessageSquare className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
+          <SiReddit className="w-3.5 h-3.5 text-[#FF4500]" />
           Reddit
         </span>
       );
@@ -416,8 +423,8 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
       if (nugget.review_stars > 0) {
         return (
           <div className="flex items-center gap-1">
-            <span className="inline-flex items-center gap-0.5 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
-              <ShoppingCart className="w-3 h-3" />
+            <span className="inline-flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
+              <FaAmazon className="w-3.5 h-3.5 text-[#FF9900]" />
               Amazon
             </span>
             <div className="flex items-center gap-0.5">
@@ -427,7 +434,7 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
                   className={`w-3 h-3 ${
                     i < nugget.review_stars
                       ? "fill-yellow-400 text-yellow-400"
-                      : "text-gray-200"
+                      : "fill-gray-200 text-gray-200"
                   }`}
                 />
               ))}
@@ -436,43 +443,43 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
         );
       }
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
-          <ShoppingCart className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
+          <FaAmazon className="w-3.5 h-3.5 text-[#FF9900]" />
           Amazon
         </span>
       );
     case "apify_instagram":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-pink-700 bg-pink-50 px-1.5 py-0.5 rounded">
-          <Zap className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-pink-700 bg-pink-50 px-1.5 py-0.5 rounded">
+          <SiInstagram className="w-3.5 h-3.5 text-[#E4405F]" />
           Instagram
         </span>
       );
     case "apify_facebook":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-          <Zap className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+          <SiFacebook className="w-3.5 h-3.5 text-[#1877F2]" />
           Facebook
         </span>
       );
     case "apify_tiktok":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
-          <Zap className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
+          <SiTiktok className="w-3.5 h-3.5" />
           TikTok
         </span>
       );
     case "apify_flashback":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
-          <Zap className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
+          <FileText className="w-3 h-3" />
           Flashback
         </span>
       );
     case "facebook_group":
       return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-          <Users className="w-3 h-3" />
+        <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+          <SiFacebook className="w-3.5 h-3.5 text-[#1877F2]" />
           FB Group
         </span>
       );
