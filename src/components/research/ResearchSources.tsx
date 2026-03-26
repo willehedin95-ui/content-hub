@@ -15,6 +15,8 @@ import {
   Loader2,
   MessageSquare,
   ShoppingCart,
+  Pencil,
+  Check,
 } from "lucide-react";
 
 interface Source {
@@ -241,6 +243,20 @@ export default function ResearchSources() {
     }
   };
 
+  const renameSource = async (sourceId: string, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      await fetch("/api/research/sources", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sourceId, name: newName.trim() }),
+      });
+      await fetchSources();
+    } catch (e) {
+      console.error("Failed to rename source:", e);
+    }
+  };
+
   const uploadContent = async () => {
     if (!uploadTarget || !uploadText.trim()) return;
     setUploading(true);
@@ -348,6 +364,7 @@ export default function ResearchSources() {
             sources={trustpilotSources}
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
+            onRename={renameSource}
             domainLink={(s) =>
               `https://www.trustpilot.com/review/${s.domain}`
             }
@@ -437,6 +454,7 @@ export default function ResearchSources() {
             sources={redditSources}
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
+            onRename={renameSource}
             domainLink={(s) =>
               s.domain.includes(" ")
                 ? `https://www.reddit.com/search/?q=${encodeURIComponent(s.domain)}`
@@ -543,6 +561,7 @@ export default function ResearchSources() {
             sources={amazonSources}
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
+            onRename={renameSource}
             domainLink={(s) => {
               const mp = s.config?.marketplace ?? "se";
               const domains: Record<string, string> = {
@@ -641,9 +660,10 @@ export default function ResearchSources() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-emerald-500" />
-                        <span className="font-medium text-gray-900">
-                          {s.name}
-                        </span>
+                        <EditableName
+                          name={s.name}
+                          onSave={(name) => renameSource(s.id, name)}
+                        />
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-gray-700">
@@ -832,11 +852,77 @@ export default function ResearchSources() {
   );
 }
 
+/** Inline editable name component */
+function EditableName({
+  name,
+  onSave,
+}: {
+  name: string;
+  onSave: (newName: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => {
+          setValue(name);
+          setEditing(true);
+        }}
+        className="group flex items-center gap-1 font-medium text-gray-900 hover:text-indigo-600"
+        title="Click to rename"
+      >
+        {name}
+        <Pencil className="w-3 h-3 text-gray-300 group-hover:text-indigo-400" />
+      </button>
+    );
+  }
+
+  const save = () => {
+    if (value.trim() && value.trim() !== name) {
+      onSave(value.trim());
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        autoFocus
+        className="border border-indigo-300 rounded px-2 py-0.5 text-sm font-medium w-48 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+      />
+      <button
+        onClick={save}
+        className="p-0.5 text-green-600 hover:text-green-700"
+        title="Save"
+      >
+        <Check className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => setEditing(false)}
+        className="p-0.5 text-gray-400 hover:text-gray-600"
+        title="Cancel"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 /** Reusable source table for auto-scanned sources */
 function SourceTable({
   sources,
   onToggle,
   onDelete,
+  onRename,
   domainLink,
   domainPrefix,
   domainSuffix,
@@ -845,6 +931,7 @@ function SourceTable({
   sources: Source[];
   onToggle: (s: Source) => void;
   onDelete: (s: Source) => void;
+  onRename: (id: string, newName: string) => void;
   domainLink?: (s: Source) => string;
   domainPrefix?: (s: Source) => string;
   domainSuffix?: (s: Source) => string;
@@ -879,7 +966,10 @@ function SourceTable({
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   {icon}
-                  <span className="font-medium text-gray-900">{s.name}</span>
+                  <EditableName
+                    name={s.name}
+                    onSave={(name) => onRename(s.id, name)}
+                  />
                   {s.is_own_brand && (
                     <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
                       Own
