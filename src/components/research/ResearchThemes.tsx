@@ -3,9 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
   MessageSquareQuote,
   Sparkles,
   Loader2,
@@ -30,17 +27,6 @@ interface Theme {
   last_seen_at: string;
 }
 
-const STRENGTH_CONFIG: Record<
-  string,
-  { label: string; color: string; icon: typeof TrendingUp; order: number }
-> = {
-  dominant: { label: "Dominant", color: "bg-indigo-100 text-indigo-800", icon: TrendingUp, order: 1 },
-  established: { label: "Established", color: "bg-green-100 text-green-800", icon: TrendingUp, order: 2 },
-  growing: { label: "Growing", color: "bg-blue-100 text-blue-800", icon: TrendingUp, order: 3 },
-  emerging: { label: "Emerging", color: "bg-amber-100 text-amber-800", icon: Minus, order: 4 },
-  fading: { label: "Fading", color: "bg-gray-100 text-gray-500", icon: TrendingDown, order: 5 },
-};
-
 const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   pain_point: { label: "Pain Point", color: "text-red-600" },
   desire: { label: "Desire", color: "text-green-600" },
@@ -51,7 +37,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   pattern: { label: "Pattern", color: "text-gray-600" },
 };
 
-type SortKey = "evidence" | "strength" | "recent";
+type SortKey = "evidence" | "recent";
 type TypeFilter = string; // "" means all
 
 export default function ResearchThemes() {
@@ -115,8 +101,6 @@ export default function ResearchThemes() {
       switch (sortBy) {
         case "evidence":
           return b.evidence_count - a.evidence_count;
-        case "strength":
-          return (STRENGTH_CONFIG[a.strength]?.order ?? 9) - (STRENGTH_CONFIG[b.strength]?.order ?? 9);
         case "recent":
           return new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime();
         default:
@@ -130,12 +114,11 @@ export default function ResearchThemes() {
   const exportCsv = () => {
     setExporting(true);
     try {
-      const header = "Name,Type,Strength,Evidence Count,Description,Copy Implications,Example Phrases\n";
+      const header = "Name,Type,Mentions,Description,Copy Implications,Example Phrases\n";
       const rows = sortedThemes.map((t) =>
         [
           `"${t.name.replace(/"/g, '""')}"`,
           TYPE_CONFIG[t.theme_type]?.label ?? t.theme_type,
-          STRENGTH_CONFIG[t.strength]?.label ?? t.strength,
           t.evidence_count,
           `"${(t.description ?? "").replace(/"/g, '""')}"`,
           `"${(t.copy_implications ?? "").replace(/"/g, '""')}"`,
@@ -231,8 +214,7 @@ export default function ResearchThemes() {
               onChange={(e) => setSortBy(e.target.value as SortKey)}
               className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
             >
-              <option value="evidence">Most evidence</option>
-              <option value="strength">Strongest first</option>
+              <option value="evidence">Most mentions</option>
               <option value="recent">Most recent</option>
             </select>
             <select
@@ -265,8 +247,6 @@ export default function ResearchThemes() {
 
           <div className="space-y-3">
             {sortedThemes.map((t) => {
-              const strengthCfg = STRENGTH_CONFIG[t.strength] ?? STRENGTH_CONFIG.emerging;
-              const StrengthIcon = strengthCfg.icon;
               const typeCfg = TYPE_CONFIG[t.theme_type];
               const isExpanded = expanded.has(t.id);
 
@@ -288,12 +268,6 @@ export default function ResearchThemes() {
                             <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           )}
                           <h3 className="font-medium text-gray-900">{t.name}</h3>
-                          <span
-                            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${strengthCfg.color}`}
-                          >
-                            <StrengthIcon className="w-3 h-3" />
-                            {strengthCfg.label}
-                          </span>
                           <span
                             className={`text-xs font-medium ${typeCfg?.color ?? "text-gray-500"}`}
                           >
