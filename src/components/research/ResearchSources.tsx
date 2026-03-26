@@ -15,6 +15,7 @@ import {
   Loader2,
   Pencil,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import {
   SiTrustpilot,
@@ -97,6 +98,10 @@ export default function ResearchSources() {
     errors: number;
   } | null>(null);
 
+  // Scan state
+  const [scanningIds, setScanningIds] = useState<Set<string>>(new Set());
+  const [scanResults, setScanResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
+
   const fetchSources = useCallback(async () => {
     try {
       const res = await fetch("/api/research/sources");
@@ -112,6 +117,55 @@ export default function ResearchSources() {
   useEffect(() => {
     fetchSources();
   }, [fetchSources]);
+
+  const scanSource = async (source: Source) => {
+    setScanningIds((prev) => new Set(prev).add(source.id));
+    setScanResults((prev) => {
+      const next = { ...prev };
+      delete next[source.id];
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/research/sources/${source.id}/scan`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setScanResults((prev) => ({
+          ...prev,
+          [source.id]: { ok: false, msg: data.error ?? "Scan failed" },
+        }));
+      } else {
+        setScanResults((prev) => ({
+          ...prev,
+          [source.id]: {
+            ok: true,
+            msg: `${data.reviewsScraped} scraped, ${data.nuggetsStored} nuggets stored`,
+          },
+        }));
+        await fetchSources();
+      }
+    } catch {
+      setScanResults((prev) => ({
+        ...prev,
+        [source.id]: { ok: false, msg: "Network error" },
+      }));
+    } finally {
+      setScanningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(source.id);
+        return next;
+      });
+      // Clear result after 8 seconds
+      setTimeout(() => {
+        setScanResults((prev) => {
+          const next = { ...prev };
+          delete next[source.id];
+          return next;
+        });
+      }, 8000);
+    }
+  };
 
   const trustpilotSources = sources.filter((s) => s.platform === "trustpilot");
   const redditSources = sources.filter((s) => s.platform === "reddit");
@@ -407,6 +461,9 @@ export default function ResearchSources() {
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
             onRename={renameSource}
+            onScan={scanSource}
+            scanningIds={scanningIds}
+            scanResults={scanResults}
             domainLink={(s) =>
               `https://www.trustpilot.com/review/${s.domain}`
             }
@@ -498,6 +555,9 @@ export default function ResearchSources() {
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
             onRename={renameSource}
+            onScan={scanSource}
+            scanningIds={scanningIds}
+            scanResults={scanResults}
             domainLink={(s) =>
               s.domain.includes(" ")
                 ? `https://www.reddit.com/search/?q=${encodeURIComponent(s.domain)}`
@@ -605,6 +665,9 @@ export default function ResearchSources() {
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
             onRename={renameSource}
+            onScan={scanSource}
+            scanningIds={scanningIds}
+            scanResults={scanResults}
             domainLink={(s) => {
               const mp = s.config?.marketplace ?? "se";
               const domains: Record<string, string> = {
@@ -723,6 +786,9 @@ export default function ResearchSources() {
             onToggle={toggleSource}
             onDelete={setDeleteTarget}
             onRename={renameSource}
+            onScan={scanSource}
+            scanningIds={scanningIds}
+            scanResults={scanResults}
             domainPrefix={(s) => {
               const p = s.platform.replace("apify_", "");
               return `[${p}] `;
@@ -1164,6 +1230,9 @@ function SourceTable({
   onToggle,
   onDelete,
   onRename,
+  onScan,
+  scanningIds,
+  scanResults,
   domainLink,
   domainPrefix,
   domainSuffix,
@@ -1173,6 +1242,9 @@ function SourceTable({
   onToggle: (s: Source) => void;
   onDelete: (s: Source) => void;
   onRename: (id: string, newName: string) => void;
+  onScan?: (s: Source) => void;
+  scanningIds?: Set<string>;
+  scanResults?: Record<string, { ok: boolean; msg: string }>;
   domainLink?: (s: Source) => string;
   domainPrefix?: (s: Source) => string;
   domainSuffix?: (s: Source) => string;
@@ -1265,6 +1337,18 @@ function SourceTable({
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1 justify-end">
+                  {onScan && (
+                    <button
+                      onClick={() => onScan(s)}
+                      disabled={scanningIds?.has(s.id)}
+                      className="p-1 text-indigo-400 hover:text-indigo-700 disabled:opacity-50"
+                      title="Scan now"
+                    >
+                      <RefreshCw
+                        className={`w-4 h-4 ${scanningIds?.has(s.id) ? "animate-spin" : ""}`}
+                      />
+                    </button>
+                  )}
                   <button
                     onClick={() => onToggle(s)}
                     className="p-1 text-gray-400 hover:text-gray-700"
@@ -1288,6 +1372,15 @@ function SourceTable({
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+                {scanResults?.[s.id] && (
+                  <div
+                    className={`text-xs mt-1 text-right ${
+                      scanResults[s.id].ok ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {scanResults[s.id].msg}
+                  </div>
+                )}
               </td>
             </tr>
           ))}

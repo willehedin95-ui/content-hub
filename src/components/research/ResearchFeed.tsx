@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Star,
   Globe,
-  Tag,
   ChevronLeft,
   ChevronRight,
   FileText,
   X,
   Filter,
+  Tag,
 } from "lucide-react";
 import {
   SiTrustpilot,
@@ -268,7 +268,7 @@ export default function ResearchFeed() {
             : "No research nuggets yet. Add sources and run a scan to get started."}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="max-w-3xl space-y-2">
           {nuggets
             .filter((n) =>
               platform
@@ -278,25 +278,25 @@ export default function ResearchFeed() {
             .map((n) => (
             <div
               key={n.id}
-              className="bg-white border border-gray-200 rounded-lg p-4"
+              className="bg-white border border-gray-200 rounded-lg px-4 py-3"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900">
+              {/* Header: platform icon + source + meta */}
+              <div className="flex items-start justify-between gap-3 mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <PlatformIcon platform={n.research_sources?.platform} />
+                  <span className="text-sm font-medium text-gray-900 truncate">
                     {n.research_sources?.name ?? n.competitor_name}
                   </span>
-                  <PlatformBadge nugget={n} />
-                  <span className="text-xs" title={n.language}>
+                  <span className="text-xs flex-shrink-0" title={n.language}>
                     {LANG_FLAGS[n.language] ?? n.language}
                   </span>
                   {n.market_relevance === "reference" && (
-                    <span className="flex items-center gap-0.5 text-xs text-gray-400">
+                    <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
                       <Globe className="w-3 h-3" /> ref
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span
                     className={`text-xs px-1.5 py-0.5 rounded ${
                       SENTIMENT_COLORS[n.sentiment] ?? SENTIMENT_COLORS.neutral
@@ -318,16 +318,32 @@ export default function ResearchFeed() {
                 </div>
               </div>
 
+              {/* Star rating row (separate from header) */}
+              {n.review_stars > 0 && (
+                <div className="flex items-center gap-0.5 mb-1.5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`w-3 h-3 ${
+                        i < n.review_stars
+                          ? "fill-yellow-400 text-yellow-400"
+                          : "fill-gray-200 text-gray-200"
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Summary */}
-              <p className="text-sm text-gray-700 mb-2">{n.summary}</p>
+              <p className="text-sm text-gray-700 leading-relaxed mb-1.5">{n.summary}</p>
 
               {/* Customer phrases (the gold) */}
               {n.customer_phrases.length > 0 && (
-                <div className="mb-2">
+                <div className="mb-1.5">
                   {n.customer_phrases.map((phrase, i) => (
                     <span
                       key={i}
-                      className="inline-block bg-yellow-50 border border-yellow-200 text-yellow-900 text-xs px-2 py-1 rounded mr-1 mb-1 italic"
+                      className="inline-block bg-yellow-50 border border-yellow-200 text-yellow-900 text-xs px-2 py-0.5 rounded mr-1 mb-1 italic"
                     >
                       &ldquo;{phrase}&rdquo;
                     </span>
@@ -345,13 +361,12 @@ export default function ResearchFeed() {
                         setActiveTag(tag === activeTag ? "" : tag);
                         resetPage();
                       }}
-                      className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded transition-colors ${
+                      className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
                         tag === activeTag
                           ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          : "bg-gray-50 text-gray-500 hover:bg-gray-100"
                       }`}
                     >
-                      <Tag className="w-2.5 h-2.5" />
                       {tag}
                     </button>
                   ))}
@@ -364,7 +379,7 @@ export default function ResearchFeed() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6">
+        <div className="flex items-center justify-center gap-4 mt-6 max-w-3xl">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
@@ -388,100 +403,24 @@ export default function ResearchFeed() {
   );
 }
 
-/** Platform-specific badge for nugget cards */
-function PlatformBadge({ nugget }: { nugget: Nugget }) {
-  const platform = nugget.research_sources?.platform;
-
+/** Platform icon rendered to the left of the source name */
+function PlatformIcon({ platform }: { platform?: string }) {
   switch (platform) {
     case "trustpilot":
-      return (
-        <div className="flex items-center gap-1">
-          <SiTrustpilot className="w-3.5 h-3.5 text-[#00B67A]" />
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star
-                key={i}
-                className={`w-3 h-3 ${
-                  i < nugget.review_stars
-                    ? "fill-yellow-400 text-yellow-400"
-                    : "fill-gray-200 text-gray-200"
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-      );
+      return <SiTrustpilot className="w-4 h-4 text-[#00B67A] flex-shrink-0" />;
     case "reddit":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
-          <SiReddit className="w-3.5 h-3.5 text-[#FF4500]" />
-          Reddit
-        </span>
-      );
+      return <SiReddit className="w-4 h-4 text-[#FF4500] flex-shrink-0" />;
     case "amazon":
-      if (nugget.review_stars > 0) {
-        return (
-          <div className="flex items-center gap-1">
-            <span className="inline-flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
-              <FaAmazon className="w-3.5 h-3.5 text-[#FF9900]" />
-              Amazon
-            </span>
-            <div className="flex items-center gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-3 h-3 ${
-                    i < nugget.review_stars
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "fill-gray-200 text-gray-200"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      }
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
-          <FaAmazon className="w-3.5 h-3.5 text-[#FF9900]" />
-          Amazon
-        </span>
-      );
+      return <FaAmazon className="w-4 h-4 text-[#FF9900] flex-shrink-0" />;
     case "apify_instagram":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-pink-700 bg-pink-50 px-1.5 py-0.5 rounded">
-          <SiInstagram className="w-3.5 h-3.5 text-[#E4405F]" />
-          Instagram
-        </span>
-      );
+      return <SiInstagram className="w-4 h-4 text-[#E4405F] flex-shrink-0" />;
     case "apify_facebook":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-          <SiFacebook className="w-3.5 h-3.5 text-[#1877F2]" />
-          Facebook
-        </span>
-      );
-    case "apify_tiktok":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
-          <SiTiktok className="w-3.5 h-3.5" />
-          TikTok
-        </span>
-      );
     case "facebook_group":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-          <SiFacebook className="w-3.5 h-3.5 text-[#1877F2]" />
-          FB Group
-        </span>
-      );
+      return <SiFacebook className="w-4 h-4 text-[#1877F2] flex-shrink-0" />;
+    case "apify_tiktok":
+      return <SiTiktok className="w-4 h-4 flex-shrink-0" />;
     case "manual_import":
-      return (
-        <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-          <FileText className="w-3 h-3" />
-          Manual
-        </span>
-      );
+      return <FileText className="w-4 h-4 text-emerald-600 flex-shrink-0" />;
     default:
       return null;
   }
