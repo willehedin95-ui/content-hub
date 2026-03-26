@@ -37,7 +37,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/pixel") ||
     request.nextUrl.pathname.startsWith("/api/telegram/webhook") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
-    request.nextUrl.pathname.startsWith("/api/morning-brief")
+    request.nextUrl.pathname.startsWith("/api/morning-brief") ||
+    request.nextUrl.pathname.startsWith("/api/research/sources/bulk-import")
   ) {
     return supabaseResponse;
   }
