@@ -282,6 +282,25 @@ export default function IntegrationsTab({
       </SettingsCard>
       <SaveButton saved={saved} onSave={handleSave} />
 
+      <SectionHeader>App Analytics</SectionHeader>
+      <SettingsCard>
+        <Row
+          label="TelemetryDeck App ID"
+          description={settings.telemetrydeck_app_id ? "Connected" : "Not configured"}
+          descriptionColor={settings.telemetrydeck_app_id ? "text-emerald-600" : undefined}
+          action={
+            <input
+              type="text"
+              value={settings.telemetrydeck_app_id ?? ""}
+              onChange={(e) => setSettings((s) => ({ ...s, telemetrydeck_app_id: e.target.value }))}
+              placeholder="D1D82ABE-..."
+              className="w-52 bg-white border border-gray-200 text-gray-800 placeholder-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          }
+        />
+      </SettingsCard>
+      <SaveButton saved={saved} onSave={handleSave} />
+
       <SectionHeader>Services</SectionHeader>
       <p className="text-xs text-gray-400 mb-2.5">
         All API keys configured via environment variables in Vercel.

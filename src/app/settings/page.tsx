@@ -72,6 +72,7 @@ export default function SettingsPage() {
     blog_autopilot_enabled: false,
     blog_autopilot_languages: ["sv"],
     blog_articles_per_day: 1,
+    telemetrydeck_app_id: "",
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

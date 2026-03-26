@@ -44,6 +44,7 @@ export interface Settings {
   blog_autopilot_enabled: boolean;
   blog_autopilot_languages: string[];
   blog_articles_per_day: number;
+  telemetrydeck_app_id: string;
 }
 
 /* ─── Common props interface ────────────────────────── */
