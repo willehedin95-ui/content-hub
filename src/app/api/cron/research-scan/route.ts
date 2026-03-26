@@ -15,6 +15,14 @@ import {
   logScrapeUsage as logAmazonUsage,
 } from "@/lib/amazon";
 import {
+  scrapeInstagramComments,
+  scrapeFacebookComments,
+  scrapeTikTokComments,
+  scrapeFlashback,
+  logApifyUsage,
+  APIFY_ACTORS,
+} from "@/lib/apify";
+import {
   evaluateReview,
   getMarketRelevance,
 } from "@/lib/research-evaluate";
@@ -79,7 +87,8 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("workspace_id", ws.id)
       .eq("status", "active")
-      .neq("platform", "manual_import");
+      .neq("platform", "manual_import")
+      .neq("platform", "facebook_group");
 
     if (!sources?.length) continue;
 
@@ -184,6 +193,90 @@ export async function GET(req: NextRequest) {
             if (scrapeResult.productInfo?.title) {
               externalId = scrapeResult.productInfo.asin;
             }
+            break;
+          }
+
+          case "apify_instagram": {
+            const sourceConfig = (source.config as Record<string, string>) ?? {};
+            const urls = (sourceConfig.urls || source.domain).split(",").map((u: string) => u.trim()).filter(Boolean);
+            if (urls.length === 0) throw new Error("No Instagram URLs configured");
+
+            const scrapeResult = await scrapeInstagramComments(urls, {
+              maxComments: isBackfill ? 200 : 100,
+            });
+            await logApifyUsage(APIFY_ACTORS.instagram_comments, "instagram", scrapeResult.totalScraped);
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: r.text,
+              title: r.title,
+              rating: 0,
+              language: r.language,
+              date: r.date,
+              author: r.author,
+            }));
+            break;
+          }
+
+          case "apify_facebook": {
+            const sourceConfig = (source.config as Record<string, string>) ?? {};
+            const urls = (sourceConfig.urls || source.domain).split(",").map((u: string) => u.trim()).filter(Boolean);
+            if (urls.length === 0) throw new Error("No Facebook URLs configured");
+
+            const scrapeResult = await scrapeFacebookComments(urls, {
+              maxComments: isBackfill ? 200 : 100,
+            });
+            await logApifyUsage(APIFY_ACTORS.facebook_comments, "facebook", scrapeResult.totalScraped);
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: r.text,
+              title: r.title,
+              rating: 0,
+              language: r.language,
+              date: r.date,
+              author: r.author,
+            }));
+            break;
+          }
+
+          case "apify_tiktok": {
+            const sourceConfig = (source.config as Record<string, string>) ?? {};
+            const urls = (sourceConfig.urls || source.domain).split(",").map((u: string) => u.trim()).filter(Boolean);
+            if (urls.length === 0) throw new Error("No TikTok URLs configured");
+
+            const scrapeResult = await scrapeTikTokComments(urls, {
+              maxComments: isBackfill ? 200 : 100,
+            });
+            await logApifyUsage(APIFY_ACTORS.tiktok_comments, "tiktok", scrapeResult.totalScraped);
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: r.text,
+              title: r.title,
+              rating: 0,
+              language: r.language,
+              date: r.date,
+              author: r.author,
+            }));
+            break;
+          }
+
+          case "apify_flashback": {
+            const scrapeResult = await scrapeFlashback(source.domain, {
+              maxThreads: isBackfill ? 10 : 5,
+            });
+            await logApifyUsage(APIFY_ACTORS.flashback, "flashback", scrapeResult.totalScraped);
+
+            rawReviews = scrapeResult.reviews.map((r) => ({
+              id: r.id,
+              text: r.text,
+              title: r.title,
+              rating: 0,
+              language: r.language,
+              date: r.date,
+              author: r.author,
+            }));
             break;
           }
 

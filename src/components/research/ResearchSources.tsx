@@ -17,6 +17,7 @@ import {
   ShoppingCart,
   Pencil,
   Check,
+  Zap,
 } from "lucide-react";
 
 interface Source {
@@ -64,6 +65,13 @@ export default function ResearchSources() {
   const [amazonMarketplace, setAmazonMarketplace] = useState("se");
   const [addingAmazon, setAddingAmazon] = useState(false);
 
+  // Apify add form
+  const [showAddApify, setShowAddApify] = useState(false);
+  const [apifyName, setApifyName] = useState("");
+  const [apifyUrl, setApifyUrl] = useState("");
+  const [apifyPlatform, setApifyPlatform] = useState("apify_instagram");
+  const [addingApify, setAddingApify] = useState(false);
+
   // Manual source add form
   const [showAddManual, setShowAddManual] = useState(false);
   const [manualName, setManualName] = useState("");
@@ -103,7 +111,8 @@ export default function ResearchSources() {
   const trustpilotSources = sources.filter((s) => s.platform === "trustpilot");
   const redditSources = sources.filter((s) => s.platform === "reddit");
   const amazonSources = sources.filter((s) => s.platform === "amazon");
-  const manualSources = sources.filter((s) => s.platform === "manual_import");
+  const apifySources = sources.filter((s) => s.platform.startsWith("apify_"));
+  const manualSources = sources.filter((s) => s.platform === "manual_import" || s.platform === "facebook_group");
 
   const addTrustpilotSource = async () => {
     if (!newDomain.trim() || !newName.trim()) return;
@@ -182,6 +191,33 @@ export default function ResearchSources() {
       console.error("Failed to add Amazon source:", e);
     } finally {
       setAddingAmazon(false);
+    }
+  };
+
+  const addApifySource = async () => {
+    if (!apifyUrl.trim() || !apifyName.trim()) return;
+    setAddingApify(true);
+    try {
+      const res = await fetch("/api/research/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: apifyUrl.trim(),
+          name: apifyName.trim(),
+          platform: apifyPlatform,
+          config: { urls: apifyUrl.trim() },
+        }),
+      });
+      if (res.ok) {
+        setApifyUrl("");
+        setApifyName("");
+        setShowAddApify(false);
+        await fetchSources();
+      }
+    } catch (e) {
+      console.error("Failed to add Apify source:", e);
+    } finally {
+      setAddingApify(false);
     }
   };
 
@@ -577,6 +613,123 @@ export default function ResearchSources() {
               return ` (${mp.toUpperCase()})`;
             }}
             icon={<ShoppingCart className="w-4 h-4 text-yellow-600" />}
+          />
+        )}
+      </section>
+
+      {/* ===== APIFY SOURCES (Instagram, Facebook, TikTok, Flashback) ===== */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Apify Sources
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Instagram, Facebook pages, TikTok, Flashback — via Apify API
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddApify(!showAddApify)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+          >
+            <Plus className="w-4 h-4" />
+            Add Apify Source
+          </button>
+        </div>
+
+        {showAddApify && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Platform
+                </label>
+                <select
+                  value={apifyPlatform}
+                  onChange={(e) => setApifyPlatform(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                >
+                  <option value="apify_instagram">Instagram Comments</option>
+                  <option value="apify_facebook">Facebook Page Comments</option>
+                  <option value="apify_tiktok">TikTok Comments</option>
+                  <option value="apify_flashback">Flashback.org</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  Display name
+                </label>
+                <input
+                  type="text"
+                  value={apifyName}
+                  onChange={(e) => setApifyName(e.target.value)}
+                  placeholder={
+                    apifyPlatform === "apify_flashback"
+                      ? 'e.g. "Kollagen Flashback"'
+                      : 'e.g. "Oslo Skin Lab IG"'
+                  }
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  {apifyPlatform === "apify_flashback"
+                    ? "Search query"
+                    : "URL(s) — comma-separated"}
+                </label>
+                <input
+                  type="text"
+                  value={apifyUrl}
+                  onChange={(e) => setApifyUrl(e.target.value)}
+                  placeholder={
+                    apifyPlatform === "apify_instagram"
+                      ? "https://instagram.com/p/..."
+                      : apifyPlatform === "apify_facebook"
+                        ? "https://facebook.com/page/posts/..."
+                        : apifyPlatform === "apify_tiktok"
+                          ? "https://tiktok.com/@user/video/..."
+                          : "kollagen tillskott"
+                  }
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Requires APIFY_TOKEN env var. Costs per 1K items: Instagram ~$2.30, Facebook ~$0.50, TikTok ~$5.00, Flashback ~CU-based
+            </p>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowAddApify(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addApifySource}
+                disabled={addingApify || !apifyUrl.trim() || !apifyName.trim()}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-purple-600 rounded hover:bg-purple-700 disabled:opacity-50"
+              >
+                {addingApify ? "Adding..." : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {apifySources.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 bg-white border border-gray-200 rounded-lg">
+            No Apify sources. Add a URL to start scraping comments.
+          </div>
+        ) : (
+          <SourceTable
+            sources={apifySources}
+            onToggle={toggleSource}
+            onDelete={setDeleteTarget}
+            onRename={renameSource}
+            domainPrefix={(s) => {
+              const p = s.platform.replace("apify_", "");
+              return `[${p}] `;
+            }}
+            icon={<Zap className="w-4 h-4 text-purple-500" />}
           />
         )}
       </section>

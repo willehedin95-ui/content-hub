@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const { domain, name, platform, is_own_brand, language, config } = body;
-  const validPlatforms = ["trustpilot", "manual_import", "reddit", "amazon"];
+  const validPlatforms = [
+    "trustpilot", "manual_import", "reddit", "amazon", "facebook_group",
+    "apify_instagram", "apify_facebook", "apify_tiktok", "apify_flashback",
+  ];
   const sourcePlatform = validPlatforms.includes(platform) ? platform : "trustpilot";
 
   if (!name) {
@@ -58,6 +61,12 @@ export async function POST(req: NextRequest) {
   if (sourcePlatform === "amazon" && !domain) {
     return NextResponse.json(
       { error: "ASIN or Amazon URL is required" },
+      { status: 400 }
+    );
+  }
+  if (sourcePlatform.startsWith("apify_") && !domain) {
+    return NextResponse.json(
+      { error: "URL(s) or search query is required" },
       { status: 400 }
     );
   }

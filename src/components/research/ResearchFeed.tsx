@@ -12,6 +12,8 @@ import {
   Filter,
   MessageSquare,
   ShoppingCart,
+  Zap,
+  Users,
 } from "lucide-react";
 
 interface Nugget {
@@ -178,6 +180,11 @@ export default function ResearchFeed() {
           <option value="trustpilot">Trustpilot</option>
           <option value="reddit">Reddit</option>
           <option value="amazon">Amazon</option>
+          <option value="apify_instagram">Instagram</option>
+          <option value="apify_facebook">Facebook</option>
+          <option value="apify_tiktok">TikTok</option>
+          <option value="apify_flashback">Flashback</option>
+          <option value="facebook_group">FB Groups</option>
           <option value="manual_import">Manual</option>
         </select>
 
@@ -432,6 +439,41 @@ function PlatformBadge({ nugget }: { nugget: Nugget }) {
         <span className="inline-flex items-center gap-0.5 text-xs text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded">
           <ShoppingCart className="w-3 h-3" />
           Amazon
+        </span>
+      );
+    case "apify_instagram":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-pink-700 bg-pink-50 px-1.5 py-0.5 rounded">
+          <Zap className="w-3 h-3" />
+          Instagram
+        </span>
+      );
+    case "apify_facebook":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+          <Zap className="w-3 h-3" />
+          Facebook
+        </span>
+      );
+    case "apify_tiktok":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
+          <Zap className="w-3 h-3" />
+          TikTok
+        </span>
+      );
+    case "apify_flashback":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
+          <Zap className="w-3 h-3" />
+          Flashback
+        </span>
+      );
+    case "facebook_group":
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+          <Users className="w-3 h-3" />
+          FB Group
         </span>
       );
     case "manual_import":
