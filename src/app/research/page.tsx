@@ -14,11 +14,11 @@ export default async function ResearchPage({
   const activeTab: ResearchTab = (tab as ResearchTab) || "feed";
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="mb-2">
         <h1 className="text-2xl font-semibold text-gray-900">Research</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Automated customer intelligence from Trustpilot reviews. Real language, pain points, and competitor insights for your marketing.
+          Customer intelligence from reviews, social media, and your own research. Real language, pain points, and competitor insights for your marketing.
         </p>
       </div>
 

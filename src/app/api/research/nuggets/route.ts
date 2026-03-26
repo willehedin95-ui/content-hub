@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   const tag = searchParams.get("tag");
   const marketRelevance = searchParams.get("marketRelevance"); // primary | reference
   const sentiment = searchParams.get("sentiment");
+  const platform = searchParams.get("platform");
+  const search = searchParams.get("search");
 
   const db = createServerSupabase();
 
@@ -35,6 +37,8 @@ export async function GET(req: NextRequest) {
   if (tag) query = query.contains("tags", [tag]);
   if (marketRelevance) query = query.eq("market_relevance", marketRelevance);
   if (sentiment) query = query.eq("sentiment", sentiment);
+  if (platform) query = query.eq("research_sources.platform", platform);
+  if (search) query = query.or(`review_text.ilike.%${search}%,summary.ilike.%${search}%,review_title.ilike.%${search}%`);
 
   const { data, count, error } = await query;
 

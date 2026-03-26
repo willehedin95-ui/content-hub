@@ -1,15 +1,28 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Star,
   Globe,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   FileText,
   X,
   Filter,
   Tag,
+  Search,
+  Download,
+  Sparkles,
+  TrendingUp,
+  Zap,
+  Database,
+  Layers,
+  AlertTriangle,
+  Heart,
+  Quote,
 } from "lucide-react";
 import {
   SiTrustpilot,
@@ -26,6 +39,7 @@ interface Nugget {
   review_text: string;
   review_title: string | null;
   reviewer_name: string;
+  review_date: string | null;
   language: string;
   market_relevance: "primary" | "reference";
   sentiment: string;
@@ -51,6 +65,15 @@ interface Source {
   platform: string;
 }
 
+interface Stats {
+  totalNuggets: number;
+  totalSources: number;
+  totalThemes: number;
+  nuggetsLast7Days: number;
+  goldNuggets: number;
+  topTags: { tag: string; count: number }[];
+}
+
 const LANG_FLAGS: Record<string, string> = {
   sv: "\u{1F1F8}\u{1F1EA}",
   da: "\u{1F1E9}\u{1F1F0}",
@@ -60,14 +83,39 @@ const LANG_FLAGS: Record<string, string> = {
   fi: "\u{1F1EB}\u{1F1EE}",
 };
 
-const SENTIMENT_COLORS: Record<string, string> = {
-  positive: "bg-green-100 text-green-800",
-  negative: "bg-red-100 text-red-800",
-  neutral: "bg-gray-100 text-gray-700",
-  mixed: "bg-amber-100 text-amber-800",
+const SENTIMENT_CONFIG: Record<string, { badge: string; accent: string; icon: string }> = {
+  positive: { badge: "bg-green-100 text-green-800", accent: "border-l-green-400", icon: "+" },
+  negative: { badge: "bg-red-100 text-red-800", accent: "border-l-red-400", icon: "-" },
+  neutral: { badge: "bg-gray-100 text-gray-700", accent: "border-l-gray-300", icon: "~" },
+  mixed: { badge: "bg-amber-100 text-amber-800", accent: "border-l-amber-400", icon: "~" },
 };
 
 const SENTIMENTS = ["positive", "negative", "neutral", "mixed"] as const;
+
+const PLATFORM_THUMB: Record<string, { bg: string }> = {
+  trustpilot: { bg: "bg-green-50" },
+  reddit: { bg: "bg-orange-50" },
+  amazon: { bg: "bg-amber-50" },
+  apify_instagram: { bg: "bg-pink-50" },
+  apify_facebook: { bg: "bg-blue-50" },
+  facebook_group: { bg: "bg-blue-50" },
+  apify_tiktok: { bg: "bg-gray-100" },
+  manual_import: { bg: "bg-emerald-50" },
+};
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
 
 export default function ResearchFeed() {
   const [nuggets, setNuggets] = useState<Nugget[]>([]);
@@ -76,6 +124,9 @@ export default function ResearchFeed() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState<Source[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Filters
   const [minSig, setMinSig] = useState(4);
@@ -83,6 +134,8 @@ export default function ResearchFeed() {
   const [sentiment, setSentiment] = useState("");
   const [activeTag, setActiveTag] = useState("");
   const [platform, setPlatform] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
 
   // Fetch sources for the dropdown
   useEffect(() => {
@@ -93,6 +146,14 @@ export default function ResearchFeed() {
           setSources(data.map((s: Source) => ({ id: s.id, name: s.name, platform: s.platform })));
         }
       })
+      .catch(() => {});
+  }, []);
+
+  // Fetch stats
+  useEffect(() => {
+    fetch("/api/research/stats")
+      .then((r) => r.json())
+      .then((data) => setStats(data))
       .catch(() => {});
   }, []);
 
@@ -107,6 +168,8 @@ export default function ResearchFeed() {
       if (sourceId) params.set("sourceId", sourceId);
       if (sentiment) params.set("sentiment", sentiment);
       if (activeTag) params.set("tag", activeTag);
+      if (platform) params.set("platform", platform);
+      if (searchQuery) params.set("search", searchQuery);
 
       const res = await fetch(`/api/research/nuggets?${params}`);
       const data = await res.json();
@@ -118,7 +181,7 @@ export default function ResearchFeed() {
     } finally {
       setLoading(false);
     }
-  }, [page, minSig, sourceId, sentiment, activeTag]);
+  }, [page, minSig, sourceId, sentiment, activeTag, platform, searchQuery]);
 
   useEffect(() => {
     fetchNuggets();
@@ -130,6 +193,7 @@ export default function ResearchFeed() {
     (sentiment ? 1 : 0) +
     (activeTag ? 1 : 0) +
     (platform ? 1 : 0) +
+    (searchQuery ? 1 : 0) +
     (minSig !== 4 ? 1 : 0);
 
   const clearAllFilters = () => {
@@ -138,6 +202,8 @@ export default function ResearchFeed() {
     setSentiment("");
     setActiveTag("");
     setPlatform("");
+    setSearchQuery("");
+    setSearchInput("");
     setPage(1);
   };
 
@@ -146,13 +212,108 @@ export default function ResearchFeed() {
     ? sources.filter((s) => s.platform === platform)
     : sources;
 
+  const handleSearchSubmit = () => {
+    setSearchQuery(searchInput.trim());
+    resetPage();
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      // Fetch all nuggets (up to 1000) with current filters
+      const params = new URLSearchParams({
+        page: "1",
+        perPage: "1000",
+        minSignificance: String(minSig),
+      });
+      if (sourceId) params.set("sourceId", sourceId);
+      if (sentiment) params.set("sentiment", sentiment);
+      if (activeTag) params.set("tag", activeTag);
+      if (platform) params.set("platform", platform);
+      if (searchQuery) params.set("search", searchQuery);
+
+      const res = await fetch(`/api/research/nuggets?${params}`);
+      const data = await res.json();
+      const rows = (data.nuggets ?? []) as Nugget[];
+
+      const header = "Source,Platform,Stars,Sentiment,Significance,Summary,Customer Phrases,Pain Points,Desires,Tags,Language,Date\n";
+      const csvRows = rows.map((n) =>
+        [
+          `"${(n.research_sources?.name ?? n.competitor_name).replace(/"/g, '""')}"`,
+          n.research_sources?.platform ?? "",
+          n.review_stars,
+          n.sentiment,
+          n.significance,
+          `"${n.summary.replace(/"/g, '""')}"`,
+          `"${n.customer_phrases.join("; ").replace(/"/g, '""')}"`,
+          `"${n.pain_points.join("; ").replace(/"/g, '""')}"`,
+          `"${n.desires.join("; ").replace(/"/g, '""')}"`,
+          `"${n.tags.join(", ").replace(/"/g, '""')}"`,
+          n.language,
+          n.review_date ?? n.created_at,
+        ].join(",")
+      );
+
+      const blob = new Blob([header + csvRows.join("\n")], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `research-nuggets-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed:", e);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const hasData = stats && stats.totalNuggets > 0;
+
   return (
     <div>
+      {/* Stats bar */}
+      {stats && hasData && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+          <StatCard icon={<Database className="w-4 h-4" />} label="Total Nuggets" value={stats.totalNuggets} />
+          <StatCard icon={<TrendingUp className="w-4 h-4" />} label="This Week" value={stats.nuggetsLast7Days} />
+          <StatCard icon={<Zap className="w-4 h-4 text-amber-500" />} label="Gold (8+)" value={stats.goldNuggets} highlight />
+          <StatCard icon={<Layers className="w-4 h-4" />} label="Patterns" value={stats.totalThemes} />
+          <StatCard icon={<Globe className="w-4 h-4" />} label="Sources" value={stats.totalSources} />
+        </div>
+      )}
+
       {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex items-center gap-1 text-sm text-gray-500">
           <Filter className="w-3.5 h-3.5" />
-          Filters
+        </div>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSearchSubmit();
+            }}
+            placeholder="Search nuggets..."
+            className="border border-gray-300 rounded pl-7 pr-2 py-1 text-sm bg-white w-44 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchInput("");
+                setSearchQuery("");
+                resetPage();
+              }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Significance */}
@@ -162,7 +323,7 @@ export default function ResearchFeed() {
             setMinSig(parseInt(e.target.value));
             resetPage();
           }}
-          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+          className={`border rounded px-2 py-1 text-sm bg-white ${minSig !== 4 ? "border-indigo-400 bg-indigo-50" : "border-gray-300"}`}
         >
           <option value={1}>All scores</option>
           <option value={4}>Useful (4+)</option>
@@ -175,10 +336,10 @@ export default function ResearchFeed() {
           value={platform}
           onChange={(e) => {
             setPlatform(e.target.value);
-            setSourceId(""); // Reset source when changing platform
+            setSourceId("");
             resetPage();
           }}
-          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+          className={`border rounded px-2 py-1 text-sm bg-white ${platform ? "border-indigo-400 bg-indigo-50" : "border-gray-300"}`}
         >
           <option value="">All platforms</option>
           <option value="trustpilot">Trustpilot</option>
@@ -198,7 +359,7 @@ export default function ResearchFeed() {
             setSourceId(e.target.value);
             resetPage();
           }}
-          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+          className={`border rounded px-2 py-1 text-sm bg-white ${sourceId ? "border-indigo-400 bg-indigo-50" : "border-gray-300"}`}
         >
           <option value="">All sources</option>
           {filteredSources.map((s) => (
@@ -215,7 +376,7 @@ export default function ResearchFeed() {
             setSentiment(e.target.value);
             resetPage();
           }}
-          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+          className={`border rounded px-2 py-1 text-sm bg-white ${sentiment ? "border-indigo-400 bg-indigo-50" : "border-gray-300"}`}
         >
           <option value="">All sentiments</option>
           {SENTIMENTS.map((s) => (
@@ -242,14 +403,25 @@ export default function ResearchFeed() {
           </span>
         )}
 
-        {/* Result count + clear */}
+        {/* Result count + actions */}
         <div className="flex items-center gap-2 ml-auto">
           {activeFilterCount > 0 && (
             <button
               onClick={clearAllFilters}
-              className="text-xs text-gray-500 hover:text-gray-700 underline"
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
             >
-              Clear filters
+              Clear all
+            </button>
+          )}
+          {hasData && (
+            <button
+              onClick={exportCsv}
+              disabled={exporting}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1 border border-gray-200 rounded hover:bg-gray-50"
+              title="Export filtered nuggets as CSV"
+            >
+              <Download className="w-3 h-3" />
+              {exporting ? "..." : "CSV"}
             </button>
           )}
           <span className="text-sm text-gray-500">
@@ -258,149 +430,358 @@ export default function ResearchFeed() {
         </div>
       </div>
 
-      {/* Nugget cards */}
-      {loading ? (
-        <div className="text-center text-gray-400 py-12">Loading...</div>
-      ) : nuggets.length === 0 ? (
-        <div className="text-center text-gray-400 py-12">
-          {activeFilterCount > 0
-            ? "No nuggets match the current filters."
-            : "No research nuggets yet. Add sources and run a scan to get started."}
+      {/* Main content area */}
+      <div className="flex gap-6">
+        {/* Nugget cards */}
+        <div className="flex-1 min-w-0">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="bg-white border border-gray-200 rounded-xl border-l-[3px] border-l-gray-200 p-4 animate-pulse">
+                  <div className="flex gap-3.5">
+                    <div className="w-9 h-9 bg-gray-100 rounded-lg flex-shrink-0" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="h-4 bg-gray-200 rounded w-28" />
+                        <div className="h-3 bg-gray-100 rounded w-16" />
+                        <div className="ml-auto h-5 bg-gray-100 rounded-full w-16" />
+                        <div className="h-5 bg-gray-100 rounded-full w-12" />
+                      </div>
+                      <div className="h-4 bg-gray-200 rounded w-full mb-1.5" />
+                      <div className="h-4 bg-gray-200 rounded w-4/5 mb-3" />
+                      <div className="flex gap-1.5">
+                        <div className="h-5 bg-gray-50 rounded-full w-20" />
+                        <div className="h-5 bg-gray-50 rounded-full w-24" />
+                        <div className="h-5 bg-gray-50 rounded-full w-16" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : nuggets.length === 0 ? (
+            <div className="text-center py-16 bg-white border border-gray-200 rounded-lg">
+              {activeFilterCount > 0 ? (
+                <>
+                  <Search className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-2">No nuggets match the current filters.</p>
+                  <button
+                    onClick={clearAllFilters}
+                    className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    Clear all filters
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Database className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-1">No research nuggets yet.</p>
+                  <p className="text-sm text-gray-400 mb-4">Add sources and run a scan to start collecting customer insights.</p>
+                  <Link
+                    href="/research?tab=sources"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                  >
+                    Add Your First Source
+                  </Link>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {nuggets.map((n) => (
+                <NuggetCard
+                  key={n.id}
+                  nugget={n}
+                  activeTag={activeTag}
+                  onTagClick={(tag) => {
+                    setActiveTag(tag === activeTag ? "" : tag);
+                    resetPage();
+                  }}
+                  expanded={expandedId === n.id}
+                  onToggleExpand={() => setExpandedId(expandedId === n.id ? null : n.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="max-w-3xl space-y-2">
-          {nuggets
-            .filter((n) =>
-              platform
-                ? n.research_sources?.platform === platform
-                : true
-            )
-            .map((n) => (
-            <div
-              key={n.id}
-              className="bg-white border border-gray-200 rounded-lg px-4 py-3"
-            >
-              {/* Header: platform icon + source + meta */}
-              <div className="flex items-start justify-between gap-3 mb-1.5">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <PlatformIcon platform={n.research_sources?.platform} />
-                  <span className="text-sm font-medium text-gray-900 truncate">
-                    {n.research_sources?.name ?? n.competitor_name}
-                  </span>
-                  <span className="text-xs flex-shrink-0" title={n.language}>
-                    {LANG_FLAGS[n.language] ?? n.language}
-                  </span>
-                  {n.market_relevance === "reference" && (
-                    <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
-                      <Globe className="w-3 h-3" /> ref
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded ${
-                      SENTIMENT_COLORS[n.sentiment] ?? SENTIMENT_COLORS.neutral
-                    }`}
-                  >
-                    {n.sentiment}
-                  </span>
-                  <span
-                    className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                      n.significance >= 8
-                        ? "bg-indigo-100 text-indigo-800 font-bold"
-                        : n.significance >= 6
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-gray-50 text-gray-600"
-                    }`}
-                  >
-                    {n.significance}/10
-                  </span>
-                </div>
-              </div>
 
-              {/* Star rating row (separate from header) */}
-              {n.review_stars > 0 && (
-                <div className="flex items-center gap-0.5 mb-1.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className={`w-3 h-3 ${
-                        i < n.review_stars
-                          ? "text-yellow-400"
-                          : "text-gray-300"
-                      }`}
-                      fill={i < n.review_stars ? "currentColor" : "currentColor"}
-                      strokeWidth={0}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Summary */}
-              <p className="text-sm text-gray-700 leading-relaxed mb-1.5">{n.summary}</p>
-
-              {/* Customer phrases (the gold) */}
-              {n.customer_phrases.length > 0 && (
-                <div className="mb-1.5">
-                  {n.customer_phrases.map((phrase, i) => (
-                    <span
-                      key={i}
-                      className="inline-block bg-yellow-50 border border-yellow-200 text-yellow-900 text-xs px-2 py-0.5 rounded mr-1 mb-1 italic"
-                    >
-                      &ldquo;{phrase}&rdquo;
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Tags — clickable to filter */}
-              {n.tags.length > 0 && (
+        {/* Right sidebar - tag cloud & quick stats (only when data exists) */}
+        {hasData && stats && stats.topTags.length > 0 && (
+          <div className="hidden lg:block w-56 flex-shrink-0">
+            <div className="sticky top-24 space-y-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Top Tags
+                </h4>
                 <div className="flex flex-wrap gap-1">
-                  {n.tags.map((tag) => (
+                  {stats.topTags.map(({ tag, count }) => (
                     <button
                       key={tag}
                       onClick={() => {
                         setActiveTag(tag === activeTag ? "" : tag);
                         resetPage();
                       }}
-                      className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                      className={`text-xs px-2 py-0.5 rounded transition-colors ${
                         tag === activeTag
                           ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
-                          : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                          : "bg-gray-50 text-gray-600 hover:bg-gray-100"
                       }`}
+                      title={`${count} nuggets`}
                     >
                       {tag}
+                      <span className="ml-1 text-gray-400">{count}</span>
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Stat card for the top bar */
+function StatCard({
+  icon,
+  label,
+  value,
+  highlight,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`bg-white border rounded-lg px-3 py-2.5 ${highlight ? "border-amber-200" : "border-gray-200"}`}>
+      <div className="flex items-center gap-1.5 text-gray-500 mb-0.5">
+        {icon}
+        <span className="text-xs">{label}</span>
+      </div>
+      <span className={`text-lg font-semibold ${highlight ? "text-amber-600" : "text-gray-900"}`}>
+        {value.toLocaleString()}
+      </span>
+    </div>
+  );
+}
+
+/** Individual nugget card */
+function NuggetCard({
+  nugget: n,
+  activeTag,
+  onTagClick,
+  expanded,
+  onToggleExpand,
+}: {
+  nugget: Nugget;
+  activeTag: string;
+  onTagClick: (tag: string) => void;
+  expanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const sentCfg = SENTIMENT_CONFIG[n.sentiment] ?? SENTIMENT_CONFIG.neutral;
+  const isGold = n.significance >= 8;
+  const thumbCfg = PLATFORM_THUMB[n.research_sources?.platform ?? ""] ?? { bg: "bg-gray-50" };
+
+  return (
+    <div
+      className={`bg-white border rounded-xl border-l-[3px] transition-shadow ${sentCfg.accent} ${
+        isGold
+          ? "border-amber-200 shadow-[0_0_0_1px_rgba(251,191,36,0.15)] hover:shadow-md"
+          : "border-gray-200 hover:shadow-sm"
+      }`}
+    >
+      <div className="flex gap-3.5 p-4">
+        {/* Thumbnail: platform icon in tinted circle */}
+        <div className={`w-9 h-9 rounded-lg ${thumbCfg.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+          <PlatformIcon platform={n.research_sources?.platform} />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm font-semibold text-gray-900 truncate">
+                  {n.research_sources?.name ?? n.competitor_name}
+                </span>
+                {n.review_stars > 0 && (
+                  <span className="inline-flex items-center gap-px flex-shrink-0">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`w-3 h-3 ${
+                          i < n.review_stars ? "text-yellow-400" : "text-gray-200"
+                        }`}
+                        fill={i < n.review_stars ? "currentColor" : "none"}
+                        strokeWidth={i < n.review_stars ? 0 : 1.5}
+                      />
+                    ))}
+                  </span>
+                )}
+                <span className="text-xs text-gray-400 flex-shrink-0" title={n.language}>
+                  {LANG_FLAGS[n.language] ?? n.language}
+                </span>
+                {n.market_relevance === "reference" && (
+                  <span className="flex items-center gap-0.5 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                    <Globe className="w-2.5 h-2.5" /> ref
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-gray-400" title={n.review_date ?? n.created_at}>
+                {timeAgo(n.review_date ?? n.created_at)}
+              </span>
+            </div>
+
+            {/* Badges */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sentCfg.badge}`}>
+                {n.sentiment}
+              </span>
+              <span
+                className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full ${
+                  isGold
+                    ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
+                    : n.significance >= 6
+                      ? "bg-blue-50 text-blue-700"
+                      : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {isGold && "★ "}{n.significance}/10
+              </span>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <p className="text-sm text-gray-700 leading-relaxed mb-2">{n.summary}</p>
+
+          {/* Insight sections: pain points, desires, phrases */}
+          {(n.pain_points.length > 0 || n.desires.length > 0 || n.customer_phrases.length > 0) && (
+            <div className="space-y-1.5 mb-2.5">
+              {/* Pain points */}
+              {n.pain_points.length > 0 && (
+                <div className="flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex flex-wrap gap-1">
+                    {n.pain_points.map((pp, i) => (
+                      <span key={`pp-${i}`} className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">
+                        {pp}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Desires */}
+              {n.desires.length > 0 && (
+                <div className="flex items-start gap-1.5">
+                  <Heart className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex flex-wrap gap-1">
+                    {n.desires.map((d, i) => (
+                      <span key={`d-${i}`} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Customer phrases */}
+              {n.customer_phrases.length > 0 && (
+                <div className="flex items-start gap-1.5">
+                  <Quote className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex flex-wrap gap-1">
+                    {n.customer_phrases.map((phrase, i) => (
+                      <span
+                        key={i}
+                        className="text-xs bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full italic"
+                      >
+                        &ldquo;{phrase}&rdquo;
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6 max-w-3xl">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="text-sm text-gray-600">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+          {/* Footer: tags + actions */}
+          <div className="flex items-center gap-2 pt-1.5 border-t border-gray-50">
+            {n.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 flex-1">
+                {n.tags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => onTagClick(tag)}
+                    className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                      tag === activeTag
+                        ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
+                        : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-0.5 flex-shrink-0 ml-auto">
+              <Link
+                href={`/brainstorm?insight=${encodeURIComponent(n.summary)}`}
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors"
+                title="Use this insight in brainstorm"
+              >
+                <Sparkles className="w-3 h-3" />
+                Use
+              </Link>
+              <button
+                onClick={onToggleExpand}
+                className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
+                title={expanded ? "Hide original review" : "Show original review"}
+              >
+                {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                Original
+              </button>
+            </div>
+          </div>
+
+          {/* Expanded: original review text */}
+          {expanded && (
+            <div className="mt-2.5 pt-2.5 border-t border-gray-100 bg-gray-50/50 -mx-1 px-3 pb-1 rounded-b-lg">
+              {n.review_title && (
+                <p className="text-sm font-medium text-gray-800 mb-1">{n.review_title}</p>
+              )}
+              <p className="text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed">{n.review_text}</p>
+              <p className="text-xs text-gray-400 mt-2">
+                — {n.reviewer_name}{n.review_date ? `, ${new Date(n.review_date).toLocaleDateString()}` : ""}
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
