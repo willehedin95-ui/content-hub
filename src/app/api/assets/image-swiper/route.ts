@@ -19,10 +19,12 @@ export async function POST(req: NextRequest) {
     image_url,
     product: productSlug,
     notes,
+    mode = "standard",
   } = body as {
     image_url?: string;
     product?: string;
     notes?: string;
+    mode?: "standard" | "ugc";
   };
 
   if (!image_url) {
@@ -168,29 +170,47 @@ export async function POST(req: NextRequest) {
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
           if (subject.is_competitor_product && product) {
-            subject.description = `${product.name} pillow — ${product.description || "premium ergonomic pillow"}`;
+            subject.description = `${product.name} — ${product.description || "premium wellness product"}`;
             subject.type = "product";
             delete subject.is_competitor_product;
           } else if (subject.is_competitor_product) {
             // No product selected — make it generic
-            subject.description = "Generic ergonomic wellness product, neutral/white color";
+            subject.description = "Generic wellness product, neutral/white color";
             delete subject.is_competitor_product;
           }
         }
       }
       // Add generation task instruction at the top level
       nanaBananaJson.task = "generate_image";
-      const qualityNote = extraction.style?.photo_quality
-        ? ` CRITICAL: Match the original photo quality exactly — ${extraction.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
-        : "";
-      const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
-        ? ` Texture must be: ${extraction.style.texture}.`
-        : "";
-      const noLogoNote = " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
+
+      const isUgc = mode === "ugc";
+
       const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
-      let instruction = product
-        ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
-        : `Recreate this visual style with the described subjects and environment.${ethnicityNote}${qualityNote}${textureNote}`;
+
+      let instruction: string;
+
+      if (isUgc) {
+        // UGC mode — strong authenticity instructions
+        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo.`;
+
+        instruction = product
+          ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${ethnicityNote}${ugcBlock}`
+          : `Recreate this exact visual style as a UGC customer photo.${ethnicityNote}${ugcBlock}`;
+      } else {
+        // Standard mode — original behavior
+        const qualityNote = extraction.style?.photo_quality
+          ? ` CRITICAL: Match the original photo quality exactly — ${extraction.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
+          : "";
+        const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
+          ? ` Texture must be: ${extraction.style.texture}.`
+          : "";
+        const noLogoNote = " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
+
+        instruction = product
+          ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
+          : `Recreate this visual style with the described subjects and environment.${ethnicityNote}${qualityNote}${textureNote}`;
+      }
+
       if (notes) {
         instruction += ` Additional instructions: ${notes}`;
       }
