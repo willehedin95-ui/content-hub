@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Star,
-  Globe,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -17,12 +16,8 @@ import {
   Download,
   Sparkles,
   TrendingUp,
-  Zap,
   Database,
-  Layers,
-  AlertTriangle,
-  Heart,
-  Quote,
+  Globe,
 } from "lucide-react";
 import {
   SiTrustpilot,
@@ -74,34 +69,14 @@ interface Stats {
   topTags: { tag: string; count: number }[];
 }
 
-const LANG_FLAGS: Record<string, string> = {
-  sv: "\u{1F1F8}\u{1F1EA}",
-  da: "\u{1F1E9}\u{1F1F0}",
-  no: "\u{1F1F3}\u{1F1F4}",
-  en: "\u{1F1EC}\u{1F1E7}",
-  de: "\u{1F1E9}\u{1F1EA}",
-  fi: "\u{1F1EB}\u{1F1EE}",
-};
-
-const SENTIMENT_CONFIG: Record<string, { badge: string; accent: string; icon: string }> = {
-  positive: { badge: "bg-green-100 text-green-800", accent: "border-l-green-400", icon: "+" },
-  negative: { badge: "bg-red-100 text-red-800", accent: "border-l-red-400", icon: "-" },
-  neutral: { badge: "bg-gray-100 text-gray-700", accent: "border-l-gray-300", icon: "~" },
-  mixed: { badge: "bg-amber-100 text-amber-800", accent: "border-l-amber-400", icon: "~" },
+const SENTIMENT_BADGE: Record<string, string> = {
+  positive: "bg-green-50 text-green-700",
+  negative: "bg-red-50 text-red-700",
+  neutral: "bg-gray-50 text-gray-600",
+  mixed: "bg-amber-50 text-amber-700",
 };
 
 const SENTIMENTS = ["positive", "negative", "neutral", "mixed"] as const;
-
-const PLATFORM_THUMB: Record<string, { bg: string }> = {
-  trustpilot: { bg: "bg-green-50" },
-  reddit: { bg: "bg-orange-50" },
-  amazon: { bg: "bg-amber-50" },
-  apify_instagram: { bg: "bg-pink-50" },
-  apify_facebook: { bg: "bg-blue-50" },
-  facebook_group: { bg: "bg-blue-50" },
-  apify_tiktok: { bg: "bg-gray-100" },
-  manual_import: { bg: "bg-emerald-50" },
-};
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -220,7 +195,6 @@ export default function ResearchFeed() {
   const exportCsv = async () => {
     setExporting(true);
     try {
-      // Fetch all nuggets (up to 1000) with current filters
       const params = new URLSearchParams({
         page: "1",
         perPage: "1000",
@@ -272,14 +246,12 @@ export default function ResearchFeed() {
 
   return (
     <div>
-      {/* Stats bar */}
+      {/* Stats bar — just nuggets + this week + sources */}
       {stats && hasData && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-          <StatCard icon={<Database className="w-4 h-4" />} label="Total Nuggets" value={stats.totalNuggets} />
-          <StatCard icon={<TrendingUp className="w-4 h-4" />} label="This Week" value={stats.nuggetsLast7Days} />
-          <StatCard icon={<Zap className="w-4 h-4 text-amber-500" />} label="Gold (8+)" value={stats.goldNuggets} highlight />
-          <StatCard icon={<Layers className="w-4 h-4" />} label="Patterns" value={stats.totalThemes} />
-          <StatCard icon={<Globe className="w-4 h-4" />} label="Sources" value={stats.totalSources} />
+        <div className="flex items-center gap-6 mb-4 text-sm text-gray-500">
+          <span><strong className="text-gray-900">{stats.totalNuggets.toLocaleString()}</strong> nuggets</span>
+          <span><strong className="text-gray-900">{stats.nuggetsLast7Days}</strong> this week</span>
+          <span><strong className="text-gray-900">{stats.totalSources}</strong> sources</span>
         </div>
       )}
 
@@ -299,8 +271,8 @@ export default function ResearchFeed() {
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSearchSubmit();
             }}
-            placeholder="Search nuggets..."
-            className="border border-gray-300 rounded pl-7 pr-2 py-1 text-sm bg-white w-44 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+            placeholder="Search..."
+            className="border border-gray-300 rounded pl-7 pr-2 py-1 text-sm bg-white w-40 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
           />
           {searchQuery && (
             <button
@@ -328,7 +300,7 @@ export default function ResearchFeed() {
           <option value={1}>All scores</option>
           <option value={4}>Useful (4+)</option>
           <option value={6}>Good (6+)</option>
-          <option value={8}>Gold (8+)</option>
+          <option value={8}>Best (8+)</option>
         </select>
 
         {/* Platform */}
@@ -425,7 +397,7 @@ export default function ResearchFeed() {
             </button>
           )}
           <span className="text-sm text-gray-500">
-            {total} nugget{total !== 1 ? "s" : ""}
+            {total} result{total !== 1 ? "s" : ""}
           </span>
         </div>
       </div>
@@ -435,27 +407,17 @@ export default function ResearchFeed() {
         {/* Nugget cards */}
         <div className="flex-1 min-w-0">
           {loading ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="bg-white border border-gray-200 rounded-xl border-l-[3px] border-l-gray-200 p-4 animate-pulse">
-                  <div className="flex gap-3.5">
-                    <div className="w-9 h-9 bg-gray-100 rounded-lg flex-shrink-0" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-4 bg-gray-200 rounded w-28" />
-                        <div className="h-3 bg-gray-100 rounded w-16" />
-                        <div className="ml-auto h-5 bg-gray-100 rounded-full w-16" />
-                        <div className="h-5 bg-gray-100 rounded-full w-12" />
-                      </div>
-                      <div className="h-4 bg-gray-200 rounded w-full mb-1.5" />
-                      <div className="h-4 bg-gray-200 rounded w-4/5 mb-3" />
-                      <div className="flex gap-1.5">
-                        <div className="h-5 bg-gray-50 rounded-full w-20" />
-                        <div className="h-5 bg-gray-50 rounded-full w-24" />
-                        <div className="h-5 bg-gray-50 rounded-full w-16" />
-                      </div>
-                    </div>
+                <div key={i} className="bg-white border border-gray-200 rounded-lg p-4 animate-pulse">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-4 h-4 bg-gray-200 rounded" />
+                    <div className="h-4 bg-gray-200 rounded w-32" />
+                    <div className="h-3 bg-gray-100 rounded w-12" />
+                    <div className="ml-auto h-5 bg-gray-100 rounded-full w-14" />
                   </div>
+                  <div className="h-4 bg-gray-100 rounded w-full mb-1.5" />
+                  <div className="h-4 bg-gray-100 rounded w-3/4" />
                 </div>
               ))}
             </div>
@@ -487,7 +449,7 @@ export default function ResearchFeed() {
               )}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {nuggets.map((n) => (
                 <NuggetCard
                   key={n.id}
@@ -528,10 +490,10 @@ export default function ResearchFeed() {
           )}
         </div>
 
-        {/* Right sidebar - tag cloud & quick stats (only when data exists) */}
+        {/* Right sidebar - tag cloud (only when data exists) */}
         {hasData && stats && stats.topTags.length > 0 && (
-          <div className="hidden lg:block w-56 flex-shrink-0">
-            <div className="sticky top-24 space-y-4">
+          <div className="hidden lg:block w-52 flex-shrink-0">
+            <div className="sticky top-24">
               <div className="bg-white border border-gray-200 rounded-lg p-3">
                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Top Tags
@@ -565,32 +527,7 @@ export default function ResearchFeed() {
   );
 }
 
-/** Stat card for the top bar */
-function StatCard({
-  icon,
-  label,
-  value,
-  highlight,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  highlight?: boolean;
-}) {
-  return (
-    <div className={`bg-white border rounded-lg px-3 py-2.5 ${highlight ? "border-amber-200" : "border-gray-200"}`}>
-      <div className="flex items-center gap-1.5 text-gray-500 mb-0.5">
-        {icon}
-        <span className="text-xs">{label}</span>
-      </div>
-      <span className={`text-lg font-semibold ${highlight ? "text-amber-600" : "text-gray-900"}`}>
-        {value.toLocaleString()}
-      </span>
-    </div>
-  );
-}
-
-/** Individual nugget card */
+/** Individual nugget card — clean, readable, minimal */
 function NuggetCard({
   nugget: n,
   activeTag,
@@ -604,206 +541,135 @@ function NuggetCard({
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
-  const sentCfg = SENTIMENT_CONFIG[n.sentiment] ?? SENTIMENT_CONFIG.neutral;
-  const isGold = n.significance >= 8;
-  const thumbCfg = PLATFORM_THUMB[n.research_sources?.platform ?? ""] ?? { bg: "bg-gray-50" };
+  const sentBadge = SENTIMENT_BADGE[n.sentiment] ?? SENTIMENT_BADGE.neutral;
+  // Only show Swedish flag (primary market), hide others to reduce noise
+  const showFlag = n.language === "sv";
 
   return (
-    <div
-      className={`bg-white border rounded-xl border-l-[3px] transition-shadow ${sentCfg.accent} ${
-        isGold
-          ? "border-amber-200 shadow-[0_0_0_1px_rgba(251,191,36,0.15)] hover:shadow-md"
-          : "border-gray-200 hover:shadow-sm"
-      }`}
-    >
-      <div className="flex gap-3.5 p-4">
-        {/* Thumbnail: platform icon in tinted circle */}
-        <div className={`w-9 h-9 rounded-lg ${thumbCfg.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-300 transition-colors">
+      {/* Header: platform icon + source + stars + date + sentiment */}
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <PlatformIcon platform={n.research_sources?.platform} />
+          <span className="text-sm font-medium text-gray-900 truncate">
+            {n.research_sources?.name ?? n.competitor_name}
+          </span>
+          {n.review_stars > 0 && (
+            <span className="inline-flex items-center gap-px flex-shrink-0">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    i < n.review_stars ? "text-yellow-400" : "text-gray-200"
+                  }`}
+                  fill={i < n.review_stars ? "currentColor" : "none"}
+                  strokeWidth={i < n.review_stars ? 0 : 1.5}
+                />
+              ))}
+            </span>
+          )}
+          {showFlag && (
+            <span className="text-xs flex-shrink-0">{"\u{1F1F8}\u{1F1EA}"}</span>
+          )}
+          <span className="text-xs text-gray-400 flex-shrink-0" title={n.review_date ?? n.created_at}>
+            {timeAgo(n.review_date ?? n.created_at)}
+          </span>
         </div>
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${sentBadge}`}>
+          {n.sentiment}
+        </span>
+      </div>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Header row */}
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-sm font-semibold text-gray-900 truncate">
-                  {n.research_sources?.name ?? n.competitor_name}
-                </span>
-                {n.review_stars > 0 && (
-                  <span className="inline-flex items-center gap-px flex-shrink-0">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`w-3 h-3 ${
-                          i < n.review_stars ? "text-yellow-400" : "text-gray-200"
-                        }`}
-                        fill={i < n.review_stars ? "currentColor" : "none"}
-                        strokeWidth={i < n.review_stars ? 0 : 1.5}
-                      />
-                    ))}
-                  </span>
-                )}
-                <span className="text-xs text-gray-400 flex-shrink-0" title={n.language}>
-                  {LANG_FLAGS[n.language] ?? n.language}
-                </span>
-                {n.market_relevance === "reference" && (
-                  <span className="flex items-center gap-0.5 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                    <Globe className="w-2.5 h-2.5" /> ref
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-gray-400" title={n.review_date ?? n.created_at}>
-                {timeAgo(n.review_date ?? n.created_at)}
-              </span>
-            </div>
+      {/* Summary — the main content, should be easy to read */}
+      <p className="text-sm text-gray-700 leading-relaxed mb-2">{n.summary}</p>
 
-            {/* Badges */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sentCfg.badge}`}>
-                {n.sentiment}
-              </span>
-              <span
-                className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full ${
-                  isGold
-                    ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
-                    : n.significance >= 6
-                      ? "bg-blue-50 text-blue-700"
-                      : "bg-gray-100 text-gray-500"
+      {/* Customer phrases — the real gold, shown as italic quotes */}
+      {n.customer_phrases.length > 0 && (
+        <div className="mb-2">
+          {n.customer_phrases.map((phrase, i) => (
+            <span
+              key={i}
+              className="inline-block text-xs text-gray-500 italic mr-2 mb-0.5"
+            >
+              &ldquo;{phrase}&rdquo;
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Tags + actions row */}
+      <div className="flex items-center gap-1.5">
+        {n.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 flex-1">
+            {n.tags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => onTagClick(tag)}
+                className={`text-[11px] px-1.5 py-0.5 rounded transition-colors ${
+                  tag === activeTag
+                    ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
+                    : "bg-gray-50 text-gray-500 hover:bg-gray-100"
                 }`}
               >
-                {isGold && "★ "}{n.significance}/10
-              </span>
-            </div>
-          </div>
-
-          {/* Summary */}
-          <p className="text-sm text-gray-700 leading-relaxed mb-2">{n.summary}</p>
-
-          {/* Insight sections: pain points, desires, phrases */}
-          {(n.pain_points.length > 0 || n.desires.length > 0 || n.customer_phrases.length > 0) && (
-            <div className="space-y-1.5 mb-2.5">
-              {/* Pain points */}
-              {n.pain_points.length > 0 && (
-                <div className="flex items-start gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex flex-wrap gap-1">
-                    {n.pain_points.map((pp, i) => (
-                      <span key={`pp-${i}`} className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">
-                        {pp}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Desires */}
-              {n.desires.length > 0 && (
-                <div className="flex items-start gap-1.5">
-                  <Heart className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex flex-wrap gap-1">
-                    {n.desires.map((d, i) => (
-                      <span key={`d-${i}`} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Customer phrases */}
-              {n.customer_phrases.length > 0 && (
-                <div className="flex items-start gap-1.5">
-                  <Quote className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex flex-wrap gap-1">
-                    {n.customer_phrases.map((phrase, i) => (
-                      <span
-                        key={i}
-                        className="text-xs bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full italic"
-                      >
-                        &ldquo;{phrase}&rdquo;
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Footer: tags + actions */}
-          <div className="flex items-center gap-2 pt-1.5 border-t border-gray-50">
-            {n.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 flex-1">
-                {n.tags.map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => onTagClick(tag)}
-                    className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
-                      tag === activeTag
-                        ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300"
-                        : "bg-gray-50 text-gray-500 hover:bg-gray-100"
-                    }`}
-                  >
-                    #{tag}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex items-center gap-0.5 flex-shrink-0 ml-auto">
-              <Link
-                href={`/brainstorm?insight=${encodeURIComponent(n.summary)}`}
-                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors"
-                title="Use this insight in brainstorm"
-              >
-                <Sparkles className="w-3 h-3" />
-                Use
-              </Link>
-              <button
-                onClick={onToggleExpand}
-                className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
-                title={expanded ? "Hide original review" : "Show original review"}
-              >
-                {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                Original
+                {tag}
               </button>
-            </div>
+            ))}
           </div>
-
-          {/* Expanded: original review text */}
-          {expanded && (
-            <div className="mt-2.5 pt-2.5 border-t border-gray-100 bg-gray-50/50 -mx-1 px-3 pb-1 rounded-b-lg">
-              {n.review_title && (
-                <p className="text-sm font-medium text-gray-800 mb-1">{n.review_title}</p>
-              )}
-              <p className="text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed">{n.review_text}</p>
-              <p className="text-xs text-gray-400 mt-2">
-                — {n.reviewer_name}{n.review_date ? `, ${new Date(n.review_date).toLocaleDateString()}` : ""}
-              </p>
-            </div>
-          )}
+        )}
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-auto">
+          <Link
+            href={`/brainstorm?insight=${encodeURIComponent(n.summary)}`}
+            className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+            title="Use this insight in brainstorm"
+          >
+            <Sparkles className="w-3 h-3" />
+            Use
+          </Link>
+          <button
+            onClick={onToggleExpand}
+            className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-50"
+            title={expanded ? "Hide original review" : "Show original review"}
+          >
+            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Original
+          </button>
         </div>
       </div>
+
+      {/* Expanded: original review text */}
+      {expanded && (
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          {n.review_title && (
+            <p className="text-sm font-medium text-gray-800 mb-1">{n.review_title}</p>
+          )}
+          <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{n.review_text}</p>
+          <p className="text-xs text-gray-400 mt-1.5">
+            — {n.reviewer_name}{n.review_date ? `, ${new Date(n.review_date).toLocaleDateString()}` : ""}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Platform icon rendered to the left of the source name */
+/** Platform icon — small, inline, just for recognition */
 function PlatformIcon({ platform }: { platform?: string }) {
   switch (platform) {
     case "trustpilot":
-      return <SiTrustpilot className="w-4 h-4 text-[#00B67A] flex-shrink-0" />;
+      return <SiTrustpilot className="w-3.5 h-3.5 text-[#00B67A] flex-shrink-0" />;
     case "reddit":
-      return <SiReddit className="w-4 h-4 text-[#FF4500] flex-shrink-0" />;
+      return <SiReddit className="w-3.5 h-3.5 text-[#FF4500] flex-shrink-0" />;
     case "amazon":
-      return <FaAmazon className="w-4 h-4 text-[#FF9900] flex-shrink-0" />;
+      return <FaAmazon className="w-3.5 h-3.5 text-[#FF9900] flex-shrink-0" />;
     case "apify_instagram":
-      return <SiInstagram className="w-4 h-4 text-[#E4405F] flex-shrink-0" />;
+      return <SiInstagram className="w-3.5 h-3.5 text-[#E4405F] flex-shrink-0" />;
     case "apify_facebook":
     case "facebook_group":
-      return <SiFacebook className="w-4 h-4 text-[#1877F2] flex-shrink-0" />;
+      return <SiFacebook className="w-3.5 h-3.5 text-[#1877F2] flex-shrink-0" />;
     case "apify_tiktok":
-      return <SiTiktok className="w-4 h-4 flex-shrink-0" />;
+      return <SiTiktok className="w-3.5 h-3.5 flex-shrink-0" />;
     case "manual_import":
-      return <FileText className="w-4 h-4 text-emerald-600 flex-shrink-0" />;
+      return <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />;
     default:
       return null;
   }
