@@ -1,14 +1,24 @@
 /**
  * Shared theme/pattern analysis logic.
  * Used by both the weekly cron and the manual "Detect Patterns" button.
+ *
+ * Two-phase approach:
+ * 1. Sonnet identifies themes from a sample of high-significance nuggets
+ * 2. Haiku classifies ALL nuggets against detected themes for accurate counts
  */
 
 import { createServerSupabase } from "@/lib/supabase-admin";
 import Anthropic from "@anthropic-ai/sdk";
 
 const CLAUDE_SONNET_MODEL = "claude-sonnet-4-5-20250929";
+const CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const SONNET_INPUT_COST = 3.0;
 const SONNET_OUTPUT_COST = 15.0;
+const HAIKU_INPUT_COST = 0.80;
+const HAIKU_OUTPUT_COST = 4.0;
+
+const CLASSIFY_BATCH_SIZE = 100;
+const CLASSIFY_DELAY_MS = 200;
 
 interface ThemeOutput {
   name: string;
@@ -21,12 +31,16 @@ interface ThemeOutput {
   nugget_ids: string[];
 }
 
+/**
+ * Phase 1: Sonnet identifies themes from a sample of nuggets.
+ * Phase 2: Haiku classifies ALL nuggets against detected themes.
+ */
 export async function analyzeThemes(
   workspaceId: string,
-): Promise<{ themesCreated: number; themesUpdated: number }> {
+): Promise<{ themesCreated: number; themesUpdated: number; totalClassified: number }> {
   const db = createServerSupabase();
 
-  // Fetch recent nuggets (last 30 days, significance >= 5)
+  // Fetch recent nuggets (last 30 days, significance >= 5) — sample for Sonnet
   const thirtyDaysAgo = new Date(
     Date.now() - 30 * 24 * 60 * 60 * 1000
   ).toISOString();
@@ -40,10 +54,10 @@ export async function analyzeThemes(
     .gte("significance", 5)
     .gte("created_at", thirtyDaysAgo)
     .order("significance", { ascending: false })
-    .limit(200);
+    .limit(500);
 
   if (!nuggets?.length) {
-    return { themesCreated: 0, themesUpdated: 0 };
+    return { themesCreated: 0, themesUpdated: 0, totalClassified: 0 };
   }
 
   // Fetch existing themes
@@ -115,15 +129,11 @@ Return JSON array (no markdown fences):
   }
 ]
 
-STRENGTH RULES:
-- emerging: 3-5 nuggets mention it
-- growing: 6-15 nuggets, trend accelerating
-- established: 15+ nuggets, consistent pattern
-- dominant: 25+ nuggets, defines the category conversation
+NOTE: Don't worry about listing every matching nugget — just list enough to establish the pattern (5-10 examples).
+A second pass will classify ALL nuggets against your themes automatically.
 
 IMPORTANT:
 - Each pattern must have at least 3 supporting nuggets (reference them by their [index])
-- nugget_ids should be the actual IDs from the nugget data
 - Don't create patterns that are too generic ("people like good products")
 - Focus on patterns that a copywriter can ACT on
 - Keep existing pattern names when updating (don't rename)
@@ -164,11 +174,11 @@ IMPORTANT:
     themes = JSON.parse(cleaned) as ThemeOutput[];
   } catch {
     console.error("Failed to parse theme analysis response:", cleaned);
-    return { themesCreated: 0, themesUpdated: 0 };
+    return { themesCreated: 0, themesUpdated: 0, totalClassified: 0 };
   }
 
   if (!Array.isArray(themes)) {
-    return { themesCreated: 0, themesUpdated: 0 };
+    return { themesCreated: 0, themesUpdated: 0, totalClassified: 0 };
   }
 
   // Build nugget ID lookup by index
@@ -216,6 +226,7 @@ IMPORTANT:
         })
         .eq("id", existing.id);
 
+      // Sonnet-phase links (will be replaced by Haiku classification)
       await db
         .from("research_nugget_themes")
         .delete()
@@ -276,5 +287,209 @@ IMPORTANT:
     }
   }
 
-  return { themesCreated, themesUpdated };
+  // Phase 2: Haiku classifies ALL nuggets against detected themes
+  const classifyResult = await classifyAllNuggets(workspaceId, client);
+
+  return { themesCreated, themesUpdated, totalClassified: classifyResult.totalClassified };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: Haiku batch-classifies ALL nuggets against detected themes
+// ---------------------------------------------------------------------------
+
+async function classifyAllNuggets(
+  workspaceId: string,
+  client: Anthropic,
+): Promise<{ totalClassified: number }> {
+  const db = createServerSupabase();
+
+  // Fetch all active themes
+  const { data: themes } = await db
+    .from("research_themes")
+    .select("id, name, description, tags")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active");
+
+  if (!themes?.length) return { totalClassified: 0 };
+
+  // Fetch ALL nuggets with significance >= 5 (paginate past Supabase 1000 limit)
+  const allNuggets: Array<{
+    id: string;
+    summary: string;
+    tags: string[];
+    pain_points: string[];
+    desires: string[];
+  }> = [];
+  let offset = 0;
+  const PAGE_SIZE = 1000;
+
+  while (true) {
+    const { data: batch } = await db
+      .from("research_nuggets")
+      .select("id, summary, tags, pain_points, desires")
+      .eq("workspace_id", workspaceId)
+      .gte("significance", 5)
+      .order("significance", { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (!batch?.length) break;
+    allNuggets.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  if (!allNuggets.length) return { totalClassified: 0 };
+
+  // Build compact theme reference for Haiku
+  const themeRef = themes
+    .map(
+      (t, i) =>
+        `[${i}] ${t.name}: ${t.description ?? ""}${t.tags?.length ? ` (${t.tags.join(", ")})` : ""}`
+    )
+    .join("\n");
+
+  // Track which nuggets belong to which themes
+  const themeNuggetMap = new Map<string, Set<string>>();
+  for (const t of themes) themeNuggetMap.set(t.id, new Set());
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  for (let i = 0; i < allNuggets.length; i += CLASSIFY_BATCH_SIZE) {
+    const batch = allNuggets.slice(i, i + CLASSIFY_BATCH_SIZE);
+
+    if (i > 0) await new Promise((r) => setTimeout(r, CLASSIFY_DELAY_MS));
+
+    const nuggetLines = batch
+      .map(
+        (n, j) =>
+          `[${j}] ${n.summary}${n.pain_points?.length ? ` | Pain: ${n.pain_points.join(", ")}` : ""}${n.desires?.length ? ` | Desire: ${n.desires.join(", ")}` : ""}`
+      )
+      .join("\n");
+
+    try {
+      const response = await client.messages.create({
+        model: CLAUDE_HAIKU_MODEL,
+        max_tokens: 2000,
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: `Classify each review nugget into the themes it belongs to. A nugget can match 0 or multiple themes.
+
+## Themes
+${themeRef}
+
+## Nuggets
+${nuggetLines}
+
+Return JSON object mapping nugget index to array of matching theme indices (no markdown fences):
+{"0":[1,3],"2":[0,2,4]}
+
+Only include nuggets that match at least one theme. Omit nuggets with 0 matches.
+Be inclusive — if a nugget is even partially relevant to a theme, include it.`,
+          },
+        ],
+      });
+
+      totalInputTokens += response.usage.input_tokens;
+      totalOutputTokens += response.usage.output_tokens;
+
+      const rawText =
+        response.content[0].type === "text" ? response.content[0].text : "";
+      const cleanedText = rawText
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      const classifications = JSON.parse(cleanedText) as Record<
+        string,
+        number[]
+      >;
+
+      for (const [nuggetIdx, themeIndices] of Object.entries(classifications)) {
+        const nugget = batch[parseInt(nuggetIdx, 10)];
+        if (!nugget) continue;
+
+        for (const themeIdx of themeIndices) {
+          const theme = themes[themeIdx];
+          if (!theme) continue;
+          themeNuggetMap.get(theme.id)?.add(nugget.id);
+        }
+      }
+    } catch (err) {
+      console.error(
+        `Classification batch ${Math.floor(i / CLASSIFY_BATCH_SIZE)} failed:`,
+        err
+      );
+    }
+  }
+
+  // Log total Haiku usage
+  const costUsd =
+    (totalInputTokens * HAIKU_INPUT_COST +
+      totalOutputTokens * HAIKU_OUTPUT_COST) /
+    1_000_000;
+  await db.from("usage_logs").insert({
+    type: "research_theme_classification",
+    model: "claude-haiku-4-5",
+    input_tokens: totalInputTokens,
+    output_tokens: totalOutputTokens,
+    cost_usd: costUsd,
+    metadata: {
+      workspace_id: workspaceId,
+      nuggets_classified: allNuggets.length,
+      themes_count: themes.length,
+      batches: Math.ceil(allNuggets.length / CLASSIFY_BATCH_SIZE),
+    },
+  });
+
+  // Replace all nugget-theme links and update evidence counts + strength
+  let totalClassified = 0;
+
+  for (const theme of themes) {
+    const nuggetIds = themeNuggetMap.get(theme.id);
+    if (!nuggetIds) continue;
+
+    // Delete old links (from Sonnet phase)
+    await db.from("research_nugget_themes").delete().eq("theme_id", theme.id);
+
+    // Insert new links from Haiku classification
+    if (nuggetIds.size > 0) {
+      const links = Array.from(nuggetIds).map((nid) => ({
+        nugget_id: nid,
+        theme_id: theme.id,
+        relevance: 1.0,
+      }));
+
+      for (let j = 0; j < links.length; j += 500) {
+        await db
+          .from("research_nugget_themes")
+          .upsert(links.slice(j, j + 500), {
+            onConflict: "nugget_id,theme_id",
+          });
+      }
+
+      totalClassified += nuggetIds.size;
+    }
+
+    // Recalculate strength based on actual count
+    const count = nuggetIds.size;
+    let strength: string;
+    if (count >= 100) strength = "dominant";
+    else if (count >= 40) strength = "established";
+    else if (count >= 15) strength = "growing";
+    else strength = "emerging";
+
+    await db
+      .from("research_themes")
+      .update({
+        evidence_count: count,
+        strength,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", theme.id);
+  }
+
+  return { totalClassified };
 }

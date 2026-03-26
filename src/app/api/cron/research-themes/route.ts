@@ -111,7 +111,11 @@ async function sendWeeklyDigest(
     `${weekNuggets ?? 0} new nuggets this week (${totalNuggets ?? 0} total)`
   );
   lines.push(
-    `${themeResult.themesCreated} new patterns, ${themeResult.themesUpdated} updated`
+    `${themeResult.themesCreated} new patterns, ${themeResult.themesUpdated} updated${
+      "totalClassified" in themeResult
+        ? ` (${(themeResult as { totalClassified: number }).totalClassified} nugget-theme links)`
+        : ""
+    }`
   );
 
   if (themes?.length) {
