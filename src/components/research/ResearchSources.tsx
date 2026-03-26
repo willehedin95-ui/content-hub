@@ -112,7 +112,8 @@ export default function ResearchSources() {
   const redditSources = sources.filter((s) => s.platform === "reddit");
   const amazonSources = sources.filter((s) => s.platform === "amazon");
   const apifySources = sources.filter((s) => s.platform.startsWith("apify_"));
-  const manualSources = sources.filter((s) => s.platform === "manual_import" || s.platform === "facebook_group");
+  const facebookSources = sources.filter((s) => s.platform === "facebook_group");
+  const manualSources = sources.filter((s) => s.platform === "manual_import");
 
   const addTrustpilotSource = async () => {
     if (!newDomain.trim() || !newName.trim()) return;
@@ -733,6 +734,85 @@ export default function ResearchSources() {
           />
         )}
       </section>
+
+      {/* ===== FACEBOOK GROUPS ===== */}
+      {facebookSources.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">
+                Facebook Groups
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Imported via Chrome extension — not auto-scanned
+              </p>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">
+                    Source
+                  </th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">
+                    Nuggets
+                  </th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">
+                    Last Import
+                  </th>
+                  <th className="w-24"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {facebookSources.map((s) => (
+                  <tr key={s.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-blue-500" />
+                        <EditableName
+                          name={s.name}
+                          onSave={(name) => renameSource(s.id, name)}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700">
+                      {s.total_reviews_fetched}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {s.last_scanned_at
+                        ? new Date(s.last_scanned_at).toLocaleDateString()
+                        : "Never"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button
+                          onClick={() => {
+                            setUploadTarget(s);
+                            setUploadText("");
+                            setUploadResult(null);
+                          }}
+                          className="p-1 text-blue-500 hover:text-blue-700"
+                          title="Upload content"
+                        >
+                          <Upload className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(s)}
+                          className="p-1 text-gray-400 hover:text-red-600"
+                          title="Delete source and all nuggets"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* ===== MANUAL RESEARCH ===== */}
       <section>
