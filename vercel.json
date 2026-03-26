@@ -41,8 +41,16 @@
       "schedule": "0 5 * * 1"
     },
     {
-      "path": "/api/cron/blog-autopilot?workspace=happysleep",
+      "path": "/api/cron/blog-autopilot?workspace=happysleep&lang=sv",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/blog-autopilot?workspace=happysleep&lang=da",
+      "schedule": "10 9 * * *"
+    },
+    {
+      "path": "/api/cron/blog-autopilot?workspace=happysleep&lang=no",
+      "schedule": "20 9 * * *"
     },
     {
       "path": "/api/cron/research-scan",

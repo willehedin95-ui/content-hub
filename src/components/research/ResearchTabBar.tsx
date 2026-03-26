@@ -7,7 +7,7 @@ export type ResearchTab = "feed" | "themes" | "sources";
 
 const TABS: { value: ResearchTab; label: string; href: string }[] = [
   { value: "feed", label: "Feed", href: "/research" },
-  { value: "themes", label: "Themes", href: "/research?tab=themes" },
+  { value: "themes", label: "Patterns", href: "/research?tab=themes" },
   { value: "sources", label: "Sources", href: "/research?tab=sources" },
 ];
 

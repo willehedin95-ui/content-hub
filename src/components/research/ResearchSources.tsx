@@ -16,6 +16,7 @@ import {
   Pencil,
   Check,
   RefreshCw,
+  ArrowDownToLine,
 } from "lucide-react";
 import {
   SiTrustpilot,
@@ -70,6 +71,7 @@ export default function ResearchSources() {
   const [amazonAsin, setAmazonAsin] = useState("");
   const [amazonMarketplace, setAmazonMarketplace] = useState("se");
   const [addingAmazon, setAddingAmazon] = useState(false);
+  const [fetchingAmazonName, setFetchingAmazonName] = useState(false);
 
   // Apify add form
   const [showAddApify, setShowAddApify] = useState(false);
@@ -118,7 +120,7 @@ export default function ResearchSources() {
     fetchSources();
   }, [fetchSources]);
 
-  const scanSource = async (source: Source) => {
+  const scanSource = async (source: Source, deep = false) => {
     setScanningIds((prev) => new Set(prev).add(source.id));
     setScanResults((prev) => {
       const next = { ...prev };
@@ -126,9 +128,8 @@ export default function ResearchSources() {
       return next;
     });
     try {
-      const res = await fetch(`/api/research/sources/${source.id}/scan`, {
-        method: "POST",
-      });
+      const url = `/api/research/sources/${source.id}/scan${deep ? "?deep=true" : ""}`;
+      const res = await fetch(url, { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
         setScanResults((prev) => ({
@@ -223,6 +224,26 @@ export default function ResearchSources() {
       console.error("Failed to add Reddit source:", e);
     } finally {
       setAddingReddit(false);
+    }
+  };
+
+  const fetchAmazonProductName = async (input: string, mp: string) => {
+    if (!input.trim()) return;
+    setFetchingAmazonName(true);
+    try {
+      const res = await fetch(
+        `/api/research/sources/amazon-info?asin=${encodeURIComponent(input.trim())}&marketplace=${mp}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title && !amazonName.trim()) {
+          setAmazonName(data.title.slice(0, 80));
+        }
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setFetchingAmazonName(false);
     }
   };
 
@@ -612,9 +633,29 @@ export default function ResearchSources() {
                   type="text"
                   value={amazonAsin}
                   onChange={(e) => setAmazonAsin(e.target.value)}
+                  onBlur={() => {
+                    if (amazonAsin.trim() && !amazonName.trim()) {
+                      fetchAmazonProductName(amazonAsin, amazonMarketplace);
+                    }
+                  }}
+                  onPaste={(e) => {
+                    // Auto-fetch after paste
+                    setTimeout(() => {
+                      const val = (e.target as HTMLInputElement).value;
+                      if (val.trim() && !amazonName.trim()) {
+                        fetchAmazonProductName(val, amazonMarketplace);
+                      }
+                    }, 100);
+                  }}
                   placeholder="e.g. B0XXXXXX or full URL"
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
                 />
+                {fetchingAmazonName && (
+                  <p className="text-xs text-indigo-500 mt-1 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Fetching product name...
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
@@ -1242,7 +1283,7 @@ function SourceTable({
   onToggle: (s: Source) => void;
   onDelete: (s: Source) => void;
   onRename: (id: string, newName: string) => void;
-  onScan?: (s: Source) => void;
+  onScan?: (s: Source, deep?: boolean) => void;
   scanningIds?: Set<string>;
   scanResults?: Record<string, { ok: boolean; msg: string }>;
   domainLink?: (s: Source) => string;
@@ -1338,16 +1379,28 @@ function SourceTable({
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1 justify-end">
                   {onScan && (
-                    <button
-                      onClick={() => onScan(s)}
-                      disabled={scanningIds?.has(s.id)}
-                      className="p-1 text-indigo-400 hover:text-indigo-700 disabled:opacity-50"
-                      title="Scan now"
-                    >
-                      <RefreshCw
-                        className={`w-4 h-4 ${scanningIds?.has(s.id) ? "animate-spin" : ""}`}
-                      />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => onScan(s)}
+                        disabled={scanningIds?.has(s.id)}
+                        className="p-1 text-indigo-400 hover:text-indigo-700 disabled:opacity-50"
+                        title="Scan new reviews"
+                      >
+                        <RefreshCw
+                          className={`w-4 h-4 ${scanningIds?.has(s.id) ? "animate-spin" : ""}`}
+                        />
+                      </button>
+                      <button
+                        onClick={() => onScan(s, true)}
+                        disabled={scanningIds?.has(s.id)}
+                        className="p-1 text-amber-500 hover:text-amber-700 disabled:opacity-50"
+                        title="Deep scan — fetch ALL reviews"
+                      >
+                        <ArrowDownToLine
+                          className={`w-4 h-4 ${scanningIds?.has(s.id) ? "animate-pulse" : ""}`}
+                        />
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => onToggle(s)}

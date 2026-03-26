@@ -5,6 +5,7 @@
 
 import {
   scrapeReviews,
+  scrapeReviewsByStars,
   logScrapeUsage as logTrustpilotUsage,
 } from "@/lib/trustpilot";
 import {
@@ -12,15 +13,12 @@ import {
   searchReddit,
   logScrapeUsage as logRedditUsage,
 } from "@/lib/reddit";
-import {
-  scrapeAmazonReviews,
-  extractAsin,
-  logScrapeUsage as logAmazonUsage,
-} from "@/lib/amazon";
+import { extractAsin } from "@/lib/amazon";
 import {
   scrapeInstagramComments,
   scrapeFacebookComments,
   scrapeTikTokComments,
+  scrapeAmazonReviewsViaApify,
   logApifyUsage,
   APIFY_ACTORS,
 } from "@/lib/apify";
@@ -32,6 +30,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 
 const MAX_PAGES_BACKFILL = 10;
 const MAX_PAGES_INCREMENTAL = 3;
+const MAX_PAGES_DEEP = 100; // ~2000 reviews — covers even the largest competitors
 const EVAL_DELAY_MS = 150;
 const MIN_SIGNIFICANCE = 4;
 
@@ -65,14 +64,23 @@ export interface ScanResult {
 
 export async function scanSingleSource(
   source: SourceRecord,
-  workspaceId: string
+  workspaceId: string,
+  opts?: { deep?: boolean }
 ): Promise<ScanResult> {
   const db = createServerSupabase();
   const isBackfill = !source.last_scanned_at;
-  const maxPages = isBackfill ? MAX_PAGES_BACKFILL : MAX_PAGES_INCREMENTAL;
-  const sinceDate = source.last_review_date
-    ? new Date(source.last_review_date)
-    : undefined;
+  const isDeep = opts?.deep === true;
+  const maxPages = isDeep
+    ? MAX_PAGES_DEEP
+    : isBackfill
+      ? MAX_PAGES_BACKFILL
+      : MAX_PAGES_INCREMENTAL;
+  // Deep scan ignores sinceDate to re-scrape everything
+  const sinceDate = isDeep
+    ? undefined
+    : source.last_review_date
+      ? new Date(source.last_review_date)
+      : undefined;
 
   let rawReviews: RawReview[] = [];
   let externalId = source.external_id;
@@ -81,10 +89,10 @@ export async function scanSingleSource(
   // --- Platform dispatch ---
   switch (source.platform) {
     case "trustpilot": {
-      const scrapeResult = await scrapeReviews(source.domain, {
-        maxPages,
-        sinceDate,
-      });
+      // Deep mode: scrape each star level separately (3x more reviews)
+      const scrapeResult = isDeep
+        ? await scrapeReviewsByStars(source.domain, { sinceDate })
+        : await scrapeReviews(source.domain, { maxPages, sinceDate });
       await logTrustpilotUsage(
         source.domain,
         scrapeResult.reviews.length,
@@ -131,24 +139,40 @@ export async function scanSingleSource(
       if (!asin) {
         return { reviewsScraped: 0, nuggetsStored: 0, error: `Invalid ASIN: ${source.domain}` };
       }
-      const scrapeResult = await scrapeAmazonReviews(asin, {
-        marketplace: sourceConfig.marketplace ?? "se",
-        maxPages,
-        sinceDate,
+      // Use Apify actor — Amazon blocks HTTP scraping (JS-rendered pages)
+      const maxReviews = isDeep ? 500 : isBackfill ? 100 : 30;
+      const scrapeResult = await scrapeAmazonReviewsViaApify(asin, {
+        marketplace: sourceConfig.marketplace ?? "us",
+        maxReviews,
       });
-      await logAmazonUsage(asin, scrapeResult.totalScraped, scrapeResult.pagesScraped);
-      blocked = scrapeResult.blocked;
+      await logApifyUsage(APIFY_ACTORS.amazon_reviews, "amazon", scrapeResult.totalScraped);
       rawReviews = scrapeResult.reviews.map((r) => ({
         id: r.id,
         text: `${r.title ? r.title + "\n\n" : ""}${r.text}`,
         title: r.title,
         rating: r.rating,
-        language: detectAmazonLanguage(sourceConfig.marketplace ?? "se"),
+        language: r.language || detectAmazonLanguage(sourceConfig.marketplace ?? "us"),
         date: r.date,
         author: r.author,
       }));
-      if (scrapeResult.productInfo?.title) {
+      if (scrapeResult.productInfo) {
         externalId = scrapeResult.productInfo.asin;
+        // Auto-update source name from product title if name looks like a placeholder or ASIN
+        if (scrapeResult.productInfo.title && scrapeResult.productInfo.title !== asin) {
+          const currentName = source.name.trim();
+          const looksLikePlaceholder =
+            /^B0[A-Z0-9]{8}$/i.test(currentName) ||
+            currentName.toLowerCase().startsWith("amazon ") ||
+            currentName === "";
+          if (looksLikePlaceholder) {
+            // Truncate long product titles
+            const title = scrapeResult.productInfo.title.slice(0, 80);
+            await db
+              .from("research_sources")
+              .update({ name: title })
+              .eq("id", source.id);
+          }
+        }
       }
       break;
     }

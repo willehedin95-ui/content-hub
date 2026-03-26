@@ -7,7 +7,7 @@ import { safeError } from "@/lib/api-error";
 export const maxDuration = 300; // 5 min — scraping + AI evaluation
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -15,6 +15,9 @@ export async function POST(
     if (!workspaceId) {
       return NextResponse.json({ error: "No workspace" }, { status: 401 });
     }
+
+    const url = new URL(req.url);
+    const deep = url.searchParams.get("deep") === "true";
 
     const { id } = await params;
     const db = createServerSupabase();
@@ -37,7 +40,7 @@ export async function POST(
       );
     }
 
-    const result = await scanSingleSource(source, workspaceId);
+    const result = await scanSingleSource(source, workspaceId, { deep });
     return NextResponse.json(result);
   } catch (e) {
     return safeError(e, "Scan failed");

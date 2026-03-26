@@ -17,6 +17,7 @@ export const APIFY_ACTORS = {
   instagram_comments: "apify/instagram-comment-scraper",
   facebook_comments: "apify/facebook-comments-scraper",
   tiktok_comments: "clockworks/tiktok-comments-scraper",
+  amazon_reviews: "web_wanderer/amazon-reviews-extractor",
 } as const;
 
 export type ApifyPlatform = keyof typeof APIFY_ACTORS;
@@ -229,6 +230,82 @@ export async function scrapeTikTokComments(
   });
 
   return { reviews: reviews.filter((r) => r.text.length >= 10), totalScraped: reviews.length };
+}
+
+// --- Amazon Reviews (via Apify — Amazon blocks HTTP scraping) ---
+
+const AMAZON_MARKETPLACE_URLS: Record<string, string> = {
+  se: "https://www.amazon.se/dp/",
+  de: "https://www.amazon.de/dp/",
+  uk: "https://www.amazon.co.uk/dp/",
+  us: "https://www.amazon.com/dp/",
+  dk: "https://www.amazon.de/dp/", // Denmark uses German Amazon
+  no: "https://www.amazon.se/dp/", // Norway uses Swedish Amazon
+};
+
+export async function scrapeAmazonReviewsViaApify(
+  asin: string,
+  opts?: { marketplace?: string; maxReviews?: number }
+): Promise<{
+  reviews: ApifyReview[];
+  totalScraped: number;
+  productInfo: { asin: string; title: string; totalReviews: number } | null;
+}> {
+  const marketplace = opts?.marketplace ?? "us";
+  const baseUrl = AMAZON_MARKETPLACE_URLS[marketplace] ?? AMAZON_MARKETPLACE_URLS.us;
+  const productUrl = `${baseUrl}${asin}`;
+
+  // web_wanderer actor uses "products" array input
+  const result = await runActorSync(
+    APIFY_ACTORS.amazon_reviews,
+    {
+      products: [productUrl],
+      maxReviews: opts?.maxReviews ?? 50,
+      sort: "recent",
+    },
+    180 // 3 min timeout for Amazon
+  );
+
+  let productInfo: { asin: string; title: string; totalReviews: number } | null = null;
+
+  const reviews: ApifyReview[] = result.items.map((item, i) => {
+    // Extract product info from first item (web_wanderer fields)
+    if (!productInfo && item.productTitle) {
+      const summary = (item.ratingSummary ?? {}) as Record<string, number>;
+      const totalFromSummary = Object.values(summary).reduce((a, b) => a + (b || 0), 0);
+      productInfo = {
+        asin: String(item.productAsin ?? asin),
+        title: String(item.productTitle ?? asin),
+        totalReviews: totalFromSummary || 0,
+      };
+    }
+
+    return {
+      id: String(item.reviewId ?? `amz_${i}`),
+      text: String(item.reviewText ?? item.reviewDescription ?? ""),
+      title: String(item.reviewTitle ?? ""),
+      author: String(item.profileName ?? item.userId ?? "Anonymous"),
+      date: String(item.reviewDate ?? item.date ?? new Date().toISOString()),
+      rating: Number(item.rating ?? item.ratingScore ?? 0),
+      language: item.language
+        ? String(item.language)
+        : detectLanguage(String(item.reviewText ?? item.reviewDescription ?? "")),
+      metadata: {
+        verified: item.isVerified === true || String(item.reviewedIn ?? "").includes("Verified"),
+        vine: item.isAmazonVine === true,
+        helpful: Number(item.helpfulVoteCount ?? item.reviewReaction ?? 0),
+        variant: String(item.variant ?? ""),
+        platform: "amazon",
+        marketplace,
+      },
+    };
+  });
+
+  return {
+    reviews: reviews.filter((r) => r.text.length >= 10),
+    totalScraped: reviews.length,
+    productInfo,
+  };
 }
 
 // --- Usage logging ---

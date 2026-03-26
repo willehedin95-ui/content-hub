@@ -175,9 +175,9 @@ export async function buildResearchContext(
     }
   }
 
-  // Section 4: Active themes
+  // Section 4: Active patterns
   if (themes && themes.length > 0) {
-    parts.push("\n### Active Research Themes");
+    parts.push("\n### Active Research Patterns");
     for (const t of themes) {
       parts.push(
         `- **${t.name}** (${t.strength}, ${t.evidence_count} mentions): ${t.copy_implications ?? t.description ?? ""}`

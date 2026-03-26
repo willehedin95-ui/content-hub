@@ -326,9 +326,11 @@ export default function ResearchFeed() {
                       key={i}
                       className={`w-3 h-3 ${
                         i < n.review_stars
-                          ? "fill-yellow-400 text-yellow-400"
-                          : "fill-gray-200 text-gray-200"
+                          ? "text-yellow-400"
+                          : "text-gray-300"
                       }`}
+                      fill={i < n.review_stars ? "currentColor" : "currentColor"}
+                      strokeWidth={0}
                     />
                   ))}
                 </div>

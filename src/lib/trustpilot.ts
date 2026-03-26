@@ -17,6 +17,7 @@ const USER_AGENT =
 
 const REVIEWS_PER_PAGE = 20;
 const DELAY_MS = 1200; // 1.2s between requests to be polite
+const MAX_PAGES_PER_STAR = 10; // Trustpilot caps at 10 pages per filter combo
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,7 +62,8 @@ function sleep(ms: number): Promise<void> {
 /** Fetch a Trustpilot page and extract __NEXT_DATA__ */
 async function fetchPageData(
   domain: string,
-  page: number
+  page: number,
+  stars?: number
 ): Promise<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reviews: any[];
@@ -72,10 +74,11 @@ async function fetchPageData(
 } | null> {
   // Page 1 with ?page=1 triggers a 308 redirect that strips query params,
   // losing the languages=all filter. Omit page param for page 1.
+  const starParam = stars ? `&stars=${stars}` : "";
   const url =
     page === 1
-      ? `https://www.trustpilot.com/review/${domain}?languages=all`
-      : `https://www.trustpilot.com/review/${domain}?languages=all&page=${page}`;
+      ? `https://www.trustpilot.com/review/${domain}?languages=all${starParam}`
+      : `https://www.trustpilot.com/review/${domain}?languages=all${starParam}&page=${page}`;
 
   const res = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
@@ -214,6 +217,93 @@ export async function scrapeReviews(
     reviews: allReviews,
     businessInfo,
     totalPages: Math.min(totalPages, maxPages),
+    totalReviews,
+    pagesScraped,
+  };
+}
+
+/**
+ * Deep scrape using per-star filtering.
+ *
+ * Trustpilot caps pagination at 10 pages (200 reviews) per filter combo.
+ * By scraping each star level separately (1-5), we get independent 10-page
+ * limits — typically 3x more reviews (e.g. 611/787 instead of 200/787).
+ *
+ * Deduplication is handled by the caller via DB upsert on external_review_id.
+ */
+export async function scrapeReviewsByStars(
+  domain: string,
+  opts?: { maxPagesPerStar?: number; sinceDate?: Date }
+): Promise<ScrapeResult> {
+  const maxPerStar = Math.min(opts?.maxPagesPerStar ?? MAX_PAGES_PER_STAR, MAX_PAGES_PER_STAR);
+  const sinceDate = opts?.sinceDate;
+
+  const allReviews: TrustpilotReview[] = [];
+  const seenIds = new Set<string>();
+  let businessInfo: TrustpilotBusinessInfo = {
+    id: "",
+    displayName: domain,
+    stars: 0,
+    numberOfReviews: 0,
+  };
+  let totalReviews = 0;
+  let pagesScraped = 0;
+
+  // Get business info from main page first
+  const mainData = await fetchPageData(domain, 1);
+  if (mainData) {
+    const bu = mainData.businessUnit;
+    businessInfo = {
+      id: bu.id ?? "",
+      displayName: bu.displayName ?? domain,
+      stars: bu.stars ?? 0,
+      numberOfReviews: bu.numberOfReviews ?? 0,
+    };
+    totalReviews = mainData.pagination.totalCount ?? 0;
+  }
+
+  // Scrape each star level (5 down to 1 — most valuable first)
+  for (const star of [5, 4, 3, 2, 1]) {
+    let hitOldReview = false;
+
+    for (let page = 1; page <= maxPerStar && !hitOldReview; page++) {
+      await sleep(DELAY_MS);
+
+      const data = await fetchPageData(domain, page, star);
+      if (!data) break;
+
+      pagesScraped++;
+
+      // Check if Trustpilot returned a login/redirect page (pagination cap hit)
+      if (data.reviews.length === 0) break;
+
+      const starTotalPages = data.pagination.totalPages ?? 1;
+      if (page > starTotalPages) break;
+
+      for (const raw of data.reviews) {
+        const review = parseReview(raw);
+
+        if (!review.text || review.text.trim().length < 10) continue;
+        if (seenIds.has(review.id)) continue;
+
+        if (sinceDate && review.publishedDate) {
+          const reviewDate = new Date(review.publishedDate);
+          if (reviewDate < sinceDate) {
+            hitOldReview = true;
+            break;
+          }
+        }
+
+        seenIds.add(review.id);
+        allReviews.push(review);
+      }
+    }
+  }
+
+  return {
+    reviews: allReviews,
+    businessInfo,
+    totalPages: pagesScraped,
     totalReviews,
     pagesScraped,
   };

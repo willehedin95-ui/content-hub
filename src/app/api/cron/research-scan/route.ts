@@ -9,15 +9,12 @@ import {
   searchReddit,
   logScrapeUsage as logRedditUsage,
 } from "@/lib/reddit";
-import {
-  scrapeAmazonReviews,
-  extractAsin,
-  logScrapeUsage as logAmazonUsage,
-} from "@/lib/amazon";
+import { extractAsin } from "@/lib/amazon";
 import {
   scrapeInstagramComments,
   scrapeFacebookComments,
   scrapeTikTokComments,
+  scrapeAmazonReviewsViaApify,
   logApifyUsage,
   APIFY_ACTORS,
 } from "@/lib/apify";
@@ -164,32 +161,26 @@ export async function GET(req: NextRequest) {
               throw new Error(`Invalid ASIN or URL: ${source.domain}`);
             }
 
-            const scrapeResult = await scrapeAmazonReviews(asin, {
-              marketplace: sourceConfig.marketplace ?? "se",
-              maxPages,
-              sinceDate,
+            // Use Apify actor — Amazon blocks HTTP scraping (JS-rendered pages)
+            const maxReviews = isBackfill ? 100 : 30;
+            const scrapeResult = await scrapeAmazonReviewsViaApify(asin, {
+              marketplace: sourceConfig.marketplace ?? "us",
+              maxReviews,
             });
 
-            await logAmazonUsage(
-              asin,
-              scrapeResult.totalScraped,
-              scrapeResult.pagesScraped
-            );
-
-            blocked = scrapeResult.blocked;
+            await logApifyUsage(APIFY_ACTORS.amazon_reviews, "amazon", scrapeResult.totalScraped);
 
             rawReviews = scrapeResult.reviews.map((r) => ({
               id: r.id,
               text: `${r.title ? r.title + "\n\n" : ""}${r.text}`,
               title: r.title,
               rating: r.rating,
-              language: detectAmazonLanguage(sourceConfig.marketplace ?? "se"),
-              date: r.date, // Amazon date text (best effort)
+              language: r.language || detectAmazonLanguage(sourceConfig.marketplace ?? "us"),
+              date: r.date,
               author: r.author,
             }));
 
-            // Update product info
-            if (scrapeResult.productInfo?.title) {
+            if (scrapeResult.productInfo) {
               externalId = scrapeResult.productInfo.asin;
             }
             break;

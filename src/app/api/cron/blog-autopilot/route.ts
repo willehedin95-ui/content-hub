@@ -42,13 +42,26 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Determine which languages to process
-  // blog_autopilot_languages: ["sv", "da", "no"] — defaults to ["sv"] for backward compat
+  // Determine which language to process
+  // If ?lang= is specified, run only that language (used by per-language cron entries).
+  // Otherwise fall back to all enabled languages (legacy behavior).
   const enabledLanguages = (settings.blog_autopilot_languages as string[]) || ["sv"];
+  const langParam = req.nextUrl.searchParams.get("lang");
+  const languagesToRun = langParam
+    ? enabledLanguages.includes(langParam) ? [langParam] : []
+    : enabledLanguages;
+
+  if (langParam && !languagesToRun.length) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: `Language "${langParam}" not in enabled languages: ${enabledLanguages.join(", ")}`,
+    });
+  }
 
   const results: Record<string, unknown> = {};
 
-  for (const lang of enabledLanguages) {
+  for (const lang of languagesToRun) {
     try {
       const result = await runBlogAutopilot(workspace.id, lang as Language, { force });
       results[lang] = result;
