@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const productSlug = (settings as Record<string, unknown>).default_product as string || "happysleep";
+  const productSlug = (settings as Record<string, unknown>).default_product as string;
+  if (!productSlug) {
+    return NextResponse.json({ error: "No default_product configured in workspace settings" }, { status: 400 });
+  }
 
   try {
     // Upsert into discovered_ads

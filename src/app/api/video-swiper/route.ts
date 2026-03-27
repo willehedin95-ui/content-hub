@@ -180,11 +180,11 @@ export async function POST(req: NextRequest) {
           if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
             for (const subject of nanaBananaJson.subjects) {
               if (subject.is_competitor_product && product) {
-                subject.description = `${product.name} pillow — ${product.description || "premium ergonomic pillow"}`;
+                subject.description = `${product.name} — ${product.description || product.name}`;
                 subject.type = "product";
                 delete subject.is_competitor_product;
               } else if (subject.is_competitor_product) {
-                subject.description = "Generic ergonomic wellness product, neutral/white color";
+                subject.description = "The target product — match reference images provided";
                 delete subject.is_competitor_product;
               }
             }

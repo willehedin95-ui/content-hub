@@ -352,6 +352,14 @@ async function pickNextArticle(
 ): Promise<ArticleRequest | null> {
   const blogDomain = getProjectCustomDomain(language) || "";
 
+  // Get workspace default product slug as fallback
+  const { data: wsData } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const wsProductSlug = (wsData?.settings as Record<string, unknown> | null)?.default_product as string | undefined;
+
   // 1. Try the blog_content_plan table: pick the highest-priority "planned" article
   const { data: planned } = await db
     .from("blog_content_plan")
@@ -380,7 +388,7 @@ async function pickNextArticle(
       secondaryKeywords: planned.secondary_keywords ?? [],
       wordCount: planned.word_count || "2000-3000",
       contentBrief: planned.content_brief || `Write a comprehensive article about "${planned.primary_keyword}".`,
-      productSlug: planned.product_slug || "happysleep",
+      productSlug: planned.product_slug || wsProductSlug || "happysleep",
       internalLinkSlugs: planned.internal_link_slugs ?? [],
       language,
       blogDomain,
@@ -446,7 +454,7 @@ async function pickNextArticle(
       secondaryKeywords: [],
       wordCount: "2000-3000",
       contentBrief: `Write a comprehensive article about "${kw.keyword}". This keyword has ${kw.searchVolume} monthly searches with ${kw.competition || "unknown"} competition. Cover the topic thoroughly with practical advice, scientific backing, and product recommendations where relevant.`,
-      productSlug: isCollagen ? "hydro13" : "happysleep",
+      productSlug: isCollagen ? "hydro13" : (wsProductSlug || "happysleep"),
       internalLinkSlugs: [isCollagen ? collagenFallbackSlug : fallbackSlug],
       language,
       blogDomain,

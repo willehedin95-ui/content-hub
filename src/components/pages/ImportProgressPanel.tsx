@@ -688,7 +688,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
 
       setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "video_polling" }));
 
-      const videoUrl = await pollVideoTask(taskId, product || "happysleep");
+      const videoUrl = await pollVideoTask(taskId, product || "unknown");
       if (videoUrl) {
         replacements[vid.index] = { url: videoUrl, asVideo: true };
         setImageGenStatuses((prev) => ({ ...prev, [vid.index]: "done" }));

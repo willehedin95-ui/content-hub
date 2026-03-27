@@ -82,7 +82,11 @@ async function getAutopilotWorkspaces(
     const autopilotMode = s.autopilot_mode as string | undefined;
     if (!slugFilter && (!autopilotMode || autopilotMode === "disabled")) continue;
 
-    const productSlug = (s.default_product as string) || "happysleep";
+    const productSlug = s.default_product as string;
+    if (!productSlug) {
+      console.warn(`[autopilot-concepts] Workspace ${ws.slug} has no default_product, skipping`);
+      continue;
+    }
     const targetLanguages = (s.target_languages as string[]) ?? ["sv", "da", "no"];
 
     // Fetch product name for scoring prompt

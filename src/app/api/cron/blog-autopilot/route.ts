@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "true";
-  const wsSlug = req.nextUrl.searchParams.get("workspace") || "happysleep";
+  const wsSlug = req.nextUrl.searchParams.get("workspace");
+  if (!wsSlug) {
+    return NextResponse.json({ error: "workspace query param is required" }, { status: 400 });
+  }
 
   const db = createServerSupabase();
 

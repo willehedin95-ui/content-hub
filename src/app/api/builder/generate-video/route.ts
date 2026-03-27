@@ -32,7 +32,7 @@ ${productBrief}
 
 - The keyframe prompt should depict a scene relevant to ${productName} based on the surrounding text
 - IMPORTANT: Only include the physical product when the text is specifically about the product itself. For lifestyle, emotional, or benefit-focused sections, show the SCENE or FEELING instead.
-- When the product IS shown, use accurate details (white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges)
+- When the product IS shown, use accurate details from the product brief above — match the physical appearance from reference images
 - The video prompt should describe subtle, natural motion: a person breathing, hair moving, camera slowly panning, etc.
 - Matches Scandinavian aesthetic: clean, natural, authentic
 - NEVER mentions or visually references any competitor product
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   const productName = productResult.data.name;
   const productBrief =
     briefResult.data?.content ||
-    `${productName} — an ergonomic cervical pillow designed for better sleep.`;
+    `${productName} — a premium health product.`;
   const referenceImages = ((imagesResult.data ?? []) as ProductImage[]).map(
     (img) => img.url
   );

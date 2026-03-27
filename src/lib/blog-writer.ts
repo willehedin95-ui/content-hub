@@ -50,10 +50,11 @@ const PRODUCT_URLS: Record<string, Record<string, string>> = {
     da: "https://swedishbalance.se/products/happysleep",
     no: "https://swedishbalance.se/products/happysleep",
   },
+  // Hydro13 moving to get-renew.com — URLs updated when store is live
   hydro13: {
-    sv: "https://swedishbalance.se/products/hydro13",
-    da: "https://swedishbalance.se/products/hydro13",
-    no: "https://swedishbalance.se/products/hydro13",
+    sv: "#",
+    da: "#",
+    no: "#",
   },
 };
 
@@ -459,17 +460,17 @@ NEVER fabricate URLs. Only link to URLs listed above or to ${domainNote} you are
 
 ## CRITICAL: Language Rules
 - Write ENTIRELY in ${langName}. Every word, including product descriptions, must be in ${langName}.
-- Product names stay in their original brand form (e.g. "HappySleep", "Tempur Original", "IKEA KLUBBSPORRE")
-- NEVER translate brand names into English. "HappySleep" is the brand name — do NOT write "HappySleep Cervical Pillow" or any English descriptor.
+- Product names stay in their original brand form (e.g. "${request.productSlug === "hydro13" ? "Hydro13" : "HappySleep"}", "Tempur Original", "IKEA KLUBBSPORRE")
+- NEVER translate brand names into English. Brand names are proper nouns — do NOT append English descriptors.
 ${request.language === "da"
-  ? `- Write "HappySleep ergonomisk pude" or just "HappySleep".
+  ? `- Use the brand name as-is or with a short ${langName} descriptor (e.g. just the product name).
 - Danish compound words: nakkestøtte (not "nakke støtte"), sovestilling (not "sove stilling"), hukommelseskum (not "hukommelses skum"), rygsmerter (not "ryg smerter")
 - Use correct Danish grammar and natural Danish sentence structures. Do NOT translate from English.`
   : request.language === "no"
-    ? `- Write "HappySleep ergonomisk pute" or just "HappySleep".
+    ? `- Use the brand name as-is or with a short ${langName} descriptor (e.g. just the product name).
 - Norwegian compound words: nakkestøtte (not "nakke støtte"), sovestilling (not "sove stilling"), minneskum (not "minne skum"), ryggsmerter (not "rygg smerter"), sidesover (not "side sover")
 - Use correct Norwegian (bokmål) grammar and natural Norwegian sentence structures. Do NOT translate from English.`
-    : `- Write "HappySleep ergonomisk kudde" or just "HappySleep".
+    : `- Use the brand name as-is or with a short ${langName} descriptor (e.g. just the product name).
 - Swedish compound words: nackstöd (not "nack stöd"), sovställning (not "sov ställning"), minnesskum (not "minnes skum"), ryggsmärta (not "rygg smärta"), sidosovare (not "sido sovare")
 - Use correct Swedish grammar and natural Swedish sentence structures. Do NOT translate from English.`}
 

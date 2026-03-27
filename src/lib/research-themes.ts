@@ -102,7 +102,7 @@ export async function analyzeThemes(
     messages: [
       {
         role: "user",
-        content: `You are analyzing customer review data for a collagen supplement brand's research intelligence system. Your job: identify PATTERNS that repeat across multiple reviews.
+        content: `You are analyzing customer review data for a brand's research intelligence system. Your job: identify PATTERNS that repeat across multiple reviews.
 
 ## Recent Review Nuggets (last 30 days)
 ${nuggetSummaries}

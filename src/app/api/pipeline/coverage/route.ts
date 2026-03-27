@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const product = (searchParams.get("product") || "happysleep") as Product;
+    const product = searchParams.get("product") as Product;
+    if (!product) {
+      return NextResponse.json({ error: "product query param is required" }, { status: 400 });
+    }
     const markets = ["SE", "DK", "NO"]; // All markets
 
     const supabase = createServerSupabase();

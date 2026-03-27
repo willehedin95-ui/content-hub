@@ -707,7 +707,7 @@ function analyzeConceptNeed(
         what_happens_if_ignored:
           "The campaign will slowly die as existing ad sets fatigue. Eventually ROAS drops below breakeven.",
         button_label: "Go to Brainstorm",
-        action_data: { market: kpi.market, product: "happysleep" },
+        action_data: { market: kpi.market },
       });
     }
 
@@ -743,7 +743,7 @@ function analyzeConceptNeed(
         what_happens_if_ignored:
           "ROAS will gradually decline as audiences get tired of seeing the same ads.",
         button_label: "Go to Brainstorm",
-        action_data: { market: kpi.market, product: "happysleep" },
+        action_data: { market: kpi.market },
       });
     }
   }

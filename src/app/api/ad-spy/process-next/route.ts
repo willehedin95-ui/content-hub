@@ -37,7 +37,10 @@ export async function POST() {
   }
 
   const settings = await getWorkspaceSettings();
-  const productSlug = (settings as Record<string, unknown>).default_product as string || "happysleep";
+  const productSlug = (settings as Record<string, unknown>).default_product as string;
+  if (!productSlug) {
+    return NextResponse.json({ error: "No default_product configured in workspace settings" }, { status: 400 });
+  }
 
   try {
     const result = await swipeCompetitorAd({

@@ -67,7 +67,7 @@ export async function POST(
     ? await db.from("products").select("name, ingredients").eq("slug", jobFull.product).single()
     : { data: null };
   const productAppearance = productData?.ingredients
-    ? `The product is: ${productData.name}. Physical appearance from specs: ${productData.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`
+    ? `The product is: ${productData.name}. Physical appearance from specs: ${productData.ingredients}. IMPORTANT: The product must match the reference images exactly — render the finished product as it appears when sold, not raw materials or components.`
     : "";
 
   // Store competitor reference data persistently for re-roll, then clear pending

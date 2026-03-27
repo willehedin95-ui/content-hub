@@ -87,7 +87,7 @@ export async function buildResearchContext(
   const parts: string[] = [];
   parts.push("## CUSTOMER RESEARCH INTELLIGENCE");
   parts.push(
-    "_Real quotes and patterns from Trustpilot reviews of competitor collagen brands. Use this language — it's how actual customers talk._"
+    "_Real quotes and patterns from Trustpilot reviews of competitor brands. Use this language — it's how actual customers talk._"
   );
 
   // Section 1: Real customer language

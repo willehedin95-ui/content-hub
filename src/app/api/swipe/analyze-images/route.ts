@@ -14,7 +14,8 @@ function getOpenAI(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
-const VISION_PROMPT = `Analyze this image from an advertorial landing page. I need to generate a replacement image that conveys the same message but features a different product (an ergonomic cervical pillow called HappySleep).
+function buildVisionPrompt(productName: string): string {
+  return `Analyze this image from an advertorial landing page. I need to generate a replacement image that conveys the same message but features a different product (${productName}).
 
 Describe the following in detail:
 
@@ -26,17 +27,19 @@ Describe the following in detail:
 6. **Text overlays:** Any text, badges, stamps, or graphics overlaid on the image?
 
 Format your response as JSON:
-{"subjects":"...","composition":"...","style":"...","context":"...","product_interaction":"...","text_overlays":"...","suggested_replacement":"Brief description of what the replacement image should show with HappySleep pillow instead"}`;
+{"subjects":"...","composition":"...","style":"...","context":"...","product_interaction":"...","text_overlays":"...","suggested_replacement":"Brief description of what the replacement image should show with ${productName} instead"}`;
+}
 
 function buildNanaBananaPrompt(
   analysis: ImageAnalysis,
-  productName: string
+  productName: string,
+  productDescription: string
 ): string {
   const parts = [
     `Generate a ${analysis.style} photograph of ${analysis.suggested_replacement}.`,
     ``,
     `Scene: ${analysis.composition}`,
-    `Product: ${analysis.product_interaction} — a white ergonomic cervical pillow with contoured shape, central head depression, and raised cervical support edges. The pillow packaging is a white box with the ${productName} logo.`,
+    `Product: ${analysis.product_interaction} — ${productDescription}.`,
     `Mood: ${analysis.style}`,
   ];
 
@@ -48,7 +51,7 @@ function buildNanaBananaPrompt(
 
   parts.push(
     ``,
-    `Important: The pillow/product must closely match the reference images provided. Scandinavian-looking subjects. Natural, authentic feel — not overly polished or stock-photo-like.`
+    `Important: The product must closely match the reference images provided. Scandinavian-looking subjects. Natural, authentic feel — not overly polished or stock-photo-like.`
   );
 
   return parts.join("\n");
@@ -57,7 +60,8 @@ function buildNanaBananaPrompt(
 async function analyzeImage(
   openai: OpenAI,
   imageUrl: string,
-  alt: string
+  alt: string,
+  productName: string
 ): Promise<ImageAnalysis> {
   const response = await openai.chat.completions.create({
     model: OPENAI_MODEL,
@@ -66,7 +70,7 @@ async function analyzeImage(
     messages: [
       {
         role: "system",
-        content: VISION_PROMPT,
+        content: buildVisionPrompt(productName),
       },
       {
         role: "user",
@@ -131,9 +135,9 @@ export async function POST(req: NextRequest) {
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
 
-  // Load product name and images for reference
+  // Load product name, description and images for reference
   const [productResult, imagesResult] = await Promise.all([
-    db.from("products").select("name").eq("id", productId).eq("workspace_id", workspaceId).single(),
+    db.from("products").select("name, description").eq("id", productId).eq("workspace_id", workspaceId).single(),
     db
       .from("product_images")
       .select("*")
@@ -147,6 +151,7 @@ export async function POST(req: NextRequest) {
   }
 
   const productName = productResult.data.name;
+  const productDescription = productResult.data.description || productName;
   const referenceImages = ((imagesResult.data ?? []) as ProductImage[]).map(
     (img) => img.url
   );
@@ -154,8 +159,8 @@ export async function POST(req: NextRequest) {
   // Analyze images in parallel
   const results = await Promise.allSettled(
     images.map(async (img) => {
-      const analysis = await analyzeImage(openai, img.src, img.alt);
-      const nanoBananaPrompt = buildNanaBananaPrompt(analysis, productName);
+      const analysis = await analyzeImage(openai, img.src, img.alt, productName);
+      const nanoBananaPrompt = buildNanaBananaPrompt(analysis, productName, productDescription);
       return {
         src: img.src,
         analysis,

@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     .from("pages")
     .insert({
       name,
-      product: product || "happysleep",
+      product: product || null,
       page_type: page_type || "listicle",
       source_url: source_url || "",
       original_html: original_html || blankHtml,

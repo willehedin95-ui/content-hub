@@ -236,10 +236,10 @@ export async function POST(req: NextRequest) {
   }
 
   const productName = productResult.data.name;
-  const productDescription = productResult.data.description || "premium ergonomic pillow";
+  const productDescription = productResult.data.description || productName;
   const productBrief =
     briefResult.data?.content ||
-    `${productName} — an ergonomic cervical pillow designed for better sleep.`;
+    `${productName} — ${productDescription}.`;
   const referenceImages = ((imagesResult.data ?? []) as ProductImage[]).map(
     (img) => img.url
   );
@@ -300,7 +300,7 @@ export async function POST(req: NextRequest) {
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
           if (subject.is_competitor_product) {
-            subject.description = `${productName} pillow — ${productDescription}`;
+            subject.description = `${productName} — ${productDescription}`;
             subject.type = "product";
             delete subject.is_competitor_product;
           }

@@ -1590,15 +1590,6 @@ export async function GET(req: NextRequest) {
   const beRoasValues = [...beRoasMap.values()];
   const minBeRoas = beRoasValues.length > 0 ? Math.min(...beRoasValues) : null;
 
-  // ── Filter out paused products (out of stock) ──
-  // Hydro13 paused: no stock until late March 2026. Remove when stock arrives.
-  const pausedProducts = new Set(["hydro13"]);
-  const isPausedProduct = (adsetId: string | null | undefined) => {
-    if (!adsetId) return false;
-    const pm = adsetProductMarket.get(adsetId);
-    return pm?.product ? pausedProducts.has(pm.product) : false;
-  };
-
   return NextResponse.json({
     generated_at: new Date().toISOString(),
     data_date: latestDate,
@@ -1613,20 +1604,16 @@ export async function GET(req: NextRequest) {
       whats_running: whatsRunning,
       performance_trends: performanceTrends,
       winners_losers: { winners, losers },
-      fatigue_signals: {
-        critical: fatigueSignals.critical.filter((f) => !isPausedProduct(f.adset_id)),
-        warning: fatigueSignals.warning.filter((f) => !isPausedProduct(f.adset_id)),
-        monitor: fatigueSignals.monitor.filter((f) => !isPausedProduct(f.adset_id)),
-      },
+      fatigue_signals: fatigueSignals,
     },
     signals: {
-      bleeders: bleeders.filter((b) => !isPausedProduct(b.adset_id)),
-      consistent_winners: enrichedWinners.filter((w) => !isPausedProduct(w.adset_id)),
-      lp_vs_creative_fatigue: lpFatigueSignals.filter((l) => !isPausedProduct(l.adset_id)),
+      bleeders,
+      consistent_winners: enrichedWinners,
+      lp_vs_creative_fatigue: lpFatigueSignals,
       efficiency_scoring: efficiencyWithRecommendation,
-      ad_diagnostics: adDiagnostics.filter((d) => !isPausedProduct(d.adset_id)),
+      ad_diagnostics: adDiagnostics,
     },
-    action_cards: actionCards.filter((c) => !isPausedProduct(c.adset_id)),
+    action_cards: actionCards,
     strategy,
   });
 }

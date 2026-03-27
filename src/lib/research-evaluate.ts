@@ -74,7 +74,7 @@ export async function evaluateReview(review: {
     messages: [
       {
         role: "user",
-        content: `You are analyzing a customer review of a collagen/beauty supplement brand. Extract insights useful for a COMPETING brand's marketing.
+        content: `You are analyzing a customer review of a health/wellness product brand. Extract insights useful for a COMPETING brand's marketing.
 
 ${reviewContent}
 

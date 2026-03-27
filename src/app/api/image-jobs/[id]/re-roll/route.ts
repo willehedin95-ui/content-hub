@@ -128,7 +128,7 @@ export async function POST(
     // Append product appearance description for faithful product rendering
     let rerollPrompt = originalPrompt;
     if (productHeroUrls.length > 0 && product.ingredients) {
-      rerollPrompt += ` The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`;
+      rerollPrompt += ` The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The product must match the reference images exactly — render the finished product as it appears when sold, not raw materials or components.`;
     }
 
     let resultUrls: string[] | undefined;
