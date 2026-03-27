@@ -261,9 +261,12 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 
   // Build a textual product appearance description for Kie AI prompts
   // This ensures generated product images match the real product's distinctive features
-  const productAppearance = product.ingredients
-    ? `The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`
-    : "";
+  let productAppearance = "";
+  if (product.slug === "happysleep") {
+    productAppearance = `The product is: ${product.name}. Physical appearance: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`;
+  } else if (product.description || product.ingredients) {
+    productAppearance = `The product is: ${product.name}. ${product.description || ""} Key specs: ${product.ingredients || ""}. Show the actual product accurately — refer to the product reference image for the exact appearance.`;
+  }
 
   let job: { id: string };
 
