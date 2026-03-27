@@ -46,13 +46,7 @@ export async function GET(req: NextRequest) {
 
     const multiWs = workspaces.length > 1;
     const allResults: Array<{ workspace: string; result: unknown }> = [];
-    const wsActionResults: Array<{
-      label: string;
-      killActions: Array<{ name: string; reason: string; success: boolean }>;
-      budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean }>;
-      skippedActions: string[];
-      dryRun: boolean;
-    }> = [];
+    const wsActionResults: WsActions[] = [];
 
     for (const workspace of workspaces) {
       const wsId = workspace.id;
@@ -341,13 +335,42 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // --- Pipeline status for digest ---
+    const { data: pipelineJobs } = await db
+      .from("image_jobs")
+      .select("status, launchpad_priority")
+      .eq("workspace_id", wsId)
+      .in("status", ["ready", "completed", "translating", "processing"]);
+
+    const { data: launchpadMarkets } = await db
+      .from("image_job_markets")
+      .select("image_job_id")
+      .not("launchpad_priority", "is", null)
+      .gt("launchpad_priority", 0);
+
+    // Count active ad sets from today's performance data
+    const uniqueActiveAdSets = new Set(
+      (adsetRows ?? [])
+        .filter((r: Record<string, unknown>) => r.date === today)
+        .map((r: Record<string, unknown>) => r.adset_id as string)
+    );
+
+    const pipeline: PipelineStatus = {
+      awaitingApproval: (pipelineJobs ?? []).filter(j => j.status === "ready").length,
+      onLaunchpad: new Set((launchpadMarkets ?? []).map(m => m.image_job_id)).size,
+      inTranslation: (pipelineJobs ?? []).filter(j => j.status === "translating" || j.status === "processing").length,
+      activeAdSets: uniqueActiveAdSets.size,
+    };
+
     // Collect actions for combined digest (sent after workspace loop with morning brief)
     wsActionResults.push({
       label,
+      slug: workspace.slug,
       killActions,
       budgetActions,
       skippedActions,
       dryRun,
+      pipeline,
     });
 
     // --- Auto-iterate fatiguing concepts ---
@@ -419,12 +442,21 @@ export async function GET(req: NextRequest) {
 
 // --- Combined daily digest helpers ---
 
+type PipelineStatus = {
+  awaitingApproval: number;
+  onLaunchpad: number;
+  inTranslation: number;
+  activeAdSets: number;
+};
+
 type WsActions = {
   label: string;
+  slug: string;
   killActions: Array<{ name: string; reason: string; success: boolean }>;
   budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean }>;
   skippedActions: string[];
   dryRun: boolean;
+  pipeline?: PipelineStatus;
 };
 
 function formatAutopilotActions(ws: WsActions): string[] {
@@ -550,6 +582,29 @@ async function sendCombinedDailyDigest(
     console.error("[Daily Digest] Morning brief fetch failed:", err);
     lines.push("☀️ DAILY DIGEST");
     lines.push("⚠️ Morning brief data unavailable");
+    lines.push("");
+  }
+
+  // --- Pipeline status per workspace ---
+  const pipelineWorkspaces = wsActions.filter(ws => ws.pipeline);
+  if (pipelineWorkspaces.length > 0) {
+    lines.push("📦 Pipeline:");
+    for (const ws of pipelineWorkspaces) {
+      const p = ws.pipeline!;
+      const parts: string[] = [];
+      if (p.activeAdSets > 0) parts.push(`${p.activeAdSets} active`);
+      if (p.onLaunchpad > 0) parts.push(`${p.onLaunchpad} on launchpad`);
+      if (p.inTranslation > 0) parts.push(`${p.inTranslation} translating`);
+      if (p.awaitingApproval > 0) parts.push(`⏳ ${p.awaitingApproval} awaiting approval`);
+
+      const prefix = pipelineWorkspaces.length > 1 ? `  [${ws.slug}] ` : "  ";
+      lines.push(`${prefix}${parts.join(" | ")}`);
+
+      // Alert if nothing in pipeline
+      if (p.onLaunchpad === 0 && p.inTranslation === 0 && p.awaitingApproval === 0) {
+        lines.push(`${prefix}⚠️ Pipeline empty — no concepts queued`);
+      }
+    }
     lines.push("");
   }
 
