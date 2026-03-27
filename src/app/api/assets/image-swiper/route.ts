@@ -166,11 +166,16 @@ export async function POST(req: NextRequest) {
       };
 
       // Build Nano Banana JSON prompt: swap competitor product with target product
+      const isUgc = mode === "ugc";
       const nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
           if (subject.is_competitor_product && product) {
-            subject.description = `${product.name} — ${product.description || "premium wellness product"}`;
+            // In UGC mode: minimal description — rely on reference image for appearance
+            // In standard mode: full description for accurate product rendering
+            subject.description = isUgc
+              ? `the ${product.name} bottle (exact appearance from reference image — do NOT generate any text or labels on the bottle)`
+              : `${product.name} — ${product.description || "premium wellness product"}`;
             subject.type = "product";
             delete subject.is_competitor_product;
           } else if (subject.is_competitor_product) {
@@ -183,15 +188,13 @@ export async function POST(req: NextRequest) {
       // Add generation task instruction at the top level
       nanaBananaJson.task = "generate_image";
 
-      const isUgc = mode === "ugc";
-
       const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
 
       let instruction: string;
 
       if (isUgc) {
         // UGC mode — strong authenticity instructions
-        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo.`;
+        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo. CRITICAL: Do NOT generate, invent, or write ANY text on the product bottle — no labels, no descriptions, no ingredient lists. The bottle appearance must come ONLY from the reference images.`;
 
         instruction = product
           ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${ethnicityNote}${ugcBlock}`
