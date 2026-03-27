@@ -14,6 +14,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import UsagePage from "@/app/usage/page";
 import { Settings } from "./components";
 import PagesTab from "./tabs/PagesTab";
@@ -38,13 +39,14 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export default function SettingsPage() {
+  const wsLanguages = useWorkspaceLanguages();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("pages");
   const [settings, setSettings] = useState<Settings>({
     pages_quality_enabled: true,
     static_ads_quality_enabled: true,
     static_ads_economy_mode: false,
-    static_ads_default_languages: ["sv", "da", "no", "de"],
+    static_ads_default_languages: wsLanguages.map((l) => l.value),
     static_ads_default_ratios: ["4:5", "9:16"],
     static_ads_max_retries: 5,
     static_ads_auto_export: false,

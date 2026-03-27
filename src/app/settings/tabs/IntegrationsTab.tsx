@@ -5,6 +5,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { LANGUAGES } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import {
   SettingsCard,
   SectionHeader,
@@ -62,6 +63,7 @@ export default function IntegrationsTab({
   syncCapi,
   fetchCapiStats,
 }: IntegrationsTabProps) {
+  const wsLanguages = useWorkspaceLanguages();
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-900 mb-5">Integrations</h2>
@@ -139,7 +141,7 @@ export default function IntegrationsTab({
           }
         />
         <RowDivider />
-        {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
+        {wsLanguages.filter((l) => l.domain).map((lang, i) => {
           const mid = settings.ga4_measurement_ids[lang.value] || "";
           const pid = (settings.ga4_property_ids ?? {})[lang.value] || "";
           return (
@@ -188,7 +190,7 @@ export default function IntegrationsTab({
           );
         })}
         <RowDivider />
-        {LANGUAGES.filter((l) => l.domain).map((lang, i) => {
+        {wsLanguages.filter((l) => l.domain).map((lang, i) => {
           const cid = settings.clarity_project_ids?.[lang.value] || "";
           return (
             <div key={`clarity-${lang.value}`}>

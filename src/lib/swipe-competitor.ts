@@ -13,6 +13,7 @@
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { getLanguagesByWorkspaceId } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import {
@@ -294,7 +295,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         status: "draft",
         source: "autopilot",
         concept_number: nextConceptNumber,
-        target_languages: ["sv", "da", "no"],
+        target_languages: await getLanguagesByWorkspaceId(workspaceId),
         target_ratios: ["4:5", "9:16"],
         cash_dna: cashDna,
         ad_copy_primary: parsed.concept.ad_copy_primary,

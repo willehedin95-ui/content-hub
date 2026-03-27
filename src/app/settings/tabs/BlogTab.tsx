@@ -8,12 +8,7 @@ import {
 } from "../components";
 import type { SettingsProps } from "../components";
 import type { BlogConfig, BlogLanguageConfig } from "@/lib/blog-shell";
-
-const LANGUAGES = [
-  { code: "sv", label: "Swedish", flag: "🇸🇪" },
-  { code: "da", label: "Danish", flag: "🇩🇰" },
-  { code: "no", label: "Norwegian", flag: "🇳🇴" },
-] as const;
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 
 function getDefaultLangConfig(): BlogLanguageConfig {
   return {
@@ -27,6 +22,7 @@ function getDefaultLangConfig(): BlogLanguageConfig {
 }
 
 export default function BlogTab({ settings, setSettings, saved, handleSave }: SettingsProps) {
+  const LANGUAGES = useWorkspaceLanguages().map((l) => ({ code: l.value, label: l.label, flag: l.flag }));
   const blogConfig: BlogConfig = settings.blog_config ?? {
     primary_color: "#1a365d",
     languages: {},

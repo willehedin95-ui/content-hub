@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
 import { swipeCompetitorAd } from "@/lib/swipe-competitor";
 
 export const maxDuration = 300;
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         product: productSlug,
         status: "draft",
         source: "autopilot",
-        target_languages: ["sv", "da", "no"],
+        target_languages: await getWorkspaceLanguages(),
         target_ratios: ["4:5", "9:16"],
         tags: ["competitor-swipe", "ad-spy"],
         // Store competitor data so the detail page can show it

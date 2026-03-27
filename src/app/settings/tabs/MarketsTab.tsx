@@ -5,6 +5,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { LANGUAGES, COUNTRY_MAP, MetaCampaignMapping, MetaPageConfig, MarketProductUrl } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { useProducts } from "@/hooks/useProducts";
 import Dropdown from "@/components/ui/dropdown";
 import {
@@ -60,6 +61,7 @@ export default function MarketsTab({
   fetchAdSetsForCampaign,
   handleTemplateAdSetChange,
 }: MarketsTabProps) {
+  const wsLanguages = useWorkspaceLanguages();
   const products = useProducts();
   return (
     <>
@@ -71,7 +73,7 @@ export default function MarketsTab({
         </div>
       ) : (
         <div className="space-y-6">
-          {LANGUAGES.filter((l) => l.domain).map((lang) => {
+          {wsLanguages.filter((l) => l.domain).map((lang) => {
             const country = COUNTRY_MAP[lang.value];
             return (
               <div key={lang.value}>

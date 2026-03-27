@@ -70,7 +70,7 @@ async function getAutopilotWorkspaces(
   db: ReturnType<typeof createServerSupabase>,
   slugFilter?: string | null
 ): Promise<WorkspaceCtx[]> {
-  let query = db.from("workspaces").select("id, slug, settings, meta_config");
+  let query = db.from("workspaces").select("id, slug, settings, meta_config, languages");
   if (slugFilter) {
     query = query.eq("slug", slugFilter);
   }
@@ -87,7 +87,7 @@ async function getAutopilotWorkspaces(
       console.warn(`[autopilot-concepts] Workspace ${ws.slug} has no default_product, skipping`);
       continue;
     }
-    const targetLanguages = (s.target_languages as string[]) ?? ["sv", "da", "no"];
+    const targetLanguages = (s.target_languages as string[]) ?? (ws.languages?.length ? ws.languages : ["sv", "da", "no"]);
 
     // Fetch product name for scoring prompt
     const { data: prod } = await db

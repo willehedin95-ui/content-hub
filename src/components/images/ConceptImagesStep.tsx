@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { STATIC_STYLES, REPTILE_TRIGGERS } from "@/lib/constants";
 
@@ -300,6 +301,7 @@ export default function ConceptImagesStep({
   selectedRatio = "4:5",
   setSelectedRatio,
 }: ConceptImagesStepProps) {
+  const wsLanguages = useWorkspaceLanguages();
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
   // Show generate section when job has visual_direction and isn't processing
   const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
@@ -766,7 +768,7 @@ export default function ConceptImagesStep({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
               <div className="flex flex-wrap gap-2">
-                {LANGUAGES.map((lang) => {
+                {wsLanguages.map((lang) => {
                   const selected = selectedLanguages.has(lang.value);
                   return (
                     <label
@@ -1001,7 +1003,7 @@ export default function ConceptImagesStep({
           );
         })}
         {/* Add language button -- only show if there are languages not yet added */}
-        {LANGUAGES.filter((l) => !job.target_languages.includes(l.value)).length > 0 && (
+        {wsLanguages.filter((l) => !job.target_languages.includes(l.value)).length > 0 && (
           <div className="relative ml-1">
             <button
               onClick={() => { setShowAddLang(!showAddLang); setAddLangSelected(new Set()); }}
@@ -1014,7 +1016,7 @@ export default function ConceptImagesStep({
               <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-4 w-64">
                 <p className="text-sm font-medium text-gray-900 mb-3">Add languages</p>
                 <div className="space-y-2 mb-4">
-                  {LANGUAGES.filter((l) => !job.target_languages.includes(l.value)).map((lang) => (
+                  {wsLanguages.filter((l) => !job.target_languages.includes(l.value)).map((lang) => (
                     <label
                       key={lang.value}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${

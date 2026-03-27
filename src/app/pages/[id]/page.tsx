@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Eye, Image, FlaskConical, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspace } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
 import AngleSelector from "@/components/pages/AngleSelector";
@@ -19,7 +19,11 @@ export default async function PageDetailPage({
 }) {
   const { id } = await params;
   const db = createServerSupabase();
-  const workspaceId = await getWorkspaceId();
+  const workspace = await getWorkspace();
+  const workspaceId = workspace.id;
+  const wsLangs = workspace.languages?.length
+    ? LANGUAGES.filter((l) => workspace.languages.includes(l.value))
+    : LANGUAGES;
 
   const { data: page, error } = await db
     .from("pages")
@@ -158,7 +162,7 @@ export default async function PageDetailPage({
           {/* Translation cards */}
           <TranslationPanel
             pageId={p.id}
-            languages={LANGUAGES.filter((lang) => lang.domain)}
+            languages={wsLangs.filter((lang) => lang.domain)}
             translations={p.translations ?? []}
             imagesToTranslate={p.images_to_translate}
             sourceLanguage={p.source_language || "en"}

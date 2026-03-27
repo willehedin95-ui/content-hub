@@ -26,6 +26,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { deriveImageGrade } from "@/lib/quality-grades";
 import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
 import { getSettings } from "@/lib/settings";
@@ -129,6 +130,7 @@ function CollapsibleSection({
 }
 
 export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket, iteratePerf }: Props) {
+  const wsLanguages = useWorkspaceLanguages();
   const router = useRouter();
   const [job, setJob] = useState<ImageJob>(initialJob);
   const [confirmDeleteConcept, setConfirmDeleteConcept] = useState(false);
@@ -366,7 +368,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         }
       }
     } catch {}
-    return new Set(LANGUAGES.map((l) => l.value));
+    return new Set(wsLanguages.map((l) => l.value));
   });
 
   // Fetch landing pages for this product

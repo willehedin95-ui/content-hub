@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
+import { WorkspaceProvider } from "@/components/WorkspaceProvider";
 import { Toaster } from "@/components/ui/sonner";
 import AgentationWrapper from "@/components/ui/AgentationWrapper";
 import { createAuthServerClient } from "@/lib/supabase-server";
@@ -30,15 +31,16 @@ export default async function RootLayout({
   // Load workspaces for the sidebar switcher
   const workspaces = user ? await getAllWorkspaces() : [];
   const activeWorkspaceSlug = user ? await getWorkspaceSlug() : undefined;
+  const activeWs = workspaces.find((w) => w.slug === activeWorkspaceSlug);
 
   return (
     <html lang="en">
       <body className="flex min-h-screen bg-gray-50">
           {user ? (
-            <>
+            <WorkspaceProvider activeLanguages={activeWs?.languages ?? []} slug={activeWs?.slug ?? "happysleep"}>
               <Sidebar userEmail={user.email} workspaces={workspaces} activeWorkspaceSlug={activeWorkspaceSlug} />
               <main className="flex-1 overflow-auto">{children}</main>
-            </>
+            </WorkspaceProvider>
           ) : (
             <main className="flex-1">{children}</main>
           )}

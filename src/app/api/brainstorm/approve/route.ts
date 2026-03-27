@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { generateStaticImages } from "@/lib/generate-static-images";
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         name: proposal.concept_name,
         product,
         status: "draft",
-        target_languages: target_languages ?? ["sv", "da", "no"],
+        target_languages: target_languages ?? await getWorkspaceLanguages(),
         target_ratios: target_ratios ?? ["4:5", "9:16"],
         concept_number: nextNumber,
         tags,

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, ChevronRight, AlertCircle, X, Search, Loader2 } from "lucide-react";
 import { Page, Translation, LANGUAGES, PAGE_TYPES } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { useProducts } from "@/hooks/useProducts";
 import { Trophy, FlaskConical } from "lucide-react";
 import { TagBadge } from "@/components/ui/tag-input";
@@ -37,6 +38,7 @@ function getTranslationUrl(translations: Translation[], lang: string) {
 }
 
 export default function PagesTable({ pages, onImport, testRecords }: { pages: Page[]; onImport?: () => void; testRecords?: Record<string, TestRecord> }) {
+  const wsLanguages = useWorkspaceLanguages();
   const products = useProducts();
   const PRODUCT_MAP = useMemo(() => Object.fromEntries(products.map((p) => [p.value, p.label])), [products]);
   const router = useRouter();
@@ -188,7 +190,7 @@ export default function PagesTable({ pages, onImport, testRecords }: { pages: Pa
               <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">
                 Type
               </th>
-              {LANGUAGES.map((l) => (
+              {wsLanguages.map((l) => (
                 <th
                   key={l.value}
                   className="text-center px-4 py-3 text-muted-foreground font-medium"
@@ -206,7 +208,7 @@ export default function PagesTable({ pages, onImport, testRecords }: { pages: Pa
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={7 + LANGUAGES.length}
+                  colSpan={7 + wsLanguages.length}
                   className="px-4 py-12 text-center text-muted-foreground"
                 >
                   {pages.length === 0 ? (
@@ -286,12 +288,12 @@ export default function PagesTable({ pages, onImport, testRecords }: { pages: Pa
                     {TYPE_MAP[page.page_type]}
                   </span>
                 </td>
-                {LANGUAGES.map((l) => {
+                {wsLanguages.map((l) => {
                   const isImporting = (page as Page & { status?: string }).status === "importing";
                   if (isImporting) {
                     return (
                       <td key={l.value} className="px-4 py-3 text-center">
-                        {l === LANGUAGES[0] ? (
+                        {l === wsLanguages[0] ? (
                           <span className="inline-flex items-center gap-1 text-xs text-indigo-600">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             Importing

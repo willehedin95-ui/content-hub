@@ -97,6 +97,30 @@ export async function getWorkspaceSettings(): Promise<Record<string, unknown>> {
 }
 
 /**
+ * Get the default target languages for the active workspace.
+ * Falls back to ["sv", "da", "no"] if workspace has no languages configured.
+ */
+export async function getWorkspaceLanguages(): Promise<string[]> {
+  const ws = await getWorkspace();
+  return ws.languages?.length ? ws.languages : ["sv", "da", "no"];
+}
+
+/**
+ * Get target languages for a workspace by its ID.
+ * Useful in lib functions that receive workspaceId as a param.
+ */
+export async function getLanguagesByWorkspaceId(workspaceId: string): Promise<string[]> {
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("workspaces")
+    .select("languages")
+    .eq("id", workspaceId)
+    .single();
+  const langs = data?.languages as string[] | null;
+  return langs?.length ? langs : ["sv", "da", "no"];
+}
+
+/**
  * Clear the workspace cache. Call after modifying workspaces.
  */
 export function clearWorkspaceCache() {

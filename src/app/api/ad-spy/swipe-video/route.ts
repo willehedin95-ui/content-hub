@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
 import { swipeCompetitorVideo } from "@/lib/swipe-competitor-video";
 
 export const maxDuration = 300;
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
         status: "draft",
         source: isManual ? "manual" : "autopilot",
         pipeline_mode: "multi_clip",
-        target_languages: ["sv", "da", "no"],
+        target_languages: await getWorkspaceLanguages(),
         max_shots: 4,
         reuse_first_frame: true,
         swipe_progress: { step: "queued", message: "Waiting to start..." },

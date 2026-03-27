@@ -6,7 +6,7 @@ import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { generateImage } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -329,7 +329,7 @@ export async function POST(req: NextRequest) {
             name: parsed.concept.concept_name,
             product: productSlug,
             status: "draft",
-            target_languages: ["sv", "da", "no"],
+            target_languages: await getWorkspaceLanguages(),
             target_ratios: ["4:5", "9:16"],
             concept_number: nextNumber,
             tags,

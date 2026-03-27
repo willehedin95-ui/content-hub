@@ -3,22 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ExternalLink, Globe, FileText, ChevronDown, LayoutTemplate } from "lucide-react";
-import type { Page, Translation, Language, LANGUAGES as LangType } from "@/types";
+import type { Page, Translation, Language } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { BLOG_TEMPLATES } from "@/lib/blog-templates";
 import BlogAnalytics from "./BlogAnalytics";
 import KeywordResearch from "./KeywordResearch";
-
-const LANGUAGES: { value: Language; label: string; flag: string }[] = [
-  { value: "sv", label: "Swedish", flag: "🇸🇪" },
-  { value: "da", label: "Danish", flag: "🇩🇰" },
-  { value: "no", label: "Norwegian", flag: "🇳🇴" },
-];
 
 interface Props {
   pages: (Page & { translations?: Pick<Translation, "id" | "language" | "status" | "published_url" | "seo_title">[] })[];
 }
 
 export default function BlogPagesClient({ pages }: Props) {
+  const LANGUAGES = useWorkspaceLanguages();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");

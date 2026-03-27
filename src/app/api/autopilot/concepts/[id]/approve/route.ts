@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 
@@ -76,7 +76,7 @@ export async function POST(
 
     // Create/update market records
     const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
-    const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
+    const targetLangs = (job.target_languages as string[]) ?? await getWorkspaceLanguages();
 
     const now = new Date().toISOString();
     for (const lang of targetLangs) {

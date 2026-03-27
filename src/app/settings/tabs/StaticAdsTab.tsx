@@ -1,6 +1,7 @@
 "use client";
 
 import { LANGUAGES, ASPECT_RATIOS } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import {
   SettingsCard,
   SectionHeader,
@@ -12,6 +13,7 @@ import {
 import type { SettingsProps } from "../components";
 
 export default function StaticAdsTab({ settings, setSettings, saved, handleSave }: SettingsProps) {
+  const wsLanguages = useWorkspaceLanguages();
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-900 mb-5">Static Ads</h2>
@@ -43,7 +45,7 @@ export default function StaticAdsTab({ settings, setSettings, saved, handleSave 
           description="Pre-selected when creating new concepts"
           action={
             <div className="flex gap-1.5">
-              {LANGUAGES.map((lang) => {
+              {wsLanguages.map((lang) => {
                 const selected = settings.static_ads_default_languages.includes(lang.value);
                 return (
                   <button

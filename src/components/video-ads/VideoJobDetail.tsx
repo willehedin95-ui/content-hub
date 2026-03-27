@@ -32,6 +32,7 @@ import {
   ConceptCopyTranslations,
   ConceptCopyTranslation,
 } from "@/types";
+import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { VIDEO_FORMATS, HOOK_TYPES, SCRIPT_STRUCTURES } from "@/lib/constants";
 import MultiClipPipeline from "./MultiClipPipeline";
 import ConceptStepper, { StepDef } from "@/components/images/ConceptStepper";
@@ -41,8 +42,6 @@ const LANG_META: Record<string, { label: string; flag: string }> = {
   no: { label: "NO", flag: "\u{1F1F3}\u{1F1F4}" },
   da: { label: "DA", flag: "\u{1F1E9}\u{1F1F0}" },
 };
-
-const ALL_LANGUAGES: Language[] = ["sv", "no", "da"];
 
 interface Props {
   initialJob: VideoJob;
@@ -146,6 +145,7 @@ function computeCurrentStep(j: VideoJob, ct: ConceptCopyTranslations): number {
 }
 
 export default function VideoJobDetail({ initialJob }: Props) {
+  const ALL_LANGUAGES: Language[] = useWorkspaceLanguages().map((l) => l.value);
   const [job, setJob] = useState<VideoJob>(initialJob);
   const [showPrompt, setShowPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -11,6 +11,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { getLanguagesByWorkspaceId } from "@/lib/workspace";
 import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import { callGeminiVideo, createImageTask, pollTaskResult } from "@/lib/kie";
 import {
@@ -463,7 +464,7 @@ Return ONLY valid JSON. No markdown fences.`;
         pipeline_mode: "multi_clip",
         max_shots: proposal.shots.length,
         reuse_first_frame: true,
-        target_languages: ["sv", "da", "no"],
+        target_languages: await getLanguagesByWorkspaceId(workspaceId),
       })
       .select("id")
       .single();
