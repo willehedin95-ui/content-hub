@@ -992,24 +992,24 @@ ${productContext}
 
 The IMAGE is the most important element of a native ad. It must stop the scroll by being WEIRD, RANDOM, or UNCOMFORTABLE — NOT by being polished or pretty. The image must make someone think "wait, what?" or "ugh" or "that's so me" — never "oh that's an ad."
 
-You're competing against the article someone was just reading. Your image must be MORE INTERESTING than that article's images. A product shot loses every time. A stained pillow on a lab bench wins.
+You're competing against the article someone was just reading. Your image must be MORE INTERESTING than that article's images. A product shot loses every time. A provocative, unexpected image wins.
 
 IMAGE IDEA PRINCIPLES:
-- The image should feel RANDOM and DISCONNECTED from the product. A yellowed pillow cut open on a lab bench. A fridge interior with supplements next to pizza boxes. Hands gripping a steering wheel at 3 AM. A woman at a birthday party shielding her eyes while everyone else laughs.
+- The image should feel RANDOM and DISCONNECTED from the product. A fridge interior with supplements next to pizza boxes. Hands gripping a steering wheel at 3 AM. A woman at a birthday party shielding her eyes while everyone else laughs. A bathroom counter with 6 half-empty bottles lined up. A close-up of skin texture under harsh fluorescent light.
 - The weirder and more unexpected, the better. If it makes you uncomfortable, it probably converts.
-- Images should create a question the viewer can't answer without clicking: "why is there a pillow on a lab bench?" "what's wrong with her at that party?"
+- Images should create a question the viewer can't answer without clicking: "what's wrong with her at that party?" "why are there so many bottles?"
 - NEVER describe the product or solution in the image. The image shows the PROBLEM or a RANDOM provocative scene.
 
 THE IMAGE-HEADLINE RELATIONSHIP (CRITICAL):
 Image and headline do TWO DIFFERENT JOBS:
 - IMAGE → creates an emotion or unanswered question (recognition, disgust, curiosity)
 - HEADLINE → answers it halfway, opens a DIFFERENT curiosity gap you can only close by clicking
-If image shows stained pillow and headline says "dirty pillows cause health problems" — FAIL. Same message twice.
-Instead: image = stained pillow ("ugh, is mine like that?") → headline = "The nighttime habit aging your skin 10 years faster" (DIFFERENT question).
+If image shows a bathroom counter full of products and headline says "you're using too many products" — FAIL. Same message twice.
+Instead: image = bathroom counter chaos ("ugh, that's my counter") → headline = "The daily habit that's actually making your skin worse" (DIFFERENT question).
 
 Visual direction MUST specify which native image type AND describe a SPECIFIC, WEIRD image idea:
 1. native-medical — anatomical diagrams, X-ray scans, vintage anatomical plates on aged parchment, microscopy, heat maps, CT scans, comic/graphic novel panels. Looks like it came from WebMD or a medical textbook.
-2. native-closeup — disgusting objects on lab benches, exhaustion portraits under harsh fluorescent, hands close-ups (gripping steering wheel, pressing temples), emotional isolation (suffering while others are fine), metaphorical objects (ice pack shaped like pillow). Raw, visceral, involuntary attention.
+2. native-closeup — disgusting/provocative objects on lab benches, exhaustion portraits under harsh fluorescent, hands close-ups (gripping steering wheel, pressing temples), emotional isolation (suffering while others are fine), metaphorical objects (unexpected visual that creates cognitive dissonance). Raw, visceral, involuntary attention.
 3. native-messy — cluttered nightstands, kitchen counters with vitamin chaos, bathroom shelves, car dashboards at commute time, desk flat-lays telling exhaustion stories, purse dumps, fridge interiors showing intention-vs-reality. Looks like someone's actual phone photo.
 
 BAD visual direction: "Medical illustration of spine alignment" (generic, boring)
@@ -1020,17 +1020,17 @@ GOOD visual direction: "native-messy: Overhead flat-lay of a bathroom counter at
 
 ## CONCEPT PHILOSOPHY FOR NATIVE ADS
 
-Native ad concepts are NOT traditional ad campaigns with a catchy name. They are ANGLES OF ATTACK — a specific belief to shift, a curiosity to exploit, a worldview to tap. The concept should answer: "What weird image + editorial headline combination will make someone who isn't looking for a pillow click on this?"
+Native ad concepts are NOT traditional ad campaigns with a catchy name. They are ANGLES OF ATTACK — a specific belief to shift, a curiosity to exploit, a worldview to tap. The concept should answer: "What weird image + editorial headline combination will make someone who isn't looking for ${product.name} click on this?"
 
 Think like a tabloid editor, not an ad creative director. What headline would make someone click on a health blog article? What image next to that headline would make it irresistible?
 
 Your concept names should reflect the ANGLE, not sound like ad campaigns:
-BAD concept names: "The Bedroom Murder Mystery", "Sleep Revolution", "The Comfort Promise"
-GOOD concept names: "Positional Escape Behavior", "The Pillow Autopsy", "Cervical Countdown"
+BAD concept names: "The Ultimate Solution", "Health Revolution", "The Comfort Promise"
+GOOD concept names: "The Supplement Autopsy", "Absorption Paradox", "The Kitchen Counter Audit"
 
 Your hooks should be things real people would click on in a news feed:
-BAD hooks: "Your body moves 40-60 times per night trying to escape something" (still sounds like an ad)
-GOOD hooks: "Sleep researchers have a name for what your body does at 3 AM. It's not pretty.", "The concerning thing that happens to your neck after 7 years on the same pillow"
+BAD hooks: "Our product is the best solution for your problem" (sounds like an ad)
+GOOD hooks: "Dermatologists in Seoul have been recommending this since 2019. Scandinavia just caught on.", "The concerning thing that happens to your body after 40 (and why your morning routine won't fix it)"
 
 ${HEADLINE_FORMULAS}
 
@@ -1111,12 +1111,18 @@ ${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
 // From Competitor Ad — Claude Vision analysis + Nano Banana prompt generation
 // ---------------------------------------------------------------------------
 
-const PAIN_POINT_LABELS: Record<string, string> = {
-  "neck-pain": "NECK PAIN — morning stiffness, chronic pain, failed pillow treatments, cervical support",
-  "snoring": "SNORING — partner relationship destruction, kinked airway, breathing problems during sleep",
-  "sleep-quality": "SLEEP QUALITY — poor rest, fatigue, tossing and turning, waking up unrested",
-  "general": "GENERAL PRODUCT BENEFITS — comfort, materials, quality, value, guarantee, social proof",
-};
+function buildPainPointLabels(segments: ProductSegment[]): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const seg of segments) {
+    const slug = seg.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const desc = [seg.name.toUpperCase()];
+    if (seg.core_desire) desc.push(seg.core_desire);
+    if (seg.core_constraints) desc.push(seg.core_constraints);
+    labels[slug] = desc.join(" — ");
+  }
+  labels["general"] = "GENERAL PRODUCT BENEFITS — overall value, quality, results, guarantee, social proof";
+  return labels;
+}
 
 function buildFromCompetitorAdSystem(
   product: ProductFull,
@@ -1181,23 +1187,26 @@ Map the competitor ad to the CASH framework:
 ### 4. ADAPTED CONCEPT GENERATION
 Create an original concept for OUR product that:
 - Reproduces the SAME visual format and persuasion STRUCTURE (e.g. testimonial style, before/after, UGC selfie, zoomed-in detail shot)
-- **CRITICAL: The adapted concept MUST be about OUR product's actual problem domain and benefits.** Do NOT keep the competitor's problem/solution angle. If the competitor sells a beauty supplement and talks about "cortisol face" or "jawline", you must NOT write beauty-related hooks for a pillow. Instead, map the persuasion structure to HappySleep's real benefits: better sleep, reduced snoring, neck/shoulder pain relief, waking up refreshed, etc.
+- **CRITICAL: The adapted concept MUST be about OUR product's actual problem domain and benefits.** Do NOT keep the competitor's problem/solution angle. Map the persuasion structure to ${product.name}'s real benefits and problem domain as described in the PRODUCT KNOWLEDGE section above.
 - The competitor's specific health claims, ingredients, and problem domain are IRRELEVANT to us — only their ad FORMAT and persuasion MECHANICS matter
 - Does NOT copy the competitor's specific claims or brand elements
-- Think: "What would this exact visual format look like if it was always about a pillow that fixes sleep problems?" — NOT "How can I loosely connect the competitor's beauty angle to a pillow?"
+- Think: "What would this exact visual format look like if it was about ${product.name} and the problems it solves?" — NOT "How can I loosely connect the competitor's angle to our product?"
 - Maintains the emotional energy of the original while being completely original in content and problem domain
 
-${painPoint && painPoint !== "auto-detect" && PAIN_POINT_LABELS[painPoint]
-  ? `### MANDATORY PAIN POINT FOCUS
+${(() => {
+  const ppLabels = buildPainPointLabels(segments);
+  const segmentNames = segments.map(s => s.name).join(", ");
+  if (painPoint && painPoint !== "auto-detect" && ppLabels[painPoint]) {
+    return `### MANDATORY PAIN POINT FOCUS
 
-**You MUST focus ALL hooks, copy, and messaging on this single pain point: ${PAIN_POINT_LABELS[painPoint]}.**
+**You MUST focus ALL hooks, copy, and messaging on this single pain point: ${ppLabels[painPoint]}.**
 
-Do NOT mix multiple pain points. Every hook, headline, and ad copy text must be about this one angle. If the competitor ad addresses a different problem, map their persuasion structure to THIS pain point specifically.
+Do NOT mix multiple pain points. Every hook, headline, and ad copy text must be about this one angle. If the competitor ad addresses a different problem, map their persuasion structure to THIS pain point specifically.`;
+  }
+  return `### PAIN POINT SELECTION
 
-For example, if the pain point is "snoring" and the competitor ad uses a before/after format about skincare, your adapted concept must use the same before/after format but about snoring — not about neck pain, not about sleep quality, ONLY about snoring.`
-  : `### PAIN POINT SELECTION
-
-Choose the SINGLE most natural pain point for this competitor ad's persuasion structure. Pick ONE from: neck pain, snoring, sleep quality, or general product benefits. Do NOT mix multiple pain points in the same concept. All hooks, headlines, and ad copy must focus on that one chosen angle.`}
+Choose the SINGLE most natural pain point for this competitor ad's persuasion structure. Pick ONE from: ${segmentNames || "general product benefits"}. Do NOT mix multiple pain points in the same concept. All hooks, headlines, and ad copy must focus on that one chosen angle.`;
+})()}
 
 ### AD COPY ADAPTATION
 
@@ -1302,7 +1311,7 @@ CRITICAL RULES:
 - Write ALL copy in ENGLISH (translations happen later)
 - NEVER copy the competitor's specific claims, brand name, or product references
 - NEVER invent medical claims — only use claims from our product brief
-- **NEVER keep the competitor's problem domain.** If the competitor ad is about beauty/skincare/supplements/weight loss/fitness — the adapted hooks MUST be about sleep, snoring, neck pain, or whatever OUR product actually solves. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
+- **NEVER keep the competitor's problem domain.** The adapted hooks MUST be about what ${product.name} actually solves — refer to the PRODUCT KNOWLEDGE section for the real benefits and problem domain. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
 - The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle
 - The competitor image is NOT passed to Nano Banana — your prompt must fully describe the desired image on its own
 - **NATIVE ADS — DO NOT ADD PRODUCT**: If the competitor ad is a native/UGC-style image (person at doctor, selfie, lifestyle scene, medical setting, illustrated scene, etc.) where NO physical product is visible, your Nano Banana prompt must NOT mention or describe our product. The image should look organic — NOT an ad. Set \`include_product_reference: false\` for these. Only set it to true if the competitor ad itself prominently shows a physical product that needs to be swapped with ours.

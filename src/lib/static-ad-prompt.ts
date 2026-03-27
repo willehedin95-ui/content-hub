@@ -184,8 +184,8 @@ The native ad has 3 components, each with ONE job:
 - CLICK → the advertorial does the actual selling
 
 **CRITICAL: The image and headline must do TWO DIFFERENT JOBS.**
-If your image shows a stained pillow and your headline says "dirty pillows cause health problems" — you've wasted the click. They're saying the same thing.
-Instead: Image shows the stained pillow (creates "ugh, is mine like that?") → Headline says "The nighttime habit aging your skin 10 years faster (it's not sugar)" (creates a DIFFERENT question they need answered).
+If your image shows a bathroom counter full of products and your headline says "you use too many products" — you've wasted the click. They're saying the same thing.
+Instead: Image shows the cluttered counter (creates "ugh, that looks like mine") → Headline says "The daily habit that's actually making things worse (it's not what you think)" (creates a DIFFERENT question they need answered).
 The image creates recognition. The headline redirects to curiosity. The click fills the gap.
 
 The open web is a READING ENVIRONMENT. When someone reads an article on CNN or a health blog, their brain is in "information processing" mode. An editorial-looking image fits that mode. A product shot breaks it. Your native image must look like it belongs in the article the reader was just reading.
@@ -294,28 +294,28 @@ For MEDICAL/SCIENTIFIC styles: [SUBJECT with anatomical precision] + [rendering 
   F) INFOGRAPHIC DIAGRAM — Clean educational diagram with arrows, labels, comparison panels. Split views (healthy vs damaged), process flows, annotated body maps. Light background, thin lines, serif labels. STYLE SUFFIX: "clean educational infographic, minimal design, thin precise lines"
   G) VINTAGE ANATOMICAL PLATE — 19th century copperplate engraving on heavily aged parchment with foxing marks, water stains, yellowed edges, deep creases, frayed corners. Cross-hatching and stippling. Muted earth tones: sepia ink, faded oxidized blood-red washes, dull ochre. Hand-lettered LATIN labels (use real anatomical Latin terms like "VENA FEMORALIS", "NERVUS CERVICALIS"). Title banner in Latin. STYLE SUFFIX: "19th century copperplate engraving, hand-colored antique anatomical plate, coarse tactile parchment texture"
   H) HEAT MAP OVERLAY — Thermal imaging showing hot/cold zones on body. Red = pain/pressure, blue = relief. Clinical and immediately readable. STYLE SUFFIX: "thermal imaging photography, infrared heat map overlay"
-  SCENE SUBJECTS (combine with any media type — pick the subject that matches the HOOK):
-  - Cervical spine alignment (sleeping posture comparison)
-  - Pressure point distribution (head/neck on pillow)
-  - Sleep architecture chart (fragmented vs healthy sleep cycles)
-  - Nerve pathway diagram (neck through shoulders/arms)
-  - Airway cross-section (obstruction causing snoring)
-  - Muscle fiber inflammation close-up
-  - Brain activity during disrupted sleep
-  - Spinal disc compression stages
+  SCENE SUBJECTS (combine with any media type — pick the subject that matches the HOOK and the PRODUCT being advertised):
+  - Anatomical cross-section relevant to the product's benefit area
+  - Cellular or molecular view of the mechanism the product addresses
+  - Before/after comparison at tissue level (damaged vs healthy)
+  - Nutrient absorption pathway or bioavailability diagram
+  - Inflammation or degradation close-up at microscopic level
+  - Organ or tissue system diagram showing the problem
+  - Aging process visualization at cellular/structural level
+  - Body system comparison (healthy vs compromised state)
 
 - native-closeup: Raw close-up photography OR provocative object photography that triggers involuntary attention. The key is PATTERN INTERRUPT — the image must make people stop scrolling because it's unexpected, visceral, or uncomfortably relatable. NO product, NO branding. Must pass the "is this an ad?" test. Mild disgust is a feature, not a bug — it's involuntary, you can't NOT look.
 
   SCENE CONSTRUCTION — combine one element from each dimension to create a UNIQUE scene. You are NOT limited to the examples below — invent new combinations freely. The goal is that no two images EVER share the same composition.
 
-  DIMENSION 1 — SUBJECT TYPE (what the image focuses on):
-  - Disgusting/provocative object (stained pillow, yellowed mattress pad, moldy food, bruised fruit on lab bench, hair-clogged drain)
-  - Exhaustion portrait (face showing the toll — dark circles, sleep creases, bloodshot eyes, pillow marks, no makeup)
-  - Hands close-up (gripping steering wheel white-knuckled, massaging own neck, holding phone at 3 AM, opening third pill bottle, pressing temples)
-  - Body part suffering (swollen knee with brace, cracked dry heels, red irritated eyes, tensed shoulder muscles, bruised shin)
-  - Metaphorical object (something unexpected creating cognitive dissonance — hourglass filled with tiny pillows, ice pack molded into pillow shape, neck brace hanging on bedroom door hook)
+  DIMENSION 1 — SUBJECT TYPE (what the image focuses on — adapt to the PRODUCT being advertised):
+  - Disgusting/provocative object (expired supplements on lab bench, yellowed product packaging, moldy food, bruised fruit, hair-clogged drain, crusty residue on bottles)
+  - Exhaustion/aging portrait (face showing the toll — dark circles, dull skin, bloodshot eyes, fine lines, no makeup, harsh light revealing texture)
+  - Hands close-up (gripping steering wheel white-knuckled, opening third pill bottle, pressing temples, scrolling health articles at 3 AM, examining own skin)
+  - Body part showing the issue (dry cracked skin, thinning hair, swollen joints, red irritated eyes, visible signs of aging or neglect)
+  - Metaphorical object (something unexpected creating cognitive dissonance — hourglass filled with supplements, measuring tape around an empty bottle, bathroom mirror with post-it notes)
   - Person in emotional isolation (suffering while others around them are fine — the contrast IS the story)
-  - Evidence/aftermath (twisted sheets, rejected pillows on floor, overflowing medicine cabinet, collection of failed products)
+  - Evidence/aftermath (overflowing medicine cabinet, collection of failed products, bathroom counter chaos, supplement graveyard drawer)
   - Intimate private moment (someone caught in a vulnerable state they'd never share publicly)
 
   DIMENSION 2 — FRAMING/COMPOSITION:
@@ -428,7 +428,7 @@ For MEDICAL/SCIENTIFIC styles: [SUBJECT with anatomical precision] + [rendering 
   - Celebration selfie (genuine joy, rested face, natural glow, mirror selfie)
   - Relationship restored (couple moment, intimacy, playfulness, laughing together)
   - Morning joy (easy morning, no struggle, fresh face, calm routine)
-  - Before/after objects (old flat pillow next to pristine new one, empty medicine cabinet)
+  - Before/after objects (cabinet full of failed products vs single product, old vs new routine)
   - Social reconnection (out with friends, energetic, present, not hiding)
   - Small victory moment (that first good morning, the alarm going off and feeling rested)
 
@@ -465,8 +465,8 @@ Use ONLY the styles listed in "STYLES TO USE" — they are already filtered for 
 
 - **HOOK TEXT RULES FOR NATIVE ADS** (CRITICAL):
   Hook text should read like an editorial headline that creates a curiosity gap the reader can only close by clicking.
-  BAD: "This supplement helps with sleep" (no gap, reader knows the answer)
-  GOOD: "The unusual bedtime habit that's helping thousands fall asleep in under 8 minutes" (NEED to know)
+  BAD: "This product helps with your health" (no gap, reader knows the answer)
+  GOOD: "The unusual daily habit that's helping thousands look 10 years younger (it takes 30 seconds)" (NEED to know)
 
   MASTER HEADLINE FORMULA: [Specific detail] + [unexpected connection] + [implied secret]
   Example: "The 3pm craving that's secretly adding 600 calories to your day (it's not sugar)"
@@ -495,7 +495,7 @@ Use ONLY the styles listed in "STYLES TO USE" — they are already filtered for 
   - Historical: Ancient Egyptians, Victorian doctors, pre-industrial societies
   - Elite Performer: Navy SEALs, Olympic athletes, elite surgeons, biohackers
 
-  ANTI-PATTERN: Direct benefit claims = worst performers. "This product helps with sleep" loses to curiosity hooks EVERY time. Never sell in the headline — create a question the reader must click to answer.
+  ANTI-PATTERN: Direct benefit claims = worst performers. "This product helps with your problem" loses to curiosity hooks EVERY time. Never sell in the headline — create a question the reader must click to answer.
 
   ANTI-AI VOICE RULES for hooks and headlines:
   - No triads (groups of three: "powerful, effective, and natural")
@@ -700,7 +700,7 @@ function buildBriefUserPrompt(opts: {
   if (isNativeConcept) {
     lines.push(`\nNATIVE AD INSTRUCTIONS (this is an Unaware/native concept):`);
     lines.push(`- For native-* styles, the hook text MUST read like an editorial headline that opens a curiosity gap`);
-    lines.push(`- BAD hook: "This pillow helps with neck pain" (no gap) → GOOD hook: "The concerning reason neck pain gets worse for women after 40"`);
+    lines.push(`- BAD hook: "This product helps with your problem" (no gap) → GOOD hook: "The concerning reason most women's routines stop working after 40"`);
     lines.push(`- Images must pass the "Is this an ad?" test — if it looks like an ad, it fails`);
     lines.push(`- referenceStrategy MUST be "none" for all native-* styles`);
     lines.push(`- Think WebMD articles, medical textbooks, someone's messy bathroom phone photo, scientific documentation — NOT polished advertising`);
