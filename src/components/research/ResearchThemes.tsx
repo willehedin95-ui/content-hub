@@ -11,6 +11,7 @@ import {
   Download,
   ArrowUpDown,
   Database,
+  Users,
 } from "lucide-react";
 
 interface Theme {
@@ -27,14 +28,14 @@ interface Theme {
   last_seen_at: string;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  pain_point: { label: "Pain Point", color: "text-red-600" },
-  desire: { label: "Desire", color: "text-green-600" },
-  objection: { label: "Objection", color: "text-amber-600" },
-  competitor_weakness: { label: "Competitor Weakness", color: "text-purple-600" },
-  trend: { label: "Trend", color: "text-blue-600" },
-  language_pattern: { label: "Language Pattern", color: "text-indigo-600" },
-  pattern: { label: "Pattern", color: "text-gray-600" },
+const TYPE_CONFIG: Record<string, { label: string; color: string; emoji: string }> = {
+  pain_point: { label: "Pain Point", color: "text-red-600", emoji: "😣" },
+  desire: { label: "Desire", color: "text-green-600", emoji: "✨" },
+  objection: { label: "Objection", color: "text-amber-600", emoji: "👋" },
+  competitor_weakness: { label: "Competitor Weakness", color: "text-purple-600", emoji: "🎯" },
+  trend: { label: "Trend", color: "text-blue-600", emoji: "📈" },
+  language_pattern: { label: "Language Pattern", color: "text-indigo-600", emoji: "💬" },
+  pattern: { label: "Pattern", color: "text-gray-600", emoji: "🔍" },
 };
 
 type SortKey = "evidence" | "recent";
@@ -141,14 +142,19 @@ export default function ResearchThemes() {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white border border-gray-200 rounded-lg p-4 animate-pulse">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="h-5 bg-gray-200 rounded w-40" />
-              <div className="h-5 bg-gray-200 rounded w-20" />
-              <div className="h-5 bg-gray-200 rounded w-16" />
+          <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
+            <div className="flex items-start gap-4">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg flex-shrink-0" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="h-4 bg-gray-200 rounded w-20" />
+                  <div className="h-4 bg-gray-200 rounded w-24" />
+                </div>
+                <div className="h-5 bg-gray-200 rounded w-56 mb-2" />
+                <div className="h-4 bg-gray-100 rounded w-full mb-1" />
+                <div className="h-4 bg-gray-100 rounded w-2/3" />
+              </div>
             </div>
-            <div className="h-4 bg-gray-200 rounded w-full mb-1" />
-            <div className="h-4 bg-gray-200 rounded w-2/3" />
           </div>
         ))}
       </div>
@@ -253,39 +259,42 @@ export default function ResearchThemes() {
               return (
                 <div
                   key={t.id}
-                  className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                  className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 transition-colors"
                 >
                   <button
                     className="w-full text-left"
                     onClick={() => toggleExpand(t.id)}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {isExpanded ? (
-                            <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                          )}
-                          <h3 className="font-medium text-gray-900">{t.name}</h3>
+                    <div className="flex items-start gap-4">
+                      <span className="text-2xl flex-shrink-0 mt-0.5">
+                        {typeCfg?.emoji ?? "📋"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
                           <span
-                            className={`text-xs font-medium ${typeCfg?.color ?? "text-gray-500"}`}
+                            className={`text-xs font-semibold ${typeCfg?.color ?? "text-gray-500"}`}
                           >
                             {typeCfg?.label ?? t.theme_type.replace(/_/g, " ")}
                           </span>
+                          <span className="flex items-center gap-1.5 text-sm text-gray-500 flex-shrink-0">
+                            <Users className="w-4 h-4" />
+                            {t.evidence_count} mentions
+                          </span>
                         </div>
+                        <h3 className="font-semibold text-gray-900 text-base mb-1">
+                          {t.name}
+                        </h3>
                         {t.description && (
-                          <p className="text-sm text-gray-600 mb-0 ml-6">{t.description}</p>
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            {t.description}
+                          </p>
                         )}
                       </div>
-                      <span className="text-sm font-mono text-gray-500 ml-4 flex-shrink-0">
-                        {t.evidence_count} mentions
-                      </span>
                     </div>
                   </button>
 
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 space-y-3 ml-6">
+                    <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 ml-12">
                       {t.copy_implications && (
                         <div>
                           <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
