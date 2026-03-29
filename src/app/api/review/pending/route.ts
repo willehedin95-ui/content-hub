@@ -36,6 +36,7 @@ export async function GET() {
     .in("source", ["autopilot", "competitor_swipe"])
     .is("launchpad_priority", null)
     .is("archived_at", null)
+    .neq("status", "draft")
     .order("created_at", { ascending: false })
     .limit(30);
 
@@ -51,6 +52,7 @@ export async function GET() {
     .not("iteration_of", "is", null)
     .is("launchpad_priority", null)
     .is("archived_at", null)
+    .neq("status", "draft")
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -138,6 +140,8 @@ export async function GET() {
 
   for (const v of pendingVideos ?? []) {
     const shots = (v.video_shots as Array<{ id: string; shot_number: number; image_url: string | null }>) ?? [];
+    const shotsWithImages = shots.filter((s) => s.image_url);
+    if (shotsWithImages.length === 0) continue; // Skip videos with no keyframe images
     const ws = wsMap.get(v.workspace_id) ?? { name: "Unknown", slug: "unknown" };
     items.push({
       id: v.id,
