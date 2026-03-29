@@ -403,7 +403,17 @@ export async function pushVideoToMeta(
   // Strip leading "#XXX " prefix from concept name to avoid duplication in ad set name
   const conceptName = (job.concept_name ?? "video").replace(/^#\d+\s*/, "").toLowerCase();
 
-  // Prevent duplicate pushes — reject if there's already a push in progress
+  // Prevent duplicate pushes — reject if there's a recent push in progress
+  // Auto-expire stale "pushing" states older than 30 minutes (from crashed pushes)
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  await db
+    .from("meta_campaigns")
+    .update({ status: "failed", error_message: "Push timed out (stale pushing state auto-expired)" })
+    .eq("workspace_id", wsId)
+    .eq("video_job_id", videoJobId)
+    .eq("status", "pushing")
+    .lt("created_at", thirtyMinAgo);
+
   const { data: activePush } = await db
     .from("meta_campaigns")
     .select("id")

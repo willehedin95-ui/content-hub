@@ -110,7 +110,17 @@ export async function pushConceptToMeta(
     throw new Error("Landing page is required");
   }
 
-  // Prevent duplicate pushes — reject if there's already a push in progress for this concept
+  // Prevent duplicate pushes — reject if there's a recent push in progress for this concept
+  // Auto-expire stale "pushing" states older than 30 minutes (from crashed pushes)
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  await db
+    .from("meta_campaigns")
+    .update({ status: "failed", error_message: "Push timed out (stale pushing state auto-expired)" })
+    .eq("workspace_id", wsId)
+    .eq("image_job_id", jobId)
+    .eq("status", "pushing")
+    .lt("created_at", thirtyMinAgo);
+
   const { data: activePush } = await db
     .from("meta_campaigns")
     .select("id")
