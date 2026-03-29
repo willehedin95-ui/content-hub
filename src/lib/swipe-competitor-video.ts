@@ -617,6 +617,7 @@ Return ONLY valid JSON. No markdown fences.`;
         `Shots: ${proposal.shots.length} | Images: ${shotImagesGenerated}/${proposal.shots.length}`,
         ``,
         `${hubUrl}/video-ads/${videoJobId}`,
+        `Review: ${hubUrl}/review?highlight=${videoJobId}`,
       ].join("\n");
 
       const buttons = [

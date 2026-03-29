@@ -92,11 +92,13 @@ export async function detectAndIterateFatiguingConcepts(
 
     // Step 6: Send Telegram notification
     if (chatId) {
+      const hubUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
       const caption = [
         `🔄 Creative refresh for #${target.conceptNumber ?? "?"}: "${target.jobName}"`,
         ``,
         `Reason: ${target.reason}`,
         `${result.imageCount} new images generated`,
+        `Review: ${hubUrl}/review?highlight=${target.jobId}`,
       ].join("\n");
 
       const buttons = [[

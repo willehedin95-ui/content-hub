@@ -13,6 +13,15 @@ import {
   editMessageCaption,
 } from "@/lib/telegram";
 import { getCampaignBudget, updateCampaign, listCampaigns } from "@/lib/meta";
+import {
+  approveConceptAction,
+  rejectConceptAction,
+  approveVideoAction,
+  rejectVideoAction,
+  approveIterationAction,
+  rejectIterationAction,
+  approveTranslationsAction,
+} from "@/lib/approval-actions";
 
 export const maxDuration = 300;
 
@@ -375,44 +384,36 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
     } else if (data.startsWith("concept_approve:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Approving concept...");
-      await approveAutopilotConcept(chatId, messageId, jobId);
+      await approveAutopilotConceptHandler(chatId, messageId, jobId);
     } else if (data.startsWith("concept_reject:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Concept rejected");
-      await rejectAutopilotConcept(chatId, messageId, jobId);
+      await rejectAutopilotConceptHandler(chatId, messageId, jobId);
     } else if (data.startsWith("video_approve:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Approving video concept...");
-      await approveVideoConceptTelegram(chatId, messageId, jobId);
+      await approveVideoConceptHandler(chatId, messageId, jobId);
     } else if (data.startsWith("video_reject:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Video concept rejected");
-      await rejectVideoConceptTelegram(chatId, messageId, jobId);
+      await rejectVideoConceptHandler(chatId, messageId, jobId);
     } else if (data.startsWith("iterate_approve:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Approving creative refresh...");
-      await approveIteration(chatId, messageId, jobId);
+      await approveIterationHandler(chatId, messageId, jobId);
     } else if (data.startsWith("iterate_reject:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Creative refresh rejected");
-      await rejectIteration(chatId, messageId, jobId);
+      await rejectIterationHandler(chatId, messageId, jobId);
     } else if (data.startsWith("quality_approve:")) {
       const jobId = data.split(":")[1];
       await answerCallbackQuery(query.id, "Approving translations...");
-      const db = createServerSupabase();
-      const { data: job } = await db.from("image_jobs")
-        .select("id, name, concept_number, ad_copy_translations")
-        .eq("id", jobId).single();
-      if (job?.ad_copy_translations) {
-        const translations = { ...(job.ad_copy_translations as Record<string, { status?: string }>) };
-        for (const value of Object.values(translations)) {
-          if (value.status === "review") value.status = "completed";
-        }
-        await db.from("image_jobs").update({ ad_copy_translations: translations }).eq("id", jobId);
-      }
-      const label = job?.concept_number ? `#${job.concept_number} "${job.name}"` : job?.name ?? jobId;
+      const result = await approveTranslationsAction(jobId);
+      const label = result.conceptNumber ? `#${result.conceptNumber} "${result.jobName}"` : result.jobName ?? jobId;
       await editCallbackMessage(chatId, messageId,
-        `✅ Translations approved for ${label}\nReady for pipeline push.`
+        result.ok
+          ? `✅ Translations approved for ${label}\nReady for pipeline push.`
+          : `❌ ${result.error ?? "Failed to approve translations."}`
       );
     } else if (data.startsWith("quality_hold:")) {
       const jobId = data.split(":")[1];
@@ -678,266 +679,76 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
   );
 }
 
-async function approveAutopilotConcept(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
-  const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+async function approveAutopilotConceptHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await approveConceptAction(jobId, "telegram");
 
-  // Fetch the job
-  const { data: job } = await db
-    .from("image_jobs")
-    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
-    return;
-  }
-
-  // Idempotency: already approved
-  if (job.launchpad_priority != null) {
-    await editCallbackMessage(chatId, messageId, `✅ Concept #${job.concept_number ?? "?"} "${job.name}" already approved.`);
-    return;
-  }
-
-  // Check landing page is assigned
-  if (!job.landing_page_id) {
-    await editCallbackMessage(
-      chatId,
-      messageId,
-      `⚠️ Concept "${job.name}" has no landing page assigned. Assign one in the Hub before approving.\n\n${hubBase}/concepts/${jobId}`
-    );
-    return;
-  }
-
-  // Get next launchpad priority (put at the top)
-  const { data: topLaunchpad } = await db
-    .from("image_jobs")
-    .select("launchpad_priority")
-    .not("launchpad_priority", "is", null)
-    .order("launchpad_priority", { ascending: true })
-    .limit(1)
-    .single();
-
-  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
-
-  // Set launchpad priority + create market records
-  await db.from("image_jobs").update({
-    launchpad_priority: priority,
-    marked_ready_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("id", jobId);
-
-  // Create image_job_markets entries (if they don't exist)
-  const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
-  const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
-
-  const now = new Date().toISOString();
-  for (const lang of targetLangs) {
-    const market = COUNTRY_MAP[lang] ?? lang.toUpperCase();
-    const { data: existing } = await db
-      .from("image_job_markets")
-      .select("id")
-      .eq("image_job_id", jobId)
-      .eq("market", market)
-      .single();
-
-    let marketId: string;
-    if (!existing) {
-      const { data: inserted } = await db.from("image_job_markets").insert({
-        image_job_id: jobId,
-        market,
-        launchpad_priority: priority,
-      }).select("id").single();
-      marketId = inserted?.id ?? "";
+  if (!result.ok) {
+    if (result.error === "No landing page available") {
+      const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
+      await editCallbackMessage(chatId, messageId,
+        `⚠️ Concept "${result.jobName}" has no landing page assigned. Assign one in the Hub before approving.\n\n${hubBase}/concepts/${jobId}`
+      );
     } else {
-      await db.from("image_job_markets").update({
-        launchpad_priority: priority,
-      }).eq("id", existing.id);
-      marketId = existing.id;
+      await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to approve concept."}`);
     }
-
-    // Create concept_lifecycle entry so pipeline-push cron can find this concept
-    if (marketId) {
-      const { data: activeLifecycle } = await db
-        .from("concept_lifecycle")
-        .select("stage")
-        .eq("image_job_market_id", marketId)
-        .is("exited_at", null)
-        .single();
-
-      if (!activeLifecycle) {
-        await db.from("concept_lifecycle").insert({
-          image_job_market_id: marketId,
-          stage: "launchpad",
-          entered_at: now,
-          signal: "autopilot_approved",
-        });
-      }
-    }
+    return;
   }
 
-  const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
+  if (result.action === "already_approved") {
+    await editCallbackMessage(chatId, messageId, `✅ Concept #${result.conceptNumber ?? "?"} "${result.jobName}" already approved.`);
+    return;
+  }
+
   await editCallbackMessage(
     chatId,
     messageId,
-    `✅ Concept #${job.concept_number ?? "?"} "${job.name}" approved!\n\nAdded to launchpad for ${markets}.\nTranslating images + ad copy now...`
+    `✅ Concept #${result.conceptNumber ?? "?"} "${result.jobName}" approved!\n\nAdded to launchpad for ${result.markets}.\nTranslating images + ad copy now...`
   );
-
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "concept_approved",
-    target_id: jobId,
-    target_name: job.name,
-    details: { concept_number: job.concept_number, markets, source: "telegram" },
-    success: true,
-  });
 
   // Trigger translation pipeline in background
   after(async () => {
     try {
       const { triggerAutopilotTranslations } = await import("@/lib/autopilot-translations");
       console.log(`[telegram-approve] Starting translations for job ${jobId}`);
-      const result = await triggerAutopilotTranslations(jobId);
-      console.log(`[telegram-approve] Translations done:`, result);
+      const res = await triggerAutopilotTranslations(jobId);
+      console.log(`[telegram-approve] Translations done:`, res);
     } catch (err) {
       console.error(`[telegram-approve] Translation pipeline failed for ${jobId}:`, err);
     }
   });
 }
 
-async function rejectAutopilotConcept(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
-
-  const { data: job } = await db
-    .from("image_jobs")
-    .select("id, name, concept_number, workspace_id")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
+async function rejectAutopilotConceptHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await rejectConceptAction(jobId, "telegram");
+  if (!result.ok) {
+    await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to reject concept."}`);
     return;
   }
-
-  // Archive the rejected concept
-  await db.from("image_jobs").update({
-    archived_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("id", jobId);
-
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "concept_rejected",
-    target_id: jobId,
-    target_name: job.name,
-    details: { concept_number: job.concept_number, source: "telegram" },
-    success: true,
-  });
-
-  await editCallbackMessage(
-    chatId,
-    messageId,
-    `🗑️ Concept #${job.concept_number ?? "?"} "${job.name}" rejected and archived.`
+  await editCallbackMessage(chatId, messageId,
+    `🗑️ Concept #${result.conceptNumber ?? "?"} "${result.jobName}" rejected and archived.`
   );
 }
 
-async function approveVideoConceptTelegram(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
+async function approveVideoConceptHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await approveVideoAction(jobId, "telegram");
+  if (!result.ok) {
+    await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to approve video."}`);
+    return;
+  }
   const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
-
-  const { data: job } = await db
-    .from("video_jobs")
-    .select("id, concept_name, concept_number, workspace_id, target_languages")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Video concept not found.");
-    return;
-  }
-
-  // Get next launchpad priority
-  const { data: topLaunchpad } = await db
-    .from("video_jobs")
-    .select("launchpad_priority")
-    .not("launchpad_priority", "is", null)
-    .order("launchpad_priority", { ascending: true })
-    .limit(1)
-    .single();
-
-  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
-
-  // Set launchpad priority and per-market priorities
-  const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
-  const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
-  const marketPriorities: Record<string, number> = {};
-  for (const lang of targetLangs) {
-    const market = COUNTRY_MAP[lang] ?? lang.toUpperCase();
-    marketPriorities[market] = priority;
-  }
-
-  await db.from("video_jobs").update({
-    launchpad_priority: priority,
-    launchpad_market_priorities: marketPriorities,
-    updated_at: new Date().toISOString(),
-  }).eq("id", jobId);
-
-  const markets = targetLangs.map((l) => COUNTRY_MAP[l] ?? l.toUpperCase()).join(", ");
-
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "video_approved",
-    target_id: jobId,
-    target_name: job.concept_name,
-    details: { concept_number: job.concept_number, markets, source: "telegram" },
-    success: true,
-  });
-
-  await editCallbackMessage(
-    chatId,
-    messageId,
-    `✅ Video #${job.concept_number ?? "?"} "${job.concept_name}" approved!\n\nAdded to launchpad for ${markets}.\n\n${hubBase}/video-ads/${jobId}`
+  await editCallbackMessage(chatId, messageId,
+    `✅ Video #${result.conceptNumber ?? "?"} "${result.jobName}" approved!\n\nAdded to launchpad for ${result.markets}.\n\n${hubBase}/video-ads/${jobId}`
   );
 }
 
-async function rejectVideoConceptTelegram(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
-
-  const { data: job } = await db
-    .from("video_jobs")
-    .select("id, concept_name, concept_number, workspace_id")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Video concept not found.");
+async function rejectVideoConceptHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await rejectVideoAction(jobId, "telegram");
+  if (!result.ok) {
+    await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to reject video."}`);
     return;
   }
-
-  // Kill the rejected video concept
-  await db.from("video_jobs").update({
-    status: "killed",
-    updated_at: new Date().toISOString(),
-  }).eq("id", jobId);
-
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "video_rejected",
-    target_id: jobId,
-    target_name: job.concept_name,
-    details: { concept_number: job.concept_number, source: "telegram" },
-    success: true,
-  });
-
-  await editCallbackMessage(
-    chatId,
-    messageId,
-    `🗑️ Video #${job.concept_number ?? "?"} "${job.concept_name}" rejected.`
+  await editCallbackMessage(chatId, messageId,
+    `🗑️ Video #${result.conceptNumber ?? "?"} "${result.jobName}" rejected.`
   );
 }
 
@@ -945,81 +756,37 @@ async function rejectVideoConceptTelegram(chatId: number, messageId: number, job
 // CREATIVE ITERATION APPROVE / REJECT
 // ===========================================================================
 
-async function approveIteration(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
-
-  const { data: job } = await db
-    .from("image_jobs")
-    .select("id, name, concept_number, workspace_id")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
+async function approveIterationHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await approveIterationAction(jobId, "telegram");
+  if (!result.ok) {
+    await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to approve."}`);
     return;
   }
 
-  await editCallbackMessage(
-    chatId,
-    messageId,
-    `✅ Creative refresh approved for #${job.concept_number ?? "?"} "${job.name}"!\n\nTranslating new images + pushing to Meta...`
+  await editCallbackMessage(chatId, messageId,
+    `✅ Creative refresh approved for #${result.conceptNumber ?? "?"} "${result.jobName}"!\n\nTranslating new images + pushing to Meta...`
   );
 
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "iterate_approved",
-    target_id: jobId,
-    target_name: job.name,
-    details: { concept_number: job.concept_number, source: "telegram" },
-    success: true,
-  });
-
-  // Trigger translation pipeline for the new images
   after(async () => {
     try {
       const { triggerAutopilotTranslations } = await import("@/lib/autopilot-translations");
       console.log(`[telegram-iterate-approve] Starting translations for job ${jobId}`);
-      const result = await triggerAutopilotTranslations(jobId);
-      console.log(`[telegram-iterate-approve] Translations done:`, result);
+      const res = await triggerAutopilotTranslations(jobId);
+      console.log(`[telegram-iterate-approve] Translations done:`, res);
     } catch (err) {
       console.error(`[telegram-iterate-approve] Translation pipeline failed for ${jobId}:`, err);
     }
   });
 }
 
-async function rejectIteration(chatId: number, messageId: number, jobId: string): Promise<void> {
-  const db = createServerSupabase();
-
-  const { data: job } = await db
-    .from("image_jobs")
-    .select("id, name, concept_number, workspace_id")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    await editCallbackMessage(chatId, messageId, "❌ Concept not found.");
+async function rejectIterationHandler(chatId: number, messageId: number, jobId: string): Promise<void> {
+  const result = await rejectIterationAction(jobId, "telegram");
+  if (!result.ok) {
+    await editCallbackMessage(chatId, messageId, `❌ ${result.error ?? "Failed to reject."}`);
     return;
   }
-
-  // Clean up the iteration images
-  const { cleanupIterationImages } = await import("@/lib/autopilot-iterate");
-  const deleted = await cleanupIterationImages(jobId, db);
-
-  // Log to autopilot_actions
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "iterate_rejected",
-    target_id: jobId,
-    target_name: job.name,
-    details: { concept_number: job.concept_number, images_deleted: deleted, source: "telegram" },
-    success: true,
-  });
-
-  await editCallbackMessage(
-    chatId,
-    messageId,
-    `🗑️ Creative refresh rejected for #${job.concept_number ?? "?"} "${job.name}" — ${deleted} images removed.`
+  await editCallbackMessage(chatId, messageId,
+    `🗑️ Creative refresh rejected for #${result.conceptNumber ?? "?"} "${result.jobName}" — ${result.imagesDeleted ?? 0} images removed.`
   );
 }
 

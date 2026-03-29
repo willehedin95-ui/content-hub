@@ -748,6 +748,7 @@ async function runFromScratch(
     }
     captionLines.push(`Images: ${imagesGenerated}/3 | Page: ${pageAssigned}`);
     captionLines.push(`${hubUrl}/concepts/${job.id}`);
+    captionLines.push(`Review: ${hubUrl}/review?highlight=${job.id}`);
 
     const caption = captionLines.join("\n");
 
@@ -793,30 +794,10 @@ async function checkConceptNeed(
   db: ReturnType<typeof createServerSupabase>,
   workspaceId: string
 ): Promise<{ needed: boolean; reason: string; maxToday?: number }> {
-  // Dynamic: generate more concepts when launchpad is thin, fewer when full.
-  // Count how many are already on the launchpad (waiting to be pushed)
-  const { count: launchpadCount } = await db
-    .from("image_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId)
-    .not("launchpad_priority", "is", null);
-
-  // Dynamic daily limit based on launchpad fullness
-  // Thin launchpad (0-2): generate up to 3/day (need more concepts)
-  // Normal launchpad (3-5): generate 2/day
-  // Full launchpad (6+): generate 1/day
-  // Stuffed launchpad (10+): skip generation
-  const queueSize = launchpadCount ?? 0;
-  let maxToday: number;
-  if (queueSize >= 10) {
-    return { needed: false, reason: `Launchpad full (${queueSize} concepts queued)` };
-  } else if (queueSize >= 6) {
-    maxToday = 1;
-  } else if (queueSize >= 3) {
-    maxToday = 2;
-  } else {
-    maxToday = 3;
-  }
+  // Always generate concepts — the launchpad should always be stocked.
+  // The only limit is a daily cap to avoid wasting AI credits.
+  // Pushing is gated separately by pipeline-push budget logic.
+  const MAX_PER_DAY = 3;
 
   // Count how many autopilot concepts were created today
   const todayStart = new Date();
@@ -829,11 +810,12 @@ async function checkConceptNeed(
     .eq("source", "autopilot")
     .gte("created_at", todayStart.toISOString());
 
-  if ((todayCount ?? 0) >= maxToday) {
-    return { needed: false, reason: `Already created ${todayCount}/${maxToday} autopilot concepts today (launchpad: ${queueSize})` };
+  const created = todayCount ?? 0;
+  if (created >= MAX_PER_DAY) {
+    return { needed: false, reason: `Already created ${created}/${MAX_PER_DAY} autopilot concepts today` };
   }
 
-  return { needed: true, reason: `Launchpad has ${queueSize} concepts, creating up to ${maxToday} today (${todayCount ?? 0} done so far)`, maxToday };
+  return { needed: true, reason: `Creating up to ${MAX_PER_DAY} today (${created} done so far)`, maxToday: MAX_PER_DAY };
 }
 
 // ---------------------------------------------------------------------------

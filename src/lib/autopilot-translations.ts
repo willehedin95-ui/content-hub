@@ -656,6 +656,7 @@ async function notifyTranslationsDone(
           ...reviewIssues.slice(0, 5),
           ``,
           `${baseUrl}/images/${jobId}`,
+          `Review: ${baseUrl}/review?highlight=${jobId}`,
         ].join("\n"), [
           [
             { text: "✅ Approve translations", callback_data: `quality_approve:${jobId}` },

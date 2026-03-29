@@ -458,6 +458,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       }
       captionLines.push(`Images: ${imageResults.length}/${parsed.image_prompts.length} | Page: ${landingPageId ? "Yes" : "No"}`);
       captionLines.push(`${hubUrl}/concepts/${job.id}`);
+      captionLines.push(`Review: ${hubUrl}/review?highlight=${job.id}`);
 
       const caption = captionLines.join("\n");
 
