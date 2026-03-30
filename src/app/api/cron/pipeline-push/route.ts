@@ -6,6 +6,7 @@ import { pushVideoToMeta } from "@/lib/meta-video-push";
 import { setMetaConfig } from "@/lib/meta";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
 import { sendMessage } from "@/lib/telegram";
+import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 
 
 export const maxDuration = 300;
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const cronRunId = await startCronRun("pipeline-push");
 
   try {
     // Step 1: Sync metrics and detect stage transitions
@@ -213,6 +215,11 @@ export async function GET(req: NextRequest) {
                   const langResult = pushResult.results.find((r) => r.language === lang);
 
                   if (langResult?.status === "pushed") {
+                    // Clear push error for this market
+                    const existingErrors = ((await db.from("video_jobs").select("push_errors").eq("id", concept.conceptId).single()).data?.push_errors ?? {}) as Record<string, unknown>;
+                    delete existingErrors[market];
+                    await db.from("video_jobs").update({ push_errors: Object.keys(existingErrors).length > 0 ? existingErrors : null }).eq("id", concept.conceptId);
+
                     results.push({ concept: concept.name, type: "video", market, status: "pushed" });
 
                     // Check if all markets pushed -> clear from launch pad
@@ -236,6 +243,11 @@ export async function GET(req: NextRequest) {
                       await db.from("video_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
                     }
                   } else {
+                    // Record push error for this market
+                    const existingErrors = ((await db.from("video_jobs").select("push_errors").eq("id", concept.conceptId).single()).data?.push_errors ?? {}) as Record<string, unknown>;
+                    existingErrors[market] = { error: langResult?.error ?? "Unknown", at: new Date().toISOString() };
+                    await db.from("video_jobs").update({ push_errors: existingErrors }).eq("id", concept.conceptId);
+
                     results.push({ concept: concept.name, type: "video", market, status: "failed", error: langResult?.error ?? "Unknown" });
                   }
                 } else {
@@ -250,6 +262,9 @@ export async function GET(req: NextRequest) {
 
                   if (langResult?.status === "pushed") {
                     const now = new Date().toISOString();
+
+                    // Clear push error for this market
+                    await db.from("image_job_markets").update({ last_push_error: null, last_push_error_at: null }).eq("id", marketEntry.imageJobMarketId);
 
                     await db
                       .from("concept_lifecycle")
@@ -279,11 +294,32 @@ export async function GET(req: NextRequest) {
                       await db.from("image_jobs").update({ launchpad_priority: null }).eq("id", concept.conceptId);
                     }
                   } else {
+                    // Record push error for this market
+                    await db.from("image_job_markets").update({
+                      last_push_error: langResult?.error ?? "Unknown",
+                      last_push_error_at: new Date().toISOString(),
+                    }).eq("id", marketEntry.imageJobMarketId);
+
                     results.push({ concept: concept.name, type: "image", market, status: "failed", error: langResult?.error ?? "Unknown" });
                   }
                 }
               } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : "Unknown error";
+
+                // Record push error for the market (best-effort)
+                try {
+                  if (concept.type === "image" && marketEntry?.imageJobMarketId) {
+                    await db.from("image_job_markets").update({
+                      last_push_error: errorMsg,
+                      last_push_error_at: new Date().toISOString(),
+                    }).eq("id", marketEntry.imageJobMarketId);
+                  } else if (concept.type === "video") {
+                    const existingErrors = ((await db.from("video_jobs").select("push_errors").eq("id", concept.conceptId).single()).data?.push_errors ?? {}) as Record<string, unknown>;
+                    existingErrors[market] = { error: errorMsg, at: new Date().toISOString() };
+                    await db.from("video_jobs").update({ push_errors: existingErrors }).eq("id", concept.conceptId);
+                  }
+                } catch { /* don't let error tracking failure propagate */ }
+
                 results.push({ concept: concept.name, type: concept.type, market, status: "failed", error: errorMsg });
               }
             }
@@ -323,16 +359,20 @@ export async function GET(req: NextRequest) {
     } // end workspace loop
 
     const flatResults = allResults.flatMap((ws) => ws.results);
+    const pushed = flatResults.filter((r) => r.status === "pushed").length;
+    const failed = flatResults.filter((r) => r.status === "failed").length;
+    await completeCronRun(cronRunId, `${pushed} pushed, ${failed} failed, ${syncResult.transitions.length} transitions`);
     return NextResponse.json({
       syncedMetrics: syncResult.synced,
       stageTransitions: syncResult.transitions.length,
       workspaces: allResults,
-      pushed: flatResults.filter((r) => r.status === "pushed").length,
-      failed: flatResults.filter((r) => r.status === "failed").length,
+      pushed,
+      failed,
     });
   } catch (err) {
     setMetaConfig(null);
     console.error("[Pipeline Cron] Error:", err);
+    await failCronRun(cronRunId, err instanceof Error ? err.message : "Pipeline cron failed");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Pipeline cron failed" },
       { status: 500 }

@@ -30,6 +30,20 @@ export async function POST(req: NextRequest) {
 
     // pushVideoToMeta already records in meta_campaigns + meta_ads and updates video_jobs.status.
     // If all languages were pushed successfully, clear launchpad_priority.
+    // Clear push errors for successfully pushed markets
+    const pushedVideoMarkets = pushResult.results.filter((r) => r.status === "pushed").map((r) => {
+      const mkt = Object.entries(MARKET_TO_LANG).find(([, l]) => l === r.language)?.[0];
+      return mkt;
+    }).filter(Boolean);
+    if (pushedVideoMarkets.length > 0) {
+      const { data: vj } = await db.from("video_jobs").select("push_errors").eq("id", conceptId).single();
+      const existingErrors = (vj?.push_errors ?? {}) as Record<string, unknown>;
+      for (const mkt of pushedVideoMarkets) {
+        if (mkt) delete existingErrors[mkt];
+      }
+      await db.from("video_jobs").update({ push_errors: Object.keys(existingErrors).length > 0 ? existingErrors : null }).eq("id", conceptId);
+    }
+
     const allPushed = pushResult.results.length > 0 && pushResult.results.every((r) => r.status === "pushed");
     if (allPushed) {
       await db
@@ -56,6 +70,9 @@ export async function POST(req: NextRequest) {
     const langResult = pushResult.results.find((r) => r.language === lang);
 
     if (langResult?.status === "pushed") {
+      // Clear push error for this market
+      await db.from("image_job_markets").update({ last_push_error: null, last_push_error_at: null }).eq("id", row.id);
+
       await db
         .from("concept_lifecycle")
         .update({ exited_at: now })

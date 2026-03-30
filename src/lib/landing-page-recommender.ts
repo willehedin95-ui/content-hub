@@ -71,7 +71,7 @@ async function getPublishedPageIds(
     .select("id")
     .eq("workspace_id", workspaceId)
     .eq("product", productSlug)
-    .eq("content_type", "landing_page");
+    .or("content_type.eq.landing_page,content_type.is.null");
 
   if (!pages?.length) return new Set();
 
@@ -100,7 +100,7 @@ async function getPublishedPages(
     .select("id, angle")
     .eq("workspace_id", workspaceId)
     .eq("product", productSlug)
-    .eq("content_type", "landing_page")
+    .or("content_type.eq.landing_page,content_type.is.null")
     .order("created_at", { ascending: false });
 
   return (pages ?? []).filter((p) => publishedIds.has(p.id)) as PageWithAngle[];

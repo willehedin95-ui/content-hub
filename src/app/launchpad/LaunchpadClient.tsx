@@ -17,6 +17,7 @@ import {
   Film,
   CheckCircle2,
   CircleDot,
+  AlertTriangle,
 } from "lucide-react";
 import type { PipelineStage } from "@/types";
 
@@ -26,6 +27,8 @@ interface LaunchpadMarket {
   market: string;
   imageJobMarketId: string;
   stage: PipelineStage;
+  lastPushError?: string | null;
+  lastPushErrorAt?: string | null;
 }
 
 interface LaunchpadConcept {
@@ -612,10 +615,27 @@ export default function LaunchpadClient() {
 
                     {/* Market status */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
-                        <CircleDot className="w-3 h-3" />
-                        Ready to push
-                      </span>
+                      {(() => {
+                        const selectedMarketEntry = concept.markets.find((m) => m.market === selectedMarket && m.stage === "launchpad");
+                        const pushError = selectedMarketEntry?.lastPushError;
+                        if (pushError) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-red-50 text-red-700 border border-red-200 cursor-help"
+                              title={pushError}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              Push failed
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                            <CircleDot className="w-3 h-3" />
+                            Ready to push
+                          </span>
+                        );
+                      })()}
                       {liveMarkets.map((m) => {
                         const flag = MARKET_FLAG[m.market] ?? m.market;
                         return (

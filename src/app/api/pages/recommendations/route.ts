@@ -50,6 +50,23 @@ export async function GET(req: NextRequest) {
     pageJobMap.set(pageId, existing);
   }
 
+  // Filter out blog pages from recommendations (only include landing pages)
+  const pageIds = [...pageJobMap.keys()];
+  if (pageIds.length > 0) {
+    const { data: validPages } = await db
+      .from("pages")
+      .select("id")
+      .in("id", pageIds)
+      .or("content_type.eq.landing_page,content_type.is.null");
+
+    const validPageIds = new Set((validPages ?? []).map((p) => p.id));
+    for (const pageId of pageIds) {
+      if (!validPageIds.has(pageId)) {
+        pageJobMap.delete(pageId);
+      }
+    }
+  }
+
   const allJobIds = jobs.map((j) => j.id);
 
   // 2. Get image_job_markets for these jobs

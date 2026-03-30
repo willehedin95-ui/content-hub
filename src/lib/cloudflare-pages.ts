@@ -24,8 +24,8 @@ export function md5hex(data: Buffer | string): string {
 }
 
 export function getConfig() {
-  const accountId = process.env.CF_PAGES_ACCOUNT_ID;
-  const apiToken = process.env.CF_PAGES_API_TOKEN;
+  const accountId = process.env.CF_PAGES_ACCOUNT_ID?.trim();
+  const apiToken = process.env.CF_PAGES_API_TOKEN?.trim();
   if (!accountId || !apiToken) {
     throw new Error("CF_PAGES_ACCOUNT_ID and CF_PAGES_API_TOKEN must be configured");
   }
@@ -34,7 +34,7 @@ export function getConfig() {
 
 export function getProjectName(language: Language): string {
   const key = `CF_PAGES_PROJECT_${language.toUpperCase()}`;
-  const name = process.env[key];
+  const name = process.env[key]?.trim();
   if (!name) throw new Error(`${key} not configured for language: ${language}`);
   return name;
 }

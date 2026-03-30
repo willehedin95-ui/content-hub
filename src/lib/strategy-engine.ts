@@ -20,11 +20,12 @@ const MARGINAL_ROAS_MULTIPLIER = 0.8; // 20% below BE = marginal zone
 const MIN_BUDGET_PER_ADSET = 100; // SEK/day floor per ad set
 const CRITICAL_BUDGET_PER_ADSET = 80; // Below this is wasteful — Meta can't optimize
 const ZOMBIE_SPEND_THRESHOLD = 50; // SEK total over 7 days = zombie — validated: 15 ad sets fit this, all genuinely deprioritized by Meta
+const BLEEDER_SPEND_THRESHOLD = 200; // SEK over 7d with zero purchases = actively bleeding money
 const SPEND_DOMINANCE_THRESHOLD = 0.6; // 60% of campaign spend = one dominating
 
 const MIN_WINNING_ADSETS = 2; // Below = concept starvation
 const MIN_ACTIVE_ADSETS = 3; // Below = urgently need concepts
-const CONCEPT_COOLDOWN_DAYS = 7; // Wait 7 days after push before judging — protects cold-start ad sets from premature kills
+const CONCEPT_COOLDOWN_DAYS = 4; // Wait 4 days after push before judging — was 7d but bleeders need faster kills (200+ SEK with 0 purchases in 3-4 days is enough signal)
 const MAX_AVG_AGE_DAYS = 14; // After 2 weeks, concepts may fatigue (was 21 — real data shows ROAS decline by day 14 in most ad sets)
 const FATIGUE_RATIO_THRESHOLD = 0.5; // 50% of ad sets fatiguing (currently unused — future use)
 
@@ -93,7 +94,7 @@ export interface AdSetBreakdown {
   purchases_7d: number;
   days_running: number | null;
   spend_share_pct: number;
-  status: "winning" | "testing" | "underperforming" | "zombie";
+  status: "winning" | "testing" | "underperforming" | "zombie" | "bleeder";
 }
 
 export interface StrategyGuide {
@@ -378,6 +379,9 @@ function buildAdSetBreakdown(
     let status: AdSetBreakdown["status"];
     if (a.spend_7d < ZOMBIE_SPEND_THRESHOLD) {
       status = "zombie";
+    } else if (a.spend_7d >= BLEEDER_SPEND_THRESHOLD && a.purchases_7d === 0) {
+      // Bleeder: spending significant money with zero conversions — killable even during testing window
+      status = "bleeder";
     } else if (daysRunning !== null && daysRunning <= CONCEPT_COOLDOWN_DAYS) {
       status = "testing";
     } else if (roas >= beRoas && a.purchases_7d > 0) {
@@ -469,18 +473,20 @@ function analyzeBudgetDirection(
   const profitableThreshold = be_roas * PROFITABLE_ROAS_MULTIPLIER;
   const marginalThreshold = be_roas * MARGINAL_ROAS_MULTIPLIER;
 
-  // All windows strongly profitable → recommend increase
+  // 30d strongly profitable AND 14d not below breakeven → recommend increase
+  // Old rule required ALL THREE windows above threshold — too strict, never triggered.
+  // 7d window is too volatile to gate budget decisions on. 30d is the stable signal,
+  // 14d confirms we're not in free-fall.
   if (
     w30.roas >= profitableThreshold &&
-    w14.roas >= profitableThreshold &&
-    w7.roas >= profitableThreshold
+    w14.roas >= be_roas
   ) {
     return {
       id: `budget_${campaign_id}_increase`,
       action: "increase_budget",
       urgency: "recommended",
       title: `${campaign_name}: Consider increasing budget +20%`,
-      reasoning: `ROAS is consistently above breakeven across all time windows. This campaign has room to scale.`,
+      reasoning: `30-day ROAS (${w30.roas.toFixed(2)}x) is ${Math.round((w30.roas / be_roas - 1) * 100)}% above breakeven and 14-day trend confirms it. This campaign has room to scale.`,
       context: formatKpiContext(kpi),
       what_to_do: `Increase daily budget from ${kpi.daily_budget_sek} to ${Math.round(kpi.daily_budget_sek * 1.2)} SEK/day.`,
       what_happens_if_ignored: "You're leaving profitable sales on the table.",
@@ -578,10 +584,11 @@ function analyzeAccountStructure(
     // Budget too spread
     if (budgetPerAdset < CRITICAL_BUDGET_PER_ADSET) {
       const zombies = campaignAdsets.filter((a) => a.status === "zombie");
+      const bleeders = campaignAdsets.filter((a) => a.status === "bleeder");
       const underperformers = campaignAdsets.filter(
         (a) => a.status === "underperforming"
       );
-      const toKill = [...zombies, ...underperformers].slice(0, 3);
+      const toKill = [...bleeders, ...zombies, ...underperformers].slice(0, 5);
 
       recs.push({
         id: `structure_spread_${kpi.campaign_id}`,
@@ -610,6 +617,24 @@ function analyzeAccountStructure(
         what_to_do: "Kill your weakest ad set or increase campaign budget.",
         what_happens_if_ignored:
           "Performance slowly degrades as Meta can't optimize with limited per-ad-set budget.",
+      });
+    }
+
+    // Bleeder ad sets — spending 200+ SEK with zero purchases, killable regardless of campaign ROAS
+    const bleeders = campaignAdsets.filter((a) => a.status === "bleeder");
+    if (bleeders.length > 0) {
+      recs.push({
+        id: `structure_bleeders_${kpi.campaign_id}`,
+        action: "kill_deadweight",
+        urgency: "critical",
+        title: `${kpi.campaign_name}: ${bleeders.length} bleeding ad set(s) — ${Math.round(bleeders.reduce((s, b) => s + b.spend_7d, 0))} SEK wasted`,
+        reasoning: `These ad sets have spent ${BLEEDER_SPEND_THRESHOLD}+ SEK with zero purchases. No amount of waiting will fix zero conversions at this spend level.`,
+        context: bleeders.map((b) => `${b.adset_name}: ${b.spend_7d} SEK, 0 purchases`).join(", "),
+        what_to_do: `Kill immediately: ${bleeders.map((b) => b.adset_name).join(", ")}`,
+        what_happens_if_ignored:
+          `You're burning ${Math.round(bleeders.reduce((s, b) => s + b.spend_7d, 0) / 7)} SEK/day on ads that will never convert.`,
+        action_data: { adset_ids: bleeders.map((b) => b.adset_id) },
+        button_label: `Kill ${bleeders.length} bleeders`,
       });
     }
 
@@ -684,12 +709,12 @@ function analyzeConceptNeed(
       (a) => a.status === "testing"
     ).length;
     const totalActive = campaignAdsets.filter(
-      (a) => a.status !== "zombie"
+      (a) => a.status !== "zombie" && a.status !== "bleeder"
     ).length;
 
     // Calculate average age
     const ages = campaignAdsets
-      .filter((a) => a.days_running !== null && a.status !== "zombie")
+      .filter((a) => a.days_running !== null && a.status !== "zombie" && a.status !== "bleeder")
       .map((a) => a.days_running!);
     const avgAge =
       ages.length > 0 ? ages.reduce((sum, a) => sum + a, 0) / ages.length : 0;

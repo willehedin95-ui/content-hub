@@ -1781,6 +1781,8 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
       market: string;
       imageJobMarketId: string;
       stage: PipelineStage;
+      lastPushError?: string | null;
+      lastPushErrorAt?: string | null;
     }>;
     /** @deprecated Use conceptId instead */
     imageJobId: string;
@@ -1803,9 +1805,9 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
   const { data: imageMarkets } = imageJobIds.length > 0
     ? await db
         .from("image_job_markets")
-        .select("id, image_job_id, market, launchpad_priority")
+        .select("id, image_job_id, market, launchpad_priority, last_push_error, last_push_error_at")
         .in("image_job_id", imageJobIds)
-    : { data: [] as { id: string; image_job_id: string; market: string; launchpad_priority: number | null }[] };
+    : { data: [] as { id: string; image_job_id: string; market: string; launchpad_priority: number | null; last_push_error: string | null; last_push_error_at: string | null }[] };
 
   const imageMarketIds = (imageMarkets ?? []).map((m) => m.id);
 
@@ -1856,6 +1858,8 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
           market: m.market,
           imageJobMarketId: m.id,
           stage: imageStageMap.get(m.id) ?? ("launchpad" as PipelineStage),
+          lastPushError: m.last_push_error,
+          lastPushErrorAt: m.last_push_error_at,
         }))
       : ((job.target_languages as string[] | null) ?? [])
           .map((lang: string) => {
@@ -1887,7 +1891,7 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
   // --- Video concepts ---
   let videoQuery = db
     .from("video_jobs")
-    .select("id, concept_name, concept_number, product, target_languages, launchpad_priority, launchpad_market_priorities")
+    .select("id, concept_name, concept_number, product, target_languages, launchpad_priority, launchpad_market_priorities, push_errors")
     .not("launchpad_priority", "is", null)
     .order("launchpad_priority", { ascending: true });
   if (workspaceId) videoQuery = videoQuery.eq("workspace_id", workspaceId);
@@ -1951,13 +1955,17 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
         const market = LANG_TO_MARKET[lang];
         if (!market) return null;
         const key = `${job.id}:${market}`;
+        const pushErrors = (job.push_errors as Record<string, { error: string; at: string }> | null) ?? {};
+        const marketError = pushErrors[market];
         return {
           market,
           imageJobMarketId: `video:${job.id}:${market}`, // synthetic key (not a real UUID)
           stage: videoMarketStageMap.get(key) ?? ("launchpad" as PipelineStage),
+          lastPushError: marketError?.error ?? null,
+          lastPushErrorAt: marketError?.at ?? null,
         };
       })
-      .filter((m: { market: string; imageJobMarketId: string; stage: PipelineStage } | null): m is { market: string; imageJobMarketId: string; stage: PipelineStage } => m !== null),
+      .filter((m: { market: string; imageJobMarketId: string; stage: PipelineStage; lastPushError: string | null; lastPushErrorAt: string | null } | null): m is NonNullable<typeof m> => m !== null),
   }));
 
   // Merge and sort by priority ascending

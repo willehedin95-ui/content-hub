@@ -297,8 +297,8 @@ export async function generateStaticImages(
     .update({ updated_at: new Date().toISOString() })
     .eq("id", jobId);
 
-  // Alert on significant image generation failures (>50% failed)
-  if (errors.length > 0 && errors.length >= results.length) {
+  // Alert on any image generation failure
+  if (errors.length > 0) {
     try {
       const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
       if (chatId) {

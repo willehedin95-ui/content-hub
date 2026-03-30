@@ -13,6 +13,7 @@ interface LandingPageItem {
   page_type?: string;
   angle?: string;
   thumbnail_url?: string | null;
+  isPublished?: boolean;
 }
 
 interface PageRecommendation {
@@ -217,6 +218,11 @@ export default function LandingPageModal({
                     )}
                     {/* Badges row */}
                     <div className="absolute top-1.5 right-1.5 flex flex-col gap-1 items-end">
+                      {page.isPublished === false && (
+                        <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-medium">
+                          Not published
+                        </span>
+                      )}
                       {page.page_type === "advertorial" && (
                         <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
                           Advertorial

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage } from "@/lib/telegram";
 import { updateAdSet, updateCampaign, setMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
+import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 import {
   computeStrategyGuide,
   type StrategyInput,
@@ -13,7 +14,7 @@ import {
 
 export const maxDuration = 300;
 
-const MAX_KILLS_PER_RUN = 5;
+const MAX_KILLS_PER_RUN = 10;
 const DELAY_MS = 500;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dry_run") === "true";
   const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
   const db = createServerSupabase();
+  const cronRunId = await startCronRun("autopilot-execute");
 
   try {
     // --- Fetch all workspaces with autopilot execution enabled ---
@@ -186,7 +188,7 @@ export async function GET(req: NextRequest) {
     const guide = computeStrategyGuide(strategyInput);
 
     // --- Execute recommendations ---
-    const killActions: Array<{ name: string; reason: string; success: boolean; error?: string }> = [];
+    const killActions: Array<{ name: string; reason: string; success: boolean; error?: string; spend7d?: number; purchases7d?: number; daysRunning?: number | null }> = [];
     const budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean; error?: string }> = [];
     const skippedActions: string[] = [];
 
@@ -226,7 +228,7 @@ export async function GET(req: NextRequest) {
           const adsetName = breakdown?.adset_name ?? adsetId;
 
           if (dryRun) {
-            killActions.push({ name: adsetName, reason: rec.title, success: true });
+            killActions.push({ name: adsetName, reason: rec.title, success: true, spend7d: breakdown?.spend_7d, purchases7d: breakdown?.purchases_7d, daysRunning: breakdown?.days_running });
             killCount++;
             continue;
           }
@@ -249,11 +251,11 @@ export async function GET(req: NextRequest) {
               success: true,
             });
 
-            killActions.push({ name: adsetName, reason: rec.title, success: true });
+            killActions.push({ name: adsetName, reason: rec.title, success: true, spend7d: breakdown?.spend_7d, purchases7d: breakdown?.purchases_7d, daysRunning: breakdown?.days_running });
             killCount++;
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
-            killActions.push({ name: adsetName, reason: rec.title, success: false, error: errorMsg });
+            killActions.push({ name: adsetName, reason: rec.title, success: false, spend7d: breakdown?.spend_7d, purchases7d: breakdown?.purchases_7d, daysRunning: breakdown?.days_running });
 
             await db.from("autopilot_actions").insert({
               workspace_id: wsId,
@@ -429,10 +431,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    await completeCronRun(cronRunId, `${allResults.length} workspace(s) processed`);
     return NextResponse.json({ ok: true, dry_run: dryRun, results: allResults });
   } catch (err) {
     setMetaConfig(null);
     console.error("[Autopilot Execute] Fatal error:", err);
+    await failCronRun(cronRunId, err instanceof Error ? err.message : "Unknown error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }
@@ -452,7 +456,7 @@ type PipelineStatus = {
 type WsActions = {
   label: string;
   slug: string;
-  killActions: Array<{ name: string; reason: string; success: boolean }>;
+  killActions: Array<{ name: string; reason: string; success: boolean; spend7d?: number; purchases7d?: number; daysRunning?: number | null }>;
   budgetActions: Array<{ name: string; oldBudget: number; newBudget: number; success: boolean }>;
   skippedActions: string[];
   dryRun: boolean;
@@ -473,7 +477,13 @@ function formatAutopilotActions(ws: WsActions): string[] {
     lines.push(`  📉 Killed ${killActions.length} ad set${killActions.length > 1 ? "s" : ""}:`);
     for (const k of killActions) {
       const status = k.success ? "" : " ❌ FAILED";
-      lines.push(`    - ${k.name} (${k.reason})${status}`);
+      // Show spend + purchases + days so user understands WHY it was killed
+      const metrics: string[] = [];
+      if (k.spend7d != null) metrics.push(`${Math.round(k.spend7d)} SEK`);
+      if (k.purchases7d != null) metrics.push(`${k.purchases7d} conv`);
+      if (k.daysRunning != null) metrics.push(`${k.daysRunning}d`);
+      const metricsStr = metrics.length > 0 ? ` [${metrics.join(", ")}]` : "";
+      lines.push(`    - ${k.name}${metricsStr}${status}`);
     }
   }
 

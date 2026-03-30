@@ -54,7 +54,7 @@ export function LandingPageModalTrigger({
   conceptAngle,
   label,
 }: {
-  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null }>;
+  landingPages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null; isPublished?: boolean }>;
   selectedValue: string;
   onSelect: (value: string) => void;
   conceptTags?: string[];

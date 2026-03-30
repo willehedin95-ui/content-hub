@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
+import { generateStaticImages } from "@/lib/generate-static-images";
 import type { AutoPipelineConcept } from "@/types";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 // POST /api/pipeline/concepts/[id]/approve
 export async function POST(
@@ -118,9 +120,30 @@ export async function POST(
       await supabase.from("hook_library").upsert(hookRows, { ignoreDuplicates: true });
     }
 
-    // Trigger image generation
-    const generateUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/image-jobs/${imageJob.id}/generate-all`;
-    await fetch(generateUrl, { method: "POST" });
+    // Trigger image generation in background (after response is sent)
+    after(async () => {
+      try {
+        console.log(`[pipeline-approve] Starting image generation for job ${imageJob.id}`);
+        const result = await generateStaticImages({
+          jobId: imageJob.id,
+          workspaceId: workspaceId,
+        });
+        console.log(`[pipeline-approve] Image generation done: ${result.generated}/${result.generated + result.failed}`);
+      } catch (err) {
+        console.error(`[pipeline-approve] Image generation failed for ${imageJob.id}:`, err);
+        try {
+          const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+          if (chatId) {
+            const { sendMessage } = await import("@/lib/telegram");
+            await sendMessage(chatId, [
+              `⚠️ Image generation failed`,
+              `Concept: ${typedConcept.name}`,
+              `Error: ${err instanceof Error ? err.message : String(err)}`,
+            ].join("\n"));
+          }
+        } catch { /* don't let notification failure propagate */ }
+      }
+    });
 
     return NextResponse.json({
       success: true,

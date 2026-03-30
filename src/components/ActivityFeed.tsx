@@ -63,30 +63,43 @@ function groupByDate(items: FeedItem[]): { label: string; items: FeedItem[] }[] 
   return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
 }
 
+type CronStatus = Record<string, { status: string; completed_at: string | null; error_message: string | null }>;
+
 export default function ActivityFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
 
-  const fetchFeed = useCallback(async () => {
+  const fetchFeed = useCallback(async (silent = false) => {
     try {
-      const res = await fetch(`/api/activity-feed?days=${days}`);
-      if (res.ok) {
-        const data = await res.json();
+      if (!silent) setLoading(true);
+      const [feedRes, cronRes] = await Promise.all([
+        fetch(`/api/activity-feed?days=${days}`),
+        fetch("/api/cron-status"),
+      ]);
+      if (feedRes.ok) {
+        const data = await feedRes.json();
         setItems(data.items);
         setPending(data.pending ?? []);
+      }
+      if (cronRes.ok) {
+        setCronStatus(await cronRes.json());
       }
     } catch {
       // Silently fail
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [days]);
 
   useEffect(() => {
     fetchFeed();
+    const interval = setInterval(() => fetchFeed(true), 30_000);
+    return () => clearInterval(interval);
   }, [fetchFeed]);
 
   async function handlePendingApprove(item: PendingItem) {
@@ -140,7 +153,29 @@ export default function ActivityFeed() {
     setActionLoading(null);
   }
 
+  async function handleBulkApproveTranslations() {
+    const translationItems = pending.filter((p) => p.type === "pending_translation_review");
+    if (translationItems.length === 0) return;
+    setBulkApproving(true);
+    for (const item of translationItems) {
+      try {
+        const res = await fetch(`/api/image-jobs/${item.jobId}/approve-translations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (res.ok) {
+          setPending((prev) => prev.filter((p) => p.id !== item.id));
+        }
+      } catch {
+        // Continue with next item
+      }
+    }
+    setBulkApproving(false);
+  }
+
   const groups = groupByDate(items);
+  const translationReviewCount = pending.filter((p) => p.type === "pending_translation_review").length;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -151,7 +186,7 @@ export default function ActivityFeed() {
         </div>
         <select
           value={days}
-          onChange={(e) => { setDays(Number(e.target.value)); setLoading(true); }}
+          onChange={(e) => setDays(Number(e.target.value))}
           className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 bg-white focus:outline-none focus:border-indigo-500"
         >
           <option value={3}>Last 3 days</option>
@@ -161,14 +196,58 @@ export default function ActivityFeed() {
         </select>
       </div>
 
+      {/* Pipeline health indicator */}
+      {cronStatus && (() => {
+        const hasError = Object.values(cronStatus).some((c) => c.status === "error");
+        const latestRun = Object.values(cronStatus)
+          .filter((c) => c.completed_at)
+          .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())[0];
+        const lastTime = latestRun?.completed_at ? relativeTime(latestRun.completed_at) : "never";
+
+        if (hasError) {
+          const failedCrons = Object.entries(cronStatus)
+            .filter(([, c]) => c.status === "error")
+            .map(([name]) => name.replace(/-/g, " "));
+          return (
+            <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+              <span>Cron error: {failedCrons.join(", ")}</span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-2 mb-4 px-3 py-1.5 text-xs text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+            <span>Last sync: {lastTime}</span>
+          </div>
+        );
+      })()}
+
       {/* Pending actions section */}
       {!loading && pending.length > 0 && (
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertCircle className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-gray-900">
-              Needs Your Attention ({pending.length})
-            </h2>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-semibold text-gray-900">
+                Needs Your Attention ({pending.length})
+              </h2>
+            </div>
+            {translationReviewCount >= 2 && (
+              <button
+                onClick={handleBulkApproveTranslations}
+                disabled={bulkApproving || actionLoading !== null}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {bulkApproving ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Check className="w-3 h-3" />
+                )}
+                Approve all translations ({translationReviewCount})
+              </button>
+            )}
           </div>
           <div className="space-y-2">
             {pending.map((item) => (

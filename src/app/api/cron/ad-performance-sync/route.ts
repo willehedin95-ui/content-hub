@@ -8,6 +8,7 @@ import {
   listCampaigns,
   getCampaignBudget,
 } from "@/lib/meta";
+import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 
 export const maxDuration = 120;
 
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const cronRunId = await startCronRun("ad-performance-sync");
 
   // Determine date range: backfill 30 days if table is empty, else last 3 days
   const { count } = await db
@@ -84,6 +86,7 @@ export async function GET(req: NextRequest) {
     rows = await getAdInsightsDaily(sinceStr, untilStr);
   } catch (err) {
     console.error("[Ad Perf Sync] Meta API error:", err);
+    await failCronRun(cronRunId, err instanceof Error ? err.message : "Meta API call failed");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Meta API call failed" },
       { status: 500 }
@@ -247,6 +250,7 @@ export async function GET(req: NextRequest) {
     console.error("[Ad Perf Sync] Concept metrics sync error (non-fatal):", err);
   }
 
+  await completeCronRun(cronRunId, `${totalSynced} ads, ${adsetSynced} adsets, ${conceptMetricsSynced} concept metrics`);
   return NextResponse.json({
     ok: true,
     rows_synced: totalSynced,

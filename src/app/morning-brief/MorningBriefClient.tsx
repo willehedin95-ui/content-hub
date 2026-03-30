@@ -210,7 +210,7 @@ interface AdSetBreakdown {
   purchases_7d: number;
   days_running: number | null;
   spend_share_pct: number;
-  status: "winning" | "testing" | "underperforming" | "zombie";
+  status: "winning" | "testing" | "underperforming" | "zombie" | "bleeder";
 }
 
 interface StrategyRecommendation {
@@ -848,10 +848,11 @@ function AdSetBreakdownPanel({ adsets, campaignKpis }: { adsets: AdSetBreakdown[
     byCampaign.set(a.campaign_id, existing);
   }
 
-  const statusConfig = {
+  const statusConfig: Record<string, { label: string; color: string }> = {
     winning: { label: "Winner", color: "bg-green-100 text-green-700" },
     testing: { label: "Testing", color: "bg-blue-100 text-blue-700" },
     underperforming: { label: "Under", color: "bg-red-100 text-red-700" },
+    bleeder: { label: "Bleeder", color: "bg-orange-100 text-orange-700" },
     zombie: { label: "Zombie", color: "bg-gray-200 text-gray-600" },
   };
 
@@ -869,6 +870,7 @@ function AdSetBreakdownPanel({ adsets, campaignKpis }: { adsets: AdSetBreakdown[
           const isOpen = expandedCampaigns[campaignId] ?? false;
           const kpi = campaignKpis.find((k) => k.campaign_id === campaignId);
           const winCount = campaignAdsets.filter((a) => a.status === "winning").length;
+          const bleederCount = campaignAdsets.filter((a) => a.status === "bleeder").length;
           const zombieCount = campaignAdsets.filter((a) => a.status === "zombie").length;
           const campaignName = campaignAdsets[0]?.campaign_name || "Unknown";
 
@@ -883,6 +885,7 @@ function AdSetBreakdownPanel({ adsets, campaignKpis }: { adsets: AdSetBreakdown[
                   <span className="text-sm font-medium text-gray-900 truncate">{campaignName}</span>
                   <span className="text-xs text-gray-400">{campaignAdsets.length} ad sets</span>
                   {winCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">{winCount} winning</span>}
+                  {bleederCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">{bleederCount} bleeding</span>}
                   {zombieCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{zombieCount} zombie</span>}
                 </div>
                 {kpi && (
