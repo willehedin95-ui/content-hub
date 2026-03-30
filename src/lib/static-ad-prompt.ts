@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { withRetry, isTransientError } from "./retry";
-import { CLAUDE_MODEL, STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS } from "./constants";
+import { CLAUDE_MODEL, STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS, USE_JSON_PROMPTING, JSON_PROMPT_STYLES } from "./constants";
 import type { StaticStyleId, ReptileTriggerId } from "./constants";
 import type { ImageJob, CashDna, ProductFull, ProductSegment } from "@/types";
 
@@ -572,14 +572,100 @@ Natural pairings (match trigger to scene mood):
 ## Reference Image Strategy:
 - "product" — use product images as reference (product-hero, comparison)
 - "none" — generate purely from text (REQUIRED for native-medical, native-closeup, native-messy, bold-statement)
+${USE_JSON_PROMPTING ? `
+## JSON PROMPT FORMAT (MANDATORY for native-closeup and native-messy styles):
 
+For native-closeup and native-messy styles, you MUST output the prompt as a structured JSON OBJECT instead of plain text. This prevents "concept bleeding" where subject details contaminate lighting descriptions or background elements leak into subject rendering. Each concept is isolated in its own key.
+
+All other styles (product-hero, bold-statement, before-after, social-proof, native-medical, comparison) continue to use plain text string prompts.
+
+### JSON Schema (every key is required):
+{
+  "Style": "photographic approach — e.g. 'overhead-flat-lay', 'direct-flash-candid', 'POV-first-person', 'documentary-portrait', 'mirror-selfie', 'through-doorway'",
+  "Subject": "main focal point with specific physical details: age, appearance, expression, clothing material and condition. Be specific about ethnicity-neutral descriptors.",
+  "MadeOutOf": "material specifications for ALL visible surfaces and fabrics — cotton with pilling, worn leather, chipped ceramic, stained terrycloth. Controls texture rendering.",
+  "Arrangement": "spatial layout: pose/position of subject, object placement relative to each other, composition structure",
+  "Background": "setting beyond the immediate scene — what's visible in the wider environment, out-of-focus elements",
+  "RoomObjects": "specific objects with CONDITION details: half-empty, cap off, crumpled, stained, expired, fingerprints visible, overlapping coffee rings (one fresh one old). Objects tell the story through their wear.",
+  "Accessories": "detail elements on or near the subject that add character",
+  "ColorRestriction": "ALWAYS muted for native. Specify exact palette limits — 'desaturated warm earth tones only', 'cool blue-grey cast from fluorescent', etc. NEVER allow saturated or vibrant colors.",
+  "Lighting": "specific source WITH direction AND quality — 'single warm bedside lamp from the right casting deep shadows on left side of face' not just 'warm light'. Be as precise as a cinematographer.",
+  "Camera": {
+    "type": "device — 'iPhone 15 Pro front camera', 'iPhone 14', 'Samsung Galaxy S24'",
+    "lens": "focal length — '24mm equivalent', '26mm'",
+    "aperture": "f-stop — 'f/1.78', 'f/2.0'",
+    "flash": "'off' or 'on' (direct phone flash for that harsh candid look)",
+    "iso_grain": "noise description — 'visible high-ISO sensor noise from low light', 'subtle noise, natural grain'"
+  },
+  "Imperfections": "MANDATORY — sensor noise, film grain, soft focus edges, dust motes, vignetting, chromatic aberration, slight motion blur. At least 2 specific flaws.",
+  "Textures": "surface details — visible pores, fabric weave, wood scratches, coffee rings, paper fiber, glass fingerprints. Nothing is smooth.",
+  "OutputStyle": "final style suffix — must match one of the style suffixes from the style definition above",
+  "Mood": "emotional register anchored to a SPECIFIC moment in time — 'the particular exhaustion of 4:30pm on a Wednesday' not just 'tired'"
+}
+
+### How existing prompt rules map to JSON keys:
+- Rule 1 (SUBJECT FIRST) → "Subject" key describes the focal point
+- Rule 3 (SPECIFIC LIGHT) → "Lighting" key with source + direction
+- Rule 4 (IMPERFECTIONS) → "Imperfections" key, minimum 2 flaws
+- Rule 5 (TEXTURE) → "Textures" key, nothing smooth
+- Rule 6 (MUTE COLORS) → "ColorRestriction" key
+- Rule 7 (STYLE SUFFIX) → "OutputStyle" key
+- Rule 9 (OBJECT STORYTELLING) → "RoomObjects" key with condition details per object
+- Rule 10 (NAMED TIME) → "Mood" key with specific time anchor
+
+### JSON Example — native-messy (kitchen counter morning):
+{
+  "Style": "overhead-flat-lay",
+  "Subject": "cluttered authentic lived-in kitchen counter, the kind nobody photographs on purpose",
+  "MadeOutOf": "worn wooden butcher block with visible knife marks, dried food residue, water stains from years of use",
+  "Arrangement": "chaotic scatter across the full surface, nothing aligned, supplements mixed with breakfast debris",
+  "Background": "kitchen beyond the counter edge slightly out of focus, stovetop with a pan left out, dish towel hanging crooked from oven handle",
+  "RoomObjects": "open amber glass supplement bottles with child-proof caps sitting separately, half-spilled weekly pill organizer with Monday and Tuesday empty, loose golden fish oil capsules, chalky white tablets, half-peeled navel orange with spiral rind trailing off surface edge, small used paring knife with citrus juice residue on blade, hastily scribbled note on torn lined paper in smudged blue ballpoint",
+  "Accessories": "ceramic coffee mug used as paperweight on a stack of coupons, one dried coffee ring on the butcher block from yesterday",
+  "ColorRestriction": "muted warm earth tones only, no saturated colors, slight warm cast from the natural wood surface",
+  "Lighting": "soft directional natural morning light streaming from a window just out of frame to the left, casting gentle long shadows across the surface, highlighting dust motes and micro-textures on every object",
+  "Camera": {"type": "iPhone 15 Pro", "lens": "24mm equivalent", "aperture": "f/1.78", "flash": "off", "iso_grain": "subtle sensor noise, slight warmth from auto white balance"},
+  "Imperfections": "natural film grain texture, slight vignetting at corners, the orange-peel edge is slightly out of focus",
+  "Textures": "visible wood grain with scratches and crumbs, glossy fish oil capsule surfaces, matte chalky tablet surfaces, rough torn paper fiber on the note, waxy orange peel with dimpled skin",
+  "OutputStyle": "overhead flat lay photograph, candid editorial style, film grain texture, natural morning light",
+  "Mood": "accumulated routine overwhelm, the specific chaos of a weekday morning where nothing gets put away because there is never enough time"
+}
+
+### JSON Example — native-closeup (exhaustion portrait):
+{
+  "Style": "documentary-portrait",
+  "Subject": "middle-aged woman around 50, messy bun with grey roots visible, no makeup, dark circles under eyes, slightly puffy, expression of flat resignation not dramatic sadness",
+  "MadeOutOf": "skin with visible pores and fine lines around eyes and mouth, cotton pajama top with fabric pilling, terrycloth bathrobe collar visible at neckline",
+  "Arrangement": "sitting at edge of bed hunched slightly forward, one hand pressed against forehead, caught mid-sigh",
+  "Background": "dim bedroom corner, rumpled unmade bed with twisted duvet visible behind her, digital alarm clock on nightstand showing 5:47",
+  "RoomObjects": "two prescription bottles on nightstand one with cap off, half-empty water glass with fingerprints visible on the glass, crumpled tissue, a book face-down spine cracked",
+  "Accessories": "plain silver wedding band, reading glasses pushed up on forehead, elastic hair tie on wrist slightly cutting into skin",
+  "ColorRestriction": "desaturated warm tones, no vivid colors, slight yellow tungsten cast from the lamp",
+  "Lighting": "single warm bedside lamp from the right casting deep shadows on left side of face, harsh enough to reveal every skin texture, no fill light",
+  "Camera": {"type": "iPhone 15 Pro front camera", "lens": "24mm equivalent", "aperture": "f/1.78", "flash": "off", "iso_grain": "visible high-ISO sensor noise from low light, subtle motion blur on the hand pressing forehead"},
+  "Imperfections": "shallow depth of field with bed and nightstand soft, chromatic aberration at bright-dark edges where lamp meets shadow, slight vignetting at corners",
+  "Textures": "every pore and fine line visible on face and hands, fabric pilling texture on pajama top, terrycloth loops on robe collar, glass fingerprints and water droplets",
+  "OutputStyle": "documentary portrait photography, harsh available light, no retouching, Kodak Portra 400 aesthetic",
+  "Mood": "quiet resignation, the particular exhaustion of someone who slept but didn't rest, just another morning of this"
+}
+
+NOTE: native-medical ALWAYS uses plain text prompts (not JSON). Medical illustrations, cross-sections, CT scans, and anatomical diagrams benefit from dense narrative description with technical terminology — JSON structure would fragment the medical detail that makes these images convincing.
+` : ''}
 ## Output Format:
-Return ONLY a JSON array of briefs. No markdown, no explanation, no preamble:
-[{"style":"product-hero","prompt":"...","hook":"...","headline":"...","referenceStrategy":"product","reptileTriggers":["ultra-real","uncanny-objects"]}]
+Return ONLY a JSON array of briefs. No markdown, no explanation, no preamble.
+${USE_JSON_PROMPTING ? `
+For styles [${JSON_PROMPT_STYLES.join(', ')}]: the "prompt" field MUST be a JSON OBJECT (the structured schema above).
+For ALL other styles: the "prompt" field MUST be a plain text STRING.
+
+Example array with mixed formats:
+[
+  {"style":"native-messy","prompt":{"Style":"overhead-flat-lay","Subject":"...","MadeOutOf":"...","Arrangement":"...","Background":"...","RoomObjects":"...","Accessories":"...","ColorRestriction":"...","Lighting":"...","Camera":{"type":"...","lens":"...","aperture":"...","flash":"...","iso_grain":"..."},"Imperfections":"...","Textures":"...","OutputStyle":"...","Mood":"..."},"hook":"The daily habit aging your joints 10 years faster","headline":"It takes 30 seconds to fix","referenceStrategy":"none","reptileTriggers":["inside-joke","voyeur"]},
+  {"style":"product-hero","prompt":"A premium supplement bottle centered on...","hook":"...","headline":"...","referenceStrategy":"product","reptileTriggers":["ultra-real"]}
+]` : `[{"style":"product-hero","prompt":"...","hook":"...","headline":"...","referenceStrategy":"product","reptileTriggers":["ultra-real","uncanny-objects"]}]`}
 
 Each brief must have:
 - style: one of the style IDs above (each brief MUST use a DIFFERENT style)
-- prompt: the complete Nano Banana prompt following ALL rules above
+- prompt: ${USE_JSON_PROMPTING ? 'JSON OBJECT for native-closeup/native-messy, plain text STRING for all other styles' : 'the complete Nano Banana prompt following ALL rules above'}
 - hook: scroll-stopping text (following the hook formulas and anti-AI voice rules above)
 - headline: secondary text (shorter, benefit-focused)
 - referenceStrategy: "product" or "none"
@@ -750,7 +836,11 @@ function parseBriefs(raw: string, expectedCount: number): ImageBrief[] {
   for (const item of parsed.slice(0, expectedCount)) {
     const obj = item as Record<string, unknown>;
     const style = String(obj.style ?? "product-hero");
-    const prompt = String(obj.prompt ?? "");
+    // JSON prompting: if prompt is an object (JSON schema), stringify it for Kie AI
+    const promptRaw = obj.prompt;
+    const prompt = (typeof promptRaw === "object" && promptRaw !== null)
+      ? JSON.stringify(promptRaw)
+      : String(promptRaw ?? "");
     const hookText = String(obj.hook ?? "");
 
     if (!prompt || !hookText) continue;

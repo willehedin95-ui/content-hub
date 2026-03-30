@@ -353,22 +353,41 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 
       // Build the full prompt: scene description + product appearance + optional text overlay instructions.
       // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
-      let fullPrompt = imgPrompt.prompt;
+      const promptRaw = imgPrompt.prompt;
+      const isJsonPrompt = typeof promptRaw === "object" && promptRaw !== null;
 
-      // Append product appearance description when product is included
-      if (includeProduct && productAppearance) {
-        fullPrompt += " " + productAppearance;
-      }
-      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
-      if (hasTextOverlay) {
-        const textParts: string[] = [];
-        if (imgPrompt.hook_text?.trim()) {
-          textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
+      let fullPrompt: string;
+      if (isJsonPrompt) {
+        // JSON prompt: add product appearance and text overlays as additional keys before stringifying
+        const jsonObj = { ...(promptRaw as Record<string, unknown>) };
+        if (includeProduct && productAppearance) {
+          jsonObj.ProductDescription = productAppearance;
         }
-        if (imgPrompt.headline_text?.trim()) {
-          textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
+        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+        if (hasTextOverlay) {
+          const overlayParts: string[] = [];
+          if (imgPrompt.hook_text?.trim()) overlayParts.push(`Bold headline: "${imgPrompt.hook_text}"`);
+          if (imgPrompt.headline_text?.trim()) overlayParts.push(`Secondary line: "${imgPrompt.headline_text}"`);
+          jsonObj.TextOverlay = overlayParts.join(". ");
         }
-        fullPrompt += " " + textParts.join(" ");
+        fullPrompt = JSON.stringify(jsonObj);
+      } else {
+        // Plain text prompt: append text overlays as before
+        fullPrompt = String(promptRaw);
+        if (includeProduct && productAppearance) {
+          fullPrompt += " " + productAppearance;
+        }
+        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+        if (hasTextOverlay) {
+          const textParts: string[] = [];
+          if (imgPrompt.hook_text?.trim()) {
+            textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
+          }
+          if (imgPrompt.headline_text?.trim()) {
+            textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
+          }
+          fullPrompt += " " + textParts.join(" ");
+        }
       }
 
       const { urls: resultUrls, costTimeMs } = await generateImage(
@@ -400,8 +419,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
           original_url: urlData.publicUrl,
           filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
           processing_order: index,
-          skip_translation: !hasTextOverlay,
-          generation_prompt: imgPrompt.prompt,
+          skip_translation: !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
+          generation_prompt: isJsonPrompt ? JSON.stringify(promptRaw) : String(promptRaw),
           generation_style: "competitor-swipe",
           batch: 1,
         })

@@ -3,6 +3,12 @@ export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 export const KIE_MODEL = "nano-banana-2";
 export const STORAGE_BUCKET = "translated-images";
 
+// Feature flag: JSON-structured prompts for native ad styles (native-closeup, native-messy).
+// JSON prompting separates subject/lighting/camera/mood into distinct keys, preventing
+// "concept bleeding" and producing more realistic images. Set to false to revert to
+// plain text narrative prompts.
+export const USE_JSON_PROMPTING = true;
+
 // Pagination
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
@@ -33,6 +39,9 @@ export const STATIC_STYLES = [
 ] as const;
 
 export type StaticStyleId = (typeof STATIC_STYLES)[number]["id"];
+
+// Styles that use JSON prompting when USE_JSON_PROMPTING is enabled
+export const JSON_PROMPT_STYLES: StaticStyleId[] = ["native-closeup", "native-messy"];
 
 // V3.1: Awareness level → preferred styles (ordered by relevance)
 export const AWARENESS_STYLE_MAP: Record<string, StaticStyleId[]> = {

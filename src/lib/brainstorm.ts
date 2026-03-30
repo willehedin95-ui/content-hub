@@ -12,7 +12,7 @@ import type {
   CashDna,
   NarrativeArchetype,
 } from "@/types";
-import { CLAUDE_MODEL } from "./constants";
+import { CLAUDE_MODEL, USE_JSON_PROMPTING } from "./constants";
 import { parseConceptProposals } from "./concept-generator";
 
 // Re-export for convenience
@@ -1243,13 +1243,36 @@ Each entry MUST include "source_index" (0-based) indicating which uploaded image
 Generate prompts for the Nano Banana AI image generator (nano-banana-2) that reproduce the competitor's visual FORMAT with our product's content.
 
 **Nano Banana Prompt Rules:**
-- Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.
+${USE_JSON_PROMPTING ? `
+**JSON PROMPT FORMAT (for native/UGC-style competitor ads):**
+If the competitor ad is a native/UGC-style image (no visible product, candid photo, lifestyle scene, etc.), the "prompt" field in each image_prompt entry MUST be a structured JSON OBJECT — NOT plain text. This prevents "concept bleeding" where subject details contaminate lighting or background details.
+
+JSON Schema (every key required for native ads):
+{
+  "Style": "photographic approach — e.g. 'overhead-flat-lay', 'direct-flash-candid', 'documentary-portrait'",
+  "Subject": "main focal point with specific physical details: age, appearance, expression, clothing material and condition",
+  "MadeOutOf": "material specs for ALL visible surfaces and fabrics — controls texture rendering",
+  "Arrangement": "spatial layout: pose/position, object placement relative to each other",
+  "Background": "setting beyond immediate scene, out-of-focus elements",
+  "RoomObjects": "specific objects with CONDITION details: half-empty, cap off, stained, worn, expired",
+  "Accessories": "detail elements on or near the subject",
+  "ColorRestriction": "ALWAYS muted for native — specify exact palette limits",
+  "Lighting": "specific source WITH direction AND quality — be precise as a cinematographer",
+  "Camera": {"type": "device name", "lens": "focal length", "aperture": "f-stop", "flash": "on/off", "iso_grain": "noise description"},
+  "Imperfections": "MANDATORY — at least 2: sensor noise, grain, soft focus, vignetting, chromatic aberration",
+  "Textures": "surface details: pores, fabric weave, scratches, coffee rings. Nothing smooth.",
+  "OutputStyle": "final style suffix matching the photographic approach",
+  "Mood": "emotional register anchored to a SPECIFIC moment in time"
+}
+
+If the competitor ad is a PRODUCT-focused ad (product prominently visible, studio shot, etc.), use a plain text string prompt instead.
+` : `- Write 2-4 dense sentences per prompt. Subject first, weave in details naturally.`}
 - Be SPECIFIC about lighting (soft diffused / harsh directional / warm golden / cool blue), texture (matte / glossy / grainy / smooth), and materials
 - Describe the MOOD last (clinical, warm, urgent, calm, editorial)
 - **TEXT IN IMAGES — CRITICAL**: You MUST analyze whether the competitor ad has text overlays or not.
   - **If the competitor ad has NO text overlays** (pure photo, native/UGC style, clean lifestyle shot, no words visible in the image at all): set hook_text and headline_text to EMPTY STRINGS (""). The generated image should be a CLEAN image with NO text — matching the competitor's text-free visual style.
   - **If the competitor ad HAS text overlays** (bold headlines, hook text, captions, call-to-action text, etc. layered ON TOP of the image): provide adapted hook_text and headline_text for our product. These will be appended to the Nano Banana prompt as text overlay instructions. Your Nano Banana prompt should describe the VISUAL SCENE only — the text will be added automatically. **TEXT SAFE ZONE**: All text overlays MUST be placed in the vertical MIDDLE of the image (between 15% and 80% from top). NEVER place text at the very top or bottom edges — these areas are covered by Stories/Reels UI (username, captions, CTA buttons) when the image is outpainted to 9:16.
-  - **If the competitor ad has text that is physically PART OF THE SCENE** (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.): you MUST describe the ADAPTED text for our product directly in the Nano Banana prompt. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style". In this case, set hook_text and headline_text to empty strings since the text is already in the prompt.
+  - **If the competitor ad has text that is physically PART OF THE SCENE** (handwritten on body/skin, written on paper/sign, tattoo-style text, marker text, text on a product label, text on a mirror, etc.): you MUST describe the ADAPTED text for our product directly in the Nano Banana prompt${USE_JSON_PROMPTING ? ' (in the "Subject" or "RoomObjects" key of the JSON)' : ''}. Example: if a beauty supplement competitor has "Drains the cortisol face" written on skin, your prompt must say something like "handwritten text on her upper arm reading 'Stopped snoring after one night on this pillow' in the same casual marker style". In this case, set hook_text and headline_text to empty strings since the text is already in the prompt.
   - Each image_prompt variation should use a different hook_text (when text overlays are present).
 - Focus on reproducing the competitor's visual STYLE, not their specific product
 - The competitor image is NOT passed to Nano Banana — your prompt must be SELF-CONTAINED and describe the entire desired image without relying on a visual reference. Be very specific about layout, composition, colors, and style.
@@ -1257,12 +1280,7 @@ Generate prompts for the Nano Banana AI image generator (nano-banana-2) that rep
 - If the competitor ad uses a product shot, describe how our product should be positioned in the same style
 - **PRODUCT REFERENCE CONTROL — CRITICAL**: For each image_prompt, set \`"include_product_reference": true\` ONLY if the competitor ad prominently features a VISIBLE physical product (a bottle, box, pillow, device, etc.) that should be replaced with our product. Set it to \`false\` for native/UGC-style ads where no product is visible — e.g. a person at a doctor's office, a selfie, a lifestyle scene, medical staff, etc. When set to false, the product hero images will NOT be passed to Nano Banana, so it will reproduce the scene naturally without forcing our product into the image. This is essential for native ads that are supposed to look organic, not like product ads.
 
-**Nano Banana prompt structure:**
-\`[Subject/scene description with specific details]. [Lighting and atmosphere]. [Textures, materials, and technical details]. [Overall mood and feeling].\`
-
-Example quality level (do NOT copy — shows density and specificity):
-"A supplement bottle centered on a weathered wooden nightstand beside a rumpled bed, morning light streaming through sheer curtains casting soft warm shadows across the scene. Shallow depth of field with the bottle sharp and background softly blurred, natural grain texture. Intimate, relatable, early-morning wellness ritual mood."
-
+${USE_JSON_PROMPTING ? '' : "**Nano Banana prompt structure:**\n`[Subject/scene description with specific details]. [Lighting and atmosphere]. [Textures, materials, and technical details]. [Overall mood and feeling].`\n\nExample quality level (do NOT copy — shows density and specificity):\n\"A supplement bottle centered on a weathered wooden nightstand beside a rumpled bed, morning light streaming through sheer curtains casting soft warm shadows across the scene. Shallow depth of field with the bottle sharp and background softly blurred, natural grain texture. Intimate, relatable, early-morning wellness ritual mood.\"\n"}
 ---
 
 ## OUTPUT FORMAT
@@ -1299,7 +1317,7 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
   "image_prompts": [
     {
       "source_index": 0,
-      "prompt": "Nano Banana prompt (2-4 dense sentences)...",
+      "prompt": ${USE_JSON_PROMPTING ? '"JSON OBJECT (for native/UGC ads) or plain text STRING (for product-focused ads)"' : '"Nano Banana prompt (2-4 dense sentences)..."'},
       "hook_text": "Main text overlay (or empty string if competitor ad has NO text)",
       "headline_text": "Secondary text line (or empty string if no text)",
       "include_product_reference": true
