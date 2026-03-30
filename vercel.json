@@ -63,6 +63,10 @@
     {
       "path": "/api/cron/pagespeed-check",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/landing-page-health",
+      "schedule": "0 5 * * *"
     }
   ]
 }
