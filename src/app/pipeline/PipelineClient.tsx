@@ -121,7 +121,6 @@ const LANG_TO_COUNTRY: Record<string, string> = {
   sv: "SE",
   da: "DK",
   no: "NO",
-  de: "DE",
 };
 
 const COUNTRY_TABS = ["SE", "DK", "NO"] as const;

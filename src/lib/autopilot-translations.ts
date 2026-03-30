@@ -663,14 +663,6 @@ async function notifyTranslationsDone(
             { text: "✏️ Hold for edit", callback_data: `quality_hold:${jobId}` },
           ],
         ]);
-      } else {
-        await sendMessage(chatId, [
-          `✅ Autopilot translations complete — ready for push!`,
-          `Concept: ${label}`,
-          `${totalCount} images translated`,
-          ``,
-          `Pipeline will auto-push next cycle.`,
-        ].join("\n"));
       }
     }
   } catch (err) {

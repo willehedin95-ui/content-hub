@@ -440,7 +440,7 @@ export async function pushVideoToMeta(
   });
 
   // If markets filter provided, also filter by mapped languages
-  const LANG_TO_COUNTRY: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+  const LANG_TO_COUNTRY: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
   const filteredTranslations = opts?.markets
     ? completedTranslations.filter((t) => {
         const country = LANG_TO_COUNTRY[t.language];

@@ -29,7 +29,6 @@ describe("isValidLanguage", () => {
     expect(isValidLanguage("sv")).toBe(true);
     expect(isValidLanguage("da")).toBe(true);
     expect(isValidLanguage("no")).toBe(true);
-    expect(isValidLanguage("de")).toBe(true);
   });
 
   it("rejects unsupported languages", () => {

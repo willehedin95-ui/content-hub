@@ -2,7 +2,7 @@ import { Language } from "@/types";
 
 /**
  * Universal character names that sound natural in ALL target languages
- * (Swedish, Danish, Norwegian, German). Use these in source content
+ * (Swedish, Danish, Norwegian). Use these in source content
  * so GPT never needs to rename characters during translation.
  */
 export const UNIVERSAL_NAMES = {
@@ -14,21 +14,18 @@ const LANGUAGE_LABELS: Record<Language, string> = {
   sv: "Swedish",
   no: "Norwegian",
   da: "Danish",
-  de: "German",
 };
 
 const DATE_FORMATS: Record<Language, string> = {
   sv: '"X dagar sedan" / "X days ago" → "X dagar sedan". Dates: YYYY-MM-DD.',
   no: '"X dagar sedan" / "X days ago" → "X dager siden". Dates: DD.MM.YYYY.',
   da: '"X dagar sedan" / "X days ago" → "X dage siden". Dates: DD.MM.YYYY.',
-  de: '"X dagar sedan" / "X days ago" → "vor X Tagen". Dates: DD.MM.YYYY.',
 };
 
 const UI_ELEMENTS: Record<Language, string> = {
   sv: '"Reply"/"Svar" → "Svar", "Comment"/"Kommentar" → "Kommentar".',
   no: '"Reply"/"Svar" → "Svar", "Comment"/"Kommentar" → "Kommentar".',
   da: '"Reply"/"Svar" → "Svar", "Comment"/"Kommentar" → "Kommentar".',
-  de: '"Reply"/"Svar" → "Antworten", "Comment"/"Kommentar" → "Kommentar".',
 };
 
 /**

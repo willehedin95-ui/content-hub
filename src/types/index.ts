@@ -21,7 +21,7 @@ export interface WorkspaceMetaConfig {
 export type Product = string;
 export type PageType = "advertorial" | "listicle";
 export type PageAngle = "snoring" | "neck_pain" | "neutral";
-export type Language = "sv" | "da" | "no" | "de";
+export type Language = "sv" | "da" | "no";
 export type TranslationStatus =
   | "draft"
   | "translating"
@@ -128,12 +128,6 @@ export const LANGUAGES: {
     label: "Norwegian",
     flag: "🇳🇴",
     domain: "helseguiden.com",
-  },
-  {
-    value: "de",
-    label: "German",
-    flag: "🇩🇪",
-    domain: "",
   },
 ];
 
@@ -440,7 +434,6 @@ export const COUNTRY_MAP: Record<Language, string> = {
   no: "NO",
   da: "DK",
   sv: "SE",
-  de: "DE",
 };
 
 export interface MetaCampaign {
@@ -762,7 +755,7 @@ export interface PipelineConcept {
   id: string; // image_job_market.id (not image_job.id!)
   imageJobId: string; // for linking back to source concept
   conceptType: "image" | "video"; // distinguishes image vs video concepts
-  market: string; // "SE", "DK", "NO", or "DE"
+  market: string; // "SE", "DK", or "NO"
   name: string;
   conceptNumber: number | null;
   product: string | null;

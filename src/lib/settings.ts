@@ -39,7 +39,7 @@ export function getDefaultLanguages(): Language[] {
   if (settings.static_ads_default_languages?.length) {
     return settings.static_ads_default_languages;
   }
-  return ["sv", "da", "no", "de"];
+  return ["sv", "da", "no"];
 }
 
 export function getPageQualitySettings(): { enabled: boolean } {

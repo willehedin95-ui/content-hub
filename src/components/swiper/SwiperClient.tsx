@@ -238,7 +238,6 @@ export default function SwiperClient({ products }: Props) {
             <option value="sv">Swedish</option>
             <option value="da">Danish</option>
             <option value="no">Norwegian</option>
-            <option value="de">German</option>
           </select>
           <p className="text-xs text-gray-400 mt-1">Auto-detected from page. Override if needed.</p>
         </div>

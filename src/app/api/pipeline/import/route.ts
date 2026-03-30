@@ -9,7 +9,6 @@ const COUNTRY_TO_LANG: Record<string, string> = {
   SE: "sv",
   DK: "da",
   NO: "no",
-  DE: "de",
 };
 
 /** Parse ad set name to extract concept name and number.

@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     const nextPriority = Math.max(maxImagePriority?.launchpad_priority ?? 0, maxVideoPriority?.launchpad_priority ?? 0) + 1;
 
     // Build per-market priorities from target_languages
-    const LANG_TO_MKT: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+    const LANG_TO_MKT: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
     const marketPriorities: Record<string, number> = {};
     for (const lang of (job.target_languages as string[]) ?? []) {
       const mkt = LANG_TO_MKT[lang];

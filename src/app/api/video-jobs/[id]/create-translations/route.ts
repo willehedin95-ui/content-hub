@@ -46,7 +46,7 @@ export async function POST(
 
     if (existing) continue;
 
-    const langMap: Record<string, string> = { sv: "Swedish", no: "Norwegian", da: "Danish", de: "German" };
+    const langMap: Record<string, string> = { sv: "Swedish", no: "Norwegian", da: "Danish" };
     const langName = langMap[lang] || lang;
 
     // Claude translates both script and Sora prompt

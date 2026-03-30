@@ -21,7 +21,7 @@ async function main() {
   const { publishPage } = await import("../src/lib/cloudflare-pages");
   const { injectProductImage } = await import("../src/lib/blog-images");
 
-  type Language = "sv" | "da" | "no" | "de";
+  type Language = "sv" | "da" | "no";
   type BlogConfig = ReturnType<typeof getDefaultBlogConfig>;
 
   const db = createServerSupabase();

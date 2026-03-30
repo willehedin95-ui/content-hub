@@ -9,7 +9,7 @@ import { toast } from "sonner";
 /* ── Filter option types ──────────────────────────── */
 
 type ProductFilter = "all" | "happysleep" | "hydro13";
-type MarketFilter = "all" | "SE" | "DK" | "NO" | "DE";
+type MarketFilter = "all" | "SE" | "DK" | "NO";
 type OutcomeFilter = "all" | "winner" | "loser";
 type AwarenessFilter = "all" | (typeof AWARENESS_LEVELS)[number];
 
@@ -24,7 +24,6 @@ const MARKET_OPTIONS: { value: MarketFilter; label: string }[] = [
   { value: "SE", label: "SE" },
   { value: "DK", label: "DK" },
   { value: "NO", label: "NO" },
-  { value: "DE", label: "DE" },
 ];
 
 const OUTCOME_OPTIONS: { value: OutcomeFilter; label: string }[] = [
@@ -90,7 +89,6 @@ function marketColor(market: string | null) {
   if (market === "SE") return "bg-blue-50 text-blue-700 border-blue-200";
   if (market === "DK") return "bg-red-50 text-red-700 border-red-200";
   if (market === "NO") return "bg-indigo-50 text-indigo-700 border-indigo-200";
-  if (market === "DE") return "bg-amber-50 text-amber-700 border-amber-200";
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 

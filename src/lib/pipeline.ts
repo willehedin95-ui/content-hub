@@ -1032,7 +1032,7 @@ export async function getPipelineData(workspaceId?: string): Promise<PipelineDat
 
   // ── Add draft concepts (image_jobs not yet pushed to Meta) ──
   // Language → market mapping
-  const langToMarket: Record<string, string> = { da: "DK", no: "NO", sv: "SE", de: "DE" };
+  const langToMarket: Record<string, string> = { da: "DK", no: "NO", sv: "SE" };
 
   // Collect (image_job_id, market) pairs that already have market entries
   const existingMarketKeys = new Set(markets.map((m) => `${m.image_job_id}:${m.market}`));
@@ -1083,7 +1083,7 @@ export async function getPipelineData(workspaceId?: string): Promise<PipelineDat
   }
 
   // ── Add video concepts pushed to Meta ──
-  const LANG_TO_MARKET: Record<string, string> = { da: "DK", no: "NO", sv: "SE", de: "DE" };
+  const LANG_TO_MARKET: Record<string, string> = { da: "DK", no: "NO", sv: "SE" };
 
   const { data: videoMetaCampaigns } = await db
     .from("meta_campaigns")
@@ -1839,7 +1839,7 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
     }
   }
 
-  const LANG_TO_MARKET: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+  const LANG_TO_MARKET: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
 
   const imageConcepts = (imageJobs ?? []).map((job) => {
     const jobMarkets = (imageMarkets ?? []).filter((m) => m.image_job_id === job.id);

@@ -10,7 +10,6 @@ const MARKET_TO_LANG: Record<string, Language> = {
   NO: "no",
   DK: "da",
   SE: "sv",
-  DE: "de",
 };
 
 export async function POST(

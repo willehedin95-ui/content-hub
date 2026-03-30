@@ -11,7 +11,7 @@ import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 
 export const maxDuration = 300;
 
-const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
+const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv" };
 
 /**
  * Daily pipeline cron (03:00 UTC):
@@ -230,7 +230,7 @@ export async function GET(req: NextRequest) {
                       .select("language, status")
                       .eq("video_job_id", concept.conceptId);
 
-                    const langToMarket: Record<string, string> = { sv: "SE", da: "DK", no: "NO", de: "DE" };
+                    const langToMarket: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
                     for (const mc of videoMeta ?? []) {
                       if (mc.status === "pushed" || mc.status === "active") {
                         const mkt = langToMarket[mc.language];

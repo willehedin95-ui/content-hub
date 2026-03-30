@@ -6,7 +6,7 @@ import { pushVideoToMeta } from "@/lib/meta-video-push";
 
 export const maxDuration = 300;
 
-const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
+const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv" };
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
