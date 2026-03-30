@@ -21,7 +21,13 @@ Updated: 2026-03-30
 
 ## Tier 1.5 — Immediate Follow-ups
 - [x] ~~**Commit remaining uncommitted changes**~~ — All changes committed and pushed in `7c4dd2f`. Includes CF Pages .trim() fix, bleeder kill logic, blog page filter, autopilot upgrades. (done 2026-03-30)
+- [x] ~~**Fix autopilot JSON parse crash**~~ — Added `repairJson()` to `concept-generator.ts` (trailing commas, control chars). Two-attempt parsing with better error messages. Commit `603efb2`. (done 2026-03-30)
+- [x] ~~**Landing page health check cron**~~ — `/api/cron/landing-page-health` at 05:00 UTC. Checks all active Meta ad landing pages for HTTP 200 + valid HTML. Telegram alert on failure. Commit `6246d76`. (done 2026-03-30)
+- [x] ~~**Review card improvements**~~ — Landing page name shown, clickable images/titles to detail pages. Commit `603efb2`. (done 2026-03-30)
+- [x] ~~**JSON prompting for native ads**~~ — native-closeup + native-messy now use structured JSON prompts (14 keys) via Kie AI. Feature flag `USE_JSON_PROMPTING`. Both static ad pipeline + competitor swipe. Commit `0635b5c`. (done 2026-03-30)
+- [ ] **Push + test JSON prompting** — Push `0635b5c` to Vercel, generate test concepts, compare native ad image quality. If worse, flip `USE_JSON_PROMPTING = false`. (added 2026-03-30, HIGH)
 - [ ] **Monitor HappySleep DK recovery** — After killing 15 zombies + restoring Min-datter landing page, watch DK ROAS over 3-5 days. If it doesn't improve, consider reducing DK budget. (added 2026-03-30)
+- [ ] **Monitor first landing page health check** — Check Telegram for results after 05:00 UTC tomorrow. (added 2026-03-30)
 - [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
 - [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
 
