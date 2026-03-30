@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-27
+Updated: 2026-03-29
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -16,6 +16,13 @@ Updated: 2026-03-27
 - [x] ~~**Workspace-aware language options**~~ — Hydro13 now only shows Swedish. `WorkspaceProvider` + `useWorkspaceLanguages()` hook, 10 components + 8 API routes updated. Commit `907130c`. (done 2026-03-27, by Paperclip CEO agent)
 - [ ] **Fix ad-performance-sync multi-workspace** — Cron only syncs env var Meta account. Renew's separate ad account (`act_1356397096506086`) data never synced. Needs to iterate `workspaces.meta_config`. (added 2026-03-27, HIGH priority)
 - [ ] **Fix pipeline/concepts approve route** — `POST /api/pipeline/concepts/[id]/approve` references non-existent `/api/image-jobs/[id]/generate-all`. Silently 404s. (added 2026-03-27)
+- [ ] **Improve landing page auto-picker** — `findBestLandingPage()` in `landing-page-recommender.ts` not picking well. Review the 4-tier logic (pain point match → best ROAS → most-used → most recent) and improve accuracy. Critical for full autopilot. (added 2026-03-29, HIGH priority)
+- [ ] **Full autopilot (no approval)** — End goal: remove human approval step entirely. Autopilot generates concepts, translates, picks landing page, pushes to Meta — zero intervention. Requires: good landing page picker, high concept quality, reliable translations. Evaluate output quality first. (added 2026-03-29)
+
+## Tier 1.5 — Immediate Follow-ups
+- [ ] **Commit remaining uncommitted changes** — ~15 modified files from previous sessions (strategy engine, pipeline push, activity feed, ad-performance-sync, launchpad, etc.). Need review + commit. (added 2026-03-29, HIGH)
+- [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
+- [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
 
 ## Tier 2 — Builder & UX Quality
 - [x] ~~**Autosave race condition**~~ — Fixed in commit `f382c9b`. (done 2026-03-22)
@@ -50,6 +57,7 @@ Updated: 2026-03-27
 - [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
 
 ## Done (recent)
+- [x] **Mobile Review Page (`/review`)** — Cross-workspace mobile approval page. Shared `approval-actions.ts` (7 functions), refactored Telegram webhook + Hub approve endpoint. Filter tabs, 10s polling, deep linking via `?highlight=<id>`. Telegram notifications link to `/review`. Commits `3c31b8a`, `cebde95`. (done 2026-03-29)
 - [x] **Workspace-aware language options** — Hydro13 shows only Swedish. WorkspaceProvider, useWorkspaceLanguages(), 22 files. Commit `907130c`. (done 2026-03-27, Paperclip CEO)
 - [x] **Multi-workspace hardcoding audit** — 24 files fixed, removed all hardcoded HappySleep/pillow/collagen refs, pausedProducts filter, `|| "happysleep"` fallbacks. Commits `69dea06`, `f80afda`. (done 2026-03-27)
 - [x] **Research Intelligence System** — Full Trustpilot scraping + Haiku evaluation + theme detection + brainstorm integration + UI. 7 Nordic collagen sources pre-configured for Hydro13. Commit `6d9e2f4`. (done 2026-03-25)

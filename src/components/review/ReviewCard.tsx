@@ -21,6 +21,7 @@ const TYPE_CONFIG = {
 export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
   const [loading, setLoading] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const config = TYPE_CONFIG[item.type];
   const Icon = config.icon;
@@ -103,18 +104,25 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
 
         {/* Ad copy preview */}
         {item.ad_copy && (
-          <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-100 w-full text-left"
+          >
             {item.ad_copy.headline && (
               <p className="text-sm font-medium text-gray-900 mb-0.5">
                 {item.ad_copy.headline}
               </p>
             )}
             {item.ad_copy.primary && (
-              <p className="text-sm text-gray-600 line-clamp-3">
+              <p className={`text-sm text-gray-600 ${expanded ? "" : "line-clamp-3"}`}>
                 {item.ad_copy.primary}
               </p>
             )}
-          </div>
+            {!expanded && item.ad_copy.primary && item.ad_copy.primary.length > 120 && (
+              <span className="text-xs text-blue-600 mt-1 inline-block">Tap to read more</span>
+            )}
+          </button>
         )}
 
         {/* Product badge */}
