@@ -61,7 +61,11 @@ export async function POST(req: NextRequest) {
     )];
 
     // Auto-assign landing page
-    const landingPageId = await findBestLandingPage(db, workspaceId, product, proposal.pain_point);
+    const landingPageId = await findBestLandingPage(db, workspaceId, product, {
+      adCopyPrimary: proposal.ad_copy_primary,
+      adCopyHeadline: proposal.ad_copy_headline,
+      conceptName: proposal.concept_name,
+    });
 
     // Create the image_job
     const { data: job, error: jobErr } = await db

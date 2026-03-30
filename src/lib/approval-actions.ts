@@ -29,7 +29,7 @@ export async function approveConceptAction(jobId: string, source: string = "revi
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority, product")
+    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority, product, ad_copy_primary, ad_copy_headline")
     .eq("id", jobId)
     .single();
 
@@ -43,15 +43,26 @@ export async function approveConceptAction(jobId: string, source: string = "revi
 
   // Auto-assign landing page if missing
   if (!job.landing_page_id) {
-    const autoPageId = await findBestLandingPage(db, job.workspace_id, job.product as string);
+    const autoPageId = await findBestLandingPage(db, job.workspace_id, job.product as string, {
+      adCopyPrimary: job.ad_copy_primary as string | string[],
+      adCopyHeadline: job.ad_copy_headline as string | string[],
+      conceptName: job.name,
+    });
     if (autoPageId) {
       await db.from("image_jobs").update({ landing_page_id: autoPageId }).eq("id", jobId);
       job.landing_page_id = autoPageId;
     }
   }
 
-  // No landing page is OK — concept goes to launchpad, pipeline-push won't push until one is assigned
-  // This allows approving concepts for workspaces that don't have published pages yet
+  if (!job.landing_page_id) {
+    return {
+      ok: false,
+      action: "approve",
+      error: "No published landing page found. Go to Landing Pages, publish one for this product, then approve again.",
+      jobId,
+      jobName: job.name,
+    };
+  }
 
   // Get next launchpad priority (top of queue)
   const { data: topLaunchpad } = await db

@@ -622,7 +622,11 @@ async function runFromScratch(
   }
 
   // --- Step 6: Auto-assign landing page ---
-  const landingPageId = await findBestLandingPage(db, ws.id, ws.productSlug);
+  const landingPageId = await findBestLandingPage(db, ws.id, ws.productSlug, {
+    adCopyPrimary: proposal.ad_copy_primary,
+    adCopyHeadline: proposal.ad_copy_headline,
+    conceptName: proposal.concept_name,
+  });
   if (landingPageId) {
     await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
   } else if (chatId) {

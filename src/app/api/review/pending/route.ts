@@ -24,6 +24,27 @@ export async function GET() {
   const { data: workspaces } = await db.from("workspaces").select("id, name, slug");
   const wsMap = new Map((workspaces ?? []).map((w) => [w.id, { name: w.name, slug: w.slug }]));
 
+  // Get IDs of concepts already pushed to Meta (have meta_campaigns records)
+  // These should NOT appear in the review feed even though launchpad_priority is null
+  const { data: pushedConcepts } = await db
+    .from("meta_campaigns")
+    .select("image_job_id")
+    .not("image_job_id", "is", null);
+  const pushedIds = new Set((pushedConcepts ?? []).map((c) => c.image_job_id as string));
+
+  // Also get IDs of concepts that have been on launchpad before (have concept_lifecycle records)
+  // This catches concepts that were approved, pushed, and had launchpad_priority cleared
+  const { data: lifecycleJobs } = await db
+    .from("concept_lifecycle")
+    .select("image_job_market_id, image_job_markets!inner(image_job_id)")
+    .eq("stage", "launchpad");
+  const hadLifecycle = new Set(
+    (lifecycleJobs ?? []).map((l) => {
+      const m = l.image_job_markets as unknown as { image_job_id: string };
+      return m?.image_job_id;
+    }).filter(Boolean)
+  );
+
   // 1. Pending autopilot/competitor-swipe concepts
   const { data: pendingConcepts } = await db
     .from("image_jobs")
@@ -38,7 +59,7 @@ export async function GET() {
     .is("archived_at", null)
     .neq("status", "draft")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(50);
 
   // 2. Pending creative iterations
   const { data: pendingIterations } = await db
@@ -99,6 +120,8 @@ export async function GET() {
 
   for (const c of pendingConcepts ?? []) {
     if (reviewJobIds.has(c.id)) continue; // will show as translation_review instead
+    if (pushedIds.has(c.id)) continue; // already live on Meta
+    if (hadLifecycle.has(c.id)) continue; // was on launchpad before (approved + pushed)
     const imgs = (c.source_images as Array<{ id: string; original_url: string }>) ?? [];
     const ws = wsMap.get(c.workspace_id) ?? { name: "Unknown", slug: "unknown" };
     items.push({
@@ -121,6 +144,8 @@ export async function GET() {
 
   for (const c of pendingIterations ?? []) {
     if (reviewJobIds.has(c.id)) continue;
+    if (pushedIds.has(c.id)) continue;
+    if (hadLifecycle.has(c.id)) continue;
     const imgs = (c.source_images as Array<{ id: string; original_url: string }>) ?? [];
     const ws = wsMap.get(c.workspace_id) ?? { name: "Unknown", slug: "unknown" };
     items.push({

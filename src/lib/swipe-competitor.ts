@@ -316,7 +316,11 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   }
 
   // --- Auto-assign landing page ---
-  const landingPageId = await findBestLandingPage(db, workspaceId, productSlug, input.painPoint);
+  const landingPageId = await findBestLandingPage(db, workspaceId, productSlug, {
+    adCopyPrimary: parsed.concept.ad_copy_primary,
+    adCopyHeadline: parsed.concept.ad_copy_headline,
+    conceptName: parsed.concept.concept_name,
+  });
   if (landingPageId) {
     await db.from("image_jobs").update({ landing_page_id: landingPageId }).eq("id", job.id);
   }

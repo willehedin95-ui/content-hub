@@ -493,7 +493,8 @@ Return ONLY valid JSON. No markdown fences.`;
   const landingPageId = await findBestLandingPage(
     db,
     workspaceId,
-    productSlug
+    productSlug,
+    { conceptName: proposal.concept_name }
   );
   if (landingPageId) {
     await db
