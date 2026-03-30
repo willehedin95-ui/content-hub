@@ -50,9 +50,8 @@ export async function approveConceptAction(jobId: string, source: string = "revi
     }
   }
 
-  if (!job.landing_page_id) {
-    return { ok: false, action: "approve", error: "No landing page available", jobId, jobName: job.name };
-  }
+  // No landing page is OK — concept goes to launchpad, pipeline-push won't push until one is assigned
+  // This allows approving concepts for workspaces that don't have published pages yet
 
   // Get next launchpad priority (top of queue)
   const { data: topLaunchpad } = await db
