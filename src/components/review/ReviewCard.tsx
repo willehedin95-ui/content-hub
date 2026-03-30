@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { CheckCircle2, XCircle, Bot, RefreshCw, Languages, Video } from "lucide-react";
+import { CheckCircle2, XCircle, Bot, RefreshCw, Languages, Video, FileText, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import type { ReviewItem } from "@/app/api/review/pending/route";
 
 interface Props {
@@ -40,6 +41,7 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
   }
 
   const timeAgo = getTimeAgo(item.created_at);
+  const detailUrl = getDetailUrl(item);
 
   return (
     <div
@@ -47,22 +49,24 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
         dismissed ? "opacity-0 scale-95 h-0 mb-0 overflow-hidden" : ""
       } ${isHighlighted ? "ring-2 ring-blue-500 ring-offset-2" : "border-gray-200"}`}
     >
-      {/* Image row */}
+      {/* Image row — clickable to detail */}
       {item.images.length > 0 && (
-        <div className="flex gap-0.5 bg-gray-100">
-          {item.images.slice(0, 3).map((img, i) => (
-            <div key={i} className="relative flex-1 aspect-[4/5]">
-              <Image
-                src={img.url}
-                alt=""
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 33vw, 150px"
-                unoptimized
-              />
-            </div>
-          ))}
-        </div>
+        <Link href={detailUrl} className="block">
+          <div className="flex gap-0.5 bg-gray-100">
+            {item.images.slice(0, 3).map((img, i) => (
+              <div key={i} className="relative flex-1 aspect-[4/5]">
+                <Image
+                  src={img.url}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 33vw, 150px"
+                  unoptimized
+                />
+              </div>
+            ))}
+          </div>
+        </Link>
       )}
 
       <div className="p-4">
@@ -78,13 +82,16 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
           <span className="text-xs text-gray-400 ml-auto">{timeAgo}</span>
         </div>
 
-        {/* Name */}
-        <h3 className="font-semibold text-gray-900 text-base mb-1">
-          {item.concept_number && (
-            <span className="text-gray-400 font-normal">#{item.concept_number} </span>
-          )}
-          {item.name}
-        </h3>
+        {/* Name — clickable to detail */}
+        <Link href={detailUrl} className="block mb-1 group">
+          <h3 className="font-semibold text-gray-900 text-base group-hover:text-indigo-600 transition-colors inline-flex items-center gap-1.5">
+            {item.concept_number && (
+              <span className="text-gray-400 font-normal">#{item.concept_number} </span>
+            )}
+            {item.name}
+            <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" />
+          </h3>
+        </Link>
 
         {/* CASH DNA metadata */}
         {item.cash_dna && (
@@ -125,14 +132,26 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
           </button>
         )}
 
-        {/* Product badge */}
-        {item.product && (
-          <div className="mb-3">
+        {/* Product + Landing page */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+          {item.product && (
             <span className="text-xs text-gray-500">
               Product: <span className="font-medium text-gray-700">{item.product}</span>
             </span>
-          </div>
-        )}
+          )}
+          {item.landing_page && (
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+              <FileText className="h-3 w-3" />
+              <span className="font-medium text-gray-700">{item.landing_page.name}</span>
+            </span>
+          )}
+          {(item.type === "concept" || item.type === "iteration") && !item.landing_page && (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+              <FileText className="h-3 w-3" />
+              No landing page
+            </span>
+          )}
+        </div>
 
         {/* Action buttons — big touch targets */}
         <div className="flex gap-3">
@@ -156,6 +175,11 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
       </div>
     </div>
   );
+}
+
+function getDetailUrl(item: ReviewItem): string {
+  if (item.type === "video") return `/video-ads/${item.id}`;
+  return `/images/${item.id}`;
 }
 
 function getTimeAgo(dateString: string): string {

@@ -123,6 +123,20 @@ CRITICAL RULES:
 }
 
 /**
+ * Attempt to repair common JSON issues from LLM output:
+ * - Trailing commas before } or ]
+ * - Unescaped newlines inside strings
+ * - Control characters
+ */
+function repairJson(json: string): string {
+  // Remove trailing commas before } or ] (with optional whitespace)
+  let fixed = json.replace(/,(\s*[}\]])/g, "$1");
+  // Remove control characters except \n \r \t inside strings
+  fixed = fixed.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  return fixed;
+}
+
+/**
  * Parse and validate concept proposals from Claude's raw JSON response.
  */
 export function parseConceptProposals(raw: string): ConceptProposal[] {
@@ -139,7 +153,25 @@ export function parseConceptProposals(raw: string): ConceptProposal[] {
   const lastClose = Math.max(lastBrace, lastBracket);
   if (lastClose >= 0 && lastClose < cleaned.length - 1) cleaned = cleaned.slice(0, lastClose + 1);
 
-  const parsed = JSON.parse(cleaned);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Try repairing common LLM JSON issues
+    try {
+      parsed = JSON.parse(repairJson(cleaned));
+      console.log("[parseConceptProposals] JSON repaired successfully");
+    } catch (e2) {
+      // Log a snippet around the error position for debugging
+      const match = String(e2).match(/position (\d+)/);
+      const pos = match ? parseInt(match[1]) : -1;
+      const snippet = pos >= 0 ? cleaned.slice(Math.max(0, pos - 80), pos + 80) : cleaned.slice(0, 200);
+      throw new Error(
+        `Failed to parse concept JSON (pos ${pos}): ...${snippet}...`
+      );
+    }
+  }
   const proposals: ConceptProposal[] = parsed.proposals ?? parsed;
 
   if (!Array.isArray(proposals)) {

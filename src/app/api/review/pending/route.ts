@@ -14,6 +14,7 @@ export interface ReviewItem {
   ad_copy?: { primary: string; headline: string };
   source?: string;
   cash_dna?: { angle?: string; awareness_level?: string; hooks?: string[] } | null;
+  landing_page?: { name: string; slug: string } | null;
 }
 
 // GET /api/review/pending — cross-workspace pending items
@@ -52,7 +53,8 @@ export async function GET() {
       id, name, concept_number, product, status, source,
       ad_copy_primary, ad_copy_headline, cash_dna,
       landing_page_id, target_languages, workspace_id, created_at,
-      source_images(id, original_url)
+      source_images(id, original_url),
+      pages!landing_page_id(name, slug)
     `)
     .in("source", ["autopilot", "competitor_swipe"])
     .is("launchpad_priority", null)
@@ -124,6 +126,8 @@ export async function GET() {
     if (hadLifecycle.has(c.id)) continue; // was on launchpad before (approved + pushed)
     const imgs = (c.source_images as Array<{ id: string; original_url: string }>) ?? [];
     const ws = wsMap.get(c.workspace_id) ?? { name: "Unknown", slug: "unknown" };
+    const pageRaw = c.pages as { name: string; slug: string } | { name: string; slug: string }[] | null;
+    const page = Array.isArray(pageRaw) ? pageRaw[0] ?? null : pageRaw;
     items.push({
       id: c.id,
       type: "concept",
@@ -139,6 +143,7 @@ export async function GET() {
         : undefined,
       source: c.source,
       cash_dna: c.cash_dna as ReviewItem["cash_dna"],
+      landing_page: page ? { name: page.name, slug: page.slug } : null,
     });
   }
 
