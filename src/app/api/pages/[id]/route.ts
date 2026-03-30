@@ -43,7 +43,7 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    const { name, tags, original_html, status, angle, custom_head_code, content_type, blog_category, blog_featured_image_url } = body as {
+    const { name, tags, original_html, status, angle, custom_head_code, content_type, blog_category, blog_featured_image_url, product, page_type } = body as {
       name?: string;
       tags?: string[];
       original_html?: string;
@@ -53,6 +53,8 @@ export async function PATCH(
       content_type?: string;
       blog_category?: string;
       blog_featured_image_url?: string;
+      product?: string;
+      page_type?: string;
     };
 
     const VALID_ANGLES: PageAngle[] = ["snoring", "neck_pain", "neutral"];
@@ -67,6 +69,8 @@ export async function PATCH(
     if (content_type !== undefined && ["landing_page", "seo_blog"].includes(content_type)) updateData.content_type = content_type;
     if (blog_category !== undefined) updateData.blog_category = blog_category || null;
     if (blog_featured_image_url !== undefined) updateData.blog_featured_image_url = blog_featured_image_url || null;
+    if (product !== undefined) updateData.product = product;
+    if (page_type !== undefined && ["advertorial", "listicle"].includes(page_type)) updateData.page_type = page_type;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });

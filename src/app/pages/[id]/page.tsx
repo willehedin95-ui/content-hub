@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspace } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
+import EditableProductType from "@/components/pages/EditableProductType";
 import AngleSelector from "@/components/pages/AngleSelector";
 import TranslationPanel from "@/components/pages/TranslationPanel";
 import ImportProgressPanel from "@/components/pages/ImportProgressPanel";
@@ -99,12 +100,12 @@ export default async function PageDetailPage({
         <div>
           <EditablePageName pageId={p.id} initialName={p.name} />
           <div className="flex items-center gap-3 mt-2">
-            <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-              {products.find((pr) => pr.value === p.product)?.label}
-            </span>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full capitalize">
-              {PAGE_TYPES.find((t) => t.value === p.page_type)?.label}
-            </span>
+            <EditableProductType
+              pageId={p.id}
+              initialProduct={p.product || ""}
+              initialPageType={p.page_type || "advertorial"}
+              products={products}
+            />
             {p.source_language && p.source_language !== "en" && (
               <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
                 Source: {LANGUAGES.find((l) => l.value === p.source_language)?.label ?? p.source_language.toUpperCase()}
