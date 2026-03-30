@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-29
+Updated: 2026-03-30
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -20,7 +20,8 @@ Updated: 2026-03-29
 - [ ] **Full autopilot (no approval)** — End goal: remove human approval step entirely. Autopilot generates concepts, translates, picks landing page, pushes to Meta — zero intervention. Requires: good landing page picker, high concept quality, reliable translations. Evaluate output quality first. (added 2026-03-29)
 
 ## Tier 1.5 — Immediate Follow-ups
-- [ ] **Commit remaining uncommitted changes** — ~15 modified files from previous sessions (strategy engine, pipeline push, activity feed, ad-performance-sync, launchpad, etc.). Need review + commit. (added 2026-03-29, HIGH)
+- [x] ~~**Commit remaining uncommitted changes**~~ — All changes committed and pushed in `7c4dd2f`. Includes CF Pages .trim() fix, bleeder kill logic, blog page filter, autopilot upgrades. (done 2026-03-30)
+- [ ] **Monitor HappySleep DK recovery** — After killing 15 zombies + restoring Min-datter landing page, watch DK ROAS over 3-5 days. If it doesn't improve, consider reducing DK budget. (added 2026-03-30)
 - [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
 - [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
 
@@ -48,7 +49,11 @@ Updated: 2026-03-29
 - [ ] **Auto-scheduling** — AI picks optimal publish time based on historical performance. (added 2025-02-25)
 
 ## Hydro13 iOS App
+- [x] ~~**Automated TestFlight uploads**~~ — Nightly launchd job at 22:00, `scripts/upload-testflight.sh`, commit-based skip, auto build number increment. App Store Connect API key (Developer role). v1.1.0 build 4 uploaded. (done 2026-03-30)
 - [ ] **App Store screenshots with AI** — Use [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) to generate professional ASO screenshots. Scaffolds a Next.js project, exports all 4 Apple sizes. Swedish locale. `npx skills add ParthJadhav/app-store-screenshots`. (added 2026-03-23)
+- [ ] **Accessibility audit** — VoiceOver labels, Dynamic Type, contrast ratios. Common App Store rejection reason. (added 2026-03-30)
+- [ ] **Widget verification** — Hydro13Widget target exists but unclear if fully wired up. Verify on device. (added 2026-03-30)
+- [ ] **Android feature parity** — Android project exists but behind iOS. Catch up via Paperclip agents. (added 2026-03-30)
 
 ## Research System Follow-ups
 - [ ] **Run seed data import** — `npx tsx scripts/import-research-seed.ts` to backfill existing VOC files into nuggets. (added 2026-03-25)
@@ -57,6 +62,7 @@ Updated: 2026-03-29
 - [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
 
 ## Done (recent)
+- [x] **CF Pages deploy bug fix + zombie cleanup** — Root cause: trailing `\n` in Vercel env vars broke manifest lookup. Added `.trim()` to `cloudflare-pages.ts`. Redeployed all 3 projects. Blocked blog pages from landing page selection. Killed 15 zombie ad sets. Added bleeder status (200+ SEK, 0 purchases = immediate kill). Reduced testing cooldown 7d→4d, max kills 5→10. Commit `7c4dd2f`. (done 2026-03-30)
 - [x] **Mobile Review Page (`/review`)** — Cross-workspace mobile approval page. Shared `approval-actions.ts` (7 functions), refactored Telegram webhook + Hub approve endpoint. Filter tabs, 10s polling, deep linking via `?highlight=<id>`. Telegram notifications link to `/review`. Commits `3c31b8a`, `cebde95`. (done 2026-03-29)
 - [x] **Workspace-aware language options** — Hydro13 shows only Swedish. WorkspaceProvider, useWorkspaceLanguages(), 22 files. Commit `907130c`. (done 2026-03-27, Paperclip CEO)
 - [x] **Multi-workspace hardcoding audit** — 24 files fixed, removed all hardcoded HappySleep/pillow/collagen refs, pausedProducts filter, `|| "happysleep"` fallbacks. Commits `69dea06`, `f80afda`. (done 2026-03-27)
