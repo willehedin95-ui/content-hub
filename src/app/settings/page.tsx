@@ -481,7 +481,7 @@ export default function SettingsPage() {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) router.back(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-[740px] h-[85vh] flex overflow-hidden relative">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-[900px] h-[85vh] flex overflow-hidden relative">
         {/* Close button — top right */}
         <button
           onClick={() => router.back()}

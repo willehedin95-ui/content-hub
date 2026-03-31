@@ -20,6 +20,33 @@ interface PageOption {
 
 type PrimaryLandingPages = Record<string, string>;
 
+function PageSelect({
+  value,
+  onChange,
+  pages,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  pages: PageOption[];
+  placeholder: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white hover:border-gray-300 transition-colors"
+    >
+      <option value="">{placeholder}</option>
+      {pages.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function PagesTab({ settings, setSettings, saved, handleSave }: SettingsProps) {
   const [pages, setPages] = useState<PageOption[]>([]);
 
@@ -35,7 +62,6 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
 
   const primaryPages = (settings.primary_landing_pages ?? {}) as PrimaryLandingPages;
 
-  // Find unique angles from pages that have an angle set
   const angles = useMemo(() => {
     const set = new Set<string>();
     for (const p of pages) {
@@ -60,6 +86,7 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
   const angleLabels: Record<string, string> = {
     snoring: "Snoring",
     neck_pain: "Neck Pain",
+    neutral: "Neutral",
   };
 
   return (
@@ -80,55 +107,47 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
 
       <SectionHeader>Primary Landing Page</SectionHeader>
       <SettingsCard>
-        <Row
-          label="Default page"
-          description="All concepts use this page unless a specific angle page is set below."
-          action={
-            <select
-              value={primaryPages._default || ""}
-              onChange={(e) => updatePrimaryPage("_default", e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white min-w-[200px]"
-            >
-              <option value="">Not set (auto-select)</option>
-              {pages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          }
-        />
-        {angles.length > 0 && (
-          <>
-            <div className="border-t border-gray-100 my-2" />
-            <p className="text-xs text-gray-500 px-1 mb-2">
-              Override the default for specific ad angles. Concepts with matching keywords in the ad copy will use these pages instead.
+        <div className="space-y-4 py-1">
+          {/* Default page */}
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1">Default page</label>
+            <p className="text-xs text-gray-400 mb-2">
+              All concepts use this page unless a specific angle page is set below.
             </p>
-            {angles.map((angle) => (
-              <Row
-                key={angle}
-                label={angleLabels[angle] || angle}
-                description={`Used when ad copy matches "${angle}" keywords`}
-                action={
-                  <select
-                    value={primaryPages[angle] || ""}
-                    onChange={(e) => updatePrimaryPage(angle, e.target.value)}
-                    className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white min-w-[200px]"
-                  >
-                    <option value="">Use default</option>
-                    {pages
-                      .filter((p) => p.angle === angle || !p.angle)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                  </select>
-                }
-              />
-            ))}
-          </>
-        )}
+            <PageSelect
+              value={primaryPages._default || ""}
+              onChange={(v) => updatePrimaryPage("_default", v)}
+              pages={pages}
+              placeholder="Not set (auto-select)"
+            />
+          </div>
+
+          {/* Per-angle overrides */}
+          {angles.length > 0 && (
+            <>
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-xs text-gray-500 mb-3">
+                  Override the default for specific ad angles. Concepts with matching keywords in the ad copy will use these pages instead.
+                </p>
+                <div className="space-y-3">
+                  {angles.map((angle) => (
+                    <div key={angle}>
+                      <label className="block text-sm font-medium text-gray-800 mb-1">
+                        {angleLabels[angle] || angle}
+                      </label>
+                      <PageSelect
+                        value={primaryPages[angle] || ""}
+                        onChange={(v) => updatePrimaryPage(angle, v)}
+                        pages={pages.filter((p) => p.angle === angle || !p.angle)}
+                        placeholder="Use default"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </SettingsCard>
 
       <SaveButton saved={saved} onSave={handleSave} />
