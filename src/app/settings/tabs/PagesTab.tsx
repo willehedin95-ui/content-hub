@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   SettingsCard,
   Row,
@@ -62,13 +62,8 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
 
   const primaryPages = (settings.primary_landing_pages ?? {}) as PrimaryLandingPages;
 
-  const angles = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of pages) {
-      if (p.angle) set.add(p.angle);
-    }
-    return [...set].sort();
-  }, [pages]);
+  // All known ad copy angles — must match ANGLE_KEYWORDS in landing-page-recommender.ts
+  const KNOWN_ANGLES = ["snoring", "neck_pain"] as const;
 
   function updatePrimaryPage(key: string, pageId: string) {
     setSettings((s) => {
@@ -86,7 +81,6 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
   const angleLabels: Record<string, string> = {
     snoring: "Snoring",
     neck_pain: "Neck Pain",
-    neutral: "Neutral",
   };
 
   return (
@@ -123,30 +117,26 @@ export default function PagesTab({ settings, setSettings, saved, handleSave }: S
           </div>
 
           {/* Per-angle overrides */}
-          {angles.length > 0 && (
-            <>
-              <div className="border-t border-gray-100 pt-3">
-                <p className="text-xs text-gray-500 mb-3">
-                  Override the default for specific ad angles. Concepts with matching keywords in the ad copy will use these pages instead.
-                </p>
-                <div className="space-y-3">
-                  {angles.map((angle) => (
-                    <div key={angle}>
-                      <label className="block text-sm font-medium text-gray-800 mb-1">
-                        {angleLabels[angle] || angle}
-                      </label>
-                      <PageSelect
-                        value={primaryPages[angle] || ""}
-                        onChange={(v) => updatePrimaryPage(angle, v)}
-                        pages={pages.filter((p) => p.angle === angle || !p.angle)}
-                        placeholder="Use default"
-                      />
-                    </div>
-                  ))}
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-500 mb-3">
+              Override the default for specific ad angles. Concepts with matching keywords in the ad copy will use these pages instead.
+            </p>
+            <div className="space-y-3">
+              {KNOWN_ANGLES.map((angle) => (
+                <div key={angle}>
+                  <label className="block text-sm font-medium text-gray-800 mb-1">
+                    {angleLabels[angle] || angle}
+                  </label>
+                  <PageSelect
+                    value={primaryPages[angle] || ""}
+                    onChange={(v) => updatePrimaryPage(angle, v)}
+                    pages={pages}
+                    placeholder="Use default"
+                  />
                 </div>
-              </div>
-            </>
-          )}
+              ))}
+            </div>
+          </div>
         </div>
       </SettingsCard>
 
