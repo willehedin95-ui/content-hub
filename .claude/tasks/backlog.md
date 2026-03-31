@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-30
+Updated: 2026-03-31
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -16,7 +16,7 @@ Updated: 2026-03-30
 - [x] ~~**Workspace-aware language options**~~ — Hydro13 now only shows Swedish. `WorkspaceProvider` + `useWorkspaceLanguages()` hook, 10 components + 8 API routes updated. Commit `907130c`. (done 2026-03-27, by Paperclip CEO agent)
 - [ ] **Fix ad-performance-sync multi-workspace** — Cron only syncs env var Meta account. Renew's separate ad account (`act_1356397096506086`) data never synced. Needs to iterate `workspaces.meta_config`. (added 2026-03-27, HIGH priority)
 - [ ] **Fix pipeline/concepts approve route** — `POST /api/pipeline/concepts/[id]/approve` references non-existent `/api/image-jobs/[id]/generate-all`. Silently 404s. (added 2026-03-27)
-- [ ] **Improve landing page auto-picker** — `findBestLandingPage()` in `landing-page-recommender.ts` not picking well. Review the 4-tier logic (pain point match → best ROAS → most-used → most recent) and improve accuracy. Critical for full autopilot. (added 2026-03-29, HIGH priority)
+- [x] ~~**Improve landing page auto-picker**~~ — Replaced 4-tier auto-logic with explicit `primary_landing_pages` workspace setting (default + per-angle). A/B page testing disabled (budget fragmentation). Commit `5765425`. (done 2026-03-31)
 - [ ] **Full autopilot (no approval)** — End goal: remove human approval step entirely. Autopilot generates concepts, translates, picks landing page, pushes to Meta — zero intervention. Requires: good landing page picker, high concept quality, reliable translations. Evaluate output quality first. (added 2026-03-29)
 
 ## Tier 1.5 — Immediate Follow-ups
@@ -25,9 +25,13 @@ Updated: 2026-03-30
 - [x] ~~**Landing page health check cron**~~ — `/api/cron/landing-page-health` at 05:00 UTC. Checks all active Meta ad landing pages for HTTP 200 + valid HTML. Telegram alert on failure. Commit `6246d76`. (done 2026-03-30)
 - [x] ~~**Review card improvements**~~ — Landing page name shown, clickable images/titles to detail pages. Commit `603efb2`. (done 2026-03-30)
 - [x] ~~**JSON prompting for native ads**~~ — native-closeup + native-messy now use structured JSON prompts (14 keys) via Kie AI. Feature flag `USE_JSON_PROMPTING`. Both static ad pipeline + competitor swipe. Commit `0635b5c`. (done 2026-03-30)
+- [x] ~~**Fix [LÄNK] placeholder in ad copy**~~ — Prompt rules in brainstorm.ts + translation prompts + meta-push safety net. Commit `cd6afc9`. (done 2026-03-31)
+- [x] ~~**Fix board dropdown mixing workspaces**~~ — Ad Spy board list now filters by workspace `gethookd_board_ids`. Commit `cd6afc9`. (done 2026-03-31)
+- [x] ~~**Fix Telegram webhook unregistered**~~ — Re-registered webhook URL via `setWebhook` API. Buttons now work. (done 2026-03-31)
 - [ ] **Push + test JSON prompting** — Push `0635b5c` to Vercel, generate test concepts, compare native ad image quality. If worse, flip `USE_JSON_PROMPTING = false`. (added 2026-03-30, HIGH)
 - [ ] **Monitor HappySleep DK recovery** — After killing 15 zombies + restoring Min-datter landing page, watch DK ROAS over 3-5 days. If it doesn't improve, consider reducing DK budget. (added 2026-03-30)
-- [ ] **Monitor first landing page health check** — Check Telegram for results after 05:00 UTC tomorrow. (added 2026-03-30)
+- [ ] **Monitor tomorrow's autopilot board swipe** — Verify 08:00 UTC cron swipes 3 board ads per workspace (not from_scratch). (added 2026-03-31)
+- [ ] **Telegram webhook health check** — Consider adding a cron or startup check that verifies webhook is registered, re-registers if empty. (added 2026-03-31)
 - [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
 - [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
 
@@ -68,6 +72,7 @@ Updated: 2026-03-30
 - [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
 
 ## Done (recent)
+- [x] **Fix [LÄNK] placeholder + board filtering + Telegram webhook** — Three bugs fixed: (1) ad copy URL placeholders replaced with natural CTAs, (2) board dropdown filtered by workspace, (3) Telegram webhook re-registered. Autopilot board swipe verified working. Commit `cd6afc9`. (done 2026-03-31)
 - [x] **CF Pages deploy bug fix + zombie cleanup** — Root cause: trailing `\n` in Vercel env vars broke manifest lookup. Added `.trim()` to `cloudflare-pages.ts`. Redeployed all 3 projects. Blocked blog pages from landing page selection. Killed 15 zombie ad sets. Added bleeder status (200+ SEK, 0 purchases = immediate kill). Reduced testing cooldown 7d→4d, max kills 5→10. Commit `7c4dd2f`. (done 2026-03-30)
 - [x] **Mobile Review Page (`/review`)** — Cross-workspace mobile approval page. Shared `approval-actions.ts` (7 functions), refactored Telegram webhook + Hub approve endpoint. Filter tabs, 10s polling, deep linking via `?highlight=<id>`. Telegram notifications link to `/review`. Commits `3c31b8a`, `cebde95`. (done 2026-03-29)
 - [x] **Workspace-aware language options** — Hydro13 shows only Swedish. WorkspaceProvider, useWorkspaceLanguages(), 22 files. Commit `907130c`. (done 2026-03-27, Paperclip CEO)
