@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
 
@@ -16,7 +16,6 @@ export const maxDuration = 300;
  *   4. Process 9:16 outpainted versions
  *   5. Update job status + Telegram notification
  *
- * Optionally applies default Page B from workspace settings.
  * Runs in background via after() — returns immediately.
  */
 export async function POST(
@@ -34,7 +33,7 @@ export async function POST(
   // Verify job exists and belongs to workspace
   const { data: job, error } = await db
     .from("image_jobs")
-    .select("id, name, source_images(id), ad_copy_primary, landing_page_id, landing_page_id_b, status")
+    .select("id, name, source_images(id), ad_copy_primary, landing_page_id, status")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -53,13 +52,6 @@ export async function POST(
   const hasPrimary = (job.ad_copy_primary as string[] | null)?.some((t: string) => t.trim());
   if (!hasPrimary) {
     return NextResponse.json({ error: "No ad copy — write primary text first" }, { status: 422 });
-  }
-
-  // Apply default Page B from workspace settings if not already set
-  const wsSettings = await getWorkspaceSettings();
-  const defaultPageBId = wsSettings.default_page_b_id as string | undefined;
-  if (!job.landing_page_id_b && defaultPageBId && job.landing_page_id !== defaultPageBId) {
-    await db.from("image_jobs").update({ landing_page_id_b: defaultPageBId }).eq("id", jobId);
   }
 
   // Mark as processing immediately

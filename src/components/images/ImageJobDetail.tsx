@@ -23,7 +23,6 @@ import {
   FileText,
   Eye,
   Globe,
-  FlaskConical,
 } from "lucide-react";
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
@@ -156,7 +155,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<"all" | string>("all");
   const [selectedRatio, setSelectedRatio] = useState<string>("4:5");
-  const [showPageTest, setShowPageTest] = useState(!!initialJob.landing_page_id_b);
+  // A/B page testing disabled — all concepts use primary landing page from workspace settings
   // Processing states
   const [proc, setProc] = useState<{
     processing: boolean;
@@ -620,16 +619,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ landing_page_id: value || null }),
-    });
-  }
-
-  // Save landing page B selection (for A/B testing)
-  async function handleWebsiteUrlBChange(value: string) {
-    setMetaPush(prev => ({ ...prev, landingPageIdB: value }));
-    await fetch(`/api/image-jobs/${initialJob.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ landing_page_id_b: value || null }),
     });
   }
 
@@ -1714,48 +1703,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
               conceptTags={job.tags ?? undefined}
               conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
             />
-            {metaPush.landingPageId && !showPageTest && (
-              <button
-                onClick={() => setShowPageTest(true)}
-                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors mt-2"
-              >
-                <FlaskConical className="w-3.5 h-3.5" />
-                Test against another page
-              </button>
-            )}
-            {showPageTest && metaPush.landingPageId && (
-              <div className="mt-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-indigo-700">
-                    <FlaskConical className="w-3.5 h-3.5" />
-                    A/B Test — Page B
-                  </label>
-                  <button
-                    onClick={() => { setShowPageTest(false); if (metaPush.landingPageIdB) handleWebsiteUrlBChange(""); }}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <LandingPageModalTrigger
-                  landingPages={landingPages.filter((p) => p.id !== metaPush.landingPageId)}
-                  selectedValue={metaPush.landingPageIdB}
-                  onSelect={(value) => handleWebsiteUrlBChange(value)}
-                  conceptTags={job.tags ?? undefined}
-                  conceptAngle={(job.cash_dna as { angle?: string } | null)?.angle}
-                  label="Select page B..."
-                />
-                {metaPush.landingPageIdB && (() => {
-                  const pageA = landingPages.find((p) => p.id === metaPush.landingPageId);
-                  const pageB = landingPages.find((p) => p.id === metaPush.landingPageIdB);
-                  return pageA && pageB ? (
-                    <p className="text-xs text-gray-500">
-                      Two ad sets per market: &ldquo;{pageA.name}&rdquo; vs &ldquo;{pageB.name}&rdquo;
-                    </p>
-                  ) : null;
-                })()}
-              </div>
-            )}
           </>
         ) : (
           <div className="space-y-2">
@@ -1939,7 +1886,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           {/* Linked pages */}
           {job.landing_page_id && (() => {
             const linkedPage = landingPages.find((p) => p.id === job.landing_page_id);
-            const linkedPageB = landingPages.find((p) => p.id === job.landing_page_id_b);
             if (!linkedPage) return null;
             return (
               <div className="mb-3 flex items-center gap-1.5 text-xs text-gray-400">
@@ -1947,14 +1893,6 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
                 <Link href={`/pages/${linkedPage.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
                   {linkedPage.name}
                 </Link>
-                {linkedPageB && (
-                  <>
-                    <span className="text-gray-300">vs</span>
-                    <Link href={`/pages/${linkedPageB.id}`} className="text-indigo-500 hover:text-indigo-700 transition-colors">
-                      {linkedPageB.name}
-                    </Link>
-                  </>
-                )}
               </div>
             );
           })()}

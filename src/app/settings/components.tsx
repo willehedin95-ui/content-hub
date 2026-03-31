@@ -39,7 +39,8 @@ export interface Settings {
   autopilot_auto_iterate: boolean;
   gethookd_board_ids: string[];
   gethookd_explore_queries: string[];
-  default_page_b_id: string;
+  default_page_b_id: string; // deprecated — kept for backward compat
+  primary_landing_pages: Record<string, string>;
   blog_config?: BlogConfig;
   blog_autopilot_enabled: boolean;
   blog_autopilot_languages: string[];

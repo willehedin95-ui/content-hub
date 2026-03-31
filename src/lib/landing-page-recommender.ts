@@ -1,8 +1,15 @@
 /**
- * Auto-assign landing pages to concepts based on:
+ * Auto-assign landing pages to concepts.
+ *
+ * Priority 0 (explicit config): workspace settings `primary_landing_pages` mapping.
+ *   - Detects angle from ad copy → uses angle-specific page if configured
+ *   - Falls back to `_default` page
+ *   - If configured, skips all automatic tiers below
+ *
+ * Fallback tiers (only used if primary_landing_pages not configured):
  * 1. Ad copy content → page angle match (keyword detection)
  * 2. ROAS performance data from concept_metrics (best-performing pages with matching angle)
- * 3. Most-used page from recent concepts (fallback)
+ * 3. Most-used page from recent concepts
  * 4. Any published landing page for this product (last resort)
  *
  * "Published" = has at least one translation with status='published' in the translations table.
@@ -10,6 +17,8 @@
  */
 
 import { createServerSupabase } from "@/lib/supabase-admin";
+
+type PrimaryLandingPages = Record<string, string>; // angle → page ID, "_default" for fallback
 
 /**
  * Keyword patterns that map ad copy content → page angles.
@@ -117,6 +126,33 @@ export async function findBestLandingPage(
     conceptName?: string;
   }
 ): Promise<string | null> {
+  // --- Primary landing pages (explicit user config) ---
+  // If the workspace has primary_landing_pages set, use them directly.
+  const { data: ws } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const wsSettings = (ws?.settings ?? {}) as Record<string, unknown>;
+  const primaryPages = wsSettings.primary_landing_pages as PrimaryLandingPages | undefined;
+
+  if (primaryPages && Object.keys(primaryPages).length > 0) {
+    const detectedAngle = detectAngleFromCopy(
+      options?.adCopyPrimary,
+      options?.adCopyHeadline,
+      options?.conceptName
+    );
+
+    // Try angle-specific page first, then fall back to default
+    if (detectedAngle && primaryPages[detectedAngle]) {
+      return primaryPages[detectedAngle];
+    }
+    if (primaryPages._default) {
+      return primaryPages._default;
+    }
+  }
+
+  // --- Fallback: automatic selection (for unconfigured workspaces) ---
   const publishedIds = await getPublishedPageIds(db, workspaceId, productSlug);
   if (publishedIds.size === 0) return null;
 
@@ -124,14 +160,14 @@ export async function findBestLandingPage(
   if (publishedPages.length === 0) return null;
 
   // Priority 1: Match ad copy content to page angle via keyword detection
-  const detectedAngle = detectAngleFromCopy(
+  const fallbackAngle = detectAngleFromCopy(
     options?.adCopyPrimary,
     options?.adCopyHeadline,
     options?.conceptName
   );
 
-  if (detectedAngle) {
-    const match = publishedPages.find((p) => p.angle === detectedAngle);
+  if (fallbackAngle) {
+    const match = publishedPages.find((p) => p.angle === fallbackAngle);
     if (match) return match.id;
   }
 
@@ -174,7 +210,7 @@ export async function findBestLandingPage(
         if (!publishedIds.has(pageId)) continue;
         if (metrics.spend < MIN_SPEND_THRESHOLD) continue;
         // If we detected an angle, only consider pages with matching angle
-        if (detectedAngle && pageAngleMap.get(pageId) !== detectedAngle) continue;
+        if (fallbackAngle && pageAngleMap.get(pageId) !== fallbackAngle) continue;
         const roas = metrics.spend > 0 ? metrics.revenue / metrics.spend : 0;
         if (roas > bestRoas) {
           bestRoas = roas;
@@ -185,7 +221,7 @@ export async function findBestLandingPage(
       if (bestPage) return bestPage;
 
       // If angle-filtered ROAS found nothing, try without angle filter
-      if (detectedAngle) {
+      if (fallbackAngle) {
         for (const [pageId, metrics] of pageMetrics) {
           if (!publishedIds.has(pageId)) continue;
           if (metrics.spend < MIN_SPEND_THRESHOLD) continue;

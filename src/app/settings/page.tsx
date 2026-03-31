@@ -70,6 +70,7 @@ export default function SettingsPage() {
     gethookd_board_ids: [],
     gethookd_explore_queries: [],
     default_page_b_id: "",
+    primary_landing_pages: {},
     blog_config: undefined,
     blog_autopilot_enabled: false,
     blog_autopilot_languages: ["sv"],
