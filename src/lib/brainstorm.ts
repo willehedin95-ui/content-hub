@@ -1410,7 +1410,8 @@ export function buildBrainstormUserPrompt(
   segments: ProductSegment[],
   existingConcepts?: Array<{ name: string; angle: string; awareness: string }>,
   rejectedConcepts?: Array<{ angle: string | null; awareness_level: string | null; concept_description: string | null }>,
-  recentAngles?: string[]
+  recentAngles?: string[],
+  recentVisualScenes?: string[]
 ): string {
   const parts: string[] = [];
   const { mode, count } = request;
@@ -1617,6 +1618,15 @@ export function buildBrainstormUserPrompt(
     parts.push(`\n### RECENTLY USED ANGLES (last 7 days — DO NOT repeat these)`);
     parts.push(uniqueAngles.join(", "));
     parts.push(`You MUST pick a different angle than the ${uniqueAngles.length} listed above. There are 20+ angles in the framework — explore the ones NOT on this list.`);
+  }
+
+  // Visual scene diversity: avoid scenes/locations used in recent concepts
+  if (recentVisualScenes && recentVisualScenes.length > 0) {
+    parts.push(`\n### RECENTLY USED VISUAL SCENES (last 7 days — DO NOT repeat these locations/compositions)`);
+    for (const scene of recentVisualScenes) {
+      parts.push(`- ${scene}`);
+    }
+    parts.push(`Your visual_direction MUST use DIFFERENT locations, framings, and compositions than the scenes listed above. The native ad dimensional system has 17+ locations, 6+ framings, 8+ lighting setups — explore the ones NOT on this list. NEVER generate another nightstand/bedside scene if one appears above.`);
   }
 
   parts.push(

@@ -466,7 +466,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       const headline = parsed.concept.ad_copy_headline?.[0] ?? "";
 
       const captionLines = [
-        `🔍 Swipe #${nextConceptNumber}: "${parsed.concept.concept_name}"`,
+        `🔍 [${product.name}] Swipe #${nextConceptNumber}: "${parsed.concept.concept_name}"`,
         `From: ${brandName}`,
         ``,
       ];

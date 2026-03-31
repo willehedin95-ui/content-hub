@@ -44,14 +44,31 @@ const AUTOPILOT_MODES: BrainstormMode[] = [
   "from_template",
 ];
 
-// Fallback explore queries (used when workspace has none configured)
+// Fallback explore queries — large pool so we never run out of competitor ads.
+// GetHookd returns different results over time as new ads appear, and we shuffle
+// the list each run so we don't always hit the same queries first.
 const DEFAULT_EXPLORE_QUERIES = [
-  "supplement health",
-  "skincare beauty",
-  "fitness equipment",
-  "wellness product",
-  "weight loss",
-  "anti-aging",
+  // Health & supplements
+  "supplement health", "vitamin supplement", "collagen supplement", "protein powder",
+  "gut health", "immune supplement", "probiotic", "omega 3 supplement",
+  // Sleep
+  "sleep aid", "pillow sleep", "mattress", "insomnia solution", "snoring remedy",
+  "sleep supplement", "weighted blanket", "sleep tracker",
+  // Skincare & beauty
+  "skincare beauty", "anti-aging cream", "face serum", "retinol skincare",
+  "moisturizer", "sunscreen", "beauty routine", "skin supplement",
+  // Wellness & fitness
+  "wellness product", "fitness equipment", "home gym", "yoga mat",
+  "massage gun", "recovery tool", "posture corrector",
+  // Weight & nutrition
+  "weight loss", "meal replacement", "appetite suppressant", "keto diet",
+  "intermittent fasting", "metabolism booster",
+  // Pain & comfort
+  "back pain relief", "neck pain", "joint supplement", "pain relief device",
+  "ergonomic office", "standing desk",
+  // General DTC winners
+  "direct to consumer", "subscription box", "health gadget", "biohacking",
+  "natural remedy", "organic product", "anti-aging",
 ];
 
 /** Workspace context resolved from DB — replaces all hardcoded constants */
@@ -128,11 +145,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true, reason: "No autopilot-enabled workspaces" });
     }
 
-    const multiWs = workspaces.length > 1;
     const allResults: Array<{ workspace: string; result: unknown }> = [];
 
     for (const ws of workspaces) {
-      const label = multiWs ? `[${ws.slug}] ` : "";
+      const label = `[${ws.productName ?? ws.slug}] `;
       try {
         const autopilotMode = (ws.settings.autopilot_mode as string) ?? "from_scratch";
 
@@ -154,6 +170,8 @@ export async function GET(req: NextRequest) {
           if (autopilotMode === "competitor_swipe" && process.env.GETHOOKD_API_TOKEN) {
             const result = await runCompetitorSwipe(db, chatId, ws, label);
             allResults.push({ workspace: ws.slug, result });
+            // If no ads found at all, stop retrying — Explore is exhausted for this run
+            if ((result as Record<string, unknown>).exhausted || (result as Record<string, unknown>).skipped) break;
           } else {
             const result = await runFromScratch(db, chatId, ws, label);
             allResults.push({ workspace: ws.slug, result });
@@ -191,74 +209,97 @@ async function runCompetitorSwipe(
   ws: WorkspaceCtx,
   label: string
 ) {
-  // --- Discover a winning competitor ad ---
-  const discovered = await discoverCompetitorAd(db, ws);
+  // Retry loop: if an ad scores too low or has no images, try the next one.
+  // Max 5 attempts to avoid burning too many credits on scoring.
+  const MAX_DISCOVER_ATTEMPTS = 5;
 
-  if (!discovered) {
-    if (chatId) {
-      await sendMessageWithInlineKeyboard(chatId,
-        `🔍 ${label}Autopilot swipe: No new ads found to swipe today. Will retry tomorrow.`,
-        []
-      );
+  for (let attempt = 0; attempt < MAX_DISCOVER_ATTEMPTS; attempt++) {
+    // --- Discover a winning competitor ad ---
+    const discovered = await discoverCompetitorAd(db, ws);
+
+    if (!discovered) {
+      if (chatId) {
+        await sendMessageWithInlineKeyboard(chatId,
+          `🔍 ${label}Autopilot swipe: No new ads found to swipe today (tried ${attempt + 1} ads). Add more ads to your GetHookd boards!`,
+          []
+        );
+      }
+      return { skipped: true, exhausted: true, reason: "No new ads discovered" };
     }
-    return { skipped: true, reason: "No new ads discovered" };
-  }
 
-  console.log(`[Autopilot] ${label}Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}"`);
+    console.log(`[Autopilot] ${label}Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}" (attempt ${attempt + 1})`);
 
-  // --- Store in discovered_ads ---
-  const imageUrls = getImageUrls(discovered.ad);
-  await db.from("discovered_ads").upsert({
-    workspace_id: ws.id,
-    gethookd_ad_id: discovered.ad.id,
-    external_id: discovered.ad.external_id,
-    brand_name: discovered.ad.brand.name,
-    title: discovered.ad.title,
-    body: discovered.ad.body,
-    landing_page: discovered.ad.landing_page,
-    performance_score: discovered.ad.performance_score,
-    performance_score_title: discovered.ad.performance_score_title,
-    days_active: discovered.ad.days_active,
-    display_format: discovered.ad.display_format,
-    media_urls: imageUrls,
-    source: discovered.source,
-    status: "swiping",
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "workspace_id,gethookd_ad_id" });
+    // --- Store in discovered_ads ---
+    const imageUrls = getImageUrls(discovered.ad);
+    await db.from("discovered_ads").upsert({
+      workspace_id: ws.id,
+      gethookd_ad_id: discovered.ad.id,
+      external_id: discovered.ad.external_id,
+      brand_name: discovered.ad.brand.name,
+      title: discovered.ad.title,
+      body: discovered.ad.body,
+      landing_page: discovered.ad.landing_page,
+      performance_score: discovered.ad.performance_score,
+      performance_score_title: discovered.ad.performance_score_title,
+      days_active: discovered.ad.days_active,
+      display_format: discovered.ad.display_format,
+      media_urls: imageUrls,
+      source: discovered.source,
+      status: "swiping",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "workspace_id,gethookd_ad_id" });
 
-  // --- Score ad (skip for board ads — user already vetted) ---
-  if (discovered.source !== "board") {
-    const score = await scoreAd(discovered.ad, ws.productName);
-    await db.from("discovered_ads")
-      .update({ ai_relevance_score: score.score, ai_reasoning: score.reasoning })
-      .eq("gethookd_ad_id", discovered.ad.id)
-      .eq("workspace_id", ws.id);
+    // --- Score ad (skip for board ads — user already vetted) ---
+    if (discovered.source !== "board") {
+      const score = await scoreAd(discovered.ad, ws.productName);
+      await db.from("discovered_ads")
+        .update({ ai_relevance_score: score.score, ai_reasoning: score.reasoning })
+        .eq("gethookd_ad_id", discovered.ad.id)
+        .eq("workspace_id", ws.id);
 
-    if (score.score < 6) {
+      if (score.score < 6) {
+        await db.from("discovered_ads")
+          .update({ status: "skipped" })
+          .eq("gethookd_ad_id", discovered.ad.id)
+          .eq("workspace_id", ws.id);
+
+        console.log(`[Autopilot] ${label}Ad scored ${score.score}/10 — skipping, trying next: ${score.reasoning}`);
+        continue; // Try the next ad instead of giving up
+      }
+    }
+
+    const competitorImageUrls = imageUrls.slice(0, 3);
+    if (competitorImageUrls.length === 0) {
       await db.from("discovered_ads")
         .update({ status: "skipped" })
         .eq("gethookd_ad_id", discovered.ad.id)
         .eq("workspace_id", ws.id);
-
-      console.log(`[Autopilot] ${label}Ad scored ${score.score}/10 — skipping: ${score.reasoning}`);
-      if (chatId) {
-        await sendMessageWithInlineKeyboard(chatId,
-          `🔍 ${label}Autopilot skipped ad from ${discovered.ad.brand.name} (score: ${score.score}/10)\nReason: ${score.reasoning}`,
-          []
-        );
-      }
-      return { skipped: true, reason: `Ad scored ${score.score}/10` };
+      continue; // Try the next ad instead of giving up
     }
+
+    // Found a good ad — proceed to swipe it
+    return await executeSwipe(db, chatId, ws, label, discovered, competitorImageUrls);
   }
 
-  const competitorImageUrls = imageUrls.slice(0, 3);
-  if (competitorImageUrls.length === 0) {
-    await db.from("discovered_ads")
-      .update({ status: "skipped" })
-      .eq("gethookd_ad_id", discovered.ad.id)
-      .eq("workspace_id", ws.id);
-    return { skipped: true, reason: "No images in ad" };
+  // All attempts exhausted (all ads scored too low)
+  if (chatId) {
+    await sendMessageWithInlineKeyboard(chatId,
+      `🔍 ${label}Autopilot swipe: Tried ${MAX_DISCOVER_ATTEMPTS} ads but none scored high enough. Will retry tomorrow.`,
+      []
+    );
   }
+  return { skipped: true, exhausted: false, reason: `All ${MAX_DISCOVER_ATTEMPTS} discovered ads scored too low` };
+}
+
+/** Execute the actual swipe after a good ad has been found and scored */
+async function executeSwipe(
+  db: ReturnType<typeof createServerSupabase>,
+  chatId: string | undefined,
+  ws: WorkspaceCtx,
+  label: string,
+  discovered: { ad: GethookdAd; source: "board" | "brand_spy" | "explore" },
+  competitorImageUrls: string[]
+) {
 
   // --- Delegate to shared swipe function ---
   try {
@@ -368,37 +409,52 @@ async function discoverCompetitorAd(
     console.error("[Autopilot] Brand spy fetch failed:", err);
   }
 
-  // --- Priority 3: Explore (try all queries, paginate up to 3 pages each) ---
+  // --- Priority 3: Explore (try queries with multiple sort strategies) ---
   const queries = (ws.settings.gethookd_explore_queries as string[]) ?? DEFAULT_EXPLORE_QUERIES;
   // Shuffle so we don't always burn credits on the same queries first
   const shuffled = [...queries].sort(() => Math.random() - 0.5);
-  const MAX_PAGES = 3;
+  const MAX_PAGES = 5;
 
-  for (const query of shuffled) {
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      try {
-        const { ads, total } = await exploreAds({
-          query,
-          "ad-format": "image",
-          performance_scores: "winning,scaling",
-          ads_per_brand_limit: 2,
-          per_page: 20,
-          page,
-          sort_column: "days_active",
-          sort_direction: "desc",
-        });
+  // Two sort strategies: newest winners first (freshest creative), then proven runners.
+  // Filter: min 30 days (proven, not just launched), max 365 days (not ancient garbage).
+  const MIN_DAYS_ACTIVE = 30;
+  const MAX_DAYS_ACTIVE = 365;
+  const sortStrategies: Array<{ sort_column: string; sort_direction: string }> = [
+    { sort_column: "first_seen", sort_direction: "desc" },   // Newest first — fresh creative
+    { sort_column: "days_active", sort_direction: "desc" },   // Proven runners (capped at 1 year)
+  ];
 
-        const unseen = ads.filter((a) => !seenIds.has(a.id));
-        if (unseen.length > 0) {
-          console.log(`[Autopilot] Found ${unseen.length} unseen explore ads for query "${query}" (page ${page})`);
-          return { ad: unseen[0], source: "explore" };
+  for (const sort of sortStrategies) {
+    // Only try a subset of queries per strategy to stay within credit budget
+    const queryBatch = shuffled.slice(0, 15);
+    for (const query of queryBatch) {
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        try {
+          const { ads, total } = await exploreAds({
+            query,
+            "ad-format": "image",
+            performance_scores: "winning,scaling",
+            ads_per_brand_limit: 2,
+            per_page: 20,
+            page,
+            sort_column: sort.sort_column,
+            sort_direction: sort.sort_direction,
+          });
+
+          const unseen = ads
+            .filter((a) => !seenIds.has(a.id))
+            .filter((a) => (a.days_active ?? 0) >= MIN_DAYS_ACTIVE && (a.days_active ?? 0) <= MAX_DAYS_ACTIVE);
+          if (unseen.length > 0) {
+            console.log(`[Autopilot] Found ${unseen.length} unseen explore ads for query "${query}" (page ${page}, sort: ${sort.sort_column})`);
+            return { ad: unseen[0], source: "explore" };
+          }
+
+          // No more pages to check for this query
+          if (page * 20 >= total || ads.length === 0) break;
+        } catch (err) {
+          console.error(`[Autopilot] Explore fetch failed for "${query}" page ${page}:`, err);
+          break; // Skip to next query on error
         }
-
-        // No more pages to check for this query
-        if (page * 20 >= total || ads.length === 0) break;
-      } catch (err) {
-        console.error(`[Autopilot] Explore fetch failed for "${query}" page ${page}:`, err);
-        break; // Skip to next query on error
       }
     }
   }
@@ -513,7 +569,7 @@ async function runFromScratch(
   // Fetch recent concepts for diversity enforcement (all modes, not just from_internal)
   const { data: recentConceptData } = await db
     .from("image_jobs")
-    .select("name, cash_dna, created_at")
+    .select("name, cash_dna, visual_direction, created_at, id")
     .eq("workspace_id", ws.id)
     .eq("product", ws.productSlug)
     .not("cash_dna", "is", null)
@@ -532,6 +588,31 @@ async function runFromScratch(
     .filter((j) => new Date(j.created_at) >= sevenDaysAgo)
     .map((j) => (j.cash_dna as Record<string, unknown>)?.angle as string)
     .filter(Boolean);
+
+  // Extract visual scenes from last 7 days for cross-concept scene diversity
+  const recentVisualScenes = (recentConceptData ?? [])
+    .filter((j) => new Date(j.created_at) >= sevenDaysAgo && j.visual_direction)
+    .map((j) => j.visual_direction as string)
+    .filter(Boolean)
+    .slice(0, 10); // Keep it manageable
+
+  // Fetch recent image generation prompts for image-level diversity
+  const recentJobIds = (recentConceptData ?? [])
+    .filter((j) => new Date(j.created_at) >= sevenDaysAgo)
+    .map((j) => j.id)
+    .slice(0, 10);
+  let recentImagePrompts: string[] = [];
+  if (recentJobIds.length > 0) {
+    const { data: recentImages } = await db
+      .from("source_images")
+      .select("generation_prompt")
+      .in("job_id", recentJobIds)
+      .not("generation_prompt", "is", null)
+      .limit(30);
+    recentImagePrompts = (recentImages ?? [])
+      .map((i) => i.generation_prompt as string)
+      .filter(Boolean);
+  }
 
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
@@ -556,7 +637,8 @@ async function runFromScratch(
     (segments ?? []) as ProductSegment[],
     mode === "from_internal" ? existingConcepts : undefined,
     undefined, // rejectedConcepts
-    recentAngles
+    recentAngles,
+    recentVisualScenes
   );
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -650,6 +732,7 @@ async function runFromScratch(
       product: product as ProductFull,
       productImages: (productImages ?? []) as Array<{ url: string; category: string }>,
       count: 3,
+      previousPrompts: recentImagePrompts,
     });
 
     const settled = await Promise.allSettled(
