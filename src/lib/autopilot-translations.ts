@@ -561,10 +561,12 @@ async function processOneTranslation(
 
 // --- Step 5: Update final job status + notify ---
 
+const MAX_TRANSLATION_RETRIES = 2;
+
 async function updateJobStatusFinal(db: DB, jobId: string): Promise<void> {
   const { data: allTranslations } = await db
     .from("image_translations")
-    .select("status, source_images!inner(job_id)")
+    .select("id, status, aspect_ratio, retry_count, source_images!inner(job_id)")
     .eq("source_images.job_id", jobId);
 
   if (!allTranslations?.length) return;
@@ -572,16 +574,48 @@ async function updateJobStatusFinal(db: DB, jobId: string): Promise<void> {
   const pending = allTranslations.filter((t) => t.status === "pending" || t.status === "processing");
   const failed = allTranslations.filter((t) => t.status === "failed");
 
-  if (pending.length === 0) {
-    const newStatus = failed.length > 0 ? "failed" : "completed";
-    await db.from("image_jobs").update({
-      status: newStatus,
-      updated_at: new Date().toISOString(),
-    }).eq("id", jobId);
+  if (pending.length > 0) return; // Still processing
 
-    // Send Telegram notification
-    await notifyTranslationsDone(db, jobId, newStatus, allTranslations.length, failed.length);
+  // Auto-retry failed translations (Kie AI transient errors)
+  if (failed.length > 0) {
+    const retryable = failed.filter((t) => ((t as Record<string, unknown>).retry_count as number ?? 0) < MAX_TRANSLATION_RETRIES);
+
+    if (retryable.length > 0) {
+      console.log(`[autopilot-translate] Auto-retrying ${retryable.length} failed translations for job ${jobId}`);
+
+      // Reset failed translations to pending for retry
+      for (const t of retryable) {
+        await db.from("image_translations").update({
+          status: "pending",
+          error_message: null,
+          retry_count: ((t as Record<string, unknown>).retry_count as number ?? 0) + 1,
+          updated_at: new Date().toISOString(),
+        }).eq("id", t.id);
+      }
+
+      // Re-process each failed ratio
+      const failedRatios = [...new Set(retryable.map((t) => t.aspect_ratio))];
+      for (const ratio of failedRatios) {
+        await processImageTranslations(db, jobId, ratio);
+      }
+
+      // Re-check status after retry
+      return updateJobStatusFinal(db, jobId);
+    }
+
+    // All retries exhausted — mark as completed anyway (4:5 images are fine,
+    // missing 9:16 is not a blocker for Meta push). Log but don't notify user.
+    console.warn(`[autopilot-translate] ${failed.length} translations failed after retries for job ${jobId} — marking completed anyway`);
   }
+
+  // Mark job as completed (even if some translations failed after retries)
+  await db.from("image_jobs").update({
+    status: "completed",
+    updated_at: new Date().toISOString(),
+  }).eq("id", jobId);
+
+  // Send Telegram notification (success only — never send error notifications)
+  await notifyTranslationsDone(db, jobId, "completed", allTranslations.length, failed.length);
 }
 
 async function notifyTranslationsDone(
@@ -607,15 +641,7 @@ async function notifyTranslationsDone(
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
     const { sendMessage } = await import("@/lib/telegram");
 
-    if (status === "failed") {
-      await sendMessage(chatId, [
-        `⚠️ Autopilot translations finished with errors`,
-        `Concept: ${label}`,
-        `${totalCount - failedCount}/${totalCount} succeeded, ${failedCount} failed`,
-        ``,
-        `${baseUrl}/images/${jobId}`,
-      ].join("\n"));
-    } else {
+    {
       // Check if any ad copy translations need review
       const { data: fullJob } = await db
         .from("image_jobs")
