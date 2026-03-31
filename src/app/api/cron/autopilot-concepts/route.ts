@@ -375,17 +375,23 @@ async function discoverCompetitorAd(
     return single ? [single] : [];
   })();
 
+  const MAX_BOARD_PAGES = 10;
   for (const boardId of boardIds) {
-    try {
-      const { ads } = await getBoardAds(boardId, 1, 50);
-      const imageAds = filterImageAds(ads);
-      const unswiped = imageAds.filter((a) => !seenIds.has(a.id));
-      if (unswiped.length > 0) {
-        console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads (board ${boardId})`);
-        return { ad: unswiped[0], source: "board" };
+    for (let page = 1; page <= MAX_BOARD_PAGES; page++) {
+      try {
+        const { ads, total } = await getBoardAds(boardId, page, 50);
+        const imageAds = filterImageAds(ads);
+        const unswiped = imageAds.filter((a) => !seenIds.has(a.id));
+        if (unswiped.length > 0) {
+          console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads (board ${boardId}, page ${page})`);
+          return { ad: unswiped[0], source: "board" };
+        }
+        // No more pages to check
+        if (ads.length < 50 || page * 50 >= total) break;
+      } catch (err) {
+        console.error(`[Autopilot] Board ${boardId} page ${page} fetch failed:`, err);
+        break;
       }
-    } catch (err) {
-      console.error(`[Autopilot] Board ${boardId} fetch failed:`, err);
     }
   }
 

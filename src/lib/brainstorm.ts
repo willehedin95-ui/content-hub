@@ -789,7 +789,8 @@ CRITICAL RULES:
 - FORMAT: Use short paragraphs separated by blank lines (\\n\\n). One sentence or thought per paragraph. This creates readable, scroll-friendly ad copy. Never write dense wall-of-text paragraphs.
 - Visual direction should be specific enough to brief a designer
 - Return ONLY valid JSON, no markdown fences, no explanation text
-- ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.`;
+- ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.
+- NO URLS IN AD COPY: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in the ad copy text. The landing page URL is attached separately by the ad platform — it is NOT part of the ad copy. If the competitor's ad copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt it to a natural call-to-action WITHOUT any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.`;
 
 // ---------------------------------------------------------------------------
 // System prompts per mode
@@ -1334,6 +1335,7 @@ CRITICAL RULES:
 - The competitor image is NOT passed to Nano Banana — your prompt must fully describe the desired image on its own
 - **NATIVE ADS — DO NOT ADD PRODUCT**: If the competitor ad is a native/UGC-style image (person at doctor, selfie, lifestyle scene, medical setting, illustrated scene, etc.) where NO physical product is visible, your Nano Banana prompt must NOT mention or describe our product. The image should look organic — NOT an ad. Set \`include_product_reference: false\` for these. Only set it to true if the competitor ad itself prominently shows a physical product that needs to be swapped with ours.
 - **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product directly in the prompt.**
+- **NO URLS IN AD COPY**: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in ad_copy_primary or ad_copy_headline. The landing page URL is attached separately by the ad platform. If the competitor's copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt to a natural CTA without any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
 - Each entry MUST have a source_index (0-based) matching the uploaded image it is based on

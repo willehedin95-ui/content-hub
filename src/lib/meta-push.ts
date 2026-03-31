@@ -306,6 +306,12 @@ export async function pushConceptToMeta(
         translatedHeadlines = result.translatedHeadlines;
       }
 
+      // Replace any leftover URL placeholders with the actual landing page URL
+      const stripUrlPlaceholders = (texts: string[], url: string): string[] =>
+        texts.map((t) => t.replace(/\[LÄNK\]|\[LINK\]|\[URL\]/gi, url));
+      translatedPrimaries = stripUrlPlaceholders(translatedPrimaries, landingUrl);
+      translatedHeadlines = stripUrlPlaceholders(translatedHeadlines, landingUrl);
+
       const adSetNameBase = `${country} ${numberPrefix}${conceptNumberStr} | statics | ${conceptName}`;
       const hasPageB = isPageTest && landingUrlByLangB.has(lang);
       const adSetName = hasPageB ? `${adSetNameBase} [A]` : adSetNameBase;
@@ -743,6 +749,7 @@ export async function translateAdCopyBatch(
         content: `You are a professional ad copywriter and translator. Translate all ad copy variants from ${sourceLangLabel} to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(language)}
+IMPORTANT: If the text contains URL placeholders like [LINK], [LÄNK], [URL] or website addresses, replace them with a natural call-to-action phrase in ${langLabel} (e.g. "Handla nu", "Köp här", "Shop now"). The landing page link is attached separately by the ad platform and must NOT appear in the ad copy text.
 Return a JSON object with exactly two keys:
 - "primary_texts": an array of translated primary texts (same order as input)
 - "headlines": an array of translated headlines (same order as input)

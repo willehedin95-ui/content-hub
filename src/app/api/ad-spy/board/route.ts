@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import {
   getBoardAds,
   getBoards,
@@ -22,9 +22,15 @@ export async function GET(req: NextRequest) {
   const perPage = parseInt(req.nextUrl.searchParams.get("per_page") ?? "50");
 
   try {
-    // If no board_id provided, get boards list
+    // If no board_id provided, get boards list filtered by workspace
     if (!boardId) {
-      const boards = await getBoards();
+      const allBoards = await getBoards();
+      const settings = await getWorkspaceSettings();
+      const configuredIds = (settings?.gethookd_board_ids as string[] | undefined) ?? [];
+      // Only show boards configured for this workspace (if any configured)
+      const boards = configuredIds.length > 0
+        ? allBoards.filter((b) => configuredIds.includes(String(b.id)))
+        : allBoards;
       return NextResponse.json({ boards });
     }
 
