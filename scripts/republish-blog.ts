@@ -46,7 +46,7 @@ async function main() {
   } = await import("../src/lib/blog-deploy");
 
   const WORKSPACE_ID = "c40221e2-96fb-4774-92db-74ec0227b262";
-  const LANGUAGE = "sv" as const;
+  const LANGUAGE = (process.argv[2] || "sv") as "sv" | "da" | "no";
   const db = createServerSupabase();
 
   const { data: workspace } = await db

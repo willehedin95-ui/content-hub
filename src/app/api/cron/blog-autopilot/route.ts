@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { runBlogAutopilot } from "@/lib/blog-autopilot";
+import { runBlogAutopilot, generateBlogImagesAndRepublish } from "@/lib/blog-autopilot";
+import type { AutopilotResult } from "@/lib/blog-autopilot";
 import type { Language } from "@/types";
 
 export const maxDuration = 300;
@@ -63,16 +65,30 @@ export async function GET(req: NextRequest) {
   }
 
   const results: Record<string, unknown> = {};
+  const imageJobs: NonNullable<AutopilotResult["imageJob"]>[] = [];
 
   for (const lang of languagesToRun) {
     try {
       const result = await runBlogAutopilot(workspace.id, lang as Language, { force });
-      results[lang] = result;
+      results[lang] = { action: result.action, message: result.message, slug: result.slug, url: result.url };
+      // Collect image jobs for background processing
+      if (result.imageJob) {
+        imageJobs.push(result.imageJob);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Blog autopilot failed";
       console.error(`[blog-autopilot] Cron error (${lang}):`, message);
       results[lang] = { action: "error", message };
     }
+  }
+
+  // Defer image generation to background — runs after response is sent
+  if (imageJobs.length > 0) {
+    after(async () => {
+      for (const job of imageJobs) {
+        await generateBlogImagesAndRepublish(job);
+      }
+    });
   }
 
   return NextResponse.json({ ok: true, results });

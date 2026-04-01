@@ -47,11 +47,24 @@ import type { Language } from "@/types";
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
-interface AutopilotResult {
+export interface AutopilotResult {
   action: "published" | "skipped" | "error";
   message: string;
   slug?: string;
   url?: string;
+  /** Data needed for deferred image generation (only set when action=published) */
+  imageJob?: {
+    translationId: string;
+    pageId: string;
+    articleTitle: string;
+    primaryKeyword: string;
+    contentBrief: string;
+    category: string;
+    articleHtml: string;
+    slug: string;
+    language: string;
+    workspaceId: string;
+  };
 }
 
 /**
@@ -64,6 +77,21 @@ export async function runBlogAutopilot(
   opts?: { force?: boolean }
 ): Promise<AutopilotResult> {
   const db = createServerSupabase();
+
+  // Auto-recover articles stuck in "writing" for more than 2 hours (failed mid-generation)
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { data: staleWrites } = await db
+    .from("blog_content_plan")
+    .update({ status: "planned", updated_at: new Date().toISOString() })
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("status", "writing")
+    .is("page_id", null)
+    .lt("updated_at", twoHoursAgo)
+    .select("slug");
+  if (staleWrites?.length) {
+    console.log(`[blog-autopilot] Recovered ${staleWrites.length} stale "writing" articles: ${staleWrites.map(s => s.slug).join(", ")}`);
+  }
 
   // Check rate: max 1 article per day PER LANGUAGE (skip with force)
   if (!opts?.force) {
@@ -115,6 +143,8 @@ export async function runBlogAutopilot(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Article generation failed";
     console.error("[blog-autopilot] Generation failed:", msg);
+    // Reset content plan status so article can be retried
+    await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
     return { action: "error", message: `Article generation failed: ${msg}` };
   }
 
@@ -141,30 +171,14 @@ export async function runBlogAutopilot(
     console.warn("[blog-autopilot] Internal link injection failed (non-critical):", err);
   }
 
-  // Generate native-style editorial images for the article
+  // Inject real product photo from product bank before the CTA box (fast, no AI)
+  // AI image generation is deferred to background via after() — see cron route
   let finalHtml = article.html;
-  let imageCost = 0;
-  let imageCount = 0;
   try {
-    const { generateBlogImages, replacePlaceholderImages, injectProductImage } = await import("./blog-images");
-    const imageResult = await generateBlogImages({
-      articleTitle: article.seoTitle,
-      primaryKeyword: nextArticle.primaryKeyword,
-      contentBrief: nextArticle.contentBrief,
-      category: nextArticle.category,
-      articleHtml: article.html,
-      slug: nextArticle.slug,
-    });
-    if (imageResult.generated > 0) {
-      finalHtml = replacePlaceholderImages(article.html, imageResult.urlMap);
-      imageCost = imageResult.costUsd;
-      imageCount = imageResult.generated;
-      console.log(`[blog-autopilot] Generated ${imageCount} images, cost: $${imageCost.toFixed(3)}`);
-    }
-    // Inject real product photo from product bank before the CTA box
+    const { injectProductImage } = await import("./blog-images");
     finalHtml = await injectProductImage(finalHtml, nextArticle.productSlug);
   } catch (err) {
-    console.warn("[blog-autopilot] Image generation failed, publishing with placeholders:", err);
+    console.warn("[blog-autopilot] Product image injection failed (non-critical):", err);
   }
 
   // Create page record
@@ -188,6 +202,7 @@ export async function runBlogAutopilot(
 
   if (pageError || !page) {
     console.error("[blog-autopilot] Failed to create page:", pageError);
+    await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
     return { action: "error", message: `DB error creating page: ${pageError?.message}` };
   }
 
@@ -208,6 +223,7 @@ export async function runBlogAutopilot(
 
   if (transError || !translation) {
     console.error("[blog-autopilot] Failed to create translation:", transError);
+    await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
     return { action: "error", message: `DB error creating translation: ${transError?.message}` };
   }
 
@@ -246,6 +262,7 @@ export async function runBlogAutopilot(
       .from("translations")
       .update({ status: "error", publish_error: msg })
       .eq("id", translation.id);
+    await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
     return { action: "error", message: `Publish failed: ${msg}` };
   }
 
@@ -277,8 +294,6 @@ export async function runBlogAutopilot(
     metadata: {
       slug: nextArticle.slug,
       word_count: article.wordCount,
-      images_generated: imageCount,
-      image_cost_usd: imageCost,
       source: articleSource,
     },
   });
@@ -315,15 +330,14 @@ export async function runBlogAutopilot(
   try {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     if (chatId) {
-      const totalCost = article.cost + imageCost;
       await sendTelegramNotification(
         chatId,
         `📝 *Blog article published*\n\n` +
           `*${escTg(article.seoTitle)}*\n` +
           `Category: ${escTg(nextArticle.category)}\n` +
           `Words: ${article.wordCount}\n` +
-          `Images: ${imageCount}\n` +
-          `Cost: $${totalCost.toFixed(4)}\n\n` +
+          `Cost: $${article.cost.toFixed(4)}\n` +
+          `Images: generating in background\\.\\.\\.\n\n` +
           `[Read article](${publishUrl})`
       );
     }
@@ -338,6 +352,18 @@ export async function runBlogAutopilot(
     message: `Published "${article.seoTitle}" (${article.wordCount} words)`,
     slug: nextArticle.slug,
     url: publishUrl,
+    imageJob: {
+      translationId: translation.id,
+      pageId: page.id,
+      articleTitle: article.seoTitle,
+      primaryKeyword: nextArticle.primaryKeyword,
+      contentBrief: nextArticle.contentBrief,
+      category: nextArticle.category,
+      articleHtml: article.html,
+      slug: nextArticle.slug,
+      language,
+      workspaceId,
+    },
   };
 }
 
@@ -668,6 +694,107 @@ function slugifyKeyword(keyword: string): string {
 
 function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// Deferred image generation — runs in background via after()
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate AI images for a blog article, replace placeholders, and republish.
+ * Called from the cron route via after() so it doesn't block the response.
+ */
+export async function generateBlogImagesAndRepublish(job: NonNullable<AutopilotResult["imageJob"]>): Promise<void> {
+  const db = createServerSupabase();
+
+  try {
+    const { generateBlogImages, replacePlaceholderImages } = await import("./blog-images");
+
+    console.log(`[blog-images-bg] Generating images for "${job.slug}"...`);
+    const imageResult = await generateBlogImages({
+      articleTitle: job.articleTitle,
+      primaryKeyword: job.primaryKeyword,
+      contentBrief: job.contentBrief,
+      category: job.category,
+      articleHtml: job.articleHtml,
+      slug: job.slug,
+    });
+
+    if (imageResult.generated === 0) {
+      console.log(`[blog-images-bg] No images generated for "${job.slug}"`);
+      return;
+    }
+
+    console.log(`[blog-images-bg] Generated ${imageResult.generated} images for "${job.slug}", cost: $${imageResult.costUsd.toFixed(3)}`);
+
+    // Get current translation HTML (may have been modified by internal link injection)
+    const { data: trans } = await db
+      .from("translations")
+      .select("translated_html, seo_title, seo_description, created_at")
+      .eq("id", job.translationId)
+      .single();
+
+    if (!trans?.translated_html) {
+      console.error(`[blog-images-bg] Translation ${job.translationId} not found`);
+      return;
+    }
+
+    // Replace placeholder images in the HTML
+    const updatedHtml = replacePlaceholderImages(trans.translated_html, imageResult.urlMap);
+
+    // Update DB
+    await db
+      .from("translations")
+      .update({ translated_html: updatedHtml, updated_at: new Date().toISOString() })
+      .eq("id", job.translationId);
+
+    await db
+      .from("pages")
+      .update({
+        original_html: updatedHtml,
+        blog_featured_image_url: extractFirstImage(updatedHtml) || null,
+      })
+      .eq("id", job.pageId);
+
+    // Re-publish with images
+    const lang = job.language as Language;
+    const publishUrl = await publishBlogArticle(
+      updatedHtml,
+      job.slug,
+      job.category,
+      trans.seo_title || job.slug,
+      trans.seo_description || "",
+      lang,
+      job.workspaceId,
+      job.translationId,
+      trans.created_at,
+    );
+
+    console.log(`[blog-images-bg] Republished with images: ${publishUrl}`);
+
+    // Regenerate homepage to update featured image
+    deployBlogHomepage(lang).catch(() => {});
+  } catch (err) {
+    // Non-critical — article is already published with placeholder images
+    console.error(`[blog-images-bg] Failed for "${job.slug}":`, err instanceof Error ? err.message : err);
+  }
+}
+
+/** Revert a blog_content_plan row from "writing" back to "planned" on failure */
+async function revertToPlanStatus(
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string,
+  language: string,
+  slug: string
+): Promise<void> {
+  await db
+    .from("blog_content_plan")
+    .update({ status: "planned", updated_at: new Date().toISOString() })
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("slug", slug)
+    .eq("status", "writing")
+    .is("page_id", null);
 }
 
 /** Escape special Markdown characters for Telegram */

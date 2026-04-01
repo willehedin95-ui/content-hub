@@ -47,8 +47,8 @@ export interface ArticleRequest {
 const PRODUCT_URLS: Record<string, Record<string, string>> = {
   happysleep: {
     sv: "https://swedishbalance.se/products/happysleep",
-    da: "https://swedishbalance.se/products/happysleep",
-    no: "https://swedishbalance.se/products/happysleep",
+    da: "https://swedishbalance.dk/pages/happysleep-dk",
+    no: "https://swedishbalance.se/no-no/pages/happysleep-no",
   },
   // Hydro13 moving to get-renew.com — URLs updated when store is live
   hydro13: {
