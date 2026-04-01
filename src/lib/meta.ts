@@ -236,6 +236,7 @@ export async function createAdCreative(params: {
   linkUrl: string;
   callToAction?: string;
   pageId?: string;
+  instagramUserId?: string;
   assetCustomizationRules?: Array<{
     customization_spec: Record<string, unknown>;
     image_label: { name: string };
@@ -273,6 +274,7 @@ export async function createAdCreative(params: {
       name: params.name,
       object_story_spec: {
         page_id: pageId,
+        ...(params.instagramUserId ? { instagram_user_id: params.instagramUserId } : {}),
       },
       asset_feed_spec: assetFeedSpec,
     }),

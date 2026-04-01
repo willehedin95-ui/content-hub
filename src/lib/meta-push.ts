@@ -259,7 +259,7 @@ export async function pushConceptToMeta(
       // Check campaign mapping + page config in parallel
       const [{ data: mapping }, { data: pageConfig }] = await Promise.all([
         db.from("meta_campaign_mappings").select("meta_campaign_id, template_adset_id, is_permanent").eq("workspace_id", wsId).eq("product", job.product).eq("country", country).eq("format", "image").single(),
-        db.from("meta_page_config").select("meta_page_id").eq("workspace_id", wsId).eq("country", country).single(),
+        db.from("meta_page_config").select("meta_page_id, instagram_actor_id").eq("workspace_id", wsId).eq("country", country).single(),
       ]);
 
       if (!mapping?.meta_campaign_id || !mapping?.template_adset_id) {
@@ -533,6 +533,7 @@ export async function pushConceptToMeta(
               titles: translatedHeadlines.length > 0 ? [translatedHeadlines[0]] : undefined,
               linkUrl: targetLandingUrl,
               pageId: pageConfig?.meta_page_id,
+              instagramUserId: pageConfig?.instagram_actor_id,
               assetCustomizationRules: has9x16 ? FEED_STORIES_RULES : undefined,
             }));
 
@@ -710,11 +711,14 @@ export async function pushConceptToMeta(
   );
 
   // Collect results from all languages
-  for (const r of langResults) {
+  for (let i = 0; i < langResults.length; i++) {
+    const r = langResults[i];
     if (r.status === "fulfilled") {
       results.push(r.value);
     } else {
-      results.push({ language: "?", country: "??", status: "error", error: r.reason?.message ?? "Push failed" });
+      const lang = targetLangs[i];
+      const country = COUNTRY_MAP[lang] ?? "??";
+      results.push({ language: lang, country, status: "error", error: r.reason?.message ?? "Push failed" });
     }
   }
 

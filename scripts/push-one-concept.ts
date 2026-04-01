@@ -3,9 +3,10 @@
  * Push a single concept to specific markets from the command line.
  * Bypasses Next.js cookie requirements by passing workspace config directly.
  *
- * Usage: npx tsx scripts/push-one-concept.ts <conceptId> [markets]
+ * Usage: npx tsx scripts/push-one-concept.ts <conceptId> [markets] [workspace]
  * Example: npx tsx scripts/push-one-concept.ts 700aa45a-... SE
  *          npx tsx scripts/push-one-concept.ts 700aa45a-... SE,DK,NO
+ *          npx tsx scripts/push-one-concept.ts 700aa45a-... SE hydro13
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -23,7 +24,7 @@ for (const line of envContent.split("\n")) {
 }
 
 const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv", DE: "de" };
-const WORKSPACE_SLUG = "happysleep";
+const WORKSPACE_SLUG = process.argv[4] || "happysleep";
 
 async function main() {
   const conceptId = process.argv[2];

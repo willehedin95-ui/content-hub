@@ -212,7 +212,8 @@ export async function GET(req: NextRequest) {
                 if (concept.type === "video") {
                   // Video push — pushVideoToMeta handles meta_campaigns tracking internally
                   const pushResult = await pushVideoToMeta(concept.conceptId, { languages: [lang], workspaceId: wsId });
-                  const langResult = pushResult.results.find((r) => r.language === lang);
+                  const langResult = pushResult.results.find((r) => r.language === lang)
+                    ?? pushResult.results[0]; // Fallback to first result if language lookup fails
 
                   if (langResult?.status === "pushed") {
                     // Clear push error for this market
@@ -258,7 +259,8 @@ export async function GET(req: NextRequest) {
                     metaConfig,
                     wsSettings,
                   });
-                  const langResult = pushResult.results.find((r) => r.language === lang);
+                  const langResult = pushResult.results.find((r) => r.language === lang)
+                    ?? pushResult.results[0]; // Fallback to first result if language lookup fails
 
                   if (langResult?.status === "pushed") {
                     const now = new Date().toISOString();
