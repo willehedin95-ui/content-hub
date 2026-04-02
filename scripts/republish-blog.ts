@@ -26,6 +26,7 @@ async function main() {
     extractFirstImage,
     extractMetaDescription,
     autoFillAltText,
+    injectBlogUTMs,
     wrapInBlogShell,
     fixMetaImageUrls,
     getDefaultBlogConfig,
@@ -97,7 +98,8 @@ async function main() {
     console.log(`Republishing: ${trans.slug} (${category})`);
 
     const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(trans.translated_html);
-    const bodyHtml = autoFillAltText(rawBodyHtml, trans.seo_title || trans.slug);
+    const bodyHtmlAlt = autoFillAltText(rawBodyHtml, trans.seo_title || trans.slug);
+    const bodyHtml = injectBlogUTMs(bodyHtmlAlt, trans.slug);
     const relatedArticles = await getPublishedBlogArticles(LANGUAGE, trans.slug);
     const featuredImage = extractFirstImage(bodyHtml);
 

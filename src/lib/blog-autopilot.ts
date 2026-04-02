@@ -12,6 +12,7 @@ import {
   extractFirstImage,
   extractMetaDescription,
   autoFillAltText,
+  injectBlogUTMs,
   wrapInBlogShell,
   fixMetaImageUrls,
   getDefaultBlogConfig,
@@ -522,7 +523,8 @@ async function publishBlogArticle(
 
   // Extract and wrap in blog shell
   const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(articleHtml);
-  const bodyHtml = autoFillAltText(rawBodyHtml, seoTitle);
+  const bodyHtmlAlt = autoFillAltText(rawBodyHtml, seoTitle);
+  const bodyHtml = injectBlogUTMs(bodyHtmlAlt, slug);
   const relatedArticles = await getPublishedBlogArticles(language, slug);
   const featuredImage = extractFirstImage(bodyHtml);
 

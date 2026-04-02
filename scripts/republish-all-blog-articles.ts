@@ -17,7 +17,7 @@ for (const line of envContent.split("\n")) {
 
 async function main() {
   const { createServerSupabase } = await import("../src/lib/supabase-admin");
-  const { extractArticleBody, autoFillAltText, extractFirstImage, extractMetaDescription, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, generateBlogHomepage } = await import("../src/lib/blog-shell");
+  const { extractArticleBody, autoFillAltText, injectBlogUTMs, extractFirstImage, extractMetaDescription, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, generateBlogHomepage } = await import("../src/lib/blog-shell");
   const { publishPage } = await import("../src/lib/cloudflare-pages");
   const { injectProductImage } = await import("../src/lib/blog-images");
 
@@ -133,7 +133,8 @@ async function main() {
     const baseUrl = domain ? `https://${domain}` : "";
 
     const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(html);
-    const bodyHtml = autoFillAltText(rawBodyHtml, translation.seo_title);
+    const bodyHtmlAlt = autoFillAltText(rawBodyHtml, translation.seo_title);
+    const bodyHtml = injectBlogUTMs(bodyHtmlAlt, page.slug);
 
     // Get related articles
     const { data: relatedRows } = await db

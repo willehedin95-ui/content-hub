@@ -253,6 +253,42 @@ export function autoFillAltText(html: string, articleTitle: string): string {
 }
 
 /**
+ * Inject UTM parameters into all outbound product links in blog article HTML.
+ * Ensures Shopify order attribution back to the originating blog article.
+ *
+ * UTM scheme: utm_source=blog&utm_medium=organic&utm_campaign={slug}
+ * Matched by shopify.ts getOrdersByPage() via utm_campaign (priority 2).
+ */
+export function injectBlogUTMs(html: string, articleSlug: string): string {
+  const shopifyDomains = [
+    "swedishbalance.se",
+    "swedishbalance.dk",
+    "get-renew.com",
+  ];
+
+  const domainPattern = shopifyDomains.map((d) => d.replace(/\./g, "\\.")).join("|");
+  const linkRegex = new RegExp(
+    `(href=["'])(https?://(?:www\\.)?(?:${domainPattern})[^"']*)(["'])`,
+    "gi"
+  );
+
+  return html.replace(linkRegex, (match, prefix, url, suffix) => {
+    try {
+      const parsed = new URL(url);
+      // Don't overwrite existing UTM params
+      if (!parsed.searchParams.has("utm_source")) {
+        parsed.searchParams.set("utm_source", "blog");
+        parsed.searchParams.set("utm_medium", "organic");
+        parsed.searchParams.set("utm_campaign", articleSlug);
+      }
+      return `${prefix}${parsed.toString()}${suffix}`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/**
  * After image optimization replaces absolute Supabase URLs with relative WebP paths
  * (global string replace), OG/Twitter/JSON-LD image URLs become relative too.
  * This function fixes them back to absolute URLs.

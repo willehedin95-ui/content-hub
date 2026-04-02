@@ -5,7 +5,7 @@ import { optimizeImages } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
-import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, type BlogConfig } from "@/lib/blog-shell";
+import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, injectBlogUTMs, type BlogConfig } from "@/lib/blog-shell";
 import { getPublishedBlogArticles, deployBlogHomepage, deployBlogRssFeed } from "@/lib/blog-deploy";
 
 export const maxDuration = 120;
@@ -168,7 +168,9 @@ async function doPublish(
       const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(html);
       const articleTitle = (translation.seo_title as string) || slug;
       // Auto-fill empty/placeholder alt text on images before wrapping
-      const bodyHtml = autoFillAltText(rawBodyHtml, articleTitle);
+      const bodyHtmlAlt = autoFillAltText(rawBodyHtml, articleTitle);
+      // Inject UTM params on Shopify product links for order attribution
+      const bodyHtml = injectBlogUTMs(bodyHtmlAlt, slug);
       const relatedArticles = await getPublishedBlogArticles(language, slug);
       const featuredImage =
         pageData?.blog_featured_image_url || extractFirstImage(bodyHtml);

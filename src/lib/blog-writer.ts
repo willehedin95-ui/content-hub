@@ -62,6 +62,14 @@ export function getProductUrl(productSlug: string, language: string): string {
   return PRODUCT_URLS[productSlug]?.[language] ?? PRODUCT_URLS[productSlug]?.sv ?? "#";
 }
 
+/** Product URL with UTM params for blog article attribution */
+export function getProductUrlWithUTM(productSlug: string, language: string, articleSlug: string): string {
+  const base = getProductUrl(productSlug, language);
+  if (base === "#") return base;
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}utm_source=blog&utm_medium=organic&utm_campaign=${encodeURIComponent(articleSlug)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Verified competitor products — ONLY these may appear in articles
 // NEVER fabricate product names. If a product isn't listed here, don't mention it.
@@ -425,7 +433,7 @@ function buildWriterSystemPrompt(
 
   // Get verified competitor products for this language
   const competitors = getCompetitorProducts(request.productSlug, request.language);
-  const productUrl = getProductUrl(request.productSlug, request.language);
+  const productUrl = getProductUrlWithUTM(request.productSlug, request.language, request.slug);
 
   // Build competitor data section
   const currency = request.language === "da" ? "DKK" : request.language === "no" ? "NOK" : "kr";
@@ -571,7 +579,7 @@ function buildWriterUserPrompt(
   request: ArticleRequest,
   templateHtml: string
 ): string {
-  const productUrl = getProductUrl(request.productSlug, request.language);
+  const productUrl = getProductUrlWithUTM(request.productSlug, request.language, request.slug);
 
   return `Write the complete article based on this brief:
 
