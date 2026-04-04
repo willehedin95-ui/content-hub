@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-03-31
+Updated: 2026-04-04
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -71,7 +71,13 @@ Updated: 2026-03-31
 - [ ] **Add more Trustpilot sources** — User will provide additional brands to monitor. (added 2026-03-25)
 - [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
 
+## Tier 1.5 — Immediate Follow-ups (new)
+- [ ] **Hydro13 product appearance in static-ad-prompt** — `generate-static-images.ts` uses `resolveReferenceImages()` which doesn't have Hydro13-specific appearance text. May need same white bottle description as swipe-competitor.ts. (added 2026-04-04)
+- [ ] **Push 104a340 to deploy** — Bleeder cooldown, retry logic, UI labels, Hydro13 product appearance, video script redesign. Not yet pushed. (added 2026-04-04, HIGH)
+
 ## Done (recent)
+- [x] **Bleeder cooldown + image retry + product appearance** — Bleeders now have 4-day cooldown. Swipe image generation retries 3x. "Importing" → "Generating..."/""Failed". Hydro13 white bottle description added. `productAppearance` always injected. `include_product_reference` logic fixed for native ads. 7 stuck concepts archived. Commit `104a340`. (done 2026-04-04)
+- [x] **Blog UTM tracking for Shopify order attribution** — `injectBlogUTMs()` in blog-shell.ts tags all Shopify CTA links with `utm_campaign={slug}`. Applied at publish time + in Claude writer prompts. All 9 articles republished. Orders column on SEO Articles now functional. Commit `2caa42d`. (done 2026-04-02)
 - [x] **Fix [LÄNK] placeholder + board filtering + Telegram webhook** — Three bugs fixed: (1) ad copy URL placeholders replaced with natural CTAs, (2) board dropdown filtered by workspace, (3) Telegram webhook re-registered. Autopilot board swipe verified working. Commit `cd6afc9`. (done 2026-03-31)
 - [x] **CF Pages deploy bug fix + zombie cleanup** — Root cause: trailing `\n` in Vercel env vars broke manifest lookup. Added `.trim()` to `cloudflare-pages.ts`. Redeployed all 3 projects. Blocked blog pages from landing page selection. Killed 15 zombie ad sets. Added bleeder status (200+ SEK, 0 purchases = immediate kill). Reduced testing cooldown 7d→4d, max kills 5→10. Commit `7c4dd2f`. (done 2026-03-30)
 - [x] **Mobile Review Page (`/review`)** — Cross-workspace mobile approval page. Shared `approval-actions.ts` (7 functions), refactored Telegram webhook + Hub approve endpoint. Filter tabs, 10s polling, deep linking via `?highlight=<id>`. Telegram notifications link to `/review`. Commits `3c31b8a`, `cebde95`. (done 2026-03-29)
