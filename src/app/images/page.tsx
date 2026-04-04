@@ -23,7 +23,8 @@ const STATUS_FILTERS = [
 
 const STATUS_PRIORITY: Record<string, number> = {
   "New": 0,
-  "Importing": 0,
+  "Generating...": 0,
+  "Failed": 0,
   "Step 1/3 \u00B7 Images": 1,
   "Step 2/3 \u00B7 Ad Copy": 2,
   "Step 3/3 \u00B7 Preview": 3,

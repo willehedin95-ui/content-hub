@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
           brandName: brand_name,
           videoDuration: video_duration,
           gethookdAdId: gethookd_ad_id,
-          notifyTelegram: true,
+          notifyTelegram: !isManual,
           existingJobId: videoJobId,
         });
 

@@ -1078,6 +1078,7 @@ export interface VideoJob {
   storyboard_duration: string;
   video_shots?: VideoShot[];
   video_clips?: VideoClip[];
+  swipe_progress?: { step: string; message: string } | null;
 }
 
 export interface SourceVideo {

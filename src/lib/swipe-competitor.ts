@@ -265,6 +265,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   let productAppearance = "";
   if (product.slug === "happysleep") {
     productAppearance = `The product is: ${product.name}. Physical appearance: ${product.ingredients}. IMPORTANT: The pillow must have a white quilted diamond-pattern fabric cover with a distinctive black mesh breathable ventilation strip along the bottom/side edge. It is a contoured cervical pillow with dual height (higher on one side). Do NOT show bare foam — always show the finished pillow with its fabric cover on.`;
+  } else if (product.slug === "hydro13") {
+    productAppearance = `The product is: Hydro13 — a premium liquid marine collagen supplement. IMPORTANT PHYSICAL APPEARANCE: The bottle is a tall, sleek WHITE bottle (not amber, not glass, not transparent) with a white screw cap. The label says "HYDRO13" with "Beauty Collagen Drinkable" text. It is a 500 ml white plastic bottle — modern, clean, Scandinavian design. If a drinking glass is shown, it must be a tiny 30 ml clear glass (like an espresso cup, about one-fifth the height of the bottle) with golden honey-colored liquid. NEVER show a regular drinking glass or shot glass.`;
   } else if (product.description || product.ingredients) {
     productAppearance = `The product is: ${product.name}. ${product.description || ""} Key specs: ${product.ingredients || ""}. Show the actual product accurately — refer to the product reference image for the exact appearance.`;
   }
@@ -337,122 +339,136 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     },
   }).eq("id", job.id);
 
+  const MAX_IMAGE_RETRIES = 2;
+
   for (let index = 0; index < parsed.image_prompts.length; index++) {
     const imgPrompt = parsed.image_prompts[index];
     if (existingJobId) {
       await updateProgress(existingJobId, "generating", `Generating image ${index + 1} of ${parsed.image_prompts.length}...`);
     }
-    try {
-      // Pass competitor image as style reference so generated images match the original's visual style.
-      // Product hero images are added when include_product_reference is true.
-      const includeProduct = imgPrompt.include_product_reference === true;
-      const referenceUrls = [
-        competitorImageUrls[0],  // Style reference (first competitor image)
-        ...(includeProduct ? productHeroUrls : []),
-      ];
 
-      // Build the full prompt: scene description + product appearance + optional text overlay instructions.
-      // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
-      const promptRaw = imgPrompt.prompt;
-      const isJsonPrompt = typeof promptRaw === "object" && promptRaw !== null;
+    // Pass competitor image as style reference so generated images match the original's visual style.
+    // Product hero images are added when include_product_reference is true.
+    const includeProduct = imgPrompt.include_product_reference === true;
+    const referenceUrls = [
+      competitorImageUrls[0],  // Style reference (first competitor image)
+      ...(includeProduct ? productHeroUrls : []),
+    ];
 
-      let fullPrompt: string;
-      if (isJsonPrompt) {
-        // JSON prompt: add product appearance and text overlays as additional keys before stringifying
-        const jsonObj = { ...(promptRaw as Record<string, unknown>) };
-        if (includeProduct && productAppearance) {
-          jsonObj.ProductDescription = productAppearance;
+    // Build the full prompt: scene description + product appearance + optional text overlay instructions.
+    // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
+    const promptRaw = imgPrompt.prompt;
+    const isJsonPrompt = typeof promptRaw === "object" && promptRaw !== null;
+
+    // Always inject product appearance as a safety net — even if include_product_reference
+    // is false, Claude may still mention the product in the prompt (e.g. "holding a bottle").
+    // Without this, Kie AI would hallucinate the product's appearance.
+    let fullPrompt: string;
+    if (isJsonPrompt) {
+      const jsonObj = { ...(promptRaw as Record<string, unknown>) };
+      if (productAppearance) {
+        jsonObj.ProductDescription = productAppearance;
+      }
+      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+      if (hasTextOverlay) {
+        const overlayParts: string[] = [];
+        if (imgPrompt.hook_text?.trim()) overlayParts.push(`Bold headline: "${imgPrompt.hook_text}"`);
+        if (imgPrompt.headline_text?.trim()) overlayParts.push(`Secondary line: "${imgPrompt.headline_text}"`);
+        jsonObj.TextOverlay = overlayParts.join(". ");
+      }
+      fullPrompt = JSON.stringify(jsonObj);
+    } else {
+      fullPrompt = String(promptRaw);
+      if (productAppearance) {
+        fullPrompt += " " + productAppearance;
+      }
+      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+      if (hasTextOverlay) {
+        const textParts: string[] = [];
+        if (imgPrompt.hook_text?.trim()) {
+          textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
         }
-        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
-        if (hasTextOverlay) {
-          const overlayParts: string[] = [];
-          if (imgPrompt.hook_text?.trim()) overlayParts.push(`Bold headline: "${imgPrompt.hook_text}"`);
-          if (imgPrompt.headline_text?.trim()) overlayParts.push(`Secondary line: "${imgPrompt.headline_text}"`);
-          jsonObj.TextOverlay = overlayParts.join(". ");
+        if (imgPrompt.headline_text?.trim()) {
+          textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
         }
-        fullPrompt = JSON.stringify(jsonObj);
-      } else {
-        // Plain text prompt: append text overlays as before
-        fullPrompt = String(promptRaw);
-        if (includeProduct && productAppearance) {
-          fullPrompt += " " + productAppearance;
-        }
-        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
-        if (hasTextOverlay) {
-          const textParts: string[] = [];
-          if (imgPrompt.hook_text?.trim()) {
-            textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
-          }
-          if (imgPrompt.headline_text?.trim()) {
-            textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
-          }
-          fullPrompt += " " + textParts.join(" ");
+        fullPrompt += " " + textParts.join(" ");
+      }
+    }
+
+    // Retry loop for transient Kie AI failures
+    for (let attempt = 0; attempt <= MAX_IMAGE_RETRIES; attempt++) {
+      try {
+        const { urls: resultUrls, costTimeMs } = await generateImage(
+          fullPrompt,
+          referenceUrls,
+          "4:5"
+        );
+
+        if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
+
+        const resultRes = await fetch(resultUrls[0]);
+        if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
+        const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+        const fileId = crypto.randomUUID();
+        const filePath = `image-jobs/${job.id}/${fileId}.png`;
+        const { error: uploadError } = await db.storage
+          .from(STORAGE_BUCKET)
+          .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+
+        if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
+
+        const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+        const { data: sourceImage } = await db
+          .from("source_images")
+          .insert({
+            job_id: job.id,
+            original_url: urlData.publicUrl,
+            filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
+            processing_order: index,
+            skip_translation: !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
+            generation_prompt: isJsonPrompt ? JSON.stringify(promptRaw) : String(promptRaw),
+            generation_style: "competitor-swipe",
+            batch: 1,
+          })
+          .select()
+          .single();
+
+        await db.from("usage_logs").insert({
+          type: "image_generation",
+          page_id: null,
+          translation_id: null,
+          model: KIE_MODEL,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: KIE_IMAGE_COST,
+          metadata: {
+            purpose: "competitor_swipe",
+            image_job_id: job.id,
+            source_image_id: sourceImage?.id,
+            kie_cost_time_ms: costTimeMs,
+            reference_image_count: referenceUrls.length,
+          },
+        });
+
+        imageResults.push({ url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" });
+        break; // Success — exit retry loop
+      } catch (err) {
+        if (attempt < MAX_IMAGE_RETRIES) {
+          console.warn(`[swipe-competitor] Image ${index + 1} attempt ${attempt + 1} failed, retrying...`, err);
+          await new Promise((r) => setTimeout(r, 2000)); // Wait 2s before retry
+        } else {
+          console.error(`[swipe-competitor] Image ${index + 1} failed after ${MAX_IMAGE_RETRIES + 1} attempts:`, err);
         }
       }
-
-      const { urls: resultUrls, costTimeMs } = await generateImage(
-        fullPrompt,
-        referenceUrls,
-        "4:5"
-      );
-
-      if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
-
-      const resultRes = await fetch(resultUrls[0]);
-      if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
-      const buffer = Buffer.from(await resultRes.arrayBuffer());
-
-      const fileId = crypto.randomUUID();
-      const filePath = `image-jobs/${job.id}/${fileId}.png`;
-      const { error: uploadError } = await db.storage
-        .from(STORAGE_BUCKET)
-        .upload(filePath, buffer, { contentType: "image/png", upsert: false });
-
-      if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
-
-      const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
-
-      const { data: sourceImage } = await db
-        .from("source_images")
-        .insert({
-          job_id: job.id,
-          original_url: urlData.publicUrl,
-          filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
-          processing_order: index,
-          skip_translation: !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
-          generation_prompt: isJsonPrompt ? JSON.stringify(promptRaw) : String(promptRaw),
-          generation_style: "competitor-swipe",
-          batch: 1,
-        })
-        .select()
-        .single();
-
-      await db.from("usage_logs").insert({
-        type: "image_generation",
-        page_id: null,
-        translation_id: null,
-        model: KIE_MODEL,
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd: KIE_IMAGE_COST,
-        metadata: {
-          purpose: "competitor_swipe",
-          image_job_id: job.id,
-          source_image_id: sourceImage?.id,
-          kie_cost_time_ms: costTimeMs,
-          reference_image_count: referenceUrls.length,
-        },
-      });
-
-      imageResults.push({ url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" });
-    } catch (err) {
-      console.error(`[swipe-competitor] Image ${index + 1} failed:`, err);
     }
   }
 
-  // Update job status
+  // Update job status — mark as failed if no images were generated
+  const finalStatus = imageResults.length > 0 ? "ready" : "failed";
   await db.from("image_jobs").update({
-    status: "ready",
+    status: finalStatus,
     swipe_progress: null,
     updated_at: new Date().toISOString(),
   }).eq("id", job.id);

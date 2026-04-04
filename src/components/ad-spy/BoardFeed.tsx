@@ -397,26 +397,40 @@ function UploadVideoModal({
 
     let finalVideoUrl = videoUrl;
 
-    // If file mode, upload first
+    // If file mode, upload directly to Supabase via signed URL
+    // (bypasses Vercel's 4.5MB serverless body limit)
     if (mode === "file") {
       if (!file) {
         setError("Select a video file");
         return;
       }
       setUploading(true);
-      setUploadProgress("Uploading video...");
+      setUploadProgress("Getting upload URL...");
       setError(null);
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/ad-spy/upload-video", {
-          method: "POST",
-          body: formData,
+        // Step 1: Get signed upload URL from our API
+        const signRes = await fetch(
+          `/api/ad-spy/upload-video?filename=${encodeURIComponent(file.name)}&size=${file.size}`
+        );
+        const signData = await signRes.json();
+        if (!signRes.ok) throw new Error(signData.error || "Failed to get upload URL");
+
+        // Step 2: Upload directly to Supabase Storage
+        setUploadProgress("Uploading video...");
+        const uploadRes = await fetch(signData.signed_url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": signData.content_type,
+          },
+          body: file,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Upload failed");
-        finalVideoUrl = data.url;
+        if (!uploadRes.ok) {
+          const errText = await uploadRes.text().catch(() => "Upload failed");
+          throw new Error(errText);
+        }
+
+        finalVideoUrl = signData.public_url;
         setUploadProgress(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Upload failed");
@@ -444,8 +458,13 @@ function UploadVideoModal({
           brand_name: brandName.trim(),
         }),
       });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "Swipe failed");
+        try { const parsed = JSON.parse(errText); throw new Error(parsed.error || "Swipe failed"); }
+        catch (e) { if (e instanceof SyntaxError) throw new Error(errText); throw e; }
+      }
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Swipe failed");
+      if (!data.ok) throw new Error(data.error || "Swipe failed");
       onSuccess(data.videoJobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start video swipe");

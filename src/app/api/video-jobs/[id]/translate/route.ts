@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { OPENAI_MODEL } from "@/lib/constants";
-import { extractDialogue, replaceDialogue } from "@/lib/video-brainstorm";
+import { extractDialogue, replaceDialogue } from "@/lib/dialogue-utils";
 import { formatRules } from "@/lib/translation-rules";
 import OpenAI from "openai";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -27,18 +27,13 @@ const LANG_COUNTRIES: Record<string, string> = {
   da: "Denmark",
 };
 
-const FILLER_WORDS: Record<string, string> = {
-  sv: '"liksom", "vet du", "men", "faktiskt", "alltså" (sparingly)',
-  no: '"liksom", "altså", "på en måte", "vet du", "egentlig"',
-  da: '"altså", "liksom", "ikke", "jo", "bare"',
-};
-
-function buildTranslationPrompt(sourceLang: string, targetLang: string): string {
+function buildTranslationPrompt(sourceLang: string, targetLang: string, targetAudience?: string): string {
   const sourceName = LANG_NAMES[sourceLang] || sourceLang;
   const targetName = LANG_NAMES[targetLang] || targetLang;
   const targetNative = LANG_NATIVE[targetLang] || targetLang;
   const country = LANG_COUNTRIES[targetLang] || targetLang;
-  const fillers = FILLER_WORDS[targetLang] || '"um", "like"';
+
+  const audienceDesc = targetAudience || "women aged 30-50";
 
   return `You are a senior native ${targetName} (${targetNative}) copywriter who specializes in SPOKEN DIALOGUE for video ads. You understand exactly how real people in ${country} talk.
 
@@ -47,12 +42,14 @@ You receive a JSON object with ${sourceName} text values from a video ad script.
 
 THIS IS SPOKEN DIALOGUE — not written copy. It must sound like a real ${targetName} person naturally speaks.
 
+TARGET AUDIENCE: ${audienceDesc}
+
 KEY PRINCIPLES:
-1) Translate how a 30-year-old in ${country} would ACTUALLY SAY this to their friend.
-2) Use native ${targetName} filler words: ${fillers}. Replace source filler words with natural ${targetName} equivalents.
-3) Keep sentences SHORT and conversational.
+1) Translate how a real ${targetName}-speaking woman in the target demographic would ACTUALLY SAY this — warm, genuine, relatable. NOT how a 20-year-old would say it.
+2) Use VERY FEW filler words. An occasional "vet du" or "faktiskt" is fine, but do NOT overuse casual fillers like "typ", "liksom", "alltså", "sjukt". The speaker should sound mature and trustworthy, not like she's texting a friend.
+3) Keep sentences SHORT and conversational but articulate.
 4) Avoid literal translations that sound "dubbed". Rewrite completely if a direct translation sounds stiff.
-5) No teen slang. Target age ~30-50.
+5) The tone is warm, knowledgeable, and encouraging — like a trusted friend who happens to know a lot about the topic. NOT salesy, NOT hyper-casual.
 6) Keep delivery notes in [brackets] in English as-is.
 7) Keep pauses (...) and self-corrections as they are.
 8) Keep [SHOT 1], [SHOT 2] etc. markers exactly as-is.
@@ -60,7 +57,7 @@ KEY PRINCIPLES:
 
 ${formatRules()}
 
-Keep brand names unchanged: HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet.
+Keep brand names unchanged: HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet, Renew.
 Keep person/character names exactly as-is.
 
 OUTPUT:
@@ -93,18 +90,14 @@ export async function POST(
 
   if (jobError || !job) return safeError(jobError, "Video job not found", 404);
 
-  // Check if translation already exists for this language
-  const existing = (job.video_translations || []).find(
-    (t: { language: string }) => t.language === targetLang
-  );
-  if (existing) {
-    return NextResponse.json({ error: "Translation already exists for this language" }, { status: 409 });
-  }
-
-  // Determine source language from the job's target_languages
+  // Source language = primary language (scripts are generated directly in it).
+  // Translating to the primary language is unnecessary — reject it.
   const sourceLang = job.target_languages?.[0] || "sv";
   if (sourceLang === targetLang) {
-    return NextResponse.json({ error: "Cannot translate to the same language" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Script is already in this language. No translation needed." },
+      { status: 400 }
+    );
   }
 
   // 2. Build translatable text map
@@ -138,12 +131,23 @@ export async function POST(
     return NextResponse.json({ error: "No translatable text found" }, { status: 400 });
   }
 
-  // 3. Translate via GPT
+  // 3. Fetch target audience from product data
+  let targetAudience: string | undefined;
+  if (job.product) {
+    const { data: product } = await db
+      .from("products")
+      .select("target_audience")
+      .eq("slug", job.product)
+      .single();
+    targetAudience = product?.target_audience || undefined;
+  }
+
+  // 4. Translate via GPT
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
 
   const client = new OpenAI({ apiKey });
-  const systemPrompt = buildTranslationPrompt(sourceLang, targetLang);
+  const systemPrompt = buildTranslationPrompt(sourceLang, targetLang, targetAudience);
 
   const response = await client.chat.completions.create({
     model: OPENAI_MODEL,
@@ -185,14 +189,14 @@ export async function POST(
   // 6. Insert video_translation row
   const { data: translation, error: insertError } = await db
     .from("video_translations")
-    .insert({
+    .upsert({
       video_job_id: id,
       language: targetLang,
       translated_script: translated["script"] || null,
       translated_sora_prompt: null,
       translated_shots: translatedShots,
       status: "completed",
-    })
+    }, { onConflict: "video_job_id,language" })
     .select()
     .single();
 
@@ -221,6 +225,86 @@ export async function POST(
       translated_ad_copy_headline: translatedAdCopyHeadline,
     },
   });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await req.json();
+  const { language, translated_script } = body as {
+    language: string;
+    translated_script: string;
+  };
+
+  if (!language || typeof translated_script !== "string") {
+    return NextResponse.json(
+      { error: "language and translated_script are required" },
+      { status: 400 }
+    );
+  }
+
+  const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify job belongs to workspace
+  const { data: job, error: jobError } = await db
+    .from("video_jobs")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (jobError || !job) return safeError(jobError, "Video job not found", 404);
+
+  // Update the translated script and also update translated_shots dialogue
+  const { data: translation, error: updateError } = await db
+    .from("video_translations")
+    .update({ translated_script })
+    .eq("video_job_id", id)
+    .eq("language", language)
+    .select()
+    .single();
+
+  if (updateError) return safeError(updateError, "Failed to update translation");
+
+  // Also re-extract shot dialogues from the updated script and update translated_shots
+  if (translation?.translated_shots && Array.isArray(translation.translated_shots)) {
+    const shotDialogues = new Map<number, string>();
+    const shotMatches = translated_script.matchAll(/\[SHOT\s+(\d+)\]\s*([\s\S]*?)(?=\[SHOT\s+\d+\]|$)/gi);
+    for (const match of shotMatches) {
+      shotDialogues.set(parseInt(match[1]), match[2].trim());
+    }
+
+    if (shotDialogues.size > 0) {
+      const updatedShots = (translation.translated_shots as Array<{
+        shot_number: number;
+        translated_dialogue: string;
+        translated_veo_prompt: string;
+      }>).map((shot) => {
+        const newDialogue = shotDialogues.get(shot.shot_number);
+        if (newDialogue !== undefined) {
+          return {
+            ...shot,
+            translated_dialogue: newDialogue,
+            translated_veo_prompt: shot.translated_veo_prompt
+              ? replaceDialogue(shot.translated_veo_prompt, newDialogue)
+              : shot.translated_veo_prompt,
+          };
+        }
+        return shot;
+      });
+
+      await db
+        .from("video_translations")
+        .update({ translated_shots: updatedShots })
+        .eq("video_job_id", id)
+        .eq("language", language);
+    }
+  }
+
+  return NextResponse.json({ success: true, translation });
 }
 
 export async function DELETE(

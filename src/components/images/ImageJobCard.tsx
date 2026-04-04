@@ -77,7 +77,7 @@ export default function ImageJobCard({ job, onRetry, onDelete, onExport }: Props
             <span className="text-xs text-gray-400">
               {job.total_images ?? 0} images &middot;{" "}
               {isDraft
-                ? "Importing from Drive..."
+                ? "Generating images..."
                 : isReady
                 ? "Ready to translate"
                 : `${completed}/${total} ready`}

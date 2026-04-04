@@ -3,6 +3,7 @@ import { createServerSupabase } from "./supabase-admin";
 import { buildLearningsContext, buildHookInspiration } from "./brainstorm";
 import { OPENAI_MODEL } from "./constants";
 import { formatRules } from "./translation-rules";
+import { extractDialogue, replaceDialogue } from "./dialogue-utils";
 
 // --- UGC Knowledge Base (embedded from reference docs) ---
 
@@ -96,14 +97,25 @@ smartphone selfie, handheld realism, [LOCATION], [LIGHTING], influencer-style mo
 Quality Control Negatives:
 subtitles, captions, watermark, text overlays, words on screen, logo, branding, poor lighting, blurry footage, low resolution, artifacts, distorted hands, artificial lighting, oversaturation.`;
 
-const MARKET_ADAPTATION = `## Scandinavian Market Adaptation
+const FILLER_EXAMPLES: Record<string, string> = {
+  sv: '"eh", "liksom", "vet du", "faktiskt"',
+  no: '"eh", "liksom", "vet du", "faktisk"',
+  da: '"øh", "ligesom", "ved du", "faktisk"',
+};
 
-When generating for Scandinavian markets, adapt the SETTING and CHARACTER but keep ALL text in English:
+function buildMarketAdaptation(primaryLang: string): string {
+  const langName = LANGUAGE_LABELS[primaryLang] || primaryLang;
+  const fillers = FILLER_EXAMPLES[primaryLang] || '"um", "like", "you know"';
+
+  return `## Scandinavian Market Adaptation
+
+When generating for Scandinavian markets:
 - **Settings**: Scandinavian apartments (lighter, minimalist), local stores (Coop, ICA, Meny, MAXI)
 - **Character**: Match local demographics — Scandinavian names and looks, Nordic features
 - **Delivery**: More understated than US-style UGC, less hype, calmer energy
-- **Script**: Write ALL dialogue, ad copy, and prompts in ENGLISH. Translation to the target language happens in a separate high-quality translation step.
-- **Filler words**: Use natural English filler words (um, like, you know, honestly). These will be replaced with native equivalents during translation.`;
+- **Script & Dialogue**: Write ALL dialogue (script field, ad_copy_primary, ad_copy_headline) in **${langName}**. In veo_prompt, keep the TECHNICAL parts (camera, character actions, scene setup) in English but write the SPOKEN DIALOGUE (text after "says:") in **${langName}**.
+- **Filler words**: Use natural ${langName} filler words (${fillers}). Must sound like a real ${langName}-speaking person talking naturally to their phone camera.`;
+}
 
 export interface ProductPlacementOptions {
   enabled: boolean;
@@ -119,7 +131,8 @@ export function buildVideoUgcSystemPrompt(
   learningsContext: string,
   existingCharacters: string,
   pipelineMode: string = "multi_clip",
-  productPlacement: ProductPlacementOptions = { enabled: false }
+  productPlacement: ProductPlacementOptions = { enabled: false },
+  primaryLanguage: string = "sv"
 ): string {
   const outputFormat = `## Output Format
 
@@ -155,7 +168,8 @@ ${productPlacement.enabled ? `      "product_description": "Exactly how the phys
 ## Multi-Clip Rules
 
 ### Shot Structure
-- Generate 3-5 shots per concept, each exactly 8 seconds
+- Generate 3-8 shots per concept, each exactly 8 seconds. Use MORE shots with LESS dialogue each rather than cramming too much into fewer shots
+- **DIALOGUE LENGTH LIMIT (CRITICAL)**: Each shot is 8 seconds. At natural speech pace, that's **MAX 15 words of dialogue per shot**. COUNT YOUR WORDS — if a shot has more than 15 words, SPLIT IT into two shots. A calm 12-word sentence with a breath beats a rushed 15-word one. NEVER exceed 15 words per shot. This is the #1 cause of broken videos.
 - First shot = HOOK (stops the scroll). Character must be talking within 0.5 seconds.
 ${productPlacement.enabled ? `- Last shot = CTA with product clearly visible (described EXACTLY from product_description)` : `- Last shot = CTA — character delivers call to action (no physical product needed)`}
 - Each shot is a complete scene — starts and ends at natural pause points, no mid-action cuts
@@ -190,9 +204,10 @@ ${productPlacement.enabled ? `### Product Accuracy (CRITICAL)
 ### Shot Descriptions (IMAGE prompts — the visual foundation)
 - Each \`shot_description\` is the Nano Banana image prompt that generates the keyframe still
 - This is THE MOST IMPORTANT field — it defines what the video frame looks like
-- Include: FULL character description (repeated from character_description), expression, exact environment with clutter details, selfie angle, what they're doing/holding
+- Include: FULL character description (repeated from character_description), expression, exact environment with clutter details, selfie angle
+- **STATIC RESTING POSE (CRITICAL)**: The character must be in a calm, neutral resting position — arms relaxed, hands below collarbone, mouth naturally closed or very slightly parted. NO mid-gesture, NO raised arms, NO active movement. This keyframe is the FIRST FRAME of the video clip — all motion starts AFTER this frame, not during it. Think of it as the moment just before someone starts talking.
 - Style: Authentic iPhone front-camera photo. Real skin texture (pores, creases, uneven tone), casual framing, slightly imperfect crop.
-- Exclude: studio lighting, beauty filters, HDR look, symmetry, professional composition
+- Exclude: studio lighting, beauty filters, HDR look, symmetry, professional composition, motion blur
 - Target ~300-500 characters per shot_description
 
 ### Veo Prompts (VIDEO motion — SHORT, only motion + dialogue)
@@ -200,6 +215,7 @@ ${productPlacement.enabled ? `### Product Accuracy (CRITICAL)
 - The keyframe image (from shot_description) is passed to Veo3 as the starting frame via image-to-video mode. The image already defines what everything LOOKS like.
 - The veo_prompt adds ONLY: (1) camera behavior (usually "remains static"), (2) what physical motion the character performs, (3) dialogue.
 - Format: "The camera remains static, framed in a [medium close-up/medium shot]. The character with [ONE key visual detail] [performs specific motion: head tilt, slight smile, hand gesture below chest, leans forward]. character says: \\"[exact dialogue for this shot with filler words]\\""
+- **DIALOGUE IN VEO PROMPT MUST BE MAX 15 WORDS**. VEO3 generates exactly 8 seconds of video. If dialogue exceeds 15 words, speech WILL get cut off mid-sentence. Split long sentences across multiple shots instead.
 - Do NOT repeat the full scene description, environment, lighting, or cinematography — the image handles all of that.
 - Do NOT include UGC keywords, quality negatives, or audio descriptions — keep it focused.
 - The \`sora_prompt\` field at the top level can be empty for multi-clip mode
@@ -227,7 +243,7 @@ ${DELIVERY_STYLES_REFERENCE}
 
 ${MASTER_PROMPT_TEMPLATE}
 
-${MARKET_ADAPTATION}
+${buildMarketAdaptation(primaryLanguage)}
 
 ## Hook Inspiration From Library
 ${hookInspiration || "No hooks in library yet."}
@@ -248,7 +264,7 @@ ${productPlacement.enabled ? `4. **PRODUCT VISIBLE**: Product must appear natura
   productPlacement.style === "using_it" ? "Character actively uses the product during the video." :
   "Product appears naturally in the scene."
 }${productPlacement.visual_description ? ` Physical appearance: ${productPlacement.visual_description}.` : ""}` : `4. **NO FORCED PRODUCT**: This video does NOT show the physical product. The character talks ABOUT the product/benefit but does not hold or display it. This is a pure testimonial/story — no product placement.`}
-5. **AUTHENTIC SPEECH**: Include natural filler words ("um", "like", "you know"), pauses (...), self-corrections, mid-thought entries. Never write polished copy — write how a real person talks to their phone camera. Start talking BEFORE they seem ready.
+5. **AUTHENTIC SPEECH**: Include natural filler words (${FILLER_EXAMPLES[primaryLanguage] || FILLER_EXAMPLES.sv}), pauses (...), self-corrections, mid-thought entries. Never write polished copy — write how a real person talks to their phone camera. Start talking BEFORE they seem ready.
 6. **PROMPT DETAIL**: Target ~3000-5000 characters for video prompts. Be extremely detailed about character appearance, cinematography, environment, actions, and dialogue delivery. The more specific, the better the output.
 7. **NO AI TELLS**: Never include studio lighting, beauty filters, symmetrical composition, perfect framing, HDR look, oversaturated colors, or smooth skin. Every frame must look like it was captured on an iPhone front camera.
 
@@ -266,7 +282,7 @@ interface VideoUgcOptions {
   product_placement?: boolean;
 }
 
-const LANGUAGE_LABELS: Record<string, string> = {
+export const LANGUAGE_LABELS: Record<string, string> = {
   sv: "Swedish",
   no: "Norwegian",
   da: "Danish",
@@ -284,8 +300,8 @@ export function buildVideoUgcUserPrompt(
 
   let prompt = `Generate ${count} unique UGC video concept${count > 1 ? "s" : ""} for this product.
 
-**LANGUAGE: ENGLISH** — Write ALL text in English: script, sora_prompt, veo_prompt, ad_copy_primary, ad_copy_headline. The script will be translated to ${langLabel} in a separate high-quality translation step.
-**TARGET MARKET: ${langLabel}** — Adapt the character, setting, and cultural references for the ${langLabel} market (Scandinavian names, local stores, Nordic apartments). But keep the actual dialogue in English.`;
+**LANGUAGE: ${langLabel}** — Write the script, ad_copy_primary, and ad_copy_headline in ${langLabel}. In veo_prompt, write technical parts (camera, actions) in English but the SPOKEN DIALOGUE (text after "says:") in ${langLabel}.
+**TARGET MARKET: ${langLabel}** — Adapt the character, setting, and cultural references for the ${langLabel} market (Scandinavian names, local stores, Nordic apartments).`;
 
   if (options?.format_type) {
     prompt += `\n\n**REQUIRED FORMAT**: Use "${options.format_type}" as the format_type. All concepts must use this format.`;
@@ -325,7 +341,7 @@ export function buildVideoUgcUserPrompt(
 - Include a full script in ENGLISH with natural speech patterns, filler words, and delivery notes
 - Include detailed shot_description image prompts and SHORT veo_prompt motion prompts per shot
 - Include ad copy in ENGLISH (primary text + headline) for the Meta ad
-- Split the concept into 3-5 shots (each 8 seconds) with individual shot_description and veo_prompt per shot
+- Split the concept into 3-8 shots (each 8 seconds, max 25 words dialogue per shot) with individual shot_description and veo_prompt per shot
 - Each shot_description is a DETAILED Nano Banana iPhone-style image prompt (~300-500 chars) — this is the VISUAL FOUNDATION of the video frame
 - Each veo_prompt is SHORT (~200-400 chars) — ONLY describes what MOVES and what is SAID. The keyframe image handles all visuals.
 - veo_prompt format: "The camera remains static, framed in a [shot type]. The character with [one key detail] [performs motion]. character says: \\"[dialogue]\\""
@@ -579,26 +595,5 @@ export async function translateVideoProposals(
   };
 }
 
-/** Extract the dialogue from a veo_prompt. Looks for: [word][optional punctuation] says: "..." */
-export function extractDialogue(veoPrompt: string): string | null {
-  // Allow optional comma/period/etc between the preceding word and "says"
-  const match = veoPrompt.match(/\w+[,.]?\s+says?:\s*"([^"]*(?:\\.[^"]*)*)"/i)
-    || veoPrompt.match(/\w+[,.]?\s+says?:\s*\\"([^\\]*(?:\\.[^\\]*)*)\\"/i);
-  return match ? match[1].replace(/\\"/g, '"') : null;
-}
-
-/** Replace the dialogue in a veo_prompt with translated text */
-export function replaceDialogue(veoPrompt: string, newDialogue: string): string {
-  // Replace the dialogue portion while keeping the rest of the prompt intact
-  // Allow optional comma/period between preceding word and "says"
-  const escaped = newDialogue.replace(/"/g, '\\"');
-  return veoPrompt
-    .replace(
-      /(\w+[,.]?\s+says?:\s*)"[^"]*(?:\\.[^"]*)*"/i,
-      `$1"${escaped}"`
-    )
-    .replace(
-      /(\w+[,.]?\s+says?:\s*)\\"[^\\]*(?:\\.[^\\]*)*\\"/i,
-      `$1\\"${escaped}\\"`
-    );
-}
+// Re-export client-safe dialogue utilities
+export { extractDialogue, replaceDialogue } from "./dialogue-utils";

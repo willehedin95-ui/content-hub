@@ -662,7 +662,7 @@ export default function ConceptImagesStep({
                       <Loader2 className="w-4 h-4 animate-spin" />
                       {isCompetitorGen
                         ? `Generating competitor-swipe images (${sourceImages.length}/${totalExpected})...`
-                        : job.visual_direction ? "Generating images..." : "Importing from Drive..."}
+                        : "Generating images..."}
                       <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
                     </div>
                     {isCompetitorGen && totalExpected > 0 && (

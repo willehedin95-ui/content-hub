@@ -17,9 +17,13 @@ import { callGeminiVideo, createImageTask, pollTaskResult } from "@/lib/kie";
 import {
   loadVideoUgcContext,
   buildVideoUgcSystemPrompt,
+  LANGUAGE_LABELS,
 } from "@/lib/video-brainstorm";
+import { extractDialogue, replaceDialogue } from "@/lib/dialogue-utils";
 import { findBestLandingPage } from "@/lib/swipe-competitor";
-import { CLAUDE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { formatRules } from "@/lib/translation-rules";
+import { CLAUDE_MODEL, OPENAI_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import OpenAI from "openai";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,8 +126,8 @@ function buildImagePrompt(
     charDesc ? `\n\nCharacter: ${charDesc}.` : "",
     productDesc ? `\n\nProduct: ${productDesc}` : "",
     `\n\nYou are locked into a permanent capture style: Authentic iPhone front-camera photo realism.`,
-    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. Micro motion blur allowed. No HDR look. Flat image colors.`,
-    `Subject behavior: Neutral expression or as described. Relaxed posture. Arms not posed. This image must look like a casual iPhone video frame or paused reel, NOT a professional photo.`,
+    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. No motion blur. No HDR look. Flat image colors.`,
+    `Subject behavior: STATIC RESTING POSE — the character must be in a calm, neutral resting position. Both arms relaxed at sides or one hand resting on lap/surface. No mid-gesture, no raised arms, no pointing, no active movement. Mouth naturally closed or very slightly parted. This is the FIRST FRAME of a video — motion starts AFTER this frame, not during it. The image must look like the moment just before someone starts talking.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -245,6 +249,9 @@ export async function swipeCompetitorVideo(
   // -----------------------------------------------------------------------
   // Step 2: Claude generates adapted concept
   // -----------------------------------------------------------------------
+  const targetLanguages = await getLanguagesByWorkspaceId(workspaceId);
+  const primaryLanguage = targetLanguages[0] || "sv";
+
   const context = await loadVideoUgcContext(productSlug, workspaceId);
   const systemPrompt = buildVideoUgcSystemPrompt(
     productSlug,
@@ -254,7 +261,8 @@ export async function swipeCompetitorVideo(
     context.learningsContext,
     context.existingCharacters,
     "multi_clip",
-    { enabled: false }
+    { enabled: false },
+    primaryLanguage
   );
 
   const userPrompt = `A competitor video ad was analyzed by watching the actual video with AI:
@@ -285,6 +293,8 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 Create 1 adapted UGC video concept for our product that SWIPES the FORMAT and APPROACH from this competitor ad. Do NOT copy the messaging or script — adapt the STRUCTURE, HOOK TYPE, and DELIVERY STYLE for our product.
 
+**LANGUAGE: ${LANGUAGE_LABELS[primaryLanguage] || primaryLanguage}** — Write the script, ad_copy_primary, and ad_copy_headline in ${LANGUAGE_LABELS[primaryLanguage] || primaryLanguage}. In veo_prompt, keep technical parts (camera, actions) in English but write SPOKEN DIALOGUE (text after "says:") in ${LANGUAGE_LABELS[primaryLanguage] || primaryLanguage}.
+
 ## UGC AUTHENTICITY RULES FOR SHOT DESCRIPTIONS
 
 Your shot descriptions and VEO prompts MUST follow these rules for authentic UGC:
@@ -298,9 +308,11 @@ Your shot descriptions and VEO prompts MUST follow these rules for authentic UGC
 
 Each shot's veo_prompt should be a detailed ~300 character Sora 2/VEO-optimized prompt including character description, setting, camera angle, lighting, and specific actions.
 
+**DIALOGUE LENGTH LIMIT (CRITICAL)**: Each shot is exactly 8 seconds of video. Each shot's dialogue must be **MAX 15 words**. COUNT YOUR WORDS — if a shot exceeds 15 words, SPLIT IT into two shots. A calm 12-word sentence with a natural breath beats a rushed 15-word one. NEVER exceed 15 words per shot. This is the #1 cause of broken videos.
+
 ${context.existingConcepts.length > 0 ? `### EXISTING CONCEPTS (do NOT duplicate)\n${context.existingConcepts.map((c) => `- ${c}`).join("\n")}` : ""}
 
-Generate exactly 1 concept with 3-5 shots (each 8 seconds).
+Generate exactly 1 concept with 3-8 shots (each 8 seconds, **MAX 15 words of dialogue per shot** — count every word). Use MORE shots with less dialogue each. Never exceed 15 words in any shot.
 Return ONLY valid JSON. No markdown fences.`;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -464,7 +476,7 @@ Return ONLY valid JSON. No markdown fences.`;
         pipeline_mode: "multi_clip",
         max_shots: proposal.shots.length,
         reuse_first_frame: true,
-        target_languages: await getLanguagesByWorkspaceId(workspaceId),
+        target_languages: targetLanguages,
       })
       .select("id")
       .single();
@@ -589,18 +601,161 @@ Return ONLY valid JSON. No markdown fences.`;
     // Non-fatal — concept is still created
   }
 
+  // -----------------------------------------------------------------------
+  // Step 5: Auto-translate script to secondary languages
+  // (Primary language is already written in the target language by Claude)
+  // -----------------------------------------------------------------------
+  const secondaryLanguages = targetLanguages.filter((l) => l !== primaryLanguage);
+  let translationsCreated = 0;
+
+  try {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey && proposal.script && secondaryLanguages.length > 0) {
+      if (existingJobId) {
+        await updateProgress(existingJobId, "translating", "Translating script...");
+      }
+
+      const openai = new OpenAI({ apiKey: openaiKey });
+
+      // Fetch the shots we just inserted
+      const { data: dbShots } = await db
+        .from("video_shots")
+        .select("shot_number, veo_prompt")
+        .eq("video_job_id", videoJobId)
+        .order("shot_number");
+
+      for (const lang of secondaryLanguages) {
+        try {
+          // Build translatable text map
+          const translatableTexts: Record<string, string> = {};
+          translatableTexts["script"] = proposal.script;
+
+          if (proposal.ad_copy_primary) {
+            const copies = Array.isArray(proposal.ad_copy_primary)
+              ? proposal.ad_copy_primary
+              : [proposal.ad_copy_primary];
+            copies.forEach((text: string, i: number) => {
+              if (text) translatableTexts[`ad_copy_primary_${i}`] = text;
+            });
+          }
+          if (proposal.ad_copy_headline) {
+            const headlines = Array.isArray(proposal.ad_copy_headline)
+              ? proposal.ad_copy_headline
+              : [proposal.ad_copy_headline];
+            headlines.forEach((text: string, i: number) => {
+              if (text) translatableTexts[`ad_copy_headline_${i}`] = text;
+            });
+          }
+
+          for (const shot of dbShots ?? []) {
+            const dialogue = extractDialogue(shot.veo_prompt || "");
+            if (dialogue) {
+              translatableTexts[`shot_${shot.shot_number}_dialogue`] = dialogue;
+            }
+          }
+
+          const langNames: Record<string, string> = { sv: "Swedish", no: "Norwegian (Bokmål)", da: "Danish" };
+          const langNative: Record<string, string> = { sv: "svenska", no: "norsk (bokmål)", da: "dansk" };
+          const langCountry: Record<string, string> = { sv: "Sweden", no: "Norway", da: "Denmark" };
+
+          // Fetch target audience from product
+          let targetAudience = "women aged 35-55";
+          const { data: productData } = await db
+            .from("products")
+            .select("target_audience")
+            .eq("slug", productSlug)
+            .single();
+          if (productData?.target_audience) targetAudience = productData.target_audience;
+
+          const sourceLangName = langNames[primaryLanguage] || primaryLanguage;
+          const systemPrompt = `You are a senior native ${langNames[lang] || lang} (${langNative[lang] || lang}) copywriter who specializes in SPOKEN DIALOGUE for video ads. You understand exactly how real people in ${langCountry[lang] || lang} talk.
+
+TASK:
+You receive a JSON object with ${sourceLangName} text values from a video ad script. Translate each value into natural, authentic ${langNames[lang] || lang} AS SPOKEN BY A REAL PERSON.
+
+THIS IS SPOKEN DIALOGUE — not written copy. It must sound like a real ${langNames[lang] || lang} person naturally speaks.
+
+TARGET AUDIENCE: ${targetAudience}
+
+KEY PRINCIPLES:
+1) Translate how a real ${langNames[lang] || lang}-speaking woman in the target demographic would ACTUALLY SAY this — warm, genuine, relatable. NOT how a 20-year-old would say it.
+2) Use VERY FEW filler words. An occasional "vet du" or "faktiskt" is fine, but do NOT overuse casual fillers like "typ", "liksom", "alltså", "sjukt". The speaker should sound mature and trustworthy, not like she's texting a friend.
+3) Keep sentences SHORT and conversational but articulate.
+4) Avoid literal translations that sound "dubbed". Rewrite completely if a direct translation sounds stiff.
+5) The tone is warm, knowledgeable, and encouraging — like a trusted friend who happens to know a lot about the topic. NOT salesy, NOT hyper-casual.
+6) Keep delivery notes in [brackets] in English as-is.
+7) Keep pauses (...) and self-corrections as they are.
+8) Keep [SHOT 1], [SHOT 2] etc. markers exactly as-is.
+9) Preserve meaning and sales intent 1:1, but the WAY it's said must be 100% natural ${langNames[lang] || lang}.
+
+${formatRules()}
+
+Keep brand names unchanged: HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet, Renew.
+Keep person/character names exactly as-is.
+
+OUTPUT:
+Return ONLY valid JSON with the same keys as input and translated ${langNames[lang] || lang} values.
+No explanations, no comments, no extra keys.`;
+
+          const response = await openai.chat.completions.create({
+            model: OPENAI_MODEL,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: JSON.stringify(translatableTexts) },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3,
+          });
+
+          const content = response.choices[0]?.message?.content;
+          if (!content) continue;
+
+          const translated = JSON.parse(content) as Record<string, string>;
+
+          const translatedShots = (dbShots ?? []).map((shot) => {
+            const translatedDialogue = translated[`shot_${shot.shot_number}_dialogue`] || "";
+            const translatedVeoPrompt = translatedDialogue
+              ? replaceDialogue(shot.veo_prompt || "", translatedDialogue)
+              : shot.veo_prompt || "";
+            return {
+              shot_number: shot.shot_number,
+              translated_dialogue: translatedDialogue,
+              translated_veo_prompt: translatedVeoPrompt,
+            };
+          });
+
+          await db.from("video_translations").insert({
+            video_job_id: videoJobId,
+            language: lang,
+            translated_script: translated["script"] || null,
+            translated_sora_prompt: null,
+            translated_shots: translatedShots,
+            status: "completed",
+          });
+
+          translationsCreated++;
+        } catch (err) {
+          console.error(`[swipe-video] Translation to ${lang} failed:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[swipe-video] Auto-translation failed:", err);
+    // Non-fatal — concept is still usable
+  }
+
   // Update job status
   await db
     .from("video_jobs")
     .update({
-      status: "generated",
+      status: translationsCreated > 0 ? "translated" : "generated",
       swipe_progress: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", videoJobId);
 
   // -----------------------------------------------------------------------
-  // Step 5: Telegram notification
+  // Step 6: Telegram notification
   // -----------------------------------------------------------------------
   if (notifyTelegram) {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;

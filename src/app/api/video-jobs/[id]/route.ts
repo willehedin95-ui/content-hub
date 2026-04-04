@@ -96,3 +96,41 @@ export async function PATCH(
 
   return NextResponse.json(data);
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  if (!isValidUUID(id)) {
+    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+  }
+
+  const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Verify job exists and belongs to workspace
+  const { data: job, error: fetchErr } = await db
+    .from("video_jobs")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (fetchErr || !job) {
+    return safeError(fetchErr, "Video job not found", 404);
+  }
+
+  // Clear FK references that don't cascade
+  await db.from("discovered_ads").update({ video_job_id: null }).eq("video_job_id", id);
+  await db.from("meta_campaigns").update({ video_job_id: null }).eq("video_job_id", id);
+
+  // Delete the job (source_videos, video_shots, video_clips, video_translations cascade)
+  const { error } = await db.from("video_jobs").delete().eq("id", id);
+
+  if (error) {
+    return safeError(error, "Failed to delete video job");
+  }
+
+  return NextResponse.json({ success: true });
+}

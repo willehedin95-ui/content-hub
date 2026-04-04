@@ -105,8 +105,10 @@ export function getMarketStatus(
  * Returns step number (0-3), human-readable label, and Tailwind color classes.
  */
 export function getWizardStep(job: ImageJob): WizardStep {
+  if (job.status === "failed")
+    return { step: 0, label: "Failed", color: "text-red-700 bg-red-50" };
   if (job.status === "draft")
-    return { step: 0, label: "Importing", color: "text-gray-500 bg-gray-100" };
+    return { step: 0, label: "Generating...", color: "text-gray-500 bg-gray-100 animate-pulse" };
 
   const anyPushed = (job.deployments ?? []).some((d) => d.status === "pushed");
 

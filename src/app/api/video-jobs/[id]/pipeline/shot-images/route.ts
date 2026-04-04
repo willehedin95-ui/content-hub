@@ -120,7 +120,7 @@ function buildImagePrompt(shotDescription: string, charDesc: string | null, prod
     charDesc ? `\n\nCharacter: ${charDesc}.` : "",
     productDesc ? `\n\nProduct: ${productDesc}` : "",
     `\n\nYou are locked into a permanent capture style: Authentic iPhone front-camera photo realism.`,
-    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. Micro motion blur allowed. No HDR look. Flat image colors.`,
-    `Subject behavior: Neutral expression or as described. Relaxed posture. Arms not posed. This image must look like a casual iPhone video frame or paused reel, NOT a professional photo.`,
+    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. No motion blur. No HDR look. Flat image colors.`,
+    `Subject behavior: STATIC RESTING POSE — the character must be in a calm, neutral resting position. Both arms relaxed at sides or one hand resting on lap/surface. No mid-gesture, no raised arms, no pointing, no active movement. Mouth naturally closed or very slightly parted. This is the FIRST FRAME of a video — motion starts AFTER this frame, not during it. The image must look like the moment just before someone starts talking.`,
   ].filter(Boolean).join(" ");
 }

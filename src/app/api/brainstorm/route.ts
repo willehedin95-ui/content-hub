@@ -392,7 +392,7 @@ export async function POST(req: NextRequest) {
 
     (async () => {
       try {
-        const { buildVideoUgcSystemPrompt, buildVideoUgcUserPrompt, loadVideoUgcContext, translateVideoProposals } =
+        const { buildVideoUgcSystemPrompt, buildVideoUgcUserPrompt, loadVideoUgcContext } =
           await import("@/lib/video-brainstorm");
 
         await emit({ step: "generating", message: "Generating video concepts..." });
@@ -411,7 +411,8 @@ export async function POST(req: NextRequest) {
             enabled: !!body.product_placement,
             style: body.product_placement_style,
             visual_description: body.product_visual_description,
-          }
+          },
+          body.language || "sv"
         );
 
         const userPrompt = buildVideoUgcUserPrompt(
@@ -511,53 +512,16 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Two-pass translation: English proposals → native language scripts
-        const targetLanguage = body.language || "sv";
-        let finalProposals = parsed.proposals;
-        let translationCostUsd = 0;
-
-        if (targetLanguage !== "en") {
-          await emit({ step: "translating", message: `Translating scripts to native ${targetLanguage.toUpperCase()}...` });
-
-          try {
-            const translationResult = await translateVideoProposals(
-              parsed.proposals as Parameters<typeof translateVideoProposals>[0],
-              targetLanguage,
-            );
-            finalProposals = translationResult.proposals;
-
-            // Log translation usage
-            translationCostUsd = (translationResult.inputTokens * 0.0025 + translationResult.outputTokens * 0.01) / 1000;
-            await db.from("usage_logs").insert({
-              type: "video_script_translation",
-              page_id: null,
-              translation_id: null,
-              model: "gpt-5.2",
-              input_tokens: translationResult.inputTokens,
-              output_tokens: translationResult.outputTokens,
-              cost_usd: translationCostUsd,
-              metadata: {
-                purpose: "video_script_translation",
-                target_language: targetLanguage,
-                product: productSlug,
-              },
-            });
-          } catch (translationErr) {
-            const msg = translationErr instanceof Error ? translationErr.message : String(translationErr);
-            console.error("[brainstorm/video_ugc] Translation failed:", msg);
-            // Fall back to English proposals — still usable, just not translated
-            await emit({ step: "translation_warning", message: `Translation failed (${msg}), showing English scripts` });
-          }
-        }
+        // Scripts are now generated directly in the target language — no translation pass needed
 
         await emit({
           step: "done",
-          proposals: finalProposals,
+          proposals: parsed.proposals,
           type: "video_ugc",
           cost: {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
-            cost_usd: costUsd + translationCostUsd,
+            cost_usd: costUsd,
           },
         });
 

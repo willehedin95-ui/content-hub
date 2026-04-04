@@ -16,8 +16,8 @@ import {
   Play,
   Download,
 } from "lucide-react";
-import { VideoJob } from "@/types";
-import ShotCard from "./ShotCard";
+import { VideoJob, TranslatedShot } from "@/types";
+import ShotRow from "./ShotRow";
 import VideoStitcher from "./VideoStitcher";
 
 // --- Types ---
@@ -545,7 +545,7 @@ export default function MultiClipPipeline({
         </div>
       )}
 
-      {/* Shot Cards Grid */}
+      {/* Shot Rows */}
       {shots.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -555,10 +555,31 @@ export default function MultiClipPipeline({
               ({shots.length} shots)
             </span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {shots.map((shot) => (
-              <ShotCard key={shot.id} shot={shot} jobId={job.id} onRegenerate={fetchStatus} language={language} />
-            ))}
+          <div className="space-y-2">
+            {shots.map((shot) => {
+              // Resolve translated VEO prompt for secondary languages
+              const primaryLang = (job.target_languages as string[] | undefined)?.[0];
+              let translatedVeoPrompt: string | null = null;
+              if (language && language !== primaryLang) {
+                const translation = (job.video_translations ?? []).find(
+                  (t) => t.language === language
+                );
+                const translatedShots = (translation?.translated_shots ?? []) as TranslatedShot[];
+                translatedVeoPrompt =
+                  translatedShots.find((ts) => ts.shot_number === shot.shot_number)
+                    ?.translated_veo_prompt ?? null;
+              }
+              return (
+                <ShotRow
+                  key={shot.id}
+                  shot={shot}
+                  jobId={job.id}
+                  onRegenerate={fetchStatus}
+                  language={language}
+                  translatedVeoPrompt={translatedVeoPrompt}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -660,9 +681,11 @@ export default function MultiClipPipeline({
             {/* Generation method selector */}
             <div className="space-y-3">
               {/* Storyboard option */}
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedMethod("storyboard")}
-                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${
+                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors cursor-pointer ${
                   selectedMethod === "storyboard"
                     ? "border-purple-400 bg-purple-50"
                     : "border-gray-200 bg-white hover:border-gray-300"
@@ -694,12 +717,14 @@ export default function MultiClipPipeline({
                     ))}
                   </div>
                 )}
-              </button>
+              </div>
 
               {/* Kling 3.0 option */}
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedMethod("kling")}
-                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${
+                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors cursor-pointer ${
                   selectedMethod === "kling"
                     ? "border-emerald-400 bg-emerald-50"
                     : "border-gray-200 bg-white hover:border-gray-300"
@@ -751,51 +776,28 @@ export default function MultiClipPipeline({
                     </div>
                   </div>
                 )}
-              </button>
+              </div>
 
               {/* Veo 3.1 option */}
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedMethod("veo3")}
-                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors ${
+                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors cursor-pointer ${
                   selectedMethod === "veo3"
                     ? "border-indigo-400 bg-indigo-50"
                     : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <Film className="w-4 h-4 text-indigo-600" />
+                  <Zap className="w-4 h-4 text-indigo-600" />
                   <span className="text-sm font-semibold text-gray-900">Veo 3.1 (Per-Shot)</span>
+                  <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">~$0.40/shot</span>
                 </div>
                 <p className="text-xs text-gray-500 ml-6">
-                  Individual clips per shot, stitched together. More control per shot.
+                  Individual clips per shot, stitched together. Edit dialogue & regenerate per shot.
                 </p>
-                {selectedMethod === "veo3" && (
-                  <div className="mt-3 ml-6 flex items-center gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedModel("veo3_fast"); }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                        selectedModel === "veo3_fast"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Zap className="w-3 h-3" />
-                      Fast ~$0.40/shot
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedModel("veo3"); }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                        selectedModel === "veo3"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Film className="w-3 h-3" />
-                      Quality ~$2.00/shot
-                    </button>
-                  </div>
-                )}
-              </button>
+              </div>
             </div>
 
             <button
@@ -886,11 +888,44 @@ export default function MultiClipPipeline({
         {/* COMPLETED — Veo 3.1: show stitcher */}
         {overallStatus === "completed" && !isStoryboard && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Check className="w-5 h-5 text-green-500" />
-              <p className="text-sm font-medium text-green-700">
-                All {clipsCompleted} clips ready!
-              </p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-green-500" />
+                <p className="text-sm font-medium text-green-700">
+                  All {clipsCompleted} clips ready!
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!confirm("Delete all clips and regenerate? This cannot be undone.")) return;
+                  setLoading(true);
+                  setError(null);
+                  try {
+                    const res = await fetch(
+                      `/api/video-jobs/${job.id}/pipeline/generate-clips`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ model: selectedModel, language, regenerate: true }),
+                      }
+                    );
+                    if (!res.ok) {
+                      const d = await res.json().catch(() => ({}));
+                      throw new Error(d.error || "Failed to regenerate clips");
+                    }
+                    await fetchStatus();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Regenerate failed");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Repeat className="w-3.5 h-3.5" />
+                Regenerate Clips
+              </button>
             </div>
             <VideoStitcher
               shots={shots

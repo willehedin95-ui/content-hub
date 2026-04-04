@@ -17,6 +17,7 @@ export async function POST(
   const model: VideoModel = VALID_MODELS.includes(body.model) ? body.model : "veo3_fast";
   const shotIds: string[] | undefined = body.shot_ids;
   const language: string | undefined = body.language;
+  const regenerate: boolean = body.regenerate === true;
 
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
@@ -39,14 +40,19 @@ export async function POST(
     );
   }
 
-  // If language differs from original, fetch translated VEO prompts
+  // Primary language = target_languages[0]. Scripts/veo_prompts are generated
+  // directly in this language, so no translation row is needed.
+  // Secondary languages need a translation row with translated_veo_prompts.
+  const primaryLang = job.target_languages?.[0];
+  const isPrimaryLanguage = lang === primaryLang;
+
   let translatedPrompts: Map<number, string> | null = null;
-  if (language) {
+  if (!isPrimaryLanguage) {
     const { data: translation } = await db
       .from("video_translations")
       .select("translated_shots")
       .eq("video_job_id", id)
-      .eq("language", language)
+      .eq("language", lang)
       .single();
 
     if (translation?.translated_shots) {
@@ -59,6 +65,14 @@ export async function POST(
           translatedPrompts.set(ts.shot_number, ts.translated_veo_prompt);
         }
       }
+    }
+
+    // Hard error: secondary language without translation → would generate wrong language
+    if (!translation) {
+      return NextResponse.json(
+        { error: `No translation found for language "${lang}". Please translate the script first before generating clips.` },
+        { status: 400 }
+      );
     }
   }
 
@@ -77,6 +91,11 @@ export async function POST(
   if (shotsError) return safeError(shotsError, "Failed to fetch shots");
   if (!shots?.length) {
     return NextResponse.json({ message: "No shots ready for video generation" });
+  }
+
+  // If regenerate=true, delete all existing clips for this language first
+  if (regenerate) {
+    await db.from("video_clips").delete().eq("video_job_id", id).eq("language", lang);
   }
 
   // Check which shots already have completed clips for this language

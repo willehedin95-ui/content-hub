@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
   AlertTriangle,
   Check,
-  ChevronDown,
-  ChevronRight,
   Film,
   FileText,
   Globe,
@@ -28,7 +27,6 @@ import {
   LANGUAGES,
   VideoJob,
   VideoTranslation,
-  TranslatedShot,
   ConceptCopyTranslations,
   ConceptCopyTranslation,
 } from "@/types";
@@ -145,12 +143,13 @@ function computeCurrentStep(j: VideoJob, ct: ConceptCopyTranslations): number {
 }
 
 export default function VideoJobDetail({ initialJob }: Props) {
+  const router = useRouter();
   const ALL_LANGUAGES: Language[] = useWorkspaceLanguages().map((l) => l.value);
   const [job, setJob] = useState<VideoJob>(initialJob);
-  const [showPrompt, setShowPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingScript, setEditingScript] = useState(false);
   const [scriptDraft, setScriptDraft] = useState(initialJob.script || "");
+  const [deletingJob, setDeletingJob] = useState(false);
   const [savingScript, setSavingScript] = useState(false);
 
   // Step-based flow
@@ -210,17 +209,23 @@ export default function VideoJobDetail({ initialJob }: Props) {
   for (const t of job.video_translations || []) {
     translationsMap.set(t.language, t);
   }
-  // Deduplicate: originalLang is always shown, translations map may also include it
+  // Languages that have a translation row (or are the base "original")
+  const translatedLanguages = Array.from(translationsMap.keys());
   const coveredLanguages = [
     originalLang,
-    ...Array.from(translationsMap.keys()).filter((l) => l !== originalLang),
+    ...translatedLanguages.filter((l) => l !== originalLang),
   ];
+  // Primary language doesn't need translation (scripts are generated directly in it).
+  // Only secondary languages need a translation row.
   const uncoveredLanguages = ALL_LANGUAGES.filter(
-    (l) => !coveredLanguages.includes(l)
+    (l) => l !== originalLang && !translatedLanguages.includes(l)
   );
-  const activeTranslation =
-    activeLang !== originalLang ? translationsMap.get(activeLang) : null;
-  const isViewingTranslation = activeLang !== originalLang && !!activeTranslation;
+  // For primary language, no translation row needed — show the original script.
+  // For secondary languages, check the translation row.
+  const activeTranslation = activeLang !== originalLang
+    ? (translationsMap.get(activeLang) ?? null)
+    : null;
+  const isViewingTranslation = !!activeTranslation;
 
   // Translate handler (script/video translation — Step 0)
   async function handleTranslate(targetLang: string) {
@@ -273,6 +278,13 @@ export default function VideoJobDetail({ initialJob }: Props) {
     return null;
   }, [job.id]);
 
+  // Poll while swipe pipeline is in progress
+  useEffect(() => {
+    if (!job.swipe_progress || job.swipe_progress.step === "error") return;
+    const interval = setInterval(refreshJob, 3000);
+    return () => clearInterval(interval);
+  }, [job.swipe_progress, refreshJob]);
+
   // Save edited script
   async function handleSaveScript() {
     setSavingScript(true);
@@ -297,6 +309,33 @@ export default function VideoJobDetail({ initialJob }: Props) {
     }
   }
 
+
+  // Save edited translated script
+  async function handleSaveTranslatedScript() {
+    if (!activeTranslation) return;
+    setSavingScript(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/video-jobs/${job.id}/translate`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: activeLang,
+          translated_script: scriptDraft,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to save (${res.status})`);
+      }
+      setEditingScript(false);
+      await refreshJob();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save translated script");
+    } finally {
+      setSavingScript(false);
+    }
+  }
 
   // Delete translation
   const [deleting, setDeleting] = useState(false);
@@ -631,6 +670,24 @@ export default function VideoJobDetail({ initialJob }: Props) {
     }
   }
 
+  async function handleDeleteJob() {
+    if (!confirm("Delete this video concept? This removes all shots, clips, and translations.")) return;
+    setDeletingJob(true);
+    try {
+      const res = await fetch(`/api/video-jobs/${job.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to delete");
+        return;
+      }
+      router.push("/video-ads");
+    } catch {
+      setError("Failed to delete video job");
+    } finally {
+      setDeletingJob(false);
+    }
+  }
+
   // --- Render ---
 
   // Stepper completion
@@ -721,6 +778,14 @@ export default function VideoJobDetail({ initialJob }: Props) {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
+          <button
+            onClick={handleDeleteJob}
+            disabled={deletingJob}
+            className="text-gray-400 hover:text-red-500 p-2 transition-colors disabled:opacity-50"
+            title="Delete video"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -766,7 +831,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
             <div className="flex items-center gap-2">
               <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
                 <button
-                  onClick={() => setActiveLang(originalLang)}
+                  onClick={() => { setActiveLang(originalLang); setEditingScript(false); }}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     activeLang === originalLang
                       ? "bg-white text-gray-900 shadow-sm"
@@ -781,7 +846,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
                   .map(([lang]) => (
                   <button
                     key={lang}
-                    onClick={() => setActiveLang(lang)}
+                    onClick={() => { setActiveLang(lang); setEditingScript(false); }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                       activeLang === lang
                         ? "bg-white text-gray-900 shadow-sm"
@@ -843,10 +908,13 @@ export default function VideoJobDetail({ initialJob }: Props) {
                     </span>
                   )}
                 </h2>
-                {!isViewingTranslation && !editingScript ? (
+                {!editingScript ? (
                   <button
                     onClick={() => {
-                      setScriptDraft(job.script || "");
+                      const src = isViewingTranslation
+                        ? activeTranslation?.translated_script || ""
+                        : job.script || "";
+                      setScriptDraft(src);
                       setEditingScript(true);
                     }}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
@@ -854,7 +922,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
                     <Pencil className="w-3 h-3" />
                     Edit
                   </button>
-                ) : !isViewingTranslation ? (
+                ) : (
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => setEditingScript(false)}
@@ -864,7 +932,7 @@ export default function VideoJobDetail({ initialJob }: Props) {
                       Cancel
                     </button>
                     <button
-                      onClick={handleSaveScript}
+                      onClick={isViewingTranslation ? handleSaveTranslatedScript : handleSaveScript}
                       disabled={savingScript}
                       className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors disabled:opacity-50"
                     >
@@ -876,10 +944,10 @@ export default function VideoJobDetail({ initialJob }: Props) {
                       Save
                     </button>
                   </div>
-                ) : null}
+                )}
               </div>
               <div className="p-4">
-                {!isViewingTranslation && editingScript ? (
+                {editingScript ? (
                   <textarea
                     value={scriptDraft}
                     onChange={(e) => setScriptDraft(e.target.value)}
@@ -907,124 +975,6 @@ export default function VideoJobDetail({ initialJob }: Props) {
               </div>
             </div>
 
-            {/* VEO/Sora Prompt panel (collapsible) */}
-            {(() => {
-              const translatedShots: TranslatedShot[] = isViewingTranslation
-                ? (activeTranslation?.translated_shots as
-                    | TranslatedShot[]
-                    | null) || []
-                : [];
-
-              if (
-                job.format_type === "pixar_animation" &&
-                job.video_shots &&
-                job.video_shots.length > 0
-              ) {
-                return (
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                    <button
-                      onClick={() => setShowPrompt(!showPrompt)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-                    >
-                      <h2 className="text-sm font-semibold text-gray-700">
-                        VEO Prompts
-                        {isViewingTranslation && (
-                          <span className="ml-2 text-xs font-normal text-indigo-500">
-                            ({LANG_META[activeLang]?.flag} translated)
-                          </span>
-                        )}
-                      </h2>
-                      {showPrompt ? (
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-400" />
-                      )}
-                    </button>
-                    {showPrompt && (
-                      <div className="p-4 border-t border-gray-100 space-y-3">
-                        {job.video_shots.map((shot, i) => {
-                          const tShot = translatedShots.find(
-                            (ts) => ts.shot_number === shot.shot_number
-                          );
-                          const displayPrompt =
-                            isViewingTranslation && tShot
-                              ? tShot.translated_veo_prompt
-                              : shot.veo_prompt;
-                          return (
-                            <div key={shot.id || i}>
-                              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-                                Shot {shot.shot_number}
-                              </p>
-                              <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed bg-gray-50 rounded-lg p-2">
-                                {displayPrompt || "\u2014"}
-                              </pre>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              if (
-                job.sora_prompt ||
-                (isViewingTranslation &&
-                  activeTranslation?.translated_sora_prompt)
-              ) {
-                const displayPrompt = isViewingTranslation
-                  ? activeTranslation?.translated_sora_prompt || job.sora_prompt
-                  : job.sora_prompt;
-                return (
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                    <button
-                      onClick={() => setShowPrompt(!showPrompt)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-                    >
-                      <h2 className="text-sm font-semibold text-gray-700">
-                        VEO Prompt
-                        {isViewingTranslation && (
-                          <span className="ml-2 text-xs font-normal text-indigo-500">
-                            ({LANG_META[activeLang]?.flag} translated)
-                          </span>
-                        )}
-                      </h2>
-                      {showPrompt ? (
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-400" />
-                      )}
-                    </button>
-                    {showPrompt && (
-                      <div className="p-4 border-t border-gray-100">
-                        <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">
-                          {displayPrompt}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            {/* Character description panel */}
-            {job.character_description && (
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-gray-700">Character</h2>
-                  {job.character_tag && (
-                    <span className="text-xs text-gray-400 font-mono">
-                      {job.character_tag}
-                    </span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="text-sm text-gray-700 leading-relaxed">
-                    {job.character_description}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* RIGHT COLUMN: Video Pipeline */}
@@ -1038,6 +988,79 @@ export default function VideoJobDetail({ initialJob }: Props) {
                 }}
                 language={isViewingTranslation ? activeLang : undefined}
               />
+            ) : job.swipe_progress ? (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Film className="w-4 h-4 text-gray-400" />
+                    Video Pipeline
+                  </h2>
+                </div>
+                <div className="p-6">
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    {job.swipe_progress.step === "error" ? (
+                      <>
+                        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+                          <AlertTriangle className="w-6 h-6 text-red-500" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-gray-900">Pipeline failed</p>
+                          <p className="text-sm text-red-600 mt-1">{job.swipe_progress.message}</p>
+                        </div>
+                        <button
+                          onClick={() => refreshJob()}
+                          className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" /> Refresh
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center">
+                          <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-gray-900">
+                            {job.swipe_progress.step === "analyzing" && "Analyzing competitor video..."}
+                            {job.swipe_progress.step === "generating_concept" && "Generating concept..."}
+                            {job.swipe_progress.step === "creating" && "Creating video shots..."}
+                            {job.swipe_progress.step === "generating_images" && "Generating keyframe images..."}
+                            {job.swipe_progress.step === "translating" && "Translating script..."}
+                            {job.swipe_progress.step === "queued" && "Queued..."}
+                            {!["analyzing", "generating_concept", "creating", "generating_images", "translating", "queued"].includes(job.swipe_progress.step) && "Processing..."}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">{job.swipe_progress.message}</p>
+                        </div>
+                        {/* Step indicators */}
+                        <div className="flex items-center gap-2 mt-2">
+                          {["analyzing", "generating_concept", "creating", "translating"].map((step, i) => {
+                            const steps = ["analyzing", "generating_concept", "creating", "translating"];
+                            const currentIdx = steps.indexOf(job.swipe_progress!.step);
+                            const isComplete = i < currentIdx || (job.swipe_progress!.step === "generating_images" && i < 3);
+                            const isCurrent = i === currentIdx || (job.swipe_progress!.step === "generating_images" && i === 2);
+                            return (
+                              <div key={step} className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  isComplete ? "bg-purple-600" : isCurrent ? "bg-purple-600 animate-pulse" : "bg-gray-200"
+                                }`} />
+                                {i < steps.length - 1 && (
+                                  <div className={`w-6 h-0.5 ${isComplete ? "bg-purple-600" : "bg-gray-200"}`} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-between w-full max-w-[260px] text-[10px] text-gray-400 -mt-1">
+                          <span>Analyze</span>
+                          <span>Concept</span>
+                          <span>Create</span>
+                          <span>Translate</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">

@@ -25,7 +25,7 @@ const SPEND_DOMINANCE_THRESHOLD = 0.6; // 60% of campaign spend = one dominating
 
 const MIN_WINNING_ADSETS = 2; // Below = concept starvation
 const MIN_ACTIVE_ADSETS = 3; // Below = urgently need concepts
-const CONCEPT_COOLDOWN_DAYS = 4; // Wait 4 days after push before judging — was 7d but bleeders need faster kills (200+ SEK with 0 purchases in 3-4 days is enough signal)
+const CONCEPT_COOLDOWN_DAYS = 4; // Wait 4 days after push before judging — applies to ALL ad sets including bleeders
 const MAX_AVG_AGE_DAYS = 14; // After 2 weeks, concepts may fatigue (was 21 — real data shows ROAS decline by day 14 in most ad sets)
 const FATIGUE_RATIO_THRESHOLD = 0.5; // 50% of ad sets fatiguing (currently unused — future use)
 
@@ -379,11 +379,12 @@ function buildAdSetBreakdown(
     let status: AdSetBreakdown["status"];
     if (a.spend_7d < ZOMBIE_SPEND_THRESHOLD) {
       status = "zombie";
-    } else if (a.spend_7d >= BLEEDER_SPEND_THRESHOLD && a.purchases_7d === 0) {
-      // Bleeder: spending significant money with zero conversions — killable even during testing window
-      status = "bleeder";
     } else if (daysRunning !== null && daysRunning <= CONCEPT_COOLDOWN_DAYS) {
+      // Testing window: protect ALL ad sets for 4 days — give Meta time to find the right audience
       status = "testing";
+    } else if (a.spend_7d >= BLEEDER_SPEND_THRESHOLD && a.purchases_7d === 0) {
+      // Bleeder: significant spend with zero conversions, but only after cooldown period
+      status = "bleeder";
     } else if (roas >= beRoas && a.purchases_7d > 0) {
       status = "winning";
     } else {
@@ -628,9 +629,9 @@ function analyzeAccountStructure(
         action: "kill_deadweight",
         urgency: "critical",
         title: `${kpi.campaign_name}: ${bleeders.length} bleeding ad set(s) — ${Math.round(bleeders.reduce((s, b) => s + b.spend_7d, 0))} SEK wasted`,
-        reasoning: `These ad sets have spent ${BLEEDER_SPEND_THRESHOLD}+ SEK with zero purchases. No amount of waiting will fix zero conversions at this spend level.`,
+        reasoning: `These ad sets have spent ${BLEEDER_SPEND_THRESHOLD}+ SEK with zero purchases after the ${CONCEPT_COOLDOWN_DAYS}-day testing window.`,
         context: bleeders.map((b) => `${b.adset_name}: ${b.spend_7d} SEK, 0 purchases`).join(", "),
-        what_to_do: `Kill immediately: ${bleeders.map((b) => b.adset_name).join(", ")}`,
+        what_to_do: `Kill: ${bleeders.map((b) => b.adset_name).join(", ")}`,
         what_happens_if_ignored:
           `You're burning ${Math.round(bleeders.reduce((s, b) => s + b.spend_7d, 0) / 7)} SEK/day on ads that will never convert.`,
         action_data: { adset_ids: bleeders.map((b) => b.adset_id) },
