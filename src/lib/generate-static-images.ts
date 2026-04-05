@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
+import { getProductAppearance } from "@/lib/product-appearance";
 import type { StaticStyleId } from "@/lib/constants";
 import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
@@ -136,6 +137,8 @@ export async function generateStaticImages(
   const iterationContext = overrideIterationContext ?? job.iteration_context ?? null;
 
   // Step 1: Claude generates distinct image briefs
+  const productAppearance = getProductAppearance(product);
+
   const briefs = await generateImageBriefs({
     job,
     product: product as ProductFull,
@@ -145,6 +148,7 @@ export async function generateStaticImages(
     count,
     styles: requestedStyles,
     previousPrompts,
+    productAppearance,
   });
 
   if (briefs.briefs.length === 0) {

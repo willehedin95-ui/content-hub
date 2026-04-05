@@ -55,6 +55,7 @@ export async function generateImageBriefs(options: {
   count: number;
   styles?: StaticStyleId[];
   previousPrompts?: string[];
+  productAppearance?: string;
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
   const { job, product, segment, iterationContext, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
@@ -86,6 +87,7 @@ export async function generateImageBriefs(options: {
     segment: segment ?? null,
     iterationContext: iterationContext ?? null,
     previousPrompts: options.previousPrompts ?? [],
+    productAppearance: options.productAppearance ?? "",
   });
 
   const client = new Anthropic({ apiKey: getApiKey() });
@@ -690,6 +692,7 @@ function buildBriefUserPrompt(opts: {
   segment: ProductSegment | null;
   iterationContext: Record<string, unknown> | null;
   previousPrompts: string[];
+  productAppearance: string;
 }): string {
   const lines: string[] = [];
 
@@ -699,6 +702,7 @@ function buildBriefUserPrompt(opts: {
   if (opts.usps.length > 0) lines.push(`USPs: ${opts.usps.slice(0, 4).join("; ")}`);
   if (opts.benefits.length > 0) lines.push(`Benefits: ${opts.benefits.slice(0, 4).join("; ")}`);
   if (opts.targetAudience) lines.push(`Target audience: ${opts.targetAudience}`);
+  if (opts.productAppearance) lines.push(`\nPRODUCT PHYSICAL APPEARANCE (for image prompts):\n${opts.productAppearance}`);
 
   if (opts.cashDna) {
     lines.push(`\nCASH DNA:`);
