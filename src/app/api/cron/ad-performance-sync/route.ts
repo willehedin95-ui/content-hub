@@ -7,14 +7,12 @@ import {
   AdSetInsightDailyRow,
   listCampaigns,
   getCampaignBudget,
+  setMetaConfig,
 } from "@/lib/meta";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
+import type { WorkspaceMetaConfig } from "@/types";
 
 export const maxDuration = 120;
-
-function isMetaConfigured(): boolean {
-  return !!(process.env.META_SYSTEM_USER_TOKEN && process.env.META_AD_ACCOUNT_ID);
-}
 
 /** Extract purchase count from Meta actions array */
 function extractPurchases(actions?: Array<{ action_type: string; value: string }>): number {
@@ -39,124 +37,127 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export async function GET(req: NextRequest) {
-  // Verify CRON_SECRET
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+interface AccountConfig {
+  label: string;
+  metaConfig: WorkspaceMetaConfig | null; // null = use env vars
+}
+
+interface AccountSyncResult {
+  label: string;
+  adsSynced: number;
+  adsetsSynced: number;
+  budgetsSynced: number;
+  errors: string[];
+}
+
+/**
+ * Collect unique ad account configs to sync.
+ * Includes env var defaults + any workspace meta_configs with distinct ad_account_id.
+ */
+async function collectAccountConfigs(
+  db: ReturnType<typeof createServerSupabase>
+): Promise<AccountConfig[]> {
+  const configs: AccountConfig[] = [];
+  const seenAccountIds = new Set<string>();
+
+  // 1. Default env var account (if configured)
+  const envToken = process.env.META_SYSTEM_USER_TOKEN?.trim();
+  const envAccountId = process.env.META_AD_ACCOUNT_ID?.trim();
+  if (envToken && envAccountId) {
+    seenAccountIds.add(envAccountId);
+    configs.push({ label: `env(${envAccountId})`, metaConfig: null });
   }
 
-  if (!isMetaConfigured()) {
-    return NextResponse.json({ error: "Meta not configured" }, { status: 400 });
-  }
+  // 2. Workspace-specific accounts
+  const { data: workspaces } = await db
+    .from("workspaces")
+    .select("slug, meta_config");
 
-  const db = createServerSupabase();
-  const cronRunId = await startCronRun("ad-performance-sync");
+  for (const ws of workspaces ?? []) {
+    const mc = ws.meta_config as WorkspaceMetaConfig | null;
+    if (!mc?.ad_account_id || !mc?.system_user_token) continue;
+    if (seenAccountIds.has(mc.ad_account_id)) continue;
 
-  // Determine date range: backfill 30 days if table is empty, else last 3 days
-  const { count } = await db
-    .from("meta_ad_performance")
-    .select("id", { count: "exact", head: true });
-
-  // Check adset table separately — it was added later and may need its own backfill
-  const { count: adsetCount } = await db
-    .from("meta_adset_performance")
-    .select("adset_id", { count: "exact", head: true });
-
-  const isBackfill = (count ?? 0) === 0;
-  const adsetNeedsBackfill = (adsetCount ?? 0) < 200; // < 200 rows means < ~7 days of data
-  const daysBack = isBackfill || adsetNeedsBackfill ? 30 : 3;
-
-  const until = new Date();
-  until.setDate(until.getDate() - 1); // yesterday (today's data is incomplete)
-  const since = new Date(until);
-  since.setDate(since.getDate() - daysBack + 1);
-
-  const sinceStr = formatDate(since);
-  const untilStr = formatDate(until);
-
-  console.log(
-    `[Ad Perf Sync] ${isBackfill ? "BACKFILL" : "Normal"} sync: ${sinceStr} → ${untilStr}`
-  );
-
-  // Fetch ad-level insights with daily breakdown
-  let rows: AdInsightDailyRow[];
-  try {
-    rows = await getAdInsightsDaily(sinceStr, untilStr);
-  } catch (err) {
-    console.error("[Ad Perf Sync] Meta API error:", err);
-    await failCronRun(cronRunId, err instanceof Error ? err.message : "Meta API call failed");
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Meta API call failed" },
-      { status: 500 }
-    );
-  }
-
-  if (rows.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      rows_synced: 0,
-      date_range: { since: sinceStr, until: untilStr },
-      is_backfill: isBackfill,
+    seenAccountIds.add(mc.ad_account_id);
+    configs.push({
+      label: `ws:${ws.slug}(${mc.ad_account_id})`,
+      metaConfig: mc,
     });
   }
 
-  // Transform Meta rows into DB rows
-  const dbRows = rows.map((row) => {
-    const spend = parseFloat(row.spend) || 0;
-    const purchases = extractPurchases(row.actions);
-    const purchaseValue = extractPurchaseValue(row.action_values);
+  return configs;
+}
 
-    return {
-      date: row.date_start,
-      meta_ad_id: row.ad_id,
-      ad_name: row.ad_name || null,
-      adset_id: row.adset_id || null,
-      adset_name: row.adset_name || null,
-      campaign_id: row.campaign_id || null,
-      campaign_name: row.campaign_name || null,
-      impressions: parseInt(row.impressions) || 0,
-      clicks: parseInt(row.clicks) || 0,
-      spend,
-      ctr: parseFloat(row.ctr) || 0,
-      cpc: parseFloat(row.cpc) || 0,
-      cpm: parseFloat(row.cpm) || 0,
-      frequency: parseFloat(row.frequency ?? "0") || 0,
-      purchases,
-      purchase_value: purchaseValue,
-      roas: spend > 0 ? Math.round((purchaseValue / spend) * 100) / 100 : 0,
-      cpa: purchases > 0 ? Math.round((spend / purchases) * 100) / 100 : 0,
-      synced_at: new Date().toISOString(),
-    };
-  });
+/**
+ * Sync ad-level, ad-set level, and budget data for a single Meta ad account.
+ */
+async function syncOneAccount(
+  db: ReturnType<typeof createServerSupabase>,
+  config: AccountConfig,
+  sinceStr: string,
+  untilStr: string
+): Promise<AccountSyncResult> {
+  const result: AccountSyncResult = {
+    label: config.label,
+    adsSynced: 0,
+    adsetsSynced: 0,
+    budgetsSynced: 0,
+    errors: [],
+  };
 
-  // Upsert in batches of 500 (Supabase limit)
+  // Set meta config for this account (null = env vars)
+  setMetaConfig(config.metaConfig);
+
   const BATCH_SIZE = 500;
-  let totalSynced = 0;
 
-  for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
-    const batch = dbRows.slice(i, i + BATCH_SIZE);
-    const { error } = await db
-      .from("meta_ad_performance")
-      .upsert(batch, { onConflict: "date,meta_ad_id" });
+  // --- Ad-level sync ---
+  try {
+    const rows = await getAdInsightsDaily(sinceStr, untilStr);
+    if (rows.length > 0) {
+      const dbRows = rows.map((row: AdInsightDailyRow) => {
+        const spend = parseFloat(row.spend) || 0;
+        const purchases = extractPurchases(row.actions);
+        const purchaseValue = extractPurchaseValue(row.action_values);
+        return {
+          date: row.date_start,
+          meta_ad_id: row.ad_id,
+          ad_name: row.ad_name || null,
+          adset_id: row.adset_id || null,
+          adset_name: row.adset_name || null,
+          campaign_id: row.campaign_id || null,
+          campaign_name: row.campaign_name || null,
+          impressions: parseInt(row.impressions) || 0,
+          clicks: parseInt(row.clicks) || 0,
+          spend,
+          ctr: parseFloat(row.ctr) || 0,
+          cpc: parseFloat(row.cpc) || 0,
+          cpm: parseFloat(row.cpm) || 0,
+          frequency: parseFloat(row.frequency ?? "0") || 0,
+          purchases,
+          purchase_value: purchaseValue,
+          roas: spend > 0 ? Math.round((purchaseValue / spend) * 100) / 100 : 0,
+          cpa: purchases > 0 ? Math.round((spend / purchases) * 100) / 100 : 0,
+          synced_at: new Date().toISOString(),
+        };
+      });
 
-    if (error) {
-      console.error(`[Ad Perf Sync] Upsert error (batch ${i / BATCH_SIZE + 1}):`, error);
-      return NextResponse.json(
-        { error: error.message, synced_before_error: totalSynced },
-        { status: 500 }
-      );
+      for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
+        const batch = dbRows.slice(i, i + BATCH_SIZE);
+        const { error } = await db
+          .from("meta_ad_performance")
+          .upsert(batch, { onConflict: "date,meta_ad_id" });
+        if (error) {
+          result.errors.push(`Ad upsert: ${error.message}`);
+        } else {
+          result.adsSynced += batch.length;
+        }
+      }
     }
-    totalSynced += batch.length;
+  } catch (err) {
+    result.errors.push(`Ad fetch: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  console.log(
-    `[Ad Perf Sync] Ad-level done: ${totalSynced} rows synced (${sinceStr} → ${untilStr})`
-  );
-
   // --- Ad-set level sync ---
-  let adsetSynced = 0;
   try {
     const adsetRows = await getAdSetInsightsDaily(sinceStr, untilStr);
     if (adsetRows.length > 0) {
@@ -191,19 +192,17 @@ export async function GET(req: NextRequest) {
           .from("meta_adset_performance")
           .upsert(batch, { onConflict: "date,adset_id" });
         if (error) {
-          console.error(`[Ad Perf Sync] Adset upsert error:`, error);
+          result.errors.push(`Adset upsert: ${error.message}`);
         } else {
-          adsetSynced += batch.length;
+          result.adsetsSynced += batch.length;
         }
       }
-      console.log(`[Ad Perf Sync] Ad-set level: ${adsetSynced} rows synced`);
     }
   } catch (err) {
-    console.error("[Ad Perf Sync] Ad-set sync error (non-fatal):", err);
+    result.errors.push(`Adset fetch: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // --- Campaign budget snapshots ---
-  let budgetsSynced = 0;
   try {
     const campaigns = await listCampaigns();
     const today = formatDate(new Date());
@@ -229,17 +228,93 @@ export async function GET(req: NextRequest) {
         .from("campaign_budget_snapshots")
         .upsert(budgetRows, { onConflict: "date,campaign_id" });
       if (error) {
-        console.error("[Ad Perf Sync] Budget snapshot error:", error);
+        result.errors.push(`Budget upsert: ${error.message}`);
       } else {
-        budgetsSynced = budgetRows.length;
-        console.log(`[Ad Perf Sync] Budget snapshots: ${budgetsSynced} campaigns`);
+        result.budgetsSynced = budgetRows.length;
       }
     }
   } catch (err) {
-    console.error("[Ad Perf Sync] Budget snapshot error (non-fatal):", err);
+    result.errors.push(`Budget fetch: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // --- Concept metrics (derive from synced meta_ad_performance) ---
+  return result;
+}
+
+export async function GET(req: NextRequest) {
+  // Verify CRON_SECRET
+  const authHeader = req.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const db = createServerSupabase();
+
+  // Collect all unique ad accounts to sync
+  const accounts = await collectAccountConfigs(db);
+  if (accounts.length === 0) {
+    return NextResponse.json({ error: "No Meta accounts configured" }, { status: 400 });
+  }
+
+  const cronRunId = await startCronRun("ad-performance-sync");
+
+  // Determine date range: backfill 30 days if table is empty, else last 3 days
+  const { count } = await db
+    .from("meta_ad_performance")
+    .select("id", { count: "exact", head: true });
+
+  const { count: adsetCount } = await db
+    .from("meta_adset_performance")
+    .select("adset_id", { count: "exact", head: true });
+
+  const isBackfill = (count ?? 0) === 0;
+  const adsetNeedsBackfill = (adsetCount ?? 0) < 200;
+  const daysBack = isBackfill || adsetNeedsBackfill ? 30 : 3;
+
+  const until = new Date();
+  until.setDate(until.getDate() - 1); // yesterday (today's data is incomplete)
+  const since = new Date(until);
+  since.setDate(since.getDate() - daysBack + 1);
+
+  const sinceStr = formatDate(since);
+  const untilStr = formatDate(until);
+
+  console.log(
+    `[Ad Perf Sync] ${isBackfill ? "BACKFILL" : "Normal"} sync: ${sinceStr} → ${untilStr} | ${accounts.length} account(s): ${accounts.map((a) => a.label).join(", ")}`
+  );
+
+  // Sync each ad account sequentially
+  const accountResults: AccountSyncResult[] = [];
+  let totalAds = 0;
+  let totalAdsets = 0;
+  let totalBudgets = 0;
+
+  for (const account of accounts) {
+    try {
+      const result = await syncOneAccount(db, account, sinceStr, untilStr);
+      accountResults.push(result);
+      totalAds += result.adsSynced;
+      totalAdsets += result.adsetsSynced;
+      totalBudgets += result.budgetsSynced;
+      console.log(
+        `[Ad Perf Sync] ${result.label}: ${result.adsSynced} ads, ${result.adsetsSynced} adsets, ${result.budgetsSynced} budgets${result.errors.length ? ` (${result.errors.length} errors)` : ""}`
+      );
+    } catch (err) {
+      console.error(`[Ad Perf Sync] Account ${account.label} failed:`, err);
+      accountResults.push({
+        label: account.label,
+        adsSynced: 0,
+        adsetsSynced: 0,
+        budgetsSynced: 0,
+        errors: [err instanceof Error ? err.message : String(err)],
+      });
+    }
+  }
+
+  // Clear meta config after all accounts are synced
+  setMetaConfig(null);
+
+  // --- Concept metrics (derive from synced meta_ad_performance — account-agnostic) ---
   let conceptMetricsSynced = 0;
   try {
     conceptMetricsSynced = await syncConceptMetricsFromDB(db, sinceStr, untilStr);
@@ -250,13 +325,20 @@ export async function GET(req: NextRequest) {
     console.error("[Ad Perf Sync] Concept metrics sync error (non-fatal):", err);
   }
 
-  await completeCronRun(cronRunId, `${totalSynced} ads, ${adsetSynced} adsets, ${conceptMetricsSynced} concept metrics`);
+  await completeCronRun(
+    cronRunId,
+    `${accounts.length} accounts: ${totalAds} ads, ${totalAdsets} adsets, ${totalBudgets} budgets, ${conceptMetricsSynced} concept metrics`
+  );
+
   return NextResponse.json({
     ok: true,
-    rows_synced: totalSynced,
-    adset_rows_synced: adsetSynced,
-    budgets_synced: budgetsSynced,
-    concept_metrics_synced: conceptMetricsSynced,
+    accounts: accountResults,
+    totals: {
+      ads_synced: totalAds,
+      adset_rows_synced: totalAdsets,
+      budgets_synced: totalBudgets,
+      concept_metrics_synced: conceptMetricsSynced,
+    },
     date_range: { since: sinceStr, until: untilStr },
     is_backfill: isBackfill,
   });
