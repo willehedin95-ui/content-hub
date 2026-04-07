@@ -1,5 +1,5 @@
 # Content Hub — Task Backlog
-Updated: 2026-04-04
+Updated: 2026-04-07
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -32,6 +32,7 @@ Updated: 2026-04-04
 - [ ] **Monitor HappySleep DK recovery** — After killing 15 zombies + restoring Min-datter landing page, watch DK ROAS over 3-5 days. If it doesn't improve, consider reducing DK budget. (added 2026-03-30)
 - [ ] **Monitor tomorrow's autopilot board swipe** — Verify 08:00 UTC cron swipes 3 board ads per workspace (not from_scratch). (added 2026-03-31)
 - [ ] **Telegram webhook health check** — Consider adding a cron or startup check that verifies webhook is registered, re-registers if empty. (added 2026-03-31)
+- [ ] **Verify cleanup-empty-adsets first scheduled run** — Tomorrow morning, check Vercel logs + Telegram digest for the 07:15 UTC run. Confirm it completes in one pass (no rate limit errors). If still throttled, bump `READ_DELAY_MS` from 250→400. (added 2026-04-07)
 - [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
 - [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
 
@@ -76,6 +77,8 @@ Updated: 2026-04-04
 - [x] ~~**Push 104a340 to deploy**~~ — Already on `origin/main` (was stale entry). Confirmed deployed. (resolved 2026-04-04)
 
 ## Done (recent)
+- [x] **Launchpad push root causes + /review bugs** — Six bugs fixed: (1) `finish-and-queue` bypassed `approveConceptAction` so markets/lifecycle never got created → pipeline-push couldn't find concepts, (2) `rejectConceptAction` only set `archived_at` not `status`, (3) `/review/pending` only excluded `draft` status instead of strict `eq("status","ready")`, (4) image count mismatch between /review thumbnails (3) and concept page, now shows all images with +N badge, (5) clicking Hydro13 concept in /review opened in HappySleep workspace → ReviewCard now sets `ch-workspace` cookie before navigating, (6) no recovery for stuck jobs → added `reconcileStuckJobs()` to pipeline-push cron (resets processing translations >2h, promotes stuck autopilot drafts >6h with images to ready, marks stuck processing jobs as completed when no pending translations remain). Also archived 4 broken HS stuck drafts (#146/151/152/154), manually approved 6 Hydro13 concepts (#12/14/15/16/17/18) onto launchpad (priorities -5 to 0), halved HappySleep DK budget from 1050 → 525 SEK/day. Commit `47e8a04`. (done 2026-04-07)
+- [x] **cleanup-empty-adsets cron + throttling** — New daily cron at 07:15 UTC that queries Meta directly across every active campaign and pauses any ad set where every ad inside is paused (or empty). Source-of-truth zombie killer; catches what `auto-pause-bleeders` misses (legacy/manual ad sets, ad sets not in our DB). Added `effective_status` to `listAdSets`/`listAdsInAdSet`. Manually cleared 11 zombies in production. Added 250ms throttling between every list call + 500ms after writes to avoid Meta user request limit (subcode 2446079). Commits `6f595c7`, `1696ddb`. (done 2026-04-07)
 - [x] **Bleeder cooldown + image retry + product appearance** — Bleeders now have 4-day cooldown. Swipe image generation retries 3x. "Importing" → "Generating..."/""Failed". Hydro13 white bottle description added. `productAppearance` always injected. `include_product_reference` logic fixed for native ads. 7 stuck concepts archived. Commit `104a340`. (done 2026-04-04)
 - [x] **Blog UTM tracking for Shopify order attribution** — `injectBlogUTMs()` in blog-shell.ts tags all Shopify CTA links with `utm_campaign={slug}`. Applied at publish time + in Claude writer prompts. All 9 articles republished. Orders column on SEO Articles now functional. Commit `2caa42d`. (done 2026-04-02)
 - [x] **Fix [LÄNK] placeholder + board filtering + Telegram webhook** — Three bugs fixed: (1) ad copy URL placeholders replaced with natural CTAs, (2) board dropdown filtered by workspace, (3) Telegram webhook re-registered. Autopilot board swipe verified working. Commit `cd6afc9`. (done 2026-03-31)
