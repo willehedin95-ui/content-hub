@@ -146,11 +146,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Nano Banana → keyframe image
+    // Keyframes feed VEO/Kling — 1K is enough since the final video is what gets published
     const ar = aspectRatio || "1:1";
     const { urls: keyframeUrls, costTimeMs } = await generateImage(
       parsed.keyframe_prompt,
       referenceImages,
-      ar
+      ar,
+      "1K"
     );
 
     if (!keyframeUrls?.length) throw new Error("Keyframe generation failed");

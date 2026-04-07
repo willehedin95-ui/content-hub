@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
         nanaBananaPrompt,
         productHeroUrls,
         detectedRatio,
-        "1K"
+        "2K"
       );
 
       const result = await pollTaskResult(imageTaskId);

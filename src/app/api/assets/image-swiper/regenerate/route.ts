@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const taskId = await createImageTask(prompt, productHeroUrls, ratio, "1K");
+    const taskId = await createImageTask(prompt, productHeroUrls, ratio, "2K");
     const result = await pollTaskResult(taskId);
 
     if (result.urls.length === 0) {

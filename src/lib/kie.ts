@@ -144,9 +144,10 @@ export async function getCredits(): Promise<{ balance: number }> {
 export async function generateImage(
   prompt: string,
   imageUrls: string[],
-  aspectRatio: string = "2:3"
+  aspectRatio: string = "2:3",
+  resolution: string = "2K"
 ): Promise<{ urls: string[]; costTimeMs: number | null }> {
-  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, "1K");
+  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, resolution);
   return pollTaskResult(taskId);
 }
 
