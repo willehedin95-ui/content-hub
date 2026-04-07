@@ -179,6 +179,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Always log the full payload so we can inspect Fillout's webhook structure in Vercel logs
+  console.log("[fillout-to-freshdesk] Received payload:", JSON.stringify(body));
+
   // Accept both shapes: { submission: { questions: [...] } } and { questions: [...] } at root
   const submission: FilloutSubmission = body.submission ?? {
     submissionId: body.submissionId,
@@ -187,14 +190,27 @@ export async function POST(req: NextRequest) {
   const questions: FilloutQuestion[] = submission.questions ?? [];
 
   if (questions.length === 0) {
-    console.warn("[fillout-to-freshdesk] No questions in payload", JSON.stringify(body).slice(0, 500));
-    return NextResponse.json({ error: "No questions found in payload" }, { status: 400 });
+    console.warn("[fillout-to-freshdesk] No questions in payload");
+    return NextResponse.json(
+      {
+        error: "No questions found in payload",
+        debug_received: body,
+      },
+      { status: 400 }
+    );
   }
 
   const email = findEmail(questions);
   if (!email) {
-    console.error("[fillout-to-freshdesk] No email found in payload", JSON.stringify(body).slice(0, 500));
-    return NextResponse.json({ error: "No email field found in submission" }, { status: 400 });
+    console.error("[fillout-to-freshdesk] No email found in payload");
+    return NextResponse.json(
+      {
+        error: "No email field found in submission",
+        debug_received: body,
+        debug_questions_seen: questions.map((q) => ({ name: q.name, type: q.type, value: q.value })),
+      },
+      { status: 400 }
+    );
   }
 
   const customerName = findName(questions);
