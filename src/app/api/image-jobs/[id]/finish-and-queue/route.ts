@@ -4,17 +4,19 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
+import { approveConceptAction } from "@/lib/approval-actions";
 
 export const maxDuration = 300;
 
 /**
  * "Finish & Queue" — one-click pipeline for any concept.
  * Runs the full autopilot translation pipeline:
- *   1. Create image_translation rows (all languages × ratios)
- *   2. Translate ad copy via OpenAI
- *   3. Process 4:5 image translations (Kie AI)
- *   4. Process 9:16 outpainted versions
- *   5. Update job status + Telegram notification
+ *   1. Approve concept properly (creates image_job_markets + concept_lifecycle entries — REQUIRED for pipeline-push to find it)
+ *   2. Create image_translation rows (all languages × ratios)
+ *   3. Translate ad copy via OpenAI
+ *   4. Process 4:5 image translations (Kie AI)
+ *   5. Process 9:16 outpainted versions
+ *   6. Update job status + Telegram notification
  *
  * Runs in background via after() — returns immediately.
  */
@@ -54,6 +56,14 @@ export async function POST(
     return NextResponse.json({ error: "No ad copy — write primary text first" }, { status: 422 });
   }
 
+  // Approve concept properly: assigns LP, sets launchpad_priority, creates image_job_markets + concept_lifecycle entries.
+  // This is REQUIRED for pipeline-push to find the concept later. Previously this route bypassed the approve step,
+  // so concepts had launchpad_priority set but no markets/lifecycle, and pipeline-push couldn't push them.
+  const approveResult = await approveConceptAction(jobId, "finish_and_queue");
+  if (!approveResult.ok) {
+    return NextResponse.json({ error: approveResult.error || "Approval failed" }, { status: 422 });
+  }
+
   // Mark as processing immediately
   await db.from("image_jobs").update({
     status: "processing",
@@ -65,20 +75,6 @@ export async function POST(
     try {
       const result = await triggerAutopilotTranslations(jobId);
       console.log(`[finish-and-queue] Pipeline complete for ${jobId}:`, result);
-
-      // Auto-add to launchpad if has landing page
-      const { data: freshJob } = await db
-        .from("image_jobs")
-        .select("landing_page_id, launchpad_priority")
-        .eq("id", jobId)
-        .single();
-
-      if (freshJob?.landing_page_id && !freshJob.launchpad_priority) {
-        await db.from("image_jobs").update({
-          launchpad_priority: 999, // Will be sorted by launchpad UI
-          updated_at: new Date().toISOString(),
-        }).eq("id", jobId);
-      }
     } catch (err) {
       console.error(`[finish-and-queue] Pipeline failed for ${jobId}:`, err);
       await db.from("image_jobs").update({

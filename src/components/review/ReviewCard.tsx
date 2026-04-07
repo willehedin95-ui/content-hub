@@ -3,13 +3,25 @@
 import { useState } from "react";
 import Image from "next/image";
 import { CheckCircle2, XCircle, Bot, RefreshCw, Languages, Video, FileText, ExternalLink } from "lucide-react";
-import Link from "next/link";
 import type { ReviewItem } from "@/app/api/review/pending/route";
 
 interface Props {
   item: ReviewItem;
   onAction: (id: string, action: "approve" | "reject", type: string) => Promise<void>;
   isHighlighted?: boolean;
+}
+
+/**
+ * Navigate to a concept's detail page, switching the workspace cookie first if needed.
+ * Without this, clicking a Hydro13 concept while on /review (which is cross-workspace)
+ * would open in the HappySleep workspace because the cookie hadn't changed.
+ */
+function navigateToDetail(item: ReviewItem) {
+  const url = item.type === "video" ? `/video-ads/${item.id}` : `/images/${item.id}`;
+  // Always set workspace cookie to match this item's workspace before navigating.
+  document.cookie = `ch-workspace=${item.workspace.slug};path=/;max-age=${60 * 60 * 24 * 365};samesite=lax`;
+  // Hard navigation so the new cookie is used by the destination page.
+  window.location.href = url;
 }
 
 const TYPE_CONFIG = {
@@ -41,7 +53,10 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
   }
 
   const timeAgo = getTimeAgo(item.created_at);
-  const detailUrl = getDetailUrl(item);
+  const totalImages = item.images.length;
+  // Show up to 3 thumbnails in /review for a clean grid; concept page shows all.
+  const previewImages = item.images.slice(0, 3);
+  const extraCount = Math.max(0, totalImages - previewImages.length);
 
   return (
     <div
@@ -50,10 +65,14 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
       } ${isHighlighted ? "ring-2 ring-blue-500 ring-offset-2" : "border-gray-200"}`}
     >
       {/* Image row — clickable to detail */}
-      {item.images.length > 0 && (
-        <Link href={detailUrl} className="block">
+      {totalImages > 0 && (
+        <button
+          type="button"
+          onClick={() => navigateToDetail(item)}
+          className="block w-full text-left"
+        >
           <div className="flex gap-0.5 bg-gray-100">
-            {item.images.slice(0, 3).map((img, i) => (
+            {previewImages.map((img, i) => (
               <div key={i} className="relative flex-1 aspect-[4/5]">
                 <Image
                   src={img.url}
@@ -63,10 +82,16 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
                   sizes="(max-width: 768px) 33vw, 150px"
                   unoptimized
                 />
+                {/* Overflow badge on the last visible image */}
+                {i === previewImages.length - 1 && extraCount > 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-base font-semibold">
+                    +{extraCount}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        </Link>
+        </button>
       )}
 
       <div className="p-4">
@@ -83,7 +108,11 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
         </div>
 
         {/* Name — clickable to detail */}
-        <Link href={detailUrl} className="block mb-1 group">
+        <button
+          type="button"
+          onClick={() => navigateToDetail(item)}
+          className="block mb-1 group text-left"
+        >
           <h3 className="font-semibold text-gray-900 text-base group-hover:text-indigo-600 transition-colors inline-flex items-center gap-1.5">
             {item.concept_number && (
               <span className="text-gray-400 font-normal">#{item.concept_number} </span>
@@ -91,7 +120,7 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
             {item.name}
             <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" />
           </h3>
-        </Link>
+        </button>
 
         {/* CASH DNA metadata */}
         {item.cash_dna && (
@@ -175,11 +204,6 @@ export default function ReviewCard({ item, onAction, isHighlighted }: Props) {
       </div>
     </div>
   );
-}
-
-function getDetailUrl(item: ReviewItem): string {
-  if (item.type === "video") return `/video-ads/${item.id}`;
-  return `/images/${item.id}`;
 }
 
 function getTimeAgo(dateString: string): string {

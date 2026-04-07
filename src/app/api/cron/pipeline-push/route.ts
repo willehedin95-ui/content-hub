@@ -30,6 +30,14 @@ export async function GET(req: NextRequest) {
   const cronRunId = await startCronRun("pipeline-push");
 
   try {
+    // Step 0: Reconcile stuck jobs (recovery for incomplete pipeline runs)
+    // This catches concepts that got stuck because Vercel timed out mid-execution
+    // or because an upstream call failed and the status update never ran.
+    const reconcileResult = await reconcileStuckJobs(db);
+    if (reconcileResult.totalReset > 0) {
+      console.log(`[Pipeline Cron] Reconciled ${reconcileResult.totalReset} stuck jobs:`, reconcileResult);
+    }
+
     // Step 1: Sync metrics and detect stage transitions
     console.log("[Pipeline Cron] Syncing metrics and detecting stage transitions...");
     const syncResult = await syncPipelineMetrics();
@@ -380,4 +388,115 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Reconciles jobs that got stuck because Vercel timed out mid-execution or
+ * an upstream call threw before the status update ran.
+ *
+ * Three recovery actions:
+ * 1. Reset image_translations stuck in "processing" for >2h back to "pending"
+ *    so the next run of triggerAutopilotTranslations picks them up.
+ * 2. Mark image_jobs stuck in "processing" for >2h with no remaining
+ *    pending/processing translations as "completed".
+ * 3. Promote autopilot drafts older than 6h that already have source images
+ *    to "ready" so they appear in /review for human approval.
+ */
+async function reconcileStuckJobs(db: ReturnType<typeof createServerSupabase>) {
+  const now = Date.now();
+  const STUCK_TRANSLATION_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const STUCK_DRAFT_MS = 6 * 60 * 60 * 1000; // 6 hours
+  const cutoffTranslation = new Date(now - STUCK_TRANSLATION_MS).toISOString();
+  const cutoffDraft = new Date(now - STUCK_DRAFT_MS).toISOString();
+
+  let translationsReset = 0;
+  let jobsCompleted = 0;
+  let draftsPromoted = 0;
+
+  // 1. Reset stuck "processing" translations
+  const { data: stuckTranslations } = await db
+    .from("image_translations")
+    .select("id, source_image_id, language, aspect_ratio")
+    .eq("status", "processing")
+    .lt("updated_at", cutoffTranslation)
+    .limit(500);
+
+  if (stuckTranslations && stuckTranslations.length > 0) {
+    const ids = stuckTranslations.map((t) => t.id);
+    const { error: resetErr } = await db
+      .from("image_translations")
+      .update({ status: "pending", updated_at: new Date().toISOString() })
+      .in("id", ids);
+    if (!resetErr) {
+      translationsReset = stuckTranslations.length;
+    }
+  }
+
+  // 2. Promote stuck "draft" autopilot concepts that already have source images.
+  // These are concepts where autopilot generated images but the status update never ran
+  // (cron timed out or threw mid-execution). Move to "ready" so /review picks them up.
+  const { data: stuckDrafts } = await db
+    .from("image_jobs")
+    .select("id, source_images(id)")
+    .eq("status", "draft")
+    .in("source", ["autopilot", "competitor_swipe"])
+    .is("archived_at", null)
+    .lt("created_at", cutoffDraft)
+    .limit(200);
+
+  if (stuckDrafts && stuckDrafts.length > 0) {
+    const promoteIds: string[] = [];
+    for (const j of stuckDrafts) {
+      const imgs = j.source_images as { id: string }[] | null;
+      if (imgs && imgs.length > 0) {
+        promoteIds.push(j.id);
+      }
+    }
+    if (promoteIds.length > 0) {
+      const { error: promoteErr } = await db
+        .from("image_jobs")
+        .update({ status: "ready", updated_at: new Date().toISOString() })
+        .in("id", promoteIds);
+      if (!promoteErr) {
+        draftsPromoted = promoteIds.length;
+      }
+    }
+  }
+
+  // 3. Mark "processing" jobs as completed if no translations are still pending/processing.
+  // updateJobStatusFinal would normally do this but it only runs at the end of triggerAutopilotTranslations,
+  // so jobs that lost the race (e.g. last translation completed via retry, but the job-completion path didn't fire)
+  // sit in "processing" forever.
+  const { data: stuckProcessing } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("status", "processing")
+    .lt("updated_at", cutoffTranslation)
+    .limit(100);
+
+  if (stuckProcessing && stuckProcessing.length > 0) {
+    for (const j of stuckProcessing) {
+      const { data: pending } = await db
+        .from("image_translations")
+        .select("id, source_images!inner(job_id)")
+        .in("status", ["pending", "processing"])
+        .eq("source_images.job_id", j.id)
+        .limit(1);
+
+      if (!pending || pending.length === 0) {
+        await db
+          .from("image_jobs")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("id", j.id);
+        jobsCompleted += 1;
+      }
+    }
+  }
+
+  return {
+    translationsReset,
+    draftsPromoted,
+    jobsCompleted,
+    totalReset: translationsReset + draftsPromoted + jobsCompleted,
+  };
 }

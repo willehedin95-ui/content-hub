@@ -47,6 +47,7 @@ export async function GET() {
   );
 
   // 1. Pending autopilot/competitor-swipe concepts
+  // Only show "ready" status — drafts are still being generated, completed/processing/archived/failed aren't pending review
   const { data: pendingConcepts } = await db
     .from("image_jobs")
     .select(`
@@ -59,7 +60,7 @@ export async function GET() {
     .in("source", ["autopilot", "competitor_swipe"])
     .is("launchpad_priority", null)
     .is("archived_at", null)
-    .neq("status", "draft")
+    .eq("status", "ready")
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -75,7 +76,7 @@ export async function GET() {
     .not("iteration_of", "is", null)
     .is("launchpad_priority", null)
     .is("archived_at", null)
-    .neq("status", "draft")
+    .eq("status", "ready")
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -137,7 +138,7 @@ export async function GET() {
       workspace: ws,
       workspace_id: c.workspace_id,
       created_at: c.created_at,
-      images: imgs.slice(0, 4).map((i) => ({ url: i.original_url })),
+      images: imgs.map((i) => ({ url: i.original_url })),
       ad_copy: c.ad_copy_headline || c.ad_copy_primary
         ? { primary: arrayToString(c.ad_copy_primary), headline: arrayToString(c.ad_copy_headline) }
         : undefined,
@@ -162,7 +163,7 @@ export async function GET() {
       workspace: ws,
       workspace_id: c.workspace_id,
       created_at: c.created_at,
-      images: imgs.slice(0, 4).map((i) => ({ url: i.original_url })),
+      images: imgs.map((i) => ({ url: i.original_url })),
       source: c.source,
       cash_dna: c.cash_dna as ReviewItem["cash_dna"],
     });
@@ -185,7 +186,6 @@ export async function GET() {
       images: shots
         .filter((s) => s.image_url)
         .sort((a, b) => a.shot_number - b.shot_number)
-        .slice(0, 4)
         .map((s) => ({ url: s.image_url! })),
       ad_copy: v.ad_copy_headline || v.ad_copy_primary
         ? { primary: arrayToString(v.ad_copy_primary), headline: arrayToString(v.ad_copy_headline) }
@@ -211,7 +211,7 @@ export async function GET() {
       workspace: ws,
       workspace_id: r.workspace_id,
       created_at: r.created_at,
-      images: imgs.slice(0, 4).map((i) => ({ url: i.original_url })),
+      images: imgs.map((i) => ({ url: i.original_url })),
     });
   }
 

@@ -156,8 +156,11 @@ export async function rejectConceptAction(jobId: string, source: string = "revie
     return { ok: false, action: "reject", error: "Concept not found", jobId };
   }
 
+  // Set both archived_at AND status='archived' to keep them in sync.
+  // /review/pending filters on archived_at IS NULL — without this both must agree.
   await db.from("image_jobs").update({
     archived_at: new Date().toISOString(),
+    status: "archived",
     updated_at: new Date().toISOString(),
   }).eq("id", jobId);
 
