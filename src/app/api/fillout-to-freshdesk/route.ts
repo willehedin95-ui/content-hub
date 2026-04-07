@@ -115,10 +115,30 @@ function findName(questions: FilloutQuestion[]): string | null {
   return null;
 }
 
+function reorderNameFields(questions: FilloutQuestion[]): FilloutQuestion[] {
+  // Make sure Förnamn (first name) appears before Efternamn (last name) regardless of form order.
+  const firstNameIdx = questions.findIndex((q) => {
+    const n = (q.name || "").toLowerCase();
+    return n.includes("förnamn") || n.includes("fornamn") || n.includes("first name");
+  });
+  const lastNameIdx = questions.findIndex((q) => {
+    const n = (q.name || "").toLowerCase();
+    return n.includes("efternamn") || n.includes("last name") || n.includes("surname");
+  });
+  if (firstNameIdx === -1 || lastNameIdx === -1 || firstNameIdx < lastNameIdx) {
+    return questions;
+  }
+  const reordered = [...questions];
+  const [firstName] = reordered.splice(firstNameIdx, 1);
+  reordered.splice(lastNameIdx, 0, firstName);
+  return reordered;
+}
+
 function buildDescription(
   questions: FilloutQuestion[],
   meta: { formName?: string; submissionId?: string; submissionTime?: string }
 ): string {
+  const ordered = reorderNameFields(questions);
   const lines: string[] = [];
   lines.push(`<h2>Ny formulärinlämning</h2>`);
   if (meta.formName) lines.push(`<p><strong>Formulär:</strong> ${escapeHtml(meta.formName)}</p>`);
@@ -131,7 +151,7 @@ function buildDescription(
   if (meta.submissionId) lines.push(`<p><strong>Submission ID:</strong> ${escapeHtml(meta.submissionId)}</p>`);
   lines.push(`<hr>`);
 
-  for (const q of questions) {
+  for (const q of ordered) {
     const question = (q.name || "Fråga").trim();
     const answer = formatValue(q.value);
     lines.push(`<p><strong>${escapeHtml(question)}</strong><br>${escapeHtml(answer).replace(/\n/g, "<br>")}</p>`);
