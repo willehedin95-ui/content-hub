@@ -9,7 +9,15 @@ import {
 } from "@/lib/meta";
 import { sendMessage } from "@/lib/telegram";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
+
+// Throttling between Meta API calls to stay under the user request limit
+// (subcode 2446079). The rate limit has a burst component, so even modest
+// delays significantly reduce throttling. Sized to keep total runtime under
+// maxDuration even with several hundred ad sets.
+const READ_DELAY_MS = 250; // between listAdSets / listAdsInAdSet calls
+const WRITE_DELAY_MS = 500; // after a pause write
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Cleanup cron: pauses any active ad set where every ad inside is paused
@@ -124,12 +132,14 @@ export async function GET(req: NextRequest) {
       setMetaConfig(entry.metaConfig as Parameters<typeof setMetaConfig>[0]);
 
       const campaigns = await listCampaigns();
+      await sleep(READ_DELAY_MS);
 
       for (const camp of campaigns) {
         // listCampaigns already filters to status=ACTIVE, but be defensive
         if (camp.status !== "ACTIVE") continue;
 
         const adSets = await listAdSets(camp.id);
+        await sleep(READ_DELAY_MS);
 
         for (const adSet of adSets) {
           // Only touch ad sets that Meta thinks are actively delivering.
@@ -142,6 +152,7 @@ export async function GET(req: NextRequest) {
           if (permanentAdSetIds.has(adSet.id)) continue;
 
           const ads = await listAdsInAdSet(adSet.id);
+          await sleep(READ_DELAY_MS);
 
           // "Empty" if either (a) there are no ads at all, or (b) every ad
           // is in a non-delivering state. We check effective_status on each
@@ -196,8 +207,8 @@ export async function GET(req: NextRequest) {
               adCount: ads.length,
             });
 
-            // Rate-limit courtesy
-            await new Promise((r) => setTimeout(r, 300));
+            // Rate-limit courtesy after a write
+            await sleep(WRITE_DELAY_MS);
           } catch (err) {
             const msg = err instanceof Error ? err.message : "Unknown error";
             console.error(`[cleanup-empty-adsets] Failed to pause ${adSet.id}:`, msg);
