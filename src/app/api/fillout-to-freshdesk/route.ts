@@ -98,18 +98,60 @@ function findEmail(questions: FilloutQuestion[]): string | null {
   return null;
 }
 
-function findName(questions: FilloutQuestion[]): string | null {
+function findFirstName(questions: FilloutQuestion[]): string | null {
+  for (const q of questions) {
+    const name = (q.name || "").toLowerCase();
+    if (name.includes("förnamn") || name.includes("fornamn") || name.includes("first name")) {
+      const v = formatValue(q.value);
+      if (v && v !== "(tomt svar)") return v;
+    }
+  }
+  return null;
+}
+
+function findLastName(questions: FilloutQuestion[]): string | null {
+  for (const q of questions) {
+    const name = (q.name || "").toLowerCase();
+    if (name.includes("efternamn") || name.includes("last name") || name.includes("surname")) {
+      const v = formatValue(q.value);
+      if (v && v !== "(tomt svar)") return v;
+    }
+  }
+  return null;
+}
+
+function buildFullName(questions: FilloutQuestion[]): string | null {
+  const first = findFirstName(questions);
+  const last = findLastName(questions);
+  if (first && last) return `${first} ${last}`;
+  if (first) return first;
+  if (last) return last;
+  // Fallback: any field literally called "namn" / "name"
+  for (const q of questions) {
+    const name = (q.name || "").toLowerCase();
+    if (name === "namn" || name === "name" || name === "fullständigt namn") {
+      const v = formatValue(q.value);
+      if (v && v !== "(tomt svar)") return v;
+    }
+  }
+  return null;
+}
+
+function findOrderNumber(questions: FilloutQuestion[]): string | null {
   for (const q of questions) {
     const name = (q.name || "").toLowerCase();
     if (
-      name.includes("namn") ||
-      name === "name" ||
-      name.includes("first name") ||
-      name.includes("förnamn") ||
-      name.includes("fornamn")
+      name.includes("ordernummer") ||
+      name.includes("order number") ||
+      name === "order" ||
+      name === "ordernr" ||
+      name === "order nr"
     ) {
       const v = formatValue(q.value);
-      if (v && v !== "(tomt svar)") return v;
+      if (v && v !== "(tomt svar)") {
+        // Strip a leading # so we can re-add it consistently
+        return v.replace(/^#+/, "").trim();
+      }
     }
   }
   return null;
@@ -196,10 +238,27 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function buildSubject(formName: string | undefined, customerName: string | null): string {
-  const form = formName?.trim() || "formulärinlämning";
-  if (customerName) return `${form} - ${customerName}`;
-  return `Ny ${form}`;
+function buildSubject(formName: string | undefined, questions: FilloutQuestion[]): string {
+  // Strip leading symbols/whitespace like "®" that Fillout often prefixes form names with
+  const cleanFormName = (formName || "")
+    .replace(/^[\s®©™\u00A9\u00AE\u2122]+/, "")
+    .trim();
+  const fullName = buildFullName(questions);
+  const orderNumber = findOrderNumber(questions);
+  const isReturn = cleanFormName.toLowerCase().includes("retur");
+
+  // Return-form subject: "Retur #1234 - William Hedin"
+  if (isReturn) {
+    const parts: string[] = ["Retur"];
+    if (orderNumber) parts.push(`#${orderNumber}`);
+    if (fullName) parts.push(`- ${fullName}`);
+    return parts.join(" ");
+  }
+
+  // Generic subject: "Kontaktformulär - William Hedin" or "Ny kontaktformulär"
+  const formLabel = cleanFormName || "formulärinlämning";
+  if (fullName) return `${formLabel} - ${fullName}`;
+  return `Ny ${formLabel.toLowerCase()}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -278,8 +337,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No email field found in submission" }, { status: 400 });
   }
 
-  const customerName = findName(questions);
-  const subject = buildSubject(body.formName, customerName);
+  const customerName = buildFullName(questions);
+  const subject = buildSubject(body.formName, questions);
   const description = buildDescription(questions, {
     formName: body.formName,
     submissionId: submission.submissionId,
