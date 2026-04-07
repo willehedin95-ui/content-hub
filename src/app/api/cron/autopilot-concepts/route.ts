@@ -11,6 +11,7 @@ import {
   parseConceptProposals,
 } from "@/lib/brainstorm";
 import { generateImageBriefs, resolveReferenceImages } from "@/lib/static-ad-prompt";
+import { getProductAppearance } from "@/lib/product-appearance";
 import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
@@ -733,12 +734,14 @@ async function runFromScratch(
 
   let imageResults: Array<{ url: string; sourceImageId: string }> = [];
   try {
+    const productAppearance = getProductAppearance(product as ProductFull);
     const { briefs } = await generateImageBriefs({
       job: job as Parameters<typeof generateImageBriefs>[0]["job"],
       product: product as ProductFull,
       productImages: (productImages ?? []) as Array<{ url: string; category: string }>,
       count: 3,
       previousPrompts: recentImagePrompts,
+      productAppearance,
     });
 
     const settled = await Promise.allSettled(

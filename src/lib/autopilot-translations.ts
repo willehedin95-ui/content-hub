@@ -234,7 +234,8 @@ async function translateAdCopy(
               content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}
-IMPORTANT: If the text contains URL placeholders like [LINK], [LÄNK], [URL] or website addresses, replace them with a natural call-to-action phrase in ${langLabel} (e.g. "Handla nu", "Köp här", "Shop now"). The landing page link is attached separately by the ad platform and must NOT appear in the ad copy text.${corrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${corrections}` : ""}
+IMPORTANT: If the text contains URL placeholders like [LINK], [LÄNK], [URL] or website addresses, replace them with a natural call-to-action phrase in ${langLabel} (e.g. "Handla nu", "Köp här", "Shop now"). The landing page link is attached separately by the ad platform and must NOT appear in the ad copy text.
+CURRENCY — CRITICAL: Convert ANY foreign currency in the source (€, $, £, EUR, USD, GBP) into the LOCAL market currency for ${langLabel}: Swedish → SEK / "kr", Norwegian → NOK / "kr", Danish → DKK / "kr". Use a rough conversion: 1 EUR ≈ 11 kr (SE/NO) or 7.5 kr (DK); 1 USD ≈ 10 kr (SE/NO) or 7 kr (DK). Round to a clean nearby number (e.g. €387 → 4 200 kr, not 4 257 kr). NEVER leave foreign currency symbols (€, $, £) or codes (EUR, USD, GBP) in the output — the translated ad MUST be in local currency only.${corrections ? `\n\nIMPORTANT — The previous translation had quality issues. Fix these problems:\n${corrections}` : ""}
 Return a JSON object with exactly two keys:
 - "primary_texts": an array of translated primary texts (same order as input)
 - "headlines": an array of translated headlines (same order as input)

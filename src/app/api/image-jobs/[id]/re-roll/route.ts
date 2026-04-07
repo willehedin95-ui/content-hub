@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
+import { getProductAppearance } from "@/lib/product-appearance";
 import type { StaticStyleId } from "@/lib/constants";
 import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
@@ -248,6 +249,7 @@ export async function POST(
       count: 1,
       styles: [style],
       previousPrompts,
+      productAppearance: getProductAppearance(product as ProductFull),
     });
   } catch (err) {
     return safeError(err, "Failed to generate replacement brief");

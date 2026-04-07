@@ -9,6 +9,7 @@
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImageBriefs, resolveReferenceImages } from "@/lib/static-ad-prompt";
+import { getProductAppearance } from "@/lib/product-appearance";
 import { generateImage } from "@/lib/kie";
 import { sendPhoto, sendMessageWithInlineKeyboard } from "@/lib/telegram";
 import { STORAGE_BUCKET } from "@/lib/constants";
@@ -352,6 +353,7 @@ async function generateIterationImages(
   const startOrder = ((lastOrder?.processing_order as number) ?? 0) + 1;
 
   // Generate briefs
+  const productAppearance = getProductAppearance(product as ProductFull);
   const { briefs } = await generateImageBriefs({
     job: job as ImageJob,
     product: product as ProductFull,
@@ -359,6 +361,7 @@ async function generateIterationImages(
     count: IMAGES_PER_ITERATION,
     styles: existingStyles.length > 0 ? existingStyles as Parameters<typeof generateImageBriefs>[0]["styles"] : undefined,
     previousPrompts,
+    productAppearance,
   });
 
   // Generate images in parallel

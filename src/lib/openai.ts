@@ -70,7 +70,7 @@ KEY PRINCIPLES:
 3) Avoid literal translations and calques from English. Choose common, everyday ${langName} words people actually use.
 4) Keep the original tone (premium/warm/factual/reassuring/sales-focused), adapted for ${langName} culture.
 5) No teen slang. No Gen Z style.
-6) Do not add new claims, facts, or promises. Do not remove important conditions. Do not change numbers/doses/prices — only format locally.
+6) Do not add new claims, facts, or promises. Do not remove important conditions. Do not change numbers or doses. PRICES: always convert any foreign currency (€, $, £, EUR, USD, GBP) into the LOCAL market currency for ${country} — never leave foreign currency in the output.
 7) Never use hyphens in sales copy unless the original text has them.
 
 HTML PRESERVATION (CRITICAL — read carefully):
@@ -148,7 +148,7 @@ VIKTIGASTE PRINCIPER:
 3) Undvik direktöversatta uttryck och "svengelska". Välj vanliga, vardagliga ord som folk faktiskt använder.
 4) Behåll originalets ton (premium/varm/saklig/trygg/säljande), men anpassa för lokal kultur.
 5) Ingen tonårsslang. Ingen Gen Z-stil.
-6) Lägg inte till nya claims, löften eller fakta. Ta inte bort viktiga villkor. Ändra inte siffror/doser/priser – bara formatera lokalt (ex: decimaler med komma, valuta i SEK om relevant).
+6) Lägg inte till nya claims, löften eller fakta. Ta inte bort viktiga villkor. Ändra inte siffror eller doser. PRISER: konvertera ALLTID utländska valutor (€, $, £, EUR, USD, GBP) till svenska kronor (SEK / "kr") — lämna ALDRIG kvar utländsk valuta i texten. Använd ungefärlig kurs (1 EUR ≈ 11 kr, 1 USD ≈ 10 kr) och avrunda till en ren siffra (t.ex. €387 → 4 200 kr, inte 4 257 kr). Decimaler med komma, valuta i SEK.
 7) Om texten är juridisk/policy: prioritera exakthet och tydlighet (fortfarande lättläst), och ändra inte innebörd.
 8) Om texten är säljcopy: prioritera flyt, känsla och enkelhet – men utan att ändra budskap.
 9) Använd aldrig bindestreck i copy om inte originaltexten har det. Bindestreck är inte naturligt i talspråk.
@@ -189,7 +189,7 @@ KEY PRINCIPLES:
 3) Avoid literal translations. Choose common, everyday Danish words people actually use.
 4) Keep the original tone (premium/warm/factual/reassuring/sales-focused), adapted for Danish culture.
 5) No teen slang. No Gen Z style.
-6) Do not add new claims or facts. Do not remove important conditions. Do not change numbers/doses/prices – only format locally.
+6) Do not add new claims or facts. Do not remove important conditions. Do not change numbers or doses. PRICES: always convert any foreign currency (€, $, £, EUR, USD, GBP) into Danish kroner (DKK / "kr") — never leave foreign currency symbols in the output. Use a rough conversion (1 EUR ≈ 7.5 kr, 1 USD ≈ 7 kr) and round to a clean nearby number (e.g. €387 → 2 900 kr).
 7) Never use hyphens in copy unless the original has them.
 
 FORMAT & TECHNIQUE:
@@ -222,7 +222,7 @@ KEY PRINCIPLES:
 3) Avoid literal translations. Choose common, everyday Norwegian words people actually use.
 4) Keep the original tone (premium/warm/factual/reassuring/sales-focused), adapted for Norwegian culture.
 5) No teen slang. No Gen Z style.
-6) Do not add new claims or facts. Do not remove important conditions. Do not change numbers/doses/prices – only format locally.
+6) Do not add new claims or facts. Do not remove important conditions. Do not change numbers or doses. PRICES: always convert any foreign currency (€, $, £, EUR, USD, GBP) into Norwegian kroner (NOK / "kr") — never leave foreign currency symbols in the output. Use a rough conversion (1 EUR ≈ 11 kr, 1 USD ≈ 10 kr) and round to a clean nearby number (e.g. €387 → 4 200 kr).
 7) Never use hyphens in copy unless the original has them.
 
 FORMAT & TECHNIQUE:
