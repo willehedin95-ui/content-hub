@@ -194,13 +194,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No questions found in payload" }, { status: 400 });
   }
 
-  // Detect Fillout's "Test" button which sends a dummy payload:
-  //   - empty submissionId
-  //   - all question values are null/empty
+  // Detect Fillout's "Test" button which sends a dummy payload with an empty submissionId.
+  // Real submissions always get a submissionId, so this is the most reliable indicator.
+  // (Can't rely on "all values null" because Fillout fills dropdowns with default values like "1".)
   // Accept it without creating a ticket so the Test button shows success.
-  const isEmptyTest =
-    (!submission.submissionId || submission.submissionId === "") &&
-    questions.every((q) => q.value === null || q.value === undefined || q.value === "");
+  const isEmptyTest = !submission.submissionId || submission.submissionId === "";
   if (isEmptyTest) {
     console.log("[fillout-to-freshdesk] Detected Fillout test ping, skipping ticket creation");
     return NextResponse.json({
