@@ -191,26 +191,29 @@ export async function POST(req: NextRequest) {
 
   if (questions.length === 0) {
     console.warn("[fillout-to-freshdesk] No questions in payload");
-    return NextResponse.json(
-      {
-        error: "No questions found in payload",
-        debug_received: body,
-      },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "No questions found in payload" }, { status: 400 });
+  }
+
+  // Detect Fillout's "Test" button which sends a dummy payload:
+  //   - empty submissionId
+  //   - all question values are null/empty
+  // Accept it without creating a ticket so the Test button shows success.
+  const isEmptyTest =
+    (!submission.submissionId || submission.submissionId === "") &&
+    questions.every((q) => q.value === null || q.value === undefined || q.value === "");
+  if (isEmptyTest) {
+    console.log("[fillout-to-freshdesk] Detected Fillout test ping, skipping ticket creation");
+    return NextResponse.json({
+      ok: true,
+      test: true,
+      message: "Test webhook received - endpoint is reachable. No ticket created.",
+    });
   }
 
   const email = findEmail(questions);
   if (!email) {
-    console.error("[fillout-to-freshdesk] No email found in payload");
-    return NextResponse.json(
-      {
-        error: "No email field found in submission",
-        debug_received: body,
-        debug_questions_seen: questions.map((q) => ({ name: q.name, type: q.type, value: q.value })),
-      },
-      { status: 400 }
-    );
+    console.error("[fillout-to-freshdesk] No email found in submission");
+    return NextResponse.json({ error: "No email field found in submission" }, { status: 400 });
   }
 
   const customerName = findName(questions);
