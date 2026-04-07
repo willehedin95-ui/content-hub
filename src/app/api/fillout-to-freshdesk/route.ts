@@ -115,6 +115,34 @@ function findName(questions: FilloutQuestion[]): string | null {
   return null;
 }
 
+// Days a customer has to request a return after delivery. Returns submitted later than this
+// are silently dropped (no Freshdesk ticket created) since Fillout shows them a "för sent"
+// ending page but still fires the webhook.
+const RETURN_WINDOW_DAYS = 14;
+
+function findDeliveryDate(questions: FilloutQuestion[]): Date | null {
+  for (const q of questions) {
+    const name = (q.name || "").toLowerCase();
+    const type = (q.type || "").toLowerCase();
+    const isDateField = type.includes("date");
+    const isDelivery =
+      name.includes("mottog") ||
+      name.includes("leverans") ||
+      name.includes("received") ||
+      name.includes("delivery");
+    if (!isDateField || !isDelivery || !q.value) continue;
+    const raw = typeof q.value === "string" ? q.value : String(q.value);
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function daysSince(date: Date): number {
+  const diffMs = Date.now() - date.getTime();
+  return diffMs / (1000 * 60 * 60 * 24);
+}
+
 function reorderNameFields(questions: FilloutQuestion[]): FilloutQuestion[] {
   // Make sure Förnamn (first name) appears before Efternamn (last name) regardless of form order.
   const firstNameIdx = questions.findIndex((q) => {
@@ -225,6 +253,22 @@ export async function POST(req: NextRequest) {
       ok: true,
       test: true,
       message: "Test webhook received - endpoint is reachable. No ticket created.",
+    });
+  }
+
+  // Drop "för sent"-returns: if there's a delivery date field and it's older than the
+  // return window, Fillout has already shown the customer a "for sent" ending page so we
+  // shouldn't create a Freshdesk ticket. Webhooks fire regardless of which ending was shown.
+  const deliveryDate = findDeliveryDate(questions);
+  if (deliveryDate && daysSince(deliveryDate) > RETURN_WINDOW_DAYS) {
+    console.log(
+      `[fillout-to-freshdesk] Skipping ticket - delivery date ${deliveryDate.toISOString().slice(0, 10)} is ${Math.floor(daysSince(deliveryDate))} days ago (window: ${RETURN_WINDOW_DAYS}d)`
+    );
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "outside_return_window",
+      message: `Delivery date is more than ${RETURN_WINDOW_DAYS} days ago - no ticket created.`,
     });
   }
 
