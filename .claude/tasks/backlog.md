@@ -14,8 +14,8 @@ Updated: 2026-04-04
 ## Tier 1 — Revenue & Automation
 - [x] ~~**Multi-workspace hardcoding audit**~~ — Full codebase audit (4 parallel agents), fixed 24 files. Removed pausedProducts hiding Hydro13, hardcoded pillow descriptions, `|| "happysleep"` fallbacks, collagen-specific research prompts, HappySleep-specific blog language rules. Commits `69dea06`, `f80afda`. (done 2026-03-27)
 - [x] ~~**Workspace-aware language options**~~ — Hydro13 now only shows Swedish. `WorkspaceProvider` + `useWorkspaceLanguages()` hook, 10 components + 8 API routes updated. Commit `907130c`. (done 2026-03-27, by Paperclip CEO agent)
-- [ ] **Fix ad-performance-sync multi-workspace** — Cron only syncs env var Meta account. Renew's separate ad account (`act_1356397096506086`) data never synced. Needs to iterate `workspaces.meta_config`. (added 2026-03-27, HIGH priority)
-- [ ] **Fix pipeline/concepts approve route** — `POST /api/pipeline/concepts/[id]/approve` references non-existent `/api/image-jobs/[id]/generate-all`. Silently 404s. (added 2026-03-27)
+- [x] ~~**Fix ad-performance-sync multi-workspace**~~ — Refactored to collect all unique ad accounts (env vars + workspace meta_config), sync each sequentially. Commit `f3057d5`. (done 2026-04-04)
+- [x] ~~**Fix pipeline/concepts approve route**~~ — Investigated: the `pipeline_concepts` table doesn't exist (dead code from superseded design). Active approve flow works via `/api/brainstorm/approve`. No fix needed. (resolved 2026-04-04)
 - [x] ~~**Improve landing page auto-picker**~~ — Replaced 4-tier auto-logic with explicit `primary_landing_pages` workspace setting (default + per-angle). A/B page testing disabled (budget fragmentation). Commit `5765425`. (done 2026-03-31)
 - [ ] **Full autopilot (no approval)** — End goal: remove human approval step entirely. Autopilot generates concepts, translates, picks landing page, pushes to Meta — zero intervention. Requires: good landing page picker, high concept quality, reliable translations. Evaluate output quality first. (added 2026-03-29)
 
@@ -72,8 +72,8 @@ Updated: 2026-04-04
 - [ ] **Monitor first automated scan** — Check results after 10:00 UTC tomorrow. (added 2026-03-25)
 
 ## Tier 1.5 — Immediate Follow-ups (new)
-- [ ] **Hydro13 product appearance in static-ad-prompt** — `generate-static-images.ts` uses `resolveReferenceImages()` which doesn't have Hydro13-specific appearance text. May need same white bottle description as swipe-competitor.ts. (added 2026-04-04)
-- [ ] **Push 104a340 to deploy** — Bleeder cooldown, retry logic, UI labels, Hydro13 product appearance, video script redesign. Not yet pushed. (added 2026-04-04, HIGH)
+- [x] ~~**Hydro13 product appearance in static-ad-prompt**~~ — Extracted shared `product-appearance.ts`, wired into both `static-ad-prompt.ts` and `swipe-competitor.ts`. Commit `ab579ce`. (done 2026-04-04)
+- [x] ~~**Push 104a340 to deploy**~~ — Already on `origin/main` (was stale entry). Confirmed deployed. (resolved 2026-04-04)
 
 ## Done (recent)
 - [x] **Bleeder cooldown + image retry + product appearance** — Bleeders now have 4-day cooldown. Swipe image generation retries 3x. "Importing" → "Generating..."/""Failed". Hydro13 white bottle description added. `productAppearance` always injected. `include_product_reference` logic fixed for native ads. 7 stuck concepts archived. Commit `104a340`. (done 2026-04-04)

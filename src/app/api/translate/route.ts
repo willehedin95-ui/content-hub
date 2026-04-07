@@ -7,6 +7,7 @@ import { calcOpenAICost } from "@/lib/pricing";
 import { OPENAI_MODEL, RATE_LIMIT_TRANSLATE, STALE_CLAIM_MS } from "@/lib/constants";
 import { Language } from "@/types";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { rewriteMarketUrls } from "@/lib/market-url-rewriter";
 
 // Pages larger than this (after stripping scripts/styles) use block-based translation.
 // Block-based is more robust for large pages: GPT translates smaller JSON chunks
@@ -99,6 +100,14 @@ export async function POST(req: NextRequest) {
   if (sourceLanguage === language) {
     const { metas } = extractBlocks(page.original_html);
 
+    // Rewrite Shopify CTA URLs to the target market (even for same-language copies)
+    const { html: urlRewrittenHtml } = await rewriteMarketUrls(
+      page.original_html,
+      page.product,
+      language as Language,
+      workspaceId,
+    );
+
     const { data: translation, error: saveError } = await db
       .from("translations")
       .upsert(
@@ -106,7 +115,7 @@ export async function POST(req: NextRequest) {
           page_id,
           language,
           variant: "control",
-          translated_html: page.original_html,
+          translated_html: urlRewrittenHtml,
           translated_texts: null,
           seo_title: metas.title || null,
           seo_description: metas.description || null,
@@ -213,6 +222,16 @@ export async function POST(req: NextRequest) {
       totalOutputTokens = blocksResult.outputTokens + altsResult.outputTokens + metasResult.outputTokens;
       approach = "block-based";
     }
+
+    // Rewrite Shopify CTA URLs to the target market so Danes land in the
+    // Danish store, Norwegians in the Norwegian store, etc.
+    const urlRewrite = await rewriteMarketUrls(
+      translatedHtml,
+      page.product,
+      language as Language,
+      workspaceId,
+    );
+    translatedHtml = urlRewrite.html;
 
     // Save translation
     const seoMetas = extractBlocks(translatedHtml).metas;

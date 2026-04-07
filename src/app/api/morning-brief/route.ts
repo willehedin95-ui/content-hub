@@ -360,12 +360,26 @@ export async function GET(req: NextRequest) {
     campaignCpa.set(cid ?? "unknown", campPurchases > 0 ? campSpend / campPurchases : 0);
   }
 
+  // Bleeder logic (rewritten 2026-04-07):
+  // - Window-based evaluation (not per-day) — prevents false positives for low-volume products
+  // - 4-day cooldown from ad's first-seen date — gives Meta time to exit learning phase
+  // - 200 SEK minimum total spend — matches strategy-engine BLEEDER_SPEND_THRESHOLD
+  // - Bleeds only if EITHER zero purchases OR CPA > 1.5× target CPA over the whole window
+  //
+  // Previous logic killed ads after 2 consecutive days with spend > 5 SEK and 0 purchases —
+  // catastrophically wrong for products with 1-2 purchases/week, and killed Hydro13 #101 Bild 2
+  // which had 1.95x ROAS (above BE) over the same window.
+  const AD_COOLDOWN_DAYS = 4;
+  const AD_BLEEDER_SPEND_THRESHOLD = 200;
+  const AD_BAD_CPA_MULTIPLIER = 1.5;
+
   for (const adId of adIds) {
     const adDays = currentRows
       .filter((r) => r.meta_ad_id === adId)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (adDays.length < 2) continue;
+    // Need at least 4 days of data to evaluate — matches cooldown period
+    if (adDays.length < AD_COOLDOWN_DAYS) continue;
 
     const adName = adDays[adDays.length - 1].ad_name;
     const adsetName = adDays[adDays.length - 1].adset_name;
@@ -382,42 +396,42 @@ export async function GET(req: NextRequest) {
 
     if (cpaThreshold === 0) continue; // no baseline available at all
 
-    // Count consecutive bleeding days from the end
-    let bleedingDays = 0;
-    for (let i = adDays.length - 1; i >= 0; i--) {
-      const day = adDays[i];
-      const daySpend = Number(day.spend);
-      const dayPurchases = Number(day.purchases);
-      const dayCpa = dayPurchases > 0 ? daySpend / dayPurchases : Infinity;
+    // Cooldown check: ad must have been running at least 4 days.
+    // Use first date we have performance data for (proxy for first_seen).
+    const firstDate = adDays[0].date;
+    const daysRunning = Math.floor(
+      (new Date(latestDate).getTime() - new Date(firstDate).getTime()) / 86400000
+    ) + 1; // inclusive
+    if (daysRunning < AD_COOLDOWN_DAYS) continue;
 
-      // Bleeding: spending money with either no purchases or CPA above target.
-      // No CTR gate — an ad losing money is bleeding regardless of click rate.
-      if (daySpend > 5 && (dayPurchases === 0 || dayCpa > cpaThreshold)) {
-        bleedingDays++;
-      } else {
-        break;
-      }
-    }
+    // Window-based evaluation (whole 7d period, not per-day)
+    const totalSpend = adDays.reduce((s, r) => s + Number(r.spend), 0);
+    const totalPurchases = adDays.reduce((s, r) => s + Number(r.purchases), 0);
+    const avgCpa = totalPurchases > 0 ? totalSpend / totalPurchases : Infinity;
 
-    if (bleedingDays >= 2) {
-      const recentDays = adDays.slice(-bleedingDays);
-      const totalSpend = recentDays.reduce((s, r) => s + Number(r.spend), 0);
-      const totalPurchases = recentDays.reduce((s, r) => s + Number(r.purchases), 0);
-      bleeders.push({
-        ad_id: adId,
-        ad_name: adName,
-        adset_id: adDays[adDays.length - 1].adset_id,
-        adset_name: adsetName,
-        campaign_id: campId,
-        campaign_name: campaignName,
-        days_bleeding: bleedingDays,
-        total_spend: round(totalSpend),
-        purchases: totalPurchases,
-        avg_cpa: totalPurchases > 0 ? round(totalSpend / totalPurchases) : 0,
-        target_cpa: round(cpaThreshold),
-        avg_ctr: round(avg(recentDays, "ctr"), 2),
-      });
-    }
+    // Must have spent at least BLEEDER_SPEND_THRESHOLD to be judged
+    if (totalSpend < AD_BLEEDER_SPEND_THRESHOLD) continue;
+
+    // Bleeder if EITHER: zero purchases over the whole window,
+    // OR CPA significantly above target (1.5× threshold)
+    const zeroPurchases = totalPurchases === 0;
+    const badCpa = totalPurchases > 0 && avgCpa > cpaThreshold * AD_BAD_CPA_MULTIPLIER;
+    if (!zeroPurchases && !badCpa) continue;
+
+    bleeders.push({
+      ad_id: adId,
+      ad_name: adName,
+      adset_id: adDays[adDays.length - 1].adset_id,
+      adset_name: adsetName,
+      campaign_id: campId,
+      campaign_name: campaignName,
+      days_bleeding: daysRunning,
+      total_spend: round(totalSpend),
+      purchases: totalPurchases,
+      avg_cpa: totalPurchases > 0 ? round(avgCpa) : 0,
+      target_cpa: round(cpaThreshold),
+      avg_ctr: round(avg(adDays, "ctr"), 2),
+    });
   }
 
   bleeders.sort((a, b) => b.total_spend - a.total_spend);
