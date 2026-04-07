@@ -33,11 +33,12 @@ import type {
   ProductSegment,
 } from "@/types";
 
-// 800s = Vercel fluid compute max. swipeCompetitorAd is the main bottleneck:
+// 300s = Vercel hobby plan hard cap. swipeCompetitorAd bottleneck per concept:
 // discovery (~30-60s) + Claude Vision (~10-20s) + 3 parallel image gens (~60-90s)
-// = ~100-170s per concept × 3 concepts = 300-510s. 300s was killing the 2nd/3rd
-// concept mid-image-loop, leaving them in draft with partial source_images.
-export const maxDuration = 800;
+// = ~100-170s. 3 concepts per run is tight but feasible with parallelized image
+// gen. If a run gets killed mid-loop, pipeline-push reconcile catches the
+// partial state on the next pass and re-promotes draft -> ready.
+export const maxDuration = 300;
 
 const TARGET_RATIOS = ["4:5", "9:16"];
 
