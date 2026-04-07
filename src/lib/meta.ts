@@ -404,18 +404,18 @@ export async function createAdSetFromTemplate(params: {
 }
 
 export async function listAdSets(campaignId: string): Promise<
-  Array<{ id: string; name: string; status: string }>
+  Array<{ id: string; name: string; status: string; effective_status?: string }>
 > {
-  return metaJsonPaginated<{ id: string; name: string; status: string }>(
-    `/${campaignId}/adsets?fields=id,name,status&limit=50`
+  return metaJsonPaginated<{ id: string; name: string; status: string; effective_status?: string }>(
+    `/${campaignId}/adsets?fields=id,name,status,effective_status&limit=50`
   );
 }
 
 export async function listAdsInAdSet(adSetId: string): Promise<
-  Array<{ id: string; name: string; status: string }>
+  Array<{ id: string; name: string; status: string; effective_status?: string }>
 > {
-  return metaJsonPaginated<{ id: string; name: string; status: string }>(
-    `/${adSetId}/ads?fields=id,name,status&limit=50`
+  return metaJsonPaginated<{ id: string; name: string; status: string; effective_status?: string }>(
+    `/${adSetId}/ads?fields=id,name,status,effective_status&limit=50`
   );
 }
 
