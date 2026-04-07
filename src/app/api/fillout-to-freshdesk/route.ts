@@ -158,10 +158,20 @@ function findOrderNumber(questions: FilloutQuestion[]): string | null {
 }
 
 // Time windows for date-gated forms. Submissions outside these windows are silently
-// dropped (no Freshdesk ticket created) since Fillout shows the customer a "för sent"
-// ending page but still fires the webhook.
-const RETURN_WINDOW_DAYS = 14; // Returns: 14 days after delivery date
-const GUARANTEE_WINDOW_DAYS = 90; // Money-back guarantee: 90 days after first delivery
+// dropped (no Freshdesk ticket created) since Fillout shows the customer a "för tidigt"
+// or "för sent" ending page but still fires the webhook.
+//
+//   - Retur:    must request within 14 days of delivery (max only)
+//   - Garanti:  must wait at least 60 days (min daily usage required for the result
+//               guarantee), and at most 90 days (application window)
+const RETURN_MAX_DAYS = 14;
+const GUARANTEE_MIN_DAYS = 60;
+const GUARANTEE_MAX_DAYS = 90;
+
+const FORM_TIME_WINDOWS: Record<"retur" | "garanti", { minDays?: number; maxDays: number }> = {
+  retur: { maxDays: RETURN_MAX_DAYS },
+  garanti: { minDays: GUARANTEE_MIN_DAYS, maxDays: GUARANTEE_MAX_DAYS },
+};
 
 function findDeliveryDate(questions: FilloutQuestion[]): Date | null {
   for (const q of questions) {
@@ -334,24 +344,41 @@ export async function POST(req: NextRequest) {
   }
 
   // Drop out-of-window submissions. Each form has its own time window:
-  //   - Return forms ("retur"): 14 days after delivery date
-  //   - Guarantee forms ("garanti"): 90 days after first delivery date
-  // Fillout shows the customer a "för sent" ending page but still fires the webhook,
-  // so we silently drop these without creating a Freshdesk ticket.
+  //   - Return forms ("retur"):     0-14 days after delivery date
+  //   - Guarantee forms ("garanti"): 60-90 days after first delivery date
+  // Fillout shows the customer a "för tidigt"/"för sent" ending page but still fires
+  // the webhook, so we silently drop these without creating a Freshdesk ticket.
   const formKind = detectFormKind(body.formName);
   if (formKind === "retur" || formKind === "garanti") {
     const deliveryDate = findDeliveryDate(questions);
-    const windowDays = formKind === "garanti" ? GUARANTEE_WINDOW_DAYS : RETURN_WINDOW_DAYS;
-    if (deliveryDate && daysSince(deliveryDate) > windowDays) {
-      console.log(
-        `[fillout-to-freshdesk] Skipping ${formKind} ticket - delivery date ${deliveryDate.toISOString().slice(0, 10)} is ${Math.floor(daysSince(deliveryDate))} days ago (window: ${windowDays}d)`
-      );
-      return NextResponse.json({
-        ok: true,
-        skipped: true,
-        reason: "outside_window",
-        message: `Submission is more than ${windowDays} days old - no ticket created.`,
-      });
+    if (deliveryDate) {
+      const days = daysSince(deliveryDate);
+      const window = FORM_TIME_WINDOWS[formKind];
+      const dateStr = deliveryDate.toISOString().slice(0, 10);
+
+      if (days > window.maxDays) {
+        console.log(
+          `[fillout-to-freshdesk] Skipping ${formKind} ticket (too late) - delivery date ${dateStr} is ${Math.floor(days)} days ago (max: ${window.maxDays}d)`
+        );
+        return NextResponse.json({
+          ok: true,
+          skipped: true,
+          reason: "too_late",
+          message: `Submission is more than ${window.maxDays} days old - no ticket created.`,
+        });
+      }
+
+      if (window.minDays !== undefined && days < window.minDays) {
+        console.log(
+          `[fillout-to-freshdesk] Skipping ${formKind} ticket (too early) - delivery date ${dateStr} is only ${Math.floor(days)} days ago (min: ${window.minDays}d)`
+        );
+        return NextResponse.json({
+          ok: true,
+          skipped: true,
+          reason: "too_early",
+          message: `Submission is less than ${window.minDays} days old - no ticket created.`,
+        });
+      }
     }
   }
 
