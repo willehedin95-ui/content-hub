@@ -157,10 +157,11 @@ function findOrderNumber(questions: FilloutQuestion[]): string | null {
   return null;
 }
 
-// Days a customer has to request a return after delivery. Returns submitted later than this
-// are silently dropped (no Freshdesk ticket created) since Fillout shows them a "för sent"
+// Time windows for date-gated forms. Submissions outside these windows are silently
+// dropped (no Freshdesk ticket created) since Fillout shows the customer a "för sent"
 // ending page but still fires the webhook.
-const RETURN_WINDOW_DAYS = 14;
+const RETURN_WINDOW_DAYS = 14; // Returns: 14 days after delivery date
+const GUARANTEE_WINDOW_DAYS = 90; // Money-back guarantee: 90 days after first delivery
 
 function findDeliveryDate(questions: FilloutQuestion[]): Date | null {
   for (const q of questions) {
@@ -238,25 +239,42 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function buildSubject(formName: string | undefined, questions: FilloutQuestion[]): string {
+function cleanFormName(formName: string | undefined): string {
   // Strip leading symbols/whitespace like "®" that Fillout often prefixes form names with
-  const cleanFormName = (formName || "")
-    .replace(/^[\s®©™\u00A9\u00AE\u2122]+/, "")
-    .trim();
+  return (formName || "").replace(/^[\s®©™\u00A9\u00AE\u2122]+/, "").trim();
+}
+
+type FormKind = "retur" | "garanti" | "kontakt" | "other";
+
+function detectFormKind(formName: string | undefined): FormKind {
+  const lower = cleanFormName(formName).toLowerCase();
+  if (lower.includes("retur")) return "retur";
+  if (lower.includes("garanti")) return "garanti";
+  if (lower.includes("kontakt") || lower.includes("contact")) return "kontakt";
+  return "other";
+}
+
+function buildSubject(formName: string | undefined, questions: FilloutQuestion[]): string {
+  const cleaned = cleanFormName(formName);
   const fullName = buildFullName(questions);
   const orderNumber = findOrderNumber(questions);
-  const isReturn = cleanFormName.toLowerCase().includes("retur");
+  const kind = detectFormKind(formName);
 
-  // Return-form subject: "Retur #1234 - William Hedin"
-  if (isReturn) {
-    const parts: string[] = ["Retur"];
+  // Form-specific subject prefixes: "Retur #1234 - William Hedin", "Garanti #1234 - ...", "Kontakt #1234 - ..."
+  const PREFIXES: Record<Exclude<FormKind, "other">, string> = {
+    retur: "Retur",
+    garanti: "Garanti",
+    kontakt: "Kontakt",
+  };
+  if (kind !== "other") {
+    const parts: string[] = [PREFIXES[kind]];
     if (orderNumber) parts.push(`#${orderNumber}`);
     if (fullName) parts.push(`- ${fullName}`);
     return parts.join(" ");
   }
 
-  // Generic subject: "Kontaktformulär - William Hedin" or "Ny kontaktformulär"
-  const formLabel = cleanFormName || "formulärinlämning";
+  // Generic fallback: "Kontaktformulär - William Hedin" or "Ny formulärinlämning"
+  const formLabel = cleaned || "formulärinlämning";
   if (fullName) return `${formLabel} - ${fullName}`;
   return `Ny ${formLabel.toLowerCase()}`;
 }
@@ -315,20 +333,26 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Drop "för sent"-returns: if there's a delivery date field and it's older than the
-  // return window, Fillout has already shown the customer a "for sent" ending page so we
-  // shouldn't create a Freshdesk ticket. Webhooks fire regardless of which ending was shown.
-  const deliveryDate = findDeliveryDate(questions);
-  if (deliveryDate && daysSince(deliveryDate) > RETURN_WINDOW_DAYS) {
-    console.log(
-      `[fillout-to-freshdesk] Skipping ticket - delivery date ${deliveryDate.toISOString().slice(0, 10)} is ${Math.floor(daysSince(deliveryDate))} days ago (window: ${RETURN_WINDOW_DAYS}d)`
-    );
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: "outside_return_window",
-      message: `Delivery date is more than ${RETURN_WINDOW_DAYS} days ago - no ticket created.`,
-    });
+  // Drop out-of-window submissions. Each form has its own time window:
+  //   - Return forms ("retur"): 14 days after delivery date
+  //   - Guarantee forms ("garanti"): 90 days after first delivery date
+  // Fillout shows the customer a "för sent" ending page but still fires the webhook,
+  // so we silently drop these without creating a Freshdesk ticket.
+  const formKind = detectFormKind(body.formName);
+  if (formKind === "retur" || formKind === "garanti") {
+    const deliveryDate = findDeliveryDate(questions);
+    const windowDays = formKind === "garanti" ? GUARANTEE_WINDOW_DAYS : RETURN_WINDOW_DAYS;
+    if (deliveryDate && daysSince(deliveryDate) > windowDays) {
+      console.log(
+        `[fillout-to-freshdesk] Skipping ${formKind} ticket - delivery date ${deliveryDate.toISOString().slice(0, 10)} is ${Math.floor(daysSince(deliveryDate))} days ago (window: ${windowDays}d)`
+      );
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "outside_window",
+        message: `Submission is more than ${windowDays} days old - no ticket created.`,
+      });
+    }
   }
 
   const email = findEmail(questions);
@@ -345,13 +369,17 @@ export async function POST(req: NextRequest) {
     submissionTime: submission.submissionTime,
   });
 
+  // Add form-type tag so support staff can filter (retur / garanti / kontakt)
+  const tags = ["fillout", "website-form"];
+  if (formKind !== "other") tags.push(formKind);
+
   const ticketPayload: Record<string, unknown> = {
     email,
     subject,
     description,
     status: 2, // Open
     priority: 1, // Low
-    tags: ["fillout", "website-form"],
+    tags,
   };
   if (customerName) ticketPayload.name = customerName;
 
