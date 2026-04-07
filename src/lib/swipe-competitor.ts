@@ -321,7 +321,10 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   }
 
   // --- Generate images ---
-  const imageResults: Array<{ url: string; sourceImageId: string }> = [];
+  // PARALLEL generation via Promise.allSettled — sequential was the root cause of
+  // autopilot-concepts cron timeouts. With sequential at 30-90s/image × 3 images
+  // = 90-270s, the 300s maxDuration killed the cron mid-loop, leaving partial
+  // source_images and jobs stuck in "draft". Parallel cuts this to ~30-90s total.
 
   // Clear pending and store reference data
   await db.from("image_jobs").update({
@@ -332,130 +335,142 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     },
   }).eq("id", job.id);
 
+  if (existingJobId) {
+    await updateProgress(existingJobId, "generating", `Generating ${parsed.image_prompts.length} images in parallel...`);
+  }
+
   const MAX_IMAGE_RETRIES = 2;
 
-  for (let index = 0; index < parsed.image_prompts.length; index++) {
-    const imgPrompt = parsed.image_prompts[index];
-    if (existingJobId) {
-      await updateProgress(existingJobId, "generating", `Generating image ${index + 1} of ${parsed.image_prompts.length}...`);
-    }
+  const settled = await Promise.allSettled(
+    parsed.image_prompts.map(async (imgPrompt, index): Promise<{ url: string; sourceImageId: string }> => {
+      // Pass competitor image as style reference so generated images match the original's visual style.
+      // Product hero images are added when include_product_reference is true.
+      const includeProduct = imgPrompt.include_product_reference === true;
+      const referenceUrls = [
+        competitorImageUrls[0],  // Style reference (first competitor image)
+        ...(includeProduct ? productHeroUrls : []),
+      ];
 
-    // Pass competitor image as style reference so generated images match the original's visual style.
-    // Product hero images are added when include_product_reference is true.
-    const includeProduct = imgPrompt.include_product_reference === true;
-    const referenceUrls = [
-      competitorImageUrls[0],  // Style reference (first competitor image)
-      ...(includeProduct ? productHeroUrls : []),
-    ];
+      // Build the full prompt: scene description + product appearance + optional text overlay instructions.
+      // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
+      const promptRaw = imgPrompt.prompt;
+      const isJsonPrompt = typeof promptRaw === "object" && promptRaw !== null;
 
-    // Build the full prompt: scene description + product appearance + optional text overlay instructions.
-    // Only add text overlays if Claude detected text in the competitor ad (non-empty hook_text/headline_text).
-    const promptRaw = imgPrompt.prompt;
-    const isJsonPrompt = typeof promptRaw === "object" && promptRaw !== null;
-
-    // Always inject product appearance as a safety net — even if include_product_reference
-    // is false, Claude may still mention the product in the prompt (e.g. "holding a bottle").
-    // Without this, Kie AI would hallucinate the product's appearance.
-    let fullPrompt: string;
-    if (isJsonPrompt) {
-      const jsonObj = { ...(promptRaw as Record<string, unknown>) };
-      if (productAppearance) {
-        jsonObj.ProductDescription = productAppearance;
-      }
-      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
-      if (hasTextOverlay) {
-        const overlayParts: string[] = [];
-        if (imgPrompt.hook_text?.trim()) overlayParts.push(`Bold headline: "${imgPrompt.hook_text}"`);
-        if (imgPrompt.headline_text?.trim()) overlayParts.push(`Secondary line: "${imgPrompt.headline_text}"`);
-        jsonObj.TextOverlay = overlayParts.join(". ");
-      }
-      fullPrompt = JSON.stringify(jsonObj);
-    } else {
-      fullPrompt = String(promptRaw);
-      if (productAppearance) {
-        fullPrompt += " " + productAppearance;
-      }
-      const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
-      if (hasTextOverlay) {
-        const textParts: string[] = [];
-        if (imgPrompt.hook_text?.trim()) {
-          textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
+      // Always inject product appearance as a safety net — even if include_product_reference
+      // is false, Claude may still mention the product in the prompt (e.g. "holding a bottle").
+      // Without this, Kie AI would hallucinate the product's appearance.
+      let fullPrompt: string;
+      if (isJsonPrompt) {
+        const jsonObj = { ...(promptRaw as Record<string, unknown>) };
+        if (productAppearance) {
+          jsonObj.ProductDescription = productAppearance;
         }
-        if (imgPrompt.headline_text?.trim()) {
-          textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
+        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+        if (hasTextOverlay) {
+          const overlayParts: string[] = [];
+          if (imgPrompt.hook_text?.trim()) overlayParts.push(`Bold headline: "${imgPrompt.hook_text}"`);
+          if (imgPrompt.headline_text?.trim()) overlayParts.push(`Secondary line: "${imgPrompt.headline_text}"`);
+          jsonObj.TextOverlay = overlayParts.join(". ");
         }
-        fullPrompt += " " + textParts.join(" ");
-      }
-    }
-
-    // Retry loop for transient Kie AI failures
-    for (let attempt = 0; attempt <= MAX_IMAGE_RETRIES; attempt++) {
-      try {
-        const { urls: resultUrls, costTimeMs } = await generateImage(
-          fullPrompt,
-          referenceUrls,
-          "4:5"
-        );
-
-        if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
-
-        const resultRes = await fetch(resultUrls[0]);
-        if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
-        const buffer = Buffer.from(await resultRes.arrayBuffer());
-
-        const fileId = crypto.randomUUID();
-        const filePath = `image-jobs/${job.id}/${fileId}.png`;
-        const { error: uploadError } = await db.storage
-          .from(STORAGE_BUCKET)
-          .upload(filePath, buffer, { contentType: "image/png", upsert: false });
-
-        if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
-
-        const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
-
-        const { data: sourceImage } = await db
-          .from("source_images")
-          .insert({
-            job_id: job.id,
-            original_url: urlData.publicUrl,
-            filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
-            processing_order: index,
-            skip_translation: !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
-            generation_prompt: isJsonPrompt ? JSON.stringify(promptRaw) : String(promptRaw),
-            generation_style: "competitor-swipe",
-            batch: 1,
-          })
-          .select()
-          .single();
-
-        await db.from("usage_logs").insert({
-          type: "image_generation",
-          page_id: null,
-          translation_id: null,
-          model: KIE_MODEL,
-          input_tokens: 0,
-          output_tokens: 0,
-          cost_usd: KIE_IMAGE_COST,
-          metadata: {
-            purpose: "competitor_swipe",
-            image_job_id: job.id,
-            source_image_id: sourceImage?.id,
-            kie_cost_time_ms: costTimeMs,
-            reference_image_count: referenceUrls.length,
-          },
-        });
-
-        imageResults.push({ url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" });
-        break; // Success — exit retry loop
-      } catch (err) {
-        if (attempt < MAX_IMAGE_RETRIES) {
-          console.warn(`[swipe-competitor] Image ${index + 1} attempt ${attempt + 1} failed, retrying...`, err);
-          await new Promise((r) => setTimeout(r, 2000)); // Wait 2s before retry
-        } else {
-          console.error(`[swipe-competitor] Image ${index + 1} failed after ${MAX_IMAGE_RETRIES + 1} attempts:`, err);
+        fullPrompt = JSON.stringify(jsonObj);
+      } else {
+        fullPrompt = String(promptRaw);
+        if (productAppearance) {
+          fullPrompt += " " + productAppearance;
+        }
+        const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
+        if (hasTextOverlay) {
+          const textParts: string[] = [];
+          if (imgPrompt.hook_text?.trim()) {
+            textParts.push(`Bold, attention-grabbing headline text reading "${imgPrompt.hook_text}" prominently placed in the image with high contrast against the background.`);
+          }
+          if (imgPrompt.headline_text?.trim()) {
+            textParts.push(`Secondary text line reading "${imgPrompt.headline_text}" placed below the main headline in a smaller but still legible font.`);
+          }
+          fullPrompt += " " + textParts.join(" ");
         }
       }
-    }
+
+      // Retry loop for transient Kie AI failures (still sequential within a single image)
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt <= MAX_IMAGE_RETRIES; attempt++) {
+        try {
+          const { urls: resultUrls, costTimeMs } = await generateImage(
+            fullPrompt,
+            referenceUrls,
+            "4:5"
+          );
+
+          if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
+
+          const resultRes = await fetch(resultUrls[0]);
+          if (!resultRes.ok) throw new Error(`Image ${index + 1}: Failed to download`);
+          const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+          const fileId = crypto.randomUUID();
+          const filePath = `image-jobs/${job.id}/${fileId}.png`;
+          const { error: uploadError } = await db.storage
+            .from(STORAGE_BUCKET)
+            .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+
+          if (uploadError) throw new Error(`Image ${index + 1}: Upload failed — ${uploadError.message}`);
+
+          const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+          const { data: sourceImage } = await db
+            .from("source_images")
+            .insert({
+              job_id: job.id,
+              original_url: urlData.publicUrl,
+              filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
+              processing_order: index,
+              skip_translation: !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
+              generation_prompt: isJsonPrompt ? JSON.stringify(promptRaw) : String(promptRaw),
+              generation_style: "competitor-swipe",
+              batch: 1,
+            })
+            .select()
+            .single();
+
+          await db.from("usage_logs").insert({
+            type: "image_generation",
+            page_id: null,
+            translation_id: null,
+            model: KIE_MODEL,
+            input_tokens: 0,
+            output_tokens: 0,
+            cost_usd: KIE_IMAGE_COST,
+            metadata: {
+              purpose: "competitor_swipe",
+              image_job_id: job.id,
+              source_image_id: sourceImage?.id,
+              kie_cost_time_ms: costTimeMs,
+              reference_image_count: referenceUrls.length,
+            },
+          });
+
+          return { url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" };
+        } catch (err) {
+          lastErr = err;
+          if (attempt < MAX_IMAGE_RETRIES) {
+            console.warn(`[swipe-competitor] Image ${index + 1} attempt ${attempt + 1} failed, retrying...`, err);
+            await new Promise((r) => setTimeout(r, 2000)); // Wait 2s before retry
+          } else {
+            console.error(`[swipe-competitor] Image ${index + 1} failed after ${MAX_IMAGE_RETRIES + 1} attempts:`, err);
+          }
+        }
+      }
+      throw lastErr ?? new Error(`Image ${index + 1}: All retries exhausted`);
+    })
+  );
+
+  const imageResults: Array<{ url: string; sourceImageId: string }> = settled
+    .filter((s): s is PromiseFulfilledResult<{ url: string; sourceImageId: string }> => s.status === "fulfilled")
+    .map((s) => s.value);
+
+  const failedCount = settled.length - imageResults.length;
+  if (failedCount > 0) {
+    console.warn(`[swipe-competitor] ${failedCount}/${settled.length} images failed for job ${job.id}`);
   }
 
   // Update job status — mark as failed if no images were generated
