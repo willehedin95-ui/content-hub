@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd, pauseAdSetAndAds, listAdsInAdSet } from "./meta";
+import { getAdInsightsDaily, getCampaignBudget, updateAdSet, updateAd, pauseAdSetAndAds, listAdsInAdSet, getAdSetStatuses } from "./meta";
 import { createServerSupabase } from "./supabase-admin";
 import { getWorkspaceId } from "./workspace";
 import type {
@@ -575,6 +575,16 @@ async function ensureKilledAdSetsPaused(): Promise<string[]> {
     (permanentMappings ?? []).map((m) => m.template_adset_id).filter(Boolean)
   );
 
+  // Performance: batch-fetch effective_status for all non-permanent ad sets up
+  // front so we can skip the ones already paused. Without this, every cron run
+  // re-paused all 60+ killed ad sets, costing ~3-4 Meta API calls each
+  // (~200+ calls total). Now it's 1-2 batched reads + only the truly active
+  // outliers actually go through pauseAdSetAndAds.
+  const adSetIdsToCheck = campaigns
+    .map((c) => c.meta_adset_id as string)
+    .filter((id) => id && !permanentAdSetIds.has(id));
+  const adSetStatusMap = await getAdSetStatuses(adSetIdsToCheck);
+
   for (const campaign of campaigns) {
     if (!campaign.meta_adset_id) continue;
 
@@ -593,6 +603,11 @@ async function ensureKilledAdSetsPaused(): Promise<string[]> {
       }
     } else {
       // Legacy: pause the entire ad set + all ads within it
+      // Skip if Meta already reports it as PAUSED/ARCHIVED/DELETED — saves
+      // 3-4 wasted API calls per already-paused ad set.
+      const status = adSetStatusMap.get(campaign.meta_adset_id);
+      if (status && status !== "ACTIVE") continue;
+
       try {
         await pauseAdSetAndAds(campaign.meta_adset_id);
         paused.push(campaign.meta_adset_id);
@@ -782,40 +797,47 @@ export async function syncPipelineMetrics(): Promise<{ synced: number; errors: s
     aggregated.set(key, existing);
   }
 
-  // Upsert into concept_metrics
-  let syncedCount = 0;
-  for (const agg of aggregated.values()) {
+  // Batch upsert into concept_metrics. Sequential upserts here used to dominate
+  // pipeline-push runtime (~900 rows × ~150ms each ≈ 2 minutes), pushing the
+  // cron past Vercel's 5-minute maxDuration. Batched in chunks of 200 for safety
+  // against Postgres parameter limits.
+  const syncedAt = new Date().toISOString();
+  const upsertRows = Array.from(aggregated.values()).map((agg) => {
     const frequency = agg.frequencyCount > 0 ? agg.frequencySum / agg.frequencyCount : 0;
     const ctr = agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : 0;
     const cpc = agg.clicks > 0 ? agg.spend / agg.clicks : 0;
     const cpm = agg.impressions > 0 ? (agg.spend / agg.impressions) * 1000 : 0;
     const cpa = agg.conversions > 0 ? agg.spend / agg.conversions : 0;
     const roas = agg.spend > 0 ? agg.revenue / agg.spend : null;
+    return {
+      image_job_market_id: agg.image_job_market_id,
+      date: agg.date,
+      spend: agg.spend,
+      impressions: agg.impressions,
+      clicks: agg.clicks,
+      ctr,
+      cpc,
+      cpm,
+      frequency,
+      conversions: agg.conversions,
+      cpa,
+      roas,
+      revenue: agg.revenue,
+      synced_at: syncedAt,
+    };
+  });
 
-    const { error } = await db.from("concept_metrics").upsert(
-      {
-        image_job_market_id: agg.image_job_market_id,
-        date: agg.date,
-        spend: agg.spend,
-        impressions: agg.impressions,
-        clicks: agg.clicks,
-        ctr,
-        cpc,
-        cpm,
-        frequency,
-        conversions: agg.conversions,
-        cpa,
-        roas,
-        revenue: agg.revenue,
-        synced_at: new Date().toISOString(),
-      },
-      { onConflict: "image_job_market_id,date" }
-    );
-
+  let syncedCount = 0;
+  const CHUNK_SIZE = 200;
+  for (let i = 0; i < upsertRows.length; i += CHUNK_SIZE) {
+    const chunk = upsertRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await db
+      .from("concept_metrics")
+      .upsert(chunk, { onConflict: "image_job_market_id,date" });
     if (error) {
-      errors.push(`Failed to upsert metrics for ${agg.image_job_market_id} on ${agg.date}: ${error.message}`);
+      errors.push(`Failed to upsert metrics chunk ${i / CHUNK_SIZE + 1}: ${error.message}`);
     } else {
-      syncedCount++;
+      syncedCount += chunk.length;
     }
   }
 

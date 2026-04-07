@@ -337,6 +337,37 @@ export async function pauseAdSetAndAds(adSetId: string): Promise<void> {
   }
 }
 
+/**
+ * Batch-fetch effective_status for many ad sets in a single Meta call.
+ * Uses the Graph API's ?ids= multi-read endpoint (max 50 IDs per call).
+ * Returns a Map of ad_set_id -> effective_status. IDs that fail to read
+ * are simply omitted (callers should treat missing as "unknown").
+ */
+export async function getAdSetStatuses(
+  adSetIds: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (adSetIds.length === 0) return result;
+
+  const CHUNK = 50;
+  for (let i = 0; i < adSetIds.length; i += CHUNK) {
+    const chunk = adSetIds.slice(i, i + CHUNK);
+    try {
+      const data = await metaJson<Record<string, { id: string; effective_status?: string; status?: string }>>(
+        `/?ids=${chunk.join(",")}&fields=id,effective_status,status`,
+      );
+      for (const [id, info] of Object.entries(data)) {
+        const status = info.effective_status ?? info.status;
+        if (status) result.set(id, status);
+      }
+    } catch (err) {
+      console.error(`[getAdSetStatuses] Batch failed:`, err);
+    }
+  }
+
+  return result;
+}
+
 interface AdSetTemplateConfig {
   campaign_id: string;
   billing_event: string;
