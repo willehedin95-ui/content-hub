@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Fillout webhook → Freshdesk ticket bridge for Renew (get-renew.com).
+ * Fillout webhook -> Freshdesk ticket bridge for Renew (get-renew.com).
  *
- * Replaces the previous Fillout → Zapier → Freshdesk flow.
+ * Replaces the previous Fillout -> Zapier -> Freshdesk flow.
+ *
+ * How tickets are created:
+ *   Uses Freshdesk's `POST /tickets/outbound_email` endpoint (source: 10) so the
+ *   ticket DESCRIPTION is sent to the customer as the agent's first email. This
+ *   skips Freshdesk's default "new ticket" auto-acknowledge entirely - the customer
+ *   gets exactly one Renew-branded email and the agent sees the ticket in Freshdesk
+ *   with the original form data attached as a private note.
  *
  * Setup in Fillout:
  *   Form > Integrations > Webhook > POST to:
@@ -18,6 +25,11 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 export const maxDuration = 30;
+
+// Freshdesk mailbox to send the outbound acknowledgement from. This is the
+// "kundservice@get-renew.com" mailbox in the Renew Freshdesk account. If this
+// ID ever changes, update it here. (Looked up via GET /api/v2/email_configs.)
+const RENEW_EMAIL_CONFIG_ID = 10000008354;
 
 interface FilloutQuestion {
   id: string;
@@ -215,13 +227,16 @@ function reorderNameFields(questions: FilloutQuestion[]): FilloutQuestion[] {
   return reordered;
 }
 
-function buildDescription(
+// Builds the HTML body of the private agent-only note that holds the original
+// form submission. This is what the agent sees when they open the ticket - it
+// preserves all the answers exactly as the customer submitted them.
+function buildFormDataNote(
   questions: FilloutQuestion[],
   meta: { formName?: string; submissionId?: string; submissionTime?: string }
 ): string {
   const ordered = reorderNameFields(questions);
   const lines: string[] = [];
-  lines.push(`<h2>Ny formulärinlämning</h2>`);
+  lines.push(`<h2>Formulärdata</h2>`);
   if (meta.formName) lines.push(`<p><strong>Formulär:</strong> ${escapeHtml(meta.formName)}</p>`);
   if (meta.submissionTime) {
     const t = new Date(meta.submissionTime);
@@ -262,6 +277,45 @@ function detectFormKind(formName: string | undefined): FormKind {
   if (lower.includes("garanti")) return "garanti";
   if (lower.includes("kontakt") || lower.includes("contact")) return "kontakt";
   return "other";
+}
+
+// Friendly customer-facing email body sent as the outbound acknowledgement.
+// Mirrors the SwedishBalance Fillout template the user shared but with Renew
+// branding and no link back to the ticket.
+function buildAcknowledgementHtml(formKind: FormKind, firstName: string | null): string {
+  const greeting = firstName
+    ? `Hej ${escapeHtml(firstName)} <span style="font-size: 18px;">&#128075;</span>`
+    : `Hej <span style="font-size: 18px;">&#128075;</span>`;
+
+  let confirmation: string;
+  switch (formKind) {
+    case "retur":
+      confirmation = "Vi vill bekr&auml;fta att vi har mottagit din returanm&auml;lan och att ett &auml;rende har skapats.";
+      break;
+    case "garanti":
+      confirmation =
+        "Vi vill bekr&auml;fta att vi har mottagit din ans&ouml;kan om kollagen-garantin och att ett &auml;rende har skapats.";
+      break;
+    case "kontakt":
+      confirmation =
+        "Vi vill bekr&auml;fta att vi har mottagit ditt meddelande och att ett &auml;rende har skapats.";
+      break;
+    default:
+      confirmation =
+        "Vi vill bekr&auml;fta att vi har mottagit din formul&auml;rinl&auml;mning och att ett &auml;rende har skapats.";
+  }
+
+  // Inline styles only - many email clients (Gmail, Outlook) strip <style> tags.
+  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 560px; color: #1a1a1a; line-height: 1.6; font-size: 15px;">
+  <div style="text-align: center; margin: 24px 0 32px 0;">
+    <span style="display: inline-block; background: #2d8b6e; color: #ffffff; padding: 14px 36px; border-radius: 8px; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;">renew</span>
+  </div>
+  <p style="margin: 0 0 16px 0; font-size: 16px;">${greeting}</p>
+  <p style="margin: 0 0 16px 0;">${confirmation}</p>
+  <p style="margin: 0 0 16px 0;">En supportrepresentant kommer att granska ditt &auml;rende och skicka ett svar till dig (vanligtvis inom 48 timmar).</p>
+  <p style="margin: 0 0 24px 0;">Tack f&ouml;r ditt t&aring;lamod! <span style="color: #e25555;">&#10084;&#65039;</span></p>
+  <p style="margin: 32px 0 0 0;">Med v&auml;nliga h&auml;lsningar,<br>Renew kundservice</p>
+</div>`;
 }
 
 function buildSubject(formName: string | undefined, questions: FilloutQuestion[]): string {
@@ -389,8 +443,16 @@ export async function POST(req: NextRequest) {
   }
 
   const customerName = buildFullName(questions);
+  const firstName = findFirstName(questions);
   const subject = buildSubject(body.formName, questions);
-  const description = buildDescription(questions, {
+
+  // The acknowledgement HTML is sent to the customer as the email body via Freshdesk's
+  // outbound_email endpoint. The agent sees this same HTML as the ticket description.
+  const acknowledgementHtml = buildAcknowledgementHtml(formKind, firstName);
+
+  // The original form data is attached as a private note (agent-only) so all answers
+  // are preserved without being emailed to the customer.
+  const formDataNote = buildFormDataNote(questions, {
     formName: body.formName,
     submissionId: submission.submissionId,
     submissionTime: submission.submissionTime,
@@ -400,20 +462,24 @@ export async function POST(req: NextRequest) {
   const tags = ["fillout", "website-form"];
   if (formKind !== "other") tags.push(formKind);
 
+  // Use outbound_email (source: 10) so Freshdesk sends the description as the agent's
+  // first email to the customer and skips the default new-ticket auto-acknowledge.
   const ticketPayload: Record<string, unknown> = {
     email,
     subject,
-    description,
+    description: acknowledgementHtml,
     status: 2, // Open
     priority: 1, // Low
     tags,
+    email_config_id: RENEW_EMAIL_CONFIG_ID,
   };
   if (customerName) ticketPayload.name = customerName;
 
   // Basic auth: API key as username, "X" as password
   const authHeader = "Basic " + Buffer.from(`${apiKey}:X`).toString("base64");
+  const baseUrl = `https://${domain}.freshdesk.com/api/v2`;
 
-  const res = await fetch(`https://${domain}.freshdesk.com/api/v2/tickets`, {
+  const res = await fetch(`${baseUrl}/tickets/outbound_email`, {
     method: "POST",
     headers: {
       Authorization: authHeader,
@@ -425,7 +491,7 @@ export async function POST(req: NextRequest) {
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`[fillout-to-freshdesk] Freshdesk API error ${res.status}:`, text.slice(0, 500));
+    console.error(`[fillout-to-freshdesk] Freshdesk outbound_email error ${res.status}:`, text.slice(0, 500));
     return NextResponse.json(
       { error: `Freshdesk API error (${res.status})`, details: text.slice(0, 500) },
       { status: 502 }
@@ -433,7 +499,30 @@ export async function POST(req: NextRequest) {
   }
 
   const ticket = (await res.json()) as { id: number };
-  console.log(`[fillout-to-freshdesk] Created ticket #${ticket.id} for ${email}`);
+  console.log(`[fillout-to-freshdesk] Created ticket #${ticket.id} for ${email} (outbound_email)`);
+
+  // Attach the original form data as a private note. We don't want a single note failure
+  // to fail the whole webhook (the customer email already went out), so we log + swallow.
+  try {
+    const noteRes = await fetch(`${baseUrl}/tickets/${ticket.id}/notes`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ body: formDataNote, private: true }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!noteRes.ok) {
+      const text = await noteRes.text();
+      console.error(
+        `[fillout-to-freshdesk] Failed to attach form data note to ticket #${ticket.id} (${noteRes.status}):`,
+        text.slice(0, 300)
+      );
+    }
+  } catch (e) {
+    console.error(`[fillout-to-freshdesk] Exception attaching form data note to ticket #${ticket.id}:`, e);
+  }
 
   return NextResponse.json({ ok: true, ticketId: ticket.id });
 }
