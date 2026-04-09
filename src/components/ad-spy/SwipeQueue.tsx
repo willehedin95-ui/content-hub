@@ -49,9 +49,12 @@ export default function SwipeQueue({ onCountChange }: { onCountChange: (count: n
     return () => clearInterval(interval);
   }, [fetchQueue]);
 
-  // Auto-trigger process-next when there are queued items and nothing swiping
+  // Auto-trigger process-next when there are queued items.
+  // We rely only on processingRef (in-flight local request) to prevent
+  // double-triggering — NOT on counts.swiping, because a single stuck
+  // "swiping" row would otherwise block the queue forever.
   useEffect(() => {
-    if (counts.queued > 0 && counts.swiping === 0 && !processingRef.current) {
+    if (counts.queued > 0 && !processingRef.current) {
       processingRef.current = true;
       fetch("/api/ad-spy/process-next", { method: "POST" })
         .catch(() => {})
@@ -59,7 +62,7 @@ export default function SwipeQueue({ onCountChange }: { onCountChange: (count: n
           processingRef.current = false;
         });
     }
-  }, [counts.queued, counts.swiping]);
+  }, [counts.queued]);
 
   if (loading) {
     return (

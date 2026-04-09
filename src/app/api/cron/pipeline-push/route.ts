@@ -493,10 +493,31 @@ async function reconcileStuckJobs(db: ReturnType<typeof createServerSupabase>) {
     }
   }
 
+  // 4. Reset stuck "swiping" discovered_ads rows (orphaned by a swipeCompetitorAd
+  // call that Vercel killed at the 300s timeout before the try/catch could run).
+  // 15 minutes is well past the 5min usual worst-case swipe duration and the
+  // 300s Vercel cap, so anything older than that is definitely abandoned.
+  const STUCK_SWIPE_MS = 15 * 60 * 1000;
+  const cutoffSwipe = new Date(now - STUCK_SWIPE_MS).toISOString();
+  let discoveredAdsReset = 0;
+
+  const { data: stuckSwipes, error: stuckSwipeErr } = await db
+    .from("discovered_ads")
+    .update({ status: "skipped", updated_at: new Date().toISOString() })
+    .eq("status", "swiping")
+    .lt("updated_at", cutoffSwipe)
+    .select("id");
+
+  if (!stuckSwipeErr && stuckSwipes) {
+    discoveredAdsReset = stuckSwipes.length;
+  }
+
   return {
     translationsReset,
     draftsPromoted,
     jobsCompleted,
-    totalReset: translationsReset + draftsPromoted + jobsCompleted,
+    discoveredAdsReset,
+    totalReset:
+      translationsReset + draftsPromoted + jobsCompleted + discoveredAdsReset,
   };
 }

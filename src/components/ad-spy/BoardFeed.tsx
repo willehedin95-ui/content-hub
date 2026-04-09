@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2 } from "lucide-react";
+import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon } from "lucide-react";
 
 interface BoardAd {
   id: number;
@@ -43,6 +43,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [batchSwiping, setBatchSwiping] = useState(false);
   const [painPoint, setPainPoint] = useState("auto-detect");
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
 
   // First, fetch boards to let user pick or auto-select
   useEffect(() => {
@@ -277,6 +278,13 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowImageModal(true)}
+            className="flex items-center gap-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-lg transition-colors"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            Upload Image
+          </button>
+          <button
             onClick={() => setShowUploadModal(true)}
             className="flex items-center gap-1.5 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-2 rounded-lg transition-colors"
           >
@@ -360,6 +368,17 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           onSuccess={(videoJobId) => {
             setShowUploadModal(false);
             router.push(`/video-ads/${videoJobId}`);
+          }}
+        />
+      )}
+
+      {/* Upload Image Modal */}
+      {showImageModal && (
+        <UploadImageModal
+          onClose={() => setShowImageModal(false)}
+          onSuccess={(jobId) => {
+            setShowImageModal(false);
+            router.push(`/images/${jobId}`);
           }}
         />
       )}
@@ -616,6 +635,301 @@ function UploadVideoModal({
               <>
                 <Zap className="w-4 h-4" />
                 Swipe Video
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Upload Image Modal
+// ---------------------------------------------------------------------------
+
+function UploadImageModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (jobId: string) => void;
+}) {
+  const [mode, setMode] = useState<"file" | "url">("file");
+  const [imageUrl, setImageUrl] = useState("");
+  const [brandName, setBrandName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // Generate/revoke preview URL when file changes
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  // Paste handler: cmd+V an image from clipboard
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const pastedFile = item.getAsFile();
+          if (pastedFile) {
+            setFile(pastedFile);
+            setMode("file");
+            setError(null);
+            e.preventDefault();
+            break;
+          }
+        }
+      }
+    }
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, []);
+
+  async function handleSubmit() {
+    let finalImageUrl = imageUrl;
+
+    if (mode === "file") {
+      if (!file) {
+        setError("Paste (cmd+V), drop, or pick an image");
+        return;
+      }
+      setUploading(true);
+      setUploadProgress("Getting upload URL...");
+      setError(null);
+
+      try {
+        const signRes = await fetch(
+          `/api/ad-spy/upload-image?filename=${encodeURIComponent(file.name)}&size=${file.size}`
+        );
+        const signData = await signRes.json();
+        if (!signRes.ok) throw new Error(signData.error || "Failed to get upload URL");
+
+        setUploadProgress("Uploading image...");
+        const uploadRes = await fetch(signData.signed_url, {
+          method: "PUT",
+          headers: { "Content-Type": signData.content_type },
+          body: file,
+        });
+        if (!uploadRes.ok) {
+          const errText = await uploadRes.text().catch(() => "Upload failed");
+          throw new Error(errText);
+        }
+
+        finalImageUrl = signData.public_url;
+        setUploadProgress(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload failed");
+        setUploading(false);
+        setUploadProgress(null);
+        return;
+      }
+      setUploading(false);
+    } else {
+      if (!imageUrl.trim()) {
+        setError("Paste an image URL");
+        return;
+      }
+    }
+
+    // Call /api/ad-spy/swipe without gethookd_ad_id → manual upload path
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ad-spy/swipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          media_urls: [finalImageUrl],
+          brand_name: brandName.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "Swipe failed");
+        try {
+          const parsed = JSON.parse(errText);
+          throw new Error(parsed.error || "Swipe failed");
+        } catch (e) {
+          if (e instanceof SyntaxError) throw new Error(errText);
+          throw e;
+        }
+      }
+      const data = await res.json();
+      if (!data.ok || !data.jobId) throw new Error(data.error || "Swipe failed");
+      onSuccess(data.jobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start swipe");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile?.type.startsWith("image/")) {
+      setFile(droppedFile);
+      setError(null);
+    } else {
+      setError("Please drop an image file (png, jpg, webp, gif)");
+    }
+  }
+
+  const isProcessing = uploading || submitting;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Swipe Competitor Image</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+            <button
+              onClick={() => { setMode("file"); setError(null); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-md transition-colors ${
+                mode === "file" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Paste / Upload
+            </button>
+            <button
+              onClick={() => { setMode("url"); setError(null); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-md transition-colors ${
+                mode === "url" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              Image URL
+            </button>
+          </div>
+
+          {/* File area */}
+          {mode === "file" && (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
+                dragOver
+                  ? "border-indigo-400 bg-indigo-50"
+                  : file
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-gray-200 hover:border-gray-300 bg-gray-50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) { setFile(f); setError(null); }
+                }}
+              />
+              {previewUrl ? (
+                <div className="space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="max-h-40 mx-auto rounded-lg border border-gray-200"
+                  />
+                  <p className="text-[11px] text-gray-500 truncate">
+                    {file?.name} · {file ? (file.size / 1024).toFixed(0) : 0} KB
+                  </p>
+                  <p className="text-[10px] text-gray-400">Click to replace</p>
+                </div>
+              ) : (
+                <div className="space-y-1 py-3">
+                  <ImageIcon className="w-6 h-6 text-gray-400 mx-auto" />
+                  <p className="text-sm text-gray-600 font-medium">Paste <kbd className="px-1.5 py-0.5 text-[10px] bg-white border border-gray-300 rounded">⌘V</kbd>, drop, or click to browse</p>
+                  <p className="text-[11px] text-gray-400">PNG, JPG, WebP, GIF up to 20MB</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* URL input */}
+          {mode === "url" && (
+            <input
+              type="url"
+              placeholder="https://example.com/competitor-ad.jpg"
+              value={imageUrl}
+              onChange={(e) => { setImageUrl(e.target.value); setError(null); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+            />
+          )}
+
+          {/* Brand name (optional) */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Brand <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="Leave blank — AI figures it out"
+              value={brandName}
+              onChange={(e) => { setBrandName(e.target.value); setError(null); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+
+          {/* Progress */}
+          {uploadProgress && (
+            <div className="flex items-center gap-2 text-xs text-indigo-600">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {uploadProgress}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            onClick={handleSubmit}
+            disabled={isProcessing}
+            className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg py-2.5 transition-colors disabled:opacity-50"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {uploading ? "Uploading..." : "Starting swipe..."}
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4" />
+                Swipe Image
               </>
             )}
           </button>
