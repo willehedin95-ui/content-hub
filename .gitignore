@@ -41,3 +41,8 @@ next-env.d.ts
 # Local Netlify folder
 .netlify
 .worktrees/
+
+# credentials — NEVER commit these
+/credentials/
+*.service-account.json
+google-cloud-*.json
