@@ -554,21 +554,35 @@ export async function callGeminiVideo(
   console.log("[callGeminiVideo] File ready:", fileState.name, "URI:", fileState.uri);
 
   // Step 4: Generate content with the video
-  const result = await ai.models.generateContent({
-    model: "gemini-2.5-pro",
-    config: {
-      systemInstruction: systemPrompt,
-    },
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { fileData: { fileUri: fileState.uri!, mimeType: contentType } },
-          { text: userPrompt },
+  // Gemini 2.5 Pro frequently returns 503 UNAVAILABLE ("This model is
+  // currently experiencing high demand"). These are transient spikes so we
+  // retry with exponential backoff instead of letting the caller's pipeline
+  // fail outright. isTransientError matches the 503 status code in the SDK's
+  // thrown error message.
+  const result = await withRetry(
+    () =>
+      ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: systemPrompt,
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { fileData: { fileUri: fileState.uri!, mimeType: contentType } },
+              { text: userPrompt },
+            ],
+          },
         ],
-      },
-    ],
-  });
+      }),
+    {
+      maxAttempts: 4,
+      initialDelayMs: 3000,
+      maxDelayMs: 15_000,
+      isRetryable: isTransientError,
+    }
+  );
 
   const text = result.text ?? "";
   const usage = result.usageMetadata;

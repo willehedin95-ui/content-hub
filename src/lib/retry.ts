@@ -39,6 +39,12 @@ export function isTransientError(error: unknown): boolean {
     if (msgLower.includes("rate limit") || msgLower.includes("too many requests")) {
       return true;
     }
+    // Google Gemini returns `{"code":503,"status":"UNAVAILABLE"}` during
+    // high-demand spikes. Match the status string as a backup in case the
+    // SDK wraps the error in a way that hides the literal "503" digits.
+    if (msgLower.includes("unavailable") && (msgLower.includes("model") || msgLower.includes("high demand") || msgLower.includes("overloaded"))) {
+      return true;
+    }
   }
   return false;
 }

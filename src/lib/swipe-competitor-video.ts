@@ -1213,14 +1213,20 @@ Return ONLY valid JSON. No markdown fences.`;
 
   const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
 
-  // Keyframe reuse strategy:
-  //   - UGC selfie-family + 1 character: reuse shot 1 (one continuous take,
-  //     minimal angle changes — same starting frame works for every shot)
-  //   - UGC multi-shot (podcast/lecture/street/tabletop OR >1 character):
-  //     per-shot keyframe (camera cuts, different framings, or different
-  //     characters — a single starting frame cannot represent every shot)
+  // Keyframe generation strategy:
+  //   - UGC selfie-family + 1 character (simple mode): reuse shot 1 (one
+  //     continuous take, minimal angle changes — same starting frame works
+  //     for every shot, no per-shot keyframes at all)
+  //   - UGC multi-shot (multi-cut OR podcast/lecture/street/tabletop OR >1
+  //     character): CHAINED keyframes — generate shot 1 alone, then use its
+  //     URL as image_input reference for shots 2..N so the character stays
+  //     visually consistent across all shots. reuse_first_frame stays false
+  //     because each shot gets its own distinct keyframe; the "reuse" term
+  //     only applies to the degenerate case where every shot uses the exact
+  //     same generated image.
   //   - Pixar single-character: reuse shot 1 (same character across all shots)
-  //   - Pixar multi-character: per-shot keyframe (different character each)
+  //   - Pixar multi-character: parallel per-shot keyframes, no reference
+  //     (different character per shot, nothing to anchor)
   const reuseFirstFrame = !isPixarMultiCharacter && !isUgcMultiShot;
   const styleNotes = isPixar
     ? JSON.stringify({
@@ -1355,92 +1361,151 @@ Return ONLY valid JSON. No markdown fences.`;
       .order("shot_number");
 
     if (shots && shots.length > 0) {
-      if (isPixarMultiCharacter || isUgcMultiShot) {
-        // PER-SHOT KEYFRAME MODES:
-        //   - Pixar multi-character: shot_description is the raw Pixar
-        //     character+scene prompt; pass it through with no wrapper.
-        //   - UGC multi-shot: wrap each shot_description in the format-aware
-        //     capture style block (podcast studio / lecture / street /
-        //     tabletop / messy selfie) so Nano Banana gets the correct
-        //     aesthetic for every shot, not just shot 1.
-        // Both run in parallel via Promise.allSettled.
-        const perShotResults = await Promise.allSettled(
-          shots.map(async (shot) => {
-            const shotPrompt = isPixarMultiCharacter
-              ? shot.shot_description
-              : buildImagePrompt(
-                  shot.shot_description,
-                  proposal.character_description,
-                  proposal.product_description ?? null,
-                  effectiveFormatId
-                );
-
-            const taskId = await createImageTask(
-              shotPrompt,
-              [],
-              "2:3",
-              "1K"
-            );
-
-            await db
-              .from("video_shots")
-              .update({
-                image_kie_task_id: taskId,
-                image_status: "generating",
-              })
-              .eq("id", shot.id);
-
-            const result = await pollTaskResult(taskId);
-            if (!result.urls.length) {
-              throw new Error(`No image returned for shot ${shot.shot_number}`);
-            }
-
-            const imgRes = await fetch(result.urls[0]);
-            if (!imgRes.ok) {
-              throw new Error(
-                `Failed to download image for shot ${shot.shot_number}`
-              );
-            }
-            const buffer = Buffer.from(await imgRes.arrayBuffer());
-            const filePath = `video-shots/${videoJobId}/shot-${shot.shot_number}.png`;
-            const { error: uploadErr } = await db.storage
-              .from(STORAGE_BUCKET)
-              .upload(filePath, buffer, {
-                contentType: "image/png",
-                upsert: true,
-              });
-            if (uploadErr) throw uploadErr;
-
-            const { data: urlData } = db.storage
-              .from(STORAGE_BUCKET)
-              .getPublicUrl(filePath);
-
-            await db
-              .from("video_shots")
-              .update({
-                image_url: urlData.publicUrl,
-                image_status: "completed",
-              })
-              .eq("id", shot.id);
-
-            return shot.shot_number;
+      // Helper: run a keyframe task, download the result, upload it to
+      // Supabase storage, and update the video_shots row. Used by both the
+      // Pixar multi-character path (no reference) and the UGC multi-shot
+      // chained path (reference = shot 1 URL).
+      async function renderKeyframe(
+        shot: { id: string; shot_number: number; shot_description: string },
+        prompt: string,
+        referenceUrls: string[]
+      ): Promise<string> {
+        const taskId = await createImageTask(prompt, referenceUrls, "2:3", "1K");
+        await db
+          .from("video_shots")
+          .update({
+            image_kie_task_id: taskId,
+            image_status: "generating",
           })
+          .eq("id", shot.id);
+
+        const result = await pollTaskResult(taskId);
+        if (!result.urls.length) {
+          throw new Error(`No image returned for shot ${shot.shot_number}`);
+        }
+
+        const imgRes = await fetch(result.urls[0]);
+        if (!imgRes.ok) {
+          throw new Error(
+            `Failed to download image for shot ${shot.shot_number}`
+          );
+        }
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        const filePath = `video-shots/${videoJobId}/shot-${shot.shot_number}.png`;
+        const { error: uploadErr } = await db.storage
+          .from(STORAGE_BUCKET)
+          .upload(filePath, buffer, {
+            contentType: "image/png",
+            upsert: true,
+          });
+        if (uploadErr) throw uploadErr;
+
+        const { data: urlData } = db.storage
+          .from(STORAGE_BUCKET)
+          .getPublicUrl(filePath);
+
+        await db
+          .from("video_shots")
+          .update({
+            image_url: urlData.publicUrl,
+            image_status: "completed",
+          })
+          .eq("id", shot.id);
+
+        return urlData.publicUrl;
+      }
+
+      if (isPixarMultiCharacter) {
+        // PIXAR MULTI-CHARACTER: each shot has a DIFFERENT animated character
+        // (spine, brain, pillow, etc.), so there's no shared identity to
+        // preserve. Generate all shots in parallel with no visual reference.
+        // shot_description is already the raw Pixar character+scene prompt,
+        // so pass it through with no wrapper.
+        const perShotResults = await Promise.allSettled(
+          shots.map((shot) => renderKeyframe(shot, shot.shot_description, []))
         );
 
         shotImagesGenerated = perShotResults.filter(
           (r) => r.status === "fulfilled"
         ).length;
 
-        // Log any shot failures (non-fatal)
         perShotResults.forEach((r, i) => {
           if (r.status === "rejected") {
-            const modeLabel = isPixarMultiCharacter ? "Pixar" : "UGC multi-shot";
             console.error(
-              `[swipe-video] ${modeLabel} keyframe shot ${shots[i].shot_number} failed:`,
+              `[swipe-video] Pixar keyframe shot ${shots[i].shot_number} failed:`,
               r.reason
             );
           }
         });
+      } else if (isUgcMultiShot) {
+        // UGC MULTI-SHOT (multi-cut or podcast/lecture/street/tabletop):
+        // SAME character(s) across all shots, only framing/angle changes.
+        // Nano Banana will NOT keep a person looking identical across 10
+        // independent text-to-image calls from the same description — we've
+        // verified this empirically: "Erik" ends up with a different face,
+        // hair, and clothes in every shot. The fix is to CHAIN the keyframes:
+        //
+        //   1. Generate shot 1 alone (no reference) → upload to Supabase
+        //   2. Use shot 1's Supabase URL as image_input reference for shots
+        //      2..N, generated in parallel.
+        //
+        // Nano Banana treats the reference image as an identity anchor, so
+        // every subsequent shot inherits the same face, clothing, lighting,
+        // and environment, while the text prompt dictates the new framing /
+        // angle / action for that specific shot.
+        const firstShot = shots[0];
+        const firstPrompt = buildImagePrompt(
+          firstShot.shot_description,
+          proposal.character_description,
+          proposal.product_description ?? null,
+          effectiveFormatId
+        );
+
+        let anchorUrl: string | null = null;
+        try {
+          anchorUrl = await renderKeyframe(firstShot, firstPrompt, []);
+          shotImagesGenerated = 1;
+        } catch (err) {
+          console.error(
+            `[swipe-video] UGC multi-shot anchor shot 1 failed:`,
+            err
+          );
+        }
+
+        if (anchorUrl && shots.length > 1) {
+          // Parallel generation for shots 2..N using shot 1 as visual anchor.
+          // Each shot's prompt still describes its unique framing/action, but
+          // Nano Banana uses the reference image to keep the character
+          // visually consistent across all shots.
+          const remainingShots = shots.slice(1);
+          const restResults = await Promise.allSettled(
+            remainingShots.map((shot) => {
+              const shotPrompt = buildImagePrompt(
+                shot.shot_description,
+                proposal.character_description,
+                proposal.product_description ?? null,
+                effectiveFormatId
+              );
+              // Non-null assertion: we only enter this block when anchorUrl
+              // is set (checked above). TypeScript narrows across the await
+              // but not inside the .map() callback.
+              return renderKeyframe(shot, shotPrompt, [anchorUrl!]);
+            })
+          );
+
+          shotImagesGenerated += restResults.filter(
+            (r) => r.status === "fulfilled"
+          ).length;
+
+          restResults.forEach((r, i) => {
+            if (r.status === "rejected") {
+              console.error(
+                `[swipe-video] UGC multi-shot keyframe shot ${remainingShots[i].shot_number} failed:`,
+                r.reason
+              );
+            }
+          });
+        }
       } else {
         // REUSE-FIRST-FRAME MODES: UGC and Pixar single-character
         //   - UGC wraps shot 1 in the format-specific capture style prompt
