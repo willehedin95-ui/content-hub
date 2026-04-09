@@ -68,9 +68,19 @@ export interface AutopilotResult {
   };
 }
 
+/** How long a "writing" row can sit before we assume the previous run died mid-generation. */
+const STALE_WRITING_MINUTES = 10;
+
+/** Max attempts per cron invocation. Picks a different article each retry. */
+const MAX_ATTEMPTS_PER_RUN = 2;
+
 /**
  * Run one cycle of the blog autopilot.
  * Returns what happened (published/skipped/error).
+ *
+ * Retries up to MAX_ATTEMPTS_PER_RUN times within a single cron invocation,
+ * each time picking a different article. This catches transient Claude /
+ * DataForSEO / DB failures without losing the whole day.
  */
 export async function runBlogAutopilot(
   workspaceId: string,
@@ -79,8 +89,10 @@ export async function runBlogAutopilot(
 ): Promise<AutopilotResult> {
   const db = createServerSupabase();
 
-  // Auto-recover articles stuck in "writing" for more than 2 hours (failed mid-generation)
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  // Auto-recover articles stuck in "writing" longer than STALE_WRITING_MINUTES.
+  // Previous threshold was 2 hours, but maxDuration is 300s so anything stuck
+  // for more than ~10 minutes is dead and blocking the next run pointlessly.
+  const staleCutoff = new Date(Date.now() - STALE_WRITING_MINUTES * 60 * 1000).toISOString();
   const { data: staleWrites } = await db
     .from("blog_content_plan")
     .update({ status: "planned", updated_at: new Date().toISOString() })
@@ -88,10 +100,10 @@ export async function runBlogAutopilot(
     .eq("language", language)
     .eq("status", "writing")
     .is("page_id", null)
-    .lt("updated_at", twoHoursAgo)
+    .lt("updated_at", staleCutoff)
     .select("slug");
   if (staleWrites?.length) {
-    console.log(`[blog-autopilot] Recovered ${staleWrites.length} stale "writing" articles: ${staleWrites.map(s => s.slug).join(", ")}`);
+    console.log(`[blog-autopilot] Recovered ${staleWrites.length} stale "writing" articles (>${STALE_WRITING_MINUTES}m): ${staleWrites.map(s => s.slug).join(", ")}`);
   }
 
   // Check rate: max 1 article per day PER LANGUAGE (skip with force)
@@ -113,8 +125,54 @@ export async function runBlogAutopilot(
     }
   }
 
+  // Retry loop: up to MAX_ATTEMPTS_PER_RUN attempts, each time picking a
+  // different article. Stop on first success or on a permanent skip
+  // (no articles available / no blog domain configured).
+  let lastResult: AutopilotResult | null = null;
+  const triedSlugs: string[] = [];
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_RUN; attempt++) {
+    const result = await writeOneArticle(db, workspaceId, language, triedSlugs);
+    lastResult = result;
+
+    // Success or permanent skip — return immediately
+    if (result.action === "published") {
+      if (attempt > 1) {
+        console.log(`[blog-autopilot] Succeeded on attempt ${attempt}/${MAX_ATTEMPTS_PER_RUN}`);
+      }
+      return result;
+    }
+    if (result.action === "skipped") {
+      return result;
+    }
+
+    // Transient error — track the slug and try a different one
+    if (result.slug) {
+      triedSlugs.push(result.slug);
+    }
+    if (attempt < MAX_ATTEMPTS_PER_RUN) {
+      console.warn(`[blog-autopilot] Attempt ${attempt}/${MAX_ATTEMPTS_PER_RUN} failed: ${result.message}. Retrying with a different article.`);
+    }
+  }
+
+  return lastResult ?? {
+    action: "error",
+    message: "Blog autopilot exited without attempting any article",
+  };
+}
+
+/**
+ * Write and publish a single article. Returns the result of the attempt.
+ * On failure the plan row is reverted to "planned" so it can be retried later.
+ */
+async function writeOneArticle(
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string,
+  language: Language,
+  excludeSlugs: string[] = []
+): Promise<AutopilotResult> {
   // Find next article to write
-  const nextArticle = await pickNextArticle(db, workspaceId, language);
+  const nextArticle = await pickNextArticle(db, workspaceId, language, excludeSlugs);
   if (!nextArticle) {
     return {
       action: "skipped",
@@ -146,7 +204,7 @@ export async function runBlogAutopilot(
     console.error("[blog-autopilot] Generation failed:", msg);
     // Reset content plan status so article can be retried
     await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
-    return { action: "error", message: `Article generation failed: ${msg}` };
+    return { action: "error", message: `Article generation failed: ${msg}`, slug: nextArticle.slug };
   }
 
   console.log(`[blog-autopilot] Generated ${article.wordCount} words, cost: $${article.cost.toFixed(4)}`);
@@ -204,7 +262,7 @@ export async function runBlogAutopilot(
   if (pageError || !page) {
     console.error("[blog-autopilot] Failed to create page:", pageError);
     await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
-    return { action: "error", message: `DB error creating page: ${pageError?.message}` };
+    return { action: "error", message: `DB error creating page: ${pageError?.message}`, slug: nextArticle.slug };
   }
 
   // Create translation record
@@ -224,24 +282,16 @@ export async function runBlogAutopilot(
 
   if (transError || !translation) {
     console.error("[blog-autopilot] Failed to create translation:", transError);
+    // Clean up orphaned page row so the retry attempt can recreate it cleanly
+    await db.from("pages").delete().eq("id", page.id);
     await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
-    return { action: "error", message: `DB error creating translation: ${transError?.message}` };
+    return { action: "error", message: `DB error creating translation: ${transError?.message}`, slug: nextArticle.slug };
   }
 
-  // Update blog_content_plan row if this article came from the plan
-  await db
-    .from("blog_content_plan")
-    .update({
-      status: "published",
-      page_id: page.id,
-      published_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspaceId)
-    .eq("language", language)
-    .eq("slug", nextArticle.slug);
-
-  // Publish directly (no cookie context needed)
+  // Publish directly (no cookie context needed).
+  // NOTE: The plan row is intentionally NOT marked "published" until publish
+  // actually succeeds — otherwise a publish failure leaves the plan in a stuck
+  // state where revertToPlanStatus can't recover it.
   let publishUrl: string;
   try {
     publishUrl = await publishBlogArticle(
@@ -263,9 +313,25 @@ export async function runBlogAutopilot(
       .from("translations")
       .update({ status: "error", publish_error: msg })
       .eq("id", translation.id);
+    // Clean up orphaned page + translation so a retry can start fresh
+    await db.from("translations").delete().eq("id", translation.id);
+    await db.from("pages").delete().eq("id", page.id);
     await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
-    return { action: "error", message: `Publish failed: ${msg}` };
+    return { action: "error", message: `Publish failed: ${msg}`, slug: nextArticle.slug };
   }
+
+  // Publish succeeded — now mark the plan row as published
+  await db
+    .from("blog_content_plan")
+    .update({
+      status: "published",
+      page_id: page.id,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("language", language)
+    .eq("slug", nextArticle.slug);
 
   // Update translation status
   await db
@@ -375,7 +441,8 @@ export async function runBlogAutopilot(
 async function pickNextArticle(
   db: ReturnType<typeof createServerSupabase>,
   workspaceId: string,
-  language: Language
+  language: Language,
+  excludeSlugs: string[] = []
 ): Promise<ArticleRequest | null> {
   const blogDomain = getProjectCustomDomain(language) || "";
 
@@ -388,7 +455,8 @@ async function pickNextArticle(
   const wsProductSlug = (wsData?.settings as Record<string, unknown> | null)?.default_product as string | undefined;
 
   // 1. Try the blog_content_plan table: pick the highest-priority "planned" article
-  const { data: planned } = await db
+  //    (skipping any slugs we've already failed on in this run)
+  let plannedQuery = db
     .from("blog_content_plan")
     .select("*")
     .eq("workspace_id", workspaceId)
@@ -396,8 +464,11 @@ async function pickNextArticle(
     .eq("status", "planned")
     .order("priority", { ascending: false })
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  if (excludeSlugs.length > 0) {
+    plannedQuery = plannedQuery.not("slug", "in", `(${excludeSlugs.map((s) => `"${s}"`).join(",")})`);
+  }
+  const { data: planned } = await plannedQuery.maybeSingle();
 
   if (planned) {
     // Mark as "writing" so concurrent runs don't pick the same article
@@ -436,6 +507,8 @@ async function pickNextArticle(
     .eq("source_language", language);
 
   const existingSlugs = new Set((existingPages ?? []).map((p) => p.slug));
+  // Also skip slugs we've already failed on in this retry loop
+  for (const s of excludeSlugs) existingSlugs.add(s);
 
   try {
     const market = language === "sv" ? "SE" : language === "da" ? "DK" : "NO";
