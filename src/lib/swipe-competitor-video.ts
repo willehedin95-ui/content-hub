@@ -26,6 +26,12 @@ import { extractDialogue, replaceDialogue } from "@/lib/dialogue-utils";
 import { findBestLandingPage } from "@/lib/swipe-competitor";
 import { formatRules } from "@/lib/translation-rules";
 import { CLAUDE_MODEL, OPENAI_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import {
+  buildKeyframeStyleBlock,
+  buildClaudeAestheticRules,
+  formatLabel as formatLabelForHumans,
+  type SwipeVideoFormatId,
+} from "@/lib/video-format-aesthetics";
 import OpenAI from "openai";
 
 // ---------------------------------------------------------------------------
@@ -47,11 +53,27 @@ export interface VideoSwipeInput {
   /**
    * Determines which prompt + keyframe pipeline to use.
    * - "ugc" (default): real-person UGC, reuses shot 1 keyframe across all shots,
-   *   wraps keyframe in iPhone photo-realism prompt
+   *   wraps keyframe in format-specific photo realism prompt
    * - "pixar_animation": 3D animated talking object/body-part characters,
-   *   generates individual keyframes per shot, no iPhone wrapper
+   *   generates individual keyframes per shot, no photo wrapper
    */
   videoStyle?: VideoSwipeStyle;
+  /**
+   * Optional format override for UGC swipes. When set to anything other than
+   * "auto", this ID is passed to both the Claude user prompt and the keyframe
+   * image prompt wrapper, forcing a specific capture style (podcast studio,
+   * lecture hall, street interview, tabletop product demo, etc.) INSTEAD of
+   * the default iPhone selfie aesthetic. When "auto" or undefined, the format
+   * detected by Gemini in the competitor video is used instead.
+   */
+  videoFormat?: SwipeVideoFormatId;
+  /**
+   * Optional freeform style/direction notes injected into the Claude user
+   * prompt. Lets the user steer the swipe with a single sentence like
+   * "two hosts in a warehouse talking about collagen" without having to
+   * pick a specific format ID.
+   */
+  styleNotes?: string;
 }
 
 export interface VideoSwipeResult {
@@ -403,15 +425,19 @@ ${guidelines ? `## COPYWRITING GUIDELINES\n${guidelines}` : ""}
 function buildImagePrompt(
   shotDescription: string,
   charDesc: string | null,
-  productDesc: string | null
+  productDesc: string | null,
+  formatId: string | null | undefined
 ): string {
+  // Format-specific capture style block — replaces the old hardcoded iPhone
+  // wrapper so podcast / lecture / street / tabletop swipes get the right
+  // aesthetic instead of forcing iPhone selfies.
+  const styleBlock = buildKeyframeStyleBlock(formatId);
+
   return [
     shotDescription,
     charDesc ? `\n\nCharacter: ${charDesc}.` : "",
     productDesc ? `\n\nProduct: ${productDesc}` : "",
-    `\n\nYou are locked into a permanent capture style: Authentic iPhone front-camera photo realism.`,
-    `Rules: Simulate Apple iPhone computational photography pipeline. No cinematic lighting, no flash, no studio lighting. No beauty filters, no symmetry correction, no pose optimization. Slight wide-angle distortion. Subtle edge sharpening. Flattened midtones. Mild overexposure on highlights. Natural shadow noise. Real skin texture (pores, creases, uneven tone). Casual framing, slightly imperfect crop. No motion blur. No HDR look. Flat image colors.`,
-    `Subject behavior: STATIC RESTING POSE — the character must be in a calm, neutral resting position. Both arms relaxed at sides or one hand resting on lap/surface. No mid-gesture, no raised arms, no pointing, no active movement. Mouth naturally closed or very slightly parted. This is the FIRST FRAME of a video — motion starts AFTER this frame, not during it. The image must look like the moment just before someone starts talking.`,
+    styleBlock,
   ]
     .filter(Boolean)
     .join(" ");
@@ -437,6 +463,15 @@ export async function swipeCompetitorVideo(
   } = input;
   const videoStyle: VideoSwipeStyle = input.videoStyle || "ugc";
   const isPixar = videoStyle === "pixar_animation";
+
+  // UGC swipes can be steered by an explicit format override + freeform style
+  // notes. Pixar swipes ignore these — they always use their own Pixar prompt.
+  const formatOverride: SwipeVideoFormatId | null =
+    !isPixar && input.videoFormat && input.videoFormat !== "auto"
+      ? input.videoFormat
+      : null;
+  const rawStyleNotes = (input.styleNotes || "").trim();
+  const styleNotesText = !isPixar && rawStyleNotes ? rawStyleNotes : "";
 
   // Progress updater for live UI
   async function updateProgress(jobId: string, step: string, message: string) {
@@ -556,6 +591,14 @@ export async function swipeCompetitorVideo(
   const pixarCharacterCount = pixarAnalysis?.characters?.length ?? 0;
   const isPixarSingleCharacter = isPixar && pixarCharacterCount <= 1;
   const isPixarMultiCharacter = isPixar && pixarCharacterCount > 1;
+
+  // Effective format ID used for format-aware keyframe + Claude prompt:
+  //   1. Explicit user override wins (formatOverride)
+  //   2. Otherwise, use the format Gemini detected in the competitor video
+  //   3. Pixar ignores this entirely (its keyframe path doesn't call buildImagePrompt)
+  const effectiveFormatId: string | null = isPixar
+    ? null
+    : formatOverride || ugcAnalysis?.format_type || null;
 
   // Log Gemini usage
   await db.from("usage_logs").insert({
@@ -722,6 +765,21 @@ Return ONLY valid JSON. No markdown fences.`;
       primaryLanguage
     );
 
+    // Format-aware aesthetic rules for Claude — tells Claude whether to write
+    // selfie UGC shots vs studio podcast vs lecture vs street vs tabletop.
+    // When formatOverride is set the user explicitly forced a format; when not,
+    // we fall back to whatever format Gemini detected in the source video.
+    const aestheticRules = buildClaudeAestheticRules(effectiveFormatId);
+    const formatLine = formatOverride
+      ? `**FORMAT**: ${ugcAnalysis.format_type} (detected) → **${formatOverride}** (OVERRIDDEN by user) | **HOOK TYPE**: ${ugcAnalysis.hook_type} | **DELIVERY**: ${ugcAnalysis.delivery_style}`
+      : `**FORMAT**: ${ugcAnalysis.format_type} | **HOOK TYPE**: ${ugcAnalysis.hook_type} | **DELIVERY**: ${ugcAnalysis.delivery_style}`;
+    const styleNotesBlock = styleNotesText
+      ? `\n\n## USER STYLE DIRECTION (MANDATORY)\n\nThe user has given this specific direction for the adapted swipe. Follow it EXACTLY in the concept, shot descriptions, and VEO prompts:\n\n> ${styleNotesText}\n\nThis direction OVERRIDES any conflicting detail from the competitor analysis above. If the user's direction conflicts with something Gemini detected in the competitor video, follow the user.`
+      : "";
+    const formatOverrideNote = formatOverride
+      ? `\n\n**IMPORTANT**: Ignore the format Gemini detected in the source video. The user has explicitly forced format = "${formatOverride}" (${formatLabelForHumans(formatOverride)}). Write the concept in THAT format regardless of what the competitor video looked like. The hook, script structure, and persuasion mechanics from the competitor are still useful — but the VISUAL FORMAT must be the overridden one.`
+      : "";
+
     userPrompt = `A competitor video ad was analyzed by watching the actual video with AI:
 
 ## COMPETITOR VIDEO ANALYSIS
@@ -731,7 +789,7 @@ Return ONLY valid JSON. No markdown fences.`;
 
 **HOOK (first 3 seconds)**: ${ugcAnalysis.hook_first_3_seconds || "N/A"}
 **BIG IDEA**: ${ugcAnalysis.big_idea || "N/A"}
-**FORMAT**: ${ugcAnalysis.format_type} | **HOOK TYPE**: ${ugcAnalysis.hook_type} | **DELIVERY**: ${ugcAnalysis.delivery_style}
+${formatLine}
 **SCRIPT STRUCTURE**: ${ugcAnalysis.script_structure}
 **CHARACTER**: ${ugcAnalysis.character_description}
 **SETTING**: ${ugcAnalysis.setting}
@@ -744,26 +802,17 @@ Return ONLY valid JSON. No markdown fences.`;
 **WHY IT WORKS**: ${ugcAnalysis.why_it_works || ugcAnalysis.persuasion_analysis}
 **PERSUASION ANALYSIS**: ${ugcAnalysis.persuasion_analysis}
 
-${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}
+${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}${styleNotesBlock}
 
 ## YOUR TASK
 
-Create 1 adapted UGC video concept for our product that SWIPES the FORMAT and APPROACH from this competitor ad. Do NOT copy the messaging or script — adapt the STRUCTURE, HOOK TYPE, and DELIVERY STYLE for our product.
+Create 1 adapted video concept for our product that SWIPES the HOOK, APPROACH, and PERSUASION MECHANICS from this competitor ad. Do NOT copy the messaging or script — adapt the STRUCTURE, HOOK TYPE, and DELIVERY STYLE for our product.${formatOverrideNote}
 
 **LANGUAGE: ${langLabel}** — Write the script, ad_copy_primary, and ad_copy_headline in ${langLabel}. In veo_prompt, keep technical parts (camera, actions) in English but write SPOKEN DIALOGUE (text after "says:") in ${langLabel}.
 
-## UGC AUTHENTICITY RULES FOR SHOT DESCRIPTIONS
+${aestheticRules}
 
-Your shot descriptions and VEO prompts MUST follow these rules for authentic UGC:
-1. **iPhone aesthetics**: Specify iPhone front-camera, ~24mm equivalent, HDR auto-tone
-2. **Imperfect framing**: Off-center composition, slightly cropped forehead, handheld sway
-3. **Natural lighting only**: Window light, bathroom vanity, car daylight — NEVER studio lighting
-4. **Authentic environments**: Messy bedrooms, parked cars, bathrooms — lived-in details
-5. **Hand safety**: Keep hands below collarbone, no gestures near lens or face, no pointing
-6. **Real skin**: Visible pores, no smoothing, no beauty filters, natural shadows
-7. **Conversational delivery**: Filler words, natural pauses, direct eye contact, real person cadence
-
-Each shot's veo_prompt should be a detailed ~300 character Sora 2/VEO-optimized prompt including character description, setting, camera angle, lighting, and specific actions.
+Each shot's veo_prompt should be a detailed ~300 character Sora 2/VEO-optimized prompt including character/subject description, setting, camera angle, lighting, and specific actions — all matching the format rules above.
 
 **DIALOGUE LENGTH LIMIT (CRITICAL)**: Each shot is exactly 8 seconds of video. Each shot's dialogue must be **MAX 15 words**. COUNT YOUR WORDS — if a shot exceeds 15 words, SPLIT IT into two shots. A calm 12-word sentence with a natural breath beats a rushed 15-word one. NEVER exceed 15 words per shot. This is the #1 cause of broken videos.
 
@@ -1258,7 +1307,8 @@ Return ONLY valid JSON. No markdown fences.`;
         });
       } else {
         // REUSE-FIRST-FRAME MODES: UGC and Pixar single-character
-        //   - UGC wraps shot 1 in the iPhone photo-realism prompt
+        //   - UGC wraps shot 1 in the format-specific capture style prompt
+        //     (selfie / studio / lecture / street / tabletop)
         //   - Pixar single-character passes shot 1 raw (it's already a full
         //     Pixar character+scene prompt mapped from character_image_prompt)
         const firstShot = shots[0];
@@ -1267,7 +1317,8 @@ Return ONLY valid JSON. No markdown fences.`;
           : buildImagePrompt(
               firstShot.shot_description,
               proposal.character_description,
-              proposal.product_description ?? null
+              proposal.product_description ?? null,
+              effectiveFormatId
             );
 
         // Generate keyframe for shot 1

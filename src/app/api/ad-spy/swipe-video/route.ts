@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
 import { swipeCompetitorVideo, type VideoSwipeStyle } from "@/lib/swipe-competitor-video";
+import type { SwipeVideoFormatId } from "@/lib/video-format-aesthetics";
 
 export const maxDuration = 300;
 
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
     brand_name,
     video_duration,
     video_style,
+    video_format,
+    style_notes,
   } = body as {
     gethookd_ad_id?: number;
     video_url: string;
@@ -30,11 +33,18 @@ export async function POST(req: NextRequest) {
     brand_name: string;
     video_duration?: number;
     video_style?: VideoSwipeStyle;
+    video_format?: SwipeVideoFormatId;
+    style_notes?: string;
   };
 
   const videoStyle: VideoSwipeStyle =
     video_style === "pixar_animation" ? "pixar_animation" : "ugc";
   const isPixar = videoStyle === "pixar_animation";
+  // Format override only applies to UGC (Pixar always uses its own prompt)
+  const videoFormat: SwipeVideoFormatId | undefined =
+    !isPixar && video_format ? video_format : undefined;
+  const styleNotes: string | undefined =
+    !isPixar && style_notes?.trim() ? style_notes.trim() : undefined;
 
   if (!video_url || !brand_name) {
     return NextResponse.json({ error: "Missing required fields (video_url, brand_name)" }, { status: 400 });
@@ -111,6 +121,8 @@ export async function POST(req: NextRequest) {
           notifyTelegram: !isManual,
           existingJobId: videoJobId,
           videoStyle,
+          videoFormat,
+          styleNotes,
         });
 
         // Update discovered_ads status (only for GetHookd ads)

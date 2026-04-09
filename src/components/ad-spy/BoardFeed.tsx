@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon, Sparkles } from "lucide-react";
+import {
+  SWIPE_FORMAT_OPTIONS,
+  type SwipeVideoFormatId,
+} from "@/lib/video-format-aesthetics";
 
 type VideoStyle = "ugc" | "pixar_animation";
 
@@ -442,6 +446,8 @@ function UploadVideoModal({
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [modalStyle, setModalStyle] = useState<VideoStyle>(defaultStyle);
+  const [modalFormat, setModalFormat] = useState<SwipeVideoFormatId>("auto");
+  const [modalStyleNotes, setModalStyleNotes] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -513,6 +519,12 @@ function UploadVideoModal({
           video_url: finalVideoUrl,
           brand_name: brandName.trim(),
           video_style: modalStyle,
+          video_format:
+            modalStyle === "ugc" && modalFormat !== "auto" ? modalFormat : undefined,
+          style_notes:
+            modalStyle === "ugc" && modalStyleNotes.trim()
+              ? modalStyleNotes.trim()
+              : undefined,
         }),
       });
       if (!res.ok) {
@@ -689,6 +701,47 @@ function UploadVideoModal({
               </button>
             </div>
           </div>
+
+          {/* Format override + style notes (UGC only) */}
+          {modalStyle === "ugc" && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Video Format
+                </label>
+                <select
+                  value={modalFormat}
+                  onChange={(e) => setModalFormat(e.target.value as SwipeVideoFormatId)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300 bg-white"
+                >
+                  {SWIPE_FORMAT_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-400 leading-tight mt-1">
+                  {SWIPE_FORMAT_OPTIONS.find((o) => o.id === modalFormat)?.description}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Style Notes <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={modalStyleNotes}
+                  onChange={(e) => setModalStyleNotes(e.target.value)}
+                  placeholder="e.g. two hosts in a warehouse talking about collagen, golden hour lighting, slightly messy but professional..."
+                  rows={3}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300 resize-none"
+                />
+                <p className="text-[10px] text-gray-400 leading-tight mt-1">
+                  Freeform direction that overrides details from the competitor video.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Error */}
           {error && (
