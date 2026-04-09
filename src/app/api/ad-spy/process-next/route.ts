@@ -46,7 +46,8 @@ export async function POST() {
     const result = await swipeCompetitorAd({
       workspaceId,
       productSlug,
-      competitorImageUrls: mediaUrls.slice(0, 3),
+      // Single competitor image — see autopilot-concepts/route.ts for rationale
+      competitorImageUrls: mediaUrls.slice(0, 1),
       competitorAdCopy: next.body ?? undefined,
       brandName: next.brand_name ?? "Unknown",
       gethookdAdId: next.gethookd_ad_id,

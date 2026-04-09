@@ -274,7 +274,15 @@ async function runCompetitorSwipe(
       }
     }
 
-    const competitorImageUrls = imageUrls.slice(0, 3);
+    // Only take the FIRST unique image. GetHookd often stores the same creative
+    // in multiple resolutions (media-1.jpg 270x270 + media-xxx_resized.jpg 600x600
+    // + media-yyy.jpg 1200x1200 — all byte-identical or near-identical). Using
+    // slice(0, 3) meant Claude analyzed 3 copies of the same image and generated
+    // 9 variations of the same visual = wasted compute + ugly UI. One image is
+    // enough for Claude Vision to extract the format — we still generate 3
+    // visually distinct variations per concept (variationsPerImage=3 in
+    // swipeCompetitorAd).
+    const competitorImageUrls = imageUrls.slice(0, 1);
     if (competitorImageUrls.length === 0) {
       await db.from("discovered_ads")
         .update({ status: "skipped" })

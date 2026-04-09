@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
         tags: ["competitor-swipe", "ad-spy"],
         // Store competitor data so the detail page can show it
         competitor_reference_data: {
-          competitor_image_urls: media_urls.slice(0, 3),
+          // Single competitor image — see autopilot-concepts/route.ts for rationale
+        competitor_image_urls: media_urls.slice(0, 1),
           product_hero_urls: [],
         },
         // swipe_progress tracks pipeline steps for the UI
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
         const result = await swipeCompetitorAd({
           workspaceId,
           productSlug,
-          competitorImageUrls: media_urls.slice(0, 3),
+          competitorImageUrls: media_urls.slice(0, 1),
           competitorAdCopy: adBody,
           brandName: brand_name,
           gethookdAdId: gethookd_ad_id,

@@ -755,6 +755,15 @@ export default function ConceptImagesStep({
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {onDeleteImage && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteImageId(si.id); }}
+                      className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0"
+                      title="Delete this image"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
