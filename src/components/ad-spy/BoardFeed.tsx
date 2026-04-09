@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon } from "lucide-react";
+import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon, Sparkles } from "lucide-react";
+
+type VideoStyle = "ugc" | "pixar_animation";
 
 interface BoardAd {
   id: number;
@@ -42,6 +44,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [boards, setBoards] = useState<Array<{ id: number; name: string; ad_count: number }>>([]);
   const [batchSwiping, setBatchSwiping] = useState(false);
   const [painPoint, setPainPoint] = useState("auto-detect");
+  const [videoStyle, setVideoStyle] = useState<VideoStyle>("ugc");
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
 
@@ -103,6 +106,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             body: ad.body,
             brand_name: ad.brand_name,
             video_duration: ad.video_duration,
+            video_style: videoStyle,
           }),
         });
         const data = await res.json();
@@ -304,8 +308,8 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
         </div>
       </div>
 
-      {/* Pain point selector */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Pain point selector (for image swipes) */}
+      <div className="flex items-center gap-2 mb-2">
         <span className="text-xs font-medium text-gray-500 shrink-0">Pain Point:</span>
         {[
           { value: "auto-detect", label: "Auto" },
@@ -326,6 +330,35 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             {pp.label}
           </button>
         ))}
+      </div>
+
+      {/* Video style selector (for video swipes) */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs font-medium text-gray-500 shrink-0">Video Style:</span>
+        {(
+          [
+            { value: "ugc", label: "UGC (real person)", icon: <Video className="w-3 h-3" /> },
+            { value: "pixar_animation", label: "Pixar Animation", icon: <Sparkles className="w-3 h-3" /> },
+          ] as { value: VideoStyle; label: string; icon: React.ReactNode }[]
+        ).map((vs) => (
+          <button
+            key={vs.value}
+            onClick={() => setVideoStyle(vs.value)}
+            className={`text-xs px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${
+              videoStyle === vs.value
+                ? vs.value === "pixar_animation"
+                  ? "bg-purple-100 text-purple-700 font-medium"
+                  : "bg-indigo-100 text-indigo-700 font-medium"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
+          >
+            {vs.icon}
+            {vs.label}
+          </button>
+        ))}
+        <span className="text-[11px] text-gray-400 ml-1">
+          applies to video swipes
+        </span>
       </div>
 
       {loading && (
@@ -364,6 +397,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
       {/* Upload Video Modal */}
       {showUploadModal && (
         <UploadVideoModal
+          defaultStyle={videoStyle}
           onClose={() => setShowUploadModal(false)}
           onSuccess={(videoJobId) => {
             setShowUploadModal(false);
@@ -391,9 +425,11 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
 // ---------------------------------------------------------------------------
 
 function UploadVideoModal({
+  defaultStyle,
   onClose,
   onSuccess,
 }: {
+  defaultStyle: VideoStyle;
   onClose: () => void;
   onSuccess: (videoJobId: string) => void;
 }) {
@@ -405,6 +441,7 @@ function UploadVideoModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [modalStyle, setModalStyle] = useState<VideoStyle>(defaultStyle);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -475,6 +512,7 @@ function UploadVideoModal({
         body: JSON.stringify({
           video_url: finalVideoUrl,
           brand_name: brandName.trim(),
+          video_style: modalStyle,
         }),
       });
       if (!res.ok) {
@@ -605,6 +643,51 @@ function UploadVideoModal({
               onChange={(e) => { setBrandName(e.target.value); setError(null); }}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-300"
             />
+          </div>
+
+          {/* Video style toggle */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Video Style</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalStyle("ugc")}
+                className={`flex items-start gap-2 text-left px-3 py-2.5 rounded-lg border-2 transition-colors ${
+                  modalStyle === "ugc"
+                    ? "border-indigo-400 bg-indigo-50"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <Video className={`w-4 h-4 mt-0.5 shrink-0 ${modalStyle === "ugc" ? "text-indigo-600" : "text-gray-400"}`} />
+                <div>
+                  <div className={`text-xs font-semibold ${modalStyle === "ugc" ? "text-indigo-900" : "text-gray-700"}`}>
+                    UGC
+                  </div>
+                  <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                    Real person, iPhone aesthetic
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalStyle("pixar_animation")}
+                className={`flex items-start gap-2 text-left px-3 py-2.5 rounded-lg border-2 transition-colors ${
+                  modalStyle === "pixar_animation"
+                    ? "border-purple-400 bg-purple-50"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <Sparkles className={`w-4 h-4 mt-0.5 shrink-0 ${modalStyle === "pixar_animation" ? "text-purple-600" : "text-gray-400"}`} />
+                <div>
+                  <div className={`text-xs font-semibold ${modalStyle === "pixar_animation" ? "text-purple-900" : "text-gray-700"}`}>
+                    Pixar Animation
+                  </div>
+                  <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                    3D talking objects / body parts
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Error */}

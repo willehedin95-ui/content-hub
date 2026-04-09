@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
-import { swipeCompetitorVideo } from "@/lib/swipe-competitor-video";
+import { swipeCompetitorVideo, type VideoSwipeStyle } from "@/lib/swipe-competitor-video";
 
 export const maxDuration = 300;
 
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     body: adBody,
     brand_name,
     video_duration,
+    video_style,
   } = body as {
     gethookd_ad_id?: number;
     video_url: string;
@@ -28,7 +29,12 @@ export async function POST(req: NextRequest) {
     body?: string;
     brand_name: string;
     video_duration?: number;
+    video_style?: VideoSwipeStyle;
   };
+
+  const videoStyle: VideoSwipeStyle =
+    video_style === "pixar_animation" ? "pixar_animation" : "ugc";
+  const isPixar = videoStyle === "pixar_animation";
 
   if (!video_url || !brand_name) {
     return NextResponse.json({ error: "Missing required fields (video_url, brand_name)" }, { status: 400 });
@@ -68,8 +74,10 @@ export async function POST(req: NextRequest) {
         source: isManual ? "manual" : "autopilot",
         pipeline_mode: "multi_clip",
         target_languages: await getWorkspaceLanguages(),
-        max_shots: 4,
-        reuse_first_frame: true,
+        // Pixar uses more shots and never reuses a single keyframe
+        max_shots: isPixar ? 5 : 4,
+        reuse_first_frame: !isPixar,
+        format_type: isPixar ? "pixar_animation" : null,
         swipe_progress: { step: "queued", message: "Waiting to start..." },
       })
       .select("id")
@@ -102,6 +110,7 @@ export async function POST(req: NextRequest) {
           gethookdAdId: gethookd_ad_id,
           notifyTelegram: !isManual,
           existingJobId: videoJobId,
+          videoStyle,
         });
 
         // Update discovered_ads status (only for GetHookd ads)
