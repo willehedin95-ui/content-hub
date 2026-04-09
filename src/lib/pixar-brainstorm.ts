@@ -77,6 +77,9 @@ This is a viral format on TikTok, Instagram Reels, and Meta Ads. Key characteris
 7. The dialogue must relate to a REAL problem the target audience has with sleep/health
 8. Characters should feel like they're "ganging up" or "testifying" — building on each other's points
 
+## IS THIS CHARACTER OUR PRODUCT? (is_product_character flag)
+One of your Pixar characters CAN be an anthropomorphic version of OUR product itself — for example a talking bottle that IS the actual supplement. When a shot's character is meant to represent OUR product (not a generic object, not a body part, not a competitor), you MUST set \`is_product_character: true\` on that shot. This tells the image generator to use the real product photo as a visual anchor so the cartoon character matches the product's real shape, color, and label. Set it to \`false\` for all non-product characters (body parts, pillows, coffee cups, spines, brains, etc.). Default: false. ONLY set it to true when the character literally IS our product.
+
 ## HOOK TYPES (for the overall concept)
 - **Confrontational**: Characters call out the viewer's bad habits
 - **Confession**: Characters admit their role in the viewer's problems
@@ -150,6 +153,7 @@ Return a JSON object with a "proposals" array. Each proposal is ONE video concep
           "character_object": "spine",
           "character_category": "body_part",
           "character_mood": "frustrated",
+          "is_product_character": false,
           "dialogue": "[20-25 words in ${langName}]",
           "duration_seconds": 8,
           "character_image_prompt": "[FULL Nano Banana prompt with character + scene + art style]",

@@ -327,6 +327,9 @@ ALL dialogue MUST be written in **${langName}**. The dialogue field and the VEO 
 7. Each shot must advance the narrative — no filler or repetition
 8. The monologue must relate to a REAL problem the target audience has
 
+## IS THIS CHARACTER OUR PRODUCT? (is_product_character flag)
+Your single Pixar character CAN be an anthropomorphic version of OUR product itself — for example a talking bottle that IS the actual supplement. When the character you pick is meant to represent OUR product (not a generic bottle, not a body part, not a competitor), set \`is_product_character: true\` at the concept level. This tells the image generator to use the real product photo as a visual anchor so the cartoon character matches the product's real shape, color, and label. Set it to \`false\` when the character is a body part, a generic object, or anything that isn't literally our product. Default: false. ONLY set it to true when the character IS our product.
+
 ## HOOK TYPES
 - **Confrontational**: Calls out the viewer's bad habits
 - **Confession**: Admits the character's role in the viewer's problems
@@ -394,6 +397,7 @@ Return a JSON object with a "proposals" array containing EXACTLY 1 concept. The 
       "character_object": "spine",
       "character_category": "body_part",
       "character_mood": "frustrated",
+      "is_product_character": false,
       "character_image_prompt": "[SHARED Nano Banana prompt with character + scene + art style — same for all shots]",
       "shots": [
         {
@@ -435,6 +439,53 @@ ${productBrief}
 
 ${guidelines ? `## COPYWRITING GUIDELINES\n${guidelines}` : ""}
 `;
+}
+
+// ---------------------------------------------------------------------------
+// Pixar "is this character the product?" helper
+// ---------------------------------------------------------------------------
+//
+// When a Pixar shot is an anthropomorphic version of OUR product (e.g. the
+// Hydro13 bottle as a talking character), Nano Banana needs the real product
+// hero image as a visual anchor — otherwise it invents a generic cartoon
+// bottle with the wrong shape/color/label. Claude tells us via the
+// `is_product_character` flag in the shot schema, but we also do a string
+// heuristic as a fallback in case the flag is missing.
+function looksLikeProductCharacter(
+  characterObject: string | null | undefined,
+  shotDescription: string | null | undefined,
+  productName: string | null | undefined,
+  productSlug: string | null | undefined
+): boolean {
+  const haystack = `${characterObject || ""} ${shotDescription || ""}`.toLowerCase();
+  if (!haystack.trim()) return false;
+
+  // Direct product name / slug match
+  const productCandidates: string[] = [];
+  if (productName) productCandidates.push(productName.toLowerCase());
+  if (productSlug) productCandidates.push(productSlug.toLowerCase());
+  for (const name of productCandidates) {
+    if (name && name.length >= 3 && haystack.includes(name)) return true;
+  }
+
+  // Generic "supplement bottle" / "product bottle" cues from the character
+  // library. The character_object field is what Claude picks from the library
+  // — if it's "supplement bottle" or the description says "the product
+  // itself", treat it as a product character.
+  const genericProductCues = [
+    "supplement bottle",
+    "supplement",
+    "the product",
+    "our product",
+    "the bottle",
+    "product bottle",
+    "hero bottle",
+  ];
+  const objectLower = (characterObject || "").toLowerCase();
+  for (const cue of genericProductCues) {
+    if (objectLower === cue || objectLower.includes(cue)) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +739,33 @@ export async function swipeCompetitorVideo(
   const langLabel = LANGUAGE_LABELS[primaryLanguage] || primaryLanguage;
 
   const context = await loadVideoUgcContext(productSlug, workspaceId);
+
+  // Fetch the real product hero images. For Pixar concepts where a shot's
+  // character IS our product (anthropomorphic bottle/tub/etc), we pass these
+  // to Nano Banana as image_input so the generated cartoon character matches
+  // the real product's shape, color, label, and proportions. Without this
+  // anchor, Nano Banana invents a generic cartoon bottle that looks nothing
+  // like the real thing (verified bug on Hydro13 Pixar swipe).
+  const { data: productRow } = await db
+    .from("products")
+    .select("id, name")
+    .eq("slug", productSlug)
+    .maybeSingle();
+
+  let productHeroUrls: string[] = [];
+  const productName: string = (productRow?.name as string | undefined) || productSlug;
+  if (productRow?.id) {
+    const { data: productImages } = await db
+      .from("product_images")
+      .select("url, category, sort_order")
+      .eq("product_id", productRow.id)
+      .order("sort_order", { ascending: true });
+
+    productHeroUrls = (productImages ?? [])
+      .filter((i) => i.category === "product" || i.category === "hero")
+      .slice(0, 3)
+      .map((i) => i.url as string);
+  }
 
   let systemPrompt: string;
   let userPrompt: string;
@@ -947,6 +1025,11 @@ Return ONLY valid JSON. No markdown fences.`;
     // Multi-cut mode only (null for simple/Pixar):
     speaker?: string | null;
     shot_type?: string | null;
+    // Pixar only: true when this shot's character IS our product (an
+    // anthropomorphic version of the real bottle/tub/etc). Used to pass
+    // product hero images as Nano Banana reference input so the keyframe
+    // matches the real product shape/color/label instead of inventing one.
+    is_product_character?: boolean;
   }
 
   interface NormalizedProposal {
@@ -974,6 +1057,7 @@ Return ONLY valid JSON. No markdown fences.`;
     duration_seconds: number;
     character_image_prompt: string;
     veo_prompt: string;
+    is_product_character?: boolean;
   }
 
   interface PixarProposalRaw {
@@ -1002,6 +1086,9 @@ Return ONLY valid JSON. No markdown fences.`;
     character_category: string;
     character_mood: string;
     character_image_prompt: string; // SHARED across all shots at concept level
+    // Single-character monologues only have one character, so this flag is
+    // at concept level (the same character is in every shot).
+    is_product_character?: boolean;
     shots: PixarSingleShotRaw[];
     ad_copy_primary: string | string[];
     ad_copy_headline: string | string[];
@@ -1063,6 +1150,18 @@ Return ONLY valid JSON. No markdown fences.`;
         .map((s, i) => `[Shot ${i + 1}]\n${s.dialogue}`)
         .join("\n\n");
 
+      // Pixar single-character has ONE character for the whole concept, so
+      // the product-character flag is at concept level. Trust Claude's flag
+      // first, then fall back to the string heuristic.
+      const singleIsProduct =
+        raw.is_product_character === true ||
+        looksLikeProductCharacter(
+          raw.character_object,
+          sharedImagePrompt,
+          productName,
+          productSlug
+        );
+
       proposal = {
         concept_name: raw.concept_name,
         format_type: "pixar_animation",
@@ -1081,6 +1180,7 @@ Return ONLY valid JSON. No markdown fences.`;
           shot_description: sharedImagePrompt,
           veo_prompt: shot.veo_prompt,
           duration_seconds: shot.duration_seconds ?? 8,
+          is_product_character: singleIsProduct,
         })),
         ad_copy_primary: raw.ad_copy_primary,
         ad_copy_headline: raw.ad_copy_headline,
@@ -1112,15 +1212,32 @@ Return ONLY valid JSON. No markdown fences.`;
         script: fullScript,
         character_description: null, // pixar has a different character per shot
         product_description: null,
-        shots: raw.shots.map((shot, i) => ({
-          shot_number: i + 1,
-          // shot_description carries the Pixar character+scene prompt, which the
-          // shot-images route will forward raw to Nano Banana when
-          // format_type === "pixar_animation"
-          shot_description: shot.character_image_prompt,
-          veo_prompt: shot.veo_prompt,
-          duration_seconds: shot.duration_seconds ?? 8,
-        })),
+        shots: raw.shots.map((shot, i) => {
+          // Per-shot product-character flag: trust Claude's explicit flag
+          // first, fall back to the string heuristic. This is critical when
+          // one of the Pixar characters is an anthropomorphic version of OUR
+          // product — we need to pass the real product hero image as a Nano
+          // Banana reference so the cartoon character matches the real
+          // bottle's shape/color/label.
+          const isProduct =
+            shot.is_product_character === true ||
+            looksLikeProductCharacter(
+              shot.character_object,
+              shot.character_image_prompt,
+              productName,
+              productSlug
+            );
+          return {
+            shot_number: i + 1,
+            // shot_description carries the Pixar character+scene prompt, which the
+            // shot-images route will forward raw to Nano Banana when
+            // format_type === "pixar_animation"
+            shot_description: shot.character_image_prompt,
+            veo_prompt: shot.veo_prompt,
+            duration_seconds: shot.duration_seconds ?? 8,
+            is_product_character: isProduct,
+          };
+        }),
         ad_copy_primary: raw.ad_copy_primary,
         ad_copy_headline: raw.ad_copy_headline,
         awareness_level: raw.awareness_level,
@@ -1360,6 +1477,21 @@ Return ONLY valid JSON. No markdown fences.`;
       .eq("video_job_id", videoJobId)
       .order("shot_number");
 
+    // Map shot_number → is_product_character so the keyframe stage can
+    // decide whether to pass productHeroUrls to Nano Banana as an anchor.
+    // The normalized proposal carries the flag per shot (set during parse).
+    const productFlagByShotNumber = new Map<number, boolean>();
+    for (const s of proposal.shots) {
+      productFlagByShotNumber.set(s.shot_number, s.is_product_character === true);
+    }
+
+    // When a Pixar character IS our product, we prepend an explicit
+    // instruction to the prompt so Nano Banana knows to match the real
+    // product's shape/color/label from the reference image instead of
+    // treating it as a loose style guide.
+    const PRODUCT_ANCHOR_PREFIX =
+      "The reference image shows the REAL-WORLD product — render a Pixar-style anthropomorphic animated version of THIS exact object, matching its shape, color, label text, and proportions. ";
+
     if (shots && shots.length > 0) {
       // Helper: run a keyframe task, download the result, upload it to
       // Supabase storage, and update the video_shots row. Used by both the
@@ -1418,11 +1550,25 @@ Return ONLY valid JSON. No markdown fences.`;
       if (isPixarMultiCharacter) {
         // PIXAR MULTI-CHARACTER: each shot has a DIFFERENT animated character
         // (spine, brain, pillow, etc.), so there's no shared identity to
-        // preserve. Generate all shots in parallel with no visual reference.
-        // shot_description is already the raw Pixar character+scene prompt,
-        // so pass it through with no wrapper.
+        // preserve across shots. Generate all shots in parallel.
+        //
+        // EXCEPT when a shot's character IS our product — then we pass the
+        // real product hero images as Nano Banana reference so the cartoon
+        // bottle matches the real shape/color/label. This fixes the bug
+        // where Hydro13 Pixar concepts rendered a generic blue cartoon
+        // bottle that looked nothing like the actual white Hydro13 bottle.
         const perShotResults = await Promise.allSettled(
-          shots.map((shot) => renderKeyframe(shot, shot.shot_description, []))
+          shots.map((shot) => {
+            const isProductShot =
+              productFlagByShotNumber.get(shot.shot_number) === true;
+            const refUrls =
+              isProductShot && productHeroUrls.length > 0 ? productHeroUrls : [];
+            const shotPrompt =
+              isProductShot && productHeroUrls.length > 0
+                ? PRODUCT_ANCHOR_PREFIX + shot.shot_description
+                : shot.shot_description;
+            return renderKeyframe(shot, shotPrompt, refUrls);
+          })
         );
 
         shotImagesGenerated = perShotResults.filter(
@@ -1513,8 +1659,21 @@ Return ONLY valid JSON. No markdown fences.`;
         //   - Pixar single-character passes shot 1 raw (it's already a full
         //     Pixar character+scene prompt mapped from character_image_prompt)
         const firstShot = shots[0];
+
+        // Pixar single-character: all shots share the same character, so if
+        // the concept-level character IS our product, we pass the real
+        // product hero images as Nano Banana reference for the keyframe.
+        // The flag was propagated onto every shot during normalization, so
+        // reading from shot 1 is equivalent to a concept-level check.
+        const pixarSingleIsProduct =
+          isPixarSingleCharacter &&
+          productFlagByShotNumber.get(firstShot.shot_number) === true &&
+          productHeroUrls.length > 0;
+
         const imagePrompt = isPixarSingleCharacter
-          ? firstShot.shot_description
+          ? pixarSingleIsProduct
+            ? PRODUCT_ANCHOR_PREFIX + firstShot.shot_description
+            : firstShot.shot_description
           : buildImagePrompt(
               firstShot.shot_description,
               proposal.character_description,
@@ -1522,8 +1681,10 @@ Return ONLY valid JSON. No markdown fences.`;
               effectiveFormatId
             );
 
+        const keyframeRefUrls = pixarSingleIsProduct ? productHeroUrls : [];
+
         // Generate keyframe for shot 1
-        const taskId = await createImageTask(imagePrompt, [], "2:3", "1K");
+        const taskId = await createImageTask(imagePrompt, keyframeRefUrls, "2:3", "1K");
 
         await db
           .from("video_shots")
