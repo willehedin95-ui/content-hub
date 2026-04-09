@@ -89,6 +89,10 @@ export async function runBlogAutopilot(
 ): Promise<AutopilotResult> {
   const db = createServerSupabase();
 
+  // Step 0: Self-healing — resume any publishes that were killed mid-flight
+  // by a previous Vercel function timeout. Cheap and safe to run every cron.
+  await resumeOrphanedPublishes(db, workspaceId, language);
+
   // Auto-recover articles stuck in "writing" longer than STALE_WRITING_MINUTES.
   // Previous threshold was 2 hours, but maxDuration is 300s so anything stuck
   // for more than ~10 minutes is dead and blocking the next run pointlessly.
@@ -665,6 +669,132 @@ async function publishBlogArticle(
   // Deploy to Cloudflare Pages
   const result = await publishPage(finalHtml, deploySlug, language, deployFiles, undefined, analytics);
   return result.url.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Self-healing: resume orphaned publishes from killed Vercel functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Find blog translations that have HTML but no `published_url`. These are
+ * the remains of Vercel function terminations (maxDuration killed the process
+ * mid-publish). Either:
+ *   a) The CF upload already succeeded and only the DB update was killed
+ *      → backfill the URL, no republish needed.
+ *   b) The CF upload never ran or was killed mid-stream
+ *      → republish the already-generated HTML.
+ *
+ * Cheap to run (one query per language per cron tick). Always safe.
+ */
+async function resumeOrphanedPublishes(
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string,
+  language: Language
+): Promise<void> {
+  const { data: orphans } = await db
+    .from("translations")
+    .select(
+      "id, slug, seo_title, seo_description, translated_html, created_at, pages!inner(id, blog_category, content_type, workspace_id, source_language)"
+    )
+    .eq("language", language)
+    .eq("pages.workspace_id", workspaceId)
+    .eq("pages.content_type", "seo_blog")
+    .eq("pages.source_language", language)
+    .is("published_url", null)
+    .not("translated_html", "is", null);
+
+  if (!orphans?.length) return;
+
+  const domain = getProjectCustomDomain(language);
+  if (!domain) return;
+
+  console.log(
+    `[blog-autopilot] Found ${orphans.length} orphaned translations (killed mid-publish), resuming`
+  );
+
+  for (const orphan of orphans) {
+    const page = orphan.pages as unknown as { id: string; blog_category?: string };
+    const categorySlug = slugifyCategory(page?.blog_category || "");
+    const deployPath = categorySlug ? `${categorySlug}/${orphan.slug}` : orphan.slug;
+    const expectedUrl = `https://${domain}/${deployPath}`;
+
+    // Check if the article is already live on CF Pages
+    // (publish succeeded but DB update was killed — the common case)
+    let isLive = false;
+    try {
+      const res = await fetch(expectedUrl, { method: "HEAD", redirect: "follow" });
+      isLive = res.status === 200;
+    } catch {
+      // Network error — fall through and republish
+    }
+
+    if (isLive) {
+      await db
+        .from("translations")
+        .update({
+          status: "published",
+          published_url: expectedUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orphan.id);
+      await db
+        .from("blog_content_plan")
+        .update({
+          status: "published",
+          page_id: page.id,
+          published_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("workspace_id", workspaceId)
+        .eq("language", language)
+        .eq("slug", orphan.slug);
+      console.log(
+        `[blog-autopilot] Backfilled URL for already-live article: ${expectedUrl}`
+      );
+      continue;
+    }
+
+    // Not live — republish from the HTML we already have
+    if (!orphan.translated_html) continue;
+    try {
+      const url = await publishBlogArticle(
+        orphan.translated_html,
+        orphan.slug,
+        page?.blog_category || "",
+        orphan.seo_title || orphan.slug,
+        orphan.seo_description || "",
+        language,
+        workspaceId,
+        orphan.id,
+        orphan.created_at
+      );
+      await db
+        .from("translations")
+        .update({
+          status: "published",
+          published_url: url,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orphan.id);
+      await db
+        .from("blog_content_plan")
+        .update({
+          status: "published",
+          page_id: page.id,
+          published_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("workspace_id", workspaceId)
+        .eq("language", language)
+        .eq("slug", orphan.slug);
+      console.log(`[blog-autopilot] Republished orphaned article: ${url}`);
+    } catch (err) {
+      console.error(
+        `[blog-autopilot] Resume failed for "${orphan.slug}":`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
