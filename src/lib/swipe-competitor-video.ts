@@ -30,6 +30,7 @@ import {
   buildKeyframeStyleBlock,
   buildClaudeAestheticRules,
   formatLabel as formatLabelForHumans,
+  getFormatFamily,
   type SwipeVideoFormatId,
 } from "@/lib/video-format-aesthetics";
 import OpenAI from "openai";
@@ -111,7 +112,8 @@ Return valid JSON only (no markdown fences):
   "format_type": "selfie_testimonial | street_interview | before_after | discovery | grwm | podcast_clip | product_demo | explainer | dorm_confessional | professor_lecture | grocery_approach | other",
   "delivery_style": "conversational | energetic | conspiratorial | emotional | authority | calm_intimate",
   "script_structure": "testimonial | insider_secret | discovery | before_after | street_interview | podcast",
-  "character_description": "DETAILED character blueprint: approximate age, gender, ethnicity, hair style/color/length, eye color/shape, facial features (jawline, nose, skin tone/texture with visible pores and imperfections), build/posture, clothing (exact colors and style), accessories, mannerisms, emotional baseline, voice characteristics. Be extremely specific — enough to recreate this person in AI.",
+  "character_count": 1,
+  "character_description": "DETAILED character blueprint: approximate age, gender, ethnicity, hair style/color/length, eye color/shape, facial features (jawline, nose, skin tone/texture with visible pores and imperfections), build/posture, clothing (exact colors and style), accessories, mannerisms, emotional baseline, voice characteristics. Be extremely specific — enough to recreate this person in AI. If there are MULTIPLE distinct people in the video (e.g. 2 podcast hosts, interviewer + interviewee, multiple street interview subjects), describe EACH of them one after the other, labelled clearly: 'Person 1: ... Person 2: ...'.",
   "setting": "DETAILED location: room type, background details (messy/clean, props visible, clutter like coffee cups, backpacks, unmade beds), time of day feel, lived-in authentic details.",
   "implied_device": "What camera was likely used based on aspect ratio, lens distortion, dynamic range, and artifacts.",
   "camera_setup": "Shot type (close-up/medium close-up/medium/wide), angle (below eye level/eye level/above), framing (centered/off-center/rule of thirds), camera motion (handheld sway and jitter/tripod/selfie grip wobble), orientation (vertical 9:16 / horizontal 16:9)",
@@ -133,6 +135,7 @@ Return valid JSON only (no markdown fences):
 - TRANSCRIBE EVERYTHING spoken — every word, every filler, every pause. This is the most important field.
 - Annotate emotional delivery: [enthusiastically], [whispering], [concerned], [excited], [casual], [serious]
 - Character description must be EXTREMELY detailed — facial features, exact clothing colors, hair details, skin texture, posture, mannerisms. This will be used to create an AI character.
+- **character_count** must reflect the EXACT number of distinct people visible ON camera throughout the whole video. A single person filmed from multiple angles is 1. A podcast with two hosts sitting at the same desk is 2. A street-interview montage with 4 different passersby is 4. A monologue where the camera cuts between the speaker and their laptop is still 1. Do NOT count people in the background unless they speak or are clearly part of the ad. Be literal — if only ONE person ever appears on screen, write 1, even if the format is "podcast".
 - Setting must include "lived-in" authentic details, not just "bedroom" but specific props and clutter visible.
 - Identify the hook formula: what pattern does the first 3 seconds follow?
 - Product interaction timing: when is product first visible? How prominently displayed?
@@ -514,6 +517,7 @@ export async function swipeCompetitorVideo(
     format_type: string;
     delivery_style: string;
     script_structure: string;
+    character_count?: number;
     character_description: string;
     setting: string;
     implied_device: string;
@@ -592,6 +596,17 @@ export async function swipeCompetitorVideo(
   const isPixarSingleCharacter = isPixar && pixarCharacterCount <= 1;
   const isPixarMultiCharacter = isPixar && pixarCharacterCount > 1;
 
+  // UGC character count drives both:
+  //   - Claude prompt constraint ("write exactly N distinct characters")
+  //   - Keyframe generation strategy (reuse first frame vs per-shot)
+  // Gemini is instructed to count distinct people literally. Fall back to 1
+  // if the field is missing or garbage so the default path stays sane.
+  const rawUgcCount = ugcAnalysis?.character_count;
+  const ugcCharacterCount: number =
+    typeof rawUgcCount === "number" && rawUgcCount >= 1 && rawUgcCount <= 20
+      ? Math.round(rawUgcCount)
+      : 1;
+
   // Effective format ID used for format-aware keyframe + Claude prompt:
   //   1. Explicit user override wins (formatOverride)
   //   2. Otherwise, use the format Gemini detected in the competitor video
@@ -599,6 +614,21 @@ export async function swipeCompetitorVideo(
   const effectiveFormatId: string | null = isPixar
     ? null
     : formatOverride || ugcAnalysis?.format_type || null;
+
+  // UGC multi-shot mode: per-shot keyframe generation (instead of reusing
+  // shot 1). Triggered when the source video has either:
+  //   - multiple distinct characters (podcast with 2 hosts, street-interview
+  //     montage, before/after with different scenes, etc.), OR
+  //   - a non-selfie format family (studio/lecture/street/tabletop), which
+  //     typically has camera cuts between angles, so a single starting frame
+  //     can't match every shot's framing.
+  // Pure selfie-family single-character clips still reuse shot 1 — that's the
+  // one case where one keyframe legitimately carries all shots.
+  const formatFamily = !isPixar ? getFormatFamily(effectiveFormatId) : null;
+  const isUgcMultiShot =
+    !isPixar &&
+    !!ugcAnalysis &&
+    (ugcCharacterCount > 1 || (formatFamily !== null && formatFamily !== "selfie"));
 
   // Log Gemini usage
   await db.from("usage_logs").insert({
@@ -780,6 +810,27 @@ Return ONLY valid JSON. No markdown fences.`;
       ? `\n\n**IMPORTANT**: Ignore the format Gemini detected in the source video. The user has explicitly forced format = "${formatOverride}" (${formatLabelForHumans(formatOverride)}). Write the concept in THAT format regardless of what the competitor video looked like. The hook, script structure, and persuasion mechanics from the competitor are still useful — but the VISUAL FORMAT must be the overridden one.`
       : "";
 
+    // CRITICAL character-count enforcement. Without this block Claude
+    // hallucinates extra hosts (e.g. a single-host podcast becomes 2 hosts
+    // in the adapted concept). Gemini counts distinct people literally, and
+    // we force Claude to match that number exactly.
+    const characterCountLine =
+      ugcCharacterCount === 1
+        ? `**NUMBER OF PEOPLE ON CAMERA**: 1 (ONE person only — a monologue / solo presenter)`
+        : `**NUMBER OF PEOPLE ON CAMERA**: ${ugcCharacterCount} distinct people`;
+    const characterCountEnforcement =
+      ugcCharacterCount === 1
+        ? `\n\n## CHARACTER COUNT (STRICTLY ENFORCED)\n\nThe source video shows exactly **ONE (1) person** on camera. This is NOT negotiable. Your adapted concept MUST have exactly ONE person in every shot. Do NOT write concepts with 2 hosts, an interviewer and interviewee, or multiple characters — even if the format is "podcast_clip" or "street_interview". A podcast with one host is a SOLO MONOLOGUE. A street interview with one answer is ONE person talking off-camera to a hidden interviewer.\n\n- character_description must describe exactly ONE person.\n- Every shot_description must show the SAME single person (possibly from different angles or framings).\n- Every veo_prompt must have the SAME single character. No second host. No second interviewee. No split-screen partner.\n- If you feel the urge to add a second person, STOP and write the shot with just the original person instead.`
+        : `\n\n## CHARACTER COUNT (STRICTLY ENFORCED)\n\nThe source video shows exactly **${ugcCharacterCount} distinct people** on camera. Your adapted concept MUST have exactly ${ugcCharacterCount} distinct characters — not more, not fewer.\n\n- character_description must describe ALL ${ugcCharacterCount} people in detail, labelled 'Person 1: ... Person 2: ...'.\n- Each shot_description should specify WHICH person (or people) is visible in that shot, along with the camera framing for that specific shot. Different shots may focus on different people.\n- Each veo_prompt must describe the correct person for its shot (use consistent descriptions across shots for the same person so they look identical).\n- Do NOT add extra characters beyond the ${ugcCharacterCount} in the source. Do NOT drop any.`;
+
+    // Multi-shot guidance: when we're going to generate ONE keyframe per shot
+    // (podcast/lecture/street/tabletop OR any multi-character UGC), tell
+    // Claude to write each shot_description as a STANDALONE image prompt
+    // that captures that shot's specific character, angle, and framing.
+    const multiShotGuidance = isUgcMultiShot
+      ? `\n\n## PER-SHOT KEYFRAMES (IMPORTANT)\n\nThis concept will be rendered with **one keyframe per shot** (not a single reused starting frame). That means each shot's \`shot_description\` must be a COMPLETE, STANDALONE image prompt that describes:\n\n1. **Which character** is in the frame (${ugcCharacterCount > 1 ? `specify Person 1 / Person 2 / etc. — different shots may show different people` : "the single character, possibly from a different angle than the previous shot"})\n2. **Camera framing** for THIS specific shot (wide establishing, medium, close-up, over-the-shoulder, low angle, etc.)\n3. **Environment / background** matching the format family\n4. **Pose and expression** at the exact moment the shot begins (static resting pose, first frame of the clip)\n\nWrite each shot_description as if it's the ONLY image you're generating — do not assume any context from previous shots. Each shot gets its own AI-generated keyframe so dramatic camera cuts, different characters, and different framings all work cleanly.`
+      : `\n\n## SINGLE KEYFRAME REUSE (IMPORTANT)\n\nThis is a selfie-family single-person clip, so we will render **one keyframe** from shot 1's description and reuse it as the starting frame for every shot. That means:\n\n- Shot 1's \`shot_description\` sets the visual — it must fully describe the character, environment, framing, and resting pose.\n- Subsequent shots share the same starting frame, so keep the character and environment consistent. Camera motion and expression changes happen INSIDE each VEO clip starting from that shared frame.\n- Do NOT describe dramatically different camera angles per shot — a reused single frame cannot support hard cuts.`;
+
     userPrompt = `A competitor video ad was analyzed by watching the actual video with AI:
 
 ## COMPETITOR VIDEO ANALYSIS
@@ -791,6 +842,7 @@ Return ONLY valid JSON. No markdown fences.`;
 **BIG IDEA**: ${ugcAnalysis.big_idea || "N/A"}
 ${formatLine}
 **SCRIPT STRUCTURE**: ${ugcAnalysis.script_structure}
+${characterCountLine}
 **CHARACTER**: ${ugcAnalysis.character_description}
 **SETTING**: ${ugcAnalysis.setting}
 **CAMERA**: ${ugcAnalysis.camera_setup} | **DEVICE**: ${ugcAnalysis.implied_device || "iPhone"}
@@ -802,7 +854,7 @@ ${formatLine}
 **WHY IT WORKS**: ${ugcAnalysis.why_it_works || ugcAnalysis.persuasion_analysis}
 **PERSUASION ANALYSIS**: ${ugcAnalysis.persuasion_analysis}
 
-${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}${styleNotesBlock}
+${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}${styleNotesBlock}${characterCountEnforcement}${multiShotGuidance}
 
 ## YOUR TASK
 
@@ -1101,10 +1153,14 @@ Return ONLY valid JSON. No markdown fences.`;
   const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
 
   // Keyframe reuse strategy:
-  //   - UGC: reuse shot 1 (same character across all shots)
+  //   - UGC selfie-family + 1 character: reuse shot 1 (one continuous take,
+  //     minimal angle changes — same starting frame works for every shot)
+  //   - UGC multi-shot (podcast/lecture/street/tabletop OR >1 character):
+  //     per-shot keyframe (camera cuts, different framings, or different
+  //     characters — a single starting frame cannot represent every shot)
   //   - Pixar single-character: reuse shot 1 (same character across all shots)
-  //   - Pixar multi-character: individual keyframe per shot (different character each)
-  const reuseFirstFrame = !isPixarMultiCharacter;
+  //   - Pixar multi-character: per-shot keyframe (different character each)
+  const reuseFirstFrame = !isPixarMultiCharacter && !isUgcMultiShot;
   const styleNotes = isPixar
     ? JSON.stringify({
         theme: proposal.theme ?? null,
@@ -1233,15 +1289,28 @@ Return ONLY valid JSON. No markdown fences.`;
       .order("shot_number");
 
     if (shots && shots.length > 0) {
-      if (isPixarMultiCharacter) {
-        // PIXAR MULTI-CHARACTER MODE: one keyframe per shot, all in parallel.
-        // shot_description already IS the full Pixar character+scene prompt
-        // (mapped from character_image_prompt during proposal normalization),
-        // so pass it raw — no iPhone wrapper.
+      if (isPixarMultiCharacter || isUgcMultiShot) {
+        // PER-SHOT KEYFRAME MODES:
+        //   - Pixar multi-character: shot_description is the raw Pixar
+        //     character+scene prompt; pass it through with no wrapper.
+        //   - UGC multi-shot: wrap each shot_description in the format-aware
+        //     capture style block (podcast studio / lecture / street /
+        //     tabletop / messy selfie) so Nano Banana gets the correct
+        //     aesthetic for every shot, not just shot 1.
+        // Both run in parallel via Promise.allSettled.
         const perShotResults = await Promise.allSettled(
           shots.map(async (shot) => {
+            const shotPrompt = isPixarMultiCharacter
+              ? shot.shot_description
+              : buildImagePrompt(
+                  shot.shot_description,
+                  proposal.character_description,
+                  proposal.product_description ?? null,
+                  effectiveFormatId
+                );
+
             const taskId = await createImageTask(
-              shot.shot_description,
+              shotPrompt,
               [],
               "2:3",
               "1K"
@@ -1299,8 +1368,9 @@ Return ONLY valid JSON. No markdown fences.`;
         // Log any shot failures (non-fatal)
         perShotResults.forEach((r, i) => {
           if (r.status === "rejected") {
+            const modeLabel = isPixarMultiCharacter ? "Pixar" : "UGC multi-shot";
             console.error(
-              `[swipe-video] Pixar keyframe shot ${shots[i].shot_number} failed:`,
+              `[swipe-video] ${modeLabel} keyframe shot ${shots[i].shot_number} failed:`,
               r.reason
             );
           }

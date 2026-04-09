@@ -452,11 +452,6 @@ function UploadVideoModal({
   const [dragOver, setDragOver] = useState(false);
 
   async function handleSubmit() {
-    if (!brandName.trim()) {
-      setError("Brand name is required");
-      return;
-    }
-
     let finalVideoUrl = videoUrl;
 
     // If file mode, upload directly to Supabase via signed URL
@@ -517,7 +512,7 @@ function UploadVideoModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_url: finalVideoUrl,
-          brand_name: brandName.trim(),
+          brand_name: brandName.trim() || "Competitor",
           video_style: modalStyle,
           video_format:
             modalStyle === "ugc" && modalFormat !== "auto" ? modalFormat : undefined,
@@ -647,7 +642,9 @@ function UploadVideoModal({
 
           {/* Brand name */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Brand / Competitor Name</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Brand / Competitor Name <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
             <input
               type="text"
               placeholder="e.g. Emma Sleep, Casper, Purple..."

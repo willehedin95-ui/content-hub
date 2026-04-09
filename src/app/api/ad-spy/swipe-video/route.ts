@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     thumbnail_url,
     title,
     body: adBody,
-    brand_name,
+    brand_name: rawBrandName,
     video_duration,
     video_style,
     video_format,
@@ -30,12 +30,17 @@ export async function POST(req: NextRequest) {
     thumbnail_url?: string;
     title?: string;
     body?: string;
-    brand_name: string;
+    brand_name?: string;
     video_duration?: number;
     video_style?: VideoSwipeStyle;
     video_format?: SwipeVideoFormatId;
     style_notes?: string;
   };
+
+  // Brand name is optional for manual uploads — fall back to "Competitor" so
+  // pipelines that need a non-empty label keep working. GetHookd ads always
+  // supply a real brand name so this default only kicks in for manual uploads.
+  const brand_name = (rawBrandName || "").trim() || "Competitor";
 
   const videoStyle: VideoSwipeStyle =
     video_style === "pixar_animation" ? "pixar_animation" : "ugc";
@@ -46,8 +51,8 @@ export async function POST(req: NextRequest) {
   const styleNotes: string | undefined =
     !isPixar && style_notes?.trim() ? style_notes.trim() : undefined;
 
-  if (!video_url || !brand_name) {
-    return NextResponse.json({ error: "Missing required fields (video_url, brand_name)" }, { status: 400 });
+  if (!video_url) {
+    return NextResponse.json({ error: "Missing required field (video_url)" }, { status: 400 });
   }
 
   const productSlug = (settings as Record<string, unknown>).default_product as string;
