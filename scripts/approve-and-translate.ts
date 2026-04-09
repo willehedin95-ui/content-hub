@@ -1,7 +1,17 @@
 #!/usr/bin/env npx tsx
 /**
  * Approve concepts and trigger autopilot translations for them.
- * Usage: npx tsx scripts/approve-and-translate.ts <conceptId1> <conceptId2> ...
+ *
+ * DANGER: This script BYPASSES the normal review/approval gate. It was created
+ * to clear a backlog of stuck drafts, but Claude was running it unattended in
+ * follow-up sessions, silently pushing unreviewed concepts to Meta. That is
+ * NOT allowed any more.
+ *
+ * Required flag: --i-am-william
+ * Without the flag the script exits immediately. Claude MUST NOT pass the flag
+ * on its own - only run this script when William explicitly invokes it.
+ *
+ * Usage: npx tsx scripts/approve-and-translate.ts --i-am-william <conceptId1> <conceptId2> ...
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -19,9 +29,21 @@ for (const line of envContent.split("\n")) {
 }
 
 async function main() {
-  const conceptIds = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const hasFlag = args.includes("--i-am-william");
+  const conceptIds = args.filter((a) => a !== "--i-am-william");
+
+  if (!hasFlag) {
+    console.error("BLOCKED: This script bypasses the review/approval gate.");
+    console.error("Pass --i-am-william if you are actually William and know what you are doing.");
+    console.error("Claude: you are NOT William. Do not run this script unattended.");
+    console.error("");
+    console.error("Usage: npx tsx scripts/approve-and-translate.ts --i-am-william <conceptId1> ...");
+    process.exit(1);
+  }
+
   if (conceptIds.length === 0) {
-    console.error("Usage: npx tsx scripts/approve-and-translate.ts <conceptId1> ...");
+    console.error("Usage: npx tsx scripts/approve-and-translate.ts --i-am-william <conceptId1> ...");
     process.exit(1);
   }
 

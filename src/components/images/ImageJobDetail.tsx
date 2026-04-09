@@ -55,13 +55,24 @@ function computeConceptStatus(
   job: ImageJob,
   copyTranslations: ConceptCopyTranslations,
   launchpadPriority: number | null,
-  perfData: { markets: Array<{ market: string }> } | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  perfData: { markets: Array<{ market: string; metrics?: { spend?: number; impressions?: number } | null }> } | null,
   proc: { processing: boolean },
   finishQueue: { started: boolean },
   completedCount: number,
   totalCount: number,
 ): ConceptStatus {
-  if (perfData?.markets?.length) return "live";
+  // "Live" requires Meta to have ACTUALLY served the ad recently. Previously
+  // this just checked `perfData.markets.length > 0`, which was true the moment
+  // we pushed to any market — so paused / zero-delivery ad sets showed as
+  // "Live" in the UI. The root-cause fix is to trust Meta's effective_status,
+  // but `meta_campaigns.status` is only updated at push time and never synced
+  // from Meta, so we use the 7-day aggregated metrics instead: if the concept
+  // has recent impressions or spend in at least one market, it's serving.
+  const hasRecentDelivery = (perfData?.markets ?? []).some(
+    (m) => (m.metrics?.impressions ?? 0) > 0 || (m.metrics?.spend ?? 0) > 0
+  );
+  if (hasRecentDelivery) return "live";
   if (launchpadPriority !== null) return "on_launchpad";
   // Check if fully done BEFORE checking processing — processing flags may linger
   const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
@@ -1778,7 +1789,11 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       </div>
 
       {/* ===== Performance (conditional, only when live) ===== */}
-      {perfData && perfData.markets.length > 0 && (
+      {/* Show the "Live Performance" panel only if Meta has actually served
+          the ads recently. `perfData.markets.length > 0` was the old check
+          and it fired as soon as a concept was pushed, even for paused ad
+          sets with zero impressions - see computeConceptStatus for details. */}
+      {perfData && perfData.markets.some((m) => (m.metrics?.impressions ?? 0) > 0 || (m.metrics?.spend ?? 0) > 0) && (
         <div className="mt-4 border border-gray-200 rounded-xl bg-white overflow-hidden">
           <button
             onClick={() => setPerfExpanded(!perfExpanded)}

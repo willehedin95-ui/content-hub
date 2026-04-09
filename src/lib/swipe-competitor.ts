@@ -21,6 +21,8 @@ import {
   buildBrainstormUserPrompt,
   buildHookInspiration,
   buildLearningsContext,
+  sanitizePrices,
+  containsPrice,
 } from "@/lib/brainstorm";
 import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
@@ -267,6 +269,52 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   const expectedCount = competitorImageUrls.length * 3; // 3 variations per competitor image
   if (parsed.image_prompts.length > expectedCount) {
     parsed.image_prompts = parsed.image_prompts.slice(0, expectedCount);
+  }
+
+  // --- NO PRICES safety net ---
+  // Strip any currency amounts Claude slipped into cash_dna.hooks, visual_direction,
+  // concept_description, or image_prompts. The prompt already tells it not to, but
+  // on 2026-04-07 the "€80 serum" bug baked a price into concept #018's overlay text.
+  // Belt-and-suspenders: scrub now so nothing downstream (image briefs, Nano Banana,
+  // ad copy) can render the bad data.
+  const priceFieldsBefore = JSON.stringify({
+    hooks: parsed.concept.cash_dna?.hooks,
+    visual_direction: parsed.concept.visual_direction,
+    image_prompts: parsed.image_prompts,
+  });
+  sanitizePrices(parsed.concept);
+  parsed.image_prompts = sanitizePrices({ image_prompts: parsed.image_prompts }).image_prompts;
+  const priceFieldsAfter = JSON.stringify({
+    hooks: parsed.concept.cash_dna?.hooks,
+    visual_direction: parsed.concept.visual_direction,
+    image_prompts: parsed.image_prompts,
+  });
+  if (priceFieldsBefore !== priceFieldsAfter) {
+    console.warn(
+      "[swipe-competitor] sanitizePrices stripped currency amounts from Claude output. " +
+        "Review brainstorm prompt if this keeps triggering."
+    );
+  }
+  // Final tripwire: if anything still contains a price marker, bail out loudly
+  // rather than push bad data downstream.
+  const dnaHooksRaw = parsed.concept.cash_dna?.hooks;
+  const dnaHooks: unknown[] = Array.isArray(dnaHooksRaw) ? dnaHooksRaw : [];
+  const stillDirty =
+    dnaHooks.some((h) => typeof h === "string" && containsPrice(h)) ||
+    (typeof parsed.concept.visual_direction === "string" && containsPrice(parsed.concept.visual_direction)) ||
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parsed.image_prompts.some((ip: any) => {
+      if (!ip || typeof ip !== "object") return false;
+      return (
+        (typeof ip.prompt === "string" && containsPrice(ip.prompt)) ||
+        (typeof ip.overlay_text === "string" && containsPrice(ip.overlay_text)) ||
+        (typeof ip.hook_text === "string" && containsPrice(ip.hook_text))
+      );
+    });
+  if (stillDirty) {
+    throw new Error(
+      "Claude output still contained currency amounts after sanitizePrices — sanitizer regex is too narrow"
+    );
   }
 
   // --- Create or update image_job ---

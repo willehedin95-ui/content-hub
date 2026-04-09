@@ -1,4 +1,5 @@
 import type { ProductFull, CopywritingGuideline, ConceptProposal } from "@/types";
+import { sanitizePrices } from "./price-sanitizer";
 
 // Condensed CASH framework for the system prompt
 const CASH_FRAMEWORK = `## C.A.S.H. Framework (Concepts, Angles, Styles, Hooks)
@@ -172,6 +173,13 @@ export function parseConceptProposals(raw: string): ConceptProposal[] {
       );
     }
   }
+
+  // Strip any currency amounts that slipped past the prompt rules (NO PRICES).
+  // Covers proposals[].cash_dna.hooks, visual_direction, ad_copy_primary,
+  // ad_copy_headline, image_prompts, etc. Mutates in place. See
+  // src/lib/price-sanitizer.ts for the list of patterns matched.
+  sanitizePrices(parsed);
+
   const proposals: ConceptProposal[] = parsed.proposals ?? parsed;
 
   if (!Array.isArray(proposals)) {

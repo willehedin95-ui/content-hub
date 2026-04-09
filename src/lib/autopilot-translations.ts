@@ -13,8 +13,55 @@ import { getShortLocalizationNote } from "@/lib/localization";
 import { deriveCopyGrade, gradeToNumeric } from "@/lib/quality-grades";
 import { reviewTranslationQuality, calcHaikuCost } from "@/lib/translation-review";
 import OpenAI from "openai";
+import * as crypto from "crypto";
 
 type DB = ReturnType<typeof createServerSupabase>;
+
+/**
+ * Image translation prompt. Protects brand names from being translated
+ * (HYDRO 13 -> VATTEN 13 was a real hallucination bug) and forces currency
+ * conversion (€80 -> ~880 kr) when foreign currency is baked into an overlay.
+ *
+ * Scope rules:
+ * - Must change: body text, headlines, CTAs, value props, anything that reads
+ *   as natural language copy
+ * - Must NOT change: brand marks (HYDRO 13, HYDRO13, renew), product name,
+ *   volume/dosage units (500 ml, 12,500 mg), layout, colors, product design
+ * - Must convert: foreign currency symbols/amounts (€, $, £, EUR, USD, GBP)
+ *   to SEK "kr" using approximate rates (1 EUR ≈ 11 kr, 1 USD ≈ 10 kr)
+ */
+function buildTranslationPrompt(langLabel: string): string {
+  return [
+    `Recreate this exact image but translate all visible text to ${langLabel}.`,
+    ``,
+    `KEEP UNCHANGED (do NOT translate these):`,
+    `- Brand name "HYDRO 13" / "HYDRO13" must stay exactly as-is. Do NOT translate it to "VATTEN 13" or anything else. It is a product name.`,
+    `- Brand name "renew" / "Renew" must stay exactly as-is. Do NOT translate it to "Förnya" or anything else.`,
+    `- Product description "Beauty Collagen Drinkable" / "Beauty Collagen Formula" stays exactly as-is on the bottle label.`,
+    `- Volume and dosage units like "500 ml", "12,500 mg", "30 ml" stay exactly as-is.`,
+    `- All layout, colors, typography, composition, bottle design, and photographic elements stay identical.`,
+    ``,
+    `CURRENCY CONVERSION (critical):`,
+    `- If the image contains foreign currency like "€80", "$100", "£50", "EUR 80", you MUST convert it to SEK "kr" before rendering.`,
+    `- Rates: 1 EUR ≈ 11 kr, 1 USD ≈ 10 kr, 1 GBP ≈ 13 kr. Round to clean numbers.`,
+    `- Example: "€80 serum" becomes "880 kr-serum". Never leave € / $ / £ in the translated image.`,
+    ``,
+    `DO NOT:`,
+    `- Add any new text, logos, badges, stars, ratings, or visual elements that are not already in the source image.`,
+    `- Remove any text that is in the source image.`,
+    `- Return an identical copy of the source image. If you cannot translate it, that is a failure - still attempt the translation.`,
+  ].join("\n");
+}
+
+/**
+ * Detect whether the generated image is byte-identical to the source (the
+ * Nano Banana passthrough bug seen with concept #16). When Kie AI fails to
+ * actually generate a new image and returns the input unchanged, we must
+ * NOT mark the translation as completed.
+ */
+function md5(buf: Buffer): string {
+  return crypto.createHash("md5").update(buf).digest("hex");
+}
 
 /**
  * Full autopilot translation pipeline. Call after approve.
@@ -409,7 +456,7 @@ async function processOneTranslation(
     // Build prompt
     const langLabel = LANGUAGES.find((l) => l.value === translation.language)?.label ?? translation.language;
     let imageInputUrl = translation.source_images.original_url;
-    let prompt = `Recreate this exact image but translate all visible text to ${langLabel}. Keep the same visual style, layout, colors, and design. Only change the text language — do not add any new text, logos, badges, or visual elements that are not already in the image.`;
+    let prompt = buildTranslationPrompt(langLabel);
 
     // For 9:16: outpaint from completed 4:5 sibling
     if (aspectRatio === "9:16") {
@@ -448,6 +495,32 @@ async function processOneTranslation(
     const resultRes = await fetch(resultUrls[0]);
     if (!resultRes.ok) throw new Error("Failed to fetch generated image from Kie.ai");
     const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+    // Passthrough detection: for translations (4:5), Kie sometimes returns
+    // the input unchanged when it can't actually translate the overlay.
+    // Compare MD5 against the source. If identical, treat as failure so the
+    // retry loop can try again (and mark as failed if all retries fail).
+    // Skip this check for 9:16 outpainting (input is a different aspect ratio
+    // source so identity is theoretically possible but extremely unlikely and
+    // we don't want to false-positive the outpaint case).
+    if (aspectRatio !== "9:16") {
+      try {
+        const sourceRes = await fetch(translation.source_images.original_url);
+        if (sourceRes.ok) {
+          const sourceBuffer = Buffer.from(await sourceRes.arrayBuffer());
+          if (sourceBuffer.length === buffer.length && md5(sourceBuffer) === md5(buffer)) {
+            throw new Error(
+              `PASSTHROUGH_DETECTED: Kie returned byte-identical copy of source image (${buffer.length} bytes) - translation did not actually run`
+            );
+          }
+        }
+      } catch (passErr) {
+        if (passErr instanceof Error && passErr.message.startsWith("PASSTHROUGH_DETECTED")) {
+          throw passErr;
+        }
+        // Fetch error on source comparison - non-fatal, continue
+      }
+    }
 
     // Upload to Supabase Storage
     const filePath = `image-jobs/${jobId}/${translationId}/${crypto.randomUUID()}.png`;

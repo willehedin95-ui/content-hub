@@ -18,6 +18,8 @@ import { getProductAppearance } from "./product-appearance";
 
 // Re-export for convenience
 export { parseConceptProposals };
+export { sanitizePrices, containsPrice, stripPricesFromString } from "./price-sanitizer";
+import { sanitizePrices } from "./price-sanitizer";
 
 // ---------------------------------------------------------------------------
 // Knowledge bases embedded in prompts
@@ -797,7 +799,7 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.
 - NO URLS IN AD COPY: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in the ad copy text. The landing page URL is attached separately by the ad platform — it is NOT part of the ad copy. If the competitor's ad copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt it to a natural call-to-action WITHOUT any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.
-- NO PRICES IN AD COPY: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ad_copy_primary or ad_copy_headline. Pricing belongs on the landing page, not in the ad creative — it dates the ad and breaks once we run promotions. The ONLY exception: if you are adapting a competitor ad whose copy explicitly mentions a price as a critical part of its hook (e.g. "I spent X on Y"), you may keep that price ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire ad with no prices at all.`;
+- NO PRICES ANYWHERE: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ANY field of your output. This includes ad_copy_primary, ad_copy_headline, AND cash_dna.hooks, cash_dna.concept_description, visual_direction, and every image_prompt. The reason: cash_dna.hooks is used downstream to write overlay text for generated images, and visual_direction is used to brief Nano Banana. If a price leaks into a hook it ends up baked into the image overlay, which (a) dates the ad, (b) breaks on promotions, and (c) cannot be translated safely (we've had "€80 serum" baked into real images). Pricing belongs on the landing page only. The ONLY exception: if you are adapting a competitor ad whose copy explicitly mentions a price as a critical part of its hook (e.g. "I spent X on Y"), you may keep that price ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire concept with no prices at all, in ANY field.`;
 
 // ---------------------------------------------------------------------------
 // System prompts per mode
@@ -1344,7 +1346,7 @@ CRITICAL RULES:
 - **NATIVE ADS — PRODUCT VISIBILITY**: If the competitor ad shows someone holding/using a product, your adapted version should also show the product — set \`include_product_reference: true\` so the reference image is passed. If the competitor ad has NO product visible at all (pure face close-up, medical scene, lifestyle without product), then do NOT add our product — set \`include_product_reference: false\` and keep the scene organic.
 - **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product directly in the prompt.**
 - **NO URLS IN AD COPY**: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in ad_copy_primary or ad_copy_headline. The landing page URL is attached separately by the ad platform. If the competitor's copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt to a natural CTA without any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.
-- **NO PRICES IN AD COPY**: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ad_copy_primary or ad_copy_headline. Pricing belongs on the landing page, not in the ad creative. The ONLY exception: if the competitor's hook hinges on a specific price (e.g. "I spent X on Y"), you may keep it ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, or any other foreign currency. Default behaviour: write the entire ad with no prices at all. The same applies to baked-in text inside the image — if your image_prompt would draw a price overlay, use SEK, never EUR.
+- **NO PRICES ANYWHERE**: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ANY field of your output. This includes ad_copy_primary, ad_copy_headline, AND cash_dna.hooks, cash_dna.concept_description, visual_direction, and every image_prompt. The reason: cash_dna.hooks is used downstream to write overlay text for generated images, so a hook like "Why your €80 serum can't reach where aging happens" ends up BAKED INTO the actual image (we've had this happen). Pricing belongs on the landing page only. The ONLY exception: if the competitor's hook hinges on a specific price (e.g. "I spent X on Y"), you may keep it ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire concept with no prices at all, in ANY field.
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
 - Each entry MUST have a source_index (0-based) matching the uploaded image it is based on
@@ -1888,6 +1890,7 @@ export async function generateIterationCopy(opts: {
   const lastBrace = cleaned.lastIndexOf("}");
   if (lastBrace >= 0 && lastBrace < cleaned.length - 1) cleaned = cleaned.slice(0, lastBrace + 1);
   const parsed = JSON.parse(cleaned);
+  sanitizePrices(parsed);
 
   const primary: string[] = Array.isArray(parsed.ad_copy_primary)
     ? parsed.ad_copy_primary.filter((s: unknown) => typeof s === "string" && s.length > 0)
