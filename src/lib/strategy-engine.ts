@@ -21,6 +21,7 @@ const MIN_BUDGET_PER_ADSET = 100; // SEK/day floor per ad set
 const CRITICAL_BUDGET_PER_ADSET = 80; // Below this is wasteful — Meta can't optimize
 const ZOMBIE_SPEND_THRESHOLD = 50; // SEK total over 7 days = zombie — validated: 15 ad sets fit this, all genuinely deprioritized by Meta
 const BLEEDER_SPEND_THRESHOLD = 200; // SEK over 7d with zero purchases = actively bleeding money
+const BLEEDER_MIN_ACTIVE_DAYS = 3; // Require N days of actual spending activity in 7d window — prevents killing on 1 bad day after a pause/restart (e.g. Hydro13 #101 incident 2026-04-08)
 const SPEND_DOMINANCE_THRESHOLD = 0.6; // 60% of campaign spend = one dominating
 
 const MIN_WINNING_ADSETS = 2; // Below = concept starvation
@@ -92,6 +93,8 @@ export interface AdSetBreakdown {
   roas_7d: number;
   cpa_7d: number | null;
   purchases_7d: number;
+  active_days_7d: number; // Number of days with spend > 0 in last 7 days — bleeder rule requires 3+ to avoid killing on 1 bad day
+  purchases_30d: number; // Historical purchases (last 30 days) — bleeder rule protects historical winners
   days_running: number | null;
   spend_share_pct: number;
   status: "winning" | "testing" | "underperforming" | "zombie" | "bleeder";
@@ -297,23 +300,37 @@ function buildAdSetBreakdown(
       spend_7d: number;
       revenue_7d: number;
       purchases_7d: number;
+      active_days_7d: number;
       first_date: string;
       last_date: string;
     }
   >();
+
+  // Track historical purchases (30d window) per ad set — protects historical winners from being killed on one bad week
+  const adsetPurchases30d = new Map<string, number>();
 
   for (const row of adsetDays) {
     const d = new Date(row.date);
     const daysAgo = Math.floor(
       (todayDate.getTime() - d.getTime()) / 86400000
     );
-    if (daysAgo < 1 || daysAgo > 7) continue;
+    if (daysAgo < 1 || daysAgo > 30) continue;
+
+    // Accumulate 30d purchases regardless of 7d window
+    adsetPurchases30d.set(
+      row.adset_id,
+      (adsetPurchases30d.get(row.adset_id) ?? 0) + row.purchases
+    );
+
+    if (daysAgo > 7) continue;
 
     const existing = adsetMap.get(row.adset_id);
+    const hasSpend = row.spend > 0;
     if (existing) {
       existing.spend_7d += row.spend;
       existing.revenue_7d += row.purchase_value;
       existing.purchases_7d += row.purchases;
+      if (hasSpend) existing.active_days_7d += 1;
       if (row.date < existing.first_date) existing.first_date = row.date;
       if (row.date > existing.last_date) existing.last_date = row.date;
     } else {
@@ -325,6 +342,7 @@ function buildAdSetBreakdown(
         spend_7d: row.spend,
         revenue_7d: row.purchase_value,
         purchases_7d: row.purchases,
+        active_days_7d: hasSpend ? 1 : 0,
         first_date: row.date,
         last_date: row.date,
       });
@@ -375,6 +393,8 @@ function buildAdSetBreakdown(
         )
       : null;
 
+    const purchases30d = adsetPurchases30d.get(a.adset_id) ?? 0;
+
     // Determine status
     let status: AdSetBreakdown["status"];
     if (a.spend_7d < ZOMBIE_SPEND_THRESHOLD) {
@@ -382,8 +402,16 @@ function buildAdSetBreakdown(
     } else if (daysRunning !== null && daysRunning <= CONCEPT_COOLDOWN_DAYS) {
       // Testing window: protect ALL ad sets for 4 days — give Meta time to find the right audience
       status = "testing";
-    } else if (a.spend_7d >= BLEEDER_SPEND_THRESHOLD && a.purchases_7d === 0) {
-      // Bleeder: significant spend with zero conversions, but only after cooldown period
+    } else if (
+      a.spend_7d >= BLEEDER_SPEND_THRESHOLD &&
+      a.purchases_7d === 0 &&
+      a.active_days_7d >= BLEEDER_MIN_ACTIVE_DAYS &&
+      purchases30d === 0
+    ) {
+      // Bleeder: significant spend with zero conversions, AFTER:
+      // (1) cooldown period (daysRunning > CONCEPT_COOLDOWN_DAYS)
+      // (2) at least 3 days of active spend in the window — prevents killing on 1 bad day after a pause/restart
+      // (3) zero historical purchases in 30d — protects historical winners from one bad week
       status = "bleeder";
     } else if (roas >= beRoas && a.purchases_7d > 0) {
       status = "winning";
@@ -401,6 +429,8 @@ function buildAdSetBreakdown(
       roas_7d: roas,
       cpa_7d: cpa,
       purchases_7d: a.purchases_7d,
+      active_days_7d: a.active_days_7d,
+      purchases_30d: purchases30d,
       days_running: daysRunning,
       spend_share_pct: spendShare,
       status,
