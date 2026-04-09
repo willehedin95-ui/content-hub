@@ -14,6 +14,7 @@ import type {
 } from "@/types";
 import { CLAUDE_MODEL, USE_JSON_PROMPTING } from "./constants";
 import { parseConceptProposals } from "./concept-generator";
+import { getProductAppearance } from "./product-appearance";
 
 // Re-export for convenience
 export { parseConceptProposals };
@@ -714,6 +715,11 @@ export function buildProductContext(
   if (product.ingredients)
     parts.push(`Key Ingredients: ${product.ingredients}`);
 
+  const physicalAppearance = getProductAppearance(product);
+  if (physicalAppearance) {
+    parts.push(`\n### PRODUCT PHYSICAL APPEARANCE (critical for image prompts)\n${physicalAppearance}\n\nWhen describing OUR product in any image prompt, use ONLY these physical details. NEVER invent color, material, shape, or size. If the competitor's product looks different, IGNORE their product — we are only reproducing their visual FORMAT, not their product.`);
+  }
+
   if (productBrief) {
     parts.push(`\n### Product Brief\n${productBrief}`);
   }
@@ -1281,6 +1287,7 @@ If the competitor ad is a PRODUCT-focused ad (product prominently visible, studi
 - If the competitor ad has a person, describe the type of person (age range, expression, setting) without specifying ethnicity
 - If the competitor ad uses a product shot, describe how our product should be positioned in the same style
 - **PRODUCT REFERENCE CONTROL**: For each image_prompt, set \`"include_product_reference": true\` if the image will show the physical product in any way — someone holding a bottle, a product on a table, a person posing with the package, etc. This passes the product hero image to Nano Banana so it renders the correct product appearance. Set it to \`false\` ONLY if the product is completely absent from the scene — e.g. a person at a doctor's office, a before/after face close-up, a medical chart, an illustrated infographic. The key question is simple: **will the product be visible in the generated image?** If yes → true. If no → false.
+- **PRODUCT APPEARANCE — NO HALLUCINATION**: When describing OUR product in the Subject, MadeOutOf, RoomObjects, Accessories, or Arrangement fields, you MUST use ONLY the physical details from the "PRODUCT PHYSICAL APPEARANCE" section of PRODUCT KNOWLEDGE above. **NEVER invent color, material, shape, or size.** The competitor's product looks completely different from ours — do NOT describe their product's appearance. Do NOT write phrases like "amber bottle", "brown glass bottle", "dark glass vial", "clear bottle", "supplement jar" unless those EXACT words appear in PRODUCT PHYSICAL APPEARANCE. If PRODUCT PHYSICAL APPEARANCE says "white plastic bottle", write "white plastic bottle" — never "amber", never "glass". When in doubt, use generic language like "the ${product.name} bottle" and let the reference image handle the rest. Getting this wrong produces broken images where the generated bottle looks nothing like our real product.
 
 ${USE_JSON_PROMPTING ? '' : "**Nano Banana prompt structure:**\n`[Subject/scene description with specific details]. [Lighting and atmosphere]. [Textures, materials, and technical details]. [Overall mood and feeling].`\n\nExample quality level (do NOT copy — shows density and specificity):\n\"A supplement bottle centered on a weathered wooden nightstand beside a rumpled bed, morning light streaming through sheer curtains casting soft warm shadows across the scene. Shallow depth of field with the bottle sharp and background softly blurred, natural grain texture. Intimate, relatable, early-morning wellness ritual mood.\"\n"}
 ---

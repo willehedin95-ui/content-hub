@@ -98,6 +98,21 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   const { buildResearchContext } = await import("@/lib/research-context");
   const researchContext = await buildResearchContext(productSlug, workspaceId);
 
+  // --- Fetch product hero images EARLY so we can pass them to Claude as a
+  // visual anchor. Without this, Claude hallucinates product colors/materials
+  // ("amber glass bottle" for a white plastic bottle, etc.) because it's only
+  // seen the competitor image and has no reference for our actual product.
+  const { data: productImages } = await db
+    .from("product_images")
+    .select("url, category")
+    .eq("product_id", product.id)
+    .order("sort_order", { ascending: true });
+
+  const productHeroUrls = (productImages ?? [])
+    .filter((i) => i.category === "product" || i.category === "hero")
+    .slice(0, 3)
+    .map((i) => i.url);
+
   // --- Build prompts ---
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
@@ -126,22 +141,49 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   );
 
   // --- Call Claude Vision ---
+  // Message structure:
+  //   1. Competitor ad images (labeled as "COMPETITOR ADS")
+  //   2. Product hero image(s) (labeled as "OUR PRODUCT")
+  //   3. User prompt text
+  // This prevents Claude from confusing the two sets of images and gives it
+  // a concrete visual anchor for what our product actually looks like when
+  // writing image prompts.
+  const messageContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image"; source: { type: "url"; url: string } }
+  > = [];
+
+  messageContent.push({
+    type: "text",
+    text: `The following ${competitorImageUrls.length > 1 ? `${competitorImageUrls.length} images are` : "image is"} COMPETITOR ADS — reverse-engineer the visual format and persuasion structure:`,
+  });
+  for (const url of competitorImageUrls) {
+    messageContent.push({ type: "image", source: { type: "url", url } });
+  }
+
+  if (productHeroUrls.length > 0) {
+    messageContent.push({
+      type: "text",
+      text: `\n---\n\nThe following ${productHeroUrls.length > 1 ? `${productHeroUrls.length} images show` : "image shows"} OUR PRODUCT (${product.name}). **This is what our product actually looks like.** When you describe our product in any image prompt (Subject, MadeOutOf, RoomObjects, Accessories, Arrangement fields), you MUST describe what you see in THIS image — not what the competitor's product looks like. Never invent colors, materials, or shapes for our product:`,
+    });
+    for (const url of productHeroUrls) {
+      messageContent.push({ type: "image", source: { type: "url", url } });
+    }
+  }
+
+  messageContent.push({ type: "text", text: `\n---\n\n${userPrompt}` });
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 8000,
+    // 16000 — each JSON image_prompt is ~500-800 tokens, and with 3 competitor
+    // images × 3 variations = 9 prompts, plus analysis + concept metadata, we
+    // need comfortable headroom. 8000 was silently truncating the response,
+    // causing the JSON repair path to salvage only 1-2 prompts out of 9.
+    max_tokens: 16000,
     temperature: 0.7,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-    messages: [{
-      role: "user",
-      content: [
-        ...competitorImageUrls.map((url) => ({
-          type: "image" as const,
-          source: { type: "url" as const, url },
-        })),
-        { type: "text" as const, text: userPrompt },
-      ],
-    }],
+    messages: [{ role: "user", content: messageContent }],
   });
 
   const rawContent = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
@@ -250,16 +292,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     pain_point: input.painPoint || "auto-detect",
   };
 
-  const { data: productImages } = await db
-    .from("product_images")
-    .select("url, category")
-    .eq("product_id", product.id)
-    .order("sort_order", { ascending: true });
-
-  const productHeroUrls = (productImages ?? [])
-    .filter((i) => i.category === "product" || i.category === "hero")
-    .slice(0, 3)
-    .map((i) => i.url);
+  // productHeroUrls already fetched earlier (before the Claude call)
+  // so we could pass them as a visual anchor to Claude.
 
   // Build a textual product appearance description for Kie AI prompts
   const productAppearance = getProductAppearance(product);
