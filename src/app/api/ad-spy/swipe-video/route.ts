@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
-import { swipeCompetitorVideo, type VideoSwipeStyle } from "@/lib/swipe-competitor-video";
+import { swipeCompetitorVideo, type VideoSwipeStyle, type VideoMode } from "@/lib/swipe-competitor-video";
 import type { SwipeVideoFormatId } from "@/lib/video-format-aesthetics";
 
 export const maxDuration = 300;
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     video_style,
     video_format,
     style_notes,
+    video_mode,
   } = body as {
     gethookd_ad_id?: number;
     video_url: string;
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
     video_style?: VideoSwipeStyle;
     video_format?: SwipeVideoFormatId;
     style_notes?: string;
+    video_mode?: VideoMode;
   };
 
   // Brand name is optional for manual uploads — fall back to "Competitor" so
@@ -50,6 +52,11 @@ export async function POST(req: NextRequest) {
     !isPixar && video_format ? video_format : undefined;
   const styleNotes: string | undefined =
     !isPixar && style_notes?.trim() ? style_notes.trim() : undefined;
+  // Shot-structure mode. Pixar always runs "simple" internally so ignore
+  // multicut unless we're in UGC mode. Default is "simple".
+  const videoMode: VideoMode =
+    !isPixar && video_mode === "multicut" ? "multicut" : "simple";
+  const isMultiCut = videoMode === "multicut";
 
   if (!video_url) {
     return NextResponse.json({ error: "Missing required field (video_url)" }, { status: 400 });
@@ -89,10 +96,12 @@ export async function POST(req: NextRequest) {
         source: isManual ? "manual" : "autopilot",
         pipeline_mode: "multi_clip",
         target_languages: await getWorkspaceLanguages(),
-        // Pixar uses more shots and never reuses a single keyframe
-        max_shots: isPixar ? 5 : 4,
-        reuse_first_frame: !isPixar,
+        // Multi-cut defaults to 10 shots; Pixar uses 5; simple UGC uses 4
+        max_shots: isMultiCut ? 10 : isPixar ? 5 : 4,
+        // Multi-cut uses per-shot keyframes (rapid-cut edit needs variety)
+        reuse_first_frame: !isPixar && !isMultiCut,
         format_type: isPixar ? "pixar_animation" : null,
+        video_mode: videoMode,
         swipe_progress: { step: "queued", message: "Waiting to start..." },
       })
       .select("id")
@@ -128,6 +137,7 @@ export async function POST(req: NextRequest) {
           videoStyle,
           videoFormat,
           styleNotes,
+          videoMode,
         });
 
         // Update discovered_ads status (only for GetHookd ads)

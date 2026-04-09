@@ -41,6 +41,16 @@ import OpenAI from "openai";
 
 export type VideoSwipeStyle = "ugc" | "pixar_animation";
 
+/**
+ * Mode toggles the shot-structure strategy for UGC swipes.
+ * - "simple" (default): classic 3-8 shot structure, one continuous take with
+ *   minimal angle variation, reuses shot 1 keyframe in the selfie case.
+ * - "multicut": Franky Shaw-style rapid-cut edit — ~10 shots per concept,
+ *   mixes dialogue beats with silent reaction/b-roll shots, designed to be
+ *   clipped down in CapCut into a heavily edited video. Pixar ignores this.
+ */
+export type VideoMode = "simple" | "multicut";
+
 export interface VideoSwipeInput {
   workspaceId: string;
   productSlug: string;
@@ -75,6 +85,12 @@ export interface VideoSwipeInput {
    * pick a specific format ID.
    */
   styleNotes?: string;
+  /**
+   * Shot-structure mode for UGC swipes. Defaults to "simple". "multicut"
+   * produces ~10 shots with speaker/shot_type metadata + reaction shots for
+   * Franky Shaw-style rapid-cut editing. Pixar ignores this.
+   */
+  videoMode?: VideoMode;
 }
 
 export interface VideoSwipeResult {
@@ -476,6 +492,12 @@ export async function swipeCompetitorVideo(
   const rawStyleNotes = (input.styleNotes || "").trim();
   const styleNotesText = !isPixar && rawStyleNotes ? rawStyleNotes : "";
 
+  // Shot-structure mode. Pixar always acts as "simple" internally.
+  const videoMode: VideoMode = !isPixar && input.videoMode === "multicut" ? "multicut" : "simple";
+  const isMultiCut = videoMode === "multicut";
+  // 10 shots × 8s = 80s of raw material per concept. User clips down in CapCut.
+  const MULTICUT_SHOT_COUNT = 10;
+
   // Progress updater for live UI
   async function updateProgress(jobId: string, step: string, message: string) {
     await db
@@ -616,19 +638,23 @@ export async function swipeCompetitorVideo(
     : formatOverride || ugcAnalysis?.format_type || null;
 
   // UGC multi-shot mode: per-shot keyframe generation (instead of reusing
-  // shot 1). Triggered when the source video has either:
+  // shot 1). Triggered when any of:
+  //   - multi-cut mode is on (Franky Shaw-style edit needs varying framings)
   //   - multiple distinct characters (podcast with 2 hosts, street-interview
-  //     montage, before/after with different scenes, etc.), OR
+  //     montage, before/after with different scenes, etc.)
   //   - a non-selfie format family (studio/lecture/street/tabletop), which
   //     typically has camera cuts between angles, so a single starting frame
   //     can't match every shot's framing.
-  // Pure selfie-family single-character clips still reuse shot 1 — that's the
-  // one case where one keyframe legitimately carries all shots.
+  // Pure selfie-family single-character clips in simple mode still reuse
+  // shot 1 — that's the one case where one keyframe legitimately carries
+  // all shots.
   const formatFamily = !isPixar ? getFormatFamily(effectiveFormatId) : null;
   const isUgcMultiShot =
     !isPixar &&
     !!ugcAnalysis &&
-    (ugcCharacterCount > 1 || (formatFamily !== null && formatFamily !== "selfie"));
+    (isMultiCut ||
+      ugcCharacterCount > 1 ||
+      (formatFamily !== null && formatFamily !== "selfie"));
 
   // Log Gemini usage
   await db.from("usage_logs").insert({
@@ -831,6 +857,16 @@ Return ONLY valid JSON. No markdown fences.`;
       ? `\n\n## PER-SHOT KEYFRAMES (IMPORTANT)\n\nThis concept will be rendered with **one keyframe per shot** (not a single reused starting frame). That means each shot's \`shot_description\` must be a COMPLETE, STANDALONE image prompt that describes:\n\n1. **Which character** is in the frame (${ugcCharacterCount > 1 ? `specify Person 1 / Person 2 / etc. — different shots may show different people` : "the single character, possibly from a different angle than the previous shot"})\n2. **Camera framing** for THIS specific shot (wide establishing, medium, close-up, over-the-shoulder, low angle, etc.)\n3. **Environment / background** matching the format family\n4. **Pose and expression** at the exact moment the shot begins (static resting pose, first frame of the clip)\n\nWrite each shot_description as if it's the ONLY image you're generating — do not assume any context from previous shots. Each shot gets its own AI-generated keyframe so dramatic camera cuts, different characters, and different framings all work cleanly.`
       : `\n\n## SINGLE KEYFRAME REUSE (IMPORTANT)\n\nThis is a selfie-family single-person clip, so we will render **one keyframe** from shot 1's description and reuse it as the starting frame for every shot. That means:\n\n- Shot 1's \`shot_description\` sets the visual — it must fully describe the character, environment, framing, and resting pose.\n- Subsequent shots share the same starting frame, so keep the character and environment consistent. Camera motion and expression changes happen INSIDE each VEO clip starting from that shared frame.\n- Do NOT describe dramatically different camera angles per shot — a reused single frame cannot support hard cuts.`;
 
+    // Multi-cut guidance (Franky Shaw-style rapid cut edit):
+    // - Exactly 10 shots (80s total raw material) to clip down in CapCut
+    // - Mix dialogue beats with silent reaction/b-roll shots for natural cuts
+    // - Per-shot speaker + shot_type metadata tags every shot so post-production
+    //   knows which clips are dialogue vs reactions vs b-roll
+    // - Overrides the normal 3-8 shot count when enabled
+    const multiCutGuidance = isMultiCut
+      ? `\n\n## MULTI-CUT MODE (FRANKY SHAW-STYLE RAPID EDIT)\n\nThis concept will be edited as a **heavily-cut rapid-edit video** — NOT a single continuous take. You MUST generate exactly **${MULTICUT_SHOT_COUNT} shots** instead of the default 3-8. These 10 shots give the editor 80 seconds of raw material to clip down into a final ~20-40s edited video with rapid cuts every 1-3 seconds.\n\n### STRUCTURE REQUIREMENTS\n\n1. **Exactly ${MULTICUT_SHOT_COUNT} shots total** — not fewer, not more.\n2. **Mix of dialogue and silent shots**. Aim for roughly:\n   - 6-7 **dialogue shots** — the character speaking a beat of the script\n   - 2-3 **reaction shots** — silent clips with no dialogue (thinking, sighing, eye roll, looking away, subtle facial expression, a beat of laughter with no words)\n   - 0-1 **b-roll shots** — silent hands-on-product, pour shot, close-up of the bottle, environmental detail\n3. **Each shot must include two new metadata fields**:\n   - \`speaker\`: "a" | "b" | "voiceover"  (use "a" for the primary person, "b" only if there's a second character, "voiceover" for b-roll shots with narration)\n   - \`shot_type\`: "dialogue" | "reaction" | "broll"  (dialogue = person is speaking, reaction = silent facial beat, broll = no person in frame)\n4. **Reaction and b-roll shots have NO dialogue**. Set their \`dialogue\` / script beat to an empty string "" and describe the silent action in \`shot_description\` and \`veo_prompt\` instead (e.g. "character pauses, looks away, sighs" or "close-up of hands pouring the product into a glass").\n5. **Angle and framing variety**. Every shot must be a different camera framing or angle — close-up, medium, over-the-shoulder, low angle, high angle, from the side, etc. This gives the editor material to cut between. Even within the same character and environment, shift the framing every shot.\n6. **Dialogue shots still follow the 15-word max rule**. Reaction and b-roll shots are silent so they have no word limit.\n7. **Narrative order matters**. Write the shots in the intended playback order — the editor can trim or reorder but your sequence should make narrative sense end-to-end.\n8. **Add the fields to every shot in the JSON output**, including shots that already had them. Example shot object:\n\n\`\`\`json\n{\n  "shot_number": 1,\n  "shot_type": "dialogue",\n  "speaker": "a",\n  "shot_description": "...",\n  "veo_prompt": "...",\n  "duration_seconds": 8\n}\n\`\`\`\n\nFor reaction / b-roll shots, still include shot_description and veo_prompt but the VEO prompt should describe silent motion only (no "says:" block). Reaction shot example:\n\n\`\`\`json\n{\n  "shot_number": 4,\n  "shot_type": "reaction",\n  "speaker": "a",\n  "shot_description": "Close-up of the character's face. They stop talking, look down, sigh. Natural lighting, messy bedroom background blurred. First frame: mouth closed, eyes slightly downcast.",\n  "veo_prompt": "Close-up portrait, 50mm lens, natural window light. Character pauses mid-thought, exhales softly, looks down at their hands. No dialogue. Subtle facial movement only. 8 seconds.",\n  "duration_seconds": 8\n}\n\`\`\``
+      : "";
+
     userPrompt = `A competitor video ad was analyzed by watching the actual video with AI:
 
 ## COMPETITOR VIDEO ANALYSIS
@@ -854,7 +890,7 @@ ${characterCountLine}
 **WHY IT WORKS**: ${ugcAnalysis.why_it_works || ugcAnalysis.persuasion_analysis}
 **PERSUASION ANALYSIS**: ${ugcAnalysis.persuasion_analysis}
 
-${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}${styleNotesBlock}${characterCountEnforcement}${multiShotGuidance}
+${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}` : ""}${styleNotesBlock}${characterCountEnforcement}${multiShotGuidance}${multiCutGuidance}
 
 ## YOUR TASK
 
@@ -870,7 +906,11 @@ Each shot's veo_prompt should be a detailed ~300 character Sora 2/VEO-optimized 
 
 ${context.existingConcepts.length > 0 ? `### EXISTING CONCEPTS (do NOT duplicate)\n${context.existingConcepts.map((c) => `- ${c}`).join("\n")}` : ""}
 
-Generate exactly 1 concept with 3-8 shots (each 8 seconds, **MAX 15 words of dialogue per shot** — count every word). Use MORE shots with less dialogue each. Never exceed 15 words in any shot.
+${
+  isMultiCut
+    ? `Generate exactly 1 concept with EXACTLY **${MULTICUT_SHOT_COUNT} shots** (each 8 seconds). Mix dialogue beats with silent reaction/b-roll shots as described in the MULTI-CUT MODE block above. Every shot MUST include the \`speaker\` and \`shot_type\` fields. Dialogue shots max 15 words; reaction/b-roll shots have empty dialogue.`
+    : `Generate exactly 1 concept with 3-8 shots (each 8 seconds, **MAX 15 words of dialogue per shot** — count every word). Use MORE shots with less dialogue each. Never exceed 15 words in any shot.`
+}
 Return ONLY valid JSON. No markdown fences.`;
   } else {
     throw new Error("Video analysis is empty — cannot build concept prompt");
@@ -904,6 +944,9 @@ Return ONLY valid JSON. No markdown fences.`;
     shot_description: string;
     veo_prompt: string;
     duration_seconds: number;
+    // Multi-cut mode only (null for simple/Pixar):
+    speaker?: string | null;
+    shot_type?: string | null;
   }
 
   interface NormalizedProposal {
@@ -978,6 +1021,9 @@ Return ONLY valid JSON. No markdown fences.`;
       shot_description: string;
       veo_prompt: string;
       duration_seconds: number;
+      // Multi-cut mode only — Claude emits these when isMultiCut=true
+      speaker?: string;
+      shot_type?: string;
     }>;
     ad_copy_primary: string | string[];
     ad_copy_headline: string | string[];
@@ -1096,12 +1142,27 @@ Return ONLY valid JSON. No markdown fences.`;
         script: raw.script ?? "",
         character_description: raw.character_description ?? null,
         product_description: raw.product_description ?? null,
-        shots: raw.shots.map((s, i) => ({
-          shot_number: s.shot_number ?? i + 1,
-          shot_description: s.shot_description,
-          veo_prompt: s.veo_prompt,
-          duration_seconds: s.duration_seconds ?? 8,
-        })),
+        shots: raw.shots.map((s, i) => {
+          // Whitelist + normalize multi-cut metadata so stray values from
+          // Claude can't corrupt downstream inserts. Simple mode leaves both
+          // fields null so we don't pollute rows with garbage.
+          const rawSpeaker = typeof s.speaker === "string" ? s.speaker.trim().toLowerCase() : "";
+          const rawShotType = typeof s.shot_type === "string" ? s.shot_type.trim().toLowerCase() : "";
+          const speaker = isMultiCut
+            ? (["a", "b", "voiceover"].includes(rawSpeaker) ? rawSpeaker : "a")
+            : null;
+          const shotType = isMultiCut
+            ? (["dialogue", "reaction", "broll"].includes(rawShotType) ? rawShotType : "dialogue")
+            : null;
+          return {
+            shot_number: s.shot_number ?? i + 1,
+            shot_description: s.shot_description,
+            veo_prompt: s.veo_prompt,
+            duration_seconds: s.duration_seconds ?? 8,
+            speaker,
+            shot_type: shotType,
+          };
+        }),
         ad_copy_primary: raw.ad_copy_primary,
         ad_copy_headline: raw.ad_copy_headline,
         awareness_level: raw.awareness_level,
@@ -1192,6 +1253,7 @@ Return ONLY valid JSON. No markdown fences.`;
           : [proposal.ad_copy_headline],
         awareness_level: proposal.awareness_level || null,
         style_notes: styleNotes,
+        video_mode: videoMode,
         max_shots: proposal.shots.length,
         reuse_first_frame: reuseFirstFrame,
         status: "draft",
@@ -1226,6 +1288,7 @@ Return ONLY valid JSON. No markdown fences.`;
           : [proposal.ad_copy_headline],
         awareness_level: proposal.awareness_level || null,
         style_notes: styleNotes,
+        video_mode: videoMode,
         status: "draft",
         source: "autopilot",
         pipeline_mode: "multi_clip",
@@ -1249,6 +1312,9 @@ Return ONLY valid JSON. No markdown fences.`;
     veo_prompt: shot.veo_prompt,
     video_duration_seconds: shot.duration_seconds ?? 8,
     image_status: "pending",
+    // Multi-cut mode metadata (null for simple mode / Pixar)
+    speaker: shot.speaker ?? null,
+    shot_type: shot.shot_type ?? null,
   }));
 
   const { error: shotsErr } = await db.from("video_shots").insert(shotRows);

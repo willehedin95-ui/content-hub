@@ -448,6 +448,10 @@ function UploadVideoModal({
   const [modalStyle, setModalStyle] = useState<VideoStyle>(defaultStyle);
   const [modalFormat, setModalFormat] = useState<SwipeVideoFormatId>("auto");
   const [modalStyleNotes, setModalStyleNotes] = useState("");
+  // Shot-structure mode. "simple" = classic 3-8 shot continuous take,
+  // "multicut" = Franky Shaw-style 10-shot rapid edit with reaction beats.
+  // UGC only — Pixar ignores this.
+  const [modalVideoMode, setModalVideoMode] = useState<"simple" | "multicut">("simple");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -520,6 +524,8 @@ function UploadVideoModal({
             modalStyle === "ugc" && modalStyleNotes.trim()
               ? modalStyleNotes.trim()
               : undefined,
+          video_mode:
+            modalStyle === "ugc" ? modalVideoMode : undefined,
         }),
       });
       if (!res.ok) {
@@ -702,6 +708,56 @@ function UploadVideoModal({
           {/* Format override + style notes (UGC only) */}
           {modalStyle === "ugc" && (
             <>
+              {/* Shot-structure mode: simple vs multi-cut */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Shot Structure
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalVideoMode("simple")}
+                    className={`flex items-start gap-2 text-left px-3 py-2.5 rounded-lg border-2 transition-colors ${
+                      modalVideoMode === "simple"
+                        ? "border-indigo-400 bg-indigo-50"
+                        : "border-gray-200 hover:border-gray-300 bg-white"
+                    }`}
+                  >
+                    <div>
+                      <div className={`text-xs font-semibold ${modalVideoMode === "simple" ? "text-indigo-900" : "text-gray-700"}`}>
+                        Simple
+                      </div>
+                      <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                        3-8 shots, one continuous take
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalVideoMode("multicut")}
+                    className={`flex items-start gap-2 text-left px-3 py-2.5 rounded-lg border-2 transition-colors ${
+                      modalVideoMode === "multicut"
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-gray-200 hover:border-gray-300 bg-white"
+                    }`}
+                  >
+                    <div>
+                      <div className={`text-xs font-semibold ${modalVideoMode === "multicut" ? "text-amber-900" : "text-gray-700"}`}>
+                        Multi-cut
+                      </div>
+                      <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                        10 shots + reactions, CapCut edit
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                {modalVideoMode === "multicut" && (
+                  <p className="text-[10px] text-amber-700 leading-tight mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                    Generates 10 × 8s clips (~80s raw material) with dialogue + silent reaction shots. Clip down manually in CapCut. ~$3-5 cost per concept.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Video Format
