@@ -113,19 +113,20 @@ The VEO prompt must include ALL of the following:
 1. **Character description**: Full description of the anthropomorphic character (appearance, material, what it's holding/wearing, expression)
 2. **Location/environment**: Where the scene takes place, what's around the character
 3. **Action**: What the character physically DOES while speaking (gestures, movements, reactions)
-4. **Dialogue**: The character's spoken line (in ${langName}), using "says:" format
+4. **Voice direction**: Always add "Voice: warm, natural, native ${langName} speaker" BEFORE the "says:" line. This prevents the video generator from using a robotic cartoon voice.
+5. **Dialogue**: The character's spoken line (in ${langName}), using "says:" format
 
 Template:
 \`\`\`
-[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT description]. [ACTION — what the character does while speaking] says: "[DIALOGUE in ${langName}]"
+[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT description]. [ACTION — what the character does while speaking]. Voice: warm, natural, native ${langName} speaker. says: "[DIALOGUE in ${langName}]"
 \`\`\`
 
 Example (English dialogue shown for illustration — yours must be in ${langName}):
 \`\`\`
-Anthropomorphic Pixar-style 3D animated spine character with visible vertebrae segments, frustrated expression, thin animated arms crossed defensively. Standing on a sagging old mattress in a dimly lit bedroom, moonlight through curtains. The spine uncrosses its arms and gestures angrily at the mattress beneath it, pointing at the sagging springs, says: "[dialogue in ${langName}]"
+Anthropomorphic Pixar-style 3D animated spine character with visible vertebrae segments, frustrated expression, thin animated arms crossed defensively. Standing on a sagging old mattress in a dimly lit bedroom, moonlight through curtains. The spine uncrosses its arms and gestures angrily at the mattress beneath it, pointing at the sagging springs. Voice: warm, natural, native ${langName} speaker. says: "[dialogue in ${langName}]"
 \`\`\`
 
-CRITICAL: The VEO prompt is NOT just "character says: dialogue". It must describe the FULL SCENE so the video generator knows what to render. Think of it as a movie shot description.
+CRITICAL: The VEO prompt is NOT just "character says: dialogue". It must describe the FULL SCENE so the video generator knows what to render. Think of it as a movie shot description. ALWAYS include the Voice direction — without it the video generator picks a robotic cartoon voice that mispronounces ${langName}.
 
 ## SAFETY GUIDELINES (IMPORTANT)
 The video generator has a content safety filter. To avoid blocked generations:
