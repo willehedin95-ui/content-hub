@@ -204,6 +204,22 @@ export async function buildLinkTargetsFromDB(
 
   if (!articles?.length) return [];
 
+  // Fetch primary keywords from blog_content_plan for all slugs in this language.
+  // This replaces the need for the hardcoded SLUG_KEYWORDS map for planned articles.
+  const slugs = articles.map((a) => a.slug).filter(Boolean);
+  const { data: planRows } = await db
+    .from("blog_content_plan")
+    .select("slug, primary_keyword")
+    .eq("language", language)
+    .in("slug", slugs);
+
+  const planKeywords = new Map<string, string>();
+  for (const row of planRows ?? []) {
+    if (row.primary_keyword) {
+      planKeywords.set(row.slug, row.primary_keyword);
+    }
+  }
+
   return articles
     .filter((a) => a.slug !== excludeSlug)
     .map((a) => {
@@ -213,8 +229,9 @@ export async function buildLinkTargetsFromDB(
         : "";
       const path = getArticlePath(a.slug, catSlug);
 
-      // Use known keyword from content plan, or extract from title
+      // Priority: DB content plan keyword > hardcoded map > title extraction > slug
       const keyword =
+        planKeywords.get(a.slug) ||
         SLUG_KEYWORDS[a.slug] ||
         (a.seo_title || "")
           .split(/\s*[—|:]\s*/)[0]
