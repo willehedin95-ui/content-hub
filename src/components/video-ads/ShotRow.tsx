@@ -53,6 +53,7 @@ export default function ShotRow({
   const [editing, setEditing] = useState(false);
   const [dialogueDraft, setDialogueDraft] = useState("");
   const [regenerating, setRegenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
 
   // Use translated prompt when available, otherwise original
@@ -64,6 +65,29 @@ export default function ShotRow({
     setDialogueDraft(dialogue || "");
     setEditing(true);
     setRegenError(null);
+  }
+
+  async function handleSaveOnly() {
+    setSaving(true);
+    setRegenError(null);
+    try {
+      const updatedVeoPrompt = replaceDialogue(effectiveVeoPrompt, dialogueDraft);
+      const res = await fetch(`/api/video-jobs/${jobId}/shots/${shot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veo_prompt: updatedVeoPrompt }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save");
+      }
+      setEditing(false);
+      onRegenerate?.(); // refresh data
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleSaveAndRegenerate() {
@@ -222,20 +246,33 @@ export default function ShotRow({
               <>
                 <button
                   onClick={() => setEditing(false)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={saving || regenerating}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <X className="w-3 h-3" />
                   Cancel
                 </button>
                 <button
+                  onClick={handleSaveOnly}
+                  disabled={saving || regenerating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Check className="w-3 h-3" />
+                  )}
+                  Save
+                </button>
+                <button
                   onClick={handleSaveAndRegenerate}
-                  disabled={regenerating}
+                  disabled={saving || regenerating}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
                 >
                   {regenerating ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <Check className="w-3 h-3" />
+                    <RefreshCw className="w-3 h-3" />
                   )}
                   Save & Regenerate
                 </button>
