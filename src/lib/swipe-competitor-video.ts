@@ -816,14 +816,17 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 ## YOUR TASK
 
-Create exactly 1 adapted Pixar-style SINGLE-CHARACTER monologue video concept for OUR product. The competitor uses ONE animated character that delivers the entire ad. Follow the SAME format: ONE character, broken into 3-5 shots.
+Create exactly 1 adapted Pixar-style SINGLE-CHARACTER monologue video concept for OUR product. Follow the competitor's narrative arc **beat-by-beat**:
 
-Do NOT copy the specific character or dialogue — adapt the FORMAT (one character monologue, consistent voice, cumulative narrative arc) to OUR product's problem space.
+1. **Same hook structure** — if they open with a confrontational question, you open with a confrontational question about OUR product's problem space
+2. **Same persuasion flow** — mirror the sequence (e.g. problem reveal → stat → consequence → solution tease)
+3. **Same emotional arc** — match their tone shifts (sassy → serious → hopeful)
+4. **Same number of beats** — if their monologue has 4 distinct beats, yours should too
+5. **Adapt the CONTENT, not the STRUCTURE** — replace their claims with equivalent claims for OUR product, keeping the rhetorical framework
 
-- Choose ONE character (body part, object, or anthropomorphic thing) that relates to OUR product's problem
-- Split the monologue into 3-5 shots of 8 seconds each
-- Same character, same base environment across all shots — only camera framing changes
-- Match the competitor's hook type and emotional cadence
+Choose ONE character (body part, object, or anthropomorphic thing) that relates to OUR product's problem.
+Split the monologue into 3-5 shots of 8 seconds each.
+Same character, same base environment across all shots - only camera framing changes.
 - Dialogue language: **${langLabel}**
 - The character_image_prompt belongs at the CONCEPT level (shared across all shots), NOT per shot
 
@@ -874,11 +877,14 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 ## YOUR TASK
 
-Create exactly 1 adapted Pixar-style talking-object video concept for OUR product that SWIPES the FORMAT, THEME STRUCTURE, and HOOK TYPE from this competitor ad. Do NOT copy the specific characters or dialogue — adapt the TEMPLATE (how many characters, how they build on each other, the unifying theme, the hook pattern) to OUR product's problem space.
+Create exactly 1 adapted Pixar-style talking-object video concept for OUR product by following the competitor's narrative **beat-by-beat**:
 
-- If the competitor used body parts rebelling against bad sleep, and OUR product solves a different problem, use characters relevant to OUR product's problem.
-- Keep the same NUMBER of characters as the competitor (${pixarAnalysis.characters.length}) when possible, adjust to 3-5 if needed.
-- Match the competitor's hook type and emotional cadence.
+1. **Same hook structure** — mirror the opening hook pattern adapted for OUR product
+2. **Same persuasion flow** — if they go "problem → stat → consequence → solution", yours must follow the same sequence
+3. **Same emotional arc** — match their tone shifts across characters
+4. **Same number of characters** — keep ${pixarAnalysis.characters.length} characters when possible, adjust to 3-5 if needed
+5. **Same theme structure** — if they have characters "testifying" about problems, yours should too (just different problems relevant to OUR product)
+6. **Adapt the CONTENT, not the STRUCTURE** — replace their claims with equivalent claims for OUR product, keeping the rhetorical framework identical
 - Dialogue language: **${langLabel}**.
 
 ${context.existingConcepts.length > 0 ? `### EXISTING CONCEPTS (do NOT duplicate)\n${context.existingConcepts.map((c) => `- ${c}`).join("\n")}` : ""}
@@ -972,7 +978,17 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 ## YOUR TASK
 
-Create 1 adapted video concept for our product that SWIPES the HOOK, APPROACH, and PERSUASION MECHANICS from this competitor ad. Do NOT copy the messaging or script — adapt the STRUCTURE, HOOK TYPE, and DELIVERY STYLE for our product.${formatOverrideNote}
+Create 1 adapted video concept for our product by following the competitor's script **beat-by-beat**. Your adapted script must mirror the EXACT narrative arc of the original:
+
+1. **Same number of beats** — if the original has 5 distinct narrative beats, yours must have ~5 too (split across shots with the 15-word limit)
+2. **Same hook structure** — if the original opens with "Your X might be causing Y", your hook must follow the same "Your [thing] might be [problem]" pattern adapted for our product
+3. **Same persuasion flow** — if the original goes "problem reveal → shocking stat → consequence chain → solution tease", yours must follow that EXACT sequence
+4. **Same emotional arc** — match the tone shifts (confrontational → educational → empathetic → hopeful)
+5. **Adapt the CONTENT, not the STRUCTURE** — replace their product/ingredient claims with equivalent claims about OUR product, but keep the rhetorical framework identical
+
+Think of it like dubbing a movie into another language — the story beats, pacing, and emotional arc stay the same. Only the specific product claims change.
+
+**DO NOT** invent a completely different angle or narrative. If the competitor talks about "skincare routines disrupting skin barrier", your adaptation should talk about the EQUIVALENT problem for our product (e.g. "most collagen supplements can't be absorbed") using the SAME rhetorical structure (e.g. "Your X might be the reason you're Y").${formatOverrideNote}
 
 **LANGUAGE: ${langLabel}** — Write the script, ad_copy_primary, and ad_copy_headline in ${langLabel}. In veo_prompt, keep technical parts (camera, actions) in English but write SPOKEN DIALOGUE (text after "says:") in ${langLabel}.
 
