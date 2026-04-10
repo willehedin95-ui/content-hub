@@ -91,7 +91,7 @@ interface HomepageOptions {
 
 export function getDefaultBlogConfig(): BlogConfig {
   return {
-    primary_color: "#1a365d",
+    primary_color: "#16a34a",
     languages: {
       sv: {
         blog_name: "Hälsobladet",
@@ -358,7 +358,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     getDefaultBlogConfig().languages[opts.language] ??
     getDefaultBlogConfig().languages.sv;
 
-  const color = opts.blogConfig.primary_color || "#1a365d";
+  const color = opts.blogConfig.primary_color || "#16a34a";
   const categorySlug = opts.blogCategory ? slugifyCategory(opts.blogCategory) : undefined;
   const urlPath = getArticlePath(opts.slug, categorySlug);
 
@@ -537,7 +537,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <header class="blog-shell-header">
     <div class="blog-shell-container">
       <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
-        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1c1 2 2 4.5 2 8 0 5.5-4.78 11-10 11Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
         ${esc(langConfig.blog_name)}
       </a>
       <nav class="blog-shell-nav">
@@ -581,7 +581,7 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
     getDefaultBlogConfig().languages[opts.language] ??
     getDefaultBlogConfig().languages.sv;
 
-  const color = opts.blogConfig.primary_color || "#1a365d";
+  const color = opts.blogConfig.primary_color || "#16a34a";
 
   const articleCards = opts.articles
     .map(
@@ -619,7 +619,7 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
   <header class="blog-shell-header">
     <div class="blog-shell-container">
       <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
-        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1c1 2 2 4.5 2 8 0 5.5-4.78 11-10 11Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
         ${esc(langConfig.blog_name)}
       </a>
     </div>
@@ -664,7 +664,7 @@ export function generateCategoryPage(opts: CategoryPageOptions): string {
     getDefaultBlogConfig().languages[opts.language] ??
     getDefaultBlogConfig().languages.sv;
 
-  const color = opts.blogConfig.primary_color || "#1a365d";
+  const color = opts.blogConfig.primary_color || "#16a34a";
 
   const articleCards = opts.articles
     .map(
@@ -694,7 +694,7 @@ export function generateCategoryPage(opts: CategoryPageOptions): string {
   <header class="blog-shell-header">
     <div class="blog-shell-container">
       <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
-        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1c1 2 2 4.5 2 8 0 5.5-4.78 11-10 11Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
         ${esc(langConfig.blog_name)}
       </a>
     </div>
@@ -787,14 +787,14 @@ function BLOG_SHELL_CSS(primaryColor: string): string {
 html,body{overflow-x:hidden;max-width:100vw}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1f2937;line-height:1.6;background:#fff}
 .blog-shell-container{max-width:800px;margin:0 auto;padding:0 20px}
-.blog-shell-header{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 0;position:sticky;top:0;z-index:100}
+.blog-shell-header{background:${primaryColor};border-bottom:none;padding:14px 0;position:sticky;top:0;z-index:100}
 .blog-shell-header .blog-shell-container{display:flex;align-items:center;justify-content:space-between}
-.blog-shell-logo{color:${primaryColor};text-decoration:none;font-size:1.2rem;font-weight:700;display:flex;align-items:center;gap:8px}
+.blog-shell-logo{color:#ffffff;text-decoration:none;font-size:1.2rem;font-weight:700;display:flex;align-items:center;gap:8px}
 .blog-shell-logo:hover{opacity:.85}
-.blog-shell-logo-icon{width:22px;height:22px;color:${primaryColor}}
+.blog-shell-logo-icon{width:22px;height:22px;color:#ffffff}
 .blog-shell-nav{display:flex;gap:20px;font-size:.9rem}
-.blog-shell-nav a{color:#6b7280;text-decoration:none;font-weight:500}
-.blog-shell-nav a:hover{color:${primaryColor}}
+.blog-shell-nav a{color:rgba(255,255,255,0.85);text-decoration:none;font-weight:500}
+.blog-shell-nav a:hover{color:#ffffff}
 .blog-shell-breadcrumbs{padding:16px 0 0;font-size:.85rem;color:#6b7280}
 .blog-shell-breadcrumbs a{color:${primaryColor};text-decoration:none}
 .blog-shell-breadcrumbs a:hover{text-decoration:underline}

@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Columns2,
   LayoutTemplate,
+  PanelTop,
 } from "lucide-react";
 
 export interface BlockDef {
@@ -146,5 +147,11 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     label: "Hero Section",
     icon: LayoutTemplate,
     html: `<div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:8px;margin:16px 0"><h2 style="color:#ffffff;font-size:28px;font-weight:700;margin:0 0 12px 0">Your Headline Here</h2><p style="color:rgba(255,255,255,0.9);font-size:16px;max-width:480px;margin:0 auto 20px auto;line-height:1.6">A compelling subheadline that explains the value proposition.</p><a href="#" style="display:inline-block;padding:12px 32px;background:#ffffff;color:#667eea;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px">Get Started</a></div>`,
+  },
+  {
+    id: "blog-header",
+    label: "Blog Header",
+    icon: PanelTop,
+    html: `<header style="background:#16a34a;padding:14px 0;position:sticky;top:0;z-index:100"><div style="max-width:800px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between"><a href="/" style="color:#ffffff;text-decoration:none;font-size:1.2rem;font-weight:700;display:flex;align-items:center;gap:8px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1c1 2 2 4.5 2 8 0 5.5-4.78 11-10 11Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>Blog Name</a><nav style="display:flex;gap:20px;font-size:0.9rem"><a href="/" style="color:rgba(255,255,255,0.85);text-decoration:none;font-weight:500">Hem</a></nav></div></header>`,
   },
 ];
