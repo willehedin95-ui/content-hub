@@ -265,8 +265,13 @@ ${productPlacement.enabled ? `4. **PRODUCT VISIBLE**: Product must appear natura
   "Product appears naturally in the scene."
 }${productPlacement.visual_description ? ` Physical appearance: ${productPlacement.visual_description}.` : ""}` : `4. **NO FORCED PRODUCT**: This video does NOT show the physical product. The character talks ABOUT the product/benefit but does not hold or display it. This is a pure testimonial/story — no product placement.`}
 5. **AUTHENTIC SPEECH**: Include natural filler words (${FILLER_EXAMPLES[primaryLanguage] || FILLER_EXAMPLES.sv}), pauses (...), self-corrections, mid-thought entries. Never write polished copy — write how a real person talks to their phone camera. Start talking BEFORE they seem ready.
-6. **PROMPT DETAIL**: Target ~3000-5000 characters for video prompts. Be extremely detailed about character appearance, cinematography, environment, actions, and dialogue delivery. The more specific, the better the output.
-7. **NO AI TELLS**: Never include studio lighting, beauty filters, symmetrical composition, perfect framing, HDR look, oversaturated colors, or smooth skin. Every frame must look like it was captured on an iPhone front camera.
+6. **VOCABULARY LEVEL (match delivery style)**:
+   - **Conversational / Emotional / Energetic**: Everyday words ONLY. No technical terms, no marketing language, no words a normal person wouldn't use in a casual conversation. Say "den bygger upp huden inifrån" NOT "bioaktivt marint kollagen som stärker hudbarriären." Say "det tas upp av kroppen direkt" NOT "90% bioavailability." The character is a regular person, not a scientist or copywriter.
+   - **Conspiratorial**: Can drop ONE technical term per beat as an "insider secret" but must immediately explain it in plain words ("det kallas Pro-Hyp... basically en signal som säger åt kroppen att bygga nytt kollagen").
+   - **Authority / Professor / Podcast**: Can use scientific terminology naturally, as an educated expert would. Terms like "bioaktiva peptider", "hudbarriär", "kollagensyntes" are appropriate here.
+   - When in doubt, use SIMPLER words. The #1 sign of AI-written dialogue is vocabulary that's too advanced for the character.
+7. **PROMPT DETAIL**: Target ~3000-5000 characters for video prompts. Be extremely detailed about character appearance, cinematography, environment, actions, and dialogue delivery. The more specific, the better the output.
+8. **NO AI TELLS**: Never include studio lighting, beauty filters, symmetrical composition, perfect framing, HDR look, oversaturated colors, or smooth skin. Every frame must look like it was captured on an iPhone front camera.
 
 ${outputFormat}
 
