@@ -56,7 +56,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<string>("4:5");
   const [retrying, setRetrying] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -223,7 +222,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             completed = true;
             setGeneratedImageUrl(event.image_url);
             setPromptUsed(event.prompt_used || null);
-            if (event.aspect_ratio) setAspectRatio(event.aspect_ratio);
             setPhase("done");
           }
         }
@@ -252,15 +250,27 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   // Edit instructions for retry
   const [editInstructions, setEditInstructions] = useState("");
 
-  // Generate a short name from the plain-text prompt
+  // Generate a short AI name from the prompt JSON
   const generateNameFromPrompt = useCallback((prompt: string): string => {
-    // Extract scene description from "Scene: ..." segment
-    const sceneMatch = prompt.match(/Scene:\s*([^.]+)/);
-    if (sceneMatch) {
-      const scene = sceneMatch[1].trim();
-      const label = scene.length <= 50 ? scene : scene.slice(0, 50);
-      return product ? `${label} - ${product}` : label;
-    }
+    try {
+      const parsed = JSON.parse(prompt);
+      const parts: string[] = [];
+      // Use scene setting
+      if (parsed.scene?.setting) {
+        const setting = parsed.scene.setting.split(",")[0].split(".")[0].trim();
+        if (setting.length <= 40) parts.push(setting);
+        else parts.push(setting.slice(0, 40));
+      }
+      // Use style category
+      if (parsed.style?.category) parts.push(parsed.style.category);
+      // Use first subject
+      if (parsed.subjects?.[0]) {
+        const subj = parsed.subjects[0];
+        const desc = subj.description?.split(",")[0]?.split(".")[0]?.trim();
+        if (desc && desc.length <= 30) parts.push(desc);
+      }
+      if (parts.length > 0) return parts.slice(0, 2).join(" — ");
+    } catch { /* fallback */ }
     return `Swiped image${product ? ` - ${product}` : ""}`;
   }, [product]);
 
@@ -314,10 +324,26 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setError(null);
     setSaved(false);
 
-    // If edit instructions provided, append to prompt
+    // Parse aspect ratio from the JSON prompt (matches original image)
+    let retryRatio = "4:5";
+    try {
+      const parsed = JSON.parse(promptUsed);
+      const raw = parsed?.composition?.aspect_ratio ?? "";
+      const valid = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
+      if (valid.includes(raw)) retryRatio = raw;
+    } catch { /* use default */ }
+
+    // If edit instructions provided, inject them into the prompt JSON
     let finalPrompt = promptUsed;
     if (editInstructions.trim()) {
-      finalPrompt = `${promptUsed} EDIT INSTRUCTIONS: ${editInstructions.trim()}`;
+      try {
+        const parsed = JSON.parse(promptUsed);
+        parsed.instruction = (parsed.instruction || "") + ` EDIT INSTRUCTIONS: ${editInstructions.trim()}`;
+        finalPrompt = JSON.stringify(parsed);
+      } catch {
+        // Fallback — append as-is
+        finalPrompt = promptUsed;
+      }
     }
 
     try {
@@ -327,7 +353,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         body: JSON.stringify({
           prompt: finalPrompt,
           ...(product && { product }),
-          aspect_ratio: aspectRatio,
+          aspect_ratio: retryRatio,
         }),
       });
 
@@ -344,7 +370,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, aspectRatio]);
+  }, [promptUsed, product, editInstructions]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -359,7 +385,6 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setAnalysis(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
-    setAspectRatio("4:5");
     setStatusMessage("");
     setSaving(false);
     setSaved(false);

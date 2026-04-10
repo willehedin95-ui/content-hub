@@ -165,10 +165,61 @@ export async function POST(req: NextRequest) {
         style: `${extraction.style?.category ?? "Unknown"}. ${extraction.style?.feel ?? ""}${extraction.style?.photo_quality ? `. Quality: ${extraction.style.photo_quality}` : ""}`,
       };
 
-      // Build plain-text Nano Banana prompt from the structured extraction.
-      // Kie AI processes natural language prompts much faster than raw JSON.
+      // Build Nano Banana JSON prompt: swap competitor product with target product
       const isUgc = mode === "ugc";
-      const nanaBananaPrompt = buildNanaBananaPrompt(extraction, product, isUgc, notes);
+      const nanaBananaJson = structuredClone(extraction);
+      if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
+        for (const subject of nanaBananaJson.subjects) {
+          if (subject.is_competitor_product && product) {
+            // In UGC mode: minimal description — rely on reference image for appearance
+            // In standard mode: full description for accurate product rendering
+            subject.description = isUgc
+              ? `the ${product.name} bottle (exact appearance from reference image — do NOT generate any text or labels on the bottle)`
+              : `${product.name} — ${product.description || "premium wellness product"}`;
+            subject.type = "product";
+            delete subject.is_competitor_product;
+          } else if (subject.is_competitor_product) {
+            // No product selected — make it generic
+            subject.description = "Generic wellness product, neutral/white color";
+            delete subject.is_competitor_product;
+          }
+        }
+      }
+      // Add generation task instruction at the top level
+      nanaBananaJson.task = "generate_image";
+
+      const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
+
+      let instruction: string;
+
+      if (isUgc) {
+        // UGC mode — strong authenticity instructions
+        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo. CRITICAL: Do NOT generate, invent, or write ANY text on the product bottle — no labels, no descriptions, no ingredient lists. The bottle appearance must come ONLY from the reference images.`;
+
+        instruction = product
+          ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${ethnicityNote}${ugcBlock}`
+          : `Recreate this exact visual style as a UGC customer photo.${ethnicityNote}${ugcBlock}`;
+      } else {
+        // Standard mode — original behavior
+        const qualityNote = extraction.style?.photo_quality
+          ? ` CRITICAL: Match the original photo quality exactly — ${extraction.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
+          : "";
+        const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
+          ? ` Texture must be: ${extraction.style.texture}.`
+          : "";
+        const noLogoNote = " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
+
+        instruction = product
+          ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
+          : `Recreate this visual style with the described subjects and environment.${ethnicityNote}${qualityNote}${textureNote}`;
+      }
+
+      if (notes) {
+        instruction += ` Additional instructions: ${notes}`;
+      }
+      nanaBananaJson.instruction = instruction;
+
+      const nanaBananaPrompt = JSON.stringify(nanaBananaJson);
 
       // Log Claude usage
       const inputTokens = response.usage.input_tokens;
@@ -242,7 +293,6 @@ export async function POST(req: NextRequest) {
         message: "Image generated",
         image_url: result.urls[0],
         prompt_used: nanaBananaPrompt,
-        aspect_ratio: detectedRatio,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -358,83 +408,4 @@ function buildImageSwiperUserPrompt(imageUrl: string, notes?: string): string {
   }
 
   return prompt;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildNanaBananaPrompt(extraction: Record<string, any>, product: ProductFull | null, isUgc: boolean, notes?: string): string {
-  const parts: string[] = [];
-
-  // Scene
-  if (extraction.scene) {
-    const s = extraction.scene;
-    parts.push(`Scene: ${s.setting || ""}. ${s.background ? `Background: ${s.background}.` : ""} ${s.lighting ? `Lighting: ${s.lighting}.` : ""} ${s.atmosphere ? `Atmosphere: ${s.atmosphere}.` : ""}`);
-  }
-
-  // Composition
-  if (extraction.composition) {
-    const c = extraction.composition;
-    parts.push(`Composition: ${c.camera_perspective || c.layout || ""}. ${c.framing ? `Framing: ${c.framing}.` : ""} ${c.focal_point ? `Focal point: ${c.focal_point}.` : ""} ${c.negative_space ? `Negative space: ${c.negative_space}.` : ""}`);
-  }
-
-  // Subjects - swap competitor product for our product
-  if (extraction.subjects && Array.isArray(extraction.subjects)) {
-    const subjectDescs: string[] = [];
-    for (const subject of extraction.subjects) {
-      if (subject.is_competitor_product) {
-        // Replace competitor product
-        if (product) {
-          const desc = isUgc
-            ? `the ${product.name} bottle (exact appearance from reference image)`
-            : `${product.name} - ${product.description || "premium wellness product"}`;
-          subjectDescs.push(`Product: ${desc}, positioned ${subject.position || "in frame"}${subject.action ? `, ${subject.action}` : ""}`);
-        } else {
-          subjectDescs.push(`Product: Generic wellness product, neutral/white color, positioned ${subject.position || "in frame"}`);
-        }
-      } else {
-        let desc = `${subject.type || "Subject"}: ${subject.description || ""}`;
-        if (subject.position) desc += `, positioned ${subject.position}`;
-        if (subject.action) desc += `, ${subject.action}`;
-        if (subject.visibility) desc += ` (${subject.visibility} visible)`;
-        subjectDescs.push(desc);
-      }
-    }
-    parts.push(`Subjects: ${subjectDescs.join(". ")}`);
-  }
-
-  // Colors
-  if (extraction.colors) {
-    const cl = extraction.colors;
-    const palette = Array.isArray(cl.palette) ? cl.palette.join(", ") : "";
-    parts.push(`Colors: ${cl.mood || ""}${palette ? ` (palette: ${palette})` : ""}. ${cl.dominant_tone ? `${cl.dominant_tone} tones` : ""}, ${cl.contrast ? `${cl.contrast} contrast` : ""}.`);
-  }
-
-  // Style
-  if (extraction.style) {
-    const st = extraction.style;
-    parts.push(`Style: ${st.category || ""} - ${st.feel || ""}. ${st.photo_quality ? `Quality: ${st.photo_quality}.` : ""} ${st.texture ? `Texture: ${st.texture}.` : ""}`);
-  }
-
-  // Instructions based on mode
-  const ethnicityNote = "CRITICAL: Any people must exactly match the described ethnicity, skin tone, hair color, hair texture, and approximate age.";
-
-  if (isUgc) {
-    parts.push(`${ethnicityNote} This MUST look like a real photo captured on an iPhone 16 Pro. Preserve raw handheld realism. Realistic skin texture with visible pores, faint redness, slight shine. Do NOT upgrade to studio quality - match the casual, imperfect feel exactly. No filters, no retouching, no artificial blur.`);
-    if (product) {
-      parts.push(`Do NOT generate any text on the product bottle - appearance must come from reference images only.`);
-    }
-  } else {
-    parts.push(ethnicityNote);
-    if (product) {
-      parts.push(`The product must NOT have any tags, labels, logos, or branded text. Product must match the reference images provided.`);
-    }
-    if (extraction.style?.photo_quality) {
-      parts.push(`CRITICAL: Match the original photo quality exactly - ${extraction.style.photo_quality}. Do NOT upgrade to studio quality.`);
-    }
-  }
-
-  if (notes) {
-    parts.push(`Additional instructions: ${notes}`);
-  }
-
-  return parts.join(" ");
 }

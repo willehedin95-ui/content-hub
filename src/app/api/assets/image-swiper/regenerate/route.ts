@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 
-export const maxDuration = 240;
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
