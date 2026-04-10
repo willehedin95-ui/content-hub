@@ -6,7 +6,7 @@ import { calcClaudeCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
 
-export const maxDuration = 240;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
