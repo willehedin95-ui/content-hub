@@ -69,7 +69,7 @@ This is a viral format on TikTok, Instagram Reels, and Meta Ads. Key characteris
 
 ## DIALOGUE RULES
 1. Character speaks in FIRST PERSON as itself ("I'm your spine..." or "I'm not just a pillow...")
-2. 8-second clip = 20-25 words. Count carefully. This ensures the whole dialogue gets spoken and nothing is missed.
+2. Each shot's dialogue = **MAX 15 words** (8-second clip). COUNT YOUR WORDS. If a line exceeds 15 words, shorten it. A punchy 10-word line with a natural pause beats a rushed 15-word one. This is the #1 cause of broken videos - the TTS cuts off mid-sentence if there are too many words.
 3. Structure: hook line → truth bomb → consequence or solution tease
 4. Tone: sassy, confrontational, funny, OR wise and knowing — vary across characters
 5. NEVER mention the product by name in the dialogue — the ad copy handles that
@@ -113,20 +113,19 @@ The VEO prompt must include ALL of the following:
 1. **Character description**: Full description of the anthropomorphic character (appearance, material, what it's holding/wearing, expression)
 2. **Location/environment**: Where the scene takes place, what's around the character
 3. **Action**: What the character physically DOES while speaking (gestures, movements, reactions)
-4. **Voice direction**: Always add "Voice: warm, natural, native ${langName} speaker" BEFORE the "says:" line. This prevents the video generator from using a robotic cartoon voice.
-5. **Dialogue**: The character's spoken line (in ${langName}), using "says:" format
+4. **Dialogue**: The character's spoken line (in ${langName}), using "says:" format
 
 Template:
 \`\`\`
-[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT description]. [ACTION — what the character does while speaking]. Voice: warm, natural, native ${langName} speaker. says: "[DIALOGUE in ${langName}]"
+[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT description]. [ACTION — what the character does while speaking] says: "[DIALOGUE in ${langName}]"
 \`\`\`
 
 Example (English dialogue shown for illustration — yours must be in ${langName}):
 \`\`\`
-Anthropomorphic Pixar-style 3D animated spine character with visible vertebrae segments, frustrated expression, thin animated arms crossed defensively. Standing on a sagging old mattress in a dimly lit bedroom, moonlight through curtains. The spine uncrosses its arms and gestures angrily at the mattress beneath it, pointing at the sagging springs. Voice: warm, natural, native ${langName} speaker. says: "[dialogue in ${langName}]"
+Anthropomorphic Pixar-style 3D animated spine character with visible vertebrae segments, frustrated expression, thin animated arms crossed defensively. Standing on a sagging old mattress in a dimly lit bedroom, moonlight through curtains. The spine uncrosses its arms and gestures angrily at the mattress beneath it, pointing at the sagging springs, says: "[dialogue in ${langName}]"
 \`\`\`
 
-CRITICAL: The VEO prompt is NOT just "character says: dialogue". It must describe the FULL SCENE so the video generator knows what to render. Think of it as a movie shot description. ALWAYS include the Voice direction — without it the video generator picks a robotic cartoon voice that mispronounces ${langName}.
+CRITICAL: The VEO prompt is NOT just "character says: dialogue". It must describe the FULL SCENE so the video generator knows what to render. Think of it as a movie shot description.
 
 ## SAFETY GUIDELINES (IMPORTANT)
 The video generator has a content safety filter. To avoid blocked generations:
@@ -155,7 +154,7 @@ Return a JSON object with a "proposals" array. Each proposal is ONE video concep
           "character_category": "body_part",
           "character_mood": "frustrated",
           "is_product_character": false,
-          "dialogue": "[20-25 words in ${langName}]",
+          "dialogue": "[MAX 15 words in ${langName}]",
           "duration_seconds": 8,
           "character_image_prompt": "[FULL Nano Banana prompt with character + scene + art style]",
           "veo_prompt": "[FULL VEO prompt with character + environment + action + dialogue]"
@@ -169,6 +168,8 @@ Return a JSON object with a "proposals" array. Each proposal is ONE video concep
 \`\`\`
 
 Each concept should have 3-5 character shots. Vary the number across concepts — not all the same.
+
+**DIALOGUE LENGTH LIMIT (CRITICAL)**: Every shot's dialogue must be **MAX 15 words**. COUNT EVERY WORD. The video generator's TTS will cut off mid-sentence if a line is too long. A punchy 10-word zinger is always better than a cramped 15-word sentence. NEVER exceed 15 words per shot.
 
 IMPORTANT: Return ONLY valid JSON. No markdown fences. No commentary outside the JSON.
 

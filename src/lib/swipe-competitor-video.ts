@@ -365,15 +365,14 @@ Write in English except the dialogue (in ${langName}). Each VEO prompt must incl
 2. **Location/environment**: Same as the character_image_prompt
 3. **Camera angle/framing**: Specific to this shot (wide, medium, close-up, extreme close-up, over-the-shoulder, pushed-in)
 4. **Action**: What the character physically does while speaking in this shot (gesture, head turn, lean in, cross arms, etc.)
-5. **Voice direction**: Always add "Voice: warm, natural, native ${langName} speaker" BEFORE the "says:" line. This prevents the video generator from using a robotic cartoon voice.
-6. **Dialogue**: The character's line for this shot (in ${langName}), using "says:" format
+5. **Dialogue**: The character's line for this shot (in ${langName}), using "says:" format
 
 Template:
 \`\`\`
-[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT]. [CAMERA FRAMING specific to this shot]. [ACTION — what the character does while speaking]. Voice: warm, natural, native ${langName} speaker. says: "[DIALOGUE in ${langName}]"
+[CHARACTER DESCRIPTION with appearance, props, expression]. [LOCATION/ENVIRONMENT]. [CAMERA FRAMING specific to this shot]. [ACTION — what the character does while speaking] says: "[DIALOGUE in ${langName}]"
 \`\`\`
 
-CRITICAL: Each shot's VEO prompt is a FULL movie-shot description, not just "character says: dialogue". Include the character, the scene, the camera, the action. ALWAYS include the Voice direction line — without it the video generator defaults to a robotic cartoon voice that mispronounces ${langName} words.
+CRITICAL: Each shot's VEO prompt is a FULL movie-shot description, not just "character says: dialogue". Include the character, the scene, the camera, the action.
 
 ## SAFETY GUIDELINES
 - NEVER place characters inside the human body (no "inside a skull", "inside a torso", "translucent body cross-section")
