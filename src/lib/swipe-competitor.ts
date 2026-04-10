@@ -209,6 +209,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       prompt: string;
       hook_text: string;
       headline_text: string;
+      has_text?: boolean;
       include_product_reference?: boolean;
     }>;
   };
@@ -550,7 +551,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
             original_url: urlData.publicUrl,
             filename: `competitor-swipe-${fileId.slice(0, 8)}.png`,
             processing_order: index,
-            skip_translation: softMode || !(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim()),
+            skip_translation: softMode || !(imgPrompt.has_text ?? !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim())),
             generation_prompt: promptForLog,
             generation_style: softMode ? "competitor-swipe-softretry" : "competitor-swipe",
             batch: 1,
