@@ -13,6 +13,13 @@ import type {
   NarrativeArchetype,
 } from "@/types";
 import { CLAUDE_MODEL, USE_JSON_PROMPTING } from "./constants";
+import { LANGUAGES } from "@/types";
+
+/** Resolve a language code to a human-readable label (e.g. "sv" -> "Swedish"). */
+function langLabel(code: string): string {
+  if (code === "en") return "English";
+  return LANGUAGES.find((l) => l.value === code)?.label ?? code;
+}
 import { parseConceptProposals } from "./concept-generator";
 import { getProductAppearance } from "./product-appearance";
 
@@ -760,7 +767,14 @@ export function buildProductContext(
   return parts.join("\n\n");
 }
 
-const OUTPUT_INSTRUCTIONS = `## OUTPUT INSTRUCTIONS
+function getOutputInstructions(generationLanguage = "en"): string {
+  const gl = langLabel(generationLanguage);
+  const glUpper = gl.toUpperCase();
+  const translationNote = generationLanguage === "en"
+    ? " (it will be translated later)"
+    : " (it will be translated to other markets later)";
+
+  return `## OUTPUT INSTRUCTIONS
 
 Generate concept proposals as a JSON object with a "proposals" array. Each proposal MUST have:
 
@@ -779,8 +793,8 @@ Generate concept proposals as a JSON object with a "proposals" array. Each propo
         "copy_blocks": ["array of blocks used: Pain, Promise, Proof, Curiosity, Constraints, Conditions — specify depth level where relevant (e.g. 'Pain: Cinematic + Core Wound', 'Proof: Experiential + Social', 'Curiosity: Characterization')"],
         "concept_description": "same as outer concept_description"
       },
-      "ad_copy_primary": ["1 primary ad text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence or idea per paragraph. Never write a wall of text."],
-      "ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],
+      "ad_copy_primary": ["1 primary ad text (${gl}, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence or idea per paragraph. Never write a wall of text."],
+      "ad_copy_headline": ["2 headline variations (${gl}, max 40 chars each)"],
       "visual_direction": "What the static ad image should look like — layout, imagery, mood, text overlay approach",
       "differentiation_note": "What makes this concept unique / how it differs from other proposals",
       "suggested_tags": ["2-4 relevant tags"]
@@ -790,7 +804,7 @@ Generate concept proposals as a JSON object with a "proposals" array. Each propo
 
 CRITICAL RULES:
 - Each proposal MUST use a DIFFERENT angle
-- Write ad copy in ENGLISH (it will be translated later)
+- Write ad copy in ${glUpper}${translationNote}
 - NEVER invent medical claims — only use claims from the product brief
 - Hooks should be scroll-stopping — curiosity, pattern interrupts, or strong emotional triggers
 - Primary text should be ready-to-use ad copy, not placeholder text. Apply Copy Blocks techniques: use Pain Chain levels, Proof Braid (pair claims with proof), strong Curiosity characterizations, and C.R.A.V.E.S. to strengthen every block
@@ -799,7 +813,8 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown fences, no explanation text
 - ORIGINALITY: All examples in this prompt are TEACHING EXAMPLES showing patterns, NOT content to reuse. Create completely original concepts with unique references, facts, and cultural touchpoints specific to the product. Never recycle framework examples.
 - NO URLS IN AD COPY: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in the ad copy text. The landing page URL is attached separately by the ad platform — it is NOT part of the ad copy. If the competitor's ad copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt it to a natural call-to-action WITHOUT any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.
-- NO PRICES ANYWHERE: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ANY field of your output. This includes ad_copy_primary, ad_copy_headline, AND cash_dna.hooks, cash_dna.concept_description, visual_direction, and every image_prompt. The reason: cash_dna.hooks is used downstream to write overlay text for generated images, and visual_direction is used to brief Nano Banana. If a price leaks into a hook it ends up baked into the image overlay, which (a) dates the ad, (b) breaks on promotions, and (c) cannot be translated safely (we've had "€80 serum" baked into real images). Pricing belongs on the landing page only. The ONLY exception: if you are adapting a competitor ad whose copy explicitly mentions a price as a critical part of its hook (e.g. "I spent X on Y"), you may keep that price ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire concept with no prices at all, in ANY field.`;
+- NO PRICES ANYWHERE: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ANY field of your output. This includes ad_copy_primary, ad_copy_headline, AND cash_dna.hooks, cash_dna.concept_description, visual_direction, and every image_prompt. The reason: cash_dna.hooks is used downstream to write overlay text for generated images, and visual_direction is used to brief Nano Banana. If a price leaks into a hook it ends up baked into the image overlay, which (a) dates the ad, (b) breaks on promotions, and (c) cannot be translated safely (we've had "€80 serum" baked into real images). Pricing belongs on the landing page only. The ONLY exception: if you are adapting a competitor ad whose copy explicitly mentions a price as a critical part of its hook (e.g. "I spent X on Y"), you may keep that price ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire concept with no prices at all, in ANY field.${generationLanguage !== "en" ? `\n- IMAGE PROMPTS (Nano Banana) must ALWAYS be written in English regardless of ad copy language. Only ad_copy_primary, ad_copy_headline, and cash_dna.hooks should be in ${gl}.` : ""}`;
+}
 
 // ---------------------------------------------------------------------------
 // System prompts per mode
@@ -812,7 +827,8 @@ function buildFromScratchSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -840,7 +856,7 @@ ${productContext}
 
 ---
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard")}`;
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Wildcard")}`;
 }
 
 function buildFromOrganicSystem(
@@ -850,7 +866,8 @@ function buildFromOrganicSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -878,7 +895,7 @@ ${productContext}
 4. Adapt for our product — how can we use this same insight/energy for our specific product and audience?
 5. Create NEW hooks inspired by the original — don't copy, transform.
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Organic")}`;
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Organic")}`;
 }
 
 function buildFromResearchSystem(
@@ -888,7 +905,8 @@ function buildFromResearchSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -918,7 +936,7 @@ ${productContext}
 
 Prioritize concept types: product_facts and market_facts work best with research-backed concepts.
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Research")}`;
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Research")}`;
 }
 
 function buildFromInternalSystem(
@@ -928,7 +946,8 @@ function buildFromInternalSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -960,7 +979,7 @@ ${productContext}
 4. Each proposal should reference which gap it fills in its differentiation_note
 5. Prioritize: untested angles > underserved awareness levels > underrepresented concept types
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Matrix/Coverage")}`;
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Matrix/Coverage")}`;
 }
 
 function buildUnawareSystem(
@@ -970,7 +989,8 @@ function buildUnawareSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -1046,14 +1066,14 @@ ${HEADLINE_FORMULAS}
 
 Generate editorial-style native_headlines using these formulas. They should read like CNN or WebMD article titles, NOT ad headlines.
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Wildcard").replace(
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Wildcard").replace(
   '"awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware"',
   '"awareness_level": "Unaware"'
 ).replace(
-  '"ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],',
-  '"ad_copy_headline": ["2 headline variations (English, max 40 chars each)"],\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like CNN/WebMD article titles, NOT ad headlines"],'
+  /("ad_copy_headline": \["2 headline variations \([^)]+\)"\]),/,
+  '$1,\n      "native_headlines": ["3-5 editorial-style headlines using the native formulas above — these read like CNN/WebMD article titles, NOT ad headlines"],'
 ).replace(
-  '"ad_copy_primary": ["1 primary ad text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence or idea per paragraph. Never write a wall of text."],',
+  /("ad_copy_primary": \["1 primary ad text \()[^"]+("\],)/,
   '"ad_copy_primary": ["1 primary ad text — for native/unaware ads, write as an ADVERTORIAL OPENING (150-300 words). Never mention the product in the first 150 words. Open with education, story, or shocking fact. Use SHORT PARAGRAPHS with line breaks (\\\\n\\\\n) between each thought. One sentence per paragraph. The reader should be halfway through before they realize this might lead somewhere."],'
 ).replace(
   '"visual_direction": "What the static ad image should look like — layout, imagery, mood, text overlay approach",',
@@ -1084,7 +1104,8 @@ function buildFromTemplateSystem(
   segments: ProductSegment[],
   hookInspiration?: string,
   learningsContext?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -1114,7 +1135,7 @@ ${productContext}
 4. Apply Copy Blocks techniques within the template structure: Pain Chain, Promise Ladder, Proof Braid, Curiosity characterizations
 5. Visual direction should complement the template's emotional arc
 
-${OUTPUT_INSTRUCTIONS.replace("<will be specified per mode>", "Templates")}`;
+${getOutputInstructions(generationLanguage).replace("<will be specified per mode>", "Templates")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,7 +1165,8 @@ function buildFromCompetitorAdSystem(
   researchContext?: string,
   imageCount?: number,
   variationsPerImage?: number,
-  painPoint?: string
+  painPoint?: string,
+  generationLanguage?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -1319,8 +1341,8 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
       "copy_blocks": ["array of blocks used with depth levels"],
       "concept_description": "same as outer concept_description"
     },
-    "ad_copy_primary": ["1 primary ad text (English). ADAPT from the competitor's copy structure, tone, and length — reproduce their hook style, agitation pattern, proof types, and CTA. Match their word count. Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text. Must read as a structural adaptation, not generic product copy."],
-    "ad_copy_headline": ["2 headline variations (English, max 40 chars). Match the competitor's headline STYLE: question→question, number→number, bold claim→bold claim."],
+    "ad_copy_primary": ["1 primary ad text (${langLabel(generationLanguage ?? "en")}). ADAPT from the competitor's copy structure, tone, and length — reproduce their hook style, agitation pattern, proof types, and CTA. Match their word count. Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text. Must read as a structural adaptation, not generic product copy."],
+    "ad_copy_headline": ["2 headline variations (${langLabel(generationLanguage ?? "en")}, max 40 chars). Match the competitor's headline STYLE: question→question, number→number, bold claim→bold claim."],
     "visual_direction": "What the static ad image should look like — referencing the competitor's format but adapted for our product",
     "differentiation_note": "How this concept differs from the competitor's ad — what we kept (structure/technique) vs what we changed (content/claims/product)",
     "suggested_tags": ["competitor-swipe", "2-4 additional relevant tags"]
@@ -1338,7 +1360,7 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
 }
 
 CRITICAL RULES:
-- Write ALL copy in ENGLISH (translations happen later)
+- Write ALL ad copy in ${langLabel(generationLanguage ?? "en").toUpperCase()}${(generationLanguage ?? "en") === "en" ? " (translations happen later)" : " (translations to other markets happen later). Image prompts (Nano Banana) must ALWAYS be in English."}
 - NEVER copy the competitor's specific claims, brand name, or product references
 - NEVER invent medical claims — only use claims from our product brief
 - **NEVER keep the competitor's problem domain.** The adapted hooks MUST be about what ${product.name} actually solves — refer to the PRODUCT KNOWLEDGE section for the real benefits and problem domain. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
@@ -1368,7 +1390,8 @@ const SYSTEM_BUILDERS: Record<
     segments: ProductSegment[],
     hookInspiration?: string,
     learningsContext?: string,
-    researchContext?: string
+    researchContext?: string,
+    generationLanguage?: string
   ) => string
 > = {
   from_scratch: buildFromScratchSystem,
@@ -1377,7 +1400,9 @@ const SYSTEM_BUILDERS: Record<
   from_internal: buildFromInternalSystem,
   unaware: buildUnawareSystem,
   from_template: buildFromTemplateSystem,
-  from_competitor_ad: buildFromCompetitorAdSystem,
+  from_competitor_ad: () => {
+    throw new Error("from_competitor_ad uses special call path - see buildBrainstormSystemPrompt");
+  },
   video_ugc: () => {
     throw new Error("video_ugc mode uses its own prompt builder — see video-brainstorm.ts");
   },
@@ -1400,7 +1425,8 @@ export function buildBrainstormSystemPrompt(
   competitorImageCount?: number,
   variationsPerImage?: number,
   painPoint?: string,
-  researchContext?: string
+  researchContext?: string,
+  generationLanguage?: string
 ): string {
   // from_competitor_ad needs extra params (image count + variations + pain point)
   if (mode === "from_competitor_ad") {
@@ -1409,11 +1435,12 @@ export function buildBrainstormSystemPrompt(
       hookInspiration, learningsContext,
       researchContext,
       competitorImageCount, variationsPerImage,
-      painPoint
+      painPoint,
+      generationLanguage
     );
   }
   const builder = SYSTEM_BUILDERS[mode];
-  return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
+  return builder(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext, generationLanguage);
 }
 
 /**
@@ -1727,6 +1754,7 @@ interface IterationCopyOpts {
   iterationType: IterationType;
   iterationContext: Record<string, unknown>;
   productContext: string; // Pre-built via buildProductContext()
+  generationLanguage?: string;
 }
 
 function buildIterationPrompt(opts: IterationCopyOpts): { system: string; user: string } {
@@ -1738,13 +1766,13 @@ ${opts.productContext}
 
 ## Your Task
 Rewrite the winning ad copy below based on the iteration instructions. Produce:
-- 1 primary text (English, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text.
-- 2 headline variations (English, max 40 chars each)
+- 1 primary text (${langLabel(opts.generationLanguage ?? "en")}, 100-200 words). Use SHORT PARAGRAPHS with line breaks between each thought — one sentence per paragraph, never a wall of text.
+- 2 headline variations (${langLabel(opts.generationLanguage ?? "en")}, max 40 chars each)
 
 ## Rules
 - Keep what works: The parent concept PROVED itself — preserve the emotional core
 - Change only what the iteration type specifies
-- Write in English (translations happen later)
+- Write in ${langLabel(opts.generationLanguage ?? "en")}${(opts.generationLanguage ?? "en") === "en" ? " (translations happen later)" : ""}
 - NEVER invent medical claims
 - Apply Copy Blocks techniques: Pain Chain, Proof Braid, Curiosity characterizations, C.R.A.V.E.S.
 - Return ONLY valid JSON, no markdown fences`;
