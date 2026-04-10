@@ -82,7 +82,7 @@ export async function triggerAutopilotTranslations(jobId: string): Promise<{
   // Fetch job
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, product, target_languages, target_ratios, ad_copy_primary, ad_copy_headline, ad_copy_translations, landing_page_id, launchpad_priority")
+    .select("id, name, concept_number, product, target_languages, target_ratios, ad_copy_primary, ad_copy_headline, ad_copy_translations, landing_page_id, launchpad_priority, source_language")
     .eq("id", jobId)
     .single();
 
@@ -104,7 +104,7 @@ export async function triggerAutopilotTranslations(jobId: string): Promise<{
   // Step 2: Translate ad copy (fast, ~15s total)
   let copyTranslated = false;
   try {
-    await translateAdCopy(db, jobId, job, targetLangs as Language[]);
+    await translateAdCopy(db, jobId, job, targetLangs as Language[], (job.source_language as string) ?? "en");
     copyTranslated = true;
     console.log(`[autopilot-translate] Ad copy translated for job ${jobId}`);
   } catch (err) {
@@ -232,7 +232,8 @@ async function translateAdCopy(
   db: DB,
   jobId: string,
   job: { ad_copy_primary: string[] | null; ad_copy_headline: string[] | null; ad_copy_translations: Record<string, unknown> | null },
-  languages: Language[]
+  languages: Language[],
+  sourceLanguage: string = "en"
 ): Promise<void> {
   const allPrimaryTexts = (job.ad_copy_primary ?? []).filter((t: string) => t.trim());
   const allHeadlineTexts = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
@@ -248,8 +249,15 @@ async function translateAdCopy(
 
   const openai = new OpenAI({ apiKey });
   const results: Record<string, unknown> = { ...(job.ad_copy_translations ?? {}) };
+  const sourceLangLabel = LANGUAGES.find((l) => l.value === sourceLanguage)?.label ?? "English";
 
   for (const lang of languages) {
+    // Skip the source language — ad copy is already in that language
+    if (lang === sourceLanguage) {
+      console.log(`[autopilot-translate] Skipping ad copy for ${lang} — matches source language`);
+      continue;
+    }
+
     // Skip languages already translated
     const existing = results[lang] as { status?: string } | undefined;
     if (existing?.status === "completed") {
@@ -278,7 +286,7 @@ async function translateAdCopy(
           messages: [
             {
               role: "system",
-              content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
+              content: `You are a professional ad copywriter and translator. Translate all ad copy variants from ${sourceLangLabel} to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}
 IMPORTANT: If the text contains URL placeholders like [LINK], [LÄNK], [URL] or website addresses, replace them with a natural call-to-action phrase in ${langLabel} (e.g. "Handla nu", "Köp här", "Shop now"). The landing page link is attached separately by the ad platform and must NOT appear in the ad copy text.

@@ -36,7 +36,7 @@ export async function POST(
 
   const { data: job, error } = await db
     .from("image_jobs")
-    .select("id, name, product, target_languages, ad_copy_primary, ad_copy_headline, ad_copy_translations")
+    .select("id, name, product, target_languages, ad_copy_primary, ad_copy_headline, ad_copy_translations, source_language")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -62,7 +62,16 @@ export async function POST(
   }
 
   const openai = new OpenAI({ apiKey });
-  const languages = targetLang ? [targetLang] : (job.target_languages as Language[]);
+  const sourceLanguage = (job.source_language as string) ?? "en";
+  const sourceLangLabel = LANGUAGES.find((l) => l.value === sourceLanguage)?.label ?? "English";
+  const allLanguages = targetLang ? [targetLang] : (job.target_languages as Language[]);
+  // Skip the source language — ad copy is already in that language
+  const languages = allLanguages.filter((l) => l !== sourceLanguage);
+
+  if (languages.length === 0) {
+    return NextResponse.json({ translations: job.ad_copy_translations ?? {}, skipped: "all target languages match source language" });
+  }
+
   const existing: ConceptCopyTranslations = job.ad_copy_translations ?? {};
   const results: Record<string, ConceptCopyTranslation> = { ...existing };
 
@@ -100,7 +109,7 @@ export async function POST(
         messages: [
           {
             role: "system",
-            content: `You are a professional ad copywriter and translator. Translate all ad copy variants from English to ${langLabel}.
+            content: `You are a professional ad copywriter and translator. Translate all ad copy variants from ${sourceLangLabel} to ${langLabel}.
 Maintain the tone, style, and persuasive power of the original.
 Adapt cultural references and idioms naturally.${getShortLocalizationNote(lang)}
 IMPORTANT: If the text contains URL placeholders like [LINK], [LÄNK], [URL] or website addresses, replace them with a natural call-to-action phrase in ${langLabel} (e.g. "Handla nu", "Köp här", "Shop now"). The landing page link is attached separately by the ad platform and must NOT appear in the ad copy text.

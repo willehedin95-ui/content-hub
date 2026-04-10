@@ -105,6 +105,7 @@ export async function pushConceptToMeta(
     throw new Error("At least one primary text is required");
   }
   const headlineTexts: string[] = (job.ad_copy_headline ?? []).filter((t: string) => t.trim());
+  const sourceLanguage = (job.source_language as string) ?? "en";
 
   if (!job.landing_page_id) {
     throw new Error("Landing page is required");
@@ -291,19 +292,25 @@ export async function pushConceptToMeta(
         return { language: lang, country, status: "error", error: `No completed ${feedRatio} images for ${lang}` } as const;
       }
 
-      // Use pre-translated copy if available, otherwise translate on-the-fly
-      const preTranslated = (job.ad_copy_translations as ConceptCopyTranslations)?.[lang];
+      // Use original copy for the source language, pre-translated copy if available, or translate on-the-fly
       let translatedPrimaries: string[];
       let translatedHeadlines: string[];
 
-      if (preTranslated?.status === "completed" && preTranslated.primary_texts.length > 0) {
-        translatedPrimaries = preTranslated.primary_texts;
-        translatedHeadlines = preTranslated.headlines;
+      if (lang === sourceLanguage) {
+        // Source language — use original copy directly, no translation needed
+        translatedPrimaries = primaryTexts.slice(0, 1);
+        translatedHeadlines = headlineTexts.slice(0, 2);
       } else {
-        // Limit to 1 primary + 2 headlines for focused, higher-quality translations
-        const result = await translateAdCopyBatch(primaryTexts.slice(0, 1), headlineTexts.slice(0, 2), lang, db);
-        translatedPrimaries = result.translatedPrimaries;
-        translatedHeadlines = result.translatedHeadlines;
+        const preTranslated = (job.ad_copy_translations as ConceptCopyTranslations)?.[lang];
+        if (preTranslated?.status === "completed" && preTranslated.primary_texts.length > 0) {
+          translatedPrimaries = preTranslated.primary_texts;
+          translatedHeadlines = preTranslated.headlines;
+        } else {
+          // Limit to 1 primary + 2 headlines for focused, higher-quality translations
+          const result = await translateAdCopyBatch(primaryTexts.slice(0, 1), headlineTexts.slice(0, 2), lang, db, sourceLanguage);
+          translatedPrimaries = result.translatedPrimaries;
+          translatedHeadlines = result.translatedHeadlines;
+        }
       }
 
       // Replace any leftover URL placeholders with the actual landing page URL
@@ -733,7 +740,7 @@ export async function translateAdCopyBatch(
   headlines: string[],
   language: Language,
   db: ReturnType<typeof createServerSupabase>,
-  sourceLanguage?: Language
+  sourceLanguage?: string
 ): Promise<{ translatedPrimaries: string[]; translatedHeadlines: string[] }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");

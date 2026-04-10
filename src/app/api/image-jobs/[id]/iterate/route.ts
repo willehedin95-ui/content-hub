@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { generateIterationCopy } from "@/lib/brainstorm";
@@ -30,6 +30,7 @@ export async function POST(
 
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
+  const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
 
   // Fetch the parent job
   const { data: parent, error: parentErr } = await db
@@ -172,6 +173,7 @@ export async function POST(
           product: product as ProductFull,
           guidelines: (guidelines ?? []) as CopywritingGuideline[],
           segments: (segments ?? []) as ProductSegment[],
+          generationLanguage,
         });
 
         adCopyPrimary = rewritten.primary;
@@ -205,6 +207,7 @@ export async function POST(
       iteration_type: iterationType,
       iteration_context: iterationContext,
       workspace_id: workspaceId,
+      source_language: generationLanguage,
     })
     .select()
     .single();

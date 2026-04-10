@@ -6,7 +6,7 @@ import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { generateImage } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
-import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceLanguages, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
+  const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
 
   // Fetch product
   const { data: product, error: productErr } = await db
@@ -168,7 +169,8 @@ export async function POST(req: NextRequest) {
       competitorImageUrls.length,
       competitorVariations,
       competitorPainPoint,
-      researchContext
+      researchContext,
+      generationLanguage
     );
 
     const userPrompt = buildBrainstormUserPrompt(
@@ -341,6 +343,7 @@ export async function POST(req: NextRequest) {
             ad_copy_headline: parsed.concept.ad_copy_headline,
             visual_direction: parsed.concept.visual_direction ?? null,
             workspace_id: workspaceId,
+            source_language: generationLanguage,
             pending_competitor_gen: {
               image_prompts: parsed.image_prompts,
               competitor_image_urls: competitorImageUrls,
@@ -684,7 +687,8 @@ export async function POST(req: NextRequest) {
     undefined, // competitorImageCount
     undefined, // variationsPerImage
     undefined, // painPoint
-    researchContext
+    researchContext,
+    generationLanguage
   );
 
   const userPrompt = buildBrainstormUserPrompt(

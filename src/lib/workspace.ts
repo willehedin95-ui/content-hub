@@ -121,6 +121,22 @@ export async function getLanguagesByWorkspaceId(workspaceId: string): Promise<st
 }
 
 /**
+ * Get the language ad copy should be generated in for a workspace.
+ * Returns "en" (English) by default. Set settings.ad_copy_language to
+ * override (e.g. "sv" for Swedish-first generation).
+ */
+export async function getAdCopyLanguageByWorkspaceId(workspaceId: string): Promise<string> {
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const settings = data?.settings as Record<string, unknown> | null;
+  return (settings?.ad_copy_language as string) || "en";
+}
+
+/**
  * Clear the workspace cache. Call after modifying workspaces.
  */
 export function clearWorkspaceCache() {

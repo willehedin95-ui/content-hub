@@ -1880,6 +1880,7 @@ export async function generateIterationCopy(opts: {
   product: ProductFull;
   guidelines: CopywritingGuideline[];
   segments: ProductSegment[];
+  generationLanguage?: string;
 }): Promise<{ primary: string[]; headlines: string[] }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -1894,6 +1895,7 @@ export async function generateIterationCopy(opts: {
     iterationType: opts.iterationType,
     iterationContext: opts.iterationContext,
     productContext,
+    generationLanguage: opts.generationLanguage,
   });
 
   const client = new Anthropic({ apiKey });

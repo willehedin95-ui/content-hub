@@ -13,7 +13,7 @@
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getLanguagesByWorkspaceId } from "@/lib/workspace";
+import { getLanguagesByWorkspaceId, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import {
@@ -115,6 +115,9 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     .slice(0, 3)
     .map((i) => i.url);
 
+  // --- Determine generation language (e.g. "sv" for Hydro13) ---
+  const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
+
   // --- Build prompts ---
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
@@ -127,7 +130,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     competitorImageUrls.length,
     3,
     input.painPoint,
-    researchContext
+    researchContext,
+    generationLanguage
   );
 
   const userPrompt = buildBrainstormUserPrompt(
@@ -359,6 +363,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       ad_copy_headline: parsed.concept.ad_copy_headline,
       visual_direction: parsed.concept.visual_direction,
       tags,
+      source_language: generationLanguage,
       swipe_progress: { step: "generating", message: `Generating image 1 of ${parsed.image_prompts.length}...` },
     }).eq("id", existingJobId);
     job = { id: existingJobId };
@@ -380,6 +385,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         ad_copy_headline: parsed.concept.ad_copy_headline,
         visual_direction: parsed.concept.visual_direction,
         tags,
+        source_language: generationLanguage,
         pending_competitor_gen: {
           image_prompts: parsed.image_prompts,
           competitor_image_urls: competitorImageUrls,
