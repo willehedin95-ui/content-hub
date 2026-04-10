@@ -326,6 +326,7 @@ ALL dialogue MUST be written in **${langName}**. The dialogue field and the VEO 
 6. Stay in character — same voice, attitude, and tone across ALL shots
 7. Each shot must advance the narrative — no filler or repetition
 8. The monologue must relate to a REAL problem the target audience has
+9. **NO CTAs in dialogue** — NEVER have the character say "klicka nedan", "köp nu", "länk i bio", "beställ här", "click below", or any call-to-action. This is a VIDEO AD, not a webpage. The ad copy and landing page handle CTAs.
 
 ## IS THIS CHARACTER OUR PRODUCT? (is_product_character flag)
 Your single Pixar character CAN be an anthropomorphic version of OUR product itself — for example a talking bottle that IS the actual supplement. When the character you pick is meant to represent OUR product (not a generic bottle, not a body part, not a competitor), set \`is_product_character: true\` at the concept level. This tells the image generator to use the real product photo as a visual anchor so the cartoon character matches the product's real shape, color, and label. Set it to \`false\` when the character is a body part, a generic object, or anything that isn't literally our product. Default: false. ONLY set it to true when the character IS our product.
@@ -382,6 +383,7 @@ CRITICAL: Each shot's VEO prompt is a FULL movie-shot description, not just "cha
 - Keep it whimsical and family-friendly — Pixar, not medical textbook
 - Brain sits on a pillow or nightstand, NOT inside a skull
 - Spine stands on a mattress or bed, NOT inside a body
+- NEVER include CTA buttons, UI elements, text overlays, banners, or web interface elements in image prompts — no "call to action", "buy now", "click here" buttons. The image is a Pixar CHARACTER in a SCENE, not a web page or ad mockup.
 
 ## OUTPUT FORMAT
 Return a JSON object with a "proposals" array containing EXACTLY 1 concept. The character_image_prompt is at CONCEPT LEVEL (shared across all shots), NOT per shot:

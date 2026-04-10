@@ -76,6 +76,7 @@ This is a viral format on TikTok, Instagram Reels, and Meta Ads. Key characteris
 6. Each character within a concept must be a DIFFERENT object/body part
 7. The dialogue must relate to a REAL problem the target audience has with sleep/health
 8. Characters should feel like they're "ganging up" or "testifying" — building on each other's points
+9. **NO CTAs in dialogue** — NEVER have a character say "klicka nedan", "köp nu", "länk i bio", "beställ här", "click below", or any call-to-action. This is a VIDEO AD, not a webpage. The ad copy and landing page handle CTAs, not the characters.
 
 ## IS THIS CHARACTER OUR PRODUCT? (is_product_character flag)
 One of your Pixar characters CAN be an anthropomorphic version of OUR product itself — for example a talking bottle that IS the actual supplement. When a shot's character is meant to represent OUR product (not a generic object, not a body part, not a competitor), you MUST set \`is_product_character: true\` on that shot. This tells the image generator to use the real product photo as a visual anchor so the cartoon character matches the product's real shape, color, and label. Set it to \`false\` for all non-product characters (body parts, pillows, coffee cups, spines, brains, etc.). Default: false. ONLY set it to true when the character literally IS our product.
@@ -136,6 +137,7 @@ The video generator has a content safety filter. To avoid blocked generations:
 - Keep the tone whimsical and family-friendly — think Pixar, not medical textbook
 - Brain characters sit on a pillow or nightstand, NOT inside a skull
 - Spine/neck characters stand on a mattress or bed, NOT inside a body
+- NEVER include CTA buttons, UI elements, text overlays, banners, or web interface elements in image prompts — no "call to action", "buy now", "click here" buttons. The image is a Pixar CHARACTER in a SCENE, not a web page or ad mockup.
 
 ## OUTPUT FORMAT
 Return a JSON object with a "proposals" array. Each proposal is ONE video concept with multiple character shots:
