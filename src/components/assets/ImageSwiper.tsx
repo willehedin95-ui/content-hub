@@ -194,6 +194,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let completed = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -218,11 +219,17 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           }
 
           if (event.step === "completed" && event.image_url) {
+            completed = true;
             setGeneratedImageUrl(event.image_url);
             setPromptUsed(event.prompt_used || null);
             setPhase("done");
           }
         }
+      }
+
+      // Stream ended without a completed event - server likely timed out
+      if (!completed) {
+        throw new Error("Generation timed out - please try again.");
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
