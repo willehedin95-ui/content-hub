@@ -53,6 +53,10 @@
       "schedule": "20 9 * * *"
     },
     {
+      "path": "/api/cron/blog-autopilot?workspace=hydro13&lang=sv",
+      "schedule": "40 9 * * *"
+    },
+    {
       "path": "/api/cron/research-scan",
       "schedule": "0 10 * * *"
     },
