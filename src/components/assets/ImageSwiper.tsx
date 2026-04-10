@@ -56,6 +56,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
+  const [measuredRatio, setMeasuredRatio] = useState<string>("4:5");
   const [retrying, setRetrying] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -222,6 +223,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             completed = true;
             setGeneratedImageUrl(event.image_url);
             setPromptUsed(event.prompt_used || null);
+            if (event.aspect_ratio) setMeasuredRatio(event.aspect_ratio);
             setPhase("done");
           }
         }
@@ -324,14 +326,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setError(null);
     setSaved(false);
 
-    // Parse aspect ratio from the JSON prompt (matches original image)
-    let retryRatio = "4:5";
-    try {
-      const parsed = JSON.parse(promptUsed);
-      const raw = parsed?.composition?.aspect_ratio ?? "";
-      const valid = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
-      if (valid.includes(raw)) retryRatio = raw;
-    } catch { /* use default */ }
+    // Use the programmatically measured ratio from the initial generation
+    const retryRatio = measuredRatio;
 
     // If edit instructions provided, inject them into the prompt JSON
     let finalPrompt = promptUsed;
@@ -370,7 +366,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions]);
+  }, [promptUsed, product, editInstructions, measuredRatio]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -390,6 +386,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setSaved(false);
     setEditInstructions("");
     setShowSaveModal(false);
+    setMeasuredRatio("4:5");
   }, [competitorImageUrl, competitorImageFile]);
 
   return (

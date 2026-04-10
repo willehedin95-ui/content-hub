@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { CLAUDE_MODEL } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
@@ -7,6 +8,34 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
 
 export const maxDuration = 300;
+
+const VALID_RATIOS = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"] as const;
+
+/** Measure source image and return the closest Kie.ai-supported aspect ratio */
+async function detectAspectRatio(imageUrl: string): Promise<string> {
+  try {
+    const res = await fetch(imageUrl);
+    if (!res.ok) return "4:5";
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const { width, height } = await sharp(buffer).metadata();
+    if (!width || !height) return "4:5";
+
+    const actual = width / height;
+    let best = "4:5";
+    let bestDiff = Infinity;
+    for (const ratio of VALID_RATIOS) {
+      const [w, h] = ratio.split(":").map(Number);
+      const diff = Math.abs(actual - w / h);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = ratio;
+      }
+    }
+    return best;
+  } catch {
+    return "4:5";
+  }
+}
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -80,6 +109,9 @@ export async function POST(req: NextRequest) {
 
     productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
   }
+
+  // Detect actual source image dimensions (runs in parallel with Claude call)
+  const aspectRatioPromise = detectAspectRatio(image_url);
 
   // Build Claude system prompt (product-agnostic — extraction only)
   const systemPrompt = buildImageSwiperSystemPrompt();
@@ -255,10 +287,8 @@ export async function POST(req: NextRequest) {
         message: "Generating adapted image...",
       });
 
-      // Match the original image's aspect ratio
-      const validRatios = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"];
-      const rawRatio = (extraction.composition?.aspect_ratio ?? "").trim();
-      const detectedRatio = validRatios.includes(rawRatio) ? rawRatio : "4:5";
+      // Use programmatically measured aspect ratio (not Claude's guess)
+      const detectedRatio = await aspectRatioPromise;
 
       const imageTaskId = await createImageTask(
         nanaBananaPrompt,
@@ -293,6 +323,7 @@ export async function POST(req: NextRequest) {
         message: "Image generated",
         image_url: result.urls[0],
         prompt_used: nanaBananaPrompt,
+        aspect_ratio: detectedRatio,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
