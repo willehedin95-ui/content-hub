@@ -57,7 +57,7 @@ Keep each dialogue chunk under 20-25 words (8-second clip limit).`;
 const DELIVERY_STYLES_REFERENCE = `## Delivery Styles
 
 - **Conversational (Default)**: Natural rhythm, filler words, slight pauses, occasional glance away
-- **Energetic**: Fast-paced but articulate, wider eyes, hand gestures, head nods
+- **Energetic**: Fast-paced but articulate, wider eyes, animated facial expressions, head nods
 - **Conspiratorial**: Lower voice on reveals, lean forward, intense eye contact, knowing half-smile
 - **Emotional**: Soft quiet voice, slightly glossy eyes, gentle smile, hands at midsection
 - **Authority**: Clear measured tone, confident posture, deliberate emphasis, direct gaze`;
@@ -107,6 +107,17 @@ function buildMarketAdaptation(primaryLang: string): string {
   const langName = LANGUAGE_LABELS[primaryLang] || primaryLang;
   const fillers = FILLER_EXAMPLES[primaryLang] || '"um", "like", "you know"';
 
+  // VEO 3 mispronounces many Swedish words. We replace them with phonetic
+  // spellings in the dialogue so VEO reads them correctly. The `script` field
+  // keeps the real spelling (for subtitles/captions). Only the dialogue inside
+  // veo_prompt uses phonetic variants.
+  const pronunciationGuide = primaryLang === "sv" ? `
+- **PRONUNCIATION FIX (CRITICAL for veo_prompt dialogue)**: VEO mispronounces several Swedish words. In the veo_prompt dialogue (text after "says:"), replace these words with their phonetic spelling so VEO pronounces them correctly. Keep the REAL spelling in the \`script\` field and \`dialogue\` field (used for captions).
+  - "kollagen" -> "kållagén" (VEO says "kollaschen" otherwise)
+  - "hudbarriär" -> "hud-barriär" (add hyphen for correct stress)
+  - "hyaluronsyra" -> "hya-luron-syra" (break up for correct pronunciation)
+  - If you encounter other long Swedish compound words, break them with hyphens to help VEO pronounce them correctly.` : "";
+
   return `## Scandinavian Market Adaptation
 
 When generating for Scandinavian markets:
@@ -114,7 +125,7 @@ When generating for Scandinavian markets:
 - **Character**: Match local demographics — Scandinavian names and looks, Nordic features
 - **Delivery**: More understated than US-style UGC, less hype, calmer energy
 - **Script & Dialogue**: Write ALL dialogue (script field, ad_copy_primary, ad_copy_headline) in **${langName}**. In veo_prompt, keep the TECHNICAL parts (camera, character actions, scene setup) in English but write the SPOKEN DIALOGUE (text after "says:") in **${langName}**.
-- **Filler words**: Use natural ${langName} filler words (${fillers}). Must sound like a real ${langName}-speaking person talking naturally to their phone camera.`;
+- **Filler words**: Use natural ${langName} filler words (${fillers}). Must sound like a real ${langName}-speaking person talking naturally to their phone camera.${pronunciationGuide}`;
 }
 
 export interface ProductPlacementOptions {
@@ -214,7 +225,8 @@ ${productPlacement.enabled ? `### Product Accuracy (CRITICAL)
 - CRITICAL: Each \`veo_prompt\` is SHORT (~200-400 chars). It describes ONLY what MOVES and what is SAID.
 - The keyframe image (from shot_description) is passed to Veo3 as the starting frame via image-to-video mode. The image already defines what everything LOOKS like.
 - The veo_prompt adds ONLY: (1) camera behavior (usually "remains static"), (2) what physical motion the character performs, (3) dialogue.
-- Format: "The camera remains static, framed in a [medium close-up/medium shot]. The character with [ONE key visual detail] [performs specific motion: head tilt, slight smile, hand gesture below chest, leans forward]. character says: \\"[exact dialogue for this shot with filler words]\\""
+- Format: "The camera remains static, framed in a [medium close-up/medium shot]. The character with [ONE key visual detail] [performs subtle motion: slight head tilt, micro-nod, eyebrow raise, small smile]. character says: \\"[exact dialogue for this shot with filler words]\\""
+- **MINIMAL GESTURES (CRITICAL)**: VEO generates bizarre, unnatural hand movements when prompted with hand gestures. Keep motion to HEAD and FACE only: head tilts, nods, eyebrow raises, eye movements, small smiles, lip pursing, leaning slightly forward/back. Do NOT write hand gestures, finger pointing, hand waving, or any arm movement in veo_prompts. Hands should stay still in whatever position the keyframe placed them. The only exception is product interaction (picking up/holding a product) when product placement is enabled.
 - **DIALOGUE IN VEO PROMPT MUST BE MAX 15 WORDS**. VEO3 generates exactly 8 seconds of video. If dialogue exceeds 15 words, speech WILL get cut off mid-sentence. Split long sentences across multiple shots instead.
 - Do NOT repeat the full scene description, environment, lighting, or cinematography — the image handles all of that.
 - Do NOT include UGC keywords, quality negatives, or audio descriptions — keep it focused.
@@ -349,7 +361,8 @@ export function buildVideoUgcUserPrompt(
 - Split the concept into 3-8 shots (each 8 seconds, max 25 words dialogue per shot) with individual shot_description and veo_prompt per shot
 - Each shot_description is a DETAILED Nano Banana iPhone-style image prompt (~300-500 chars) — this is the VISUAL FOUNDATION of the video frame
 - Each veo_prompt is SHORT (~200-400 chars) — ONLY describes what MOVES and what is SAID. The keyframe image handles all visuals.
-- veo_prompt format: "The camera remains static, framed in a [shot type]. The character with [one key detail] [performs motion]. character says: \\"[dialogue]\\""
+- veo_prompt format: "The camera remains static, framed in a [shot type]. The character with [one key detail] [performs subtle facial motion: head tilt, nod, eyebrow raise]. character says: \\"[dialogue]\\""
+- NEVER include hand gestures or arm movements in veo_prompts — VEO generates bizarre unnatural hand movements. Keep motion to head/face only.
 - SAME selfie camera angle in EVERY shot — never vary camera position, angle, or distance
 - Repeat FULL character_description in every shot_description (NOT in veo_prompt — the image handles character appearance)`;
   if (options?.product_placement) {
