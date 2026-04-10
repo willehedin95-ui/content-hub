@@ -247,8 +247,8 @@ export default function ConceptAdCopyStep({
         </div>
       </div>
 
-      {/* Translate Copy section */}
-      {metaPush.primaryTexts.some((t) => t.trim()) && (
+      {/* Translate Copy section (hidden when all target languages match source) */}
+      {metaPush.primaryTexts.some((t) => t.trim()) && job.target_languages.some((lang) => lang !== job.source_language) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-700">Translations</h3>
@@ -271,9 +271,9 @@ export default function ConceptAdCopyStep({
             </button>
           </div>
 
-          {/* Per-language translation cards */}
+          {/* Per-language translation cards (skip source language - copy is already in that language) */}
           <div className="space-y-3">
-            {job.target_languages.map((lang) => {
+            {job.target_languages.filter((lang) => lang !== job.source_language).map((lang) => {
               const langInfo = LANGUAGES.find((l) => l.value === lang);
               const ct = copyTranslations[lang] as ConceptCopyTranslation | undefined;
 

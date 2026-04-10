@@ -77,8 +77,9 @@ function computeConceptStatus(
   // Check if fully done BEFORE checking processing — processing flags may linger
   const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
   const allImgDone = totalCount > 0 && completedCount === totalCount;
-  const allCopyDone = job.target_languages.every((lang) => copyTranslations[lang]?.status === "completed");
-  const anyReview = job.target_languages.some((lang) => copyTranslations[lang]?.status === "review");
+  const translatableLangs = job.target_languages.filter((lang) => lang !== job.source_language);
+  const allCopyDone = translatableLangs.length === 0 || translatableLangs.every((lang) => copyTranslations[lang]?.status === "completed");
+  const anyReview = translatableLangs.some((lang) => copyTranslations[lang]?.status === "review");
   if (hasPrimary && allImgDone && allCopyDone) return "ready";
   if (hasPrimary && allImgDone && anyReview) return "needs_review";
   if (job.status === "draft") return "generating";
@@ -148,7 +149,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     const sections = new Set<string>(["images"]);
     const hasPrimary = (initialJob.ad_copy_primary ?? []).some((t: string) => t.trim());
     const initCt = initialJob.ad_copy_translations ?? {};
-    const allCopyDone = initialJob.target_languages.every((lang) => (initCt as ConceptCopyTranslations)[lang]?.status === "completed");
+    const initTranslatable = initialJob.target_languages.filter((lang) => lang !== initialJob.source_language);
+    const allCopyDone = initTranslatable.length === 0 || initTranslatable.every((lang) => (initCt as ConceptCopyTranslations)[lang]?.status === "completed");
     if (!hasPrimary || !allCopyDone) sections.add("adcopy");
     const hasPushed = (initialJob.deployments ?? []).some((d: { status: string }) => d.status === "pushed");
     if (hasPushed) sections.add("preview");
@@ -365,20 +367,21 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   }, [initialJob.id]);
 
   const [selectedLanguages, setSelectedLanguages] = useState<Set<Language>>(() => {
+    const srcLang = initialJob.source_language;
     // Init from job if already set, otherwise from settings defaults
     if (initialJob.target_languages?.length) {
-      return new Set(initialJob.target_languages as Language[]);
+      return new Set(initialJob.target_languages.filter((l) => l !== srcLang) as Language[]);
     }
     try {
       const stored = localStorage.getItem("content-hub-settings");
       if (stored) {
         const settings = JSON.parse(stored);
         if (settings.static_ads_default_languages?.length) {
-          return new Set(settings.static_ads_default_languages);
+          return new Set(settings.static_ads_default_languages.filter((l: string) => l !== srcLang));
         }
       }
     } catch {}
-    return new Set(wsLanguages.map((l) => l.value));
+    return new Set(wsLanguages.map((l) => l.value).filter((v) => v !== srcLang));
   });
 
   // Fetch landing pages for this product
@@ -1392,7 +1395,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   const conceptStatus = computeConceptStatus(job, copyTranslations, launchpad.priority, perfData, proc, finishQueue, completedCount, totalCount);
 
   // Ad copy completion for badge
-  const adCopyLangsDone = job.target_languages.filter((lang) => copyTranslations[lang]?.status === "completed").length;
+  const translatableLangsForBadge = job.target_languages.filter((lang) => lang !== job.source_language);
+  const adCopyLangsDone = translatableLangsForBadge.filter((lang) => copyTranslations[lang]?.status === "completed").length;
   const adCopyHasPrimary = (metaPush.primaryTexts ?? []).some((t) => t.trim());
 
   // Scroll to and expand ad copy section
@@ -1560,19 +1564,20 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
       )}
       {(proc.processing || finishQueue.started) && !showRestartBanner && conceptStatus === "processing" && (() => {
         const imagesAllDone = totalCount > 0 && completedCount === totalCount;
-        const copyDoneCount = job.target_languages.filter((lang) => copyTranslations[lang]?.status === "completed").length;
-        const copyAllDone = copyDoneCount === job.target_languages.length;
+        const procTranslatable = job.target_languages.filter((lang) => lang !== job.source_language);
+        const copyDoneCount = procTranslatable.filter((lang) => copyTranslations[lang]?.status === "completed").length;
+        const copyAllDone = procTranslatable.length === 0 || copyDoneCount === procTranslatable.length;
         const onlyCopyLeft = imagesAllDone && !copyAllDone;
         const onlyImagesLeft = copyAllDone && !imagesAllDone;
 
         const bannerLabel = onlyCopyLeft
-          ? `Translating ad copy... (${copyDoneCount}/${job.target_languages.length})`
+          ? `Translating ad copy... (${copyDoneCount}/${procTranslatable.length})`
           : onlyImagesLeft
           ? `Processing ${completedCount}/${totalCount} images`
-          : `Processing... (${completedCount}/${totalCount} images, ${copyDoneCount}/${job.target_languages.length} copy)`;
+          : `Processing... (${completedCount}/${totalCount} images, ${copyDoneCount}/${procTranslatable.length} copy)`;
 
         const progress = onlyCopyLeft
-          ? (job.target_languages.length > 0 ? (copyDoneCount / job.target_languages.length) * 100 : 0)
+          ? (procTranslatable.length > 0 ? (copyDoneCount / procTranslatable.length) * 100 : 0)
           : (totalCount > 0 ? (completedCount / totalCount) * 100 : 0);
 
         return (
@@ -1736,8 +1741,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
           icon={FileText}
           badge={
             adCopyHasPrimary ? (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${adCopyLangsDone === job.target_languages.length ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
-                {adCopyLangsDone}/{job.target_languages.length} languages
+              <span className={`text-xs px-2 py-0.5 rounded-full ${adCopyLangsDone === translatableLangsForBadge.length ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                {translatableLangsForBadge.length === 0 ? "primary" : `${adCopyLangsDone}/${translatableLangsForBadge.length} languages`}
               </span>
             ) : (
               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">Not started</span>

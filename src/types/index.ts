@@ -246,6 +246,7 @@ export interface ImageJob {
   iteration_type?: IterationType | null;
   iteration_context?: Record<string, unknown> | null;
   source?: string;
+  source_language?: string;
   created_at: string;
   updated_at: string;
   source_images?: SourceImage[];
