@@ -820,11 +820,13 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 Create exactly 1 adapted Pixar-style SINGLE-CHARACTER monologue video concept for OUR product. Follow the competitor's narrative arc **beat-by-beat**:
 
-1. **Same hook structure** — if they open with a confrontational question, you open with a confrontational question about OUR product's problem space
-2. **Same persuasion flow** — mirror the sequence (e.g. problem reveal → stat → consequence → solution tease)
-3. **Same emotional arc** — match their tone shifts (sassy → serious → hopeful)
+1. **Same hook structure** — if they open with a confrontational question, yours must use the SAME confrontational question pattern about the SAME topic. Do NOT substitute the topic with our product category.
+2. **Same persuasion flow** — mirror the sequence (e.g. problem reveal -> stat -> consequence -> solution tease)
+3. **Same emotional arc** — match their tone shifts (sassy -> serious -> hopeful)
 4. **Same number of beats** — if their monologue has 4 distinct beats, yours should too
-5. **Adapt the CONTENT, not the STRUCTURE** — replace their claims with equivalent claims for OUR product, keeping the rhetorical framework
+5. **Keep the SAME topic and problem** — the competitor's topic IS the problem our product solves. Keep it. Only change the solution/CTA to point to our product. Do NOT rewrite the entire script to be about our product category.
+6. **Same SPECIFICITY level** — keep their stats and mechanisms if accurate. Only change claims that are factually wrong or irrelevant to our product's benefit space.
+7. **FALLBACK — irrelevant topic:** If the competitor's topic has ZERO connection to our product's benefit space, then — and ONLY then — find the closest problem from the product brief that matches the original's rhetorical structure and emotional arc.
 
 Choose ONE character (body part, object, or anthropomorphic thing) that relates to OUR product's problem.
 Split the monologue into 3-5 shots of 8 seconds each.
@@ -881,12 +883,13 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 
 Create exactly 1 adapted Pixar-style talking-object video concept for OUR product by following the competitor's narrative **beat-by-beat**:
 
-1. **Same hook structure** — mirror the opening hook pattern adapted for OUR product
-2. **Same persuasion flow** — if they go "problem → stat → consequence → solution", yours must follow the same sequence
+1. **Same hook structure** — mirror the opening hook pattern with the SAME topic. Do NOT substitute the topic with our product category.
+2. **Same persuasion flow** — if they go "problem -> stat -> consequence -> solution", yours must follow the same sequence
 3. **Same emotional arc** — match their tone shifts across characters
 4. **Same number of characters** — keep ${pixarAnalysis.characters.length} characters when possible, adjust to 3-5 if needed
-5. **Same theme structure** — if they have characters "testifying" about problems, yours should too (just different problems relevant to OUR product)
-6. **Adapt the CONTENT, not the STRUCTURE** — replace their claims with equivalent claims for OUR product, keeping the rhetorical framework identical
+5. **Keep the SAME topic and problems** — the competitor's topic IS the problem our product solves. Each character should discuss the SAME problem as in the original. Only change the solution/CTA to point to our product.
+6. **Same SPECIFICITY level** — keep their stats and mechanisms if accurate. Only change claims that are factually wrong or irrelevant to our product's benefit space.
+7. **FALLBACK — irrelevant topic:** If the competitor's topic has ZERO connection to our product's benefit space, then — and ONLY then — find the closest problem from the product brief that matches the original's rhetorical structure and emotional arc.
 - Dialogue language: **${langLabel}**.
 
 ${context.existingConcepts.length > 0 ? `### EXISTING CONCEPTS (do NOT duplicate)\n${context.existingConcepts.map((c) => `- ${c}`).join("\n")}` : ""}
@@ -983,14 +986,22 @@ ${competitorAdCopy ? `**COMPETITOR AD COPY**: ${competitorAdCopy.slice(0, 1500)}
 Create 1 adapted video concept for our product by following the competitor's script **beat-by-beat**. Your adapted script must mirror the EXACT narrative arc of the original:
 
 1. **Same number of beats** — if the original has 5 distinct narrative beats, yours must have ~5 too (split across shots with the 15-word limit)
-2. **Same hook structure** — if the original opens with "Your X might be causing Y", your hook must follow the same "Your [thing] might be [problem]" pattern adapted for our product
-3. **Same persuasion flow** — if the original goes "problem reveal → shocking stat → consequence chain → solution tease", yours must follow that EXACT sequence
-4. **Same emotional arc** — match the tone shifts (confrontational → educational → empathetic → hopeful)
-5. **Adapt the CONTENT, not the STRUCTURE** — replace their product/ingredient claims with equivalent claims about OUR product, but keep the rhetorical framework identical
+2. **Same hook structure** — if the original opens with "Your X might be causing Y", your hook MUST use the SAME "Your X might be causing Y" pattern. Do NOT substitute X with our product category. If the original says "Your skincare routine", yours should say "Your skincare routine" (or the equivalent in the target language) — NOT "Your collagen supplement."
+3. **Same persuasion flow** — if the original goes "problem reveal -> shocking stat -> consequence chain -> solution tease", yours must follow that EXACT sequence
+4. **Same emotional arc** — match the tone shifts (confrontational -> educational -> empathetic -> hopeful)
+5. **Keep the SAME topic and problem** — this is the most important rule. If the competitor talks about skincare routines damaging skin barrier, YOUR script should ALSO talk about skincare routines damaging skin barrier. The problem they describe IS the problem our product solves — that's why this ad was selected for swiping. Do NOT replace the topic with "collagen supplements" or our product category. The viewer should hear about a PROBLEM they relate to, and only at the very end discover our product as the solution.
+6. **Same SPECIFICITY level** — if the original cites a specific biological mechanism, stat, or causal chain, yours must have the same level of scientific detail. Keep their claims if they're accurate and relevant to the problem our product solves. Only change claims that are factually wrong or completely irrelevant to our product's benefit space.
 
-Think of it like dubbing a movie into another language — the story beats, pacing, and emotional arc stay the same. Only the specific product claims change.
+Think of it like translating a movie — the story, topic, and emotional arc stay the same. The script is adapted to our target language and our product appears as the solution at the end — but the PROBLEM discussed throughout the video stays the same.
 
-**DO NOT** invent a completely different angle or narrative. If the competitor talks about "skincare routines disrupting skin barrier", your adaptation should talk about the EQUIVALENT problem for our product (e.g. "most collagen supplements can't be absorbed") using the SAME rhetorical structure (e.g. "Your X might be the reason you're Y").${formatOverrideNote}
+**DO NOT** pivot the entire script to be about our product category. If the original talks about "skincare products damaging skin barrier", do NOT rewrite it as "collagen supplements that aren't absorbed." The original's topic was chosen because it resonates with our target audience and leads naturally to our product as the solution. Changing the topic to our own product category makes the ad generic and kills the hook's power.
+
+**WHAT TO CHANGE vs WHAT TO KEEP:**
+- KEEP: The topic, the problem, the hook subject, the emotional triggers, specific stats (if accurate), the causal chain
+- CHANGE: Language (translate to target language), the solution/CTA at the end (point to our product), any competitor-specific brand names or product references, claims that are factually wrong
+- The ad should feel like the SAME ad in a different language, selling OUR product as the answer to the problem it describes
+
+**FALLBACK — irrelevant topic:** If the competitor's topic has ZERO connection to our product's benefit space (e.g. car insurance, pet food, software), then — and ONLY then — find the closest problem from the product brief that matches the original's rhetorical structure and emotional arc. Preserve the hook formula, persuasion flow, and tone shifts, but replace the topic with one that naturally leads to our product. This is the ONLY situation where changing the topic is acceptable.${formatOverrideNote}
 
 **LANGUAGE: ${langLabel}** — Write the script, ad_copy_primary, and ad_copy_headline in ${langLabel}. In veo_prompt, keep technical parts (camera, actions) in English but write SPOKEN DIALOGUE (text after "says:") in ${langLabel}.
 
