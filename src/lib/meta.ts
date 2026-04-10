@@ -379,13 +379,15 @@ interface AdSetTemplateConfig {
   bid_amount?: string;
   daily_budget?: string;
   lifetime_budget?: string;
+  dsa_beneficiary?: string;
+  dsa_payor?: string;
 }
 
 /**
  * Fetch a template ad set's config so we can create new ad sets with the same settings.
  */
 export async function getAdSetConfig(adSetId: string): Promise<AdSetTemplateConfig> {
-  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,bid_amount,daily_budget,lifetime_budget`);
+  return metaJson(`/${adSetId}?fields=campaign_id,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,bid_strategy,bid_amount,daily_budget,lifetime_budget,dsa_beneficiary,dsa_payor`);
 }
 
 /**
@@ -430,6 +432,8 @@ export async function createAdSetFromTemplate(params: {
       is_dynamic_creative: params.isDynamicCreative || false,
       start_time: params.startTime || new Date().toISOString(),
       status: params.startTime ? "ACTIVE" : "PAUSED",
+      ...(cfg.dsa_beneficiary ? { dsa_beneficiary: cfg.dsa_beneficiary } : {}),
+      ...(cfg.dsa_payor ? { dsa_payor: cfg.dsa_payor } : {}),
     }),
   });
 }

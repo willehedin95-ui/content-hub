@@ -50,11 +50,10 @@ const PRODUCT_URLS: Record<string, Record<string, string>> = {
     da: "https://swedishbalance.dk/pages/happysleep-dk",
     no: "https://swedishbalance.se/no-no/pages/happysleep-no",
   },
-  // Hydro13 moving to get-renew.com — URLs updated when store is live
   hydro13: {
-    sv: "#",
-    da: "#",
-    no: "#",
+    sv: "https://get-renew.com/products/hydro13",
+    da: "https://get-renew.com/products/hydro13",
+    no: "https://get-renew.com/products/hydro13",
   },
 };
 
