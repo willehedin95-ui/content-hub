@@ -70,7 +70,7 @@ export default function ExpensesTab() {
   const [step, setStep] = useState<Step>("upload");
   const [person, setPerson] = useState<"William" | "Rasmus">("William");
   const [period, setPeriod] = useState(defaultPeriod);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<{ file: File; type: "receipt" | "bank" }[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [unmatchedBank, setUnmatchedBank] = useState<
     { description: string; date: string; amount: number }[]
@@ -84,10 +84,15 @@ export default function ExpensesTab() {
   // File handling
   // -------------------------------------------------------------------------
   const addFiles = useCallback((newFiles: FileList | File[]) => {
-    const arr = Array.from(newFiles).filter((f) => {
-      const ext = f.name.toLowerCase().split(".").pop();
-      return ["pdf", "png", "jpg", "jpeg", "webp"].includes(ext || "");
-    });
+    const arr = Array.from(newFiles)
+      .filter((f) => {
+        const ext = f.name.toLowerCase().split(".").pop();
+        return ["pdf", "png", "jpg", "jpeg", "webp"].includes(ext || "");
+      })
+      .map((f) => {
+        const ext = f.name.toLowerCase().split(".").pop();
+        return { file: f, type: (ext === "pdf" ? "receipt" : "bank") as "receipt" | "bank" };
+      });
     setFiles((prev) => [...prev, ...arr]);
   }, []);
 
@@ -95,13 +100,16 @@ export default function ExpensesTab() {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
-  const fileType = (f: File): "receipt" | "bank" => {
-    const ext = f.name.toLowerCase().split(".").pop();
-    return ext === "pdf" ? "receipt" : "bank";
-  };
+  const toggleFileType = useCallback((idx: number) => {
+    setFiles((prev) =>
+      prev.map((f, i) =>
+        i === idx ? { ...f, type: f.type === "receipt" ? "bank" : "receipt" } : f
+      )
+    );
+  }, []);
 
-  const receiptCount = files.filter((f) => fileType(f) === "receipt").length;
-  const bankCount = files.filter((f) => fileType(f) === "bank").length;
+  const receiptCount = files.filter((f) => f.type === "receipt").length;
+  const bankCount = files.filter((f) => f.type === "bank").length;
 
   // -------------------------------------------------------------------------
   // Process files
@@ -113,7 +121,11 @@ export default function ExpensesTab() {
       const formData = new FormData();
       formData.append("month", period);
       for (const f of files) {
-        formData.append("files", f);
+        if (f.type === "receipt") {
+          formData.append("receipts", f.file);
+        } else {
+          formData.append("bank_statements", f.file);
+        }
       }
 
       const res = await fetch("/api/expenses/process", {
@@ -202,9 +214,9 @@ export default function ExpensesTab() {
   async function downloadReceipts() {
     setDownloading("zip");
     try {
-      const receiptFiles = files.filter((f) => fileType(f) === "receipt");
+      const receiptFiles = files.filter((f) => f.type === "receipt");
       if (receiptFiles.length === 0) {
-        setError("No receipt PDFs to download");
+        setError("No receipts to download");
         setDownloading(null);
         return;
       }
@@ -212,7 +224,7 @@ export default function ExpensesTab() {
       formData.append("person", person);
       formData.append("month", period);
       for (const f of receiptFiles) {
-        formData.append("files", f);
+        formData.append("files", f.file);
       }
       const res = await fetch("/api/expenses/download-receipts", {
         method: "POST",
@@ -350,7 +362,7 @@ export default function ExpensesTab() {
               Drop files here or click to browse
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              PDFs = receipts/invoices, Images (PNG/JPG) = bank statements
+              PDFs default to receipts, images to bank statements - click to change
             </p>
             <input
               ref={fileInputRef}
@@ -377,20 +389,27 @@ export default function ExpensesTab() {
               <div className="divide-y divide-gray-50">
                 {files.map((f, idx) => (
                   <div
-                    key={`${f.name}-${idx}`}
+                    key={`${f.file.name}-${idx}`}
                     className="px-4 py-2 flex items-center gap-3"
                   >
-                    {fileType(f) === "receipt" ? (
+                    {f.type === "receipt" ? (
                       <FileText className="w-4 h-4 text-red-400 flex-shrink-0" />
                     ) : (
                       <Image className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     )}
                     <span className="text-sm text-gray-700 truncate flex-1">
-                      {f.name}
+                      {f.file.name}
                     </span>
-                    <span className="text-xs text-gray-400">
-                      {fileType(f) === "receipt" ? "Receipt" : "Bank"}
-                    </span>
+                    <button
+                      onClick={() => toggleFileType(idx)}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        f.type === "receipt"
+                          ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+                          : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"
+                      }`}
+                    >
+                      {f.type === "receipt" ? "Receipt" : "Bank"}
+                    </button>
                     <button
                       onClick={() => removeFile(idx)}
                       className="text-gray-300 hover:text-red-500 transition-colors"

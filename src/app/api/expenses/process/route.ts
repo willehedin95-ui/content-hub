@@ -44,16 +44,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "month is required" }, { status: 400 });
   }
 
-  // Separate files by type
+  // Files are pre-classified by the client
   const receiptFiles: File[] = [];
   const bankStatementFiles: File[] = [];
 
   for (const [key, value] of formData.entries()) {
-    if (key === "files" && value instanceof File) {
-      const ext = value.name.toLowerCase().split(".").pop();
-      if (ext === "pdf") {
+    if (value instanceof File) {
+      if (key === "receipts") {
         receiptFiles.push(value);
-      } else if (["png", "jpg", "jpeg", "webp"].includes(ext || "")) {
+      } else if (key === "bank_statements") {
         bankStatementFiles.push(value);
       }
     }
@@ -61,12 +60,20 @@ export async function POST(req: NextRequest) {
 
   const client = new Anthropic({ apiKey });
 
-  // Step 1: Extract data from each receipt (PDF)
+  // Step 1: Extract data from each receipt (PDF or image)
   const receipts: ExtractedReceipt[] = [];
   for (const file of receiptFiles) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
       const base64 = buffer.toString("base64");
+      const ext = file.name.toLowerCase().split(".").pop();
+      const isPdf = ext === "pdf";
+
+      // Build the appropriate content block for PDF vs image
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fileContent: any = isPdf
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+        : { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } };
 
       const res = await client.messages.create({
         model: "claude-haiku-4-5-20251001",
@@ -74,10 +81,7 @@ export async function POST(req: NextRequest) {
         messages: [{
           role: "user",
           content: [
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: base64 },
-            },
+            fileContent,
             {
               type: "text",
               text: `Extract from this invoice/receipt:
