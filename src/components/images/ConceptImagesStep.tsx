@@ -611,6 +611,9 @@ export default function ConceptImagesStep({
 
             return (
               <>
+                {/* Show original competitor ad during generation */}
+                {renderCompetitorReference()}
+
                 {/* Swipe pipeline progress (step-by-step) */}
                 {swipeProgress && swipeProgress.step !== "error" ? (
                   <div className="space-y-3">
