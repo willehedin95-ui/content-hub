@@ -23,7 +23,7 @@ import {
   approveTranslationsAction,
 } from "@/lib/approval-actions";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Edit a callback button message — handles both text messages (media group follow-up)

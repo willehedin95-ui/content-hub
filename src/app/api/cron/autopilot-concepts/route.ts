@@ -38,7 +38,7 @@ import type {
 // = ~100-170s. 3 concepts per run is tight but feasible with parallelized image
 // gen. If a run gets killed mid-loop, pipeline-push reconcile catches the
 // partial state on the next pass and re-promotes draft -> ready.
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const TARGET_RATIOS = ["4:5", "9:16"];
 

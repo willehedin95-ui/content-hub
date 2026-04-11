@@ -8,7 +8,7 @@ import {
 } from "@/lib/video-swiper-prompt";
 import type { ProductFull } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface SceneExtraction extends Record<string, any> {

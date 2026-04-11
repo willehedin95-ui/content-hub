@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isValidUUID } from "@/lib/validation";
 import { pushConceptToMeta } from "@/lib/meta-push";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Push a concept (image_job) to Meta Ads — one ad set per target language/market.

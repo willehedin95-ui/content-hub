@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isValidUUID } from "@/lib/validation";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Push a video job's completed translations to Meta Ads.

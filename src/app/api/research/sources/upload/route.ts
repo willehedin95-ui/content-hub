@@ -7,7 +7,7 @@ import {
 } from "@/lib/research-evaluate";
 import { safeError } from "@/lib/api-error";
 
-export const maxDuration = 300; // 5 min — evaluation can be slow for large texts
+export const maxDuration = 800; // 5 min — evaluation can be slow for large texts
 
 const MIN_SIGNIFICANCE = 4;
 const EVAL_DELAY_MS = 200;

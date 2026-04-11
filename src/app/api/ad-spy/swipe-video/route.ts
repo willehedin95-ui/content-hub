@@ -5,7 +5,7 @@ import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/l
 import { swipeCompetitorVideo, type VideoSwipeStyle, type VideoMode } from "@/lib/swipe-competitor-video";
 import type { SwipeVideoFormatId } from "@/lib/video-format-aesthetics";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const workspaceId = await getWorkspaceId();

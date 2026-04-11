@@ -5,7 +5,7 @@ import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 import { getWorkspaceId } from "@/lib/workspace";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST(
   _req: NextRequest,

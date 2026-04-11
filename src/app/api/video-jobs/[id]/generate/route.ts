@@ -5,7 +5,7 @@ import { safeError } from "@/lib/api-error";
 import { VIDEO_STORAGE_BUCKET } from "@/lib/constants";
 import { getWorkspaceId } from "@/lib/workspace";
 
-export const maxDuration = 300; // 5 minutes for Vercel
+export const maxDuration = 800; // 5 minutes for Vercel
 
 const VALID_MODELS: VideoModel[] = ["sora-2-pro-text-to-video", "veo3", "veo3_fast"];
 

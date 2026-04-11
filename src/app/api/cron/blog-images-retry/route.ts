@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateBlogImagesAndRepublish } from "@/lib/blog-autopilot";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Self-healing cron: find blog articles that still have placeholder images

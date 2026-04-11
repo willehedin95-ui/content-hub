@@ -3,7 +3,7 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { analyzeThemes } from "@/lib/research-themes";
 import { safeError } from "@/lib/api-error";
 
-export const maxDuration = 300; // 5 min — Sonnet analysis
+export const maxDuration = 800; // 5 min — Sonnet analysis
 
 export async function POST() {
   try {

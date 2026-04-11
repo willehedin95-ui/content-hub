@@ -4,7 +4,7 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv" };
 

@@ -9,7 +9,7 @@ import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/image-jobs/[id]/generate-variations
 // Generates more variations of a competitor-swipe concept.

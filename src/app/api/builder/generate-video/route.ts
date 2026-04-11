@@ -7,7 +7,7 @@ import { generateImage, createKlingTask } from "@/lib/kie";
 import { OPENAI_MODEL } from "@/lib/constants";
 import type { ProductImage } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 function getOpenAI(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;

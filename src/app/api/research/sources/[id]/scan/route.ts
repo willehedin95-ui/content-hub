@@ -4,7 +4,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { scanSingleSource } from "@/lib/research-scan";
 import { safeError } from "@/lib/api-error";
 
-export const maxDuration = 300; // 5 min — scraping + AI evaluation
+export const maxDuration = 800; // 5 min — scraping + AI evaluation
 
 export async function POST(
   req: Request,

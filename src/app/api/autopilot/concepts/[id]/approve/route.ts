@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { approveConceptAction, rejectConceptAction } from "@/lib/approval-actions";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/autopilot/concepts/:id/approve
 // body: { approved: boolean }

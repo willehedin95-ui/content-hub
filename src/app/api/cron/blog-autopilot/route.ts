@@ -5,7 +5,7 @@ import { runBlogAutopilot, generateBlogImagesAndRepublish } from "@/lib/blog-aut
 import type { AutopilotResult } from "@/lib/blog-autopilot";
 import type { Language } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");

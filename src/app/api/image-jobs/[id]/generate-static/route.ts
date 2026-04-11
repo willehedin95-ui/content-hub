@@ -6,7 +6,7 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { generateStaticImages } from "@/lib/generate-static-images";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/image-jobs/[id]/generate-static — Generate diverse static ad images
 export async function POST(

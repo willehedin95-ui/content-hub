@@ -5,7 +5,7 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { generateStaticImages } from "@/lib/generate-static-images";
 import type { AutoPipelineConcept } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/pipeline/concepts/[id]/approve
 export async function POST(

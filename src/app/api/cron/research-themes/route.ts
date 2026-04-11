@@ -3,7 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage } from "@/lib/telegram";
 import { analyzeThemes } from "@/lib/research-themes";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");

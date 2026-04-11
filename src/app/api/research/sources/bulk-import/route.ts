@@ -6,7 +6,7 @@ import {
   getMarketRelevance,
 } from "@/lib/research-evaluate";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const MIN_SIGNIFICANCE = 4;
 const EVAL_DELAY_MS = 150;

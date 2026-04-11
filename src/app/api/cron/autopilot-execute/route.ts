@@ -12,7 +12,7 @@ import {
   type BudgetSnapshot,
 } from "@/lib/strategy-engine";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const MAX_KILLS_PER_RUN = 10;
 const DELAY_MS = 500;

@@ -9,7 +9,7 @@ import {
 // parallelized image gen. We budget ~250s of processing time so we fit
 // roughly 2-3 items per run before bailing, leaving 50s of slack for the
 // reconcile step + per-workspace iteration.
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const TIME_BUDGET_MS = 250 * 1000;
 const STUCK_SWIPE_MAX_AGE_MIN = 15;

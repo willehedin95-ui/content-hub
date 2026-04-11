@@ -8,7 +8,7 @@ import { CLAUDE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
 import type { ProductImage } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Claude Vision structured extraction prompt — identical to the Assets image swiper.

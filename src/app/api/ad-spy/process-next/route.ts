@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { processOneQueueItem } from "@/lib/swipe-queue-worker";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST() {
   const workspaceId = await getWorkspaceId();

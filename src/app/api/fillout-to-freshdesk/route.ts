@@ -407,6 +407,11 @@ export async function POST(req: NextRequest) {
   const tags = ["fillout", "website-form"];
   if (formKind !== "other") tags.push(formKind);
 
+  // Note on first_name / last_name in placeholders: Freshdesk auto-splits the
+  // `name` field we send here at the LAST whitespace, so "William Hedin" becomes
+  // first_name="William", last_name="Hedin" on the contact record. This makes
+  // {{ticket.requester.first_name}} work in email notification templates without
+  // any extra API calls.
   const ticketPayload: Record<string, unknown> = {
     email,
     subject,

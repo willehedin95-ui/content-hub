@@ -7,7 +7,7 @@ import { calcClaudeCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const VALID_RATIOS = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"] as const;
 

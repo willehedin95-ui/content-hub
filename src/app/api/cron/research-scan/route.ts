@@ -21,7 +21,7 @@ import {
   getMarketRelevance,
 } from "@/lib/research-evaluate";
 
-export const maxDuration = 300; // 5 minutes — scraping + AI eval
+export const maxDuration = 800; // 5 minutes — scraping + AI eval
 
 const MAX_PAGES_BACKFILL = 10; // First scan: up to 200 reviews per source
 const MAX_PAGES_INCREMENTAL = 3; // Daily scan: up to 60 new reviews per source

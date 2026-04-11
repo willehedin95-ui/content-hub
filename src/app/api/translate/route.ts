@@ -15,7 +15,7 @@ import { rewriteMarketUrls } from "@/lib/market-url-rewriter";
 // observing repeated failures on ~40K pages where GPT truncated or timed out.
 const FULL_HTML_MAX_CHARS = 25_000;
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const rl = checkRateLimit("translate", RATE_LIMIT_TRANSLATE);

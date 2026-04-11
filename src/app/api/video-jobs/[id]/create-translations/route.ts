@@ -7,7 +7,7 @@ import { getWorkspaceId } from "@/lib/workspace";
 
 const anthropic = new Anthropic();
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST(
   _req: NextRequest,

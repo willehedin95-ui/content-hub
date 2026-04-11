@@ -17,7 +17,7 @@ import {
 import { buildPixarAnimationSystemPrompt, buildPixarAnimationUserPrompt } from "@/lib/pixar-brainstorm";
 import type { ProductFull, CopywritingGuideline, ProductSegment, BrainstormMode } from "@/types";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const VALID_MODES: BrainstormMode[] = [
   "from_scratch",

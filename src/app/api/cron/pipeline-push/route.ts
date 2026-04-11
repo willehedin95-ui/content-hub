@@ -9,7 +9,7 @@ import { sendMessage } from "@/lib/telegram";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const MARKET_TO_LANG: Record<string, string> = { NO: "no", DK: "da", SE: "sv" };
 

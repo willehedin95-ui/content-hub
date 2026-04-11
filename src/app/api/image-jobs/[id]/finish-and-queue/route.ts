@@ -6,7 +6,7 @@ import { isValidUUID } from "@/lib/validation";
 import { triggerAutopilotTranslations } from "@/lib/autopilot-translations";
 import { approveConceptAction } from "@/lib/approval-actions";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * "Finish & Queue" — one-click pipeline for any concept.

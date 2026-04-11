@@ -9,7 +9,7 @@ import {
 } from "@/lib/meta";
 import { sendMessage } from "@/lib/telegram";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // Throttling between Meta API calls to stay under the user request limit
 // (subcode 2446079). The rate limit has a burst component, so even modest

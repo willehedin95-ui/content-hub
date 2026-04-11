@@ -3,7 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
 import { STORAGE_BUCKET } from "@/lib/constants";
 
-export const maxDuration = 300; // Kie.ai can take up to 4.7 minutes
+export const maxDuration = 800; // Kie.ai can take up to 4.7 minutes
 
 /**
  * POST /api/swipe/generate-image

@@ -6,7 +6,7 @@ import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { generateStaticImages } from "@/lib/generate-static-images";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/brainstorm/approve — create image_job from approved brainstorm proposal
 export async function POST(req: NextRequest) {

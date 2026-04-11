@@ -9,7 +9,7 @@ import {
   approveTranslationsAction,
 } from "@/lib/approval-actions";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 // POST /api/review/:id/action
 // body: { action: "approve" | "reject", type: "concept" | "iteration" | "video" | "translation_review" }
