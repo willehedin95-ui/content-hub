@@ -450,7 +450,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     let fullPrompt: string;
     if (isJsonPrompt) {
       const jsonObj = { ...(promptRaw as Record<string, unknown>) };
-      if (productAppearance) jsonObj.ProductDescription = productAppearance;
+      if (includeProduct && productAppearance) jsonObj.ProductDescription = productAppearance;
       const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
       if (hasTextOverlay) {
         const overlayParts: string[] = [];
@@ -461,7 +461,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       fullPrompt = JSON.stringify(jsonObj);
     } else {
       fullPrompt = String(promptRaw);
-      if (productAppearance) fullPrompt += " " + productAppearance;
+      if (includeProduct && productAppearance) fullPrompt += " " + productAppearance;
       const hasTextOverlay = !!(imgPrompt.hook_text?.trim() || imgPrompt.headline_text?.trim());
       if (hasTextOverlay) {
         const textParts: string[] = [];
@@ -711,12 +711,12 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 
       if (imageResults.length > 1) {
         const imageUrls = imageResults.map((r) => r.url);
-        await sendMediaGroup(chatId, imageUrls, caption);
-        await sendMessageWithInlineKeyboard(
-          chatId,
-          `Approve swipe #${nextConceptNumber}?`,
-          buttons
-        );
+        const mediaResult = await sendMediaGroup(chatId, imageUrls, caption);
+        // If media group failed, send caption as plain text so links aren't lost
+        const buttonText = mediaResult.message_ids.length > 0
+          ? `Approve swipe #${nextConceptNumber}?`
+          : `${caption}\n\nApprove swipe #${nextConceptNumber}?`;
+        await sendMessageWithInlineKeyboard(chatId, buttonText, buttons);
       } else if (imageResults.length === 1) {
         await sendPhoto(chatId, imageResults[0].url, caption, buttons);
       } else {
