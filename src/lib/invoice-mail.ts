@@ -857,13 +857,8 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         console.log(`[invoice-mail] [${accountId}] Found original date ${originalDate.toISOString()} in forwarded email (envelope: ${email.date.toISOString()})`);
       }
 
-      // Store as "ready" — no auto-forwarding. User sends to Juni manually.
       const hasPdf = email.pdfAttachments.length > 0;
-      const pdfFilename = hasPdf
-        ? email.pdfAttachments[0].filename
-        : emailHtml
-          ? `${service.name.replace(/[^a-zA-Z0-9]/g, "_")}_receipt.pdf`
-          : null;
+      const pdfFilename = hasPdf ? email.pdfAttachments[0].filename : null;
 
       if (!hasPdf && !emailHtml) {
         await db.from("invoice_logs").insert({
@@ -884,9 +879,9 @@ async function processAccount(account: ImapAccountConfig): Promise<{
       // Try to extract amount from email body (non-blocking)
       const amountInfo = emailHtml ? await extractAmount(emailHtml).catch(() => null) : null;
 
-      // For invoice-type services, extract and store the PDF for download
+      // Store PDF to Supabase storage as backup
       let pdfStoragePath: string | null = null;
-      if (hasPdf && service.forward_to === "invoices") {
+      if (hasPdf) {
         try {
           const parsed = await simpleParser(fullEmail);
           const pdfAtt = parsed.attachments?.find(
@@ -912,10 +907,29 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         }
       }
 
+      // Auto-forward to Juni
+      let logStatus: "forwarded" | "ready" = "ready";
+      let forwardedAt: string | null = null;
+      try {
+        const forwardTarget = (service.forward_to || "receipts") as "receipts" | "invoices";
+        const result = await forwardToJuni(
+          service.name, period, fullEmail, email.subject, forwardTarget
+        );
+        if (result.success) {
+          logStatus = "forwarded";
+          forwardedAt = new Date().toISOString();
+          console.log(`[invoice-mail] [${accountId}] Auto-forwarded ${service.name} (${period}) to Juni`);
+        } else {
+          console.warn(`[invoice-mail] [${accountId}] Auto-forward failed for ${service.name}: ${result.error}`);
+        }
+      } catch (fwdErr) {
+        console.error(`[invoice-mail] [${accountId}] Auto-forward error for ${service.name}:`, fwdErr);
+      }
+
       await db.from("invoice_logs").insert({
         service_id: service.id,
         period,
-        status: "ready",
+        status: logStatus,
         email_uid: String(email.uid),
         email_subject: email.subject,
         email_from: email.from,
@@ -926,6 +940,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         currency: amountInfo?.currency || null,
         imap_account_id: accountId,
         pdf_storage_path: pdfStoragePath,
+        forwarded_at: forwardedAt,
       });
       forwarded++;
     } catch (e) {
@@ -1068,8 +1083,9 @@ export async function downloadAndExtractPdf(
 }
 
 /**
- * Forward a "ready" log entry to Juni.
- * Downloads the email from IMAP, forwards it (with PDF or generated PDF), and updates the log.
+ * Forward a log entry to Juni.
+ * Strategy 1: If PDF is in Supabase storage, download and forward via SMTP.
+ * Strategy 2: If email UID exists, download from IMAP and forward.
  */
 export async function forwardLogToJuni(
   logId: string
@@ -1087,8 +1103,55 @@ export async function forwardLogToJuni(
   const service = (log as any).invoice_services as InvoiceService;
   if (!service) return { success: false, error: "Service not found for this log" };
 
+  // Strategy 1: Forward from Supabase storage (manually uploaded or backed-up PDFs)
+  if (log.pdf_storage_path) {
+    try {
+      const { data: pdfData, error: dlErr } = await db.storage
+        .from("invoice-pdfs")
+        .download(log.pdf_storage_path);
+
+      if (dlErr || !pdfData) {
+        console.warn(`[invoice-mail] Storage download failed, trying IMAP fallback: ${dlErr?.message}`);
+      } else {
+        const buffer = Buffer.from(await pdfData.arrayBuffer());
+        const smtpConfig = getSmtpConfig();
+        const forwardEmail = getForwardEmail((service.forward_to || "receipts") as "receipts" | "invoices");
+        const { ip, servername } = await resolveHost(smtpConfig.host);
+        const transporter = nodemailer.createTransport({
+          ...smtpConfig,
+          host: ip,
+          ...(servername ? { tls: { servername } } : {}),
+        });
+
+        await transporter.sendMail({
+          from: smtpConfig.auth.user,
+          to: forwardEmail,
+          subject: `Invoice: ${service.name} - ${log.period}`,
+          text: `Invoice/receipt for ${service.name}, period ${log.period}.`,
+          attachments: [{
+            filename: log.pdf_filename || "invoice.pdf",
+            content: buffer,
+            contentType: "application/pdf",
+          }],
+        });
+
+        await db.from("invoice_logs").update({
+          status: "forwarded",
+          forwarded_at: new Date().toISOString(),
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", logId);
+
+        return { success: true };
+      }
+    } catch (e) {
+      console.warn(`[invoice-mail] Storage forward failed, trying IMAP fallback:`, e);
+    }
+  }
+
+  // Strategy 2: Forward from IMAP (email-based)
   const emailUid = parseInt(log.email_uid, 10);
-  if (!emailUid) return { success: false, error: "No email UID to forward" };
+  if (!emailUid) return { success: false, error: "No stored PDF and no email UID to forward" };
 
   try {
     const fullEmail = await downloadFullEmailStandalone(emailUid, log.imap_account_id || "hostinger");

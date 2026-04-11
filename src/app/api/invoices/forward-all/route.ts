@@ -13,32 +13,29 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
 
-  // Get all "ready" logs for this period, excluding invoice-type services
-  // (invoice services need manual download+upload, not auto-forward)
-  const { data: invoiceServiceIds } = await db
-    .from("invoice_services")
-    .select("id")
-    .eq("forward_to", "invoices");
-  const excludeIds = (invoiceServiceIds || []).map((s: { id: string }) => s.id);
-
-  let query = db
+  // Get all unsent logs for this period:
+  // - "ready" entries (detected but not yet forwarded)
+  // - "manual" entries with stored PDF but not forwarded
+  const { data: logs, error } = await db
     .from("invoice_logs")
-    .select("id")
-    .eq("status", "ready")
+    .select("id, status, pdf_storage_path, forwarded_at")
+    .in("status", ["ready", "manual"])
     .eq("period", period)
     .not("service_id", "is", null);
 
-  if (excludeIds.length > 0) {
-    query = query.not("service_id", "in", `(${excludeIds.join(",")})`);
-  }
-
-  const { data: logs, error } = await query;
+  // Filter: only include entries that actually need forwarding
+  const forwardable = (logs || []).filter((l: { status: string; pdf_storage_path: string | null; forwarded_at: string | null }) => {
+    if (l.status === "ready") return true;
+    // Manual entries only if they have a stored PDF and haven't been forwarded
+    if (l.status === "manual" && l.pdf_storage_path && !l.forwarded_at) return true;
+    return false;
+  });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!logs || logs.length === 0) {
+  if (forwardable.length === 0) {
     return NextResponse.json({ forwarded: 0, errors: 0, total: 0 });
   }
 
@@ -46,7 +43,7 @@ export async function POST(req: NextRequest) {
   let errors = 0;
   const errorDetails: string[] = [];
 
-  for (const log of logs) {
+  for (const log of forwardable) {
     const result = await forwardLogToJuni(log.id);
     if (result.success) {
       forwarded++;
@@ -56,5 +53,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ forwarded, errors, total: logs.length, errorDetails });
+  return NextResponse.json({ forwarded, errors, total: forwardable.length, errorDetails });
 }

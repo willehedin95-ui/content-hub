@@ -985,7 +985,7 @@ export default function InvoiceTrackerClient() {
                             Billing page
                           </a>
                         )}
-                        {row.status === "ready" && row.log?.id && row.service.forward_to !== "invoices" && (
+                        {row.status === "ready" && row.log?.id && (
                           <button
                             onClick={() => {
                               setActionMenu(null);
