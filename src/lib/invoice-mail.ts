@@ -22,7 +22,11 @@ const KNOWN_HOST_IPS: Record<string, string> = {
  * 2) fall back to hardcoded IPs for known hosts, 3) use hostname as-is.
  */
 async function resolveHost(hostname: string): Promise<{ ip: string; servername: string | false }> {
-  if (net.isIP(hostname)) return { ip: hostname, servername: false };
+  console.log(`[dns] resolveHost called with: "${hostname}"`);
+  if (net.isIP(hostname)) {
+    console.log(`[dns] Already an IP: ${hostname}`);
+    return { ip: hostname, servername: false };
+  }
 
   // Try Node's DNS resolver (uses UDP to external DNS, not OS getaddrinfo)
   try {
@@ -44,6 +48,7 @@ async function resolveHost(hostname: string): Promise<{ ip: string; servername: 
     return { ip: fallback, servername: hostname };
   }
 
+  console.warn(`[dns] No fallback for ${hostname}, returning hostname as-is`);
   return { ip: hostname, servername: false };
 }
 
@@ -209,6 +214,7 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
   const MAX_RETRIES = 3;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES}: host=${ip}, servername=${servername}, port=${config.port}`);
     const client = new ImapFlow({
       host: ip,
       port: config.port,
