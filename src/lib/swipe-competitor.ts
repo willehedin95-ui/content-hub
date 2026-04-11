@@ -72,6 +72,7 @@ export interface SwipeResult {
 // ---------------------------------------------------------------------------
 
 export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult> {
+  const fnStartMs = Date.now();
   const db = createServerSupabase();
   const {
     workspaceId,
@@ -580,7 +581,10 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     let lastErr: unknown = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const { urls: resultUrls, costTimeMs } = await generateImage(fullPrompt, referenceUrls, "4:5");
+        // Calculate remaining time: 300s Vercel budget minus elapsed, minus 10s safety buffer
+        const elapsedMs = Date.now() - fnStartMs;
+        const remainingMs = Math.max(30_000, 300_000 - elapsedMs - 10_000);
+        const { urls: resultUrls, costTimeMs } = await generateImage(fullPrompt, referenceUrls, "4:5", "2K", remainingMs);
         if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
 
         const resultRes = await fetch(resultUrls[0]);

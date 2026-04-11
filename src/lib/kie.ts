@@ -79,11 +79,12 @@ export async function createImageTask(
   );
 }
 
-export async function pollTaskResult(taskId: string): Promise<{ urls: string[]; costTimeMs: number | null }> {
+export async function pollTaskResult(taskId: string, maxPollMs?: number): Promise<{ urls: string[]; costTimeMs: number | null }> {
   const startTime = Date.now();
   let pollInterval = POLL_INITIAL_MS;
+  const deadline = maxPollMs ?? MAX_POLL_TIME_MS;
 
-  while (Date.now() - startTime < MAX_POLL_TIME_MS) {
+  while (Date.now() - startTime < deadline) {
     const res = await fetch(
       `${KIE_API_BASE}/recordInfo?taskId=${taskId}`,
       {
@@ -117,7 +118,7 @@ export async function pollTaskResult(taskId: string): Promise<{ urls: string[]; 
     pollInterval = Math.min(pollInterval * 2, POLL_MAX_MS);
   }
 
-  throw new Error("Kie.ai task timed out after 5 minutes");
+  throw new Error(`Kie.ai task timed out after ${Math.round(deadline / 1000)}s`);
 }
 
 export async function getCredits(): Promise<{ balance: number }> {
@@ -145,10 +146,11 @@ export async function generateImage(
   prompt: string,
   imageUrls: string[],
   aspectRatio: string = "2:3",
-  resolution: string = "2K"
+  resolution: string = "2K",
+  maxPollMs?: number
 ): Promise<{ urls: string[]; costTimeMs: number | null }> {
   const taskId = await createImageTask(prompt, imageUrls, aspectRatio, resolution);
-  return pollTaskResult(taskId);
+  return pollTaskResult(taskId, maxPollMs);
 }
 
 // --- Sora 2 Pro Storyboard (image-to-video, no text prompt) ---
