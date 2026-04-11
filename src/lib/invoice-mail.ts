@@ -87,12 +87,12 @@ function getImapAccounts(): ImapAccountConfig[] {
 
   // Primary: Hostinger
   const hostingerUser = process.env.INVOICE_IMAP_EMAIL?.trim();
-  const hostingerPass = process.env.INVOICE_IMAP_PASSWORD;
+  const hostingerPass = process.env.INVOICE_IMAP_PASSWORD?.trim();
   if (hostingerUser && hostingerPass) {
     accounts.push({
       accountId: "hostinger",
       host: (process.env.INVOICE_IMAP_HOST || "imap.hostinger.com").trim(),
-      port: parseInt(process.env.INVOICE_IMAP_PORT || "993", 10),
+      port: parseInt((process.env.INVOICE_IMAP_PORT || "993").trim(), 10),
       secure: true,
       auth: { user: hostingerUser, pass: hostingerPass },
     });
@@ -217,7 +217,12 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
       port: config.port,
       secure: config.secure,
       auth: config.auth,
-      logger: false,
+      logger: {
+        debug: () => {},
+        info: (msg: Record<string, unknown>) => console.log(`[imap] ${msg.msg}`),
+        warn: (msg: Record<string, unknown>) => console.warn(`[imap] ${msg.msg}`),
+        error: (msg: Record<string, unknown>) => console.error(`[imap] ${msg.msg}`),
+      },
       socketTimeout: 15_000,
       ...(servername ? { servername, tls: { servername } } : {}),
     });
@@ -231,9 +236,10 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
     } catch (e) {
       await client.logout().catch(() => {});
       const msg = e instanceof Error ? e.message : String(e);
-      const isRetryable = /EBUSY|ETIMEOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(msg);
+      const code = e instanceof Error ? (e as NodeJS.ErrnoException).code : undefined;
+      const isRetryable = /EBUSY|ETIMEOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|Command failed/i.test(msg);
       if (!isRetryable || attempt === MAX_RETRIES) throw e;
-      console.warn(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES} failed: ${msg}, retrying in ${attempt * 2}s...`);
+      console.warn(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES} failed: ${msg} (code: ${code}), retrying in ${attempt * 2}s...`);
       await new Promise((r) => setTimeout(r, attempt * 2000));
     }
   }
