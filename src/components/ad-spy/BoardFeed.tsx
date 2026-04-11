@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Loader2, Check, ExternalLink, Zap, Play, Video, Upload, X, Link2, Image as ImageIcon, Sparkles, Copy, Shuffle } from "lucide-react";
 import {
   SWIPE_FORMAT_OPTIONS,
   type SwipeVideoFormatId,
@@ -49,6 +49,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [batchSwiping, setBatchSwiping] = useState(false);
   const [painPoint, setPainPoint] = useState("auto-detect");
   const [videoStyle, setVideoStyle] = useState<VideoStyle>("ugc");
+  const [swipeMode, setSwipeMode] = useState<"faithful" | "adapt">("adapt");
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
 
@@ -70,6 +71,17 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
     }
     fetchBoards();
   }, []);
+
+  // Auto-default swipeMode based on board name
+  useEffect(() => {
+    if (!boardId) return;
+    const board = boards.find((b) => String(b.id) === boardId);
+    if (board && /native/i.test(board.name)) {
+      setSwipeMode("faithful");
+    } else {
+      setSwipeMode("adapt");
+    }
+  }, [boardId, boards]);
 
   const fetchAds = useCallback(async () => {
     if (!boardId) return;
@@ -138,6 +150,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             brand_name: ad.brand_name,
             pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
             board_name: boards.find((b) => String(b.id) === boardId)?.name,
+            swipe_mode: swipeMode,
           }),
         });
         const data = await res.json();
@@ -187,6 +200,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           })),
           pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
           board_name: boards.find((b) => String(b.id) === boardId)?.name,
+          swipe_mode: swipeMode,
         }),
       });
       const data = await res.json();
@@ -314,8 +328,32 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
         </div>
       </div>
 
-      {/* Pain point selector (for image swipes) */}
+      {/* Swipe mode + Pain point selectors (for image swipes) */}
       <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs font-medium text-gray-500 shrink-0">Mode:</span>
+        {([
+          { value: "faithful" as const, label: "Faithful", icon: <Copy className="w-3 h-3" />, desc: "Recreate image closely" },
+          { value: "adapt" as const, label: "Adapt", icon: <Shuffle className="w-3 h-3" />, desc: "Remap for our product" },
+        ]).map((m) => (
+          <button
+            key={m.value}
+            onClick={() => setSwipeMode(m.value)}
+            title={m.desc}
+            className={`text-xs px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${
+              swipeMode === m.value
+                ? m.value === "faithful"
+                  ? "bg-emerald-100 text-emerald-700 font-medium"
+                  : "bg-indigo-100 text-indigo-700 font-medium"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
+          >
+            {m.icon}
+            {m.label}
+          </button>
+        ))}
+
+        <span className="text-gray-300 mx-1">|</span>
+
         <span className="text-xs font-medium text-gray-500 shrink-0">Pain Point:</span>
         {[
           { value: "auto-detect", label: "Auto" },

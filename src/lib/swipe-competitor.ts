@@ -54,6 +54,9 @@ export interface SwipeInput {
   /** When true, force include_product_reference=false and strip product from prompts.
    *  Set automatically when the source board name contains "native". */
   forceNoProduct?: boolean;
+  /** Swipe mode: "faithful" recreates the image closely (same subject matter),
+   *  "adapt" remaps the problem domain to our product. Defaults to "adapt". */
+  swipeMode?: "faithful" | "adapt";
 }
 
 export interface SwipeResult {
@@ -122,6 +125,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
 
   // --- Build prompts ---
+  const swipeMode = input.swipeMode ?? "adapt";
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
     undefined,
@@ -134,7 +138,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     3,
     input.painPoint,
     researchContext,
-    generationLanguage
+    generationLanguage,
+    swipeMode
   );
 
   const userPrompt = buildBrainstormUserPrompt(

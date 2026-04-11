@@ -1166,7 +1166,8 @@ function buildFromCompetitorAdSystem(
   imageCount?: number,
   variationsPerImage?: number,
   painPoint?: string,
-  generationLanguage?: string
+  generationLanguage?: string,
+  swipeMode: "faithful" | "adapt" = "adapt"
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -1216,14 +1217,23 @@ Map the competitor ad to the CASH framework:
 - Awareness level
 - Copy blocks used with depth levels
 
-### 4. ADAPTED CONCEPT GENERATION
+${swipeMode === "faithful" ? `### 4. FAITHFUL CONCEPT RECREATION
+Recreate the competitor ad's visual concept as closely as possible:
+- **KEEP the competitor's subject matter and scene.** If the image shows hair on a tissue, your image must also show hair on a tissue. If it shows a person examining their skin, your image must show a person examining their skin. Do NOT change the topic.
+- The goal is to create an image that a viewer would recognize as "the same concept" as the competitor's ad - same emotional trigger, same visual subject, same scroll-stop mechanism.
+- Do NOT inject ${product.name} or its problem domain into the IMAGE. The image is a standalone native/UGC-style creative that works through curiosity, emotion, or pattern interrupt - NOT through product placement.
+- You MAY vary the specific composition, angle, and details slightly to avoid being an exact copy, but the CORE SUBJECT and EMOTIONAL IMPACT must be the same.
+- Think: "How would I recreate this exact image for a stock photo site?" - NOT "How do I adapt this for our product?"
+- The ad copy (ad_copy_primary, ad_copy_headline) should STILL be adapted for ${product.name} and written in the correct language. Only the IMAGE stays faithful to the original.
+- set include_product_reference to false for ALL image prompts.
+- The prompt format MUST be a structured JSON OBJECT (never plain text) since these are native/UGC-style images.` : `### 4. ADAPTED CONCEPT GENERATION
 Create an original concept for OUR product that:
 - Reproduces the SAME visual format and persuasion STRUCTURE (e.g. testimonial style, before/after, UGC selfie, zoomed-in detail shot)
 - **CRITICAL: The adapted concept MUST be about OUR product's actual problem domain and benefits.** Do NOT keep the competitor's problem/solution angle. Map the persuasion structure to ${product.name}'s real benefits and problem domain as described in the PRODUCT KNOWLEDGE section above.
-- The competitor's specific health claims, ingredients, and problem domain are IRRELEVANT to us — only their ad FORMAT and persuasion MECHANICS matter
+- The competitor's specific health claims, ingredients, and problem domain are IRRELEVANT to us - only their ad FORMAT and persuasion MECHANICS matter
 - Does NOT copy the competitor's specific claims or brand elements
-- Think: "What would this exact visual format look like if it was about ${product.name} and the problems it solves?" — NOT "How can I loosely connect the competitor's angle to our product?"
-- Maintains the emotional energy of the original while being completely original in content and problem domain
+- Think: "What would this exact visual format look like if it was about ${product.name} and the problems it solves?" - NOT "How can I loosely connect the competitor's angle to our product?"
+- Maintains the emotional energy of the original while being completely original in content and problem domain`}
 
 ${(() => {
   const ppLabels = buildPainPointLabels(segments);
@@ -1233,11 +1243,11 @@ ${(() => {
 
 **You MUST focus ALL hooks, copy, and messaging on this single pain point: ${ppLabels[painPoint]}.**
 
-Do NOT mix multiple pain points. Every hook, headline, and ad copy text must be about this one angle. If the competitor ad addresses a different problem, map their persuasion structure to THIS pain point specifically.`;
+Do NOT mix multiple pain points. Every hook, headline, and ad copy text must be about this one angle.${swipeMode === "adapt" ? ` If the competitor ad addresses a different problem, map their persuasion structure to THIS pain point specifically.` : ""}`;
   }
   return `### PAIN POINT SELECTION
 
-Choose the SINGLE most natural pain point for this competitor ad's persuasion structure. Pick ONE from: ${segmentNames || "general product benefits"}. Do NOT mix multiple pain points in the same concept. All hooks, headlines, and ad copy must focus on that one chosen angle.`;
+Choose the SINGLE most natural pain point for ${swipeMode === "faithful" ? "the ad copy" : "this competitor ad's persuasion structure"}. Pick ONE from: ${segmentNames || "general product benefits"}. Do NOT mix multiple pain points in the same concept. All hooks, headlines, and ad copy must focus on that one chosen angle.`;
 })()}
 
 ### AD COPY ADAPTATION
@@ -1362,11 +1372,14 @@ Return a SINGLE JSON object (NOT wrapped in a "proposals" array — this mode ha
 CRITICAL RULES:
 - Write ALL ad copy in ${langLabel(generationLanguage ?? "en").toUpperCase()}${(generationLanguage ?? "en") === "en" ? " (translations happen later)" : " (translations to other markets happen later). Image prompts (Nano Banana) must ALWAYS be in English."}
 - NEVER copy the competitor's specific claims, brand name, or product references
-- NEVER invent medical claims — only use claims from our product brief
-- **NEVER keep the competitor's problem domain.** The adapted hooks MUST be about what ${product.name} actually solves — refer to the PRODUCT KNOWLEDGE section for the real benefits and problem domain. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
-- The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle
-- The competitor image is NOT passed to Nano Banana — your prompt must fully describe the desired image on its own
-- **NATIVE ADS — MIRROR PRODUCT VISIBILITY**: If the competitor ad shows someone holding/using THEIR product, your adapted version should also show OUR product — set \`include_product_reference: true\`. But if the competitor ad has NO physical product visible (podcast hosts talking, interview scene, meme format, conversation, face close-up, medical scene, lifestyle without product, text-heavy graphic), then do NOT add our product — set \`include_product_reference: false\` and keep the scene organic. Your Nano Banana prompt should recreate the same SCENE TYPE (podcast setting, conversation, etc.) adapted to our product's problem domain, NOT a product shot.
+- NEVER invent medical claims - only use claims from our product brief
+${swipeMode === "faithful" ? `- **FAITHFUL MODE**: The IMAGE prompts must recreate the competitor's visual scene as closely as possible - same subject matter, same emotional trigger, same composition. Do NOT change what the image is about. The ad copy (ad_copy_primary, ad_copy_headline) should be adapted for ${product.name}, but the IMAGE stays true to the original.
+- ALL image prompts MUST use JSON format (structured object, never plain text).
+- ALL image prompts MUST set include_product_reference to false.
+- Do NOT mention ${product.name} or any product in the image prompts.` : `- **NEVER keep the competitor's problem domain.** The adapted hooks MUST be about what ${product.name} actually solves - refer to the PRODUCT KNOWLEDGE section for the real benefits and problem domain. The competitor's problem space is irrelevant. Only their visual format and persuasion structure matter.
+- The image_prompts should reproduce the competitor's VISUAL FORMAT, not their product or messaging angle`}
+- The competitor image is NOT passed to Nano Banana - your prompt must fully describe the desired image on its own
+${swipeMode === "adapt" ? `- **NATIVE ADS - MIRROR PRODUCT VISIBILITY**: If the competitor ad shows someone holding/using THEIR product, your adapted version should also show OUR product - set \`include_product_reference: true\`. But if the competitor ad has NO physical product visible (podcast hosts talking, interview scene, meme format, conversation, face close-up, medical scene, lifestyle without product, text-heavy graphic), then do NOT add our product - set \`include_product_reference: false\` and keep the scene organic. Your Nano Banana prompt should recreate the same SCENE TYPE (podcast setting, conversation, etc.) adapted to our product's problem domain, NOT a product shot.` : ""}
 - **If the competitor ad has text baked into the image (handwritten, marker, tattoo-style, on a sign, on skin, etc.), your Nano Banana prompt MUST include the adapted text for our product directly in the prompt.**
 - **NO URLS IN AD COPY**: Never include website URLs, link placeholders like [LINK], [LÄNK], [URL], or domain names in ad_copy_primary or ad_copy_headline. The landing page URL is attached separately by the ad platform. If the competitor's copy contains their website URL (e.g. "Free shipping 👉 shop.competitor.com"), adapt to a natural CTA without any URL (e.g. "Free shipping 👉 Shop now"). The viewer clicks anywhere on the ad to reach the landing page.
 - **NO PRICES ANYWHERE**: Never invent or include prices, currency amounts, or money symbols (€, $, £, kr, SEK, NOK, DKK, EUR, USD) in ANY field of your output. This includes ad_copy_primary, ad_copy_headline, AND cash_dna.hooks, cash_dna.concept_description, visual_direction, and every image_prompt. The reason: cash_dna.hooks is used downstream to write overlay text for generated images, so a hook like "Why your €80 serum can't reach where aging happens" ends up BAKED INTO the actual image (we've had this happen). Pricing belongs on the landing page only. The ONLY exception: if the competitor's hook hinges on a specific price (e.g. "I spent X on Y"), you may keep it ONLY IF you convert it to Swedish kronor (SEK) — never EUR, USD, GBP, or any other foreign currency. Default behaviour: write the entire concept with no prices at all, in ANY field.
@@ -1426,7 +1439,8 @@ export function buildBrainstormSystemPrompt(
   variationsPerImage?: number,
   painPoint?: string,
   researchContext?: string,
-  generationLanguage?: string
+  generationLanguage?: string,
+  swipeMode?: "faithful" | "adapt"
 ): string {
   // from_competitor_ad needs extra params (image count + variations + pain point)
   if (mode === "from_competitor_ad") {
@@ -1436,7 +1450,8 @@ export function buildBrainstormSystemPrompt(
       researchContext,
       competitorImageCount, variationsPerImage,
       painPoint,
-      generationLanguage
+      generationLanguage,
+      swipeMode ?? "adapt"
     );
   }
   const builder = SYSTEM_BUILDERS[mode];

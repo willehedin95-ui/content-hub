@@ -331,6 +331,7 @@ async function executeSwipe(
       gethookdAdId: discovered.ad.id,
       notifyTelegram: !!chatId,
       forceNoProduct: isNativeBoard,
+      swipeMode: isNativeBoard ? "faithful" : "adapt",
     });
 
     // Update discovered_ads with the job link

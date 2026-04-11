@@ -52,10 +52,12 @@ export async function processOneQueueItem(
 
   try {
     const boardName = (next.source_board_name as string) || "";
+    const storedSwipeMode = (next.swipe_mode as string) || "";
+    const swipeMode: "faithful" | "adapt" = storedSwipeMode === "faithful" ? "faithful" : "adapt";
     const result = await swipeCompetitorAd({
       workspaceId,
       productSlug,
-      // Single competitor image — see autopilot-concepts/route.ts for rationale
+      // Single competitor image - see autopilot-concepts/route.ts for rationale
       competitorImageUrls: mediaUrls.slice(0, 1),
       competitorAdCopy: next.body ?? undefined,
       brandName: next.brand_name ?? "Unknown",
@@ -63,6 +65,7 @@ export async function processOneQueueItem(
       notifyTelegram: false,
       painPoint: (next.pain_point as string) || undefined,
       forceNoProduct: /native/i.test(boardName),
+      swipeMode,
     });
 
     await db

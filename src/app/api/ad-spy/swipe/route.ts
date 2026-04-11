@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     brand_name,
     pain_point,
     board_name,
+    swipe_mode,
   } = body as {
     gethookd_ad_id?: number;
     media_urls: string[];
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
     brand_name?: string;
     pain_point?: string;
     board_name?: string;
+    swipe_mode?: "faithful" | "adapt";
   };
 
   if (!media_urls?.length) {
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
         status: "swiping",
         pain_point: pain_point || null,
         source_board_name: board_name || null,
+        swipe_mode: swipe_mode || "adapt",
         updated_at: new Date().toISOString(),
       }, { onConflict: "workspace_id,gethookd_ad_id" });
     }
@@ -116,6 +119,7 @@ export async function POST(req: NextRequest) {
           existingJobId: jobId,
           painPoint: pain_point,
           forceNoProduct: board_name ? /native/i.test(board_name) : false,
+          swipeMode: swipe_mode,
         });
 
         // Update discovered_ads status (only for GetHookd ads)
