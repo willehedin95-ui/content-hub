@@ -22,9 +22,8 @@ const KNOWN_HOST_IPS: Record<string, string> = {
  * 2) fall back to hardcoded IPs for known hosts, 3) use hostname as-is.
  */
 async function resolveHost(hostname: string): Promise<{ ip: string; servername: string | false }> {
-  console.log(`[dns] resolveHost called with: "${hostname}"`);
+  hostname = hostname.trim();
   if (net.isIP(hostname)) {
-    console.log(`[dns] Already an IP: ${hostname}`);
     return { ip: hostname, servername: false };
   }
 
@@ -48,7 +47,6 @@ async function resolveHost(hostname: string): Promise<{ ip: string; servername: 
     return { ip: fallback, servername: hostname };
   }
 
-  console.warn(`[dns] No fallback for ${hostname}, returning hostname as-is`);
   return { ip: hostname, servername: false };
 }
 
@@ -88,12 +86,12 @@ function getImapAccounts(): ImapAccountConfig[] {
   const accounts: ImapAccountConfig[] = [];
 
   // Primary: Hostinger
-  const hostingerUser = process.env.INVOICE_IMAP_EMAIL;
+  const hostingerUser = process.env.INVOICE_IMAP_EMAIL?.trim();
   const hostingerPass = process.env.INVOICE_IMAP_PASSWORD;
   if (hostingerUser && hostingerPass) {
     accounts.push({
       accountId: "hostinger",
-      host: process.env.INVOICE_IMAP_HOST || "imap.hostinger.com",
+      host: (process.env.INVOICE_IMAP_HOST || "imap.hostinger.com").trim(),
       port: parseInt(process.env.INVOICE_IMAP_PORT || "993", 10),
       secure: true,
       auth: { user: hostingerUser, pass: hostingerPass },
@@ -214,7 +212,6 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
   const MAX_RETRIES = 3;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    console.log(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES}: host=${ip}, servername=${servername}, port=${config.port}`);
     const client = new ImapFlow({
       host: ip,
       port: config.port,
