@@ -323,14 +323,28 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   }
 
   // --- PRODUCT REFERENCE safety net ---
-  // When include_product_reference is false, Claude should NOT describe our
-  // product in the image prompt at all. But it keeps doing it anyway (e.g.
-  // writing "Hydro13 bottle" into MadeOutOf, RoomObjects, Arrangement, etc.).
-  // Strip product name mentions from JSON prompt fields to prevent Nano Banana
-  // from rendering the product when it shouldn't be there.
+  // Claude can't reliably decide when to set include_product_reference. It
+  // sees "woman holding something" and sets true even when the competitor ad
+  // shows frankincense granules, not a product bottle. When the product hero
+  // image is passed as a reference, Nano Banana renders a perfect Hydro13
+  // bottle in scenes where it doesn't belong.
+  //
+  // Fix: force ALL prompts to include_product_reference=false and strip
+  // product name mentions from prompt text. The product hero reference image
+  // causes more harm than good — it injects the bottle into native/UGC scenes.
+  // When a product IS wanted, the prompt text + productAppearance description
+  // are sufficient (the previous includeProduct gate in buildFullPrompt still
+  // handles the text description correctly).
   const productName = product.name; // e.g. "Hydro13", "HappySleep"
   for (const ip of parsed.image_prompts) {
-    if (ip.include_product_reference === true) continue; // product is wanted
+    // Force product reference off — don't trust Claude's decision
+    if (ip.include_product_reference === true) {
+      ip.include_product_reference = false;
+      console.warn(
+        `[swipe-competitor] Overrode include_product_reference to false for "${productName}". ` +
+          "Claude incorrectly wanted to inject the product into a native/UGC scene."
+      );
+    }
     if (typeof ip.prompt !== "object" || ip.prompt === null) continue; // plain text, skip
     const jsonPrompt = ip.prompt as Record<string, unknown>;
     const productPattern = new RegExp(
@@ -349,7 +363,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     }
     if (stripped) {
       console.warn(
-        `[swipe-competitor] Stripped "${productName}" references from image_prompt (include_product_reference=false). ` +
+        `[swipe-competitor] Stripped "${productName}" references from image_prompt. ` +
           "Claude is ignoring the product reference instruction."
       );
     }
