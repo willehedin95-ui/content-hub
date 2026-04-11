@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import nodemailer from "nodemailer";
+import dns from "dns";
+import net from "net";
 import type { InvoiceService } from "@/types";
 
 const JUNI_RECEIPTS_EMAIL = "q1k5n1k0@receipts.juni.co";
@@ -56,11 +58,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "SMTP credentials not configured" }, { status: 500 });
   }
 
+  // Pre-resolve DNS to avoid Vercel's EBUSY getaddrinfo failures
+  let resolvedHost = host;
+  let smtpServername: string | false = false;
+  if (!net.isIP(host)) {
+    try {
+      const resolver = new dns.promises.Resolver();
+      resolver.setServers(["8.8.8.8", "1.1.1.1"]);
+      const addresses = await resolver.resolve4(host);
+      if (addresses.length > 0) {
+        resolvedHost = addresses[0];
+        smtpServername = host;
+      }
+    } catch { /* fall back to hostname */ }
+  }
+
   const transporter = nodemailer.createTransport({
-    host,
+    host: resolvedHost,
     port,
     secure: true,
     auth: { user, pass },
+    ...(smtpServername ? { tls: { servername: smtpServername } } : {}),
   });
 
   const results: { filename: string; success: boolean; error?: string; logId?: string }[] = [];
@@ -88,7 +106,7 @@ export async function POST(req: NextRequest) {
         await transporter.sendMail({
           from: user,
           to: forwardEmail,
-          subject: `Invoice: ${service.name} — ${item.period}`,
+          subject: `Invoice: ${service.name} - ${item.period}`,
           text: `Bulk uploaded invoice for ${service.name}, period ${item.period}.`,
           attachments: [
             {

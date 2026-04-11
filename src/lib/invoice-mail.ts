@@ -4,8 +4,33 @@ import { simpleParser } from "mailparser";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import Anthropic from "@anthropic-ai/sdk";
+import dns from "dns";
+import net from "net";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import type { InvoiceService } from "@/types";
+
+/**
+ * Resolve a hostname to an IP using Node's DNS resolver (not OS getaddrinfo).
+ * Vercel serverless fails with EBUSY on getaddrinfo for some hosts (e.g. Hostinger).
+ * Node's dns.resolve4 uses a different code path that works reliably.
+ * Returns the original host if it's already an IP or if resolution fails.
+ */
+async function resolveHost(hostname: string): Promise<{ ip: string; servername: string | false }> {
+  if (net.isIP(hostname)) return { ip: hostname, servername: false };
+  try {
+    // Use Google + Cloudflare DNS to avoid Vercel's flaky resolver
+    const resolver = new dns.promises.Resolver();
+    resolver.setServers(["8.8.8.8", "1.1.1.1"]);
+    const addresses = await resolver.resolve4(hostname);
+    if (addresses.length > 0) {
+      console.log(`[dns] Resolved ${hostname} -> ${addresses[0]}`);
+      return { ip: addresses[0], servername: hostname };
+    }
+  } catch (e) {
+    console.warn(`[dns] resolve4 failed for ${hostname}: ${e instanceof Error ? e.message : e}, falling back to hostname`);
+  }
+  return { ip: hostname, servername: false };
+}
 
 // --- Types ---
 
@@ -162,16 +187,21 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
   uidValidity: number;
 }> {
   const config = account || getImapConfig();
+
+  // Pre-resolve DNS to avoid Vercel's EBUSY getaddrinfo failures
+  const { ip, servername } = await resolveHost(config.host);
+
   const MAX_RETRIES = 3;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const client = new ImapFlow({
-      host: config.host,
+      host: ip,
       port: config.port,
       secure: config.secure,
       auth: config.auth,
       logger: false,
       socketTimeout: 15_000,
+      ...(servername ? { servername, tls: { servername } } : {}),
     });
 
     try {
@@ -363,7 +393,13 @@ async function forwardToJuni(
   const smtpConfig = getSmtpConfig();
   const forwardEmail = getForwardEmail(forwardTarget);
 
-  const transporter = nodemailer.createTransport(smtpConfig);
+  // Pre-resolve DNS to avoid Vercel's EBUSY getaddrinfo failures
+  const { ip, servername } = await resolveHost(smtpConfig.host);
+  const transporter = nodemailer.createTransport({
+    ...smtpConfig,
+    host: ip,
+    ...(servername ? { tls: { servername } } : {}),
+  });
 
   try {
     const rawStr = originalEmailRaw.toString();
@@ -470,7 +506,14 @@ async function forwardWithGeneratedPdf(
 ): Promise<ForwardResult> {
   const smtpConfig = getSmtpConfig();
   const forwardEmail = getForwardEmail(forwardTarget);
-  const transporter = nodemailer.createTransport(smtpConfig);
+
+  // Pre-resolve DNS to avoid Vercel's EBUSY getaddrinfo failures
+  const { ip, servername } = await resolveHost(smtpConfig.host);
+  const transporter = nodemailer.createTransport({
+    ...smtpConfig,
+    host: ip,
+    ...(servername ? { tls: { servername } } : {}),
+  });
 
   try {
     // Parse original email to get body content
