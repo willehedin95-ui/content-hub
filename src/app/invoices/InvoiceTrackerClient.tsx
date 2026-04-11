@@ -192,7 +192,8 @@ export default function InvoiceTrackerClient() {
       if (!res.ok || data.error) {
         setCheckResult({ forwarded: 0, errors: 1, errorMessage: data.error || "Unknown error" });
       } else {
-        setCheckResult({ forwarded: data.forwarded || 0, errors: data.errors || 0 });
+        const errMsg = data.errorDetails?.length ? data.errorDetails.join("; ") : undefined;
+        setCheckResult({ forwarded: data.forwarded || 0, errors: data.errors || 0, errorMessage: errMsg });
         setLastRunAt(data.last_run_at || new Date().toISOString());
       }
       await fetchSummary();

@@ -632,6 +632,7 @@ export async function processInvoices(): Promise<{
   errors: number;
   skipped: number;
   remaining: number;
+  errorDetails?: string[];
 }> {
   const accounts = getImapAccounts();
   if (accounts.length === 0) throw new Error("No IMAP accounts configured");
@@ -641,6 +642,7 @@ export async function processInvoices(): Promise<{
   let totalErrors = 0;
   let totalSkipped = 0;
   let totalRemaining = 0;
+  const errorDetails: string[] = [];
 
   for (const account of accounts) {
     try {
@@ -654,11 +656,12 @@ export async function processInvoices(): Promise<{
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[invoice-mail] Error scanning ${account.accountId}:`, msg);
+      errorDetails.push(`${account.accountId}: ${msg}`);
       totalErrors++;
     }
   }
 
-  return { processed: totalProcessed, forwarded: totalForwarded, errors: totalErrors, skipped: totalSkipped, remaining: totalRemaining };
+  return { processed: totalProcessed, forwarded: totalForwarded, errors: totalErrors, skipped: totalSkipped, remaining: totalRemaining, errorDetails: errorDetails.length > 0 ? errorDetails : undefined };
 }
 
 /** Process a single IMAP account */
