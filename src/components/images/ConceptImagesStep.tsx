@@ -226,7 +226,7 @@ export interface ConceptImagesStepProps {
   handleGenerateStatic?: () => void;
   handleCancelGenerate?: () => void;
   // Re-roll
-  onReroll?: (sourceImageId: string) => void;
+  onReroll?: (sourceImageId: string, customInstructions?: string) => void;
   rerollingId?: string | null;
   // Skip translation toggle
   onToggleSkip?: (sourceImageId: string, skip: boolean) => void;

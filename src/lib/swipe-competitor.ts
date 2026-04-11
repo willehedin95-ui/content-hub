@@ -57,6 +57,9 @@ export interface SwipeInput {
   /** Swipe mode: "faithful" recreates the image closely (same subject matter),
    *  "adapt" remaps the problem domain to our product. Defaults to "adapt". */
   swipeMode?: "faithful" | "adapt";
+  /** Free-form user instructions that override details from the competitor ad
+   *  (e.g. "Change offer badge to 'Prova 30 dagar - 249 kr'"). */
+  customInstructions?: string;
 }
 
 export interface SwipeResult {
@@ -140,7 +143,8 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     input.painPoint,
     researchContext,
     generationLanguage,
-    swipeMode
+    swipeMode,
+    input.customInstructions
   );
 
   const userPrompt = buildBrainstormUserPrompt(
@@ -416,6 +420,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
       tags,
       source_language: generationLanguage,
       swipe_progress: { step: "generating", message: `Generating image 1 of ${parsed.image_prompts.length}...` },
+      custom_instructions: input.customInstructions || null,
     }).eq("id", existingJobId);
     job = { id: existingJobId };
   } else {
@@ -442,6 +447,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
           competitor_image_urls: competitorImageUrls,
           product_hero_urls: productHeroUrls,
         },
+        custom_instructions: input.customInstructions || null,
       })
       .select()
       .single();

@@ -52,6 +52,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
   const [swipeMode, setSwipeMode] = useState<"faithful" | "adapt">("adapt");
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [imageCustomInstructions, setImageCustomInstructions] = useState("");
 
   // First, fetch boards to let user pick or auto-select
   useEffect(() => {
@@ -151,6 +152,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
             board_name: boards.find((b) => String(b.id) === boardId)?.name,
             swipe_mode: swipeMode,
+            custom_instructions: imageCustomInstructions.trim() || undefined,
           }),
         });
         const data = await res.json();
@@ -201,6 +203,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
           board_name: boards.find((b) => String(b.id) === boardId)?.name,
           swipe_mode: swipeMode,
+          custom_instructions: imageCustomInstructions.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -375,6 +378,25 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
           </button>
         ))}
       </div>
+
+      {/* Custom instructions for image swipes */}
+      <details className="mb-2">
+        <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+          Custom Instructions <span className="text-gray-400 font-normal">(optional)</span>
+        </summary>
+        <div className="mt-1.5">
+          <textarea
+            value={imageCustomInstructions}
+            onChange={(e) => setImageCustomInstructions(e.target.value)}
+            placeholder={'e.g. "Change offer badge to \'Prova 30 dagar - 249 kr\'" or "Remove the free trial text"'}
+            rows={2}
+            className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 resize-none"
+          />
+          <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
+            Override details from the competitor ad. Applied to all image prompts and ad copy.
+          </p>
+        </div>
+      </details>
 
       {/* Video style selector (for video swipes) */}
       <div className="flex items-center gap-2 mb-4">

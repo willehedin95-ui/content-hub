@@ -27,7 +27,10 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { source_image_id } = body;
+  const { source_image_id, custom_instructions } = body as {
+    source_image_id?: string;
+    custom_instructions?: string;
+  };
 
   if (!source_image_id || !isValidUUID(source_image_id)) {
     return NextResponse.json({ error: "source_image_id is required" }, { status: 400 });
@@ -128,6 +131,9 @@ export async function POST(
 
     // Append product appearance description for faithful product rendering
     let rerollPrompt = originalPrompt;
+    if (custom_instructions?.trim()) {
+      rerollPrompt += `\n\nUSER OVERRIDE INSTRUCTIONS: ${custom_instructions.trim()}`;
+    }
     if (productHeroUrls.length > 0 && product.ingredients) {
       rerollPrompt += ` The product is: ${product.name}. Physical appearance from specs: ${product.ingredients}. IMPORTANT: The product must match the reference images exactly — render the finished product as it appears when sold, not raw materials or components.`;
     }

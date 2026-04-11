@@ -1305,14 +1305,17 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   }
 
   // Re-roll a single source image
-  async function handleReroll(sourceImageId: string) {
+  async function handleReroll(sourceImageId: string, customInstructions?: string) {
     if (rerollingId) return;
     setRerollingId(sourceImageId);
     try {
       const res = await fetch(`/api/image-jobs/${job.id}/re-roll`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_image_id: sourceImageId }),
+        body: JSON.stringify({
+          source_image_id: sourceImageId,
+          custom_instructions: customInstructions?.trim() || undefined,
+        }),
       });
       if (res.ok) {
         await refreshJob();

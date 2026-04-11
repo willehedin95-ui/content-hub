@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
   const db = createServerSupabase();
 
-  const { ads, pain_point, board_name, swipe_mode } = (await req.json()) as { ads: BatchAd[]; pain_point?: string; board_name?: string; swipe_mode?: "faithful" | "adapt" };
+  const { ads, pain_point, board_name, swipe_mode, custom_instructions } = (await req.json()) as { ads: BatchAd[]; pain_point?: string; board_name?: string; swipe_mode?: "faithful" | "adapt"; custom_instructions?: string };
 
   if (!ads?.length) {
     return NextResponse.json({ error: "No ads provided" }, { status: 400 });
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     pain_point: pain_point || null,
     source_board_name: board_name || null,
     swipe_mode: swipe_mode || "adapt",
+    custom_instructions: custom_instructions?.trim() || null,
     updated_at: new Date().toISOString(),
   }));
 

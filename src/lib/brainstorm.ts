@@ -1167,7 +1167,8 @@ function buildFromCompetitorAdSystem(
   variationsPerImage?: number,
   painPoint?: string,
   generationLanguage?: string,
-  swipeMode: "faithful" | "adapt" = "adapt"
+  swipeMode: "faithful" | "adapt" = "adapt",
+  customInstructions?: string
 ): string {
   const productContext = buildProductContext(product, productBrief, guidelines, segments, hookInspiration, learningsContext, researchContext);
 
@@ -1387,7 +1388,11 @@ ${swipeMode === "adapt" ? `- **NATIVE ADS - MIRROR PRODUCT VISIBILITY**: If the 
 - Generate exactly ${(imageCount ?? 1) * (variationsPerImage ?? 1)} entries in the image_prompts array
 - Each entry MUST have a source_index (0-based) matching the uploaded image it is based on
 - For each source image, generate exactly ${variationsPerImage ?? 1} visually distinct variation(s)
-- Each variation MUST differ in visual composition (angle, lighting, framing), not just text`;
+- Each variation MUST differ in visual composition (angle, lighting, framing), not just text${
+  customInstructions
+    ? `\n\n## USER OVERRIDE INSTRUCTIONS\nThe user has provided these specific instructions that take precedence over the competitor ad details:\n${customInstructions}\nApply these overrides to ALL generated image prompts and ad copy.`
+    : ""
+}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1440,7 +1445,8 @@ export function buildBrainstormSystemPrompt(
   painPoint?: string,
   researchContext?: string,
   generationLanguage?: string,
-  swipeMode?: "faithful" | "adapt"
+  swipeMode?: "faithful" | "adapt",
+  customInstructions?: string
 ): string {
   // from_competitor_ad needs extra params (image count + variations + pain point)
   if (mode === "from_competitor_ad") {
@@ -1451,7 +1457,8 @@ export function buildBrainstormSystemPrompt(
       competitorImageCount, variationsPerImage,
       painPoint,
       generationLanguage,
-      swipeMode ?? "adapt"
+      swipeMode ?? "adapt",
+      customInstructions
     );
   }
   const builder = SYSTEM_BUILDERS[mode];

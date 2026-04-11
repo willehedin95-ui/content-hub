@@ -66,6 +66,7 @@ export async function processOneQueueItem(
       painPoint: (next.pain_point as string) || undefined,
       forceNoProduct: /native/i.test(boardName),
       swipeMode,
+      customInstructions: (next.custom_instructions as string) || undefined,
     });
 
     await db
