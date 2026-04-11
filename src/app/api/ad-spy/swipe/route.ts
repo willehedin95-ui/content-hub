@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
     body: adBody,
     brand_name,
     pain_point,
+    board_name,
   } = body as {
     gethookd_ad_id?: number;
     media_urls: string[];
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
     body?: string;
     brand_name?: string;
     pain_point?: string;
+    board_name?: string;
   };
 
   if (!media_urls?.length) {
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
         source: "board",
         status: "swiping",
         pain_point: pain_point || null,
+        source_board_name: board_name || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "workspace_id,gethookd_ad_id" });
     }
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest) {
           notifyTelegram: false,
           existingJobId: jobId,
           painPoint: pain_point,
+          forceNoProduct: board_name ? /native/i.test(board_name) : false,
         });
 
         // Update discovered_ads status (only for GetHookd ads)

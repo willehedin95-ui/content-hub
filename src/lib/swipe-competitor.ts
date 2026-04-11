@@ -51,6 +51,9 @@ export interface SwipeInput {
   existingJobId?: string;
   /** Pain point to focus the concept on (e.g., "neck-pain", "snoring"). Omit for auto-detect. */
   painPoint?: string;
+  /** When true, force include_product_reference=false and strip product from prompts.
+   *  Set automatically when the source board name contains "native". */
+  forceNoProduct?: boolean;
 }
 
 export interface SwipeResult {
@@ -323,49 +326,44 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   }
 
   // --- PRODUCT REFERENCE safety net ---
-  // Claude can't reliably decide when to set include_product_reference. It
-  // sees "woman holding something" and sets true even when the competitor ad
-  // shows frankincense granules, not a product bottle. When the product hero
-  // image is passed as a reference, Nano Banana renders a perfect Hydro13
-  // bottle in scenes where it doesn't belong.
+  // When forceNoProduct is set (e.g. source board name contains "native"),
+  // override Claude's include_product_reference to false and strip product
+  // name mentions from prompt text. This prevents product hero reference
+  // images from being passed to Nano Banana, which would render an accurate
+  // product bottle in native/UGC scenes where no product should appear.
   //
-  // Fix: force ALL prompts to include_product_reference=false and strip
-  // product name mentions from prompt text. The product hero reference image
-  // causes more harm than good — it injects the bottle into native/UGC scenes.
-  // When a product IS wanted, the prompt text + productAppearance description
-  // are sufficient (the previous includeProduct gate in buildFullPrompt still
-  // handles the text description correctly).
+  // When forceNoProduct is NOT set, trust Claude's decision — the competitor
+  // ad likely shows a product and we want our product in the same style.
   const productName = product.name; // e.g. "Hydro13", "HappySleep"
-  for (const ip of parsed.image_prompts) {
-    // Force product reference off — don't trust Claude's decision
-    if (ip.include_product_reference === true) {
-      ip.include_product_reference = false;
-      console.warn(
-        `[swipe-competitor] Overrode include_product_reference to false for "${productName}". ` +
-          "Claude incorrectly wanted to inject the product into a native/UGC scene."
-      );
-    }
-    if (typeof ip.prompt !== "object" || ip.prompt === null) continue; // plain text, skip
-    const jsonPrompt = ip.prompt as Record<string, unknown>;
-    const productPattern = new RegExp(
-      `[^.]*\\b${productName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[^.]*\\.?\\s*`,
-      "gi"
-    );
-    let stripped = false;
-    for (const key of Object.keys(jsonPrompt)) {
-      const val = jsonPrompt[key];
-      if (typeof val !== "string") continue;
-      const cleaned = val.replace(productPattern, "").replace(/,\s*,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "").trim();
-      if (cleaned !== val) {
-        jsonPrompt[key] = cleaned;
-        stripped = true;
+  if (input.forceNoProduct) {
+    for (const ip of parsed.image_prompts) {
+      if (ip.include_product_reference === true) {
+        ip.include_product_reference = false;
+        console.warn(
+          `[swipe-competitor] Overrode include_product_reference to false for "${productName}" (forceNoProduct from native board).`
+        );
       }
-    }
-    if (stripped) {
-      console.warn(
-        `[swipe-competitor] Stripped "${productName}" references from image_prompt. ` +
-          "Claude is ignoring the product reference instruction."
+      if (typeof ip.prompt !== "object" || ip.prompt === null) continue;
+      const jsonPrompt = ip.prompt as Record<string, unknown>;
+      const productPattern = new RegExp(
+        `[^.]*\\b${productName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[^.]*\\.?\\s*`,
+        "gi"
       );
+      let stripped = false;
+      for (const key of Object.keys(jsonPrompt)) {
+        const val = jsonPrompt[key];
+        if (typeof val !== "string") continue;
+        const cleaned = val.replace(productPattern, "").replace(/,\s*,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+        if (cleaned !== val) {
+          jsonPrompt[key] = cleaned;
+          stripped = true;
+        }
+      }
+      if (stripped) {
+        console.warn(
+          `[swipe-competitor] Stripped "${productName}" references from image_prompt (native board).`
+        );
+      }
     }
   }
 

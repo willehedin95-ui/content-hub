@@ -252,6 +252,7 @@ async function runCompetitorSwipe(
       media_urls: imageUrls,
       source: discovered.source,
       status: "swiping",
+      source_board_name: discovered.boardName || null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "workspace_id,gethookd_ad_id" });
 
@@ -311,9 +312,13 @@ async function executeSwipe(
   chatId: string | undefined,
   ws: WorkspaceCtx,
   label: string,
-  discovered: { ad: GethookdAd; source: "board" | "brand_spy" | "explore" },
+  discovered: { ad: GethookdAd; source: "board" | "brand_spy" | "explore"; boardName?: string },
   competitorImageUrls: string[]
 ) {
+  // If the board name contains "native", don't inject our product into images
+  const isNativeBoard = discovered.boardName
+    ? /native/i.test(discovered.boardName)
+    : false;
 
   // --- Delegate to shared swipe function ---
   try {
@@ -325,6 +330,7 @@ async function executeSwipe(
       brandName: discovered.ad.brand.name,
       gethookdAdId: discovered.ad.id,
       notifyTelegram: !!chatId,
+      forceNoProduct: isNativeBoard,
     });
 
     // Update discovered_ads with the job link
@@ -371,7 +377,7 @@ async function executeSwipe(
 async function discoverCompetitorAd(
   db: ReturnType<typeof createServerSupabase>,
   ws: WorkspaceCtx
-): Promise<{ ad: GethookdAd; source: "board" | "brand_spy" | "explore" } | null> {
+): Promise<{ ad: GethookdAd; source: "board" | "brand_spy" | "explore"; boardName?: string } | null> {
   // Get already-seen ad IDs to avoid duplicates
   const { data: seenAds } = await db
     .from("discovered_ads")
@@ -393,12 +399,12 @@ async function discoverCompetitorAd(
   for (const boardId of boardIds) {
     for (let page = 1; page <= MAX_BOARD_PAGES; page++) {
       try {
-        const { ads, total } = await getBoardAds(boardId, page, 50);
+        const { ads, total, boardName } = await getBoardAds(boardId, page, 50);
         const imageAds = filterImageAds(ads);
         const unswiped = imageAds.filter((a) => !seenIds.has(a.id));
         if (unswiped.length > 0) {
-          console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads (board ${boardId}, page ${page})`);
-          return { ad: unswiped[0], source: "board" };
+          console.log(`[Autopilot] Found ${unswiped.length} unswiped board ads (board ${boardId}, page ${page}, "${boardName}")`);
+          return { ad: unswiped[0], source: "board", boardName };
         }
         // No more pages to check
         if (ads.length < 50 || page * 50 >= total) break;

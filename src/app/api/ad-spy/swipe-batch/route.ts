@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
   const db = createServerSupabase();
 
-  const { ads, pain_point } = (await req.json()) as { ads: BatchAd[]; pain_point?: string };
+  const { ads, pain_point, board_name } = (await req.json()) as { ads: BatchAd[]; pain_point?: string; board_name?: string };
 
   if (!ads?.length) {
     return NextResponse.json({ error: "No ads provided" }, { status: 400 });
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     source: "board" as const,
     status: "queued",
     pain_point: pain_point || null,
+    source_board_name: board_name || null,
     updated_at: new Date().toISOString(),
   }));
 

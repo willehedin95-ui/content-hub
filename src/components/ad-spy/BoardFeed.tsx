@@ -137,6 +137,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             body: ad.body,
             brand_name: ad.brand_name,
             pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
+            board_name: boards.find((b) => String(b.id) === boardId)?.name,
           }),
         });
         const data = await res.json();
@@ -185,6 +186,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
             brand_name: a.brand_name,
           })),
           pain_point: painPoint !== "auto-detect" ? painPoint : undefined,
+          board_name: boards.find((b) => String(b.id) === boardId)?.name,
         }),
       });
       const data = await res.json();

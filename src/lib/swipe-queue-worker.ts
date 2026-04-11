@@ -51,6 +51,7 @@ export async function processOneQueueItem(
   }
 
   try {
+    const boardName = (next.source_board_name as string) || "";
     const result = await swipeCompetitorAd({
       workspaceId,
       productSlug,
@@ -61,6 +62,7 @@ export async function processOneQueueItem(
       gethookdAdId: next.gethookd_ad_id,
       notifyTelegram: false,
       painPoint: (next.pain_point as string) || undefined,
+      forceNoProduct: /native/i.test(boardName),
     });
 
     await db

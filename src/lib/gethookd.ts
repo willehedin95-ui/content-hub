@@ -262,7 +262,7 @@ export async function getBoardAds(
   boardId: string | number,
   page = 1,
   perPage = 50
-): Promise<{ ads: GethookdAd[]; total: number }> {
+): Promise<{ ads: GethookdAd[]; total: number; boardName: string }> {
   const res = await gethookdFetch<{
     data: {
       id: number;
@@ -274,6 +274,7 @@ export async function getBoardAds(
   return {
     ads: res.data?.ads?.data ?? [],
     total: res.data?.ads?.total ?? 0,
+    boardName: res.data?.name ?? "",
   };
 }
 
