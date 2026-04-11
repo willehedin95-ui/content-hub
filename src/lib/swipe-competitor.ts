@@ -584,7 +584,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         // Calculate remaining time: 300s Vercel budget minus elapsed, minus 15s safety
         // buffer so Promise.allSettled has time to resolve and cleanup code can run.
         const elapsedMs = Date.now() - fnStartMs;
-        const remainingMs = 300_000 - elapsedMs - 15_000;
+        const remainingMs = 800_000 - elapsedMs - 15_000;
         if (remainingMs <= 0) {
           throw new Error(`Image ${index + 1}: No time left (${Math.round(elapsedMs / 1000)}s elapsed)`);
         }
@@ -645,7 +645,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         lastErr = err;
         // Don't retry if we're running low on time - let Promise.allSettled resolve
         // so the cleanup code can mark the job as ready with partial images.
-        const timeLeftMs = 300_000 - (Date.now() - fnStartMs) - 15_000;
+        const timeLeftMs = 800_000 - (Date.now() - fnStartMs) - 15_000;
         if (timeLeftMs <= 30_000 || attempt >= retries) {
           console.error(`[swipe-competitor] Image ${index + 1} failed (attempt ${attempt + 1}/${retries + 1}, ${Math.round(timeLeftMs / 1000)}s left)${softMode ? " (soft)" : ""}:`, err);
           break; // bail out so Promise.allSettled can resolve
@@ -681,7 +681,7 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   // Retry with stripped-down prompts: no overlays, no JSON, no product hero,
   // no product appearance description. Only the scene + style reference.
   let softRetryAttempted = false;
-  const softRetryTimeLeft = 300_000 - (Date.now() - fnStartMs) - 15_000;
+  const softRetryTimeLeft = 800_000 - (Date.now() - fnStartMs) - 15_000;
   if (imageResults.length === 0 && parsed.image_prompts.length > 0 && softRetryTimeLeft > 30_000) {
     softRetryAttempted = true;
     console.warn(`[swipe-competitor] All ${parsed.image_prompts.length} images failed for job ${job.id} — attempting soft retry with simplified prompts`);

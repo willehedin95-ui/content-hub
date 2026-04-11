@@ -4,7 +4,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
 import { swipeCompetitorAd } from "@/lib/swipe-competitor";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
