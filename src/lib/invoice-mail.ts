@@ -248,12 +248,16 @@ async function closeImapSession(session: { client: ImapFlow; lock: { release: ()
   await session.client.logout().catch(() => {});
 }
 
-/** Fetch new emails since a given UID using an existing session */
+/** Fetch new emails since a given UID using an existing session.
+ *  Returns { emails, totalNew } where totalNew is the total count of new UIDs.
+ *  Only fetches envelopes for up to `limit` emails to stay within timeout budgets.
+ */
 async function fetchNewEmails(
   client: ImapFlow,
   sinceUid: number,
-  maxAge60Days = true
-): Promise<InvoiceEmail[]> {
+  maxAge60Days = true,
+  limit = 0
+): Promise<{ emails: InvoiceEmail[]; totalNew: number }> {
   const emails: InvoiceEmail[] = [];
 
   const searchCriteria: Record<string, unknown> = {};
@@ -266,12 +270,15 @@ async function fetchNewEmails(
   }
 
   const rawUids = await client.search(searchCriteria, { uid: true });
-  if (!rawUids || rawUids.length === 0) return emails;
+  if (!rawUids || rawUids.length === 0) return { emails, totalNew: 0 };
 
   const newUids = rawUids.map((u: number | bigint) => Number(u)).filter((u) => u > sinceUid);
-  if (newUids.length === 0) return emails;
+  if (newUids.length === 0) return { emails, totalNew: 0 };
 
-  for (const uid of newUids) {
+  // Only fetch envelopes for the first N UIDs to avoid timeout
+  const fetchUids = limit > 0 ? newUids.slice(0, limit) : newUids;
+
+  for (const uid of fetchUids) {
     try {
       const msgResult = await client.fetchOne(String(uid), {
         uid: true,
@@ -299,7 +306,7 @@ async function fetchNewEmails(
     }
   }
 
-  return emails;
+  return { emails, totalNew: newUids.length };
 }
 
 /** Download the full raw RFC822 source of an email using an existing session */
@@ -771,11 +778,10 @@ async function processAccount(account: ImapAccountConfig): Promise<{
   }
 
   // 4. Fetch new emails (headers only — fast, reuses session)
-  const allEmails = await fetchNewEmails(session.client, lastUid);
   const MAX_EMAILS_PER_BATCH = 15;
-  const emails = allEmails.slice(0, MAX_EMAILS_PER_BATCH);
-  const remaining = allEmails.length - emails.length;
-  console.log(`[invoice-mail] [${accountId}] Found ${allEmails.length} new emails since UID ${lastUid}${remaining > 0 ? ` (processing ${emails.length}, ${remaining} remaining)` : ""}`);
+  const { emails, totalNew } = await fetchNewEmails(session.client, lastUid, true, MAX_EMAILS_PER_BATCH);
+  const remaining = totalNew - emails.length;
+  console.log(`[invoice-mail] [${accountId}] Found ${totalNew} new emails since UID ${lastUid}${remaining > 0 ? ` (processing ${emails.length}, ${remaining} remaining)` : ""}`);
 
   let forwarded = 0;
   let errors = 0;
