@@ -217,12 +217,7 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
       port: config.port,
       secure: config.secure,
       auth: config.auth,
-      logger: {
-        debug: () => {},
-        info: (msg: Record<string, unknown>) => console.log(`[imap] ${msg.msg}`),
-        warn: (msg: Record<string, unknown>) => console.warn(`[imap] ${msg.msg}`),
-        error: (msg: Record<string, unknown>) => console.error(`[imap] ${msg.msg}`),
-      },
+      logger: false,
       socketTimeout: 15_000,
       ...(servername ? { servername, tls: { servername } } : {}),
     });
@@ -237,7 +232,7 @@ async function createImapSession(account?: ImapAccountConfig): Promise<{
       await client.logout().catch(() => {});
       const msg = e instanceof Error ? e.message : String(e);
       const code = e instanceof Error ? (e as NodeJS.ErrnoException).code : undefined;
-      const isRetryable = /EBUSY|ETIMEOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|Command failed/i.test(msg);
+      const isRetryable = /EBUSY|ETIMEOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(msg);
       if (!isRetryable || attempt === MAX_RETRIES) throw e;
       console.warn(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES} failed: ${msg} (code: ${code}), retrying in ${attempt * 2}s...`);
       await new Promise((r) => setTimeout(r, attempt * 2000));
@@ -777,7 +772,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
 
   // 4. Fetch new emails (headers only — fast, reuses session)
   const allEmails = await fetchNewEmails(session.client, lastUid);
-  const MAX_EMAILS_PER_BATCH = 50;
+  const MAX_EMAILS_PER_BATCH = 15;
   const emails = allEmails.slice(0, MAX_EMAILS_PER_BATCH);
   const remaining = allEmails.length - emails.length;
   console.log(`[invoice-mail] [${accountId}] Found ${allEmails.length} new emails since UID ${lastUid}${remaining > 0 ? ` (processing ${emails.length}, ${remaining} remaining)` : ""}`);
