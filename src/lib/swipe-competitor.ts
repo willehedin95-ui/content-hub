@@ -581,9 +581,13 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     let lastErr: unknown = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        // Calculate remaining time: 300s Vercel budget minus elapsed, minus 10s safety buffer
+        // Calculate remaining time: 300s Vercel budget minus elapsed, minus 15s safety
+        // buffer so Promise.allSettled has time to resolve and cleanup code can run.
         const elapsedMs = Date.now() - fnStartMs;
-        const remainingMs = Math.max(30_000, 300_000 - elapsedMs - 10_000);
+        const remainingMs = 300_000 - elapsedMs - 15_000;
+        if (remainingMs <= 0) {
+          throw new Error(`Image ${index + 1}: No time left (${Math.round(elapsedMs / 1000)}s elapsed)`);
+        }
         const { urls: resultUrls, costTimeMs } = await generateImage(fullPrompt, referenceUrls, "4:5", "2K", remainingMs);
         if (!resultUrls?.length) throw new Error(`Image ${index + 1}: No image generated`);
 
@@ -639,12 +643,15 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
         return { url: urlData.publicUrl, sourceImageId: sourceImage?.id ?? "" };
       } catch (err) {
         lastErr = err;
-        if (attempt < retries) {
-          console.warn(`[swipe-competitor] Image ${index + 1} attempt ${attempt + 1} failed${softMode ? " (soft)" : ""}, retrying...`, err);
-          await new Promise((r) => setTimeout(r, 2000));
-        } else {
-          console.error(`[swipe-competitor] Image ${index + 1} failed after ${retries + 1} attempts${softMode ? " (soft)" : ""}:`, err);
+        // Don't retry if we're running low on time - let Promise.allSettled resolve
+        // so the cleanup code can mark the job as ready with partial images.
+        const timeLeftMs = 300_000 - (Date.now() - fnStartMs) - 15_000;
+        if (timeLeftMs <= 30_000 || attempt >= retries) {
+          console.error(`[swipe-competitor] Image ${index + 1} failed (attempt ${attempt + 1}/${retries + 1}, ${Math.round(timeLeftMs / 1000)}s left)${softMode ? " (soft)" : ""}:`, err);
+          break; // bail out so Promise.allSettled can resolve
         }
+        console.warn(`[swipe-competitor] Image ${index + 1} attempt ${attempt + 1} failed${softMode ? " (soft)" : ""}, retrying (${Math.round(timeLeftMs / 1000)}s left)...`, err);
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
     throw lastErr ?? new Error(`Image ${index + 1}: All retries exhausted`);
@@ -669,12 +676,13 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     console.warn(`[swipe-competitor] ${firstPassFailures.length}/${settled.length} images failed for job ${job.id}`);
   }
 
-  // ----- Soft retry: only triggers when ALL images failed -----
+  // ----- Soft retry: only triggers when ALL images failed AND we have time -----
   // Almost always means Kie AI's content safety filter rejected the prompt.
   // Retry with stripped-down prompts: no overlays, no JSON, no product hero,
   // no product appearance description. Only the scene + style reference.
   let softRetryAttempted = false;
-  if (imageResults.length === 0 && parsed.image_prompts.length > 0) {
+  const softRetryTimeLeft = 300_000 - (Date.now() - fnStartMs) - 15_000;
+  if (imageResults.length === 0 && parsed.image_prompts.length > 0 && softRetryTimeLeft > 30_000) {
     softRetryAttempted = true;
     console.warn(`[swipe-competitor] All ${parsed.image_prompts.length} images failed for job ${job.id} — attempting soft retry with simplified prompts`);
 

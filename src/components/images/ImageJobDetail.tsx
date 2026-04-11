@@ -889,11 +889,14 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
 
     // Auto-recover stale draft jobs that have images but never got create-translations called.
-    // Skip if swipe_progress is set — swipe pipeline is still running and will handle status.
+    // Skip if swipe_progress is set AND the job is fresh — swipe pipeline is still running.
     const staleMs = Date.now() - new Date(job.created_at).getTime();
     const hasImages = (job.source_images?.length ?? 0) > 0;
     const swipeInProgress = !!job.swipe_progress;
-    if (staleMs > 2 * 60 * 1000 && hasImages && !swipeInProgress) {
+    // If swipe_progress exists but updated_at is >6 min old, the Vercel function died
+    // without cleanup. Treat it as stale and recover with whatever images we got.
+    const swipeStale = swipeInProgress && (Date.now() - new Date(job.updated_at).getTime()) > 6 * 60 * 1000;
+    if (staleMs > 2 * 60 * 1000 && hasImages && (!swipeInProgress || swipeStale)) {
       fetch(`/api/image-jobs/${job.id}/create-translations`, { method: "POST" })
         .then((res) => { if (res.ok) refreshJob(); })
         .catch(() => {});
