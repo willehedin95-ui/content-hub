@@ -155,28 +155,42 @@ function findPdfs(
 
 // --- Shared IMAP session ---
 
-/** Create a connected IMAP client with mailbox lock */
+/** Create a connected IMAP client with mailbox lock (retries on DNS/network errors) */
 async function createImapSession(account?: ImapAccountConfig): Promise<{
   client: ImapFlow;
   lock: { release: () => void };
   uidValidity: number;
 }> {
   const config = account || getImapConfig();
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.auth,
-    logger: false,
-    socketTimeout: 30_000,
-  });
+  const MAX_RETRIES = 3;
 
-  await client.connect();
-  const lock = await client.getMailboxLock("INBOX");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const uidValidity = Number((client.mailbox as any)?.uidValidity || 0);
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const client = new ImapFlow({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: config.auth,
+      logger: false,
+      socketTimeout: 15_000,
+    });
 
-  return { client, lock, uidValidity };
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const uidValidity = Number((client.mailbox as any)?.uidValidity || 0);
+      return { client, lock, uidValidity };
+    } catch (e) {
+      await client.logout().catch(() => {});
+      const msg = e instanceof Error ? e.message : String(e);
+      const isRetryable = /EBUSY|ETIMEOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(msg);
+      if (!isRetryable || attempt === MAX_RETRIES) throw e;
+      console.warn(`[invoice-mail] IMAP connect attempt ${attempt}/${MAX_RETRIES} failed: ${msg}, retrying in ${attempt * 2}s...`);
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+    }
+  }
+
+  throw new Error("IMAP connect failed after retries");
 }
 
 /** Close an IMAP session safely */
