@@ -200,7 +200,7 @@ export default function InvoiceTrackerClient() {
       await fetchUnmatched();
       setTimeout(() => setCheckResult(null), 8000);
     } catch {
-      setCheckResult({ forwarded: 0, errors: 1, errorMessage: "Request failed — check your connection" });
+      setCheckResult({ forwarded: 0, errors: 1, errorMessage: "Request failed - check your connection" });
       setTimeout(() => setCheckResult(null), 8000);
     } finally {
       setChecking(false);
@@ -376,17 +376,25 @@ export default function InvoiceTrackerClient() {
     setTimeout(() => setCopiedEmail(null), 2000);
   }
 
-  // Summary counts
-  const done = summary.filter((r) => r.status === "forwarded" || r.status === "manual" || r.status === "paid").length;
+  // Summary counts - "manual" only counts as done if it was actually forwarded or has no stored PDF (user skipped)
+  const done = summary.filter((r) => {
+    if (r.status === "forwarded" || r.status === "paid") return true;
+    if (r.status === "manual") {
+      // If it has a stored PDF but wasn't forwarded, it's NOT done
+      return !(r.log?.pdf_storage_path && !r.log?.forwarded_at);
+    }
+    return false;
+  }).length;
   const needsAction = summary.length - summary.filter((r) => r.status === "not_due").length;
   const pct = needsAction > 0 ? Math.round((done / needsAction) * 100) : 100;
 
-  // Count individual ready logs — split by type
-  // Receipt-type: can be auto-forwarded to Juni via "Send to Juni"
-  // Invoice-type: user downloads + uploads manually (not counted for auto-send)
+  // Count individual ready logs - split by type
+  // Also count "manual" logs with stored PDF but not forwarded (upload succeeded, SMTP failed)
+  const isLogReadyToSend = (l: InvoiceLog) =>
+    l.status === "ready" || (l.status === "manual" && l.pdf_storage_path && !l.forwarded_at);
   const readyForJuniCount = summary.reduce(
     (sum, r) => r.service.forward_to !== "invoices"
-      ? sum + r.logs.filter((l) => l.status === "ready").length
+      ? sum + r.logs.filter(isLogReadyToSend).length
       : sum,
     0
   );
@@ -398,13 +406,14 @@ export default function InvoiceTrackerClient() {
   );
   const readyCount = readyForJuniCount + readyInvoiceCount;
 
+  const notSentCount = summary.filter((r) => r.status === "manual" && r.log?.pdf_storage_path && !r.log?.forwarded_at).length;
   const counts = {
     total: summary.length,
     sent: summary.filter((r) => r.status === "paid" || r.status === "forwarded").length,
     ready: readyCount,
     waiting: summary.filter((r) => r.status === "waiting").length,
     error: summary.filter((r) => r.status === "error").length,
-    manual: summary.filter((r) => r.status === "manual").length,
+    notSent: notSentCount,
     not_due: summary.filter((r) => r.status === "not_due").length,
     received_no_pdf: summary.filter((r) => r.status === "received_no_pdf").length,
   };
@@ -634,7 +643,7 @@ export default function InvoiceTrackerClient() {
             <div key={p.service.id} className="px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-gray-50 border border-gray-200 text-gray-600">
               <PauseCircle className="w-4 h-4 flex-shrink-0" />
               <span>
-                <span className="font-medium">{p.service.name}</span> — no invoice in {p.monthsSinceLastInvoice} months. Still using it?
+                <span className="font-medium">{p.service.name}</span> - no invoice in {p.monthsSinceLastInvoice} months. Still using it?
               </span>
             </div>
           ))}
@@ -647,7 +656,7 @@ export default function InvoiceTrackerClient() {
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           <span>
             <span className="font-medium">{counts.waiting} service{counts.waiting > 1 ? "s" : ""}</span> still waiting for invoices this month.
-            Month ends soon — check if any need manual handling.
+            Month ends soon - check if any need manual handling.
           </span>
         </div>
       )}
@@ -658,7 +667,7 @@ export default function InvoiceTrackerClient() {
           <div className="px-4 py-2.5 flex items-center gap-2 border-b border-amber-200">
             <HelpCircle className="w-4 h-4 text-amber-600" />
             <span className="text-sm font-medium text-amber-700">
-              {unmatched.length} unmatched email{unmatched.length > 1 ? "s" : ""} — not linked to any service
+              {unmatched.length} unmatched email{unmatched.length > 1 ? "s" : ""} - not linked to any service
             </span>
           </div>
           {unmatched.map((u) => (
@@ -773,9 +782,9 @@ export default function InvoiceTrackerClient() {
                 <span className="font-semibold">{counts.ready}</span> ready
               </span>
             )}
-            {counts.manual > 0 && (
-              <span className="text-gray-500">
-                <span className="font-semibold">{counts.manual}</span> manual
+            {counts.notSent > 0 && (
+              <span className="text-amber-600">
+                <span className="font-semibold">{counts.notSent}</span> not sent
               </span>
             )}
             {counts.waiting > 0 && (
@@ -826,18 +835,23 @@ export default function InvoiceTrackerClient() {
           </div>
         ) : (
           [...summary].sort((a, b) => {
-            const doneStatuses = new Set(["paid", "forwarded", "manual", "not_due", "dismissed"]);
-            const aDone = doneStatuses.has(a.status) ? 1 : 0;
-            const bDone = doneStatuses.has(b.status) ? 1 : 0;
+            // "manual" with stored PDF but not forwarded = needs action, not done
+            const isNotSent = (r: InvoiceSummaryRow) => r.status === "manual" && r.log?.pdf_storage_path && !r.log?.forwarded_at;
+            const doneStatuses = new Set(["paid", "forwarded", "not_due", "dismissed"]);
+            const aDone = (doneStatuses.has(a.status) || (a.status === "manual" && !isNotSent(a))) ? 1 : 0;
+            const bDone = (doneStatuses.has(b.status) || (b.status === "manual" && !isNotSent(b))) ? 1 : 0;
             if (aDone !== bDone) return aDone - bDone;
             return a.service.name.localeCompare(b.service.name);
           }).map((row) => {
             const isOverdue = showMonthEndWarning && row.status === "waiting";
             const isSent = row.status === "paid" || row.status === "forwarded";
-            const isDone = isSent || row.status === "manual";
+            // "manual" with stored PDF but not forwarded = needs sending
+            const isManualNotSent = row.status === "manual" && row.log?.pdf_storage_path && !row.log?.forwarded_at;
+            const isManualDone = row.status === "manual" && !isManualNotSent;
+            const isDone = isSent || isManualDone;
             const isNotDue = row.status === "not_due";
-            const isReady = row.status === "ready";
-            const borderColor = isSent ? "border-l-emerald-400" : isDone ? "border-l-gray-300" : isReady ? "border-l-indigo-400" : row.status === "error" ? "border-l-red-400" : isOverdue ? "border-l-amber-400" : "border-l-transparent";
+            const isReady = row.status === "ready" || isManualNotSent;
+            const borderColor = isSent ? "border-l-emerald-400" : isReady ? "border-l-indigo-400" : isDone ? "border-l-gray-300" : row.status === "error" ? "border-l-red-400" : isOverdue ? "border-l-amber-400" : "border-l-transparent";
 
             return (
               <div key={row.service.id} className="border-b border-gray-100 last:border-b-0">
@@ -868,16 +882,18 @@ export default function InvoiceTrackerClient() {
                         </a>
                       )}
                     </div>
-                    <span className="text-xs text-gray-400">
-                      {row.service.is_manual_upload ? "Manual" : "Automatic"}
-                    </span>
+                    {row.service.forward_to === "invoices" && (
+                      <span className="text-xs text-gray-400">Invoice</span>
+                    )}
                   </div>
 
-                  {/* Status text — single clean indicator */}
-                  <div className="flex-shrink-0 w-20 text-right">
+                  {/* Status text */}
+                  <div className="flex-shrink-0 w-24 text-right">
                     {isSent ? (
                       <span className="text-xs font-medium text-emerald-600">Sent</span>
-                    ) : isReady ? (
+                    ) : isManualNotSent ? (
+                      <span className="text-xs font-medium text-amber-600">Not sent</span>
+                    ) : row.status === "ready" ? (
                       <span className="text-xs font-medium text-indigo-600">Ready</span>
                     ) : row.status === "waiting" ? (
                       <span className={`text-xs ${isOverdue ? "font-medium text-amber-600" : "text-gray-400"}`}>
@@ -885,33 +901,41 @@ export default function InvoiceTrackerClient() {
                       </span>
                     ) : row.status === "error" ? (
                       <span className="text-xs font-medium text-red-500">Error</span>
-                    ) : row.status === "manual" ? (
-                      <span className="text-xs text-gray-400">Handled</span>
+                    ) : isManualDone ? (
+                      <span className="text-xs text-gray-400">Done</span>
                     ) : isNotDue ? (
-                      <span className="text-xs text-gray-300">Not due</span>
+                      <span className="text-xs text-gray-300">-</span>
                     ) : row.status === "received_no_pdf" ? (
-                      <span className="text-xs text-blue-500">No PDF</span>
+                      <span className="text-xs font-medium text-amber-500">Needs PDF</span>
                     ) : row.status === "unmatched" ? (
                       <span className="text-xs text-orange-500">Unmatched</span>
                     ) : null}
                   </div>
 
-                  {/* Quick action — Upload for manual services, nothing for sent */}
+                  {/* Quick action */}
                   <div className="flex-shrink-0 w-[90px] flex justify-end">
-                    {row.service.is_manual_upload && !isDone && !isNotDue ? (() => {
-                      const pendingCount = row.logs.filter(l => l.status === "ready" || l.status === "received_no_pdf").length;
-                      return (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUploadTarget({ serviceId: row.service.id, serviceName: row.service.name });
-                          }}
-                          className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-500 transition-colors"
-                        >
-                          Upload{pendingCount > 0 ? ` (${pendingCount})` : ""}
-                        </button>
-                      );
-                    })() : null}
+                    {isManualNotSent && row.log?.id ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleForwardLog(row.log!.id);
+                        }}
+                        disabled={forwarding === row.log.id}
+                        className="text-xs font-medium text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md transition-colors"
+                      >
+                        {forwarding === row.log.id ? "Sending..." : "Send"}
+                      </button>
+                    ) : row.service.is_manual_upload && !isDone && !isNotDue && !isReady ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUploadTarget({ serviceId: row.service.id, serviceName: row.service.name });
+                        }}
+                        className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-500 transition-colors"
+                      >
+                        Upload
+                      </button>
+                    ) : null}
                   </div>
 
                   {/* Menu button — always visible */}
@@ -997,7 +1021,7 @@ export default function InvoiceTrackerClient() {
                             onClick={() => handleMarkManual(row.log?.id, row.service.id)}
                             className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                           >
-                            Mark as handled
+                            Mark as done
                           </button>
                         )}
                         {row.log?.id && (
@@ -1121,7 +1145,7 @@ export default function InvoiceTrackerClient() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                   <span>{r.service.name}</span>
                   <span className="text-xs text-emerald-500">
-                    {r.status === "manual" ? "manual" : "sent"}
+                    {r.status === "manual" ? "done" : "sent"}
                   </span>
                 </div>
               ))}
@@ -1135,7 +1159,7 @@ export default function InvoiceTrackerClient() {
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Invoice PDF</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Upload PDFs for <span className="font-medium">{uploadTarget.serviceName}</span> — {formatPeriod(period)}.
+              Upload PDFs for <span className="font-medium">{uploadTarget.serviceName}</span> - {formatPeriod(period)}.
               They will be forwarded to Juni and marked as handled.
             </p>
             <label className="block">
