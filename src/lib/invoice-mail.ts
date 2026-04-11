@@ -617,6 +617,7 @@ export async function processInvoices(): Promise<{
   forwarded: number;
   errors: number;
   skipped: number;
+  remaining: number;
 }> {
   const accounts = getImapAccounts();
   if (accounts.length === 0) throw new Error("No IMAP accounts configured");
@@ -625,6 +626,7 @@ export async function processInvoices(): Promise<{
   let totalForwarded = 0;
   let totalErrors = 0;
   let totalSkipped = 0;
+  let totalRemaining = 0;
 
   for (const account of accounts) {
     try {
@@ -634,6 +636,7 @@ export async function processInvoices(): Promise<{
       totalForwarded += result.forwarded;
       totalErrors += result.errors;
       totalSkipped += result.skipped;
+      totalRemaining += result.remaining;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[invoice-mail] Error scanning ${account.accountId}:`, msg);
@@ -641,7 +644,7 @@ export async function processInvoices(): Promise<{
     }
   }
 
-  return { processed: totalProcessed, forwarded: totalForwarded, errors: totalErrors, skipped: totalSkipped };
+  return { processed: totalProcessed, forwarded: totalForwarded, errors: totalErrors, skipped: totalSkipped, remaining: totalRemaining };
 }
 
 /** Process a single IMAP account */
@@ -650,6 +653,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
   forwarded: number;
   errors: number;
   skipped: number;
+  remaining: number;
 }> {
   const db = createServerSupabase();
   const accountId = account.accountId;
@@ -663,7 +667,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
 
   if (!imapState) {
     console.warn(`[invoice-mail] No imap_state row for "${accountId}", skipping`);
-    return { processed: 0, forwarded: 0, errors: 0, skipped: 0 };
+    return { processed: 0, forwarded: 0, errors: 0, skipped: 0, remaining: 0 };
   }
 
   // 2. Open single IMAP session (reused for all operations)
@@ -684,12 +688,15 @@ async function processAccount(account: ImapAccountConfig): Promise<{
 
   if (!services || services.length === 0) {
     await closeImapSession(session);
-    return { processed: 0, forwarded: 0, errors: 0, skipped: 0 };
+    return { processed: 0, forwarded: 0, errors: 0, skipped: 0, remaining: 0 };
   }
 
   // 4. Fetch new emails (headers only — fast, reuses session)
-  const emails = await fetchNewEmails(session.client, lastUid);
-  console.log(`[invoice-mail] [${accountId}] Found ${emails.length} new emails since UID ${lastUid}`);
+  const allEmails = await fetchNewEmails(session.client, lastUid);
+  const MAX_EMAILS_PER_BATCH = 50;
+  const emails = allEmails.slice(0, MAX_EMAILS_PER_BATCH);
+  const remaining = allEmails.length - emails.length;
+  console.log(`[invoice-mail] [${accountId}] Found ${allEmails.length} new emails since UID ${lastUid}${remaining > 0 ? ` (processing ${emails.length}, ${remaining} remaining)` : ""}`);
 
   let forwarded = 0;
   let errors = 0;
@@ -876,7 +883,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
     .update({ last_run_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("account_id", accountId);
 
-  return { processed: emails.length, forwarded, errors, skipped };
+  return { processed: emails.length, forwarded, errors, skipped, remaining };
 }
 
 /** Test IMAP connection */
