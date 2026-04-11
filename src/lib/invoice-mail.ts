@@ -9,17 +9,24 @@ import net from "net";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import type { InvoiceService } from "@/types";
 
+// Hardcoded fallback IPs for hosts that Vercel can't resolve via getaddrinfo.
+// These are Cloudflare-fronted and stable.
+const KNOWN_HOST_IPS: Record<string, string> = {
+  "imap.hostinger.com": "172.65.188.64",
+  "smtp.hostinger.com": "172.65.255.143",
+};
+
 /**
- * Resolve a hostname to an IP using Node's DNS resolver (not OS getaddrinfo).
- * Vercel serverless fails with EBUSY on getaddrinfo for some hosts (e.g. Hostinger).
- * Node's dns.resolve4 uses a different code path that works reliably.
- * Returns the original host if it's already an IP or if resolution fails.
+ * Resolve a hostname to an IP, bypassing Vercel's broken OS DNS resolver.
+ * Strategy: 1) try Node dns.resolve4 with Google/Cloudflare DNS,
+ * 2) fall back to hardcoded IPs for known hosts, 3) use hostname as-is.
  */
 async function resolveHost(hostname: string): Promise<{ ip: string; servername: string | false }> {
   if (net.isIP(hostname)) return { ip: hostname, servername: false };
+
+  // Try Node's DNS resolver (uses UDP to external DNS, not OS getaddrinfo)
   try {
-    // Use Google + Cloudflare DNS to avoid Vercel's flaky resolver
-    const resolver = new dns.promises.Resolver();
+    const resolver = new dns.promises.Resolver({ timeout: 3000, tries: 1 });
     resolver.setServers(["8.8.8.8", "1.1.1.1"]);
     const addresses = await resolver.resolve4(hostname);
     if (addresses.length > 0) {
@@ -27,8 +34,16 @@ async function resolveHost(hostname: string): Promise<{ ip: string; servername: 
       return { ip: addresses[0], servername: hostname };
     }
   } catch (e) {
-    console.warn(`[dns] resolve4 failed for ${hostname}: ${e instanceof Error ? e.message : e}, falling back to hostname`);
+    console.warn(`[dns] resolve4 failed for ${hostname}: ${e instanceof Error ? e.message : e}`);
   }
+
+  // Fallback to hardcoded IPs for known hosts
+  const fallback = KNOWN_HOST_IPS[hostname];
+  if (fallback) {
+    console.log(`[dns] Using hardcoded IP for ${hostname} -> ${fallback}`);
+    return { ip: fallback, servername: hostname };
+  }
+
   return { ip: hostname, servername: false };
 }
 

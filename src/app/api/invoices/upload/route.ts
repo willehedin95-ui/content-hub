@@ -46,19 +46,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "SMTP credentials not configured" }, { status: 500 });
   }
 
-  // Pre-resolve DNS to avoid Vercel's EBUSY getaddrinfo failures
+  // Pre-resolve DNS to avoid Vercel's getaddrinfo failures
   let resolvedHost = host;
   let servername: string | false = false;
   if (!net.isIP(host)) {
     try {
-      const resolver = new dns.promises.Resolver();
+      const resolver = new dns.promises.Resolver({ timeout: 3000, tries: 1 });
       resolver.setServers(["8.8.8.8", "1.1.1.1"]);
       const addresses = await resolver.resolve4(host);
-      if (addresses.length > 0) {
-        resolvedHost = addresses[0];
-        servername = host;
-      }
-    } catch { /* fall back to hostname */ }
+      if (addresses.length > 0) { resolvedHost = addresses[0]; servername = host; }
+    } catch { /* try fallback */ }
+    if (resolvedHost === host) {
+      const fallbacks: Record<string, string> = { "smtp.hostinger.com": "172.65.255.143" };
+      if (fallbacks[host]) { resolvedHost = fallbacks[host]; servername = host; }
+    }
   }
 
   const transporter = nodemailer.createTransport({
