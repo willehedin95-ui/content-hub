@@ -322,6 +322,39 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
     );
   }
 
+  // --- PRODUCT REFERENCE safety net ---
+  // When include_product_reference is false, Claude should NOT describe our
+  // product in the image prompt at all. But it keeps doing it anyway (e.g.
+  // writing "Hydro13 bottle" into MadeOutOf, RoomObjects, Arrangement, etc.).
+  // Strip product name mentions from JSON prompt fields to prevent Nano Banana
+  // from rendering the product when it shouldn't be there.
+  const productName = product.name; // e.g. "Hydro13", "HappySleep"
+  for (const ip of parsed.image_prompts) {
+    if (ip.include_product_reference === true) continue; // product is wanted
+    if (typeof ip.prompt !== "object" || ip.prompt === null) continue; // plain text, skip
+    const jsonPrompt = ip.prompt as Record<string, unknown>;
+    const productPattern = new RegExp(
+      `[^.]*\\b${productName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b[^.]*\\.?\\s*`,
+      "gi"
+    );
+    let stripped = false;
+    for (const key of Object.keys(jsonPrompt)) {
+      const val = jsonPrompt[key];
+      if (typeof val !== "string") continue;
+      const cleaned = val.replace(productPattern, "").replace(/,\s*,/g, ",").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+      if (cleaned !== val) {
+        jsonPrompt[key] = cleaned;
+        stripped = true;
+      }
+    }
+    if (stripped) {
+      console.warn(
+        `[swipe-competitor] Stripped "${productName}" references from image_prompt (include_product_reference=false). ` +
+          "Claude is ignoring the product reference instruction."
+      );
+    }
+  }
+
   // --- Create or update image_job ---
   const { data: lastJob } = await db
     .from("image_jobs")
