@@ -51,11 +51,13 @@ export async function POST(req: NextRequest) {
     auth: { user, pass },
   });
 
+  // Try to forward via SMTP, but don't fail the upload if SMTP is down
+  let smtpOk = false;
   try {
     await transporter.sendMail({
       from: user,
       to: forwardEmail,
-      subject: `Invoice: ${service.name} — ${period}`,
+      subject: `Invoice: ${service.name} - ${period}`,
       text: `Manually uploaded invoice for ${service.name}, period ${period}.`,
       attachments: [
         {
@@ -65,50 +67,62 @@ export async function POST(req: NextRequest) {
         },
       ],
     });
-
-    // Try to resolve an existing "ready" or "received_no_pdf" detection log
-    // instead of always creating a new one. This links the uploaded receipt
-    // to the detected billing email.
-    const { data: pendingLog } = await db
-      .from("invoice_logs")
-      .select("id")
-      .eq("service_id", serviceId)
-      .eq("period", period)
-      .in("status", ["ready", "received_no_pdf"])
-      .order("email_date", { ascending: true })
-      .limit(1)
-      .single();
-
-    let logId: string | undefined;
-
-    if (pendingLog) {
-      // Resolve existing detection log
-      await db.from("invoice_logs").update({
-        status: "forwarded",
-        forwarded_at: new Date().toISOString(),
-        pdf_filename: file.name,
-        pdf_size_bytes: buffer.length,
-      }).eq("id", pendingLog.id);
-      logId = pendingLog.id;
-    } else {
-      // No pending detection log — create a new one
-      const { data: log } = await db.from("invoice_logs").insert({
-        service_id: serviceId,
-        period,
-        status: "forwarded",
-        email_subject: `Manual upload: ${file.name}`,
-        email_from: "manual",
-        email_date: new Date().toISOString(),
-        forwarded_at: new Date().toISOString(),
-        pdf_filename: file.name,
-        pdf_size_bytes: buffer.length,
-      }).select("id").single();
-      logId = log?.id;
-    }
-
-    return NextResponse.json({ success: true, logId });
+    smtpOk = true;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[invoice-upload] SMTP failed, saving as ready:", e instanceof Error ? e.message : e);
   }
+
+  // Store PDF in Supabase storage for later download/forwarding
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = `${serviceId}/${period}/manual_${Date.now()}_${safeName}`;
+  await db.storage
+    .from("invoice-pdfs")
+    .upload(storagePath, buffer, { contentType: "application/pdf", upsert: true })
+    .catch((err: Error) => console.error("[invoice-upload] Storage upload failed:", err.message));
+
+  // Try to resolve an existing "ready" or "received_no_pdf" detection log
+  // instead of always creating a new one.
+  const { data: pendingLog } = await db
+    .from("invoice_logs")
+    .select("id")
+    .eq("service_id", serviceId)
+    .eq("period", period)
+    .in("status", ["ready", "received_no_pdf"])
+    .order("email_date", { ascending: true })
+    .limit(1)
+    .single();
+
+  let logId: string | undefined;
+
+  if (pendingLog) {
+    await db.from("invoice_logs").update({
+      status: smtpOk ? "forwarded" : "manual",
+      forwarded_at: smtpOk ? new Date().toISOString() : null,
+      pdf_filename: file.name,
+      pdf_size_bytes: buffer.length,
+      pdf_storage_path: storagePath,
+    }).eq("id", pendingLog.id);
+    logId = pendingLog.id;
+  } else {
+    const { data: log } = await db.from("invoice_logs").insert({
+      service_id: serviceId,
+      period,
+      status: smtpOk ? "forwarded" : "manual",
+      email_subject: `Manual upload: ${file.name}`,
+      email_from: "manual",
+      email_date: new Date().toISOString(),
+      forwarded_at: smtpOk ? new Date().toISOString() : null,
+      pdf_filename: file.name,
+      pdf_size_bytes: buffer.length,
+      pdf_storage_path: storagePath,
+    }).select("id").single();
+    logId = log?.id;
+  }
+
+  return NextResponse.json({
+    success: true,
+    logId,
+    forwarded: smtpOk,
+    ...(smtpOk ? {} : { warning: "PDF saved but SMTP forwarding failed - use Send to Juni later" }),
+  });
 }
