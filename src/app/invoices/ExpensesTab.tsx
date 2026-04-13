@@ -64,6 +64,47 @@ function defaultPeriod(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Image compression (keeps screenshots under Vercel's 4.5MB body limit)
+// ---------------------------------------------------------------------------
+function compressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File> {
+  return new Promise((resolve) => {
+    // Skip non-image files
+    if (!file.type.startsWith("image/")) {
+      resolve(file);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => {
+      // Skip if already small enough
+      if (img.width <= maxWidth && file.size < 500_000) {
+        resolve(file);
+        return;
+      }
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            const name = file.name.replace(/\.[^.]+$/, ".jpg");
+            resolve(new File([blob], name, { type: "image/jpeg" }));
+          } else {
+            resolve(file);
+          }
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export default function ExpensesTab() {
@@ -121,10 +162,12 @@ export default function ExpensesTab() {
       const formData = new FormData();
       formData.append("month", period);
       for (const f of files) {
+        // Compress images to stay under Vercel's 4.5MB body limit
+        const processed = await compressImage(f.file);
         if (f.type === "receipt") {
-          formData.append("receipts", f.file);
+          formData.append("receipts", processed);
         } else {
-          formData.append("bank_statements", f.file);
+          formData.append("bank_statements", processed);
         }
       }
 
