@@ -185,6 +185,45 @@ export async function createBulkForwarder() {
   };
 }
 
+/**
+ * Download an email from IMAP and extract a PDF (attachment or HTML-to-PDF).
+ * Returns the PDF buffer + filename, or null if no PDF could be extracted.
+ */
+export async function downloadPdfFromImap(
+  emailUid: string,
+  imapAccountId?: string
+): Promise<{ buffer: Buffer; filename: string } | null> {
+  const uid = parseInt(emailUid, 10);
+  if (!uid) return null;
+
+  const fullEmail = await downloadFullEmailStandalone(uid, imapAccountId || "hostinger");
+  const parsed = await simpleParser(fullEmail);
+
+  // Check for PDF attachment
+  const pdfAttachment = parsed.attachments?.find(
+    (a) =>
+      a.contentType === "application/pdf" ||
+      a.filename?.toLowerCase().endsWith(".pdf")
+  );
+
+  if (pdfAttachment) {
+    return {
+      buffer: pdfAttachment.content,
+      filename: pdfAttachment.filename || "invoice.pdf",
+    };
+  }
+
+  // Fall back to generating PDF from HTML body
+  const html =
+    typeof parsed.html === "string" ? parsed.html : null;
+  if (html) {
+    const pdfBuffer = await htmlToPdf(html);
+    return { buffer: pdfBuffer, filename: "invoice.pdf" };
+  }
+
+  return null;
+}
+
 /** Extract PDF attachments from BODYSTRUCTURE */
 function findPdfs(
   struct: Record<string, unknown> | Record<string, unknown>[],
@@ -1292,35 +1331,54 @@ export async function forwardLogToJuni(
 
   // Strategy 2: Forward from IMAP (email-based)
   const emailUid = parseInt(log.email_uid, 10);
-  if (!emailUid) return { success: false, error: "No stored PDF and no email UID to forward" };
+  if (!emailUid) {
+    return {
+      success: false,
+      error: "No stored PDF and no email UID - upload a PDF manually",
+    };
+  }
 
   try {
     const fullEmail = await downloadFullEmailStandalone(emailUid, log.imap_account_id || "hostinger");
     const parsed = await simpleParser(fullEmail);
-    const hasPdf = parsed.attachments?.some(
+    const pdfAttachment = parsed.attachments?.find(
       (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
     );
     const subject = parsed.subject || log.email_subject || "(no subject)";
 
     let result: ForwardResult;
+    let pdfBuffer: Buffer | null = null;
+    let pdfFilename = "invoice.pdf";
 
-    if (hasPdf) {
+    if (pdfAttachment) {
+      pdfBuffer = pdfAttachment.content;
+      pdfFilename = pdfAttachment.filename || "invoice.pdf";
       result = await forwardToJuni(service.name, log.period, fullEmail, subject, service.forward_to || "receipts");
     } else {
-      const html = parsed.html || null;
-      if (!html) return { success: false, error: "No HTML body to generate PDF from" };
+      const html = typeof parsed.html === "string" ? parsed.html : null;
+      if (!html) return { success: false, error: "No PDF attachment and no HTML body in email" };
 
-      const pdfBuffer = await htmlToPdf(html);
+      pdfBuffer = await htmlToPdf(html);
       result = await forwardWithGeneratedPdf(service.name, subject, fullEmail, pdfBuffer, service.forward_to || "receipts");
     }
 
     if (result.success) {
-      await db.from("invoice_logs").update({
+      // Backfill: save PDF to storage so we don't need IMAP next time
+      const updateData: Record<string, unknown> = {
         status: "sent",
         forwarded_at: new Date().toISOString(),
         error_message: null,
         updated_at: new Date().toISOString(),
-      }).eq("id", logId);
+      };
+      if (pdfBuffer && !log.pdf_storage_path) {
+        const storagePath = `${log.service_id}/${log.period}/${emailUid}_${pdfFilename}`;
+        await db.storage
+          .from("invoice-pdfs")
+          .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+        updateData.pdf_storage_path = storagePath;
+        updateData.pdf_filename = pdfFilename;
+      }
+      await db.from("invoice_logs").update(updateData).eq("id", logId);
     } else {
       await db.from("invoice_logs").update({
         status: "error",
