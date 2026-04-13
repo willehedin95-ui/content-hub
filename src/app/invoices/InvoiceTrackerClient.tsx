@@ -406,8 +406,15 @@ export default function InvoiceTrackerClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "forward" }),
       });
-      await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        addToast("error", data.error || `Forward failed (${res.status})`);
+      } else {
+        addToast("success", "Sent to Juni");
+      }
       await fetchSummary();
+    } catch {
+      addToast("error", "Failed to send - check connection");
     } finally {
       setForwarding(null);
     }

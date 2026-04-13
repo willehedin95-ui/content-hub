@@ -3,6 +3,8 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { retryForward, forwardLogToJuni } from "@/lib/invoice-mail";
 
+export const maxDuration = 30;
+
 // TODO: Add workspace_id check once column is added to invoice_logs table
 export async function PUT(
   req: NextRequest,
