@@ -115,6 +115,19 @@ function fmtAmount(amount: number, currency: string): string {
   return `${amount.toLocaleString("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
+function extractServiceNameFromEmail(email: string): string {
+  const domain = (email.split("@")[1] || "").toLowerCase();
+  const parts = domain.split(".");
+  // Use second-to-last part for subdomains: "business-updates.facebook.com" -> "facebook"
+  const name = parts.length >= 3 ? parts[parts.length - 2] : parts[0] || "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function extractDomainPattern(email: string): string {
+  const domain = email.split("@")[1] || "";
+  return `@${domain}`;
+}
+
 export default function InvoiceTrackerClient() {
   const [period, setPeriod] = useState(currentPeriod());
   const [summary, setSummary] = useState<InvoiceSummaryRow[]>([]);
@@ -139,6 +152,7 @@ export default function InvoiceTrackerClient() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [bulkDoneLoading, setBulkDoneLoading] = useState(false);
   const [totalPendingCount, setTotalPendingCount] = useState(0);
+  const [unmatchedForService, setUnmatchedForService] = useState<InvoiceLog | null>(null);
 
   // --- Toast helpers ---
 
@@ -254,11 +268,24 @@ export default function InvoiceTrackerClient() {
 
   async function handleSaveService(data: Partial<InvoiceService>) {
     if (modalService === "new") {
-      await fetch("/api/invoices/services", {
+      const res = await fetch("/api/invoices/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      // If created from an unmatched email, reassign that log to the new service
+      if (res.ok && unmatchedForService) {
+        const newService = await res.json();
+        if (newService?.id) {
+          await fetch(`/api/invoices/logs/${unmatchedForService.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ service_id: newService.id, status: "pending" }),
+          });
+          setUnmatched((prev) => prev.filter((u) => u.id !== unmatchedForService.id));
+        }
+        setUnmatchedForService(null);
+      }
     } else if (modalService) {
       await fetch(`/api/invoices/services/${modalService.id}`, {
         method: "PUT",
@@ -957,7 +984,10 @@ export default function InvoiceTrackerClient() {
                   </div>
                   <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                     <button
-                      onClick={() => setModalService("new")}
+                      onClick={() => {
+                        setUnmatchedForService(u);
+                        setModalService("new");
+                      }}
                       className="text-xs text-indigo-600 hover:text-indigo-700 font-medium px-2 py-1 rounded hover:bg-indigo-50"
                     >
                       Add as service
@@ -1184,7 +1214,11 @@ export default function InvoiceTrackerClient() {
       {modalService !== null && (
         <ServiceModal
           service={modalService === "new" ? null : modalService}
-          onClose={() => setModalService(null)}
+          prefill={modalService === "new" && unmatchedForService ? {
+            name: extractServiceNameFromEmail(unmatchedForService.email_from || ""),
+            senderPattern: extractDomainPattern(unmatchedForService.email_from || ""),
+          } : undefined}
+          onClose={() => { setModalService(null); setUnmatchedForService(null); }}
           onSave={handleSaveService}
           onDelete={
             modalService !== "new" && modalService

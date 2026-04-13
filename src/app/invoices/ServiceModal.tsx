@@ -45,15 +45,22 @@ function splitConditions(conditions: Condition[]): {
 
 interface ServiceModalProps {
   service: InvoiceService | null; // null = create new
+  prefill?: { name?: string; senderPattern?: string };
   onClose: () => void;
   onSave: (data: Partial<InvoiceService>) => Promise<void>;
   onDelete?: () => Promise<void>;
 }
 
-export default function ServiceModal({ service, onClose, onSave, onDelete }: ServiceModalProps) {
-  const [name, setName] = useState(service?.name || "");
+export default function ServiceModal({ service, prefill, onClose, onSave, onDelete }: ServiceModalProps) {
+  const [name, setName] = useState(service?.name || prefill?.name || "");
   const [isManualUpload, setIsManualUpload] = useState(service?.is_manual_upload ?? false);
-  const [conditions, setConditions] = useState<Condition[]>(buildConditionsFromService(service));
+  const [conditions, setConditions] = useState<Condition[]>(
+    service
+      ? buildConditionsFromService(service)
+      : prefill?.senderPattern
+      ? [{ field: "sender" as ConditionField, value: prefill.senderPattern }]
+      : [{ field: "sender" as ConditionField, value: "" }]
+  );
   const [forwardTo, setForwardTo] = useState<InvoiceForwardTarget>(service?.forward_to || "receipts");
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual" | "quarterly" | "usage_based" | "one_time">(service?.billing_cycle || "monthly");
   const [anchorMonth, setAnchorMonth] = useState<number | null>(service?.billing_anchor_month ?? null);

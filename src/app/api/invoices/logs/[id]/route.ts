@@ -58,6 +58,7 @@ export async function PUT(
 
   if (body.status !== undefined) update.status = body.status;
   if (body.notes !== undefined) update.notes = body.notes;
+  if (body.service_id !== undefined) update.service_id = body.service_id;
 
   const { data, error } = await db
     .from("invoice_logs")
