@@ -12,7 +12,7 @@ export async function PUT(
   const body = await req.json();
   const db = createServerSupabase();
 
-  // Forward to Juni: send a "ready" log to Juni
+  // Forward to Juni: send a "pending" log to Juni
   if (body.action === "forward") {
     try {
       const result = await forwardLogToJuni(id);

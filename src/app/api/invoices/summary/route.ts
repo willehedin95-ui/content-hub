@@ -98,13 +98,11 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // Pick the "best" log (paid > forwarded > manual > ready > received_no_pdf > error > waiting)
+    // Pick the "best" log (done > sent > pending > error > waiting)
     const priority: Record<string, number> = {
-      paid: 7,
-      forwarded: 6,
-      manual: 5,
-      ready: 4,
-      received_no_pdf: 3,
+      done: 7,
+      sent: 6,
+      pending: 4,
       error: 2,
       waiting: 1,
     };

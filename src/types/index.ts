@@ -1232,7 +1232,7 @@ export interface InvoiceService {
   updated_at: string;
 }
 
-export type InvoiceStatus = "waiting" | "received_no_pdf" | "forwarded" | "error" | "manual" | "not_due" | "unmatched" | "ready" | "paid";
+export type InvoiceStatus = "waiting" | "pending" | "sent" | "done" | "error" | "unmatched" | "not_due" | "dismissed";
 
 export interface InvoiceLog {
   id: string;

@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     .select("*")
     .not("service_id", "is", null)
     .gte("period", sinceStr)
-    .in("status", ["forwarded", "manual"]);
+    .in("status", ["sent", "done"]);
 
   const logs = allLogs || [];
 

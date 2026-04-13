@@ -351,7 +351,7 @@ export default function BulkUploadModal({ onClose, onComplete }: BulkUploadModal
                 {successCount > 0 && (
                   <div className="flex items-center gap-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
                     <Check className="w-4 h-4" />
-                    {successCount} {wasSaveOnly ? "saved" : "forwarded"}
+                    {successCount} {wasSaveOnly ? "saved" : "sent"}
                   </div>
                 )}
                 {errorCount > 0 && (

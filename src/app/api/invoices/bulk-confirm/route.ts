@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         .insert({
           service_id: item.serviceId,
           period: item.period,
-          status: saveOnly ? "manual" : "forwarded",
+          status: saveOnly ? "pending" : "sent",
           email_subject: `Bulk upload: ${file.name}`,
           email_from: "manual",
           email_date: new Date().toISOString(),

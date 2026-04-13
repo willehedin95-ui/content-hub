@@ -14,21 +14,17 @@ export async function POST(req: NextRequest) {
   const db = createServerSupabase();
 
   // Get all unsent logs for this period:
-  // - "ready" entries (detected but not yet forwarded)
-  // - "manual" entries with stored PDF but not forwarded
+  // - "pending" entries (detected but not yet sent to Juni)
   const { data: logs, error } = await db
     .from("invoice_logs")
     .select("id, status, pdf_storage_path, forwarded_at")
-    .in("status", ["ready", "manual"])
+    .eq("status", "pending")
     .eq("period", period)
     .not("service_id", "is", null);
 
-  // Filter: only include entries that actually need forwarding
+  // Filter: only include entries that have a PDF and haven't been forwarded yet
   const forwardable = (logs || []).filter((l: { status: string; pdf_storage_path: string | null; forwarded_at: string | null }) => {
-    if (l.status === "ready") return true;
-    // Manual entries only if they have a stored PDF and haven't been forwarded
-    if (l.status === "manual" && l.pdf_storage_path && !l.forwarded_at) return true;
-    return false;
+    return l.pdf_storage_path && !l.forwarded_at;
   });
 
   if (error) {

@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     });
     smtpOk = true;
   } catch (e) {
-    console.error("[invoice-upload] SMTP failed, saving as ready:", e instanceof Error ? e.message : e);
+    console.error("[invoice-upload] SMTP failed, saving as pending:", e instanceof Error ? e.message : e);
   }
 
   // Store PDF in Supabase storage for later download/forwarding
@@ -99,14 +99,14 @@ export async function POST(req: NextRequest) {
     .upload(storagePath, buffer, { contentType: "application/pdf", upsert: true })
     .catch((err: Error) => console.error("[invoice-upload] Storage upload failed:", err.message));
 
-  // Try to resolve an existing "ready" or "received_no_pdf" detection log
+  // Try to resolve an existing "pending" or "error" detection log
   // instead of always creating a new one.
   const { data: pendingLog } = await db
     .from("invoice_logs")
     .select("id")
     .eq("service_id", serviceId)
     .eq("period", period)
-    .in("status", ["ready", "received_no_pdf"])
+    .in("status", ["pending", "error"])
     .order("email_date", { ascending: true })
     .limit(1)
     .single();
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   if (pendingLog) {
     await db.from("invoice_logs").update({
-      status: smtpOk ? "forwarded" : "manual",
+      status: smtpOk ? "sent" : "pending",
       forwarded_at: smtpOk ? new Date().toISOString() : null,
       pdf_filename: file.name,
       pdf_size_bytes: buffer.length,
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     const { data: log } = await db.from("invoice_logs").insert({
       service_id: serviceId,
       period,
-      status: smtpOk ? "forwarded" : "manual",
+      status: smtpOk ? "sent" : "pending",
       email_subject: `Manual upload: ${file.name}`,
       email_from: "manual",
       email_date: new Date().toISOString(),

@@ -941,7 +941,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         await db.from("invoice_logs").insert({
           service_id: service.id,
           period,
-          status: "received_no_pdf",
+          status: "error",
           email_uid: String(email.uid),
           email_subject: email.subject,
           email_from: email.from,
@@ -986,7 +986,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
       }
 
       // Auto-forward to Juni
-      let logStatus: "forwarded" | "ready" = "ready";
+      let logStatus: "sent" | "pending" = "pending";
       let forwardedAt: string | null = null;
       try {
         const forwardTarget = (service.forward_to || "receipts") as "receipts" | "invoices";
@@ -994,7 +994,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
           service.name, period, fullEmail, email.subject, forwardTarget
         );
         if (result.success) {
-          logStatus = "forwarded";
+          logStatus = "sent";
           forwardedAt = new Date().toISOString();
           console.log(`[invoice-mail] [${accountId}] Auto-forwarded ${service.name} (${period}) to Juni`);
         } else {
@@ -1101,7 +1101,7 @@ export async function retryForward(
       await db.from("invoice_logs").insert({
         service_id: service.id,
         period,
-        status: result.success ? "forwarded" : "error",
+        status: result.success ? "sent" : "error",
         email_uid: String(emailUid),
         email_subject: subject,
         email_from: from,
@@ -1127,7 +1127,7 @@ export async function retryForward(
     await db.from("invoice_logs").insert({
       service_id: service.id,
       period,
-      status: result.success ? "forwarded" : "error",
+      status: result.success ? "sent" : "error",
       email_uid: String(emailUid),
       email_subject: subject,
       email_from: from,
@@ -1216,7 +1216,7 @@ export async function forwardLogToJuni(
         });
 
         await db.from("invoice_logs").update({
-          status: "forwarded",
+          status: "sent",
           forwarded_at: new Date().toISOString(),
           error_message: null,
           updated_at: new Date().toISOString(),
@@ -1255,7 +1255,7 @@ export async function forwardLogToJuni(
 
     if (result.success) {
       await db.from("invoice_logs").update({
-        status: "forwarded",
+        status: "sent",
         forwarded_at: new Date().toISOString(),
         error_message: null,
         updated_at: new Date().toISOString(),
@@ -1297,7 +1297,7 @@ export async function reprocessPeriods(): Promise<{
   const { data: logs } = await db
     .from("invoice_logs")
     .select("id, service_id, period, email_uid, email_date, imap_account_id, invoice_services(name)")
-    .in("status", ["forwarded", "error", "received_no_pdf"])
+    .in("status", ["sent", "error"])
     .not("email_uid", "is", null)
     .order("created_at", { ascending: false });
 
