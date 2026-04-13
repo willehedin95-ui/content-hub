@@ -99,14 +99,16 @@ export async function POST(req: NextRequest) {
     .upload(storagePath, buffer, { contentType: "application/pdf", upsert: true })
     .catch((err: Error) => console.error("[invoice-upload] Storage upload failed:", err.message));
 
-  // Try to resolve an existing "pending" or "error" detection log
-  // instead of always creating a new one.
+  // Try to resolve an existing detection log that has no PDF yet
+  // (e.g. auto-detected email without attachment). Only claim logs
+  // without a PDF so multi-file uploads don't overwrite each other.
   const { data: pendingLog } = await db
     .from("invoice_logs")
     .select("id")
     .eq("service_id", serviceId)
     .eq("period", period)
     .in("status", ["pending", "error"])
+    .is("pdf_storage_path", null)
     .order("email_date", { ascending: true })
     .limit(1)
     .single();
