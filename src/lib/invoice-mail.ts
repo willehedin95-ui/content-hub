@@ -339,7 +339,7 @@ async function downloadFullEmailStandalone(uid: number, accountId?: string): Pro
 function matchEmailToService(
   email: InvoiceEmail,
   services: InvoiceService[]
-): InvoiceService | null {
+): { service: InvoiceService; score: number } | null {
   const fromLower = email.from.toLowerCase();
   const subjectLower = email.subject.toLowerCase();
 
@@ -388,7 +388,7 @@ function matchEmailToService(
       bestMatch = svc;
     }
   }
-  return bestMatch;
+  return bestMatch ? { service: bestMatch, score: bestScore } : null;
 }
 
 // --- Invoice heuristics ---
@@ -687,6 +687,42 @@ function extractOriginalEmailDate(bodyHtml: string | null): Date | null {
   return null;
 }
 
+/**
+ * Extract the original sender email from a forwarded email body.
+ * When Outlook forwards an email, the body includes headers like:
+ *   Swedish: "Från: Meta Platforms <noreply@business-updates.facebook.com>"
+ *   English: "From: Shopify <billing@shopify.com>"
+ * Returns the extracted email address, or null if not found.
+ */
+function extractOriginalSender(bodyHtml: string | null): string | null {
+  if (!bodyHtml) return null;
+
+  // Strip HTML to plain text (same approach as extractOriginalEmailDate)
+  const text = bodyHtml
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&#\d+;/g, " ")
+    .replace(/\s+/g, " ");
+
+  // Match "Från: Name <email>" or "From: Name <email>"
+  const match = text.match(/(?:Från|From)\s*:\s*[^<]*<([^>]+@[^>]+)>/i);
+  if (match) {
+    return match[1].trim().toLowerCase();
+  }
+
+  // Fallback: "Från: email@domain.com" without angle brackets
+  const match2 = text.match(/(?:Från|From)\s*:\s*(\S+@\S+\.\S+)/i);
+  if (match2) {
+    return match2[1].trim().toLowerCase();
+  }
+
+  return null;
+}
+
 // --- Orchestrator ---
 
 function emailPeriod(date: Date): string {
@@ -807,7 +843,36 @@ async function processAccount(account: ImapAccountConfig): Promise<{
     const uid = Number(email.uid);
     if (uid > maxUid) maxUid = uid;
 
-    const service = matchEmailToService(email, services as InvoiceService[]);
+    // Two-pass matching: first try envelope data, then extract original sender if weak/no match
+    let matchResult = matchEmailToService(email, services as InvoiceService[]);
+    let service = matchResult?.service ?? null;
+    let originalSender: string | null = null;
+    let cachedFullEmail: Buffer | null = null;
+    let cachedEmailHtml: string | null = null;
+
+    // If no match or weak match (subject-only, score < 10), try extracting original sender
+    // from forwarded email body. This handles Outlook-forwarded emails where the envelope
+    // sender is the forwarder (e.g. Wille.Hedin@hotmail.com), not the original sender.
+    if (!matchResult || matchResult.score < 10) {
+      try {
+        cachedFullEmail = await downloadFullEmail(session.client, email.uid);
+        cachedEmailHtml = await extractHtmlFromEmail(cachedFullEmail);
+        originalSender = extractOriginalSender(cachedEmailHtml);
+
+        if (originalSender) {
+          console.log(`[invoice-mail] [${accountId}] Extracted original sender: ${originalSender} (envelope: ${email.from})`);
+          const enhancedEmail = { ...email, from: originalSender };
+          const betterMatch = matchEmailToService(enhancedEmail, services as InvoiceService[]);
+          if (betterMatch && betterMatch.score > (matchResult?.score ?? 0)) {
+            matchResult = betterMatch;
+            service = betterMatch.service;
+          }
+        }
+      } catch (dlErr) {
+        console.error(`[invoice-mail] [${accountId}] Failed to download email for sender extraction:`, dlErr);
+      }
+    }
+
     if (!service) {
       // Only store as unmatched if subject contains invoice keywords
       if (looksLikeInvoice(email)) {
@@ -828,6 +893,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
             email_subject: email.subject,
             email_from: email.from,
             email_date: email.date.toISOString(),
+            original_sender: originalSender,
             imap_account_id: accountId,
           });
         }
@@ -853,9 +919,10 @@ async function processAccount(account: ImapAccountConfig): Promise<{
     }
 
     try {
-      const fullEmail = await downloadFullEmail(session.client, email.uid);
+      // Use cached full email if we already downloaded it during sender extraction
+      const fullEmail = cachedFullEmail || await downloadFullEmail(session.client, email.uid);
       // Extract HTML for amount detection and original date extraction
-      const emailHtml = await extractHtmlFromEmail(fullEmail);
+      const emailHtml = cachedEmailHtml || await extractHtmlFromEmail(fullEmail);
 
       // Check for original email date in forwarded email body
       // (e.g. Outlook "Skickat: den 15 februari 2025 20:47")
@@ -881,6 +948,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
           email_date: effectiveDate.toISOString(),
           error_message: "No PDF attachment and no HTML body",
           imap_account_id: accountId,
+          original_sender: originalSender,
         });
         skipped++;
         continue;
@@ -951,6 +1019,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         imap_account_id: accountId,
         pdf_storage_path: pdfStoragePath,
         forwarded_at: forwardedAt,
+        original_sender: originalSender,
       });
       forwarded++;
     } catch (e) {
@@ -965,6 +1034,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         email_date: email.date.toISOString(),
         error_message: msg,
         imap_account_id: accountId,
+        original_sender: originalSender,
       });
       errors++;
     }
