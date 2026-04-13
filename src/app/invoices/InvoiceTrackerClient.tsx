@@ -421,13 +421,19 @@ export default function InvoiceTrackerClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ period }),
       });
-      const data = await res.json();
-      const forwarded = data.forwarded || 0;
-      const errors = data.errors || 0;
-      if (errors > 0) {
-        addToast("error", `${forwarded} sent, ${errors} error${errors > 1 ? "s" : ""}`);
-      } else if (forwarded > 0) {
-        addToast("success", `${forwarded} invoice${forwarded > 1 ? "s" : ""} sent to Juni`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        addToast("error", data.error || `Server error (${res.status})`);
+      } else {
+        const forwarded = data.forwarded || 0;
+        const errors = data.errors || 0;
+        if (errors > 0) {
+          addToast("error", `${forwarded} sent, ${errors} failed`);
+        } else if (forwarded > 0) {
+          addToast("success", `${forwarded} invoice${forwarded > 1 ? "s" : ""} sent to Juni`);
+        } else {
+          addToast("info", "No invoices to send");
+        }
       }
       await fetchSummary();
     } catch {

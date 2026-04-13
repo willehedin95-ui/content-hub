@@ -143,6 +143,48 @@ function getForwardEmail(target: "receipts" | "invoices" = "receipts"): string {
   return target === "invoices" ? JUNI_INVOICES_EMAIL : JUNI_RECEIPTS_EMAIL;
 }
 
+/**
+ * Create a reusable SMTP forwarder for bulk operations.
+ * Uses a single SMTP connection for all sends (DNS resolved once, TLS once).
+ */
+export async function createBulkForwarder() {
+  const smtpConfig = getSmtpConfig();
+  const { ip, servername } = await resolveHost(smtpConfig.host);
+  const transporter = nodemailer.createTransport({
+    ...smtpConfig,
+    host: ip,
+    ...(servername ? { tls: { servername } } : {}),
+    pool: true,
+    maxConnections: 1,
+  });
+
+  return {
+    async send(opts: {
+      serviceName: string;
+      period: string;
+      forwardTo: string;
+      pdfFilename: string;
+      pdfBuffer: Buffer;
+    }) {
+      const forwardEmail = getForwardEmail(opts.forwardTo as "receipts" | "invoices");
+      await transporter.sendMail({
+        from: smtpConfig.auth.user,
+        to: forwardEmail,
+        subject: `Invoice: ${opts.serviceName} - ${opts.period}`,
+        text: `Invoice/receipt for ${opts.serviceName}, period ${opts.period}.`,
+        attachments: [{
+          filename: opts.pdfFilename,
+          content: opts.pdfBuffer,
+          contentType: "application/pdf",
+        }],
+      });
+    },
+    close() {
+      transporter.close();
+    },
+  };
+}
+
 /** Extract PDF attachments from BODYSTRUCTURE */
 function findPdfs(
   struct: Record<string, unknown> | Record<string, unknown>[],
