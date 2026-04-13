@@ -755,6 +755,20 @@ export default function InvoiceTrackerClient() {
                     <StatusBadge status={row.status} />
                   </div>
 
+                  {/* Upload button for manual services */}
+                  {row.service.is_manual_upload && !isSent && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUploadTarget({ serviceId: row.service.id, serviceName: row.service.name });
+                      }}
+                      className="flex-shrink-0 p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Upload PDF"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </button>
+                  )}
+
                   {/* Menu button */}
                   <div className="relative flex-shrink-0">
                     <button
