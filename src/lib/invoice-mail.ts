@@ -1105,7 +1105,27 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         } catch (parseErr) {
           console.error(`[invoice-mail] Failed to parse email for PDF storage:`, parseErr);
         }
-      } else if (!emailHtml && emailText) {
+      } else if (emailHtml) {
+        // HTML-only email (no PDF attachment) - generate PDF from HTML body
+        // This handles Meta receipts and other services that embed receipts as HTML
+        try {
+          generatedPdfBuffer = await htmlToPdf(emailHtml);
+          actualPdfFilename = `${service.name.replace(/[^a-zA-Z0-9]/g, "_")}_receipt.pdf`;
+          const storagePath = `${service.id}/${period}/${email.uid}_html_receipt.pdf`;
+          const { error: uploadErr } = await db.storage
+            .from("invoice-pdfs")
+            .upload(storagePath, generatedPdfBuffer, {
+              contentType: "application/pdf",
+              upsert: true,
+            });
+          if (!uploadErr) {
+            pdfStoragePath = storagePath;
+            console.log(`[invoice-mail] [${accountId}] Generated PDF from HTML for ${service.name} (${generatedPdfBuffer.length} bytes)`);
+          }
+        } catch (pdfErr) {
+          console.error(`[invoice-mail] Failed to generate PDF from HTML:`, pdfErr);
+        }
+      } else if (emailText) {
         // Plain text email (no PDF, no HTML) - generate PDF from text body
         try {
           const subject = email.subject || "Invoice";
@@ -1167,7 +1187,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         email_from: email.from,
         email_date: effectiveDate.toISOString(),
         pdf_filename: actualPdfFilename,
-        pdf_size_bytes: hasPdf ? fullEmail.length : null,
+        pdf_size_bytes: hasPdf ? fullEmail.length : (generatedPdfBuffer?.length || null),
         amount: amountInfo?.amount || null,
         currency: amountInfo?.currency || null,
         imap_account_id: accountId,
