@@ -937,6 +937,25 @@ async function processAccount(account: ImapAccountConfig): Promise<{
       const hasPdf = email.pdfAttachments.length > 0;
       const pdfFilename = hasPdf ? email.pdfAttachments[0].filename : null;
 
+      // Content-based dedup: same email forwarded multiple times gets different UIDs.
+      // Check subject + period + pdf_filename to catch forwarded duplicates while
+      // allowing recurring emails (Meta/Klaviyo) that have different PDF filenames.
+      if (email.subject && pdfFilename) {
+        const { data: contentDup } = await db
+          .from("invoice_logs")
+          .select("id")
+          .eq("service_id", service.id)
+          .eq("period", period)
+          .eq("email_subject", email.subject)
+          .eq("pdf_filename", pdfFilename)
+          .maybeSingle();
+        if (contentDup) {
+          console.log(`[invoice-mail] [${accountId}] Skipping content duplicate: "${email.subject}" (PDF: ${pdfFilename})`);
+          skipped++;
+          continue;
+        }
+      }
+
       if (!hasPdf && !emailHtml) {
         await db.from("invoice_logs").insert({
           service_id: service.id,

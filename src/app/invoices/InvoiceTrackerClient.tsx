@@ -313,15 +313,6 @@ export default function InvoiceTrackerClient() {
     await fetchSummary();
   }
 
-  async function handleMarkLogDone(logId: string) {
-    await fetch(`/api/invoices/logs/${logId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "done" }),
-    });
-    await fetchSummary();
-  }
-
   async function handleRetry(logId: string) {
     setRetrying(logId);
     try {
@@ -878,17 +869,6 @@ export default function InvoiceTrackerClient() {
                             logDone ? "border-gray-100 opacity-60" : "border-gray-200"
                           }`}
                         >
-                          {/* Checkbox */}
-                          <button
-                            onClick={() => !logDone && handleMarkLogDone(log.id)}
-                            className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              logDone
-                                ? "bg-emerald-500 border-emerald-500 cursor-default"
-                                : "border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer"
-                            }`}
-                          >
-                            {logDone && <Check className="w-3 h-3 text-white" />}
-                          </button>
                           <div className="flex-1 min-w-0 space-y-1">
                             <p className={`text-sm font-medium truncate ${logDone ? "text-gray-400 line-through" : "text-gray-700"}`}>
                               {log.email_subject || `Invoice #${logIdx + 1}`}
@@ -935,7 +915,9 @@ export default function InvoiceTrackerClient() {
                 {/* Expanded: no log yet */}
                 {expandedRow === row.service.id && row.logs.length === 0 && (
                   <div className="bg-gray-50/60 border-t border-gray-100 px-5 py-4 text-sm text-gray-400">
-                    No email received yet for this period.
+                    {row.service.billing_cycle === "usage_based"
+                      ? "No charges this month."
+                      : "No email received yet for this period."}
                   </div>
                 )}
               </div>
