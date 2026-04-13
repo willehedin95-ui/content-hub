@@ -221,6 +221,19 @@ export async function downloadPdfFromImap(
     return { buffer: pdfBuffer, filename: "invoice.pdf" };
   }
 
+  // Fall back to plain text body -> wrap in HTML -> PDF
+  const text = typeof parsed.text === "string" ? parsed.text : null;
+  if (text) {
+    const subject = parsed.subject || "Invoice";
+    const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      body { font-family: monospace; font-size: 13px; padding: 40px; line-height: 1.6; color: #333; }
+      h2 { font-family: sans-serif; margin-bottom: 20px; }
+      pre { white-space: pre-wrap; word-wrap: break-word; }
+    </style></head><body><h2>${subject.replace(/</g, "&lt;")}</h2><pre>${text.replace(/</g, "&lt;")}</pre></body></html>`;
+    const pdfBuffer = await htmlToPdf(wrappedHtml);
+    return { buffer: pdfBuffer, filename: "invoice.pdf" };
+  }
+
   return null;
 }
 
@@ -1037,7 +1050,14 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         }
       }
 
+      // Check for plain text body as fallback (e.g. 46elks receipts)
+      let emailText: string | null = null;
       if (!hasPdf && !emailHtml) {
+        const parsed = await simpleParser(fullEmail);
+        emailText = typeof parsed.text === "string" ? parsed.text : null;
+      }
+
+      if (!hasPdf && !emailHtml && !emailText) {
         await db.from("invoice_logs").insert({
           service_id: service.id,
           period,
@@ -1046,7 +1066,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
           email_subject: email.subject,
           email_from: email.from,
           email_date: effectiveDate.toISOString(),
-          error_message: "No PDF attachment and no HTML body",
+          error_message: "No PDF, no HTML, and no text body",
           imap_account_id: accountId,
           original_sender: originalSender,
         });
@@ -1059,6 +1079,8 @@ async function processAccount(account: ImapAccountConfig): Promise<{
 
       // Store PDF to Supabase storage as backup
       let pdfStoragePath: string | null = null;
+      let actualPdfFilename = pdfFilename;
+      let generatedPdfBuffer: Buffer | null = null;
       if (hasPdf) {
         try {
           const parsed = await simpleParser(fullEmail);
@@ -1083,6 +1105,30 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         } catch (parseErr) {
           console.error(`[invoice-mail] Failed to parse email for PDF storage:`, parseErr);
         }
+      } else if (!emailHtml && emailText) {
+        // Plain text email (no PDF, no HTML) - generate PDF from text body
+        try {
+          const subject = email.subject || "Invoice";
+          const wrappedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: monospace; font-size: 13px; padding: 40px; line-height: 1.6; color: #333; }
+            h2 { font-family: sans-serif; margin-bottom: 20px; }
+            pre { white-space: pre-wrap; word-wrap: break-word; }
+          </style></head><body><h2>${subject.replace(/</g, "&lt;")}</h2><pre>${emailText.replace(/</g, "&lt;")}</pre></body></html>`;
+          generatedPdfBuffer = await htmlToPdf(wrappedHtml);
+          actualPdfFilename = "invoice.pdf";
+          const storagePath = `${service.id}/${period}/${email.uid}_text_receipt.pdf`;
+          const { error: uploadErr } = await db.storage
+            .from("invoice-pdfs")
+            .upload(storagePath, generatedPdfBuffer, {
+              contentType: "application/pdf",
+              upsert: true,
+            });
+          if (!uploadErr) {
+            pdfStoragePath = storagePath;
+          }
+        } catch (pdfErr) {
+          console.error(`[invoice-mail] Failed to generate PDF from text:`, pdfErr);
+        }
       }
 
       // Auto-forward to Juni
@@ -1090,9 +1136,17 @@ async function processAccount(account: ImapAccountConfig): Promise<{
       let forwardedAt: string | null = null;
       try {
         const forwardTarget = (service.forward_to || "receipts") as "receipts" | "invoices";
-        const result = await forwardToJuni(
-          service.name, period, fullEmail, email.subject, forwardTarget
-        );
+        let result: ForwardResult;
+        if (generatedPdfBuffer) {
+          // Plain text email: forward with generated PDF
+          result = await forwardWithGeneratedPdf(
+            service.name, email.subject, fullEmail, generatedPdfBuffer, forwardTarget
+          );
+        } else {
+          result = await forwardToJuni(
+            service.name, period, fullEmail, email.subject, forwardTarget
+          );
+        }
         if (result.success) {
           logStatus = "sent";
           forwardedAt = new Date().toISOString();
@@ -1112,7 +1166,7 @@ async function processAccount(account: ImapAccountConfig): Promise<{
         email_subject: email.subject,
         email_from: email.from,
         email_date: effectiveDate.toISOString(),
-        pdf_filename: pdfFilename,
+        pdf_filename: actualPdfFilename,
         pdf_size_bytes: hasPdf ? fullEmail.length : null,
         amount: amountInfo?.amount || null,
         currency: amountInfo?.currency || null,
