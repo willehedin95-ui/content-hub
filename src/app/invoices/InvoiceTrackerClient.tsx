@@ -26,8 +26,9 @@ import {
   X,
   Send,
 } from "lucide-react";
-import type { InvoiceService, InvoiceSummaryRow, InvoiceStatus, InvoiceLog } from "@/types";
+import type { InvoiceService, InvoiceSummaryRow, InvoiceLog } from "@/types";
 
+import StatusBadge from "./StatusBadge";
 import ServiceModal from "./ServiceModal";
 import BulkUploadModal from "./BulkUploadModal";
 
@@ -62,9 +63,15 @@ interface Insights {
   } | null;
 }
 
+interface Toast {
+  id: string;
+  type: "success" | "error" | "info";
+  message: string;
+  action?: { label: string; onClick: () => void };
+}
+
 function currentPeriod(): string {
   const now = new Date();
-  // Default to previous month — invoices arrive after the billing period
   const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -119,18 +126,33 @@ export default function InvoiceTrackerClient() {
   const [juniExpanded, setJuniExpanded] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
-  const [checkResult, setCheckResult] = useState<{ forwarded: number; errors: number; errorMessage?: string } | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insights | null>(null);
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
   const [unmatched, setUnmatched] = useState<InvoiceLog[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
   const [uploadTarget, setUploadTarget] = useState<{ serviceId: string; serviceName: string } | null>(null);
-  const [lastUpload, setLastUpload] = useState<{ logId: string; serviceName: string; filename: string } | null>(null);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
-  const [forwarding, setForwarding] = useState<string | null>(null); // log id being forwarded
+  const [forwarding, setForwarding] = useState<string | null>(null);
   const [forwardingAll, setForwardingAll] = useState(false);
-  const [forwardResult, setForwardResult] = useState<{ forwarded: number; errors: number } | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [bulkDoneLoading, setBulkDoneLoading] = useState(false);
+  const [totalPendingCount, setTotalPendingCount] = useState(0);
+
+  // --- Toast helpers ---
+
+  function addToast(type: Toast["type"], message: string, action?: Toast["action"]) {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, type, message, action }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 8000);
+  }
+
+  function dismissToast(id: string) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  // --- Data fetching ---
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
@@ -159,6 +181,16 @@ export default function InvoiceTrackerClient() {
     } catch { /* ignore */ }
   }, [period]);
 
+  const fetchTotalPending = useCallback(async () => {
+    try {
+      const res = await fetch("/api/invoices/bulk-done");
+      if (res.ok) {
+        const data = await res.json();
+        setTotalPendingCount(data.count || 0);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // Fetch last_run_at on mount
   useEffect(() => {
     fetch("/api/invoices/check")
@@ -171,7 +203,8 @@ export default function InvoiceTrackerClient() {
     fetchSummary();
     fetchInsights();
     fetchUnmatched();
-  }, [fetchSummary, fetchInsights, fetchUnmatched]);
+    fetchTotalPending();
+  }, [fetchSummary, fetchInsights, fetchUnmatched, fetchTotalPending]);
 
   // Close action menu on click outside
   useEffect(() => {
@@ -183,25 +216,37 @@ export default function InvoiceTrackerClient() {
     return () => window.removeEventListener("click", onClick);
   }, [actionMenu]);
 
+  // --- Handlers ---
+
   async function handleCheck() {
     setChecking(true);
-    setCheckResult(null);
+    const scanToastId = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id: scanToastId, type: "info", message: "Scanning inbox for new invoices..." }]);
     try {
       const res = await fetch("/api/invoices/check", { method: "POST" });
       const data = await res.json();
+      // Remove scanning toast
+      setToasts((prev) => prev.filter((t) => t.id !== scanToastId));
       if (!res.ok || data.error) {
-        setCheckResult({ forwarded: 0, errors: 1, errorMessage: data.error || "Unknown error" });
+        addToast("error", data.error || "Unknown error checking inbox");
       } else {
-        const errMsg = data.errorDetails?.length ? data.errorDetails.join("; ") : undefined;
-        setCheckResult({ forwarded: data.forwarded || 0, errors: data.errors || 0, errorMessage: errMsg });
+        const errors = data.errors || 0;
+        const forwarded = data.forwarded || 0;
+        if (errors > 0) {
+          const errMsg = data.errorDetails?.length ? data.errorDetails.join("; ") : `${errors} error${errors > 1 ? "s" : ""}`;
+          addToast("error", errMsg);
+        } else if (forwarded > 0) {
+          addToast("success", `${forwarded} new invoice${forwarded > 1 ? "s" : ""} found`);
+        } else {
+          addToast("info", "No new invoices found");
+        }
         setLastRunAt(data.last_run_at || new Date().toISOString());
       }
       await fetchSummary();
       await fetchUnmatched();
-      setTimeout(() => setCheckResult(null), 8000);
     } catch {
-      setCheckResult({ forwarded: 0, errors: 1, errorMessage: "Request failed - check your connection" });
-      setTimeout(() => setCheckResult(null), 8000);
+      setToasts((prev) => prev.filter((t) => t.id !== scanToastId));
+      addToast("error", "Request failed - check your connection");
     } finally {
       setChecking(false);
     }
@@ -229,7 +274,7 @@ export default function InvoiceTrackerClient() {
     await fetchSummary();
   }
 
-  async function handleMarkManual(logId: string | undefined, serviceId: string) {
+  async function handleMarkManual(logId: string | undefined, _serviceId: string) {
     if (logId) {
       await fetch(`/api/invoices/logs/${logId}`, {
         method: "PUT",
@@ -245,7 +290,7 @@ export default function InvoiceTrackerClient() {
     await fetch(`/api/invoices/logs/${logId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "sent" }),
+      body: JSON.stringify({ status: "done" }),
     });
     await fetchSummary();
   }
@@ -302,7 +347,7 @@ export default function InvoiceTrackerClient() {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
           console.error("[upload] Error:", errData);
-          alert(`Upload failed for ${file.name}: ${errData.error || res.statusText}`);
+          addToast("error", `Upload failed for ${file.name}: ${errData.error || res.statusText}`);
           continue;
         }
 
@@ -313,14 +358,17 @@ export default function InvoiceTrackerClient() {
 
       await fetchSummary();
       setUploadTarget(null);
-      if (lastLogId) {
+      if (lastLogId && succeeded > 0) {
         const label = succeeded > 1 ? `${succeeded} files` : files[0].name;
-        setLastUpload({ logId: lastLogId, serviceName, filename: label });
-        setTimeout(() => setLastUpload(null), 15000);
+        const capturedLogId = lastLogId;
+        addToast("success", `${label} uploaded for ${serviceName}`, {
+          label: "Undo",
+          onClick: () => handleDeleteLog(capturedLogId),
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      alert(`Upload failed: ${msg.includes("abort") ? "Request timed out" : msg}`);
+      addToast("error", `Upload failed: ${msg.includes("abort") ? "Request timed out" : msg}`);
     } finally {
       setUploading(false);
       setUploadProgress(null);
@@ -329,7 +377,6 @@ export default function InvoiceTrackerClient() {
 
   async function handleDeleteLog(logId: string) {
     await fetch(`/api/invoices/logs/${logId}`, { method: "DELETE" });
-    setLastUpload(null);
     await fetchSummary();
   }
 
@@ -350,7 +397,6 @@ export default function InvoiceTrackerClient() {
 
   async function handleForwardAll() {
     setForwardingAll(true);
-    setForwardResult(null);
     try {
       const res = await fetch("/api/invoices/forward-all", {
         method: "POST",
@@ -358,17 +404,40 @@ export default function InvoiceTrackerClient() {
         body: JSON.stringify({ period }),
       });
       const data = await res.json();
-      setForwardResult({ forwarded: data.forwarded || 0, errors: data.errors || 0 });
+      const forwarded = data.forwarded || 0;
+      const errors = data.errors || 0;
+      if (errors > 0) {
+        addToast("error", `${forwarded} sent, ${errors} error${errors > 1 ? "s" : ""}`);
+      } else if (forwarded > 0) {
+        addToast("success", `${forwarded} invoice${forwarded > 1 ? "s" : ""} sent to Juni`);
+      }
       await fetchSummary();
-      setTimeout(() => setForwardResult(null), 8000);
     } catch {
-      setForwardResult({ forwarded: 0, errors: 1 });
-      setTimeout(() => setForwardResult(null), 8000);
+      addToast("error", "Failed to send invoices");
     } finally {
       setForwardingAll(false);
     }
   }
 
+  async function handleBulkDone() {
+    if (!confirm(`Mark all ${totalPendingCount} pending invoices as done?\n\nThis is for old entries that were handled outside the system.`)) return;
+    setBulkDoneLoading(true);
+    try {
+      const res = await fetch("/api/invoices/bulk-done", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      addToast("success", `${data.updated || 0} invoices marked as done`);
+      await fetchSummary();
+      await fetchTotalPending();
+    } catch {
+      addToast("error", "Failed to bulk update");
+    } finally {
+      setBulkDoneLoading(false);
+    }
+  }
 
   function copyToClipboard(email: string, type: "receipts" | "invoices") {
     navigator.clipboard.writeText(email);
@@ -376,12 +445,12 @@ export default function InvoiceTrackerClient() {
     setTimeout(() => setCopiedEmail(null), 2000);
   }
 
-  // Summary counts
+  // --- Computed values ---
+
   const done = summary.filter((r) => r.status === "sent" || r.status === "done").length;
   const needsAction = summary.length - summary.filter((r) => r.status === "not_due").length;
   const pct = needsAction > 0 ? Math.round((done / needsAction) * 100) : 100;
 
-  // Count individual pending logs (have PDF, ready to send)
   const isLogPending = (l: InvoiceLog) =>
     l.status === "pending" && l.pdf_storage_path && !l.forwarded_at;
   const readyForJuniCount = summary.reduce(
@@ -398,24 +467,21 @@ export default function InvoiceTrackerClient() {
   );
   const readyCount = readyForJuniCount + readyInvoiceCount;
 
-  const notSentCount = summary.filter((r) => r.status === "pending" && r.log?.pdf_storage_path && !r.log?.forwarded_at).length;
   const counts = {
     total: summary.length,
     sent: summary.filter((r) => r.status === "sent" || r.status === "done").length,
-    ready: readyCount,
+    pending: readyCount,
     waiting: summary.filter((r) => r.status === "waiting").length,
     error: summary.filter((r) => r.status === "error").length,
-    notSent: notSentCount,
     not_due: summary.filter((r) => r.status === "not_due").length,
   };
 
-  // Usage-based services with no invoices yet show as not_due, not waiting
   const showMonthEndWarning = isMonthEndWarning() && period === currentPeriod() && counts.waiting > 0;
-  const hasInsights = insights && (
-    insights.renewalAlerts.length > 0 ||
-    insights.pauseCandidates.length > 0 ||
-    insights.spendAnomalies.length > 0
-  );
+
+  const alertCount = (insights?.renewalAlerts.length || 0) +
+    (insights?.pauseCandidates.length || 0) +
+    (insights?.spendAnomalies.length || 0);
+  const hasInsights = alertCount > 0;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
@@ -490,266 +556,58 @@ export default function InvoiceTrackerClient() {
         </div>
       </div>
 
-      {/* Checking in progress banner */}
-      {checking && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700">
-          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-          <span>Scanning inbox for new invoices... this can take up to 30 seconds</span>
-        </div>
-      )}
-
-      {/* Check result toast */}
-      {checkResult && (
-        <div className={`mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 ${
-          checkResult.errors > 0
-            ? "bg-red-50 border border-red-200 text-red-700"
-            : checkResult.forwarded > 0
-            ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-            : "bg-gray-50 border border-gray-200 text-gray-600"
-        }`}>
-          {checkResult.errors > 0 ? (
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          ) : (
-            <Check className="w-4 h-4 flex-shrink-0" />
-          )}
-          {checkResult.forwarded > 0 && (
-            <span>{checkResult.forwarded} new invoice{checkResult.forwarded > 1 ? "s" : ""} found</span>
-          )}
-          {checkResult.errors > 0 && (
-            <span>{checkResult.errorMessage || `${checkResult.errors} error${checkResult.errors > 1 ? "s" : ""}`}</span>
-          )}
-          {checkResult.forwarded === 0 && checkResult.errors === 0 && (
-            <span>No new invoices found</span>
-          )}
-        </div>
-      )}
-
-      {/* Forward result toast */}
-      {forwardResult && (
-        <div className={`mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 ${
-          forwardResult.errors > 0
-            ? "bg-red-50 border border-red-200 text-red-700"
-            : "bg-emerald-50 border border-emerald-200 text-emerald-700"
-        }`}>
-          {forwardResult.errors > 0 ? (
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          ) : (
-            <Check className="w-4 h-4 flex-shrink-0" />
-          )}
-          <span>
-            {forwardResult.forwarded > 0 && `${forwardResult.forwarded} invoice${forwardResult.forwarded > 1 ? "s" : ""} sent to Juni`}
-            {forwardResult.forwarded > 0 && forwardResult.errors > 0 && ", "}
-            {forwardResult.errors > 0 && `${forwardResult.errors} error${forwardResult.errors > 1 ? "s" : ""}`}
-          </span>
-        </div>
-      )}
-
-      {/* Ready to send banner — receipts that can be auto-forwarded to Juni */}
-      {readyForJuniCount > 0 && (
+      {/* Action banner - pending invoices */}
+      {(readyForJuniCount > 0 || readyInvoiceCount > 0) && (
         <div className="mb-4 px-4 py-3 rounded-lg flex items-center justify-between bg-indigo-50 border border-indigo-200">
           <div className="flex items-center gap-2">
             <Send className="w-4 h-4 text-indigo-600 flex-shrink-0" />
             <span className="text-sm text-indigo-700">
-              <span className="font-semibold">{readyForJuniCount}</span> receipt{readyForJuniCount > 1 ? "s" : ""} ready to send to Juni
-            </span>
-          </div>
-          <button
-            onClick={handleForwardAll}
-            disabled={forwardingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-300 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {forwardingAll ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Send className="w-3.5 h-3.5" />
-            )}
-            Send to Juni
-          </button>
-        </div>
-      )}
-
-      {/* Unpaid invoices banner — invoice-type services with new invoices to download */}
-      {readyInvoiceCount > 0 && (
-        <div className="mb-4 px-4 py-3 rounded-lg flex items-center gap-2 bg-amber-50 border border-amber-200">
-          <Download className="w-4 h-4 text-amber-600 flex-shrink-0" />
-          <span className="text-sm text-amber-700">
-            <span className="font-semibold">{readyInvoiceCount}</span> unpaid invoice{readyInvoiceCount > 1 ? "s" : ""} to download and pay
-          </span>
-        </div>
-      )}
-
-      {/* Upload success toast with undo */}
-      {lastUpload && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center justify-between bg-emerald-50 border border-emerald-200 text-emerald-700">
-          <div className="flex items-center gap-2">
-            <Check className="w-4 h-4 flex-shrink-0" />
-            <span>
-              <span className="font-medium">{lastUpload.filename}</span> uploaded for {lastUpload.serviceName} ({formatPeriod(period)})
-            </span>
-          </div>
-          <button
-            onClick={() => handleDeleteLog(lastUpload.logId)}
-            className="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded transition-colors ml-3 flex-shrink-0"
-          >
-            Undo
-          </button>
-        </div>
-      )}
-
-      {/* Insights alerts */}
-      {hasInsights && (
-        <div className="space-y-2 mb-4">
-          {/* Renewal alerts */}
-          {insights.renewalAlerts.map((a) => (
-            <div key={a.service.id} className="px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700">
-              <CalendarClock className="w-4 h-4 flex-shrink-0" />
-              <span>
-                <span className="font-medium">{a.service.name}</span> renewal coming up in {a.daysUntil} days
-                {a.lastAmount && ` (~${fmtAmount(a.lastAmount, a.lastCurrency || "SEK")})`}
-              </span>
-            </div>
-          ))}
-
-          {/* Spend anomalies */}
-          {insights.spendAnomalies.map((a) => (
-            <div key={a.service.id} className={`px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 ${
-              a.percentChange > 0
-                ? "bg-red-50 border border-red-200 text-red-700"
-                : "bg-emerald-50 border border-emerald-200 text-emerald-700"
-            }`}>
-              {a.percentChange > 0 ? (
-                <TrendingUp className="w-4 h-4 flex-shrink-0" />
-              ) : (
-                <TrendingDown className="w-4 h-4 flex-shrink-0" />
+              {readyForJuniCount > 0 && (
+                <><span className="font-semibold">{readyForJuniCount}</span> receipt{readyForJuniCount > 1 ? "s" : ""} to send to Juni</>
               )}
-              <span>
-                <span className="font-medium">{a.service.name}</span>: {fmtAmount(a.currentAmount, a.currency)} this month
-                ({a.percentChange > 0 ? "+" : ""}{a.percentChange}% vs. avg {fmtAmount(a.averageAmount, a.currency)})
-              </span>
-            </div>
-          ))}
-
-          {/* Pause candidates */}
-          {insights.pauseCandidates.map((p) => (
-            <div key={p.service.id} className="px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-gray-50 border border-gray-200 text-gray-600">
-              <PauseCircle className="w-4 h-4 flex-shrink-0" />
-              <span>
-                <span className="font-medium">{p.service.name}</span> - no invoice in {p.monthsSinceLastInvoice} months. Still using it?
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Month-end warning */}
-      {showMonthEndWarning && (
-        <div className="mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>
-            <span className="font-medium">{counts.waiting} service{counts.waiting > 1 ? "s" : ""}</span> still waiting for invoices this month.
-            Month ends soon - check if any need manual handling.
-          </span>
-        </div>
-      )}
-
-      {/* Unmatched emails */}
-      {unmatched.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl mb-4 overflow-hidden">
-          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-amber-200">
-            <HelpCircle className="w-4 h-4 text-amber-600" />
-            <span className="text-sm font-medium text-amber-700">
-              {unmatched.length} unmatched email{unmatched.length > 1 ? "s" : ""} - not linked to any service
+              {readyForJuniCount > 0 && readyInvoiceCount > 0 && " + "}
+              {readyInvoiceCount > 0 && (
+                <><span className="font-semibold">{readyInvoiceCount}</span> unpaid invoice{readyInvoiceCount > 1 ? "s" : ""} to download</>
+              )}
             </span>
           </div>
-          {unmatched.map((u) => (
-            <div key={u.id} className="px-4 py-2.5 flex items-center justify-between border-b border-amber-100 last:border-0">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-gray-700 truncate">{u.email_subject}</p>
-                <p className="text-xs text-gray-400">{u.email_from} &middot; {u.email_date ? new Date(u.email_date).toLocaleDateString() : ""}</p>
-              </div>
-              <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                <button
-                  onClick={() => {
-                    // Pre-fill new service with this sender
-                    setModalService("new");
-                  }}
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium px-2 py-1 rounded hover:bg-indigo-50"
-                >
-                  Add as service
-                </button>
-                <button
-                  onClick={() => handleDismissUnmatched(u.id)}
-                  className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                  title="Dismiss"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+          {readyForJuniCount > 0 && (
+            <button
+              onClick={handleForwardAll}
+              disabled={forwardingAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-white border border-indigo-300 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {forwardingAll ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              Send to Juni
+            </button>
+          )}
         </div>
       )}
 
-      {/* Juni Email Info — collapsible */}
-      <div className="bg-white border border-gray-200 rounded-xl mb-4 overflow-hidden">
-        <button
-          onClick={() => setJuniExpanded(!juniExpanded)}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50"
-        >
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Juni Forwarding Addresses</span>
-          </div>
-          {juniExpanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          )}
-        </button>
-        {juniExpanded && (
-          <div className="px-4 pb-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500 mb-1">Paid Invoices & Receipts</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-sm text-gray-800 font-mono">{JUNI_EMAIL}</code>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); copyToClipboard(JUNI_EMAIL, "receipts"); }}
-                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                    title="Copy"
-                  >
-                    {copiedEmail === "receipts" ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500 mb-1">Unpaid Invoices</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-sm text-gray-800 font-mono">{JUNI_INVOICES_EMAIL}</code>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); copyToClipboard(JUNI_INVOICES_EMAIL, "invoices"); }}
-                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                    title="Copy"
-                  >
-                    {copiedEmail === "invoices" ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Bulk cleanup banner - old pending logs across all periods */}
+      {totalPendingCount > 0 && (
+        <div className="mb-4 px-4 py-2.5 rounded-lg flex items-center justify-between bg-gray-50 border border-gray-200">
+          <span className="text-sm text-gray-600">
+            <span className="font-semibold">{totalPendingCount}</span> pending invoice{totalPendingCount > 1 ? "s" : ""} across all months
+          </span>
+          <button
+            onClick={handleBulkDone}
+            disabled={bulkDoneLoading}
+            className="text-sm font-medium text-gray-600 hover:text-gray-800 bg-white border border-gray-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {bulkDoneLoading ? "Updating..." : "Skip all - handled elsewhere"}
+          </button>
+        </div>
+      )}
 
-      {/* Progress Bar + Spend */}
-      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4">
+      {/* Progress Bar */}
+      <div className={`bg-white border rounded-xl px-4 py-3 mb-4 ${
+        showMonthEndWarning ? "border-amber-300" : "border-gray-200"
+      }`}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3 text-sm">
             <span className="text-gray-500">
@@ -768,14 +626,9 @@ export default function InvoiceTrackerClient() {
                 <span className="font-semibold">{counts.sent}</span> sent
               </span>
             )}
-            {counts.ready > 0 && (
+            {counts.pending > 0 && (
               <span className="text-indigo-600">
-                <span className="font-semibold">{counts.ready}</span> ready
-              </span>
-            )}
-            {counts.notSent > 0 && (
-              <span className="text-amber-600">
-                <span className="font-semibold">{counts.notSent}</span> not sent
+                <span className="font-semibold">{counts.pending}</span> pending
               </span>
             )}
             {counts.waiting > 0 && (
@@ -795,6 +648,8 @@ export default function InvoiceTrackerClient() {
             className={`h-2 rounded-full transition-all duration-500 ${
               pct === 100
                 ? "bg-emerald-500"
+                : showMonthEndWarning
+                ? "bg-amber-400"
                 : pct >= 75
                 ? "bg-emerald-400"
                 : pct >= 50
@@ -804,7 +659,17 @@ export default function InvoiceTrackerClient() {
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="text-[10px] text-gray-400 mt-1 text-right">{pct}%</p>
+        <div className="flex items-center justify-between mt-1">
+          {showMonthEndWarning ? (
+            <span className="text-[10px] text-amber-600 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              {counts.waiting} service{counts.waiting > 1 ? "s" : ""} still waiting - month ends soon
+            </span>
+          ) : (
+            <span />
+          )}
+          <span className="text-[10px] text-gray-400">{pct}%</span>
+        </div>
       </div>
 
       {/* Service List */}
@@ -832,21 +697,16 @@ export default function InvoiceTrackerClient() {
             if (aDone !== bDone) return aDone - bDone;
             return a.service.name.localeCompare(b.service.name);
           }).map((row) => {
-            const isOverdue = showMonthEndWarning && row.status === "waiting";
             const isSent = row.status === "sent" || row.status === "done";
             const isNotDue = row.status === "not_due";
-            const isPending = row.status === "pending";
-            const borderColor = isSent ? "border-l-emerald-400" : isPending ? "border-l-indigo-400" : row.status === "error" ? "border-l-red-400" : isOverdue ? "border-l-amber-400" : "border-l-transparent";
 
             return (
               <div key={row.service.id} className="border-b border-gray-100 last:border-b-0">
                 <div
-                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 cursor-pointer border-l-[3px] ${borderColor} ${
-                    isOverdue ? "bg-amber-50/20" : ""
-                  }`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 cursor-pointer"
                   onClick={() => setExpandedRow(expandedRow === row.service.id ? null : row.service.id)}
                 >
-                  {/* Service name + type + billing link */}
+                  {/* Service name */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium ${isNotDue ? "text-gray-400" : "text-gray-800"}`}>
@@ -872,54 +732,12 @@ export default function InvoiceTrackerClient() {
                     )}
                   </div>
 
-                  {/* Status text */}
-                  <div className="flex-shrink-0 w-24 text-right">
-                    {isSent ? (
-                      <span className="text-xs font-medium text-emerald-600">{row.status === "done" ? "Done" : "Sent"}</span>
-                    ) : isPending ? (
-                      <span className="text-xs font-medium text-indigo-600">Pending</span>
-                    ) : row.status === "waiting" ? (
-                      <span className={`text-xs ${isOverdue ? "font-medium text-amber-600" : "text-gray-400"}`}>
-                        {isOverdue ? "Overdue" : "Waiting"}
-                      </span>
-                    ) : row.status === "error" ? (
-                      <span className="text-xs font-medium text-red-500">Error</span>
-                    ) : isNotDue ? (
-                      <span className="text-xs text-gray-300">-</span>
-                    ) : row.status === "unmatched" ? (
-                      <span className="text-xs text-orange-500">Unmatched</span>
-                    ) : row.status === "dismissed" ? (
-                      <span className="text-xs text-gray-400">Dismissed</span>
-                    ) : null}
+                  {/* Status badge */}
+                  <div className="flex-shrink-0">
+                    <StatusBadge status={row.status} />
                   </div>
 
-                  {/* Quick action */}
-                  <div className="flex-shrink-0 w-[90px] flex justify-end">
-                    {isPending && row.log?.pdf_storage_path && !row.log?.forwarded_at && row.log?.id ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleForwardLog(row.log!.id);
-                        }}
-                        disabled={forwarding === row.log.id}
-                        className="text-xs font-medium text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md transition-colors"
-                      >
-                        {forwarding === row.log.id ? "Sending..." : "Send"}
-                      </button>
-                    ) : row.service.is_manual_upload && !isSent && !isNotDue && !isPending ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setUploadTarget({ serviceId: row.service.id, serviceName: row.service.name });
-                        }}
-                        className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-500 transition-colors"
-                      >
-                        Upload
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {/* Menu button — always visible */}
+                  {/* Menu button */}
                   <div className="relative flex-shrink-0">
                     <button
                       onClick={(e) => {
@@ -933,7 +751,7 @@ export default function InvoiceTrackerClient() {
 
                     {actionMenu === row.service.id && (
                       <div
-                        className="absolute right-0 top-8 z-20 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+                        className="absolute right-0 top-8 z-20 w-52 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
@@ -1002,7 +820,7 @@ export default function InvoiceTrackerClient() {
                             onClick={() => handleMarkManual(row.log?.id, row.service.id)}
                             className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                           >
-                            Mark as done
+                            Skip - handled elsewhere
                           </button>
                         )}
                         {row.log?.id && (
@@ -1021,7 +839,7 @@ export default function InvoiceTrackerClient() {
                   </div>
                 </div>
 
-                {/* Expanded log details — clean card layout */}
+                {/* Expanded log details */}
                 {expandedRow === row.service.id && row.logs.length > 0 && (
                   <div className="bg-gray-50/60 border-t border-gray-100 px-5 py-3 space-y-2">
                     {row.logs.map((log, logIdx) => {
@@ -1045,11 +863,9 @@ export default function InvoiceTrackerClient() {
                             {logDone && <Check className="w-3 h-3 text-white" />}
                           </button>
                           <div className="flex-1 min-w-0 space-y-1">
-                            {/* Subject as title */}
                             <p className={`text-sm font-medium truncate ${logDone ? "text-gray-400 line-through" : "text-gray-700"}`}>
                               {log.email_subject || `Invoice #${logIdx + 1}`}
                             </p>
-                            {/* Key details in a compact row */}
                             <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
                               {log.email_date && (
                                 <span>{new Date(log.email_date).toLocaleDateString()}</span>
@@ -1112,7 +928,179 @@ export default function InvoiceTrackerClient() {
         </div>
       </div>
 
-      {/* Monthly summary — show when month is fully handled */}
+      {/* Unmatched emails - collapsible, below services */}
+      {unmatched.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl mt-4 overflow-hidden">
+          <button
+            onClick={() => setExpandedRow(expandedRow === "__unmatched" ? null : "__unmatched")}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50"
+          >
+            <div className="flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-medium text-gray-700">
+                {unmatched.length} unmatched email{unmatched.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            {expandedRow === "__unmatched" ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+          {expandedRow === "__unmatched" && (
+            <div className="border-t border-gray-100">
+              {unmatched.map((u) => (
+                <div key={u.id} className="px-4 py-2.5 flex items-center justify-between border-b border-gray-100 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-700 truncate">{u.email_subject}</p>
+                    <p className="text-xs text-gray-400">{u.email_from} &middot; {u.email_date ? new Date(u.email_date).toLocaleDateString() : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                    <button
+                      onClick={() => setModalService("new")}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium px-2 py-1 rounded hover:bg-indigo-50"
+                    >
+                      Add as service
+                    </button>
+                    <button
+                      onClick={() => handleDismissUnmatched(u.id)}
+                      className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                      title="Dismiss"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Alerts / Insights - collapsible */}
+      {hasInsights && insights && (
+        <div className="bg-white border border-gray-200 rounded-xl mt-4 overflow-hidden">
+          <button
+            onClick={() => setInsightsExpanded(!insightsExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-medium text-gray-700">
+                {alertCount} alert{alertCount > 1 ? "s" : ""}
+              </span>
+            </div>
+            {insightsExpanded ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+          {insightsExpanded && (
+            <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+              {/* Renewal alerts */}
+              {insights.renewalAlerts.map((a) => (
+                <div key={a.service.id} className="px-3 py-2 rounded-lg text-sm flex items-center gap-2 bg-blue-50 text-blue-700">
+                  <CalendarClock className="w-4 h-4 flex-shrink-0" />
+                  <span>
+                    <span className="font-medium">{a.service.name}</span> renewal in {a.daysUntil} days
+                    {a.lastAmount && ` (~${fmtAmount(a.lastAmount, a.lastCurrency || "SEK")})`}
+                  </span>
+                </div>
+              ))}
+
+              {/* Spend anomalies */}
+              {insights.spendAnomalies.map((a) => (
+                <div key={a.service.id} className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
+                  a.percentChange > 0
+                    ? "bg-red-50 text-red-700"
+                    : "bg-emerald-50 text-emerald-700"
+                }`}>
+                  {a.percentChange > 0 ? (
+                    <TrendingUp className="w-4 h-4 flex-shrink-0" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 flex-shrink-0" />
+                  )}
+                  <span>
+                    <span className="font-medium">{a.service.name}</span>: {fmtAmount(a.currentAmount, a.currency)} this month
+                    ({a.percentChange > 0 ? "+" : ""}{a.percentChange}% vs. avg {fmtAmount(a.averageAmount, a.currency)})
+                  </span>
+                </div>
+              ))}
+
+              {/* Pause candidates */}
+              {insights.pauseCandidates.map((p) => (
+                <div key={p.service.id} className="px-3 py-2 rounded-lg text-sm flex items-center gap-2 bg-gray-50 text-gray-600">
+                  <PauseCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>
+                    <span className="font-medium">{p.service.name}</span> - no invoice in {p.monthsSinceLastInvoice} months. Still using it?
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Juni Email Info - collapsible */}
+      <div className="bg-white border border-gray-200 rounded-xl mt-4 overflow-hidden">
+        <button
+          onClick={() => setJuniExpanded(!juniExpanded)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50"
+        >
+          <div className="flex items-center gap-2">
+            <Mail className="w-4 h-4 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Juni Forwarding Addresses</span>
+          </div>
+          {juniExpanded ? (
+            <ChevronUp className="w-4 h-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+        {juniExpanded && (
+          <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-1">Paid Invoices & Receipts</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm text-gray-800 font-mono">{JUNI_EMAIL}</code>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); copyToClipboard(JUNI_EMAIL, "receipts"); }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                    title="Copy"
+                  >
+                    {copiedEmail === "receipts" ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-1">Unpaid Invoices</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm text-gray-800 font-mono">{JUNI_INVOICES_EMAIL}</code>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); copyToClipboard(JUNI_INVOICES_EMAIL, "invoices"); }}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                    title="Copy"
+                  >
+                    {copiedEmail === "invoices" ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Monthly summary - show when month is fully handled */}
       {pct === 100 && done > 0 && (
         <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
           <p className="text-sm font-medium text-emerald-800 mb-2">
@@ -1212,6 +1200,50 @@ export default function InvoiceTrackerClient() {
           onClose={() => setBulkUploadOpen(false)}
           onComplete={() => fetchSummary()}
         />
+      )}
+
+      {/* Toast container - fixed bottom-right */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 shadow-lg border ${
+                toast.type === "error"
+                  ? "bg-red-50 border-red-200 text-red-700"
+                  : toast.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : "bg-white border-gray-200 text-gray-600"
+              }`}
+            >
+              {toast.type === "error" ? (
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              ) : toast.type === "success" ? (
+                <Check className="w-4 h-4 flex-shrink-0" />
+              ) : (
+                <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+              )}
+              <span className="flex-1">{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={() => {
+                    toast.action!.onClick();
+                    dismissToast(toast.id);
+                  }}
+                  className="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded transition-colors flex-shrink-0"
+                >
+                  {toast.action.label}
+                </button>
+              )}
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
