@@ -1283,111 +1283,97 @@ export async function forwardLogToJuni(
   const service = (log as any).invoice_services as InvoiceService;
   if (!service) return { success: false, error: "Service not found for this log" };
 
-  // Strategy 1: Forward from Supabase storage (manually uploaded or backed-up PDFs)
+  // Step 1: Get the PDF buffer (from storage or IMAP)
+  let pdfBuffer: Buffer | null = null;
+  let pdfFilename = log.pdf_filename || "invoice.pdf";
+  let fromImap = false;
+
+  // Try Supabase storage first
   if (log.pdf_storage_path) {
     try {
       const { data: pdfData, error: dlErr } = await db.storage
         .from("invoice-pdfs")
         .download(log.pdf_storage_path);
-
-      if (dlErr || !pdfData) {
-        console.warn(`[invoice-mail] Storage download failed, trying IMAP fallback: ${dlErr?.message}`);
+      if (!dlErr && pdfData) {
+        pdfBuffer = Buffer.from(await pdfData.arrayBuffer());
       } else {
-        const buffer = Buffer.from(await pdfData.arrayBuffer());
-        const smtpConfig = getSmtpConfig();
-        const forwardEmail = getForwardEmail((service.forward_to || "receipts") as "receipts" | "invoices");
-        const { ip, servername } = await resolveHost(smtpConfig.host);
-        const transporter = nodemailer.createTransport({
-          ...smtpConfig,
-          host: ip,
-          ...(servername ? { tls: { servername } } : {}),
-        });
-
-        await transporter.sendMail({
-          from: smtpConfig.auth.user,
-          to: forwardEmail,
-          subject: `Invoice: ${service.name} - ${log.period}`,
-          text: `Invoice/receipt for ${service.name}, period ${log.period}.`,
-          attachments: [{
-            filename: log.pdf_filename || "invoice.pdf",
-            content: buffer,
-            contentType: "application/pdf",
-          }],
-        });
-
-        await db.from("invoice_logs").update({
-          status: "sent",
-          forwarded_at: new Date().toISOString(),
-          error_message: null,
-          updated_at: new Date().toISOString(),
-        }).eq("id", logId);
-
-        return { success: true };
+        console.warn(`[invoice-mail] Storage download failed: ${dlErr?.message}`);
       }
     } catch (e) {
-      console.warn(`[invoice-mail] Storage forward failed, trying IMAP fallback:`, e);
+      console.warn(`[invoice-mail] Storage download exception:`, e);
     }
   }
 
-  // Strategy 2: Forward from IMAP (email-based)
-  const emailUid = parseInt(log.email_uid, 10);
-  if (!emailUid) {
-    return {
-      success: false,
-      error: "No stored PDF and no email UID - upload a PDF manually",
-    };
-  }
-
-  try {
-    const fullEmail = await downloadFullEmailStandalone(emailUid, log.imap_account_id || "hostinger");
-    const parsed = await simpleParser(fullEmail);
-    const pdfAttachment = parsed.attachments?.find(
-      (a) => a.contentType === "application/pdf" || a.filename?.toLowerCase().endsWith(".pdf")
-    );
-    const subject = parsed.subject || log.email_subject || "(no subject)";
-
-    let result: ForwardResult;
-    let pdfBuffer: Buffer | null = null;
-    let pdfFilename = "invoice.pdf";
-
-    if (pdfAttachment) {
-      pdfBuffer = pdfAttachment.content;
-      pdfFilename = pdfAttachment.filename || "invoice.pdf";
-      result = await forwardToJuni(service.name, log.period, fullEmail, subject, service.forward_to || "receipts");
-    } else {
-      const html = typeof parsed.html === "string" ? parsed.html : null;
-      if (!html) return { success: false, error: "No PDF attachment and no HTML body in email" };
-
-      pdfBuffer = await htmlToPdf(html);
-      result = await forwardWithGeneratedPdf(service.name, subject, fullEmail, pdfBuffer, service.forward_to || "receipts");
-    }
-
-    if (result.success) {
-      // Backfill: save PDF to storage so we don't need IMAP next time
-      const updateData: Record<string, unknown> = {
-        status: "sent",
-        forwarded_at: new Date().toISOString(),
-        error_message: null,
-        updated_at: new Date().toISOString(),
+  // Fall back to IMAP if no PDF from storage
+  if (!pdfBuffer) {
+    const emailUid = parseInt(log.email_uid, 10);
+    if (!emailUid) {
+      return {
+        success: false,
+        error: log.pdf_storage_path
+          ? "PDF download from storage failed and no email UID for fallback"
+          : "No stored PDF and no email UID - upload a PDF manually",
       };
-      if (pdfBuffer && !log.pdf_storage_path) {
-        const storagePath = `${log.service_id}/${log.period}/${emailUid}_${pdfFilename}`;
-        await db.storage
-          .from("invoice-pdfs")
-          .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
-        updateData.pdf_storage_path = storagePath;
-        updateData.pdf_filename = pdfFilename;
-      }
-      await db.from("invoice_logs").update(updateData).eq("id", logId);
-    } else {
-      await db.from("invoice_logs").update({
-        status: "error",
-        error_message: result.error,
-        updated_at: new Date().toISOString(),
-      }).eq("id", logId);
     }
 
-    return result;
+    try {
+      const result = await downloadPdfFromImap(log.email_uid, log.imap_account_id);
+      if (result) {
+        pdfBuffer = result.buffer;
+        pdfFilename = result.filename;
+        fromImap = true;
+      } else {
+        return { success: false, error: "No PDF found in email" };
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: `IMAP download failed: ${msg}` };
+    }
+  }
+
+  // Step 2: Send via SMTP
+  try {
+    const smtpConfig = getSmtpConfig();
+    const forwardEmail = getForwardEmail((service.forward_to || "receipts") as "receipts" | "invoices");
+    const { ip, servername } = await resolveHost(smtpConfig.host);
+    const transporter = nodemailer.createTransport({
+      ...smtpConfig,
+      host: ip,
+      ...(servername ? { tls: { servername } } : {}),
+    });
+
+    await transporter.sendMail({
+      from: smtpConfig.auth.user,
+      to: forwardEmail,
+      subject: `Invoice: ${service.name} - ${log.period}`,
+      text: `Invoice/receipt for ${service.name}, period ${log.period}.`,
+      attachments: [{
+        filename: pdfFilename,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      }],
+    });
+
+    // Step 3: Mark as sent + backfill storage if from IMAP
+    const updateData: Record<string, unknown> = {
+      status: "sent",
+      forwarded_at: new Date().toISOString(),
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    };
+    if (fromImap && !log.pdf_storage_path) {
+      const emailUid = parseInt(log.email_uid, 10);
+      const storagePath = `${log.service_id}/${log.period}/${emailUid}_${pdfFilename}`;
+      await db.storage
+        .from("invoice-pdfs")
+        .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true })
+        .catch(() => {}); // non-critical
+      updateData.pdf_storage_path = storagePath;
+      updateData.pdf_filename = pdfFilename;
+    }
+    await db.from("invoice_logs").update(updateData).eq("id", logId);
+
+    return { success: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.from("invoice_logs").update({
@@ -1395,7 +1381,7 @@ export async function forwardLogToJuni(
       error_message: msg,
       updated_at: new Date().toISOString(),
     }).eq("id", logId);
-    return { success: false, error: msg };
+    return { success: false, error: `SMTP send failed: ${msg}` };
   }
 }
 
