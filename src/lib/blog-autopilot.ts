@@ -110,21 +110,22 @@ export async function runBlogAutopilot(
     console.log(`[blog-autopilot] Recovered ${staleWrites.length} stale "writing" articles (>${STALE_WRITING_MINUTES}m): ${staleWrites.map(s => s.slug).join(", ")}`);
   }
 
-  // Check rate: max 1 article per day PER LANGUAGE (skip with force)
+  // Check rate: max 2 articles per calendar day (UTC) per language (skip with force)
   if (!opts?.force) {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const todayUTC = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const startOfDay = `${todayUTC}T00:00:00.000Z`;
     const { count: recentCount } = await db
       .from("pages")
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId)
       .eq("content_type", "seo_blog")
       .eq("source_language", language)
-      .gte("created_at", oneDayAgo);
+      .gte("created_at", startOfDay);
 
-    if ((recentCount ?? 0) >= 1) {
+    if ((recentCount ?? 0) >= 2) {
       return {
         action: "skipped",
-        message: `Already published a ${language.toUpperCase()} blog article today. Max 1/day per language.`,
+        message: `Already published 2 ${language.toUpperCase()} blog articles today (UTC). Max 2/day per language.`,
       };
     }
   }
