@@ -40,6 +40,11 @@ const CATEGORY_OPTIONS = [
   { value: "google_ads", label: "Google ads" },
 ] as const;
 
+const MONTH_NAMES_SV = [
+  "JANUARI", "FEBRUARI", "MARS", "APRIL", "MAJ", "JUNI",
+  "JULI", "AUGUSTI", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DECEMBER",
+];
+
 function shiftPeriod(period: string, delta: number): string {
   const [y, m] = period.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
@@ -335,17 +340,20 @@ export default function ExpensesTab() {
       // Build ZIP client-side to avoid body size limits
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
+      const [yr, mn] = period.split("-");
+      const monthLabel = MONTH_NAMES_SV[parseInt(mn, 10) - 1] || mn;
+      const folderName = `Egna utl\u00e4gg ${person} ${monthLabel} ${yr}`;
       for (let i = 0; i < receiptFiles.length; i++) {
         const f = receiptFiles[i].file;
         const idx = String(i + 1).padStart(2, "0");
         const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        zip.file(`${idx}_${cleanName}`, await f.arrayBuffer());
+        zip.file(`${folderName}/${idx}_${cleanName}`, await f.arrayBuffer());
       }
       const blob = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Kvitton ${person} ${period}.zip`;
+      a.download = `${folderName}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
