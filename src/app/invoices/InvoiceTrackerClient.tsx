@@ -301,12 +301,19 @@ export default function InvoiceTrackerClient() {
     await fetchSummary();
   }
 
-  async function handleMarkManual(logId: string | undefined, _serviceId: string) {
+  async function handleMarkManual(logId: string | undefined, serviceId: string) {
     if (logId) {
       await fetch(`/api/invoices/logs/${logId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "done" }),
+      });
+    } else {
+      // No log exists (service is "Waiting") - create a done log
+      await fetch("/api/invoices/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service_id: serviceId, period, status: "done" }),
       });
     }
     setActionMenu(null);
@@ -829,7 +836,7 @@ export default function InvoiceTrackerClient() {
                             Billing page
                           </a>
                         )}
-                        {row.status === "pending" && row.log?.id && (
+                        {(row.status === "pending" || row.status === "sent") && row.log?.id && (
                           <button
                             onClick={() => {
                               setActionMenu(null);
@@ -843,7 +850,7 @@ export default function InvoiceTrackerClient() {
                             ) : (
                               <Send className="w-3.5 h-3.5" />
                             )}
-                            Send to Juni
+                            {row.status === "sent" ? "Resend to Juni" : "Send to Juni"}
                           </button>
                         )}
                         {row.status === "error" && row.log?.id && (
@@ -889,17 +896,29 @@ export default function InvoiceTrackerClient() {
                   <div className="bg-gray-50/60 border-t border-gray-100 px-5 py-3 space-y-2">
                     {row.logs.map((log, logIdx) => {
                       const logDone = log.status === "sent" || log.status === "done";
+                      const isSending = forwarding === log.id;
                       return (
                         <div
                           key={log.id}
-                          className={`bg-white rounded-lg border px-4 py-3 flex items-start gap-3 ${
-                            logDone ? "border-gray-100 opacity-60" : "border-gray-200"
+                          className={`bg-white rounded-lg border px-4 py-3 flex items-start gap-3 transition-all ${
+                            isSending
+                              ? "border-indigo-300 bg-indigo-50/50 ring-1 ring-indigo-200"
+                              : logDone
+                              ? "border-gray-100 opacity-60"
+                              : "border-gray-200"
                           }`}
                         >
                           <div className="flex-1 min-w-0 space-y-1">
-                            <p className={`text-sm font-medium truncate ${logDone ? "text-gray-400 line-through" : "text-gray-700"}`}>
-                              {log.email_subject || `Invoice #${logIdx + 1}`}
-                            </p>
+                            {isSending ? (
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                                <span className="text-sm font-medium text-indigo-600">Sending to Juni...</span>
+                              </div>
+                            ) : (
+                              <p className={`text-sm font-medium truncate ${logDone ? "text-gray-400 line-through" : "text-gray-700"}`}>
+                                {log.email_subject || `Invoice #${logIdx + 1}`}
+                              </p>
+                            )}
                             <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
                               {log.email_date && (
                                 <span>{new Date(log.email_date).toLocaleDateString()}</span>
@@ -908,12 +927,26 @@ export default function InvoiceTrackerClient() {
                                 <span className="text-gray-500">{log.pdf_filename}</span>
                               )}
                             </div>
-                            {log.error_message && (
+                            {log.error_message && !isSending && (
                               <p className="text-xs text-red-500">{log.error_message}</p>
                             )}
                           </div>
+                          {/* Send/Resend button */}
+                          {log.pdf_storage_path && !isSending && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleForwardLog(log.id);
+                              }}
+                              className="flex-shrink-0 px-2.5 py-1 text-xs font-medium text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 rounded-md transition-colors flex items-center gap-1.5"
+                              title="Send to Juni"
+                            >
+                              <Send className="w-3 h-3" />
+                              {logDone ? "Resend" : "Send"}
+                            </button>
+                          )}
                           {/* Download button for invoice-type services */}
-                          {log.pdf_filename && row.service.forward_to === "invoices" && (
+                          {log.pdf_filename && row.service.forward_to === "invoices" && !isSending && (
                             <a
                               href={`/api/invoices/logs/${log.id}/download`}
                               onClick={(e) => e.stopPropagation()}
@@ -924,15 +957,17 @@ export default function InvoiceTrackerClient() {
                             </a>
                           )}
                           {/* Status label */}
-                          <div className="flex-shrink-0 text-right">
-                            {logDone ? (
-                              <span className="text-xs text-gray-400">
-                                {log.forwarded_at ? new Date(log.forwarded_at).toLocaleDateString() : "Done"}
-                              </span>
-                            ) : log.status === "error" ? (
-                              <span className="text-xs font-medium text-red-500">Error</span>
-                            ) : null}
-                          </div>
+                          {!isSending && (
+                            <div className="flex-shrink-0 text-right">
+                              {logDone ? (
+                                <span className="text-xs text-gray-400">
+                                  {log.forwarded_at ? new Date(log.forwarded_at).toLocaleDateString() : "Done"}
+                                </span>
+                              ) : log.status === "error" ? (
+                                <span className="text-xs font-medium text-red-500">Error</span>
+                              ) : null}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

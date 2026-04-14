@@ -137,7 +137,7 @@ RULES:
 - Muted, slightly warm color palette — real indoor lighting
 - NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional"
 - All images are 16:9 LANDSCAPE format — compose horizontally
-- No text overlays, no brand names, no logos
+- ABSOLUTELY NO readable text in images — no labels, no product names, no brand names, no logos, no packaging text. If a bottle or container appears, it must be PLAIN with no visible text or labels. AI generators often add English text to objects — prevent this by specifying "unlabeled", "plain white container", or "label facing away from camera".
 - Each image must illustrate a DIFFERENT aspect of the article
 - End each prompt with: "iPhone photo, candid, natural light."
 

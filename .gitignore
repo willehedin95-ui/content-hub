@@ -46,3 +46,4 @@ next-env.d.ts
 /credentials/
 *.service-account.json
 google-cloud-*.json
+.env*.local

@@ -14,7 +14,13 @@ for (const line of envContent.split("\n")) {
   const eqIdx = trimmed.indexOf("=");
   if (eqIdx === -1) continue;
   const key = trimmed.slice(0, eqIdx);
-  const value = trimmed.slice(eqIdx + 1);
+  let value = trimmed.slice(eqIdx + 1);
+  // Strip surrounding quotes
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  }
+  // Strip literal \n and trim whitespace
+  value = value.replace(/\\n/g, "").trim();
   if (!process.env[key]) process.env[key] = value;
 }
 
