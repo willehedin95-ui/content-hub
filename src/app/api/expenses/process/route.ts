@@ -26,8 +26,6 @@ interface ExpenseRow {
   sekAmount: number | null;
   vat: number | null;
   category: "monthly" | "one_time" | "facebook_ads" | "google_ads";
-  receiptReady: boolean;
-  note: string;
   matched: boolean;
   receiptFile: string | null;
 }
@@ -84,11 +82,11 @@ export async function POST(req: NextRequest) {
             fileContent,
             {
               type: "text",
-              text: `Extract from this invoice/receipt:
-1. description: The vendor/service name (clean, short, e.g. "Shopify e-handelsplattform", "Klaviyo e-post", "Hostinger webbhotell")
-2. date: Invoice/billing date in YYYY-MM-DD format
-3. amount: Total amount charged
-4. currency: Currency code (USD, SEK, EUR, etc.)
+              text: `Extrahera fr\u00e5n denna faktura/kvitto:
+1. description: Leverant\u00f6rens/tj\u00e4nstens namn p\u00e5 svenska (kort, t.ex. "Shopify e-handelsplattform", "Klaviyo e-post", "Hostinger webbhotell", "\u00d6oB Halmstad butik", "AG1 - H\u00e4lsotillskott")
+2. date: Fakturadatum i YYYY-MM-DD format
+3. amount: Totalt belopp
+4. currency: Valutakod (USD, SEK, EUR, etc.)
 
 Return ONLY JSON: {"description": "...", "date": "...", "amount": 123.45, "currency": "USD"}
 No markdown fences.`,
@@ -200,8 +198,6 @@ No markdown fences.`,
       sekAmount: bestMatch?.amount ?? null,
       vat: null,
       category: guessCategory(receipt.description) as ExpenseRow["category"],
-      receiptReady: true,
-      note: "",
       matched: !!bestMatch,
       receiptFile: receipt.filename,
     };

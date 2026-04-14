@@ -7,8 +7,6 @@ interface ExpenseRow {
   sekAmount: number | null;
   vat: number | null;
   category: string;
-  receiptReady: boolean;
-  note: string;
 }
 
 const MONTH_NAMES = [
@@ -17,8 +15,8 @@ const MONTH_NAMES = [
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  monthly: "Manadsprenumerationer",
-  one_time: "Engangskostnader",
+  monthly: "M\u00e5nadsprenumerationer",
+  one_time: "Eng\u00e5ngskostnader",
   facebook_ads: "Facebook ads",
   google_ads: "Google ads",
 };
@@ -36,17 +34,15 @@ export async function POST(req: NextRequest) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Blad1");
 
-  // Column widths matching the original file
+  // Column widths
   sheet.getColumn(1).width = 55;
   sheet.getColumn(2).width = 14;
   sheet.getColumn(3).width = 16;
-  sheet.getColumn(4).width = 20;
-  sheet.getColumn(5).width = 12;
-  sheet.getColumn(6).width = 50;
+  sheet.getColumn(4).width = 16;
 
   // Row 1: Header
   const headerRow = sheet.getRow(1);
-  headerRow.getCell(1).value = `Egna utlagg till ${person} - ${monthName}`;
+  headerRow.getCell(1).value = `Egna utl\u00e4gg till ${person} - ${monthName}`;
   headerRow.getCell(1).font = { bold: true, size: 18 };
   headerRow.getCell(2).value = "Datum";
   headerRow.getCell(2).font = { bold: true, size: 14 };
@@ -54,10 +50,6 @@ export async function POST(req: NextRequest) {
   headerRow.getCell(3).font = { bold: true, size: 14 };
   headerRow.getCell(4).value = "Varav MOMS";
   headerRow.getCell(4).font = { bold: true, size: 14 };
-  headerRow.getCell(5).value = "PDF klar";
-  headerRow.getCell(5).font = { bold: true, size: 14 };
-  headerRow.getCell(6).value = "Anteckning";
-  headerRow.getCell(6).font = { bold: true, size: 14 };
 
   const krFormat = "#,##0.00";
   let rowNum = 2;
@@ -82,8 +74,9 @@ export async function POST(req: NextRequest) {
       row.getCell(1).font = { size: 12 };
 
       if (expense.date) {
-        row.getCell(2).value = new Date(expense.date);
-        row.getCell(2).numFmt = "YYYY-MM-DD";
+        // Write date as YYYY-MM-DD string to avoid timezone issues
+        row.getCell(2).value = expense.date;
+        row.getCell(2).font = { size: 12 };
       }
 
       if (expense.sekAmount != null) {
@@ -96,12 +89,6 @@ export async function POST(req: NextRequest) {
         row.getCell(4).numFmt = krFormat;
       }
 
-      row.getCell(5).value = expense.receiptReady;
-
-      if (expense.note) {
-        row.getCell(6).value = expense.note;
-      }
-
       rowNum++;
     }
 
@@ -111,7 +98,7 @@ export async function POST(req: NextRequest) {
   // Totals row
   rowNum++;
   const sumRow = sheet.getRow(rowNum);
-  sumRow.getCell(2).value = "Totalt: ";
+  sumRow.getCell(2).value = "Totalt:";
   sumRow.getCell(2).font = { bold: true };
   sumRow.getCell(3).value = {
     formula: `SUM(C${dataStartRow}:C${rowNum - 1})`,
@@ -125,12 +112,12 @@ export async function POST(req: NextRequest) {
 
   // Generate buffer
   const buffer = await workbook.xlsx.writeBuffer();
-  const filename = `Egna utlagg ${person} ${monthName} ${year}.xlsx`;
+  const filename = `Egna utl\u00e4gg ${person} ${monthName} ${year}.xlsx`;
 
   return new Response(buffer as ArrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
   });
 }

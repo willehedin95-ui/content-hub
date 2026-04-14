@@ -27,8 +27,6 @@ interface ExpenseRow {
   sekAmount: number | null;
   vat: number | null;
   category: "monthly" | "one_time" | "facebook_ads" | "google_ads";
-  receiptReady: boolean;
-  note: string;
   matched: boolean;
   receiptFile: string | null;
 }
@@ -36,8 +34,8 @@ interface ExpenseRow {
 type Step = "upload" | "processing" | "review" | "download";
 
 const CATEGORY_OPTIONS = [
-  { value: "monthly", label: "Manadsprenumerationer" },
-  { value: "one_time", label: "Engangskostnader" },
+  { value: "monthly", label: "M\u00e5nadsprenumerationer" },
+  { value: "one_time", label: "Eng\u00e5ngskostnader" },
   { value: "facebook_ads", label: "Facebook ads" },
   { value: "google_ads", label: "Google ads" },
 ] as const;
@@ -287,8 +285,6 @@ export default function ExpensesTab() {
         sekAmount: null,
         vat: null,
         category: "one_time",
-        receiptReady: false,
-        note: "",
         matched: false,
         receiptFile: null,
       },
@@ -311,10 +307,13 @@ export default function ExpensesTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        res.headers
-          .get("Content-Disposition")
-          ?.match(/filename="?([^"]+)"?/)?.[1] || "expenses.xlsx";
+      // Parse filename from Content-Disposition (supports filename*=UTF-8'' and filename="...")
+      const cd = res.headers.get("Content-Disposition") || "";
+      const utf8Match = cd.match(/filename\*=UTF-8''(.+)/i);
+      const plainMatch = cd.match(/filename="?([^"]+)"?/);
+      a.download = utf8Match
+        ? decodeURIComponent(utf8Match[1])
+        : plainMatch?.[1] || "expenses.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -329,22 +328,20 @@ export default function ExpensesTab() {
     try {
       const receiptFiles = files.filter((f) => f.type === "receipt");
       if (receiptFiles.length === 0) {
-        setError("No receipts to download");
+        setError("Inga kvitton att ladda ner");
         setDownloading(null);
         return;
       }
-      const formData = new FormData();
-      formData.append("person", person);
-      formData.append("month", period);
-      for (const f of receiptFiles) {
-        formData.append("files", f.file);
+      // Build ZIP client-side to avoid body size limits
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      for (let i = 0; i < receiptFiles.length; i++) {
+        const f = receiptFiles[i].file;
+        const idx = String(i + 1).padStart(2, "0");
+        const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        zip.file(`${idx}_${cleanName}`, await f.arrayBuffer());
       }
-      const res = await fetch("/api/expenses/download-receipts", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Failed to generate ZIP");
-      const blob = await res.blob();
+      const blob = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -641,29 +638,23 @@ export default function ExpensesTab() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-[200px]">
-                      Description
-                    </th>
-                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-[100px]">
-                      Date
-                    </th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[90px]">
-                      Receipt
-                    </th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[100px]">
-                      SEK
-                    </th>
-                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[80px]">
-                      MOMS
-                    </th>
-                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-[160px]">
-                      Category
-                    </th>
-                    <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 w-[40px]">
-                      PDF
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 min-w-[220px]">
+                      Beskrivning
                     </th>
                     <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-[120px]">
-                      Note
+                      Datum
+                    </th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[100px]">
+                      Kvitto
+                    </th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[140px]">
+                      SEK
+                    </th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 w-[120px]">
+                      MOMS
+                    </th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-[180px]">
+                      Kategori
                     </th>
                     <th className="w-[40px]" />
                   </tr>
@@ -705,9 +696,9 @@ export default function ExpensesTab() {
                       </td>
 
                       {/* Receipt amount */}
-                      <td className="px-3 py-1.5 text-right text-xs text-gray-400">
+                      <td className="px-3 py-1.5 text-right text-xs text-gray-400 whitespace-nowrap">
                         {exp.receiptAmount != null
-                          ? `${exp.receiptAmount} ${exp.receiptCurrency || ""}`
+                          ? `${exp.receiptAmount.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} ${exp.receiptCurrency || ""}`
                           : "-"}
                       </td>
 
@@ -731,7 +722,7 @@ export default function ExpensesTab() {
                                 matched: true,
                               })
                             }
-                            placeholder="0.00"
+                            placeholder="0,00"
                             className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:border-indigo-400 focus:outline-none"
                           />
                         </div>
@@ -773,33 +764,6 @@ export default function ExpensesTab() {
                             </option>
                           ))}
                         </select>
-                      </td>
-
-                      {/* PDF ready */}
-                      <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={exp.receiptReady}
-                          onChange={(e) =>
-                            updateExpense(exp.id, {
-                              receiptReady: e.target.checked,
-                            })
-                          }
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-
-                      {/* Note */}
-                      <td className="px-3 py-1.5">
-                        <input
-                          type="text"
-                          value={exp.note}
-                          onChange={(e) =>
-                            updateExpense(exp.id, { note: e.target.value })
-                          }
-                          placeholder="-"
-                          className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:border-indigo-400 focus:outline-none"
-                        />
                       </td>
 
                       {/* Delete */}
