@@ -105,6 +105,40 @@ function compressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File
 }
 
 // ---------------------------------------------------------------------------
+// Client-side fuzzy matching (mirrors server-side matchScore in process/route)
+// ---------------------------------------------------------------------------
+function clientMatchScore(
+  receiptDesc: string,
+  bankDesc: string,
+  receiptDate: string | null,
+  bankDate: string,
+): number {
+  const r = receiptDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
+  const b = bankDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
+
+  let wordMatches = 0;
+  for (const rw of r) {
+    if (b.some((bw) => bw.includes(rw) || rw.includes(bw))) {
+      wordMatches++;
+    }
+  }
+  const nameScore = r.length > 0 ? wordMatches / r.length : 0;
+
+  let dateScore = 0.5;
+  if (receiptDate && bankDate) {
+    const rDate = new Date(receiptDate);
+    const bDate = new Date(bankDate);
+    const daysDiff = Math.abs(rDate.getTime() - bDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysDiff <= 3) dateScore = 1;
+    else if (daysDiff <= 7) dateScore = 0.7;
+    else if (daysDiff <= 14) dateScore = 0.4;
+    else dateScore = 0.1;
+  }
+
+  return nameScore * 0.7 + dateScore * 0.3;
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export default function ExpensesTab() {
@@ -159,31 +193,67 @@ export default function ExpensesTab() {
     setProcessing(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append("month", period);
-      for (const f of files) {
-        // Compress images to stay under Vercel's 4.5MB body limit
-        const processed = await compressImage(f.file);
-        if (f.type === "receipt") {
-          formData.append("receipts", processed);
-        } else {
-          formData.append("bank_statements", processed);
+      // Send files one at a time to stay under Vercel's 4.5MB body limit.
+      // Collect extracted receipts + bank transactions, then match client-side.
+      const allExpenses: ExpenseRow[] = [];
+      let allBankTx: { description: string; date: string; amount: number }[] = [];
+
+      // Process each receipt individually
+      const receiptEntries = files.filter((f) => f.type === "receipt");
+      for (const f of receiptEntries) {
+        const form = new FormData();
+        form.append("month", period);
+        form.append("receipts", f.file);
+        const res = await fetch("/api/expenses/process", { method: "POST", body: form });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || `Receipt processing failed (${res.status})`);
+        }
+        const data = await res.json();
+        allExpenses.push(...(data.expenses || []));
+      }
+
+      // Process bank statements (compressed images, usually small after compression)
+      const bankEntries = files.filter((f) => f.type === "bank");
+      if (bankEntries.length > 0) {
+        const bankForm = new FormData();
+        bankForm.append("month", period);
+        for (const f of bankEntries) {
+          const processed = await compressImage(f.file);
+          bankForm.append("bank_statements", processed);
+        }
+        const res = await fetch("/api/expenses/process", { method: "POST", body: bankForm });
+        if (res.ok) {
+          const data = await res.json();
+          allBankTx = data.unmatchedBank || [];
         }
       }
 
-      const res = await fetch("/api/expenses/process", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed (${res.status})`);
+      // Client-side matching: pair receipts with bank transactions
+      const usedIdx = new Set<number>();
+      for (const exp of allExpenses) {
+        let bestScore = 0;
+        let bestIdx = -1;
+        for (let i = 0; i < allBankTx.length; i++) {
+          if (usedIdx.has(i)) continue;
+          const tx = allBankTx[i];
+          const score = clientMatchScore(exp.description, tx.description, exp.date, tx.date);
+          if (score > bestScore && score >= 0.3) {
+            bestScore = score;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx >= 0) {
+          usedIdx.add(bestIdx);
+          exp.sekAmount = allBankTx[bestIdx].amount;
+          exp.matched = true;
+        }
       }
 
-      const data = await res.json();
-      setExpenses(data.expenses || []);
-      setUnmatchedBank(data.unmatchedBank || []);
+      const unmatched = allBankTx.filter((_, i) => !usedIdx.has(i));
+
+      setExpenses(allExpenses);
+      setUnmatchedBank(unmatched);
       setStep("review");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
