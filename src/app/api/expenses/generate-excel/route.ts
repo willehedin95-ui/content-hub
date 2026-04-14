@@ -110,6 +110,38 @@ export async function POST(req: NextRequest) {
   };
   sumRow.getCell(4).numFmt = krFormat;
 
+  // Payment section - "Utbetald summa" + "Datum" header with purple background
+  rowNum += 3;
+  const payHeaderRow = sheet.getRow(rowNum);
+  const purpleFill: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4A3560" } };
+  const whiteFont: Partial<ExcelJS.Font> = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
+
+  payHeaderRow.getCell(1).value = "Utbetald summa";
+  payHeaderRow.getCell(1).font = whiteFont;
+  payHeaderRow.getCell(1).fill = purpleFill;
+  payHeaderRow.getCell(2).value = "Datum";
+  payHeaderRow.getCell(2).font = whiteFont;
+  payHeaderRow.getCell(2).fill = purpleFill;
+  // Fill remaining header cells with purple
+  payHeaderRow.getCell(3).fill = purpleFill;
+  payHeaderRow.getCell(4).fill = purpleFill;
+
+  // Two empty rows for manual entry with borders
+  const thinBorder: Partial<ExcelJS.Borders> = {
+    top: { style: "thin", color: { argb: "FFD0D0D0" } },
+    bottom: { style: "thin", color: { argb: "FFD0D0D0" } },
+    left: { style: "thin", color: { argb: "FFD0D0D0" } },
+    right: { style: "thin", color: { argb: "FFD0D0D0" } },
+  };
+  for (let r = 0; r < 2; r++) {
+    rowNum++;
+    const entryRow = sheet.getRow(rowNum);
+    entryRow.getCell(1).border = thinBorder;
+    entryRow.getCell(1).numFmt = krFormat;
+    entryRow.getCell(2).border = thinBorder;
+    entryRow.getCell(2).numFmt = "YYYY-MM-DD";
+  }
+
   // Generate buffer
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = `Egna utl\u00e4gg ${person} ${monthName} ${year}.xlsx`;
