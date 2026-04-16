@@ -326,7 +326,7 @@ export async function approveTranslationsAction(jobId: string): Promise<Approval
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, ad_copy_translations")
+    .select("id, name, concept_number")
     .eq("id", jobId)
     .single();
 
@@ -334,18 +334,15 @@ export async function approveTranslationsAction(jobId: string): Promise<Approval
     return { ok: false, action: "approve", error: "Concept not found", jobId };
   }
 
-  if (job.ad_copy_translations) {
-    const translations = { ...(job.ad_copy_translations as Record<string, { status?: string }>) };
-    let changed = false;
-    for (const value of Object.values(translations)) {
-      if (value.status === "review") {
-        value.status = "completed";
-        changed = true;
-      }
-    }
-    if (changed) {
-      await db.from("image_jobs").update({ ad_copy_translations: translations }).eq("id", jobId);
-    }
+  // 2026-04-16: Flip review -> completed server-side via RPC to avoid
+  // read-modify-write races with the autopilot-translate cron, which can
+  // insert new language entries concurrently. See resilience-audit-2026-04-16.md.
+  const { error } = await db.rpc("approve_ad_copy_translations", {
+    p_job_id: jobId,
+    p_language: null,
+  });
+  if (error) {
+    return { ok: false, action: "approve", error: error.message, jobId };
   }
 
   return { ok: true, action: "translations_approved", jobId, jobName: job.name, conceptNumber: job.concept_number };

@@ -75,20 +75,25 @@ export async function POST(
   const existing: ConceptCopyTranslations = job.ad_copy_translations ?? {};
   const results: Record<string, ConceptCopyTranslation> = { ...existing };
 
-  // Mark all target languages as "translating" in one DB write
+  // Mark all target languages as "translating" via atomic JSONB merge so we
+  // don't clobber concurrent writers (autopilot translate, approve action).
+  // See resilience-audit-2026-04-16.md.
+  const translatingPatch: Record<string, ConceptCopyTranslation> = {};
   for (const lang of languages) {
-    results[lang] = {
+    const entry: ConceptCopyTranslation = {
       primary_texts: [],
       headlines: [],
       quality_score: null,
       quality_analysis: null,
       status: "translating",
     };
+    results[lang] = entry;
+    translatingPatch[lang] = entry;
   }
-  await db
-    .from("image_jobs")
-    .update({ ad_copy_translations: results })
-    .eq("id", jobId);
+  await db.rpc("merge_ad_copy_translations", {
+    p_job_id: jobId,
+    p_patch: translatingPatch,
+  });
 
   const MAX_QUALITY_RETRIES = 3;
   const conceptName = job!.name ?? "Unnamed concept";
@@ -218,11 +223,19 @@ No other text.`,
     }
   }
 
-  // Save all results in one write
-  await db
-    .from("image_jobs")
-    .update({ ad_copy_translations: results })
-    .eq("id", jobId);
+  // Save only the languages we just translated via atomic JSONB merge
+  // (again: avoid clobbering concurrent writers).
+  const finalPatch: Record<string, ConceptCopyTranslation> = {};
+  for (const lang of languages) {
+    finalPatch[lang] = results[lang];
+  }
+  const { data: mergedTranslations, error: mergeError } = await db.rpc(
+    "merge_ad_copy_translations",
+    { p_job_id: jobId, p_patch: finalPatch }
+  );
+  if (mergeError) {
+    return NextResponse.json({ error: mergeError.message }, { status: 500 });
+  }
 
-  return NextResponse.json({ translations: results });
+  return NextResponse.json({ translations: mergedTranslations ?? results });
 }

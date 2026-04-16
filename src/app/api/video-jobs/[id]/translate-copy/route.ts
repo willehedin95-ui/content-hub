@@ -112,14 +112,13 @@ export async function POST(
     translations[lang] = entry;
   }
 
-  // 6. Update video_jobs.ad_copy_translations
-  const { error: updateError } = await db
-    .from("video_jobs")
-    .update({
-      ad_copy_translations: translations,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  // 6. Update video_jobs.ad_copy_translations via atomic JSONB merge so we
+  // don't clobber user edits happening in the UI at the same time.
+  // See resilience-audit-2026-04-16.md.
+  const { error: updateError } = await db.rpc("merge_video_ad_copy_translations", {
+    p_job_id: id,
+    p_patch: translations,
+  });
 
   if (updateError) {
     return safeError(updateError, "Failed to save translations");

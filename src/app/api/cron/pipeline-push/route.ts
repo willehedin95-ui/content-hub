@@ -102,33 +102,46 @@ export async function GET(req: NextRequest) {
 
         // Auto-approve translations stuck in "review" for 12+ hours
         // (reduced from 48h — most Haiku complaints are minor grammar/style issues)
+        //
+        // 2026-04-16: Writes via atomic JSONB merge RPC so we don't clobber
+        // concurrent autopilot-translate / user-approve writes that may land
+        // mid-cron. See resilience-audit-2026-04-16.md.
         const TRANSLATION_AUTO_APPROVE_MS = 12 * 60 * 60 * 1000;
         const autoApprovedJobIds: string[] = [];
         for (const j of jobStatuses ?? []) {
           const t = j.ad_copy_translations as Record<string, { status?: string; reviewed_at?: string }> | null;
           if (!t) continue;
-          let updated = false;
+          const patch: Record<string, { status?: string; reviewed_at?: string }> = {};
+          // Track locally-mutated copy so we can check allCompleted below.
+          const localT = { ...t };
           for (const [lang, trans] of Object.entries(t)) {
             if (trans.status !== "review") continue;
             const reviewedAt = trans.reviewed_at ? new Date(trans.reviewed_at).getTime() : 0;
             if (!reviewedAt) {
-              // Legacy data: set reviewed_at now, will auto-approve in 48h
-              t[lang] = { ...trans, reviewed_at: new Date().toISOString() };
-              updated = true;
+              // Legacy data: set reviewed_at now, will auto-approve after timeout
+              const next = { ...trans, reviewed_at: new Date().toISOString() };
+              patch[lang] = next;
+              localT[lang] = next;
               continue;
             }
             if (Date.now() - reviewedAt >= TRANSLATION_AUTO_APPROVE_MS) {
-              t[lang] = { ...trans, status: "completed" };
-              updated = true;
+              const next = { ...trans, status: "completed" };
+              patch[lang] = next;
+              localT[lang] = next;
               console.log(`[Pipeline Push] ${label}Auto-approved ${lang} translation for job ${j.id} (12h timeout)`);
             }
           }
-          if (updated) {
-            await db.from("image_jobs")
-              .update({ ad_copy_translations: t, updated_at: new Date().toISOString() })
-              .eq("id", j.id);
+          if (Object.keys(patch).length > 0) {
+            const { error: mergeErr } = await db.rpc("merge_ad_copy_translations", {
+              p_job_id: j.id,
+              p_patch: patch,
+            });
+            if (mergeErr) {
+              console.error(`[Pipeline Push] ${label}Failed to merge auto-approved translations for ${j.id}:`, mergeErr);
+              continue;
+            }
             // Check if all translations are now completed
-            const allCompleted = Object.values(t).every((v) => v.status === "completed");
+            const allCompleted = Object.values(localT).every((v) => v.status === "completed");
             if (allCompleted && j.status !== "completed") {
               await db.from("image_jobs").update({ status: "completed" }).eq("id", j.id);
               completedJobIds.add(j.id);

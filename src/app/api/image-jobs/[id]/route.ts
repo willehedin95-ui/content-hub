@@ -110,9 +110,21 @@ export async function PATCH(
   if (concept_number !== undefined) updateData.concept_number = concept_number;
   if (marked_ready_at !== undefined) updateData.marked_ready_at = marked_ready_at;
   if (tags !== undefined) updateData.tags = tags;
-  if (ad_copy_translations !== undefined) updateData.ad_copy_translations = ad_copy_translations;
   if (cash_dna !== undefined) updateData.cash_dna = cash_dna;
   if (visual_direction !== undefined) updateData.visual_direction = visual_direction;
+
+  // 2026-04-16: ad_copy_translations is written via atomic JSONB merge RPC
+  // to avoid clobbering concurrent writers (autopilot translate, approve,
+  // pipeline-push auto-approve). See resilience-audit-2026-04-16.md.
+  if (ad_copy_translations !== undefined) {
+    const { error: mergeError } = await db.rpc("merge_ad_copy_translations", {
+      p_job_id: id,
+      p_patch: ad_copy_translations,
+    });
+    if (mergeError) {
+      return safeError(mergeError, "Failed to update translations");
+    }
+  }
 
   const { data, error } = await db
     .from("image_jobs")

@@ -248,6 +248,9 @@ async function translateAdCopy(
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
   const openai = new OpenAI({ apiKey });
+  // `results` is used only for the in-memory skip check below. Actual writes
+  // go through `merge_ad_copy_translations` RPC (one language at a time) so
+  // they can't clobber concurrent writers like approveTranslationsAction.
   const results: Record<string, unknown> = { ...(job.ad_copy_translations ?? {}) };
   const sourceLangLabel = LANGUAGES.find((l) => l.value === sourceLanguage)?.label ?? "English";
 
@@ -385,8 +388,17 @@ No other text.`,
       };
     }
 
-    // Save after each language
-    await db.from("image_jobs").update({ ad_copy_translations: results }).eq("id", jobId);
+    // Save after each language via atomic JSONB merge RPC so a concurrent
+    // approveTranslationsAction (user clicking "approve translations") can't
+    // clobber the new language we just wrote. See resilience-audit-2026-04-16.md.
+    const { error: mergeError } = await db.rpc("merge_ad_copy_translations", {
+      p_job_id: jobId,
+      p_patch: { [lang]: results[lang] },
+    });
+    if (mergeError) {
+      console.error(`[autopilot-translate] Failed to merge ${lang} translations:`, mergeError);
+      throw mergeError;
+    }
   }
 }
 
