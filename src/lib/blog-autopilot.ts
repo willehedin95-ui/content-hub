@@ -37,6 +37,7 @@ import {
   getKeywordSuggestions,
 } from "./dataforseo";
 import { submitSitemap, isGscConfigured } from "./gsc";
+import { runDeployStep } from "./deploy-failures";
 import type { Language } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -370,33 +371,38 @@ async function writeOneArticle(
     },
   });
 
-  // Fire-and-forget: homepage, RSS, sitemap, GSC submission, retroactive links
-  deployBlogHomepage(language).catch((err) =>
-    console.warn("[blog-autopilot] Homepage deploy failed:", err)
+  // 2026-04-16: These used to be fire-and-forget with silent .catch() — if any
+  // failed, the blog homepage/RSS/sitemap silently went stale. Now awaited via
+  // runDeployStep which records failures + sends a Telegram alert. Errors don't
+  // abort the rest (article is already published). See resilience-audit-2026-04-16.md.
+  const deployContext = {
+    language,
+    workspaceId,
+    targetId: translation.id,
+  };
+  await runDeployStep("blog_homepage", deployContext, () =>
+    deployBlogHomepage(language)
   );
-  deployBlogRssFeed(language).catch((err) =>
-    console.warn("[blog-autopilot] RSS deploy failed:", err)
+  await runDeployStep("blog_rss", deployContext, () =>
+    deployBlogRssFeed(language)
   );
-  retroactivelyUpdateLinks(language, workspaceId).catch((err) =>
-    console.warn("[blog-autopilot] Retroactive link update failed:", err)
+  await runDeployStep("retroactive_links", deployContext, () =>
+    retroactivelyUpdateLinks(language, workspaceId)
   );
-  deploySitemapAndRobots(language)
-    .then(() => {
-      // Submit sitemap to Google Search Console so Google discovers new pages faster
-      if (isGscConfigured()) {
-        const domain = getProjectCustomDomain(language);
-        if (domain) {
-          const sitemapUrl = `https://${domain}/sitemap.xml`;
-          const property = `https://${domain}/`;
-          submitSitemap(property, sitemapUrl).catch((err) =>
-            console.warn("[blog-autopilot] GSC sitemap submit failed:", err)
-          );
-        }
-      }
-    })
-    .catch((err) =>
-      console.warn("[blog-autopilot] Sitemap deploy failed:", err)
-    );
+  const sitemapResult = await runDeployStep("sitemap", deployContext, () =>
+    deploySitemapAndRobots(language)
+  );
+  // Only submit to GSC if sitemap deploy actually succeeded
+  if (sitemapResult !== null && isGscConfigured()) {
+    const domain = getProjectCustomDomain(language);
+    if (domain) {
+      const sitemapUrl = `https://${domain}/sitemap.xml`;
+      const property = `https://${domain}/`;
+      await runDeployStep("gsc_sitemap_submit", deployContext, () =>
+        submitSitemap(property, sitemapUrl)
+      );
+    }
+  }
 
   // Send Telegram notification
   try {
@@ -979,7 +985,11 @@ export async function generateBlogImagesAndRepublish(job: NonNullable<AutopilotR
     console.log(`[blog-images-bg] Republished with images: ${publishUrl}`);
 
     // Regenerate homepage to update featured image
-    deployBlogHomepage(lang).catch(() => {});
+    await runDeployStep(
+      "blog_homepage",
+      { language: lang, workspaceId: job.workspaceId, targetId: job.translationId },
+      () => deployBlogHomepage(lang)
+    );
   } catch (err) {
     // Non-critical — article is already published with placeholder images
     console.error(`[blog-images-bg] Failed for "${job.slug}":`, err instanceof Error ? err.message : err);

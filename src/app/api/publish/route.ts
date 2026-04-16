@@ -7,6 +7,7 @@ import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, injectBlogUTMs, type BlogConfig } from "@/lib/blog-shell";
 import { getPublishedBlogArticles, deployBlogHomepage, deployBlogRssFeed } from "@/lib/blog-deploy";
+import { runDeployStep } from "@/lib/deploy-failures";
 
 export const maxDuration = 120;
 
@@ -242,18 +243,25 @@ async function doPublish(
       })
       .eq("id", translationId);
 
-    // Fire-and-forget: regenerate sitemap for this language
-    deploySitemapAndRobots(language).catch((err) =>
-      console.warn("[publish] Sitemap update failed:", err)
+    // 2026-04-16: These used to be fire-and-forget with silent .catch() — if
+    // any failed, the homepage/RSS/sitemap silently went stale. Now awaited
+    // via runDeployStep which records failures + sends a Telegram alert.
+    // Errors don't abort the rest (translation is already marked published).
+    // See resilience-audit-2026-04-16.md (P0-3).
+    const deployContext = {
+      language,
+      workspaceId: pageDataEarly?.workspace_id as string | undefined,
+      targetId: translationId,
+    };
+    await runDeployStep("sitemap", deployContext, () =>
+      deploySitemapAndRobots(language)
     );
-
-    // Fire-and-forget: regenerate blog homepage + RSS feed if this is a blog page
     if (isBlogPage) {
-      deployBlogHomepage(language).catch((err) =>
-        console.warn("[publish] Blog homepage update failed:", err)
+      await runDeployStep("blog_homepage", deployContext, () =>
+        deployBlogHomepage(language)
       );
-      deployBlogRssFeed(language).catch((err) =>
-        console.warn("[publish] Blog RSS feed update failed:", err)
+      await runDeployStep("blog_rss", deployContext, () =>
+        deployBlogRssFeed(language)
       );
     }
 
