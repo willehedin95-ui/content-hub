@@ -253,6 +253,34 @@ export async function GET(req: NextRequest) {
 
             killActions.push({ name: adsetName, reason: rec.title, success: true, spend7d: breakdown?.spend_7d, purchases7d: breakdown?.purchases_7d, daysRunning: breakdown?.days_running });
             killCount++;
+
+            // 2026-04-16: Real-time Telegram alert per kill so the user learns
+            // immediately — not buried in the next daily digest. Includes the
+            // before-state (spend, purchases, days) and the strategy reasoning
+            // so they can review and un-pause if it was a false positive.
+            // See resilience-audit-2026-04-16.md (P0-4).
+            if (chatId && !dryRun) {
+              try {
+                await sendMessage(
+                  chatId,
+                  formatKillAlert({
+                    workspaceLabel: label,
+                    adsetName,
+                    adsetId,
+                    reason: rec.title,
+                    reasoning: rec.reasoning,
+                    urgency: rec.urgency,
+                    spend7d: breakdown?.spend_7d,
+                    purchases7d: breakdown?.purchases_7d,
+                    daysRunning: breakdown?.days_running,
+                    success: true,
+                  }),
+                  { parse_mode: "HTML" },
+                );
+              } catch (tgErr) {
+                console.error("[autopilot-execute] Kill alert Telegram failed:", tgErr);
+              }
+            }
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
             killActions.push({ name: adsetName, reason: rec.title, success: false, spend7d: breakdown?.spend_7d, purchases7d: breakdown?.purchases_7d, daysRunning: breakdown?.days_running });
@@ -266,6 +294,31 @@ export async function GET(req: NextRequest) {
               success: false,
               error_message: errorMsg,
             });
+
+            // Also alert on failures so partial kills don't hide
+            if (chatId && !dryRun) {
+              try {
+                await sendMessage(
+                  chatId,
+                  formatKillAlert({
+                    workspaceLabel: label,
+                    adsetName,
+                    adsetId,
+                    reason: rec.title,
+                    reasoning: rec.reasoning,
+                    urgency: rec.urgency,
+                    spend7d: breakdown?.spend_7d,
+                    purchases7d: breakdown?.purchases_7d,
+                    daysRunning: breakdown?.days_running,
+                    success: false,
+                    errorMsg,
+                  }),
+                  { parse_mode: "HTML" },
+                );
+              } catch (tgErr) {
+                console.error("[autopilot-execute] Kill alert Telegram failed:", tgErr);
+              }
+            }
           }
         }
       }
@@ -506,6 +559,80 @@ function formatAutopilotActions(ws: WsActions): string[] {
 function money(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return `${n.toFixed(0)}`;
+}
+
+/** Minimal HTML escape for Telegram parse_mode=HTML */
+function htmlEsc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Format a real-time kill alert for Telegram.
+ * 2026-04-16: Added so the user learns about each auto-kill immediately rather
+ * than waiting for the daily digest. Includes the strategy engine's reasoning
+ * + before-state so they can un-pause in Ads Manager if it's a false positive.
+ */
+function formatKillAlert(input: {
+  workspaceLabel: string;
+  adsetName: string;
+  adsetId: string;
+  reason: string;
+  reasoning?: string;
+  urgency: string;
+  spend7d?: number;
+  purchases7d?: number;
+  daysRunning?: number | null;
+  success: boolean;
+  errorMsg?: string;
+}): string {
+  const {
+    workspaceLabel,
+    adsetName,
+    adsetId,
+    reason,
+    reasoning,
+    urgency,
+    spend7d,
+    purchases7d,
+    daysRunning,
+    success,
+    errorMsg,
+  } = input;
+
+  const header = success
+    ? `🛑 <b>${htmlEsc(workspaceLabel)}Autopilot killed ad set</b>`
+    : `⚠️ <b>${htmlEsc(workspaceLabel)}Autopilot kill FAILED</b>`;
+
+  const metrics: string[] = [];
+  if (spend7d != null) metrics.push(`${Math.round(spend7d)} SEK spend`);
+  if (purchases7d != null) metrics.push(`${purchases7d} purch`);
+  if (daysRunning != null) metrics.push(`${daysRunning}d old`);
+
+  const lines = [
+    header,
+    ``,
+    `<b>${htmlEsc(adsetName)}</b>`,
+    `Reason: ${htmlEsc(reason)}`,
+    `Urgency: ${htmlEsc(urgency)}`,
+  ];
+  if (metrics.length > 0) {
+    lines.push(`7d: ${htmlEsc(metrics.join(" • "))}`);
+  }
+  if (reasoning) {
+    lines.push(``);
+    lines.push(`<i>${htmlEsc(reasoning)}</i>`);
+  }
+  if (!success && errorMsg) {
+    lines.push(``);
+    lines.push(`Error: <code>${htmlEsc(errorMsg.slice(0, 400))}</code>`);
+  }
+  lines.push(``);
+  lines.push(`<code>adset_id=${htmlEsc(adsetId)}</code>`);
+
+  return lines.join("\n");
 }
 
 function arrow(trend: string): string {

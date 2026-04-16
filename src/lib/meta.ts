@@ -318,22 +318,47 @@ export async function updateAd(adId: string, params: { status?: string; name?: s
 /**
  * Pause an ad set AND all ads within it.
  * Prevents killed ad sets from showing ads as "active" in Meta Ads Manager.
+ *
+ * 2026-04-16: This used to swallow errors silently (console.error only), which
+ * meant partial failures looked like a clean kill to callers. Now we collect
+ * errors and throw if anything after the initial ad-set pause fails, so the
+ * caller can record the failure + alert the user. The ad set itself IS paused
+ * before any throw, so the primary kill action always takes effect.
+ * See resilience-audit-2026-04-16.md (P0-4).
  */
 export async function pauseAdSetAndAds(adSetId: string): Promise<void> {
+  // Primary action: pause the ad set. If this fails, the whole kill failed.
   await updateAdSet(adSetId, { status: "PAUSED" });
+
+  // Secondary: pause all still-active ads so they don't appear "active" in
+  // Ads Manager. Collect errors instead of silently logging.
+  const errors: string[] = [];
+
+  let ads: Array<{ id: string; status: string; name?: string }>;
   try {
-    const ads = await listAdsInAdSet(adSetId);
-    for (const ad of ads) {
-      if (ad.status !== "PAUSED" && ad.status !== "DELETED") {
-        try {
-          await updateAd(ad.id, { status: "PAUSED" });
-        } catch (err) {
-          console.error(`[pauseAdSetAndAds] Failed to pause ad ${ad.id}:`, err);
-        }
+    ads = await listAdsInAdSet(adSetId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Ad set ${adSetId} paused, but failed to list ads for cleanup: ${msg}`
+    );
+  }
+
+  for (const ad of ads) {
+    if (ad.status !== "PAUSED" && ad.status !== "DELETED") {
+      try {
+        await updateAd(ad.id, { status: "PAUSED" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`ad ${ad.id}: ${msg}`);
       }
     }
-  } catch (err) {
-    console.error(`[pauseAdSetAndAds] Failed to list/pause ads in ad set ${adSetId}:`, err);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Ad set ${adSetId} paused, but ${errors.length} ad(s) remained active: ${errors.join("; ")}`
+    );
   }
 }
 

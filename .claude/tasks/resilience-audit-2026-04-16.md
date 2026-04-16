@@ -28,10 +28,12 @@ Below is the synthesized, deduped, prioritized action list. Individual agent fin
 **Pattern**: `deployBlogHomepage(language).catch(...)` - if these fail, user gets "published successfully" but blog homepage/RSS/sitemap are stale. No alert fires.
 **Fix**: Await them inside the `after()` block. On failure, log to a `deploy_failures` table + Telegram alert. User needs to know if the homepage doesn't regenerate.
 
-### P0-4. Auto-kill cron has no real-time Telegram alert
-**File**: `src/app/api/cron/autopilot-execute/route.ts:237`
+### P0-4. Auto-kill cron has no real-time Telegram alert ✅ FIXED
+**File**: `src/app/api/cron/autopilot-execute/route.ts`, `src/lib/meta.ts:318-360`
 **Pattern**: `pauseAdSetAndAds()` pauses up to 10 adsets/day unattended. Errors inside the pause flow are silently logged and continue. Only summary Telegram fires at end.
-**Fix**: (a) Telegram alert IMMEDIATELY per kill with before-state + reason + undo button. (b) Make `pauseAdSetAndAds` throw on partial failure so caller records it.
+**Fix applied**:
+- `pauseAdSetAndAds` now collects per-ad errors and throws if any ad failed to pause OR if `listAdsInAdSet` failed after the primary pause. Caller's existing try/catch records the failure in `autopilot_actions` with the error message.
+- After each kill (success OR failure) a real-time Telegram message fires immediately with: ad set name, reason + reasoning from strategy engine, urgency, 7d spend/purchases, days running, and (on failure) the error. User learns about each kill when it happens instead of at the next daily digest. Implemented via new `formatKillAlert()` helper using parse_mode=HTML for safe escaping. No undo button (would need a webhook callback route — skipped for now since the kill is already logged to `autopilot_actions` and user can un-pause directly in Ads Manager).
 
 ---
 
