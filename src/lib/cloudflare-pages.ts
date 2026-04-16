@@ -183,24 +183,85 @@ export async function loadManifest(
   projectName: string
 ): Promise<Record<string, string>> {
   const db = createServerSupabase();
-  const { data } = await db
+  const { data, error } = await db
     .from("cf_pages_manifests")
     .select("manifest")
     .eq("project_name", projectName)
-    .single();
-  return (data?.manifest as Record<string, string>) ?? {};
+    .maybeSingle();
+
+  // Only tolerate "no row exists" (PGRST116). Any other error = throw so the
+  // deploy fails loudly instead of silently wiping the manifest by treating
+  // transient DB failures as "empty manifest".
+  if (error && error.code !== "PGRST116") {
+    throw new Error(
+      `[loadManifest] Failed to load manifest for ${projectName}: ${error.message} (code=${error.code})`
+    );
+  }
+
+  return (data?.manifest as Record<string, string> | undefined) ?? {};
 }
 
+/**
+ * Atomically merge new paths into the manifest using a Postgres RPC.
+ * This avoids the classic read-modify-write race condition when multiple
+ * deploys run concurrently (e.g. blog autopilot fires at the same time as
+ * homepage regeneration). New paths overwrite old paths with the same key.
+ *
+ * Unlike the old `saveManifest(projectName, manifest)`, this does NOT let
+ * the caller accidentally pass a truncated manifest and wipe existing paths.
+ */
+export async function mergeManifest(
+  projectName: string,
+  newPaths: Record<string, string>
+): Promise<Record<string, string>> {
+  const db = createServerSupabase();
+  const { data, error } = await db.rpc("merge_cf_pages_manifest", {
+    p_project_name: projectName,
+    p_paths: newPaths,
+  });
+  if (error) {
+    throw new Error(
+      `[mergeManifest] RPC failed for ${projectName}: ${error.message}`
+    );
+  }
+  return (data as Record<string, string> | null) ?? {};
+}
+
+/**
+ * @deprecated Use mergeManifest() instead - this function can wipe existing
+ * paths if the caller passes an incomplete manifest. Kept only for the
+ * explicit-full-rewrite case (e.g. one-time migration scripts) and guarded
+ * with a sanity check.
+ */
 export async function saveManifest(
   projectName: string,
   manifest: Record<string, string>
 ): Promise<void> {
   const db = createServerSupabase();
-  await db.from("cf_pages_manifests").upsert({
+
+  // Sanity check: if we're about to drastically shrink the manifest, bail.
+  // Under normal operation new deploys add or update paths, they never
+  // remove >50% of them. This guards against loadManifest() returning {}
+  // due to a silent error and the caller then "saving" a near-empty manifest.
+  const existing = await loadManifest(projectName);
+  const existingCount = Object.keys(existing).length;
+  const newCount = Object.keys(manifest).length;
+  if (existingCount > 10 && newCount < existingCount * 0.5) {
+    throw new Error(
+      `[saveManifest] Refusing to shrink manifest for ${projectName} from ${existingCount} to ${newCount} paths. Use mergeManifest() or pass ALLOW_SHRINK env to override.`
+    );
+  }
+
+  const { error } = await db.from("cf_pages_manifests").upsert({
     project_name: projectName,
     manifest,
     updated_at: new Date().toISOString(),
   });
+  if (error) {
+    throw new Error(
+      `[saveManifest] Failed to save manifest for ${projectName}: ${error.message}`
+    );
+  }
 }
 
 /**
@@ -300,8 +361,11 @@ export async function publishPage(
     manifest
   );
 
-  // Save updated manifest
-  await saveManifest(projectName, manifest);
+  // Atomically merge JUST the new paths into the DB manifest. This is race-safe:
+  // concurrent deploys that added other paths won't be wiped.
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  await mergeManifest(projectName, newPathsOnly);
 
   // Get base URL (prefer custom domain)
   const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
@@ -785,7 +849,10 @@ Sitemap: ${baseUrl}/sitemap.xml
   }
 
   const deploy = await createDeployment(accountId, apiToken, projectName, manifest);
-  await saveManifest(projectName, manifest);
+
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  await mergeManifest(projectName, newPathsOnly);
 
   return {
     sitemapUrl: `${baseUrl}/sitemap.xml`,

@@ -5,7 +5,7 @@ import {
   getProjectCustomDomain,
   md5hex,
   loadManifest,
-  saveManifest,
+  mergeManifest,
   getUploadToken,
   uploadFiles,
   upsertHashes,
@@ -157,7 +157,10 @@ export async function deployBlogHomepage(
     projectName,
     manifest
   );
-  await saveManifest(projectName, manifest);
+
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  await mergeManifest(projectName, newPathsOnly);
 
   return {
     url: `${baseUrl}/`,
@@ -227,7 +230,10 @@ export async function deployBlogRssFeed(
     projectName,
     manifest
   );
-  await saveManifest(projectName, manifest);
+
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  await mergeManifest(projectName, newPathsOnly);
 
   return {
     url: `${baseUrl}/rss.xml`,
