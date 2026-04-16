@@ -1,5 +1,33 @@
-# Content Hub — Task Backlog
-Updated: 2026-04-07 (afternoon)
+# Content Hub - Task Backlog
+Updated: 2026-04-16
+
+## Resilience Audit (triggered by halsobladet manifest wipe 2026-04-16)
+**Full report**: `.claude/tasks/resilience-audit-2026-04-16.md`
+
+### P0 - same-class-of-bug, fix NOW (est 2-3h)
+- [ ] **Settings PUT atomic merge** — `/api/settings/route.ts` overwrites entire `workspaces.settings` JSONB. Add Postgres RPC `merge_workspace_settings` (same pattern as `merge_cf_pages_manifest`) + convert callsite. (added 2026-04-16, CRITICAL)
+- [ ] **ad_copy_translations atomic merge** — 2 places do JSONB RMW: `approval-actions.ts:327-348` + `autopilot-translations.ts:251+389`. Approval + autopilot can overwrite each other. Add RPC + convert. (added 2026-04-16, CRITICAL)
+- [ ] **Un-fire-and-forget sitemap/homepage/RSS** — `publish/route.ts:245-258` + `blog-autopilot.ts:374-379` use `.catch(() => {})`. If these fail, user sees "published" but blog homepage/RSS is stale with no alert. Await them, log failures, Telegram on failure. (added 2026-04-16, CRITICAL)
+- [ ] **Auto-kill real-time Telegram alert** — `autopilot-execute` pauses up to 10 adsets/day silently. Make `pauseAdSetAndAds` throw on partial failure, send Telegram per kill with before-state + undo button. (added 2026-04-16, HIGH)
+
+### P1 - prevent silent production failures (est 3-4h)
+- [ ] **Post-deploy URL verification** — After `createDeployment()`, fetch URL, check 200 + body > 500 + `</html>`. Retry 3x. Only then mark published. Would have caught halsobladet within seconds. (added 2026-04-16)
+- [ ] **Pre-Meta-push landing URL check** — Before creating Meta ads, HEAD the landingUrl (5s timeout). Skip languages where URL 404s. Prevents ads pointing to dead pages. (added 2026-04-16)
+- [ ] **loadWorkspaces throws instead of `[]`** — `workspace.ts:20-28` returns `[]` on DB error, locks user out of app. Throw instead. (added 2026-04-16)
+- [ ] **pauseAdSetAndAds error collection** — `meta.ts:318-338` swallows per-ad failures. Collect into array, throw after loop. (added 2026-04-16)
+- [ ] **scale_winner budget upper bound** — `morning-brief/actions:146-152` has no max. Cap at `max_campaign_budget` from workspace settings + 24h cooldown. (added 2026-04-16)
+- [ ] **createDeployment/loadManifest retry** — Wrap in `withRetry()`, single network hiccup shouldn't fail deploys. (added 2026-04-16)
+
+### P2 - hardening (incremental)
+- [ ] **Meta ad readback verification** — 30s delayed fetch to verify ad exists + correct adset/creative after push. (added 2026-04-16)
+- [ ] **Ad impression delay alert** — hourly cron: query insights for ads pushed 2-6h ago. Alert if 0 impressions. (added 2026-04-16)
+- [ ] **API wrapper response.ok checks** — `apify.ts`, `gethookd.ts` missing. Also fix `shopify.ts` `data.orders ?? []` silent drop. (added 2026-04-16)
+- [ ] **Auto-kill before-state snapshot** — log `adset_state_before` JSONB to `autopilot_actions` so kills are reversible. (added 2026-04-16)
+- [ ] **Concept metrics payload validation** — `pipeline.ts:836` upserts NULL on truncated Meta response, zeroing historical spend. Validate required fields first. (added 2026-04-16)
+- [ ] **Soft-delete lifecycle/pages** — Replace `.delete()` with `archived_at` on `concept_lifecycle`, `pages` error cleanup, `source_images` iteration cleanup. (added 2026-04-16)
+- [ ] **Post-deploy sanity check cron** — every 30min, fetch all active Meta ad landing URLs + top blog URLs. Would have caught halsobladet within 30min. (added 2026-04-16)
+- [ ] **Deploy audit log table** — `cf_pages_deploy_log` tracking manifest_size_before/after, files_uploaded, url_status. Debug future incidents. (added 2026-04-16)
+- [ ] **Lint rule: silent error patterns** — flag `catch (e) {}`, `.catch(() => {})`, `.single()` without error destructure, `.update()`/`.delete()` without id/workspace_id in WHERE. (added 2026-04-16)
 
 ## Renew Launch
 - [x] ~~**Meta infrastructure**~~ — Ad account `act_1356397096506086`, Page "Renew Sverige", Pixel `2023081985301786`, system user access, workspace config updated. (done 2026-03-25)
@@ -11,8 +39,9 @@ Updated: 2026-04-07 (afternoon)
 - [ ] **GA4 + GTM + GSC** — Set up new GA4 property, GTM container, and verify get-renew.com in GSC. (added 2026-03-25)
 - [ ] **Shopify policies** — kontaktformulär + returformulär still missing. (added 2026-03-25)
 - [x] ~~**Klaviyo from-address**~~ — `hello@get-renew.com` already set as default sender in Klaviyo. No mail sent from Klaviyo yet (only Freshdesk test tickets). So "From: header alignment" warning in Postmaster is likely from Freshdesk tests, not Klaviyo. Will confirm when first Postmark DMARC Weekly report arrives. (done 2026-04-07)
-- [ ] **Ad account warmup** — Start small campaigns once store has products. Initial limit ~500 SEK/day. (added 2026-03-25)
-- [ ] **Update Hydro13 blog product URLs** — blog-writer.ts has "#" placeholder for Hydro13. Update to get-renew.com product URL when store is live. (added 2026-03-27)
+- [x] ~~**Ad account warmup**~~ — Renew ad account active. CBO campaign `120247585560870715` (1000 SEK/day, Lowest Cost, PAUSED). Template ad set with Renew Pixel + Advantage+ audience. William + Rasmus granted full access. DSA fields added to meta.ts. (done 2026-04-10)
+- [x] ~~**Update Hydro13 blog product URLs**~~ — blog-writer.ts + market_product_urls DB all updated to `https://get-renew.com/products/hydro13` (SE/NO/DK). Commit `03740c5`. (done 2026-04-10)
+- [ ] **Custom sending domain for Loop (LOW)** — Loop currently sends from default `notifications.loopwork.co`. Could add own subdomain like `notifications.get-renew.com` to separate transactional from Klaviyo marketing (`send.get-renew.com`) and avoid shared-reputation risk. Main concern is sender/reply-to domain mismatch (currently sends from @loopwork.co, replies to @get-renew.com) which may trigger spam flags. Not urgent - default works. When ready: add new domain in Loop → they give DNS records → add via Hostinger API. (added 2026-04-07)
 - [ ] **Test Renew auto-reply end-to-end** — Submit Fillout contact form with real email, verify (1) auto-reply arrives from `kundservice@get-renew.com` not Freshdesk, (2) lands in inbox not spam, (3) reply thread works correctly. doginwork + swedishbalance send daily automated mail so no testing needed for those. (added 2026-04-07, HIGH before ads go live)
 - [ ] **Investigate "From: header alignment" warning in Postmaster Tools** — get-renew.com Postmaster shows "Needs work" on From header alignment. Means some mail with From: @get-renew.com is failing DMARC alignment (neither SPF nor DKIM d= tag matches the From domain). Most likely source: Klaviyo not yet using branded sending domain (hello@get-renew.com not set as default sender), or Fillout confirmation emails. Investigate once Postmark DMARC Weekly reports are flowing. (added 2026-04-07)
 - [x] ~~**Postmark DMARC Weekly (get-renew.com only)**~~ — DMARC on get-renew.com set to Postmark rua: `v=DMARC1; p=none; pct=100; rua=mailto:re+ssarjlvm9iu@dmarc.postmarkapp.com; sp=none; aspf=r;`. Verified via Postmark API (`/records/my/verify` returns `verified:true`). **Postmark free is one-domain-per-account** - swedishbalance.se/.org + doginwork.com reverted to default `v=DMARC1; p=none` (no rua). Can add them later as separate Postmark accounts if needed. **Replaces SNDS/JMRP** (not usable for solopreneurs on shared sending infrastructure). Postmark API token saved in `.env.local` + Vercel env (production + dev only - preview pending manual add) as `POSTMARK_DMARC_API_TOKEN`. (done 2026-04-07)
@@ -21,6 +50,12 @@ Updated: 2026-04-07 (afternoon)
 - [x] ~~**Content Hub deliverability dashboard**~~ — Built `/deliverability` page (combined view of Gmail Postmaster Tools + Postmark DMARC). Daily cron at 12:00 UTC, stores snapshots in 3 new tables (`postmaster_traffic_stats`, `dmarc_reports`, `deliverability_sync_log`). Telegram alerts at >0.3% (warning) and >1.0% (critical) spam rate, and on >10% DMARC fail ratio. Manual "Sync now" button in UI. **Initial sync exposed real issue**: swedishbalance.org on LOW reputation for all 19 days, with spam rate spikes to 1.0% (2026-03-08) and 0.8% (2026-03-13). Gmail is not trusting it — needs investigation (likely Klaviyo sending to stale list). DKIM/SPF/DMARC all 100% so auth isn't the problem, it's engagement. swedishbalance.se + doginwork.com + get-renew.com have no Postmaster data yet (volume below reporting threshold). (done 2026-04-07)
 - [ ] **Gradual DMARC policy strengthening** — All 4 domains currently on `p=none`. Once Postmark DMARC Weekly reports show clean authentication for 2-4 weeks, advance to `p=quarantine; pct=25` → `pct=100` → `p=reject`. Don't rush this. (added 2026-04-07)
 - [x] ~~**Delegate Postmaster Tools to service account**~~ — User added `claude-code-william@claude-code-william.iam.gserviceaccount.com` as READER on all 4 domains (get-renew.com, swedishbalance.se, swedishbalance.org, doginwork.com). API verified: `GET /v1/domains` returns all 4 with `permission: READER`. Traffic stats confirmed working: swedishbalance.se + swedishbalance.org show `domainReputation: HIGH` (Gmail trusts them). get-renew.com + doginwork.com have no data yet (need ~10 mail/day to Gmail users to trigger reporting). (done 2026-04-07)
+
+## Expense Report & Invoice Tracker
+- [x] ~~**Expense Report feature**~~ - Upload receipts + bank screenshots, AI extracts data in Swedish (Haiku), matches receipts to bank transactions, generates Excel with payment section, downloads receipts as ZIP. Client-side ZIP (JSZip) to avoid Vercel body limit. Commits `9748f68`, `c13f026`, `f21649c`, `c973d9f`. (done 2026-04-11)
+- [ ] **Invoice Tracker redesign Phase 1** - Fix email matching (forwarded emails lose original sender, WisprFlow matches everything). Add `extractOriginalSender()`, two-pass matching, `original_sender` column, fix WisprFlow config, reassign wrongly-matched logs. (plan ready)
+- [ ] **Invoice Tracker redesign Phase 2** - Simplify statuses (9 -> 6 stored + 2 computed). Data migration SQL. (plan ready, depends on Phase 1)
+- [ ] **Invoice Tracker redesign Phase 3** - UI cleanup: consolidate banners, consolidate actions, simplify rows, handle 518 stuck pending logs. (plan ready, depends on Phase 2)
 
 ## Tier 1 — Revenue & Automation
 - [x] ~~**Multi-workspace hardcoding audit**~~ — Full codebase audit (4 parallel agents), fixed 24 files. Removed pausedProducts hiding Hydro13, hardcoded pillow descriptions, `|| "happysleep"` fallbacks, collagen-specific research prompts, HappySleep-specific blog language rules. Commits `69dea06`, `f80afda`. (done 2026-03-27)
@@ -52,6 +87,19 @@ Updated: 2026-04-07 (afternoon)
 - [ ] **Verify tomorrow's autopilot run actually succeeds** - After commits `8b33087` + `c98e733` + `565ad43`, the cron at 08:00/08:30 UTC should produce 3/3 successful concepts. Watch for: (a) does it fit in 300s budget post-revert (parallelization should make it feasible), (b) does soft retry trigger and recover any concepts that would have failed silently before. Look for `[swipe-competitor] Soft retry recovered N/3 images` log lines. (added 2026-04-07, HIGH)
 - [ ] **Test /review approve/reject end-to-end** — Approve concept from phone, verify it lands on launchpad + translations trigger. (added 2026-03-29)
 - [ ] **Consider removing Telegram inline buttons** — Once /review is proven stable, simplify Telegram messages to just a link. (added 2026-03-29, LOW)
+
+## Renew Community (Facebook Group)
+Strategic retention play. Kollagen kräver 60-90 dagar för synliga resultat - communityn hjälper kunder hålla ut förbi churn-fönstret (snitt 42 dagar). Inspirerat av Fresh Chile Co (36K members) och Obvi (46K members, kollagen).
+
+- [ ] **Skapa Facebook-grupp** — "Renew - Hudresa & Kollagen" (eller liknande). Sluten grupp. Fyll i About, cover photo, regler. (5 min, HIGH - gör först)
+- [ ] **10 startinlägg** — Förbered conversation starters: "Vilken vecka är du på?", "Hur tar du din Hydro13?", "Märker du skillnad efter X veckor?", resultat-timeline milstolpar, smoothie-recept med kollagen. (behövs innan inbjudning)
+- [ ] **Bjud in befintliga subscribers** — Email-blast via Klaviyo/Well Copy till aktiva prenumeranter. Incentive: giveaway exklusivt i gruppen. (kräver Well Copy-koordination)
+- [ ] **QR-kod i paketet** — Designa en liten flyer/kort med QR till gruppen. Lägg till i Shelfless plocklista. (kräver Shelfless-koordination)
+- [ ] **Post-purchase email CTA** — Lägg till "Gå med i vår community" i Well Copy post-purchase flow. (kräver Well Copy-koordination)
+- [ ] **iOS-app integration** — "Dela din milstolpe i gruppen" knapp vid streak/selfie milstolpar. Deep link till FB-gruppen. (kräver app-update + TestFlight)
+- [ ] **Loop billing reminder CTA** — Lägg till social proof i upcoming order reminder: "X andra i gruppen tar sin Hydro13 idag". (LOW, vänta tills gruppen har aktivitet)
+- [ ] **Glow Guide (lead magnet)** — Samla bästa community-tips, rutiner, och före/efter-resor till en PDF. Använd som post-purchase bonus och email lead magnet. (LOW, vänta tills tillräckligt med community-content finns)
+- [ ] **UGC pipeline** — Processa community-bilder/testimonials till Meta ad creative. (LOW, kommer naturligt när gruppen växer)
 
 ## Tier 2 — Builder & UX Quality
 - [x] ~~**Autosave race condition**~~ — Fixed in commit `f382c9b`. (done 2026-03-22)
