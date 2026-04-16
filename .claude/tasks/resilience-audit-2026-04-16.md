@@ -70,11 +70,17 @@ Below is the synthesized, deduped, prioritized action list. Individual agent fin
 **Pattern**: Already fixed to throw on real errors. But a single transient DB hiccup fails the whole deploy.
 **Fix**: Wrap in `withRetry()` for transient errors (network, timeout, 5xx from Supabase).
 
-### P1-7. `blog-autopilot` spawns `after()` work that extends past response
+### P1-7. `blog-autopilot` spawns `after()` work that extends past response ✅ VERIFIED SAFE
 **File**: `src/app/api/cron/blog-autopilot/route.ts:86-92`
 **Pattern**: `after()` callback writes to `cf_pages_manifests` 200-300s after response. Next language variant (HS-da at 09:10) can start before HS-sv's after() finishes.
-**Fix**: (a) Serialize language runs (HS-da only starts if HS-sv's after() is done, via DB lock row), OR (b) rely on the new atomic `mergeManifest()` and accept overlap (already safe now).
-**Status**: Arguably resolved by the manifest fix. Verify no other `after()` writes have similar races.
+**Verification (2026-04-16)**:
+- Each language has its own Cloudflare Pages project (`CF_PAGES_PROJECT_SV` / `_DA` / `_NO`), so manifest rows are per-project and don't collide between languages.
+- Even on same-project writes, `mergeManifest()` now goes through the atomic `merge_cf_pages_manifest` RPC (P0 fix), so concurrent callers are safe.
+- Other `after()` handlers audited:
+  - `publish/route.ts` doPublish → all manifest writes via `mergeManifest()` ✅
+  - `brainstorm/approve`, `pipeline/concepts/.../approve`, `autopilot/concepts/.../approve` → write to row-isolated `image_jobs` by id ✅
+  - `telegram/webhook`, `review/.../action`, `image-jobs/.../re-roll`, `image-jobs/.../finish-and-queue` → call `triggerAutopilotTranslations` which uses `merge_ad_copy_translations` RPC (P0-2 fix) ✅
+- No remaining JSONB RMW patterns found in any `after()` callback.
 
 ---
 

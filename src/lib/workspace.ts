@@ -12,6 +12,11 @@ let _allWorkspacesCache: Workspace[] | null = null;
 /**
  * Get all workspaces (cached per process — fine for single-user app).
  * Call clearWorkspaceCache() if workspaces are modified.
+ *
+ * 2026-04-16: Throws on DB error instead of returning []. Same class of bug
+ * that caused the halsobladet manifest wipe — a transient Supabase hiccup
+ * made the app silently render "no workspaces" (locked out). Now the error
+ * bubbles to a proper error boundary. See resilience-audit-2026-04-16.md P1-3.
  */
 export async function getAllWorkspaces(): Promise<Workspace[]> {
   if (_allWorkspacesCache) return _allWorkspacesCache;
@@ -22,9 +27,13 @@ export async function getAllWorkspaces(): Promise<Workspace[]> {
     .select("*")
     .order("created_at");
 
-  if (error || !data) {
-    console.error("Failed to fetch workspaces:", error);
-    return [];
+  if (error) {
+    throw new Error(
+      `[getAllWorkspaces] Failed to fetch workspaces: ${error.message} (code=${error.code})`
+    );
+  }
+  if (!data) {
+    throw new Error(`[getAllWorkspaces] No data returned`);
   }
 
   _allWorkspacesCache = data as Workspace[];
@@ -59,19 +68,33 @@ export async function getWorkspace(): Promise<Workspace> {
     .eq("slug", slug)
     .single();
 
-  if (error || !data) {
-    // Fallback to default workspace
-    const { data: fallback } = await db
+  // 2026-04-16: Only fallback on "row not found" (PGRST116). Other errors
+  // (network, permission, etc.) should throw so we don't silently route the
+  // user to the wrong workspace on a transient DB hiccup.
+  if (error && error.code !== "PGRST116") {
+    throw new Error(
+      `[getWorkspace] Failed to fetch workspace for slug=${slug}: ${error.message} (code=${error.code})`
+    );
+  }
+
+  if (!data) {
+    // Fallback to default workspace (legitimate case: slug doesn't exist)
+    const { data: fallback, error: fbError } = await db
       .from("workspaces")
       .select("*")
       .eq("slug", DEFAULT_WORKSPACE_SLUG)
       .single();
 
-    if (fallback) {
-      _workspaceCache.set(fallback.slug, fallback as Workspace);
-      return fallback as Workspace;
+    if (fbError) {
+      throw new Error(
+        `[getWorkspace] No workspace for slug=${slug} AND fallback fetch failed: ${fbError.message}`
+      );
     }
-    throw new Error(`No workspace found for slug: ${slug}`);
+    if (!fallback) {
+      throw new Error(`[getWorkspace] No workspace found for slug=${slug} (default also missing)`);
+    }
+    _workspaceCache.set(fallback.slug, fallback as Workspace);
+    return fallback as Workspace;
   }
 
   const ws = data as Workspace;

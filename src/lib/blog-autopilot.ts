@@ -675,6 +675,32 @@ async function publishBlogArticle(
 
   // Deploy to Cloudflare Pages
   const result = await publishPage(finalHtml, deploySlug, language, deployFiles, undefined, analytics);
+
+  // 2026-04-16: If post-deploy HTTP verification failed, surface it via
+  // Telegram so we learn about broken deploys immediately instead of when
+  // traffic hits a 404 page. Non-fatal — we still return the URL.
+  // See resilience-audit-2026-04-16.md P1-1.
+  if (result.verification && !result.verification.ok) {
+    console.error(
+      `[blog-publish] Deploy verification failed for ${result.url}: ${result.verification.reason}`
+    );
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    if (chatId) {
+      try {
+        await sendTelegramNotification(
+          chatId,
+          `⚠️ *Blog deploy verification failed*\n\n` +
+            `URL: \`${result.url}\`\n` +
+            `Reason: \`${result.verification.reason ?? "unknown"}\`\n` +
+            `Status: \`${result.verification.status ?? "-"}\`\n\n` +
+            `Article deployed but is not serving valid HTML.`
+        );
+      } catch {
+        // Non-critical — don't fail the publish
+      }
+    }
+  }
+
   return result.url.trim();
 }
 

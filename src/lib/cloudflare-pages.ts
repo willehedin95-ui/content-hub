@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { Language } from "@/types";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { fetchWithRetry } from "./retry";
+import { fetchWithRetry, withRetry } from "./retry";
 import { slugifyCategory, getArticlePath } from "@/lib/blog-shell";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
@@ -9,6 +9,13 @@ const CF_API = "https://api.cloudflare.com/client/v4";
 interface CFDeployResult {
   url: string;
   deploy_id: string;
+  /** Post-deploy HTTP verification. See verifyDeployedUrl() for details. */
+  verification?: {
+    ok: boolean;
+    status?: number;
+    bodyBytes?: number;
+    reason?: string;
+  };
 }
 
 export interface DeployFile {
@@ -182,23 +189,44 @@ async function getProjectBaseUrl(
 export async function loadManifest(
   projectName: string
 ): Promise<Record<string, string>> {
-  const db = createServerSupabase();
-  const { data, error } = await db
-    .from("cf_pages_manifests")
-    .select("manifest")
-    .eq("project_name", projectName)
-    .maybeSingle();
+  // 2026-04-16: Wrapped in withRetry so a single transient Supabase hiccup
+  // (network blip, 5xx) doesn't fail the whole deploy. Only the inner DB call
+  // is retried — still throws loudly on real errors. See resilience-audit-2026-04-16.md P1-6.
+  return withRetry(async () => {
+    const db = createServerSupabase();
+    const { data, error } = await db
+      .from("cf_pages_manifests")
+      .select("manifest")
+      .eq("project_name", projectName)
+      .maybeSingle();
 
-  // Only tolerate "no row exists" (PGRST116). Any other error = throw so the
-  // deploy fails loudly instead of silently wiping the manifest by treating
-  // transient DB failures as "empty manifest".
-  if (error && error.code !== "PGRST116") {
-    throw new Error(
-      `[loadManifest] Failed to load manifest for ${projectName}: ${error.message} (code=${error.code})`
-    );
-  }
+    // Only tolerate "no row exists" (PGRST116). Any other error = throw so the
+    // deploy fails loudly instead of silently wiping the manifest by treating
+    // transient DB failures as "empty manifest".
+    if (error && error.code !== "PGRST116") {
+      throw new Error(
+        `[loadManifest] Failed to load manifest for ${projectName}: ${error.message} (code=${error.code})`
+      );
+    }
 
-  return (data?.manifest as Record<string, string> | undefined) ?? {};
+    return (data?.manifest as Record<string, string> | undefined) ?? {};
+  }, {
+    maxAttempts: 3,
+    initialDelayMs: 500,
+    isRetryable: (err) => {
+      if (!(err instanceof Error)) return false;
+      const msg = err.message.toLowerCase();
+      // Retry on network errors and 5xx from Supabase. Don't retry on
+      // permission / schema errors (those need a real fix, not a wait).
+      return (
+        msg.includes("fetch failed") ||
+        msg.includes("network") ||
+        msg.includes("timeout") ||
+        msg.includes("econnreset") ||
+        /\b5\d{2}\b/.test(msg)
+      );
+    },
+  });
 }
 
 /**
@@ -369,11 +397,82 @@ export async function publishPage(
 
   // Get base URL (prefer custom domain)
   const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
+  const finalUrl = `${baseUrl}/${slug}`;
+
+  // 2026-04-16: Verify the deployed URL actually serves valid HTML before we
+  // report success. Would have caught the halsobladet manifest wipe on the
+  // first bad deploy instead of after ~200 silent wipes. Non-fatal: we return
+  // the URL regardless, but caller sees the warning in the result.
+  // See resilience-audit-2026-04-16.md P1-1.
+  const verification = await verifyDeployedUrl(finalUrl);
 
   return {
-    url: `${baseUrl}/${slug}`,
+    url: finalUrl,
     deploy_id: deploy.id,
+    verification,
   };
+}
+
+/**
+ * Verify a deployed URL actually serves valid HTML.
+ * Retries 3x with 2s backoff to tolerate CF edge propagation lag.
+ * Returns {ok: true} on success or {ok: false, reason} on failure.
+ * Never throws — caller decides whether to block on failure.
+ */
+async function verifyDeployedUrl(
+  url: string
+): Promise<{ ok: boolean; status?: number; bodyBytes?: number; reason?: string }> {
+  const MAX_ATTEMPTS = 3;
+  const DELAY_MS = 2000;
+  const MIN_BODY_BYTES = 500;
+  const TIMEOUT_MS = 10_000;
+
+  let lastReason = "no attempt made";
+  let lastStatus: number | undefined;
+  let lastBodyBytes: number | undefined;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal,
+          headers: { "user-agent": "content-hub-deploy-verifier/1.0" },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      lastStatus = res.status;
+
+      if (res.status !== 200) {
+        lastReason = `HTTP ${res.status}`;
+      } else {
+        const body = await res.text();
+        lastBodyBytes = body.length;
+        if (body.length < MIN_BODY_BYTES) {
+          lastReason = `body too small (${body.length} bytes)`;
+        } else if (!body.includes("</html>") && !body.includes("</HTML>")) {
+          lastReason = "missing </html> tag";
+        } else {
+          return { ok: true, status: res.status, bodyBytes: body.length };
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      lastReason = msg.includes("abort") ? `timeout (>${TIMEOUT_MS / 1000}s)` : `fetch failed: ${msg.slice(0, 100)}`;
+    }
+
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, DELAY_MS));
+    }
+  }
+
+  return { ok: false, status: lastStatus, bodyBytes: lastBodyBytes, reason: lastReason };
 }
 
 /**

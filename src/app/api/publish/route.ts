@@ -232,12 +232,41 @@ async function doPublish(
       customCode,
     );
 
+    // 2026-04-16: Surface post-deploy verification failure as a publish_error
+    // so the user sees a warning next to the "published" badge. Also fire a
+    // Telegram alert — this is the signal we were missing during the
+    // halsobladet manifest wipe. See resilience-audit-2026-04-16.md P1-1.
+    let verifyWarning = "";
+    if (result.verification && !result.verification.ok) {
+      verifyWarning = `Post-deploy check failed: ${result.verification.reason ?? "unknown"}`;
+      console.error(`[publish] ${verifyWarning} (${result.url})`);
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      if (chatId) {
+        try {
+          const { sendTelegramNotification } = await import("@/lib/telegram");
+          await sendTelegramNotification(
+            chatId,
+            `⚠️ *Deploy verification failed*\n\n` +
+              `URL: \`${result.url}\`\n` +
+              `Reason: \`${result.verification.reason ?? "unknown"}\`\n` +
+              `Status: \`${result.verification.status ?? "-"}\`\n` +
+              `Body bytes: \`${result.verification.bodyBytes ?? "-"}\`\n\n` +
+              `Page was deployed but is not serving valid HTML. Check immediately.`
+          );
+        } catch (tgErr) {
+          console.error("[publish] Telegram verify alert failed:", tgErr);
+        }
+      }
+    }
+
+    const combinedWarning = [imageWarnings, verifyWarning].filter(Boolean).join(" | ");
+
     await db
       .from("translations")
       .update({
         status: "published",
         published_url: result.url.trim(),
-        publish_error: imageWarnings || null,
+        publish_error: combinedWarning || null,
         publish_step: null,
         updated_at: new Date().toISOString(),
       })

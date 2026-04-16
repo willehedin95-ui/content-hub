@@ -143,10 +143,63 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // 2026-04-16: Cooldown check — if this campaign's budget was scaled
+      // within the last 24h, refuse to scale again. Click-spam protection:
+      // 5x clicks = +149% budget with no upper bound. User will see the
+      // error and understand why. See resilience-audit-2026-04-16.md P1-5.
+      const COOLDOWN_HOURS = 24;
+      const cooldownSince = new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+      const { data: recentScale } = await db
+        .from("ad_learnings")
+        .select("created_at, detail")
+        .eq("workspace_id", workspaceId)
+        .eq("meta_ad_id", campaign_id)
+        .eq("event_type", "graduated_winner")
+        .gte("created_at", cooldownSince)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentScale) {
+        const ago = Math.round((Date.now() - new Date(recentScale.created_at).getTime()) / (60 * 60 * 1000));
+        return NextResponse.json(
+          {
+            error: `Campaign already scaled ${ago}h ago (cooldown ${COOLDOWN_HOURS}h). Wait before scaling again.`,
+            last_scale: recentScale.created_at,
+            last_detail: recentScale.detail,
+          },
+          { status: 429 }
+        );
+      }
+
       // CBO: increase campaign budget by 20%
       const campaignInfo = await getCampaignBudget(campaign_id);
       const oldBudget = Number(campaignInfo.daily_budget || 0);
       const newBudget = Math.round(oldBudget * 1.2);
+
+      // 2026-04-16: Hard cap from workspace settings to prevent runaway
+      // budget growth. Default 50,000 SEK/day (= 5_000_000 cents) — generous,
+      // but stops accidental 10x climbs. Settable via workspaces.settings.max_campaign_budget_sek.
+      const { data: ws } = await db
+        .from("workspaces")
+        .select("settings")
+        .eq("id", workspaceId)
+        .single();
+      const maxBudgetSek = Number((ws?.settings as Record<string, unknown> | null)?.max_campaign_budget_sek ?? 50_000);
+      const maxBudgetCents = maxBudgetSek * 100;
+
+      if (newBudget > maxBudgetCents) {
+        return NextResponse.json(
+          {
+            error: `Scaling would exceed max campaign budget (${maxBudgetSek} SEK/day). Current: ${(oldBudget / 100).toFixed(0)}, proposed: ${(newBudget / 100).toFixed(0)}. Raise max in workspace settings if intentional.`,
+            current_budget_sek: oldBudget / 100,
+            proposed_budget_sek: newBudget / 100,
+            max_budget_sek: maxBudgetSek,
+          },
+          { status: 400 }
+        );
+      }
+
       await updateCampaign(campaign_id, {
         daily_budget: String(newBudget),
       });

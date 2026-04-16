@@ -50,6 +50,68 @@ async function withRetry<T>(fn: () => Promise<T>, delayMs = 2000): Promise<T> {
   }
 }
 
+/**
+ * HEAD/GET check that a URL responds with valid HTML.
+ * Used as a pre-flight check before pushing ads to Meta so we don't serve
+ * impressions to a dead landing page. Returns {ok: true} or {ok: false, reason}.
+ * Never throws.
+ *
+ * Uses GET (not HEAD) because Shopify/Cloudflare sometimes handle HEAD
+ * differently from real traffic. Falls back to HEAD on 405.
+ * 2026-04-16: See resilience-audit-2026-04-16.md P1-2.
+ */
+async function verifyUrlAlive(
+  url: string
+): Promise<{ ok: boolean; status?: number; reason?: string }> {
+  const TIMEOUT_MS = 5000;
+  const MIN_BODY_BYTES = 500;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    let res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "user-agent": "content-hub-pre-push-check/1.0" },
+    });
+
+    // Some servers (or our own CF Pages rewrites) return 405 for GET — try HEAD
+    if (res.status === 405) {
+      res = await fetch(url, {
+        method: "HEAD",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { "user-agent": "content-hub-pre-push-check/1.0" },
+      });
+      if (res.status !== 200) {
+        return { ok: false, status: res.status, reason: `HTTP ${res.status} (HEAD)` };
+      }
+      return { ok: true, status: res.status };
+    }
+
+    if (res.status !== 200) {
+      return { ok: false, status: res.status, reason: `HTTP ${res.status}` };
+    }
+
+    // Only consume body if GET — HEAD has none anyway
+    const body = await res.text();
+    if (body.length < MIN_BODY_BYTES) {
+      return { ok: false, status: res.status, reason: `body too small (${body.length} bytes)` };
+    }
+    return { ok: true, status: res.status };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = msg.includes("abort");
+    return {
+      ok: false,
+      reason: isTimeout ? `timeout (>${TIMEOUT_MS / 1000}s)` : `fetch failed: ${msg.slice(0, 100)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export interface PushResult {
   language: string;
   country: string;
@@ -272,6 +334,20 @@ export async function pushConceptToMeta(
       const landingUrl = landingUrlByLang.get(lang);
       if (!landingUrl) {
         return { language: lang, country, status: "error", error: `No published landing page for ${lang}` } as const;
+      }
+
+      // 2026-04-16: HEAD-check the landing URL before sending to Meta so we
+      // don't serve ad impressions to a dead page. If the URL is 404/timeout/
+      // too small, skip this language with a clear error. The user sees which
+      // languages failed and why. See resilience-audit-2026-04-16.md P1-2.
+      const urlCheck = await verifyUrlAlive(landingUrl);
+      if (!urlCheck.ok) {
+        return {
+          language: lang,
+          country,
+          status: "error",
+          error: `Landing page not serving valid HTML: ${urlCheck.reason}. URL: ${landingUrl}`,
+        } as const;
       }
 
       // Combine translated feed images + skipped originals into a unified list
