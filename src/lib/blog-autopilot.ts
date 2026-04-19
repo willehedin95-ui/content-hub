@@ -31,7 +31,7 @@ import {
   deployBlogHomepage,
   deployBlogRssFeed,
 } from "./blog-deploy";
-import { sendTelegramNotification } from "./telegram";
+import { sendTelegramNotification, isTelegramDisabled } from "./telegram";
 import {
   isDataForSeoConfigured,
   getKeywordSuggestions,
@@ -404,10 +404,15 @@ async function writeOneArticle(
     }
   }
 
-  // Send Telegram notification
+  // Send Telegram notification (respect workspace notifications_disabled flag)
   try {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-    if (chatId) {
+    const { data: wsRow } = await db
+      .from("workspaces")
+      .select("settings")
+      .eq("id", workspaceId)
+      .single();
+    if (chatId && !isTelegramDisabled(wsRow)) {
       await sendTelegramNotification(
         chatId,
         `📝 *Blog article published*\n\n` +
@@ -685,7 +690,12 @@ async function publishBlogArticle(
       `[blog-publish] Deploy verification failed for ${result.url}: ${result.verification.reason}`
     );
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-    if (chatId) {
+    const { data: wsRow } = await db
+      .from("workspaces")
+      .select("settings")
+      .eq("id", workspaceId)
+      .single();
+    if (chatId && !isTelegramDisabled(wsRow)) {
       try {
         await sendTelegramNotification(
           chatId,

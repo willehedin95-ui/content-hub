@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
 export const maxDuration = 60;
 
@@ -158,12 +158,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Fetch workspace names
+  // Fetch workspace names + settings (to respect notifications_disabled)
   const workspaceIds = [...new Set([...statusMap.values()].map((s) => s.workspace_id).filter(Boolean))];
   const { data: workspaces } = workspaceIds.length > 0
-    ? await db.from("workspaces").select("id, name").in("id", workspaceIds)
+    ? await db.from("workspaces").select("id, name, settings").in("id", workspaceIds)
     : { data: [] };
   const wsNames = new Map((workspaces ?? []).map((w) => [w.id, w.name as string]));
+  const silencedWs = new Set(
+    (workspaces ?? []).filter((w) => isTelegramDisabled(w)).map((w) => w.id as string),
+  );
 
   // Check for recent auto-pause by us (in case auto-pause-bleeders killed it)
   const { data: autoPaused } = await db
@@ -196,8 +199,13 @@ export async function GET(req: NextRequest) {
       unknownWs.push(f);
       continue;
     }
+    if (silencedWs.has(wsId)) continue;
     if (!byWorkspace.has(wsId)) byWorkspace.set(wsId, []);
     byWorkspace.get(wsId)!.push(f);
+  }
+
+  if (byWorkspace.size === 0 && unknownWs.length === 0) {
+    return NextResponse.json({ ok: true, flagged: 0, message: "All flagged ad sets belong to silenced workspaces" });
   }
 
   const lines: string[] = [];

@@ -5,7 +5,7 @@ import { pushConceptToMeta } from "@/lib/meta-push";
 import { pushVideoToMeta } from "@/lib/meta-video-push";
 import { setMetaConfig } from "@/lib/meta";
 import { notifyStageTransitions } from "@/lib/telegram-notify";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 
 
@@ -59,7 +59,9 @@ export async function GET(req: NextRequest) {
       .from("workspaces")
       .select("id, slug, settings, meta_config");
 
-    const pushWorkspaces = (allWorkspaces ?? []).filter((ws) => ws.meta_config != null);
+    const pushWorkspaces = (allWorkspaces ?? []).filter(
+      (ws) => ws.meta_config != null && !isTelegramDisabled(ws),
+    );
 
     if (pushWorkspaces.length === 0) {
       return NextResponse.json({

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { runPageSpeedCheck, scoreColor, formatMs } from "@/lib/pagespeed";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
 export const maxDuration = 120;
 
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   }> = [];
 
   for (const ws of workspaces) {
+    if (isTelegramDisabled(ws)) continue;
     const settings = (ws.settings ?? {}) as Record<string, unknown>;
     if (!settings.pagespeed_enabled) continue;
 

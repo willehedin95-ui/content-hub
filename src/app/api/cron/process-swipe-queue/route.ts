@@ -4,6 +4,7 @@ import {
   processOneQueueItem,
   reconcileStuckSwipes,
 } from "@/lib/swipe-queue-worker";
+import { isTelegramDisabled } from "@/lib/telegram";
 
 // 300s Vercel hobby cap. swipeCompetitorAd per item = ~60-120s with
 // parallelized image gen. We budget ~250s of processing time so we fit
@@ -68,6 +69,8 @@ export async function GET() {
         bailedOnTime = true;
         break;
       }
+
+      if (isTelegramDisabled(ws)) continue;
 
       const productSlug = (ws.settings as Record<string, unknown> | null)
         ?.default_product as string | undefined;

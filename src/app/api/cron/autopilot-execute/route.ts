@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 import { updateAdSet, updateCampaign, setMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 import {
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       .select("id, slug, settings, meta_config");
 
     const workspaces = (allWorkspaces ?? []).filter((ws) => {
+      if (isTelegramDisabled(ws)) return false;
       const s = (ws.settings ?? {}) as Record<string, unknown>;
       return s.autopilot_auto_kill === true || s.autopilot_auto_budget === true || s.autopilot_auto_iterate === true;
     });

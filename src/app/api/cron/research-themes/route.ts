@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 import { analyzeThemes } from "@/lib/research-themes";
 
 export const maxDuration = 800;
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   }> = [];
 
   for (const ws of workspaces) {
+    if (isTelegramDisabled(ws)) continue;
     const settings = ws.settings as Record<string, unknown>;
     if (!settings?.research_enabled) continue;
 

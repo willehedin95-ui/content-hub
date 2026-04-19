@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
+import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup, isTelegramDisabled } from "@/lib/telegram";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -102,8 +102,9 @@ async function getAutopilotWorkspaces(
   const results: WorkspaceCtx[] = [];
   for (const ws of workspaces ?? []) {
     const s = (ws.settings ?? {}) as Record<string, unknown>;
+    if (isTelegramDisabled(ws)) continue;
     const autopilotMode = s.autopilot_mode as string | undefined;
-    if (!slugFilter && (!autopilotMode || autopilotMode === "disabled")) continue;
+    if (!autopilotMode || autopilotMode === "disabled") continue;
 
     const productSlug = s.default_product as string;
     if (!productSlug) {

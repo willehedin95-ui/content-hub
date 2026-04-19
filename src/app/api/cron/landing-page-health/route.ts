@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
 export const maxDuration = 120;
 
@@ -43,12 +43,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Deduplicate URLs and track which workspace each belongs to
+  // Build set of silenced workspace ids (notifications_disabled)
+  const { data: allWs } = await db.from("workspaces").select("id, name, settings");
+  const silencedWsIds = new Set(
+    (allWs ?? []).filter((w) => isTelegramDisabled(w)).map((w) => w.id as string),
+  );
+
+  // Deduplicate URLs and track which workspace each belongs to.
+  // Skip URLs whose only owners are silenced workspaces.
   const urlToWorkspaces = new Map<string, Set<string>>();
   for (const ad of activeAds ?? []) {
     const url = ad.landing_page_url as string;
     const campaign = ad.meta_campaigns as unknown as { workspace_id: string; status: string };
     if (!url || !campaign?.workspace_id) continue;
+    if (silencedWsIds.has(campaign.workspace_id)) continue;
     if (!urlToWorkspaces.has(url)) urlToWorkspaces.set(url, new Set());
     urlToWorkspaces.get(url)!.add(campaign.workspace_id);
   }
@@ -70,9 +78,8 @@ export async function GET(req: NextRequest) {
 
   // Send Telegram alert if any pages are broken
   if (broken.length > 0) {
-    // Group by workspace for context
-    const { data: workspaces } = await db.from("workspaces").select("id, name");
-    const wsNames = new Map((workspaces ?? []).map((w) => [w.id, w.name]));
+    // Group by workspace for context (reuse workspaces fetched above)
+    const wsNames = new Map((allWs ?? []).map((w) => [w.id, w.name]));
 
     const lines = broken.map((r) => {
       const wsIds = urlToWorkspaces.get(r.url);

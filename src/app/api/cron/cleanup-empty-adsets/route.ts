@@ -7,7 +7,7 @@ import {
   updateAdSet,
   setMetaConfig,
 } from "@/lib/meta";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
 export const maxDuration = 800;
 
@@ -56,7 +56,13 @@ export async function GET(req: NextRequest) {
   // --- Load workspace configs ---
   const { data: workspaces } = await db
     .from("workspaces")
-    .select("id, slug, name, meta_config");
+    .select("id, slug, name, meta_config, settings");
+
+  const silencedWsNames = new Set<string>(
+    (workspaces ?? [])
+      .filter((w) => isTelegramDisabled(w))
+      .map((w) => ((w.name as string) ?? (w.slug as string) ?? "")),
+  );
 
   // Build list of unique (adAccountId → workspaceId, metaConfig, name) pairs.
   // Multiple workspaces can share an ad account (e.g. HappySleep + Hydro13
@@ -229,16 +235,17 @@ export async function GET(req: NextRequest) {
   // --- Telegram digest ---
   if (paused.length > 0 && !dryRun) {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
-    if (chatId) {
+    const notifiablePaused = paused.filter((p) => !silencedWsNames.has(p.workspaceName));
+    if (chatId && notifiablePaused.length > 0) {
       const byWorkspace = new Map<string, PauseRecord[]>();
-      for (const p of paused) {
+      for (const p of notifiablePaused) {
         const key = p.workspaceName;
         if (!byWorkspace.has(key)) byWorkspace.set(key, []);
         byWorkspace.get(key)!.push(p);
       }
 
       const lines: string[] = [];
-      lines.push(`🧹 Cleaned up ${paused.length} empty ad set${paused.length === 1 ? "" : "s"}`);
+      lines.push(`🧹 Cleaned up ${notifiablePaused.length} empty ad set${notifiablePaused.length === 1 ? "" : "s"}`);
       lines.push("");
 
       for (const [wsName, items] of byWorkspace) {

@@ -2,6 +2,23 @@
 
 const TELEGRAM_API = "https://api.telegram.org";
 
+/**
+ * Check if a workspace has Telegram notifications disabled.
+ * Set `settings.notifications_disabled = true` on a workspace to silence all
+ * telegram sends for that workspace. Pass the workspace row (or just its
+ * settings). Returns true when notifications are suppressed.
+ */
+export function isTelegramDisabled(
+  wsOrSettings: { settings?: unknown } | Record<string, unknown> | null | undefined
+): boolean {
+  if (!wsOrSettings) return false;
+  const settings =
+    "settings" in wsOrSettings && wsOrSettings.settings
+      ? (wsOrSettings.settings as Record<string, unknown>)
+      : (wsOrSettings as Record<string, unknown>);
+  return settings?.notifications_disabled === true;
+}
+
 function getBotToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not set");
