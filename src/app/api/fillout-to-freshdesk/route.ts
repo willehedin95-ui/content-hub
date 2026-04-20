@@ -241,8 +241,8 @@ function buildDescription(
 
   for (const q of ordered) {
     const question = (q.name || "Fråga").trim();
-    const answer = formatValue(q.value);
-    lines.push(`<p><strong>${escapeHtml(question)}</strong><br>${escapeHtml(answer).replace(/\n/g, "<br>")}</p>`);
+    const answerHtml = renderAnswerHtml(q.value);
+    lines.push(`<p><strong>${escapeHtml(question)}</strong><br>${answerHtml}</p>`);
   }
   return lines.join("\n");
 }
@@ -254,6 +254,55 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// Fillout file upload fields arrive as [{url, filename}] (array of objects).
+// Older setups may send a single object or a stringified JSON blob - handle all three.
+function extractFiles(value: unknown): Array<{ url: string; filename?: string }> {
+  const items = Array.isArray(value) ? value : [value];
+  const files: Array<{ url: string; filename?: string }> = [];
+  for (const item of items) {
+    let obj: Record<string, unknown> | null = null;
+    if (item && typeof item === "object") {
+      obj = item as Record<string, unknown>;
+    } else if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            files.push(...extractFiles(parsed));
+            continue;
+          }
+          if (parsed && typeof parsed === "object") obj = parsed as Record<string, unknown>;
+        } catch {
+          // Not JSON - ignore, treat as regular text elsewhere
+        }
+      }
+    }
+    if (obj && typeof obj.url === "string" && obj.url) {
+      const filename = typeof obj.filename === "string" ? obj.filename : undefined;
+      files.push({ url: obj.url, filename });
+    }
+  }
+  return files;
+}
+
+// Returns HTML for a single form answer. File uploads become clickable <a> links
+// so Freshdesk doesn't mangle the URL by trying to auto-linkify raw JSON.
+function renderAnswerHtml(value: unknown): string {
+  const files = extractFiles(value);
+  if (files.length > 0) {
+    return files
+      .map((f) => {
+        const label = escapeHtml(f.filename || "Bifogad fil");
+        const href = escapeHtml(f.url);
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      })
+      .join("<br>");
+  }
+  const text = formatValue(value);
+  return escapeHtml(text).replace(/\n/g, "<br>");
 }
 
 function cleanFormName(formName: string | undefined): string {
