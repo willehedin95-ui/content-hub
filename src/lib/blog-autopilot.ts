@@ -212,6 +212,19 @@ async function writeOneArticle(
 
   console.log(`[blog-autopilot] Writing article: "${nextArticle.title}" (${nextArticle.slug})`);
 
+  // Check whether this workspace wants PubMed-grounded research citations.
+  // Opt-in per workspace via `blog_research_citations` setting. Hydro13 uses
+  // this to compete with affiliate sites that cite 20+ studies per article.
+  const { data: wsForRes } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const enableResearchCitations =
+    ((wsForRes?.settings as Record<string, unknown> | null)?.blog_research_citations as
+      | boolean
+      | undefined) === true;
+
   // Generate the article
   let article;
   try {
@@ -219,6 +232,7 @@ async function writeOneArticle(
       ...nextArticle,
       language,
       blogDomain,
+      enableResearchCitations,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Article generation failed";

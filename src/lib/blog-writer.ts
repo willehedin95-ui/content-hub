@@ -438,7 +438,7 @@ export interface ArticleResult {
 // ---------------------------------------------------------------------------
 
 export async function generateBlogArticle(
-  request: ArticleRequest
+  request: ArticleRequest & { enableResearchCitations?: boolean }
 ): Promise<ArticleResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
@@ -453,13 +453,45 @@ export async function generateBlogArticle(
     request.blogDomain
   );
 
+  // Optionally fetch verified research citations (PubMed). Gated by
+  // workspace setting so we only pay for it where needed (currently Hydro13).
+  // Falls through gracefully if PubMed is unreachable — writer still runs,
+  // just without forced citations.
+  let verifiedStudies: Array<{
+    pmid: string;
+    title: string;
+    year: number;
+    authors: string[];
+    journal: string;
+    url: string;
+    design: string;
+  }> = [];
+  if (request.enableResearchCitations) {
+    try {
+      const { findRelevantStudies } = await import("./pubmed");
+      verifiedStudies = await findRelevantStudies(
+        request.primaryKeyword,
+        request.secondaryKeywords,
+        { limit: 8 }
+      );
+      console.log(`[blog-writer] Found ${verifiedStudies.length} verified PubMed studies`);
+    } catch (err) {
+      console.warn("[blog-writer] PubMed lookup failed, continuing without citations:", err);
+    }
+  }
+
   // Get template HTML as structural reference
   const template = BLOG_TEMPLATES.find((t) => t.id === request.templateId);
   const templateHtml = template
     ? template.getHtml(request.title)
     : BLOG_TEMPLATES[0].getHtml(request.title);
 
-  const systemPrompt = buildWriterSystemPrompt(request, productContext, internalLinks);
+  const systemPrompt = buildWriterSystemPrompt(
+    request,
+    productContext,
+    internalLinks,
+    verifiedStudies
+  );
   const userPrompt = buildWriterUserPrompt(request, templateHtml);
 
   const client = new Anthropic({ apiKey });
@@ -494,6 +526,70 @@ export async function generateBlogArticle(
     .replace(/^```html?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
+
+  // Post-process: verify research citations. If the writer was given verified
+  // PubMed studies, at least 3 of their URLs must appear in the article body.
+  // If not, send ONE follow-up message asking to add citations. This catches
+  // cases where the model wrote the article ignoring the mandatory citation
+  // rule — we don't regenerate from scratch (expensive) but give it a nudge.
+  if (verifiedStudies.length > 0) {
+    const verifiedUrls = new Set(verifiedStudies.map((s) => s.url));
+    const citedInBody = new Set<string>();
+    for (const url of verifiedUrls) {
+      if (cleanHtml.includes(url)) citedInBody.add(url);
+    }
+    const MIN_CITATIONS = 3;
+    if (citedInBody.size < MIN_CITATIONS) {
+      console.log(
+        `[blog-writer] Citations: ${citedInBody.size}/${MIN_CITATIONS} required. Requesting revision.`
+      );
+      const retryStream = client.messages.stream({
+        model: CLAUDE_MODEL,
+        max_tokens: 32000,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: userPrompt },
+          { role: "assistant", content: cleanHtml },
+          {
+            role: "user",
+            content: `You cited only ${citedInBody.size} of the ${verifiedStudies.length} verified PubMed studies, but the instructions require AT LEAST ${MIN_CITATIONS} inline citations from the "Verified Research Sources" list.
+
+Rewrite the article with at least ${MIN_CITATIONS} inline <a href="..."> citations linking to the PubMed URLs from the verified list. Do NOT add any other pubmed.ncbi.nlm.nih.gov URLs. Distribute citations across different paragraphs where claims about research findings are made. Paraphrase findings based on the study titles — do not fabricate specific numbers or conclusions.
+
+Return the complete revised article HTML (same structure, just with the added citations).`,
+          },
+        ],
+      });
+      let retryHtml = "";
+      for await (const event of retryStream) {
+        if (event.type === "content_block_delta") {
+          const delta = event.delta as unknown as { type: string; text?: string };
+          if (delta.type === "text_delta" && delta.text) retryHtml += delta.text;
+        }
+      }
+      const retryFinal = await retryStream.finalMessage();
+      inputTokens += retryFinal.usage?.input_tokens ?? 0;
+      outputTokens += retryFinal.usage?.output_tokens ?? 0;
+
+      const retryClean = retryHtml
+        .replace(/^```html?\s*\n?/i, "")
+        .replace(/\n?```\s*$/i, "")
+        .trim();
+      const retryCited = new Set<string>();
+      for (const url of verifiedUrls) if (retryClean.includes(url)) retryCited.add(url);
+
+      if (retryCited.size >= citedInBody.size) {
+        cleanHtml = retryClean;
+        console.log(`[blog-writer] After retry: ${retryCited.size}/${MIN_CITATIONS} citations`);
+      } else {
+        console.warn(
+          `[blog-writer] Retry didn't improve citation count (${retryCited.size} vs ${citedInBody.size}). Keeping original.`
+        );
+      }
+    } else {
+      console.log(`[blog-writer] Citations OK: ${citedInBody.size} verified PubMed URLs in body`);
+    }
+  }
 
   // Post-process: enforce anti-slop rules the prompt couldn't enforce reliably.
   // Single banned words get auto-replaced with synonyms; banned phrases are
@@ -540,7 +636,16 @@ export async function generateBlogArticle(
 function buildWriterSystemPrompt(
   request: ArticleRequest,
   productContext: string,
-  internalLinks: string
+  internalLinks: string,
+  verifiedStudies: Array<{
+    pmid: string;
+    title: string;
+    year: number;
+    authors: string[];
+    journal: string;
+    url: string;
+    design: string;
+  }> = []
 ): string {
   const langName =
     request.language === "sv"
@@ -589,6 +694,36 @@ ${Object.entries(langLinks).map(([key, { url, description }]) =>
 
 NEVER fabricate URLs. Only link to URLs listed above or to ${domainNote} you are 100% certain exist. If unsure about a URL, omit the link.`;
 
+  // Research citations: the article MUST cite at least 3 of the verified
+  // PubMed studies below (if any are provided). These are all real,
+  // peer-reviewed studies fetched fresh from PubMed for this article's
+  // primary keyword. Citing these is mandatory — do NOT invent other
+  // pubmed.ncbi.nlm.nih.gov URLs; they would be hallucinated.
+  const researchCitationsSection = verifiedStudies.length > 0
+    ? `## Verified Research Sources (MANDATORY CITATIONS)
+
+Cite at least 3 of these studies inline as hyperlinks in the article body.
+These are real peer-reviewed publications retrieved from PubMed just now.
+NEVER link to any other pubmed.ncbi.nlm.nih.gov URL — only the ones below.
+
+${verifiedStudies.map((s, i) =>
+  `${i + 1}. [${s.design.toUpperCase()}, ${s.year}] "${s.title}"
+   Authors: ${s.authors.slice(0, 3).join(", ")}${s.authors.length > 3 ? " et al." : ""}
+   Journal: ${s.journal}
+   URL: ${s.url}`
+).join("\n\n")}
+
+Cite studies in body text using descriptive anchor text linking to the URL:
+  Example: "En <a href="${verifiedStudies[0].url}">systematisk översikt från ${verifiedStudies[0].year}</a> visade att ..."
+Or reference by journal/authors:
+  Example: "Forskning publicerad i ${verifiedStudies[0].journal} (<a href="${verifiedStudies[0].url}">${verifiedStudies[0].authors[0] ?? "studie"} et al., ${verifiedStudies[0].year}</a>) fann att ..."
+
+CRITICAL: Paraphrase findings based on the study title. Do not invent specific
+numbers, percentages, or conclusions that aren't clearly implied by the title.
+If unsure what a study shows, cite it generically ("forskning visar att kollagen
+kan påverka ...") rather than fabricating specifics.`
+    : "";
+
   return `You are a senior ${langName} health & wellness journalist writing for ${blogName} (https://${request.blogDomain}). You write thoroughly researched, honest editorial content that ranks well in Google.
 
 ## CRITICAL: Language Rules
@@ -628,12 +763,14 @@ ${internalLinks || "(No other articles published yet)"}
 
 ${externalLinksSection}
 
+${researchCitationsSection}
+
 ## ANTI-FABRICATION RULES — CRITICAL
 
 1. NEVER invent product names. Only mention products from the "Verified Competitor Products" list above or our own product.
 2. NEVER fabricate URLs. Only use URLs from the verified lists above.
 3. NEVER invent prices. Only use prices from the verified competitor data.
-4. NEVER fabricate study citations. Only cite studies you know are real (author, journal, year).
+4. NEVER fabricate study citations. Only cite studies from the "Verified Research Sources" list (if provided) OR other real studies you are 100% certain exist (with correct author, journal, year). When in doubt, cite the verified list.
 5. NEVER make up expert quotes, testimonials, or named people. DO NOT use the .quote-block CSS class at all — you are not allowed to attribute statements to specific people (doctors, physiotherapists, researchers, etc.) because you cannot verify they exist or said those things. This is a YMYL health site and fabricated expert quotes destroy trust and violate Google's E-E-A-T guidelines. Instead, paraphrase findings from real studies using "forskning visar att..." or "enligt [källa]...".
 6. If the content brief asks for 12 products but you only have 10 verified ones, write about 10. Do NOT pad with made-up products.
 
