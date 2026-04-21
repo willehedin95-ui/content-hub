@@ -1346,6 +1346,11 @@ export interface GscProperty {
   property: string;
   language: Language;
   label: string;
+  /** Primary owner of the property. Defaults to true. When false, this workspace
+   *  only sees GSC rows whose page URL slug matches one of its own pages - used
+   *  when two workspaces share a property (e.g. halsobladet.com across HappySleep
+   *  and Hydro13). */
+  is_primary?: boolean;
 }
 
 export interface SeoOverview {
@@ -1365,6 +1370,7 @@ export interface SeoOverview {
     avgPosition: number | null;
   }>;
   lastSyncedAt: string | null;
+  hasProperties: boolean;
 }
 
 // ── PageSpeed Monitoring ────────────────────────────────────

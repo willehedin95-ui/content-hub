@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { gscCountryToMarket } from "@/lib/gsc";
+import { buildWorkspacePageFilter, pageMatchesWorkspace } from "@/lib/seo-workspace-filter";
+import type { GscProperty } from "@/types";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
+  const settings = await getWorkspaceSettings();
+  const gscProperties: GscProperty[] = (settings?.gsc_properties as GscProperty[]) ?? [];
   const url = new URL(req.url);
   const property = url.searchParams.get("property");
   const country = url.searchParams.get("country");
   const sortBy = url.searchParams.get("sortBy") ?? "impressions";
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+
+  if (gscProperties.length === 0) return NextResponse.json([]);
+
+  const propertyUrls = gscProperties.map((p) => p.property);
+  const pageFilter = await buildWorkspacePageFilter(db, workspaceId, gscProperties);
 
   // Date range: last 7 usable days (accounting for GSC delay)
   const now = new Date();
@@ -26,14 +35,14 @@ export async function GET(req: NextRequest) {
   let curQuery = db
     .from("gsc_keywords")
     .select("query, page, country, property, clicks, impressions, ctr, position")
-    .eq("workspace_id", workspaceId)
+    .in("property", propertyUrls)
     .gte("date", fmt(d10))
     .lte("date", fmt(d3));
 
   let prevQuery = db
     .from("gsc_keywords")
-    .select("query, country, property, position")
-    .eq("workspace_id", workspaceId)
+    .select("query, page, country, property, position")
+    .in("property", propertyUrls)
     .gte("date", fmt(d17))
     .lt("date", fmt(d10));
 
@@ -47,8 +56,8 @@ export async function GET(req: NextRequest) {
   }
 
   const [curRes, prevRes] = await Promise.all([curQuery, prevQuery]);
-  const curRows = curRes.data ?? [];
-  const prevRows = prevRes.data ?? [];
+  const curRows = (curRes.data ?? []).filter((r) => pageMatchesWorkspace(r.page, r.property, pageFilter));
+  const prevRows = (prevRes.data ?? []).filter((r) => pageMatchesWorkspace(r.page, r.property, pageFilter));
 
   // Build previous period position averages keyed by "query|country|property"
   const prevMap = new Map<string, { posSum: number; count: number }>();

@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { TrendingUp, TrendingDown, Search, MousePointerClick, Eye, Target, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Search, MousePointerClick, Eye, Target, RefreshCw, Settings } from "lucide-react";
 import type { SeoOverview } from "@/types";
 
 function TrendBadge({ value, suffix = "%", inverse = false }: { value: number | null; suffix?: string; inverse?: boolean }) {
@@ -119,8 +120,28 @@ export default function SeoDashboard() {
     );
   }
 
-  // No data yet — show helpful empty state with sync button
-  if (!data || (data.totalKeywords === 0 && data.byProperty.length === 0)) {
+  // No properties configured - prompt user to set them up
+  if (data && !data.hasProperties) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+        <Settings className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">No GSC Properties Configured</h3>
+        <p className="text-sm text-gray-500 max-w-md mx-auto mb-4">
+          Add your Google Search Console properties in Settings to start tracking organic search performance.
+        </p>
+        <Link
+          href="/seo?tab=settings"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+        >
+          <Settings className="w-4 h-4" />
+          Go to Settings
+        </Link>
+      </div>
+    );
+  }
+
+  // Properties configured but no data yet - show empty state with sync button
+  if (!data || (data.totalKeywords === 0 && data.byProperty.every((p) => p.totalImpressions === 0))) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -145,10 +166,12 @@ export default function SeoDashboard() {
           <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No SEO Data Yet</h3>
           <p className="text-sm text-gray-500 max-w-md mx-auto">
-            Your GSC properties are configured. It takes a few weeks after publishing blog articles before Google indexes them and search data appears here.
+            {data?.lastSyncedAt
+              ? "Your GSC properties are configured but no matching search data has been found yet. It takes a few weeks after publishing articles before Google indexes them."
+              : "Your GSC properties are configured. Click Sync Now to pull the first 90 days of data from Google Search Console."}
           </p>
           <p className="text-xs text-gray-400 mt-2 max-w-md mx-auto">
-            Data syncs automatically every Monday. You can also click Sync Now above to check manually.
+            Data syncs automatically every Monday.
           </p>
         </div>
       </div>

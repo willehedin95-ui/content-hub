@@ -1,4 +1,8 @@
-// Shopify integration — uses client_credentials OAuth for auto-refreshing tokens
+// Shopify integration - uses client_credentials OAuth for auto-refreshing tokens.
+//
+// Supports multiple stores (one per workspace). Each workspace can define a
+// shopify_config in settings; callers pass workspaceId to route to the right
+// store. When no workspaceId is passed, falls back to env (SwedishBalance).
 
 // Exchange rates to USD — fetched live from ECB, cached for 6 hours
 const FALLBACK_RATES: Record<string, number> = {
@@ -53,52 +57,88 @@ export interface ShopifyOrder {
   id: string;
   order_number: number;
   landing_site: string | null;
+  referring_site?: string | null;
   total_price: string;
   currency: string;
   created_at: string;
 }
 
-export function isShopifyConfigured(): boolean {
-  return !!(
-    process.env.SHOPIFY_STORE_URL &&
-    process.env.SHOPIFY_CLIENT_ID &&
-    process.env.SHOPIFY_CLIENT_SECRET
-  );
+export interface ShopifyCreds {
+  storeUrl: string;
+  clientId: string;
+  clientSecret: string;
+  storefrontHost?: string; // e.g. "get-renew.com" or "swedishbalance.se"
 }
 
-// In-memory token cache (server-side, lives for the duration of the process)
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-function getStoreUrl(): string {
-  const raw = process.env.SHOPIFY_STORE_URL?.replace(/\/+$/, "") ?? "";
-  return raw.startsWith("http") ? raw : `https://${raw}`;
+/** Resolve credentials from env. Returns null if env not configured. */
+function envCreds(): ShopifyCreds | null {
+  const storeUrl = process.env.SHOPIFY_STORE_URL?.replace(/\/+$/, "") ?? "";
+  const clientId = process.env.SHOPIFY_CLIENT_ID ?? "";
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET ?? "";
+  if (!storeUrl || !clientId || !clientSecret) return null;
+  return {
+    storeUrl: storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`,
+    clientId,
+    clientSecret,
+  };
 }
+
+/** Resolve credentials from a workspace's shopify_config. Falls back to env. */
+export async function getShopifyCredsForWorkspace(
+  workspaceId: string
+): Promise<ShopifyCreds | null> {
+  const { createServerSupabase } = await import("./supabase-admin");
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const cfg = (data?.settings as Record<string, unknown> | null)?.shopify_config as
+    | { store_url?: string; client_id?: string; client_secret?: string; storefront_host?: string; env_fallback?: boolean }
+    | undefined;
+  if (!cfg) return envCreds();
+  if (cfg.env_fallback) return envCreds();
+  if (!cfg.store_url || !cfg.client_id || !cfg.client_secret) return null;
+  const storeUrl = cfg.store_url.replace(/\/+$/, "");
+  return {
+    storeUrl: storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`,
+    clientId: cfg.client_id,
+    clientSecret: cfg.client_secret,
+    storefrontHost: cfg.storefront_host,
+  };
+}
+
+export function isShopifyConfigured(creds?: ShopifyCreds | null): boolean {
+  if (creds) return !!(creds.storeUrl && creds.clientId && creds.clientSecret);
+  return envCreds() !== null;
+}
+
+// Per-credentials token cache (keyed by storeUrl+clientId) so multiple stores
+// can be used without cross-contamination.
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 /**
  * Get an access token via client_credentials grant.
- * Caches the token and refreshes when expired (tokens last 24h).
+ * Caches the token per store and refreshes when expired (tokens last 24h).
  */
-async function getAccessToken(): Promise<string> {
-  // Return cached token if still valid (with 5-min buffer)
-  if (cachedToken && Date.now() < tokenExpiresAt - 300_000) {
-    return cachedToken;
+async function getAccessToken(creds?: ShopifyCreds | null): Promise<string> {
+  const resolved = creds ?? envCreds();
+  if (!resolved) throw new Error("Shopify credentials not configured");
+
+  const cacheKey = `${resolved.storeUrl}|${resolved.clientId}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt - 300_000) {
+    return cached.token;
   }
 
-  const storeUrl = getStoreUrl();
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
-  if (!storeUrl || !clientId || !clientSecret) {
-    throw new Error("Shopify credentials not configured");
-  }
-
-  const res = await fetch(`${storeUrl}/admin/oauth/access_token`, {
+  const res = await fetch(`${resolved.storeUrl}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
+      client_id: resolved.clientId,
+      client_secret: resolved.clientSecret,
     }),
   });
 
@@ -108,24 +148,30 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data = await res.json();
-  cachedToken = data.access_token;
-  tokenExpiresAt = Date.now() + (data.expires_in ?? 86399) * 1000;
-  return cachedToken!;
+  tokenCache.set(cacheKey, {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 86399) * 1000,
+  });
+  return data.access_token as string;
 }
 
 /**
  * Fetch orders from Shopify since a given ISO date.
  * Handles pagination via Link header.
  */
-export async function fetchOrdersSince(sinceISO: string): Promise<ShopifyOrder[]> {
-  if (!isShopifyConfigured()) return [];
+export async function fetchOrdersSince(
+  sinceISO: string,
+  creds?: ShopifyCreds | null
+): Promise<ShopifyOrder[]> {
+  const resolved = creds ?? envCreds();
+  if (!isShopifyConfigured(resolved)) return [];
 
-  const storeUrl = getStoreUrl();
-  const token = await getAccessToken();
+  const storeUrl = resolved!.storeUrl;
+  const token = await getAccessToken(resolved);
 
   const allOrders: ShopifyOrder[] = [];
   let nextUrl: string | null =
-    `${storeUrl}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(sinceISO)}&fields=id,order_number,landing_site,total_price,currency,created_at&limit=250`;
+    `${storeUrl}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(sinceISO)}&fields=id,order_number,landing_site,referring_site,total_price,currency,created_at&limit=250`;
 
   while (nextUrl) {
     const fetchUrl: string = nextUrl;
@@ -187,15 +233,19 @@ export interface ShopifyOrderFull extends ShopifyOrder {
  * Fetch orders with full detail (for Meta CAPI user data hashing).
  * Separate from fetchOrdersSince to avoid breaking existing consumers.
  */
-export async function fetchOrdersFullSince(sinceISO: string): Promise<ShopifyOrderFull[]> {
-  if (!isShopifyConfigured()) return [];
+export async function fetchOrdersFullSince(
+  sinceISO: string,
+  creds?: ShopifyCreds | null
+): Promise<ShopifyOrderFull[]> {
+  const resolved = creds ?? envCreds();
+  if (!isShopifyConfigured(resolved)) return [];
 
-  const storeUrl = getStoreUrl();
-  const token = await getAccessToken();
+  const storeUrl = resolved!.storeUrl;
+  const token = await getAccessToken(resolved);
 
   const allOrders: ShopifyOrderFull[] = [];
   let nextUrl: string | null =
-    `${storeUrl}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(sinceISO)}&fields=id,order_number,landing_site,total_price,currency,created_at,email,phone,billing_address,customer,browser_ip,client_details,line_items&limit=250`;
+    `${storeUrl}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(sinceISO)}&fields=id,order_number,landing_site,referring_site,total_price,currency,created_at,email,phone,billing_address,customer,browser_ip,client_details,line_items&limit=250`;
 
   while (nextUrl) {
     const fetchUrl: string = nextUrl;
@@ -223,51 +273,85 @@ export async function fetchOrdersFullSince(sinceISO: string): Promise<ShopifyOrd
   return allOrders;
 }
 
+export interface OrderAttribution {
+  orders: number;
+  revenue: number;
+  currency: string;
+  /** Attribution source: "utm" means slug came from utm_campaign/utm_term,
+   *  "referrer" means inferred from referring_site (UTM stripped). */
+  source: "utm" | "referrer" | "mixed";
+}
+
 /**
- * Match orders to page slugs from landing_site URL.
- * Checks in order:
- * 1. utm_term — page slug when visitor came from Meta ads (utm_source=meta)
- * 2. utm_campaign — page slug for direct/organic visitors (utm_source=page)
- * Returns a map: slug → { orders, revenue, currency, sources: { meta, page, other } }
+ * Match orders to page slugs.
+ * Priority:
+ *   1. utm_term on landing_site (Meta ad traffic, utm_source=meta|facebook)
+ *   2. utm_campaign on landing_site (direct/organic visitors)
+ *   3. Path slug fallback when fbclid/gclid present but UTM stripped
+ *   4. NEW: when referring_site is one of our blog domains (halsobladet.com,
+ *      smarthelse.dk, helseguiden.com), attribute to a synthetic "__blog__"
+ *      slug so we know it came from the blog even when specific article is
+ *      unknown (UTMs often stripped by variant selection on PDP).
+ * Returns a map: slug -> attribution
  */
 export async function getOrdersByPage(
-  sinceISO: string
-): Promise<Map<string, { orders: number; revenue: number; currency: string }>> {
-  const orders = await fetchOrdersSince(sinceISO);
-  const map = new Map<string, { orders: number; revenue: number; currency: string }>();
+  sinceISO: string,
+  creds?: ShopifyCreds | null
+): Promise<Map<string, OrderAttribution>> {
+  const orders = await fetchOrdersSince(sinceISO, creds);
+  const map = new Map<string, OrderAttribution>();
+  const BLOG_HOSTS = ["halsobladet.com", "smarthelse.dk", "helseguiden.com"];
+
+  const bump = (slug: string, order: ShopifyOrder, source: OrderAttribution["source"]) => {
+    const existing = map.get(slug);
+    if (existing) {
+      existing.orders += 1;
+      existing.revenue += parseFloat(order.total_price) || 0;
+      if (existing.source !== source) existing.source = "mixed";
+    } else {
+      map.set(slug, {
+        orders: 1,
+        revenue: parseFloat(order.total_price) || 0,
+        currency: order.currency,
+        source,
+      });
+    }
+  };
 
   for (const order of orders) {
-    if (!order.landing_site) continue;
-    try {
-      const url = new URL(order.landing_site, "https://placeholder.com");
-      const source = url.searchParams.get("utm_source") || "";
+    let slug: string | null = null;
+    let attributionSource: OrderAttribution["source"] = "utm";
 
-      // Determine page slug based on UTM scheme
-      let slug: string | null = null;
-      if (source === "meta" || source === "facebook") {
-        // Meta ad traffic: page slug is in utm_term
-        slug = url.searchParams.get("utm_term");
-      }
-      if (!slug) {
-        // Direct/organic: page slug is in utm_campaign
-        slug = url.searchParams.get("utm_campaign");
-      }
-      if (!slug) {
-        // Fallback: extract from path for fbclid/gclid visitors (no UTM params)
-        if (url.searchParams.has("fbclid") || url.searchParams.has("gclid")) {
+    if (order.landing_site) {
+      try {
+        const url = new URL(order.landing_site, "https://placeholder.com");
+        const utmSource = url.searchParams.get("utm_source") || "";
+        if (utmSource === "meta" || utmSource === "facebook") {
+          slug = url.searchParams.get("utm_term");
+        }
+        if (!slug) slug = url.searchParams.get("utm_campaign");
+        if (!slug && (url.searchParams.has("fbclid") || url.searchParams.has("gclid"))) {
           const pathSlug = url.pathname.replace(/^\/|\/$/g, "");
           if (pathSlug) slug = pathSlug;
         }
-      }
-      if (!slug) continue;
-
-      const existing = map.get(slug) ?? { orders: 0, revenue: 0, currency: order.currency };
-      existing.orders += 1;
-      existing.revenue += parseFloat(order.total_price) || 0;
-      map.set(slug, existing);
-    } catch {
-      // Skip malformed URLs
+      } catch {}
     }
+
+    // Referring-site fallback: UTMs stripped, but we can tell it came from blog
+    if (!slug && order.referring_site) {
+      try {
+        const ref = new URL(order.referring_site);
+        if (BLOG_HOSTS.some((h) => ref.hostname.endsWith(h))) {
+          // Try to extract the article slug from the referring URL path
+          const pathSlug = ref.pathname.replace(/^\/|\/$/g, "").split("/").filter(Boolean).pop();
+          slug = pathSlug || "__blog__";
+          attributionSource = "referrer";
+        }
+      } catch {}
+    }
+
+    if (!slug) continue;
+    bump(slug, order, attributionSource);
   }
 
   return map;
@@ -281,7 +365,7 @@ export async function getConversionsForTest(
   const { createServerSupabase } = await import("./supabase-admin");
   const db = createServerSupabase();
 
-  // Get the AB test slug — paths are always /{slug}/a/ and /{slug}/b/
+  // Get the AB test slug - paths are always /{slug}/a/ and /{slug}/b/
   let query = db.from("ab_tests").select("slug").eq("id", testId);
   if (workspaceId) query = query.eq("workspace_id", workspaceId);
   const { data: test } = await query.single();
@@ -292,7 +376,8 @@ export async function getConversionsForTest(
   const variantPath = `/${test.slug}/b`;
 
   // Fetch orders and match landing_site path to variant
-  const orders = await fetchOrdersSince(since);
+  const creds = workspaceId ? await getShopifyCredsForWorkspace(workspaceId) : null;
+  const orders = await fetchOrdersSince(since, creds);
   const conversions: Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }> = [];
 
   for (const order of orders) {
@@ -344,11 +429,14 @@ export interface ShopifyProduct {
   }>;
 }
 
-export async function fetchProductsWithInventory(): Promise<ShopifyProduct[]> {
-  if (!isShopifyConfigured()) return [];
+export async function fetchProductsWithInventory(
+  creds?: ShopifyCreds | null
+): Promise<ShopifyProduct[]> {
+  const resolved = creds ?? envCreds();
+  if (!isShopifyConfigured(resolved)) return [];
 
-  const storeUrl = getStoreUrl();
-  const token = await getAccessToken();
+  const storeUrl = resolved!.storeUrl;
+  const token = await getAccessToken(resolved);
 
   const allProducts: ShopifyProduct[] = [];
   let nextUrl: string | null =

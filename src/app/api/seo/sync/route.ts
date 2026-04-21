@@ -33,11 +33,12 @@ export async function POST(req: NextRequest) {
     const startedAt = new Date().toISOString();
 
     try {
-      // Check if we have existing data to determine backfill vs incremental
+      // Check if we have existing data to determine backfill vs incremental.
+      // Keyed by property (not workspace) since gsc_keywords is deduplicated
+      // across workspaces via the (property,query,page,country,date) unique index.
       const { count } = await db
         .from("gsc_keywords")
         .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspaceId)
         .eq("property", prop.property);
 
       // Backfill 90 days on first sync, otherwise last 7 days
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
           await db
             .from("gsc_keywords")
             .upsert(batch, {
-              onConflict: "workspace_id,property,query,page,country,date",
+              onConflict: "property,query,page,country,date",
             });
         }
       }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
-import { getOrdersByPage } from "@/lib/shopify";
+import { getOrdersByPage, getShopifyCredsForWorkspace, type OrderAttribution } from "@/lib/shopify";
+import { extractSlug } from "@/lib/seo-workspace-filter";
 import type { GscProperty } from "@/types";
 
 /**
@@ -16,15 +17,18 @@ export async function GET(req: NextRequest) {
   const days = Math.min(parseInt(url.searchParams.get("days") ?? "30"), 90);
 
   const gscProperties: GscProperty[] = (settings?.gsc_properties as GscProperty[]) ?? [];
+  const propertyUrls = gscProperties.map((p) => p.property);
 
-  // Get all published seo_blog translations with their slugs
+  // Get all published seo_blog translations with their slugs, filtered to the
+  // current workspace (previously returned every workspace's blog pages).
   const { data: blogPages } = await db
     .from("translations")
     .select(
-      "id, slug, seo_title, language, status, created_at, updated_at, pages!inner(id, content_type, blog_category, blog_featured_image_url)"
+      "id, slug, seo_title, language, status, created_at, updated_at, pages!inner(id, workspace_id, content_type, blog_category, blog_featured_image_url)"
     )
     .eq("status", "published")
     .eq("pages.content_type", "seo_blog")
+    .eq("pages.workspace_id", workspaceId)
     .not("slug", "is", null);
 
   if (!blogPages || blogPages.length === 0) {
@@ -44,36 +48,25 @@ export async function GET(req: NextRequest) {
   // Fetch GSC data for blog pages
   const slugSet = new Set(blogPages.map((p) => p.slug as string));
 
-  const [curRes, prevRes] = await Promise.all([
-    db
-      .from("gsc_keywords")
-      .select("query, page, country, clicks, impressions, ctr, position")
-      .eq("workspace_id", workspaceId)
-      .gte("date", fmt(dStart))
-      .lte("date", fmt(d3)),
-    db
-      .from("gsc_keywords")
-      .select("query, page, country, clicks, impressions, position")
-      .eq("workspace_id", workspaceId)
-      .gte("date", fmt(dPrevStart))
-      .lt("date", fmt(dStart)),
-  ]);
+  const [curRes, prevRes] = propertyUrls.length > 0
+    ? await Promise.all([
+        db
+          .from("gsc_keywords")
+          .select("query, page, country, clicks, impressions, ctr, position")
+          .in("property", propertyUrls)
+          .gte("date", fmt(dStart))
+          .lte("date", fmt(d3)),
+        db
+          .from("gsc_keywords")
+          .select("query, page, country, clicks, impressions, position")
+          .in("property", propertyUrls)
+          .gte("date", fmt(dPrevStart))
+          .lt("date", fmt(dStart)),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const curRows = curRes.data ?? [];
   const prevRows = prevRes.data ?? [];
-
-  // Helper: extract slug from GSC page URL
-  // GSC URLs look like https://blog.halsobladet.com/produktguider/test-basta-kudden
-  // The slug is the last path segment
-  function extractSlug(pageUrl: string): string | null {
-    try {
-      const u = new URL(pageUrl);
-      const parts = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-      return parts[parts.length - 1] || null;
-    } catch {
-      return null;
-    }
-  }
 
   // Aggregate GSC data per slug (current period)
   const curBySlug = new Map<
@@ -128,10 +121,18 @@ export async function GET(req: NextRequest) {
     prevBySlug.set(slug, existing);
   }
 
-  // Fetch Shopify conversion data
-  let shopifyMap = new Map<string, { orders: number; revenue: number; currency: string }>();
+  // Fetch Shopify conversion data (per-workspace store).
+  let shopifyMap = new Map<string, OrderAttribution>();
+  let blogReferralTotal: OrderAttribution | null = null;
   try {
-    shopifyMap = await getOrdersByPage(new Date(Date.now() - days * 86400000).toISOString());
+    const creds = await getShopifyCredsForWorkspace(workspaceId);
+    if (creds) {
+      shopifyMap = await getOrdersByPage(
+        new Date(Date.now() - days * 86400000).toISOString(),
+        creds
+      );
+      blogReferralTotal = shopifyMap.get("__blog__") ?? null;
+    }
   } catch {
     // Shopify data is optional
   }
@@ -148,6 +149,7 @@ export async function GET(req: NextRequest) {
     const cur = curBySlug.get(slug);
     const prev = prevBySlug.get(slug);
     const shopify = shopifyMap.get(slug);
+    const attribution = shopify?.source ?? null;
 
     const avgPosition = cur && cur.posCount > 0 ? cur.posSum / cur.posCount : null;
     const prevAvgPosition = prev && prev.posCount > 0 ? prev.posSum / prev.posCount : null;
@@ -189,6 +191,7 @@ export async function GET(req: NextRequest) {
       orders: shopify?.orders ?? 0,
       revenue: shopify?.revenue ?? 0,
       currency: shopify?.currency ?? "SEK",
+      attribution, // "utm" | "referrer" | "mixed" | null
       // Top keywords
       topKeywords,
       // Unique keyword count
@@ -216,5 +219,16 @@ export async function GET(req: NextRequest) {
     ).size,
   };
 
-  return NextResponse.json({ articles, totals, days });
+  // Blog-referred orders where we couldn't pinpoint the article (UTM stripped
+  // but referring_site is one of our blog domains). Exposed so the UI can
+  // display "+ N untracked blog conversions".
+  const blogReferralUnattributed = blogReferralTotal
+    ? {
+        orders: blogReferralTotal.orders,
+        revenue: blogReferralTotal.revenue,
+        currency: blogReferralTotal.currency,
+      }
+    : null;
+
+  return NextResponse.json({ articles, totals, days, blogReferralUnattributed });
 }

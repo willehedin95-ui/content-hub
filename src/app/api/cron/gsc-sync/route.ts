@@ -45,11 +45,11 @@ export async function GET(req: NextRequest) {
       const startedAt = new Date().toISOString();
 
       try {
-        // Check if we have existing data
+        // Check if we have existing data (keyed by property - rows are deduped
+        // across workspaces via the (property,query,page,country,date) index).
         const { count } = await db
           .from("gsc_keywords")
           .select("id", { count: "exact", head: true })
-          .eq("workspace_id", ws.id)
           .eq("property", prop.property);
 
         const isBackfill = !count || count === 0;
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
             await db
               .from("gsc_keywords")
               .upsert(batch, {
-                onConflict: "workspace_id,property,query,page,country,date",
+                onConflict: "property,query,page,country,date",
               });
           }
         }

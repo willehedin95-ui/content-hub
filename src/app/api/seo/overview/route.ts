@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
+import { buildWorkspacePageFilter, pageMatchesWorkspace } from "@/lib/seo-workspace-filter";
 import type { GscProperty, SeoOverview } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -20,8 +21,12 @@ export async function GET(req: NextRequest) {
       positionTrend: null,
       byProperty: [],
       lastSyncedAt: null,
+      hasProperties: false,
     } satisfies SeoOverview);
   }
+
+  const propertyUrls = gscProperties.map((p) => p.property);
+  const pageFilter = await buildWorkspacePageFilter(db, workspaceId, gscProperties);
 
   // Last 7 days vs previous 7 days for trends
   // GSC has 2-3 day delay, so "last 7 days" = 10 days ago to 3 days ago
@@ -37,27 +42,27 @@ export async function GET(req: NextRequest) {
   const [cur, prev, syncLogRes] = await Promise.all([
     db
       .from("gsc_keywords")
-      .select("property, query, clicks, impressions, position")
-      .eq("workspace_id", workspaceId)
+      .select("property, query, page, clicks, impressions, position")
+      .in("property", propertyUrls)
       .gte("date", fmt(d10))
       .lte("date", fmt(d3)),
     db
       .from("gsc_keywords")
-      .select("property, query, clicks, impressions, position")
-      .eq("workspace_id", workspaceId)
+      .select("property, query, page, clicks, impressions, position")
+      .in("property", propertyUrls)
       .gte("date", fmt(d17))
       .lt("date", fmt(d10)),
     db
       .from("gsc_sync_log")
       .select("completed_at")
-      .eq("workspace_id", workspaceId)
+      .in("property", propertyUrls)
       .is("error", null)
       .order("completed_at", { ascending: false })
       .limit(1),
   ]);
 
-  const curRows = cur.data ?? [];
-  const prevRows = prev.data ?? [];
+  const curRows = ((cur.data ?? []) as Array<{ property: string; query: string; page: string; clicks: number | null; impressions: number | null; position: number | null }>).filter((r) => pageMatchesWorkspace(r.page, r.property, pageFilter));
+  const prevRows = ((prev.data ?? []) as Array<{ property: string; query: string; page: string; clicks: number | null; impressions: number | null; position: number | null }>).filter((r) => pageMatchesWorkspace(r.page, r.property, pageFilter));
 
   // Aggregate current period
   const curClicks = curRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
@@ -115,5 +120,6 @@ export async function GET(req: NextRequest) {
     positionTrend,
     byProperty,
     lastSyncedAt,
+    hasProperties: true,
   } satisfies SeoOverview);
 }
