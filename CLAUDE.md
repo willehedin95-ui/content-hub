@@ -62,9 +62,10 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 
 - **App hosting**: Vercel (auto-deploys on push to `main`)
 - **Landing page hosting**: Cloudflare Pages (direct upload API, free unlimited deploys)
-  - `halsobladet-blog` → blog.halsobladet.com (Swedish)
+  - `halsobladet-blog` → halsobladet.com (Swedish, HappySleep only since 2026-04-21)
   - `smarthelse` → smarthelse.dk (Danish)
   - `helseguiden` → helseguiden.com (Norwegian)
+- **Hydro13 blog**: publishes to `get-renew.com/blogs/kollagen/*` via Shopify Admin API (NOT CF Pages). Routed by `workspaces.settings.blog_publish_target: "shopify"`. See `src/lib/shopify-blog-publish.ts`.
 - **DNS**: Cloudflare manages DNS for smarthelse.dk and helseguiden.com; Hostinger manages halsobladet.com (subdomain CNAME)
 - **Domain registrar**: Hostinger (all three domains)
 - **Publishing code**: `src/lib/cloudflare-pages.ts` — `publishPage()`, `publishABTest()`
