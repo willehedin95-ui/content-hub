@@ -137,7 +137,10 @@ RULES:
 - Muted, slightly warm color palette — real indoor lighting
 - NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional"
 - All images are 16:9 LANDSCAPE format — compose horizontally
-- ABSOLUTELY NO readable text in images — no labels, no product names, no brand names, no logos, no packaging text. If a bottle or container appears, it must be PLAIN with no visible text or labels. AI generators often add English text to objects — prevent this by specifying "unlabeled", "plain white container", or "label facing away from camera".
+- TEXT IN IMAGES — this is a SWEDISH blog. If text is visible anywhere (labels, papers, book spines, computer screens, signs, packaging), it MUST be in SWEDISH — never English, never a mix. For EVERY scene that could show text, either:
+    (a) explicitly avoid it: "label facing away", "unlabeled bottle", "closed book", "blank paper", "screen off", "blurred out-of-focus text"
+    (b) OR specify Swedish content: "handwritten Swedish notes about kollagen", "Swedish nutrition label reading 'Ingredienser: ...'", "Swedish research paper with visible heading 'Studie:'"
+  Default to (a) — avoid text. Only use (b) when text is unavoidable for the scene to make sense. Never allow Nano Banana to render English text (brand names, sciency English like "COLLAGEN", "HYALURONIC ACID", "SCIENCE FOR SAFER FOOD", etc.) — this has been a recurring failure.
 - Each image must illustrate a DIFFERENT aspect of the article
 - End each prompt with: "iPhone photo, candid, natural light."
 

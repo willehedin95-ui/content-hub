@@ -119,6 +119,37 @@ export function isShopifyConfigured(creds?: ShopifyCreds | null): boolean {
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 /**
+ * Exposed for callers outside this file (e.g. shopify-blog.ts) that already
+ * have resolved ShopifyCreds. Skips the envCreds fallback path on purpose —
+ * use getAccessToken() when you want that fallback.
+ */
+export async function getAccessTokenForCreds(creds: ShopifyCreds): Promise<string> {
+  const cacheKey = `${creds.storeUrl}|${creds.clientId}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt - 300_000) {
+    return cached.token;
+  }
+  const res = await fetch(`${creds.storeUrl}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Shopify token exchange failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  }
+  const data = await res.json();
+  tokenCache.set(cacheKey, {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 86399) * 1000,
+  });
+  return data.access_token as string;
+}
+
+/**
  * Get an access token via client_credentials grant.
  * Caches the token per store and refreshes when expired (tokens last 24h).
  */

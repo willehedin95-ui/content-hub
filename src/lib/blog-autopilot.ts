@@ -380,27 +380,43 @@ async function writeOneArticle(
     workspaceId,
     targetId: translation.id,
   };
-  await runDeployStep("blog_homepage", deployContext, () =>
-    deployBlogHomepage(language)
-  );
-  await runDeployStep("blog_rss", deployContext, () =>
-    deployBlogRssFeed(language)
-  );
-  await runDeployStep("retroactive_links", deployContext, () =>
-    retroactivelyUpdateLinks(language, workspaceId)
-  );
-  const sitemapResult = await runDeployStep("sitemap", deployContext, () =>
-    deploySitemapAndRobots(language)
-  );
-  // Only submit to GSC if sitemap deploy actually succeeded
-  if (sitemapResult !== null && isGscConfigured()) {
-    const domain = getProjectCustomDomain(language);
-    if (domain) {
-      const sitemapUrl = `https://${domain}/sitemap.xml`;
-      const property = `https://${domain}/`;
-      await runDeployStep("gsc_sitemap_submit", deployContext, () =>
-        submitSitemap(property, sitemapUrl)
-      );
+
+  // Skip the CF Pages site-level steps (homepage, RSS, sitemap) for workspaces
+  // that publish to Shopify — the platform handles them itself. Retroactive
+  // internal-link updates only touch CF Pages HTML too.
+  const { data: wsForTarget } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const publishTargetForPost =
+    ((wsForTarget?.settings as Record<string, unknown> | null)?.blog_publish_target as
+      | string
+      | undefined) || "cf_pages";
+
+  if (publishTargetForPost !== "shopify") {
+    await runDeployStep("blog_homepage", deployContext, () =>
+      deployBlogHomepage(language)
+    );
+    await runDeployStep("blog_rss", deployContext, () =>
+      deployBlogRssFeed(language)
+    );
+    await runDeployStep("retroactive_links", deployContext, () =>
+      retroactivelyUpdateLinks(language, workspaceId)
+    );
+    const sitemapResult = await runDeployStep("sitemap", deployContext, () =>
+      deploySitemapAndRobots(language)
+    );
+    // Only submit to GSC if sitemap deploy actually succeeded
+    if (sitemapResult !== null && isGscConfigured()) {
+      const domain = getProjectCustomDomain(language);
+      if (domain) {
+        const sitemapUrl = `https://${domain}/sitemap.xml`;
+        const property = `https://${domain}/`;
+        await runDeployStep("gsc_sitemap_submit", deployContext, () =>
+          submitSitemap(property, sitemapUrl)
+        );
+      }
     }
   }
 
@@ -609,6 +625,36 @@ async function publishBlogArticle(
   const blogConfig = (settings.blog_config as BlogConfig) ?? getDefaultBlogConfig();
   const domain = getProjectCustomDomain(language);
   const baseUrl = domain ? `https://${domain}` : "";
+
+  // Route to Shopify publisher for workspaces that opted in. Hydro13 lives on
+  // get-renew.com/blogs/kollagen/* via the Shopify Admin API; everything
+  // else (HappySleep etc.) stays on CF Pages.
+  const publishTarget = (settings.blog_publish_target as string) || "cf_pages";
+  if (publishTarget === "shopify") {
+    const { publishToShopify } = await import("./shopify-blog-publish");
+    const { data: otherTrans } = await db
+      .from("translations")
+      .select("slug, pages!inner(workspace_id, content_type)")
+      .eq("language", language)
+      .eq("status", "published")
+      .eq("pages.content_type", "seo_blog")
+      .eq("pages.workspace_id", workspaceId);
+    const knownSlugs = (otherTrans ?? []).map((t) => t.slug as string);
+
+    const result = await publishToShopify({
+      articleHtml,
+      slug,
+      category,
+      seoTitle,
+      seoDescription,
+      language,
+      workspaceId,
+      sourceBlogDomain: domain || "halsobladet.com",
+      createdAt,
+      knownSlugs,
+    });
+    return result.url;
+  }
 
   // Extract and wrap in blog shell
   const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(articleHtml);
