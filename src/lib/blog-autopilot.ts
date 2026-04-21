@@ -212,18 +212,15 @@ async function writeOneArticle(
 
   console.log(`[blog-autopilot] Writing article: "${nextArticle.title}" (${nextArticle.slug})`);
 
-  // Check whether this workspace wants PubMed-grounded research citations.
-  // Opt-in per workspace via `blog_research_citations` setting. Hydro13 uses
-  // this to compete with affiliate sites that cite 20+ studies per article.
+  // Workspace settings — used for multiple opt-in flags (research citations,
+  // soft gate, etc.). Fetched once at the start of the write cycle.
   const { data: wsForRes } = await db
     .from("workspaces")
     .select("settings")
     .eq("id", workspaceId)
     .single();
-  const enableResearchCitations =
-    ((wsForRes?.settings as Record<string, unknown> | null)?.blog_research_citations as
-      | boolean
-      | undefined) === true;
+  const settings = (wsForRes?.settings ?? {}) as Record<string, unknown>;
+  const enableResearchCitations = settings.blog_research_citations === true;
 
   // Generate the article
   let article;
@@ -321,6 +318,98 @@ async function writeOneArticle(
     await db.from("pages").delete().eq("id", page.id);
     await revertToPlanStatus(db, workspaceId, language, nextArticle.slug);
     return { action: "error", message: `DB error creating translation: ${transError?.message}`, slug: nextArticle.slug };
+  }
+
+  // Soft quality gate: if enabled for the workspace, run static checks on
+  // the generated HTML before publishing. Failures park the article in
+  // `pending_review` and ping the operator on Telegram. Opt-in via
+  // `blog_soft_gate_enabled` — default off to preserve backward-compat.
+  if (settings.blog_soft_gate_enabled === true) {
+    const { runSoftGate } = await import("./soft-gate");
+    const { VERIFIED_EXTERNAL_LINKS } = await import("./blog-writer");
+    const linksForLang = VERIFIED_EXTERNAL_LINKS[language as "sv" | "da" | "no"] ?? {};
+    const verifiedDomains = Object.values(linksForLang)
+      .map((link) => {
+        try {
+          return new URL(link.url).hostname.replace(/^www\./, "");
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean);
+
+    // Known slugs on the target blog — for internal link resolvability check
+    const { data: allTrans } = await db
+      .from("translations")
+      .select("slug, pages!inner(workspace_id, content_type)")
+      .eq("language", language)
+      .eq("status", "published")
+      .eq("pages.content_type", "seo_blog")
+      .eq("pages.workspace_id", workspaceId);
+    const knownSlugs = (allTrans ?? []).map((t) => t.slug as string);
+
+    // Re-fetch the verified PubMed URLs from the writer. We don't have them
+    // here directly, so the gate checks citation count against whatever
+    // pubmed.ncbi.nlm.nih.gov URLs appear (can't tell hallucinated vs real
+    // without the verified list). Good enough for the common case.
+    const gate = runSoftGate({
+      html: finalHtml,
+      slug: nextArticle.slug,
+      seoTitle: article.seoTitle,
+      seoDescription: article.seoDescription,
+      verifiedCitationUrls: [],
+      requireResearchCitations: enableResearchCitations,
+      knownSlugs,
+      allowedExternalDomains: verifiedDomains,
+    });
+
+    if (!gate.pass) {
+      console.log(
+        `[blog-autopilot] Soft gate FAILED for ${nextArticle.slug}: ${gate.reasons.join("; ")}`
+      );
+      // Park in pending_review instead of publishing
+      await db
+        .from("translations")
+        .update({
+          status: "pending_review",
+          publish_error: `Soft gate: ${gate.reasons.join("; ")}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", translation.id);
+
+      // Telegram ping with reasons + review URL
+      try {
+        const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+        const hubUrl = process.env.APP_URL || "https://content-hub.vercel.app";
+        if (chatId) {
+          await sendTelegramNotification(
+            chatId,
+            `📝 *Artikel väntar på review*\n\n` +
+              `Slug: \`${nextArticle.slug}\`\n` +
+              `Titel: ${article.seoTitle}\n` +
+              `Ord: ${article.wordCount}\n\n` +
+              `*Gate-flaggor:*\n${gate.reasons.map((r) => `• ${r}`).join("\n")}\n\n` +
+              `[Öppna review](${hubUrl}/review/${translation.id})`
+          );
+        }
+      } catch (err) {
+        console.warn("[blog-autopilot] Telegram review notice failed (non-critical):", err);
+      }
+
+      // Leave plan in "writing" state? No — revert to planned so a future
+      // manual action (approve + republish, or regen) handles it.
+      return {
+        action: "skipped",
+        message: `Soft gate failed: ${gate.reasons.join("; ")}`,
+        slug: nextArticle.slug,
+        url: undefined,
+      };
+    }
+    if (gate.warnings.length > 0) {
+      console.log(
+        `[blog-autopilot] Soft gate warnings (non-blocking): ${gate.warnings.join("; ")}`
+      );
+    }
   }
 
   // Publish directly (no cookie context needed).

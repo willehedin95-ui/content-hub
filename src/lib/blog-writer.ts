@@ -250,7 +250,7 @@ export function getCompetitorProducts(productSlug: string, language: string = "s
 
 type ExternalLink = { url: string; description: string };
 
-const VERIFIED_EXTERNAL_LINKS: Record<string, Record<string, ExternalLink>> = {
+export const VERIFIED_EXTERNAL_LINKS: Record<string, Record<string, ExternalLink>> = {
   sv: {
     "1177": { url: "https://www.1177.se/", description: "1177 Vårdguiden — Sveriges officiella hälsoinformationstjänst" },
     "1177_nacke": { url: "https://www.1177.se/sjukdomar--besvar/skelett-leder-och-muskler/rygg-och-nacke/ont-i-nacke-och-axlar/", description: "1177 — Ont i nacke och axlar" },
