@@ -111,8 +111,23 @@ export async function runBlogAutopilot(
     console.log(`[blog-autopilot] Recovered ${staleWrites.length} stale "writing" articles (>${STALE_WRITING_MINUTES}m): ${staleWrites.map(s => s.slug).join(", ")}`);
   }
 
-  // Check rate: max 2 articles per calendar day (UTC) per language (skip with force)
+  // Check rate: cap per calendar day (UTC) per language. Default 2 keeps
+  // existing HappySleep behavior; workspaces can set
+  // `blog_autopilot_max_per_day` in settings to override (e.g. Hydro13 at 1
+  // since get-renew.com is a fresh domain where scaled-content risk is higher).
   if (!opts?.force) {
+    const { data: wsForRate } = await db
+      .from("workspaces")
+      .select("settings")
+      .eq("id", workspaceId)
+      .single();
+    const maxPerDay = Math.max(
+      0,
+      Number(
+        (wsForRate?.settings as Record<string, unknown> | null)?.blog_autopilot_max_per_day ?? 2
+      )
+    );
+
     const todayUTC = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
     const startOfDay = `${todayUTC}T00:00:00.000Z`;
     const { count: recentCount } = await db
@@ -123,10 +138,10 @@ export async function runBlogAutopilot(
       .eq("source_language", language)
       .gte("created_at", startOfDay);
 
-    if ((recentCount ?? 0) >= 2) {
+    if ((recentCount ?? 0) >= maxPerDay) {
       return {
         action: "skipped",
-        message: `Already published 2 ${language.toUpperCase()} blog articles today (UTC). Max 2/day per language.`,
+        message: `Already published ${recentCount} ${language.toUpperCase()} blog article(s) today (UTC). Max ${maxPerDay}/day per language.`,
       };
     }
   }
