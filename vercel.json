@@ -37,6 +37,10 @@
       "schedule": "0 5 * * 1"
     },
     {
+      "path": "/api/cron/gsc-gap-refresh",
+      "schedule": "0 6 * * 1"
+    },
+    {
       "path": "/api/cron/blog-autopilot?workspace=happysleep&lang=sv",
       "schedule": "0 9 * * *"
     },
