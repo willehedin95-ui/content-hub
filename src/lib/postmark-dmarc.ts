@@ -148,9 +148,146 @@ export async function listReports(
   );
 }
 
-/** Get full details of a specific report, including per-IP records */
+type DkimResult = NonNullable<NonNullable<PostmarkReportRecord["auth_results"]["dkim"]>[number]["result"]>;
+type SpfResult = NonNullable<NonNullable<PostmarkReportRecord["auth_results"]["spf"]>[number]["result"]>;
+
+const DKIM_RESULTS: DkimResult[] = [
+  "pass",
+  "fail",
+  "policy",
+  "neutral",
+  "temperror",
+  "permerror",
+  "none",
+];
+const SPF_RESULTS: SpfResult[] = [
+  "pass",
+  "fail",
+  "neutral",
+  "softfail",
+  "temperror",
+  "permerror",
+  "none",
+];
+
+function normaliseDkimResult(v: string | null | undefined): DkimResult {
+  return (DKIM_RESULTS as string[]).includes(v ?? "") ? (v as DkimResult) : "none";
+}
+function normaliseSpfResult(v: string | null | undefined): SpfResult {
+  return (SPF_RESULTS as string[]).includes(v ?? "") ? (v as SpfResult) : "none";
+}
+
+/**
+ * Raw flat record shape returned by Postmark's /records/my/reports/{id} endpoint.
+ * Postmark denormalises DMARC records, so we flatten the fields the same way
+ * in the API response and re-nest them to match the standard DMARC RUA schema
+ * (which is what both our DB schema and the frontend expect).
+ */
+interface PostmarkRawReportRecord {
+  source_ip: string;
+  count: number;
+  header_from: string;
+  dkim_domain?: string | null;
+  dkim_result?: string | null;
+  dkim_selector?: string | null;
+  spf_domain?: string | null;
+  spf_result?: string | null;
+  policy_evaluated_disposition?: string | null;
+  policy_evaluated_dkim?: string | null;
+  policy_evaluated_spf?: string | null;
+  policy_evaluated_reason_type?: string | null;
+  policy_evaluated_reason_comment?: string | null;
+}
+
+interface PostmarkRawReportDetail {
+  id: number;
+  domain: string;
+  organization_name: string;
+  date_range_begin: string;
+  date_range_end: string;
+  created_at: string;
+  email?: string;
+  external_id?: string;
+  extra_contact_info?: string;
+  report_id?: string;
+  dkim_alignment_mode?: "r" | "s";
+  spf_alignment_mode?: "r" | "s";
+  domain_policy?: "none" | "quarantine" | "reject";
+  subdomain_policy?: "none" | "quarantine" | "reject";
+  filtering_percentage?: number;
+  records?: PostmarkRawReportRecord[];
+}
+
+/**
+ * Get full details of a specific report, including per-IP records.
+ *
+ * Postmark's actual endpoint is `/records/my/reports/{id}` (NOT `/reports/{id}`
+ * as the older /docs page suggested). The response also uses a flat schema
+ * instead of the nested RUA schema, so we re-nest it here for consumers.
+ */
 export async function getReport(id: number): Promise<PostmarkReportDetail> {
-  return request<PostmarkReportDetail>(`/reports/${id}`);
+  const raw = await request<PostmarkRawReportDetail>(
+    `/records/my/reports/${id}`
+  );
+  return {
+    id: raw.id,
+    domain: raw.domain,
+    organization_name: raw.organization_name,
+    date_range_begin: raw.date_range_begin,
+    date_range_end: raw.date_range_end,
+    created_at: raw.created_at,
+    email: raw.email,
+    extra_contact_info: raw.extra_contact_info,
+    report_id: raw.report_id,
+    policy_published: {
+      domain: raw.domain,
+      adkim: raw.dkim_alignment_mode,
+      aspf: raw.spf_alignment_mode,
+      p: raw.domain_policy,
+      sp: raw.subdomain_policy,
+      pct: raw.filtering_percentage,
+    },
+    records: (raw.records ?? []).map((rec) => ({
+      source_ip: rec.source_ip,
+      count: rec.count ?? 0,
+      policy_evaluated: {
+        disposition:
+          (rec.policy_evaluated_disposition as "none" | "quarantine" | "reject") ?? "none",
+        dkim: rec.policy_evaluated_dkim === "pass" ? "pass" : "fail",
+        spf: rec.policy_evaluated_spf === "pass" ? "pass" : "fail",
+        reasons: rec.policy_evaluated_reason_type
+          ? [
+              {
+                type: rec.policy_evaluated_reason_type,
+                comment: rec.policy_evaluated_reason_comment ?? undefined,
+              },
+            ]
+          : undefined,
+      },
+      identifiers: {
+        header_from: rec.header_from,
+      },
+      auth_results: {
+        dkim: rec.dkim_domain
+          ? [
+              {
+                domain: rec.dkim_domain,
+                selector: rec.dkim_selector ?? undefined,
+                result: normaliseDkimResult(rec.dkim_result),
+              },
+            ]
+          : undefined,
+        spf: rec.spf_domain
+          ? [
+              {
+                domain: rec.spf_domain,
+                result: normaliseSpfResult(rec.spf_result),
+              },
+            ]
+          : undefined,
+      },
+    })),
+  };
 }
 
 /**
