@@ -46,8 +46,10 @@ async function main() {
     deployBlogRssFeed,
   } = await import("../src/lib/blog-deploy");
 
-  const WORKSPACE_ID = "c40221e2-96fb-4774-92db-74ec0227b262";
+  // Usage: npx tsx scripts/republish-blog.ts [language] [workspace_id]
+  // Defaults to HappySleep Swedish if omitted.
   const LANGUAGE = (process.argv[2] || "sv") as "sv" | "da" | "no";
+  const WORKSPACE_ID = process.argv[3] || "c40221e2-96fb-4774-92db-74ec0227b262";
   const db = createServerSupabase();
 
   const { data: workspace } = await db

@@ -514,6 +514,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
   <title>${opts.seoTitle.includes(langConfig.blog_name) ? esc(opts.seoTitle) : `${esc(opts.seoTitle)} | ${esc(langConfig.blog_name)}`}</title>
   <meta name="description" content="${esc(opts.seoDescription)}">
   <meta property="og:type" content="article">
@@ -606,7 +607,8 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(langConfig.blog_name)} — ${esc(langConfig.blog_tagline)}</title>
+  <meta name="referrer" content="no-referrer-when-downgrade">
+  <title>${esc(langConfig.blog_name)} - ${esc(langConfig.blog_tagline)}</title>
   <meta name="description" content="${esc(langConfig.about_text.slice(0, 160))}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="${esc(langConfig.blog_name)}">

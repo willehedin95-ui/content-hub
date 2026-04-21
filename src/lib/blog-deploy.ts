@@ -103,6 +103,22 @@ export async function deployBlogHomepage(
     },
   ];
 
+  // CF Pages defaults Referrer-Policy to strict-origin-when-cross-origin,
+  // which strips the path from Referer headers cross-origin. We need the full
+  // URL so Shopify order attribution (shopify.ts getOrdersByPage referrer
+  // fallback) can pin conversions to specific article slugs. A `_headers`
+  // file at the project root overrides the CF default site-wide.
+  const headersContent = Buffer.from(
+    "/*\n  Referrer-Policy: no-referrer-when-downgrade\n",
+    "utf-8"
+  );
+  newFiles.push({
+    path: "/_headers",
+    hash: md5hex(headersContent),
+    content: headersContent,
+    contentType: "text/plain",
+  });
+
   // Generate category index pages
   const categoryMap = new Map<string, { name: string; slug: string; articles: BlogArticleSummary[] }>();
   for (const a of articles) {
