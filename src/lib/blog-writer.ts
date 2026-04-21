@@ -311,6 +311,120 @@ export function fixHallucinatedUrls(html: string): string {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Anti-slop post-process validator
+// ---------------------------------------------------------------------------
+
+/**
+ * Banned single words — hit anywhere in article text fails the check.
+ * These leak through prompt instructions because they're common words the
+ * model reaches for by default. Enforce via post-process.
+ */
+const BANNED_WORDS = [
+  "optimal",
+  "optimala",
+  "optimalt",
+  "holistisk",
+  "holistiskt",
+  "holistiska",
+  "revolutionerande",
+  "banbrytande",
+  "game-changer",
+  "game changer",
+  "transformera",
+  "transformerande",
+  "nyanserad",
+  "mångfacetterad",
+  "otvetydigt",
+];
+
+/**
+ * Banned phrases — check is case-insensitive substring.
+ */
+const BANNED_PHRASES = [
+  "i en värld där",
+  "i en värld som",
+  "i vår moderna värld",
+  "det är ingen hemlighet att",
+  "det är väl känt att",
+  "låt oss dyka ner",
+  "låt oss utforska",
+  "med det sagt",
+  "i slutändan",
+  "i dagens samhälle",
+  "det är viktigt att notera",
+  "det är viktigt att komma ihåg",
+  "sammanfattningsvis kan man säga",
+];
+
+/**
+ * Context-safe word replacements.
+ * Match is case-insensitive, replacement preserves first-letter case.
+ * Used for banned SINGLE WORDS only — banned phrases need Claude rewrite.
+ */
+const WORD_SUBSTITUTIONS: Record<string, string[]> = {
+  optimal: ["bra", "lämplig", "passande", "rätt"],
+  optimala: ["bra", "lämpliga", "passande", "rätta"],
+  optimalt: ["bra", "lämpligt", "passande", "rätt"],
+  holistisk: ["övergripande", "helhets-"],
+  holistiskt: ["övergripande", "helhets-"],
+  holistiska: ["övergripande", "helhets-"],
+  revolutionerande: ["ny", "ovanligt effektiv"],
+  banbrytande: ["ny", "annorlunda"],
+  transformera: ["förändra", "förbättra"],
+  transformerande: ["förändrande", "förbättrande"],
+  nyanserad: ["detaljerad"],
+  mångfacetterad: ["mångsidig"],
+  otvetydigt: ["tydligt"],
+  "game-changer": ["skillnad"],
+  "game changer": ["skillnad"],
+};
+
+export interface AntiSlopResult {
+  html: string;
+  wordsReplaced: number;
+  phrasesFound: string[];
+}
+
+/**
+ * Replace banned single words with safe synonyms (context-safe heuristic).
+ * Words match as whole words only (word-boundary) to avoid breaking substrings
+ * like "optimala" inside "optimalare" (which shouldn't exist, but guard anyway).
+ *
+ * Also detects banned phrases but does NOT auto-fix them — returned in
+ * `phrasesFound` so caller can decide whether to regenerate via Claude.
+ */
+export function applyAntiSlop(html: string): AntiSlopResult {
+  let wordsReplaced = 0;
+  let result = html;
+
+  for (const [bannedWord, synonyms] of Object.entries(WORD_SUBSTITUTIONS)) {
+    const escaped = bannedWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Word boundaries around letters, matching case-insensitive
+    const regex = new RegExp(`\\b${escaped}\\b`, "gi");
+    result = result.replace(regex, (match) => {
+      // Rotate through synonyms to avoid one word repeating 10 times
+      const idx = wordsReplaced % synonyms.length;
+      const replacement = synonyms[idx];
+      wordsReplaced++;
+      // Preserve first-letter case (e.g. Optimal → Bra)
+      if (match[0] === match[0].toUpperCase()) {
+        return replacement[0].toUpperCase() + replacement.slice(1);
+      }
+      return replacement;
+    });
+  }
+
+  // Detect banned phrases (case-insensitive substring in stripped text)
+  const stripped = result.replace(/<[^>]+>/g, " ").toLowerCase();
+  const phrasesFound = BANNED_PHRASES.filter((p) => stripped.includes(p));
+
+  return { html: result, wordsReplaced, phrasesFound };
+}
+
+// Exported for audit/regen scripts
+export { BANNED_WORDS, BANNED_PHRASES };
+
 export interface ArticleResult {
   html: string;
   seoTitle: string;
@@ -376,10 +490,22 @@ export async function generateBlogArticle(
   outputTokens = finalMessage.usage?.output_tokens ?? 0;
 
   // Strip code fences if Claude added them
-  const cleanHtml = html
+  let cleanHtml = html
     .replace(/^```html?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
+
+  // Post-process: enforce anti-slop rules the prompt couldn't enforce reliably.
+  // Single banned words get auto-replaced with synonyms; banned phrases are
+  // logged (would need a regenerate call — keeping simple for now).
+  const antiSlop = applyAntiSlop(cleanHtml);
+  if (antiSlop.wordsReplaced > 0) {
+    cleanHtml = antiSlop.html;
+    console.log(`[blog-writer] Anti-slop: replaced ${antiSlop.wordsReplaced} banned words`);
+  }
+  if (antiSlop.phrasesFound.length > 0) {
+    console.warn(`[blog-writer] Anti-slop: banned phrases still present: ${antiSlop.phrasesFound.join(", ")}`);
+  }
 
   // Calculate approximate word count
   const textOnly = cleanHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");

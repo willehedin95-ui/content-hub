@@ -124,7 +124,7 @@ async function main() {
     let finalHtml = wrappedHtml;
     const deployFiles: DeployFile[] = [];
     try {
-      const { optimizeImages } = await import("../src/lib/image-optimizer");
+      const { optimizeImages, enhanceImageTags } = await import("../src/lib/image-optimizer");
       const imgResult = await optimizeImages(wrappedHtml, deploySlug);
       if (imgResult.stats.optimized > 0) {
         finalHtml = wrappedHtml;
@@ -134,6 +134,7 @@ async function main() {
         for (const img of imgResult.images) {
           deployFiles.push({ path: img.deployPath, sha1: img.sha1, body: new Uint8Array(img.buffer) });
         }
+        finalHtml = enhanceImageTags(finalHtml, imgResult.images);
         console.log(`  Images: ${imgResult.stats.optimized} optimized`);
       }
     } catch (err) {

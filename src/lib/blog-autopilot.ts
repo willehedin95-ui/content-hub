@@ -655,11 +655,13 @@ async function publishBlogArticle(
     contentType: "seo_blog",
   };
 
-  // Optimize images: download → convert to WebP → embed in deployment
+  // Optimize images: download → convert to WebP → embed in deployment.
+  // Also add loading="lazy", width/height, and fetchpriority="high" on the
+  // hero image — the article writer does not emit any of these.
   let finalHtml = wrappedHtml;
   const deployFiles: DeployFile[] = [];
   try {
-    const { optimizeImages } = await import("./image-optimizer");
+    const { optimizeImages, enhanceImageTags } = await import("./image-optimizer");
     const imgResult = await optimizeImages(wrappedHtml, deploySlug);
     if (imgResult.stats.optimized > 0) {
       finalHtml = wrappedHtml;
@@ -669,6 +671,7 @@ async function publishBlogArticle(
       for (const img of imgResult.images) {
         deployFiles.push({ path: img.deployPath, sha1: img.sha1, body: new Uint8Array(img.buffer) });
       }
+      finalHtml = enhanceImageTags(finalHtml, imgResult.images);
       console.log(`[blog-publish] Optimized ${imgResult.stats.optimized} images, saved ${(imgResult.stats.savedBytes / 1024).toFixed(0)}KB`);
     }
   } catch (err) {

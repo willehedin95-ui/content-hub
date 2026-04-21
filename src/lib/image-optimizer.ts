@@ -14,6 +14,8 @@ export interface OptimizedImage {
   sha1: string;
   originalSize: number;
   optimizedSize: number;
+  width: number;
+  height: number;
 }
 
 export interface OptimizationResult {
@@ -110,12 +112,17 @@ async function downloadImage(
 
 /**
  * Convert an image buffer to compressed WebP using sharp.
+ * Returns buffer AND dimensions (for emitting width/height on <img> tags,
+ * which prevents layout shift and enables lazy-loading optimizations).
  */
-async function convertToWebP(inputBuffer: Buffer): Promise<Buffer> {
-  return sharp(inputBuffer)
+async function convertToWebP(
+  inputBuffer: Buffer
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const pipeline = sharp(inputBuffer)
     .resize({ width: 1920, withoutEnlargement: true })
-    .webp({ quality: 80, effort: 4 })
-    .toBuffer();
+    .webp({ quality: 80, effort: 4 });
+  const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+  return { buffer: data, width: info.width, height: info.height };
 }
 
 /**
@@ -180,7 +187,7 @@ export async function optimizeImages(
         return null;
       }
 
-      const webpBuffer = await convertToWebP(downloaded.buffer);
+      const { buffer: webpBuffer, width, height } = await convertToWebP(downloaded.buffer);
       const deployPath = generateDeployPath(url, slugPrefix);
 
       const optimized: OptimizedImage = {
@@ -190,6 +197,8 @@ export async function optimizeImages(
         sha1: sha1Buffer(webpBuffer),
         originalSize: downloaded.buffer.length,
         optimizedSize: webpBuffer.length,
+        width,
+        height,
       };
 
       urlMap.set(url, deployPath);
@@ -219,4 +228,59 @@ export async function optimizeImages(
   );
 
   return { urlMap, images, stats };
+}
+
+/**
+ * Add performance attributes to <img> tags in article body:
+ *   - width/height from sharp metadata (prevents CLS layout shift)
+ *   - loading="lazy" + decoding="async" on all but the first image
+ *   - fetchpriority="high" on the first image (the hero, above the fold)
+ *
+ * Call this AFTER optimizeImages has replaced URLs in the HTML and you have
+ * an `OptimizedImage[]` with dimensions.
+ *
+ * Matches tags by their resolved src (either the original URL or the deploy
+ * path) so it works before or after URL substitution.
+ */
+export function enhanceImageTags(
+  html: string,
+  images: OptimizedImage[]
+): string {
+  if (images.length === 0) return html;
+
+  const $ = cheerio.load(html, { xmlMode: false });
+  // Build lookup by both original URL and deploy path since either may
+  // appear in the HTML at the time we're called.
+  const dimBySrc = new Map<string, { width: number; height: number }>();
+  for (const img of images) {
+    dimBySrc.set(img.originalUrl, { width: img.width, height: img.height });
+    dimBySrc.set(img.deployPath, { width: img.width, height: img.height });
+  }
+
+  let isFirstImage = true;
+
+  $("img").each((_, el) => {
+    const $el = $(el);
+    const src = $el.attr("src") || "";
+    const dim = dimBySrc.get(src);
+
+    // Set width/height when known. Only set if missing (don't override authored).
+    if (dim) {
+      if (!$el.attr("width")) $el.attr("width", String(dim.width));
+      if (!$el.attr("height")) $el.attr("height", String(dim.height));
+    }
+
+    // Hero image (first <img> in body): eager with high fetch priority.
+    // Subsequent images: lazy + async decode.
+    if (isFirstImage) {
+      if (!$el.attr("fetchpriority")) $el.attr("fetchpriority", "high");
+      if (!$el.attr("decoding")) $el.attr("decoding", "async");
+      isFirstImage = false;
+    } else {
+      if (!$el.attr("loading")) $el.attr("loading", "lazy");
+      if (!$el.attr("decoding")) $el.attr("decoding", "async");
+    }
+  });
+
+  return $.html();
 }

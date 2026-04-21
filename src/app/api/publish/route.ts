@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { publishPage, deploySitemapAndRobots, getProjectCustomDomain, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
-import { optimizeImages } from "@/lib/image-optimizer";
+import { optimizeImages, enhanceImageTags } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
@@ -191,6 +191,9 @@ async function doPublish(
         updatedAt: (translation.updated_at as string) || new Date().toISOString(),
         baseUrl,
       });
+
+      // Add loading="lazy" + width/height + fetchpriority to article <img> tags
+      html = enhanceImageTags(html, imageResult.images);
     }
 
     // Load analytics settings

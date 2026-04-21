@@ -113,15 +113,25 @@ export function injectInternalLinks(
     if (target.slug === ownSlug) continue;
     if (linkedUrls.has(target.url)) continue;
 
-    // Search terms: primary keyword first, then title's first segment
+    // Search terms ordered by match likelihood:
+    //   1. Full primary keyword ("kollagen hyaluronsyra") — ideal but often no match
+    //   2. Title's first segment ("Vad är kollagen") — mid-length phrase
+    //   3. Distinguishing slug word ("hyaluronsyra", "klimakteriet", "haravfall")
+    //      — pulled from the slug by removing generic stopwords like "kollagen",
+    //      "kudde", "somn". This dramatically increases match rate since articles
+    //      rarely use full multi-word keywords verbatim.
     const titleFirst = target.title
       .split(/\s*[—|:]\s*/)[0]
       ?.trim()
       .replace(/\s*\d{4}\s*$/, "")
       .trim();
-    const terms = [target.keyword];
+    const distinguishing = extractDistinguishingTerm(target.slug, target.keyword);
+    const terms: string[] = [target.keyword];
     if (titleFirst && titleFirst.toLowerCase() !== target.keyword.toLowerCase()) {
       terms.push(titleFirst);
+    }
+    if (distinguishing && !terms.some((t) => t.toLowerCase() === distinguishing.toLowerCase())) {
+      terms.push(distinguishing);
     }
 
     let linked = false;
@@ -176,6 +186,85 @@ export function injectInternalLinks(
 /** Minimal HTML entity escaping for text nodes */
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Extract a single distinguishing word from a slug, skipping generic topic
+ * words that repeat across every article in a cluster.
+ *
+ * Example: "kollagen-hyaluronsyra" → "hyaluronsyra"
+ *          "kollagen-klimakteriet" → "klimakteriet"
+ *          "kollagen-for-haravfall" → "haravfall"
+ *          "basta-kollagen-mot-rynkor" → "rynkor"
+ *
+ * Returns null if no distinguishing term can be found (e.g. "vad-ar-kollagen"
+ * where every word is too generic).
+ */
+const GENERIC_TERMS = new Set([
+  // Topic-cluster words that repeat everywhere
+  "kollagen",
+  "kollagentillskott",
+  "kudde",
+  "kuddar",
+  "somn",
+  "sömn",
+  "pute",
+  "hovedpude",
+  "nakkepude",
+  // Filler words
+  "vad",
+  "ar",
+  "är",
+  "hur",
+  "for",
+  "för",
+  "mot",
+  "och",
+  "eller",
+  "med",
+  "av",
+  "till",
+  "pa",
+  "på",
+  "i",
+  "en",
+  "ett",
+  "det",
+  "den",
+  "om",
+  "ska",
+  "man",
+  "nar",
+  "när",
+  "basta",
+  "bästa",
+  "best",
+  "bedste",
+  "beste",
+  "test",
+  "guide",
+  "the",
+  "a",
+  "an",
+]);
+
+function extractDistinguishingTerm(slug: string, keyword: string): string | null {
+  // Tokenize slug AND keyword, pick the most distinguishing (longest non-generic) word
+  const tokens = [
+    ...slug.split(/[-_\s]+/),
+    ...keyword.split(/[\s-]+/),
+  ]
+    .map((t) => t.toLowerCase().trim())
+    .filter(Boolean)
+    .filter((t) => t.length >= 4)
+    .filter((t) => !GENERIC_TERMS.has(t));
+
+  if (tokens.length === 0) return null;
+
+  // Pick longest unique token (most likely to be the distinguishing concept)
+  const unique = Array.from(new Set(tokens));
+  unique.sort((a, b) => b.length - a.length);
+  return unique[0];
 }
 
 // ---------------------------------------------------------------------------
