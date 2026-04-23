@@ -52,6 +52,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/jsdom": "^28.0.1",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.11",

@@ -124,7 +124,7 @@ export interface ClarflowData {
 
 export interface ImportResult {
   quizId: string;
-  method: "clarflow" | "generic";
+  method: "clarflow" | "heyflow" | "generic";
   importedSteps: number;
   warnings: string[];
 }
@@ -530,6 +530,502 @@ export async function importClarflowQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// Heyflow types — raw data-config JSON shapes
+// ---------------------------------------------------------------------------
+
+interface HeyflowOption {
+  id: string;
+  label: string;
+  emoji?: string | null;
+  image?: string | null;
+}
+
+interface HeyflowBlockConfig {
+  blockName?: string;
+  blockId?: string;
+  blockType?: string;
+  // rich-text
+  content?: string;
+  // multiple-choice
+  options?: HeyflowOption[];
+  multiselect?: boolean;
+  autoRedirect?: boolean;
+  systemLabel?: string;
+  next?: string;
+  // image
+  url?: string;
+  imageUrl?: string;
+  alt?: string;
+  src?: string;
+  // loader
+  text?: string;
+  seconds?: number;
+  duration?: number;
+  // generic-button
+  label?: string;
+  // photo-carousel: array of items
+  items?: Array<{ url?: string; src?: string; alt?: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// isHeyflowHtml — exported for testing: static detection
+// ---------------------------------------------------------------------------
+
+export function isHeyflowHtml(html: string): boolean {
+  if (!html) return false;
+  // Multiple signals — any one is sufficient
+  if (html.includes('data-is-heyflow-script="true"')) return true;
+  if (html.includes("assets.prd.heyflow.com")) return true;
+  if (html.includes('<meta name="generator" content="Heyflow"')) return true;
+  if (html.includes("window.heyflow")) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// parseHeyflowHtml — exported for testing: pure HTML parser (no network)
+// ---------------------------------------------------------------------------
+
+export function parseHeyflowHtml(html: string): {
+  data: QuizData;
+  settings: QuizSettings;
+  title: string;
+  warnings: string[];
+} {
+  // Dynamic require so jsdom is not bundled in the Edge runtime / client builds
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  const warnings: string[] = [];
+
+  // --- title & OG image ---
+  const pageTitle = document.title || "Imported Quiz";
+  const ogImageMeta = document.querySelector('meta[property="og:image"]');
+  const ogImage = ogImageMeta?.getAttribute("content") ?? undefined;
+
+  // --- font detection ---
+  let fontFamily = "Inter";
+  const fontLinks = Array.from(document.querySelectorAll('link[href*="font"], link[href*="Font"]'));
+  if (fontLinks.length > 0) {
+    const href = fontLinks[0].getAttribute("href") ?? "";
+    // Try to extract font family name from URL: e.g. "GalanoGrotesque", "Poppins"
+    const familyMatch = href.match(/family=([^&:+]+)/i) || href.match(/\/([A-Z][a-z]+(?:[A-Z][a-z]+)*)(?:\.|\?)/);
+    if (familyMatch) {
+      fontFamily = decodeURIComponent(familyMatch[1]).replace(/\+/g, " ");
+    }
+  }
+
+  // --- collect screens ---
+  // Heyflow section names: screen-<hex>
+  const sections = Array.from(
+    document.querySelectorAll('section[name^="screen-"]')
+  ).filter((el) => /^screen-[a-f0-9]+$/i.test(el.getAttribute("name") ?? ""));
+
+  // Build a map from screen name -> our step id (assigned later)
+  const screenNameToStepId = new Map<string, string>();
+  const screenStepIds: string[] = [];
+
+  // First pass: assign step IDs in DOM order
+  for (const section of sections) {
+    const screenName = section.getAttribute("name") ?? "";
+    const stepId = newId("step");
+    screenNameToStepId.set(screenName, stepId);
+    screenStepIds.push(stepId);
+  }
+
+  // Collect conditional edges (from multiple-choice inputs with data-destination)
+  interface PendingCondEdge {
+    fromStepId: string;
+    destScreenName: string;
+    questionElId: string;
+    optionId: string;
+  }
+  const pendingCondEdges: PendingCondEdge[] = [];
+
+  // Second pass: build step nodes
+  const stepNodes: StepNode[] = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    const stepId = screenStepIds[i];
+    const screenName = section.getAttribute("name") ?? "";
+
+    // Derive step name: try to find h1/h2 text from rich-text data-config.content first,
+    // then fall back to DOM querySelector (for cases where heading is inline), then screen name.
+    let headingText = "";
+    // Check rich-text blocks for content with h1/h2
+    const richTextBlocks = Array.from(section.querySelectorAll('[data-blocktype="rich-text"] [data-config]'));
+    for (const rtEl of richTextBlocks) {
+      try {
+        const cfg = JSON.parse(rtEl.getAttribute("data-config") ?? "{}") as HeyflowBlockConfig;
+        if (cfg.content) {
+          // Parse the content HTML to extract heading text
+          const contentDom = new JSDOM(cfg.content);
+          const heading = contentDom.window.document.querySelector("h1, h2");
+          if (heading) {
+            headingText = heading.textContent?.trim() ?? "";
+            break;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    // Fallback: check rendered DOM (for quizzes that embed heading directly)
+    if (!headingText) {
+      const firstHeading = section.querySelector("h1, h2");
+      headingText = firstHeading?.textContent?.trim() ?? "";
+    }
+    const stepName = headingText
+      ? headingText.split(/\s+/).slice(0, 5).join(" ")
+      : screenName;
+
+    // Walk blocks in DOM order
+    const blocks = Array.from(section.querySelectorAll('[data-blocktype]'));
+    const subEls: SubEl[] = [];
+    let isFirstRichText = true;
+
+    for (const block of blocks) {
+      const blockType = block.getAttribute("data-blocktype") ?? "";
+      // Inner div with data-config
+      const configEl = block.querySelector("[data-config]");
+      let config: HeyflowBlockConfig = {};
+      if (configEl) {
+        try {
+          config = JSON.parse(configEl.getAttribute("data-config") ?? "{}") as HeyflowBlockConfig;
+        } catch {
+          // ignore parse errors
+        }
+      }
+
+      switch (blockType) {
+        case "rich-text": {
+          // Use data-config.content if present, otherwise innerHTML of configEl or block
+          const rawContent = config.content ?? configEl?.innerHTML ?? block.innerHTML ?? "";
+          // Check if it contains a block-level heading as top-level element
+          const hasTopLevelHeading = /^<h[12]/i.test(rawContent.trim());
+          const kind = (isFirstRichText && hasTopLevelHeading) ? "title" : "text";
+          isFirstRichText = false;
+          subEls.push({
+            id: newId("el"),
+            kind,
+            text: rawContent,
+            isRichText: true,
+            contentFormat: "html",
+          });
+          break;
+        }
+
+        case "multiple-choice": {
+          const options = (config.options ?? []).map((opt): QuestionOption => {
+            const optId = newId("opt");
+            const result: QuestionOption = {
+              id: optId,
+              label: opt.label ?? "",
+            };
+            if (opt.emoji) result.emoji = opt.emoji;
+            if (opt.image) result.imageUrl = opt.image;
+            return result;
+          });
+
+          const hasImages = options.some((o) => !!o.imageUrl);
+          const layout: "list" | "image_cards" = hasImages ? "image_cards" : "list";
+          const kindOf: "single" | "multi" = config.multiselect ? "multi" : "single";
+
+          const elId = newId("el");
+
+          // Collect per-option conditional destinations from inputs
+          const inputs = Array.from(block.querySelectorAll("input[data-destination]"));
+          for (let oi = 0; oi < inputs.length && oi < options.length; oi++) {
+            const dest = inputs[oi].getAttribute("data-destination") ?? "";
+            if (dest && dest !== "next" && dest !== "") {
+              // dest is either a screen name (screen-<hex>) or an element id (id-<hex>)
+              // Normalise: if it starts with "id-" it might be an element id referencing a section id attr
+              pendingCondEdges.push({
+                fromStepId: stepId,
+                destScreenName: dest,
+                questionElId: elId,
+                optionId: options[oi].id,
+              });
+            }
+          }
+
+          subEls.push({
+            id: elId,
+            kind: "question",
+            kindOf,
+            layout,
+            options,
+          });
+          break;
+        }
+
+        case "image": {
+          const url = config.url ?? config.imageUrl ?? config.src ?? "";
+          const alt = config.alt ?? "";
+          if (url) {
+            subEls.push({ id: newId("el"), kind: "image", url, alt });
+          }
+          break;
+        }
+
+        case "loader": {
+          const loadingText = config.text ?? "Loading...";
+          const seconds = config.seconds ?? config.duration ?? 3;
+          subEls.push({
+            id: newId("el"),
+            kind: "loading",
+            text: loadingText,
+            style: "dots",
+            seconds,
+          });
+          break;
+        }
+
+        case "photo-carousel": {
+          // Map each item to an image subEl
+          const items = config.items ?? [];
+          if (items.length > 0) {
+            for (const item of items) {
+              const url = item.url ?? item.src ?? "";
+              if (url) {
+                subEls.push({ id: newId("el"), kind: "image", url, alt: item.alt ?? "" });
+              }
+            }
+          } else {
+            // Fallback: wrap outer HTML as custom_html
+            subEls.push({ id: newId("el"), kind: "custom_html", html: block.outerHTML });
+          }
+          break;
+        }
+
+        case "html": {
+          const rawHtml = configEl?.innerHTML ?? block.innerHTML ?? "";
+          subEls.push({ id: newId("el"), kind: "custom_html", html: rawHtml });
+          break;
+        }
+
+        case "generic-button":
+        case "progress-bar":
+          // Skip — navigation is implicit, progress bar is handled by QuizSettings
+          break;
+
+        case "date-picker": {
+          subEls.push({
+            id: newId("el"),
+            kind: "custom_html",
+            html: block.outerHTML,
+          });
+          warnings.push(
+            "Date picker imported as custom_html; user should re-add as a native control"
+          );
+          break;
+        }
+
+        default: {
+          if (blockType) {
+            subEls.push({ id: newId("el"), kind: "custom_html", html: block.outerHTML });
+            warnings.push(`Unknown block type "${blockType}" imported as custom_html`);
+          }
+          break;
+        }
+      }
+    }
+
+    stepNodes.push({
+      id: stepId,
+      kind: "step",
+      name: stepName,
+      size: { width: 280, height: 360 },
+      position: { x: 300 + i * 320, y: 200 },
+      rotation: 0,
+      subEls,
+    });
+  }
+
+  // Build node graph
+  const startId = newId("start");
+  const exitId = newId("exit");
+
+  const nodes: Record<string, QuizNode> = {
+    [startId]: {
+      id: startId,
+      kind: "start",
+      size: { width: 180, height: 80 },
+      position: { x: 0, y: 200 },
+    },
+    [exitId]: {
+      id: exitId,
+      kind: "exit",
+      name: "Exit",
+      size: { width: 180, height: 80 },
+      position: { x: 300 + stepNodes.length * 320, y: 200 },
+      redirectUrl: "",
+    },
+  };
+  for (const step of stepNodes) {
+    nodes[step.id] = step;
+  }
+
+  const edges: Record<string, QuizEdge> = {};
+
+  // start -> first screen
+  if (stepNodes.length > 0) {
+    const e0 = newId("edge");
+    edges[e0] = { id: e0, from: startId, to: stepNodes[0].id, condition: { kind: "default" } };
+  }
+
+  // linear chain
+  for (let i = 0; i < stepNodes.length - 1; i++) {
+    const eid = newId("edge");
+    edges[eid] = {
+      id: eid,
+      from: stepNodes[i].id,
+      to: stepNodes[i + 1].id,
+      condition: { kind: "default" },
+    };
+  }
+
+  // last step -> exit
+  if (stepNodes.length > 0) {
+    const eLast = newId("edge");
+    edges[eLast] = {
+      id: eLast,
+      from: stepNodes[stepNodes.length - 1].id,
+      to: exitId,
+      condition: { kind: "default" },
+    };
+  }
+
+  // Resolve conditional edges from multiple-choice options
+  // Build a lookup: screen name -> stepId, and also by section id attributes
+  const sectionIdToStepId = new Map<string, string>();
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    const screenName = section.getAttribute("name") ?? "";
+    const sectionId = section.getAttribute("id") ?? "";
+    const stepId = screenStepIds[i];
+    if (screenName) sectionIdToStepId.set(screenName, stepId);
+    if (sectionId) sectionIdToStepId.set(sectionId, stepId);
+  }
+
+  for (const pending of pendingCondEdges) {
+    const targetStepId = sectionIdToStepId.get(pending.destScreenName);
+    if (!targetStepId) {
+      warnings.push(
+        `Option destination "${pending.destScreenName}" does not resolve to a known screen — conditional edge skipped`
+      );
+      continue;
+    }
+    const eid = newId("edge");
+    edges[eid] = {
+      id: eid,
+      from: pending.fromStepId,
+      to: targetStepId,
+      condition: {
+        kind: "option",
+        questionElId: pending.questionElId,
+        optionId: pending.optionId,
+      },
+    };
+  }
+
+  const quizData: QuizData = {
+    id: `quiz_${Date.now().toString(36)}`,
+    nodes,
+    edges,
+    camera: { x: 0, y: 0, z: 1 },
+  };
+
+  // Build settings
+  const defaults = buildDefaultSettings();
+  const settings: QuizSettings = {
+    ...defaults,
+    fontSettings: { enabled: fontFamily !== "Inter", fontFamily },
+    progressBar: true,
+    metadata: {
+      title: pageTitle,
+      description: defaults.metadata.description,
+      ...(ogImage ? { ogImage } : {}),
+    },
+  };
+
+  return { data: quizData, settings, title: pageTitle, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// importHeyflowQuiz — fast-path: fetch HTML and parse Heyflow structure
+// ---------------------------------------------------------------------------
+
+export async function importHeyflowQuiz(
+  url: string,
+  workspaceId: string,
+  market: "se" | "dk" | "no",
+  name?: string
+): Promise<ImportResult | null> {
+  const warnings: string[] = [];
+
+  // Step 1: plain fetch
+  let html: string;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    html = await res.text();
+  } catch {
+    return null;
+  }
+
+  // Step 2: detect Heyflow
+  if (!isHeyflowHtml(html)) return null;
+
+  // Step 3: parse
+  let parseResult: ReturnType<typeof parseHeyflowHtml>;
+  try {
+    parseResult = parseHeyflowHtml(html);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warnings.push(`Heyflow parse failed: ${msg}`);
+    return null; // fall through to generic
+  }
+
+  let { data: quizData, settings } = parseResult;
+  warnings.push(...parseResult.warnings);
+
+  const stepCount = Object.values(quizData.nodes).filter((n) => n.kind === "step").length;
+  if (stepCount === 0) return null;
+
+  // Step 4: re-host images
+  const quizId = quizData.id;
+  quizData = await rehostImages(quizData, quizId, warnings);
+
+  // Step 5: derive name
+  const quizName = name ?? parseResult.title ?? "Imported Quiz";
+  settings = { ...settings, metadata: { ...settings.metadata, title: quizName } };
+
+  // Step 6: save to DB
+  const savedId = await saveQuizToDb(quizData, settings, {
+    workspaceId,
+    market,
+    name: quizName,
+  });
+
+  return {
+    quizId: savedId,
+    method: "heyflow",
+    importedSteps: stepCount,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // importGenericQuiz — fallback: puppeteer walk of the quiz page
 // ---------------------------------------------------------------------------
 
@@ -782,10 +1278,14 @@ export async function swipeQuiz(
   market: "se" | "dk" | "no",
   name?: string
 ): Promise<ImportResult> {
-  // Clarflow fast-path (no browser needed)
+  // 1. Clarflow fast-path (no browser needed)
   const clarflowResult = await importClarflowQuiz(url, workspaceId, market, name);
   if (clarflowResult) return clarflowResult;
 
-  // Generic fallback (puppeteer)
+  // 2. Heyflow fast-path (no browser needed)
+  const heyflowResult = await importHeyflowQuiz(url, workspaceId, market, name);
+  if (heyflowResult) return heyflowResult;
+
+  // 3. Generic fallback (puppeteer)
   return importGenericQuiz(url, workspaceId, market, name);
 }
