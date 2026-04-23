@@ -355,6 +355,86 @@ export function deleteVariant(q: QuizData, variantId: string): QuizData {
   return updated;
 }
 
+// ---------------------------------------------------------------------------
+// setOptionRoute — upsert/remove a conditional edge for a specific option
+// ---------------------------------------------------------------------------
+
+/**
+ * Upserts a conditional edge from `stepId → targetId` with
+ * `condition: { kind: "option", questionElId, optionId }`.
+ * If `targetId` is null, removes any existing conditional edge for that option.
+ * Does NOT touch default edges.
+ */
+export function setOptionRoute(
+  q: QuizData,
+  stepId: string,
+  questionElId: string,
+  optionId: string,
+  targetId: string | null,
+): QuizData {
+  // Find any existing edge for this specific option condition
+  const existingEntry = Object.entries(q.edges).find(
+    ([, e]) =>
+      e.from === stepId &&
+      e.condition?.kind === "option" &&
+      e.condition.questionElId === questionElId &&
+      e.condition.optionId === optionId,
+  );
+
+  if (targetId === null) {
+    // Remove the conditional edge if it exists
+    if (!existingEntry) return q;
+    const edges = { ...q.edges };
+    delete edges[existingEntry[0]];
+    return { ...q, edges };
+  }
+
+  if (existingEntry) {
+    // Update target of existing conditional edge
+    const [edgeId, existing] = existingEntry;
+    return {
+      ...q,
+      edges: { ...q.edges, [edgeId]: { ...existing, to: targetId } },
+    };
+  }
+
+  // Create new conditional edge
+  const id = newId("edge");
+  const edge: QuizEdge = {
+    id,
+    from: stepId,
+    to: targetId,
+    condition: { kind: "option", questionElId, optionId },
+  };
+  return { ...q, edges: { ...q.edges, [id]: edge } };
+}
+
+// ---------------------------------------------------------------------------
+// ensureDefaultEdge — guarantee at least one default edge from a step
+// ---------------------------------------------------------------------------
+
+/**
+ * If no default edge exists from `fromStepId`, creates one to `toStepId`.
+ * If a default edge already exists (pointing anywhere), returns q unchanged.
+ */
+export function ensureDefaultEdge(
+  q: QuizData,
+  fromStepId: string,
+  toStepId: string,
+): QuizData {
+  const hasDefault = Object.values(q.edges).some(
+    (e) =>
+      e.from === fromStepId &&
+      (!e.condition || e.condition.kind === "default"),
+  );
+  if (hasDefault) return q;
+  return connectNodes(q, {
+    from: fromStepId,
+    to: toStepId,
+    condition: { kind: "default" },
+  });
+}
+
 export function addSubEl(q: QuizData, stepId: string, input: AddSubElInput): QuizData {
   const node = q.nodes[stepId];
   if (!node || node.kind !== "step") return q;

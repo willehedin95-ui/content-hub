@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -590,6 +590,139 @@ describe("deleteVariant", () => {
     for (const r of remaining) {
       expect(r.variantGroupId).toBeDefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setOptionRoute tests
+// ---------------------------------------------------------------------------
+
+describe("setOptionRoute", () => {
+  it("creates a new conditional edge when none exists", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [stepId, targetId] = Object.keys(q.nodes);
+    const next = setOptionRoute(q, stepId, "qel_1", "opt_1", targetId);
+    const edges = Object.values(next.edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].from).toBe(stepId);
+    expect(edges[0].to).toBe(targetId);
+    expect(edges[0].condition).toEqual({ kind: "option", questionElId: "qel_1", optionId: "opt_1" });
+  });
+
+  it("updates target when a conditional edge for the same option already exists", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [stepId, bId, cId] = Object.keys(q.nodes);
+    // Create initial conditional edge to B
+    q = setOptionRoute(q, stepId, "qel_1", "opt_1", bId);
+    // Now reroute the same option to C
+    const next = setOptionRoute(q, stepId, "qel_1", "opt_1", cId);
+    const edges = Object.values(next.edges);
+    // Should still be 1 conditional edge (updated, not duplicated)
+    expect(edges).toHaveLength(1);
+    expect(edges[0].to).toBe(cId);
+    expect(edges[0].condition).toEqual({ kind: "option", questionElId: "qel_1", optionId: "opt_1" });
+  });
+
+  it("removes the conditional edge when targetId is null", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [stepId, targetId] = Object.keys(q.nodes);
+    q = setOptionRoute(q, stepId, "qel_1", "opt_1", targetId);
+    const next = setOptionRoute(q, stepId, "qel_1", "opt_1", null);
+    expect(Object.values(next.edges)).toHaveLength(0);
+  });
+
+  it("is a no-op when removing a non-existent conditional edge", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const stepId = Object.keys(q.nodes)[0];
+    const result = setOptionRoute(q, stepId, "qel_1", "opt_1", null);
+    expect(result).toBe(q);
+  });
+
+  it("does not remove default edges when removing a conditional edge", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [stepId, bId, cId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: stepId, to: bId }); // default edge
+    q = setOptionRoute(q, stepId, "qel_1", "opt_1", cId);
+    // Remove the conditional route
+    const next = setOptionRoute(q, stepId, "qel_1", "opt_1", null);
+    // Default edge should remain
+    const remaining = Object.values(next.edges);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].condition).toEqual({ kind: "default" });
+  });
+
+  it("keeps other option routes when removing one", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [stepId, bId, cId] = Object.keys(q.nodes);
+    q = setOptionRoute(q, stepId, "qel_1", "opt_A", bId);
+    q = setOptionRoute(q, stepId, "qel_1", "opt_B", cId);
+    const next = setOptionRoute(q, stepId, "qel_1", "opt_A", null);
+    const edges = Object.values(next.edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].condition).toEqual({ kind: "option", questionElId: "qel_1", optionId: "opt_B" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureDefaultEdge tests
+// ---------------------------------------------------------------------------
+
+describe("ensureDefaultEdge", () => {
+  it("creates a default edge when none exists", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [fromId, toId] = Object.keys(q.nodes);
+    const next = ensureDefaultEdge(q, fromId, toId);
+    const edges = Object.values(next.edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].from).toBe(fromId);
+    expect(edges[0].to).toBe(toId);
+    expect(edges[0].condition).toEqual({ kind: "default" });
+  });
+
+  it("does not create a duplicate when a default edge already exists", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [fromId, bId, cId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: fromId, to: bId }); // existing default to B
+    const result = ensureDefaultEdge(q, fromId, cId); // should NOT create another default
+    expect(result).toBe(q);
+    // Original edge still points to B
+    const edges = Object.values(result.edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].to).toBe(bId);
+  });
+
+  it("creates a default edge even when conditional edges exist", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [fromId, bId, cId] = Object.keys(q.nodes);
+    q = setOptionRoute(q, fromId, "qel_1", "opt_1", bId); // conditional only
+    const next = ensureDefaultEdge(q, fromId, cId);
+    const edges = Object.values(next.edges);
+    expect(edges).toHaveLength(2);
+    const defaultEdge = edges.find((e) => !e.condition || e.condition.kind === "default");
+    expect(defaultEdge).toBeDefined();
+    expect(defaultEdge!.to).toBe(cId);
   });
 });
 
