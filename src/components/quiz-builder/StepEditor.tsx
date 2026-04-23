@@ -1,9 +1,9 @@
 "use client";
 import { useQuiz } from "./QuizContext";
 import { ElementPalette } from "./ElementPalette";
-import { updateSubEl, removeSubEl, addOption, updateOption, removeOption } from "@/lib/quiz-graph";
+import { updateSubEl, removeSubEl, addOption, updateOption, removeOption, setOptionRoute, ensureDefaultEdge, topoOrderSteps } from "@/lib/quiz-graph";
 import type { SubEl } from "@/types/quiz";
-import { Trash2, PlusCircle, X } from "lucide-react";
+import { Trash2, PlusCircle, X, GitBranch } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Shared style atoms
@@ -138,6 +138,103 @@ function ImageEditor({ el, stepId }: EditorProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// RoutingEditor — per-option routing section inside QuestionEditor
+// ---------------------------------------------------------------------------
+
+type RoutingEditorProps = {
+  el: Extract<SubEl, { kind: "question" }>;
+  stepId: string;
+};
+
+function RoutingEditor({ el, stepId }: RoutingEditorProps) {
+  const { data, setData } = useQuiz();
+
+  // Build list of valid targets: all step nodes + exit nodes (excluding current step)
+  const orderedSteps = topoOrderSteps(data);
+  const exitNodes = Object.values(data.nodes).filter((n) => n.kind === "exit");
+
+  const allTargets = [
+    ...orderedSteps.filter((s) => s.id !== stepId).map((s) => ({ id: s.id, label: s.name, kind: "step" as const })),
+    ...exitNodes.map((n) => ({ id: n.id, label: n.kind === "exit" ? n.name : "Exit", kind: "exit" as const })),
+  ];
+
+  // Find the current conditional target for each option
+  function getOptionTarget(optionId: string): string {
+    const edge = Object.values(data.edges).find(
+      (e) =>
+        e.from === stepId &&
+        e.condition?.kind === "option" &&
+        e.condition.questionElId === el.id &&
+        e.condition.optionId === optionId,
+    );
+    return edge?.to ?? "";
+  }
+
+  function handleRouteChange(optionId: string, targetId: string) {
+    setData((prev) => {
+      if (!targetId) {
+        // Revert to default - remove conditional edge
+        return setOptionRoute(prev, stepId, el.id, optionId, null);
+      }
+      // Set conditional edge; also ensure a default edge exists so non-matching options still work
+      let next = setOptionRoute(prev, stepId, el.id, optionId, targetId);
+      // If there's no default edge from this step, create one to the first option's target
+      const hasDefault = Object.values(next.edges).some(
+        (e) => e.from === stepId && (!e.condition || e.condition.kind === "default"),
+      );
+      if (!hasDefault && allTargets.length > 0) {
+        next = ensureDefaultEdge(next, stepId, allTargets[0].id);
+      }
+      return next;
+    });
+  }
+
+  if (el.options.length === 0 || allTargets.length === 0) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-200">
+      <div className="flex items-center gap-1.5 mb-2">
+        <GitBranch size={12} className="text-indigo-500" />
+        <span className="text-xs font-medium text-gray-500">Routing (per option)</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {el.options.map((opt, i) => {
+          const letter = String.fromCharCode(65 + i); // A, B, C…
+          return (
+            <div key={opt.id} className="flex items-center gap-2">
+              <span
+                className="shrink-0 w-5 h-5 flex items-center justify-center rounded bg-indigo-100 text-indigo-700 text-xs font-bold"
+                title={opt.label}
+              >
+                {letter}
+              </span>
+              <span className="text-xs text-gray-600 flex-1 truncate min-w-0" title={opt.label}>
+                {opt.label || <em className="text-gray-400">unlabeled</em>}
+              </span>
+              <select
+                value={getOptionTarget(opt.id)}
+                onChange={(e) => handleRouteChange(opt.id, e.target.value)}
+                className="shrink-0 rounded border border-gray-200 bg-white px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 max-w-[120px]"
+              >
+                <option value="">default</option>
+                {allTargets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.kind === "exit" ? `↳ ${t.label}` : t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        &ldquo;default&rdquo; follows the default outgoing edge from this step.
+      </p>
+    </div>
+  );
+}
+
 function QuestionEditor({ el, stepId }: EditorProps) {
   if (el.kind !== "question") return null;
   const { setData } = useQuiz();
@@ -203,6 +300,9 @@ function QuestionEditor({ el, stepId }: EditorProps) {
         <PlusCircle size={13} />
         Add option
       </button>
+
+      {/* Conditional routing per option */}
+      <RoutingEditor el={el} stepId={stepId} />
 
       <DeleteElButton
         onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))}
