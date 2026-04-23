@@ -255,6 +255,106 @@ export function removeOption(
   return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls } } };
 }
 
+// ---------------------------------------------------------------------------
+// duplicateStep — deep-clone a step node with new ids, offset position
+// ---------------------------------------------------------------------------
+
+/**
+ * Deep-clones a step, generating new ids for the node and all subEls.
+ * Position is offset by +40,+40. Name gets "(copy)" suffix.
+ * The duplicate does NOT inherit variantGroupId or trafficPct.
+ */
+export function duplicateStep(q: QuizData, stepId: string): QuizData {
+  const src = q.nodes[stepId];
+  if (!src || src.kind !== "step") return q;
+
+  const newNodeId = newId("step");
+  // Deep-clone subEls with fresh ids
+  const clonedSubEls: StepNode["subEls"] = (JSON.parse(JSON.stringify(src.subEls)) as StepNode["subEls"]).map((el) => ({
+    ...el,
+    id: newId("el"),
+  }));
+
+  const duplicate: StepNode = {
+    id: newNodeId,
+    kind: "step",
+    name: `${src.name} (copy)`,
+    size: { ...src.size },
+    position: { x: src.position.x + 40, y: src.position.y + 40 },
+    rotation: src.rotation,
+    subEls: clonedSubEls,
+    // intentionally omits variantGroupId and trafficPct
+  };
+
+  return { ...q, nodes: { ...q.nodes, [newNodeId]: duplicate } };
+}
+
+// ---------------------------------------------------------------------------
+// promoteVariant — promote a winning variant, removing its siblings
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes all sibling nodes in the variant group and clears
+ * variantGroupId + trafficPct on the winner.
+ */
+export function promoteVariant(q: QuizData, winnerId: string): QuizData {
+  const winner = q.nodes[winnerId];
+  if (!winner || winner.kind !== "step" || !winner.variantGroupId) return q;
+
+  const groupId = winner.variantGroupId;
+  const siblings = Object.values(q.nodes).filter(
+    (n): n is StepNode => n.kind === "step" && n.variantGroupId === groupId && n.id !== winnerId,
+  );
+
+  // Remove all sibling nodes and their edges
+  let updated = q;
+  for (const sibling of siblings) {
+    updated = removeNode(updated, sibling.id);
+  }
+
+  // Clear variant fields on winner
+  const promotedWinner: StepNode = { ...updated.nodes[winnerId] } as StepNode;
+  delete promotedWinner.variantGroupId;
+  delete promotedWinner.trafficPct;
+
+  return { ...updated, nodes: { ...updated.nodes, [winnerId]: promotedWinner } };
+}
+
+// ---------------------------------------------------------------------------
+// deleteVariant — delete a variant from a group
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes the variant. If only one member remains after deletion,
+ * clears that member's variantGroupId and trafficPct too.
+ */
+export function deleteVariant(q: QuizData, variantId: string): QuizData {
+  const variant = q.nodes[variantId];
+  if (!variant || variant.kind !== "step") return q;
+
+  const groupId = variant.variantGroupId;
+  // Remove the variant node (and its edges)
+  let updated = removeNode(q, variantId);
+
+  if (!groupId) return updated;
+
+  // Find remaining group members
+  const remaining = Object.values(updated.nodes).filter(
+    (n): n is StepNode => n.kind === "step" && n.variantGroupId === groupId,
+  );
+
+  // If only one member left, clear its variant fields
+  if (remaining.length === 1) {
+    const sole = remaining[0];
+    const cleared: StepNode = { ...sole };
+    delete cleared.variantGroupId;
+    delete cleared.trafficPct;
+    updated = { ...updated, nodes: { ...updated.nodes, [sole.id]: cleared } };
+  }
+
+  return updated;
+}
+
 export function addSubEl(q: QuizData, stepId: string, input: AddSubElInput): QuizData {
   const node = q.nodes[stepId];
   if (!node || node.kind !== "step") return q;

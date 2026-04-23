@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -455,6 +455,141 @@ describe("updateOption", () => {
     const resultQ = resultStep.subEls.find((e) => e.kind === "question");
     if (!resultQ || resultQ.kind !== "question") throw new Error("not question");
     expect(resultQ.options[0].label).toBe("Option A");
+  });
+});
+
+describe("duplicateStep", () => {
+  it("creates a new node with a different id and offset position", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 100, y: 200 }, name: "Original" });
+    const origId = Object.keys(q.nodes)[0];
+    const next = duplicateStep(q, origId);
+    const nodeIds = Object.keys(next.nodes);
+    expect(nodeIds).toHaveLength(2);
+    const dupId = nodeIds.find((id) => id !== origId)!;
+    const dup = next.nodes[dupId];
+    if (dup.kind !== "step") throw new Error("not step");
+    expect(dupId).not.toBe(origId);
+    expect(dup.position).toEqual({ x: 140, y: 240 });
+    expect(dup.name).toBe("Original (copy)");
+  });
+
+  it("gives duplicate new subEl ids (no shared references)", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = addSubEl(q, origId, { kind: "title", text: "Hello" });
+    const origNode = q.nodes[origId];
+    if (origNode.kind !== "step") throw new Error("not step");
+    const origElId = origNode.subEls[0].id;
+
+    const next = duplicateStep(q, origId);
+    const dupId = Object.keys(next.nodes).find((id) => id !== origId)!;
+    const dup = next.nodes[dupId];
+    if (dup.kind !== "step") throw new Error("not step");
+    expect(dup.subEls).toHaveLength(1);
+    // New el id
+    expect(dup.subEls[0].id).not.toBe(origElId);
+    // Content copied
+    if (dup.subEls[0].kind === "title") expect(dup.subEls[0].text).toBe("Hello");
+    // Not same array reference
+    expect(dup.subEls).not.toBe(origNode.subEls);
+  });
+
+  it("does not inherit variantGroupId", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = createVariant(q, origId); // now origId has variantGroupId
+    const next = duplicateStep(q, origId);
+    // Should be 3 nodes total: orig, variant, duplicate
+    expect(Object.keys(next.nodes)).toHaveLength(3);
+    const dupId = Object.keys(next.nodes).find((id) => id !== origId && next.nodes[id].id !== Object.values(q.nodes).find((n) => n.id !== origId)?.id);
+    // The duplicate should have no variantGroupId
+    const allIds = Object.keys(next.nodes);
+    const origVariantId = Object.keys(q.nodes).find((id) => id !== origId)!;
+    const dupNodeId = allIds.find((id) => id !== origId && id !== origVariantId)!;
+    const dupNode = next.nodes[dupNodeId];
+    if (dupNode.kind !== "step") throw new Error("not step");
+    expect(dupNode.variantGroupId).toBeUndefined();
+    expect(dupNode.trafficPct).toBeUndefined();
+  });
+
+  it("is a no-op for a non-existent node", () => {
+    const q = emptyQuiz();
+    const result = duplicateStep(q, "nonexistent");
+    expect(result).toBe(q);
+  });
+});
+
+describe("promoteVariant", () => {
+  it("removes siblings and clears variant fields on winner", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = createVariant(q, origId);
+    const variantId = Object.keys(q.nodes).find((id) => id !== origId)!;
+
+    const next = promoteVariant(q, origId);
+    expect(Object.keys(next.nodes)).toHaveLength(1);
+    expect(next.nodes[origId]).toBeDefined();
+    expect(next.nodes[variantId]).toBeUndefined();
+    const winner = next.nodes[origId];
+    if (winner.kind !== "step") throw new Error("not step");
+    expect(winner.variantGroupId).toBeUndefined();
+    expect(winner.trafficPct).toBeUndefined();
+  });
+
+  it("is a no-op for a node with no variantGroupId", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const stepId = Object.keys(q.nodes)[0];
+    const result = promoteVariant(q, stepId);
+    expect(result).toBe(q);
+  });
+});
+
+describe("deleteVariant", () => {
+  it("removes the variant node", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = createVariant(q, origId);
+    const variantId = Object.keys(q.nodes).find((id) => id !== origId)!;
+
+    const next = deleteVariant(q, variantId);
+    expect(next.nodes[variantId]).toBeUndefined();
+  });
+
+  it("clears variant fields on the sole remaining member", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = createVariant(q, origId);
+    const variantId = Object.keys(q.nodes).find((id) => id !== origId)!;
+
+    const next = deleteVariant(q, variantId);
+    const sole = next.nodes[origId];
+    if (sole.kind !== "step") throw new Error("not step");
+    expect(sole.variantGroupId).toBeUndefined();
+    expect(sole.trafficPct).toBeUndefined();
+  });
+
+  it("keeps variant fields when two or more remain after deletion", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    q = createVariant(q, origId); // 2 variants
+    q = createVariant(q, origId); // 3 variants
+    const allIds = Object.keys(q.nodes);
+    const idToDelete = allIds.find((id) => id !== origId)!;
+    const next = deleteVariant(q, idToDelete);
+    // 2 remaining - both should keep variantGroupId
+    const remaining = Object.values(next.nodes).filter((n): n is StepNode => n.kind === "step");
+    expect(remaining).toHaveLength(2);
+    for (const r of remaining) {
+      expect(r.variantGroupId).toBeDefined();
+    }
   });
 });
 
