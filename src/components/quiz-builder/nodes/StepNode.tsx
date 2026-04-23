@@ -1,7 +1,12 @@
 "use client";
+import { useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
+import { Edit, Copy, Trash2, Sparkles, GitBranch } from "lucide-react";
 import type { StepNode as StepNodeData, SubEl } from "@/types/quiz";
+import { useQuiz } from "@/components/quiz-builder/QuizContext";
+import { removeNode, duplicateStep, createVariant } from "@/lib/quiz-graph";
+import { VariantControls } from "@/components/quiz-builder/VariantControls";
 
 export type StepNodeType = Node<{ node: StepNodeData }, "step">;
 
@@ -28,23 +33,118 @@ function getOptionLabels(subEls: SubEl[]): string[] {
 
 export function StepNode({ data }: NodeProps<StepNodeType>) {
   const { node } = data;
+  const { selectedNodeId, setSelectedNodeId, setData } = useQuiz();
+  const isSelected = selectedNodeId === node.id;
+  const [variantControlsOpen, setVariantControlsOpen] = useState(false);
+  const abBadgeRef = useRef<HTMLButtonElement>(null);
+
   const previewTitle = getPreviewTitle(node.subEls);
   const optionLabels = getOptionLabels(node.subEls);
 
+  const isStartOrExit = node.kind !== "step"; // always false for StepNode, defensive guard
+
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    setData((prev) => duplicateStep(prev, node.id));
+  }
+
+  function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (isStartOrExit) return;
+    setData((prev) => removeNode(prev, node.id));
+    setSelectedNodeId(null);
+  }
+
+  function handleCreateVariant(e: React.MouseEvent) {
+    e.stopPropagation();
+    setData((prev) => createVariant(prev, node.id));
+  }
+
+  function handleAbBadgeClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    setVariantControlsOpen((prev) => !prev);
+  }
+
   return (
     <div
-      className="bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden"
+      className="relative bg-white border border-gray-200 rounded-lg shadow-md overflow-visible"
       style={{ width: 280 }}
     >
       <Handle type="target" position={Position.Left} />
 
+      {/* Floating toolbar — shown only when selected */}
+      {isSelected && (
+        <div
+          className="nodrag nopan absolute -top-10 left-0 flex items-center gap-1 bg-white border border-gray-200 rounded-lg shadow-md px-1.5 py-1 z-10"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Edit: visual indicator only, selecting the node */}
+          <button
+            aria-label="Edit step"
+            className="p-1 rounded text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setSelectedNodeId(node.id); }}
+          >
+            <Edit size={14} />
+          </button>
+
+          {/* Copy */}
+          <button
+            aria-label="Duplicate step"
+            className="p-1 rounded text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleCopy}
+          >
+            <Copy size={14} />
+          </button>
+
+          {/* Delete */}
+          <button
+            aria-label="Delete step"
+            disabled={isStartOrExit}
+            className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleDelete}
+          >
+            <Trash2 size={14} />
+          </button>
+
+          {/* AI stub */}
+          <button
+            aria-label="AI assist (coming soon)"
+            disabled
+            title="Coming soon"
+            className="p-1 rounded text-gray-300 cursor-not-allowed"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <Sparkles size={14} />
+          </button>
+
+          {/* A/B branch */}
+          <button
+            aria-label="Create A/B variant"
+            className="p-1 rounded text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleCreateVariant}
+          >
+            <GitBranch size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
         <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]">{node.name}</span>
         {node.variantGroupId && (
-          <span className="ml-2 px-1.5 py-0.5 text-xs font-bold bg-indigo-100 text-indigo-700 rounded shrink-0">
+          <button
+            ref={abBadgeRef}
+            aria-label="Manage A/B variants"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleAbBadgeClick}
+            className="nodrag nopan ml-2 px-1.5 py-0.5 text-xs font-bold bg-indigo-100 text-indigo-700 rounded shrink-0 hover:bg-indigo-200 transition-colors"
+          >
             A/B
-          </span>
+          </button>
         )}
       </div>
 
@@ -71,6 +171,14 @@ export function StepNode({ data }: NodeProps<StepNodeType>) {
       </div>
 
       <Handle type="source" position={Position.Right} />
+
+      {/* VariantControls popover — anchored below the A/B badge */}
+      {variantControlsOpen && node.variantGroupId && (
+        <VariantControls
+          nodeId={node.id}
+          onClose={() => setVariantControlsOpen(false)}
+        />
+      )}
     </div>
   );
 }
