@@ -1,5 +1,5 @@
 // src/lib/quiz-graph.ts
-import type { QuizData, StepNode, QuizEdge, RouteCondition } from "@/types/quiz";
+import type { QuizData, StepNode, QuizEdge, RouteCondition, SubEl, QuestionOption } from "@/types/quiz";
 
 export function newId(prefix: "step" | "edge" | "exit" | "start" | "el" | "opt" | "vg"): string {
   const ts = Date.now();
@@ -121,4 +121,71 @@ export function setTrafficSplit(q: QuizData, updates: Record<string, number>): Q
     if (n && n.kind === "step") nodes[id] = { ...n, trafficPct: pct };
   }
   return { ...q, nodes };
+}
+
+// ---------------------------------------------------------------------------
+// updateStepSubEls — replace a step's subEls immutably
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a new QuizData with the given step's subEls replaced.
+ * No-op if the step doesn't exist or is not a step node.
+ */
+export function updateStepSubEls(q: QuizData, stepId: string, subEls: SubEl[]): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls } } };
+}
+
+// ---------------------------------------------------------------------------
+// addSubEl — append a new SubEl to a step
+// ---------------------------------------------------------------------------
+
+type AddSubElInput =
+  | { kind: "title"; text?: string }
+  | { kind: "text"; text?: string }
+  | { kind: "question"; kindOf?: "single" | "multi"; layout?: "list" | "cards" | "image_cards" }
+  | { kind: "image"; url?: string; alt?: string }
+  | { kind: "custom_html"; html?: string }
+  | { kind: "loading"; text?: string; seconds?: number };
+
+export function addSubEl(q: QuizData, stepId: string, input: AddSubElInput): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+
+  const id = newId("el");
+  let el: SubEl;
+
+  switch (input.kind) {
+    case "title":
+      el = { id, kind: "title", text: input.text ?? "New title", isRichText: true, contentFormat: "html" };
+      break;
+    case "text":
+      el = { id, kind: "text", text: input.text ?? "New text", isRichText: true, contentFormat: "html" };
+      break;
+    case "question": {
+      const optA: QuestionOption = { id: newId("opt"), label: "Option A" };
+      const optB: QuestionOption = { id: newId("opt"), label: "Option B" };
+      el = {
+        id,
+        kind: "question",
+        kindOf: input.kindOf ?? "single",
+        layout: input.layout ?? "list",
+        options: [optA, optB],
+      };
+      break;
+    }
+    case "image":
+      el = { id, kind: "image", url: input.url ?? "", alt: input.alt ?? "" };
+      break;
+    case "custom_html":
+      el = { id, kind: "custom_html", html: input.html ?? "" };
+      break;
+    case "loading":
+      el = { id, kind: "loading", text: input.text ?? "Loading...", style: "dots", seconds: input.seconds ?? 3 };
+      break;
+  }
+
+  const updated: StepNode = { ...node, subEls: [...node.subEls, el] };
+  return { ...q, nodes: { ...q.nodes, [stepId]: updated } };
 }

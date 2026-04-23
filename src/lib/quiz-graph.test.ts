@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -220,5 +220,95 @@ describe("setTrafficSplit", () => {
     if (orig.kind !== "step" || variant.kind !== "step") throw new Error("not step");
     expect(orig.trafficPct).toBe(70);
     expect(variant.trafficPct).toBe(30);
+  });
+});
+
+describe("addSubEl", () => {
+  it("adds a title subEl with default text to a step", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+    const stepId = Object.keys(q.nodes)[0];
+    const next = addSubEl(q, stepId, { kind: "title" });
+    const step = next.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls).toHaveLength(1);
+    expect(step.subEls[0].kind).toBe("title");
+    if (step.subEls[0].kind === "title") {
+      expect(step.subEls[0].text).toBe("New title");
+      expect(step.subEls[0].isRichText).toBe(true);
+      expect(step.subEls[0].contentFormat).toBe("html");
+    }
+  });
+
+  it("adds a question subEl with 2 default options", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+    const stepId = Object.keys(q.nodes)[0];
+    const next = addSubEl(q, stepId, { kind: "question" });
+    const step = next.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls).toHaveLength(1);
+    const el = step.subEls[0];
+    expect(el.kind).toBe("question");
+    if (el.kind === "question") {
+      expect(el.options).toHaveLength(2);
+      expect(el.options[0].label).toBe("Option A");
+      expect(el.options[1].label).toBe("Option B");
+      expect(el.options[0].id).toMatch(/^opt_/);
+    }
+  });
+
+  it("is a no-op for a non-step node id", () => {
+    let q = emptyQuiz();
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    const result = addSubEl(q, "start1", { kind: "text" });
+    expect(result).toBe(q);
+  });
+
+  it("is a no-op for a non-existent node id", () => {
+    const q = emptyQuiz();
+    const result = addSubEl(q, "nonexistent", { kind: "title" });
+    expect(result).toBe(q);
+  });
+
+  it("appends multiple subEls in order", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+    const stepId = Object.keys(q.nodes)[0];
+    q = addSubEl(q, stepId, { kind: "title", text: "Hello" });
+    q = addSubEl(q, stepId, { kind: "image", url: "https://img.co/1.jpg", alt: "pic" });
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls).toHaveLength(2);
+    expect(step.subEls[0].kind).toBe("title");
+    expect(step.subEls[1].kind).toBe("image");
+  });
+});
+
+describe("updateStepSubEls", () => {
+  it("replaces subEls on an existing step", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+    const stepId = Object.keys(q.nodes)[0];
+    const newSubEls = [
+      { id: "el1", kind: "title" as const, text: "Changed", isRichText: true as const, contentFormat: "html" as const },
+    ];
+    const next = updateStepSubEls(q, stepId, newSubEls);
+    const step = next.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls).toEqual(newSubEls);
+  });
+
+  it("is a no-op for a non-step node", () => {
+    let q = emptyQuiz();
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    const result = updateStepSubEls(q, "start1", []);
+    expect(result).toBe(q);
+  });
+
+  it("is a no-op for a non-existent node id", () => {
+    const q = emptyQuiz();
+    const result = updateStepSubEls(q, "does-not-exist", []);
+    expect(result).toBe(q);
   });
 });
