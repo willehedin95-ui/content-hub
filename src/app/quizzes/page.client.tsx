@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Globe, Copy, Archive } from "lucide-react";
+import { Plus, Globe, Copy, Archive, BarChart3 } from "lucide-react";
 import type { QuizRow } from "@/types/quiz";
 
 const MARKET_LABELS: Record<string, string> = {
@@ -17,12 +17,55 @@ const STATUS_STYLES: Record<string, string> = {
   archived: "bg-orange-100 text-orange-700",
 };
 
+const KPI_RANGES = [
+  { value: "today", label: "Today" },
+  { value: "last_7d", label: "Last 7 days" },
+  { value: "last_30d", label: "Last 30 days" },
+  { value: "last_90d", label: "Last 90 days" },
+] as const;
+
+type KpiRange = (typeof KPI_RANGES)[number]["value"];
+
+type QuizKpi = {
+  quiz_id: string;
+  starts: number;
+  completions: number;
+  completion_rate: number;
+};
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+}
+
+function KpiRow({ kpi }: { kpi: QuizKpi | undefined }) {
+  if (!kpi) {
+    return (
+      <div className="text-xs text-gray-400 py-1">
+        No data yet
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3 text-xs text-gray-500 py-1">
+      <span>
+        <span className="font-medium text-gray-700">{kpi.starts.toLocaleString()}</span>
+        {" "}starts
+      </span>
+      <span className="text-gray-300">|</span>
+      <span>
+        <span className="font-medium text-gray-700">{kpi.completions.toLocaleString()}</span>
+        {" "}done
+      </span>
+      <span className="text-gray-300">|</span>
+      <span>
+        <span className="font-medium text-indigo-600">{kpi.completion_rate}%</span>
+      </span>
+    </div>
+  );
 }
 
 export function QuizzesClient({
@@ -36,6 +79,24 @@ export function QuizzesClient({
   const [rows, setRows] = useState<QuizRow[]>(initialRows);
   const [creating, setCreating] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [kpiRange, setKpiRange] = useState<KpiRange>("last_30d");
+  const [kpis, setKpis] = useState<QuizKpi[]>([]);
+  const [kpisLoading, setKpisLoading] = useState(false);
+
+  // Fetch KPIs when range changes or rows change
+  useEffect(() => {
+    if (rows.length === 0) return;
+    setKpisLoading(true);
+    fetch(`/api/quizzes/kpis?range=${kpiRange}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: QuizKpi[]) => setKpis(data))
+      .catch(() => setKpis([]))
+      .finally(() => setKpisLoading(false));
+  }, [kpiRange, rows]);
+
+  function kpiFor(quizId: string): QuizKpi | undefined {
+    return kpis.find((k) => k.quiz_id === quizId);
+  }
 
   async function createQuiz(market: "se" | "dk" | "no") {
     setCreating(market);
@@ -118,6 +179,25 @@ export function QuizzesClient({
         </div>
       </div>
 
+      {/* KPI range selector */}
+      {rows.length > 0 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-gray-500">Show KPIs for:</span>
+          <select
+            value={kpiRange}
+            onChange={(e) => setKpiRange(e.target.value as KpiRange)}
+            className="text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {KPI_RANGES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          {kpisLoading && (
+            <span className="text-xs text-gray-400">Loading...</span>
+          )}
+        </div>
+      )}
+
       {/* Grid */}
       {rows.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
@@ -151,6 +231,9 @@ export function QuizzesClient({
                 {row.name}
               </button>
 
+              {/* KPI row */}
+              <KpiRow kpi={kpiFor(row.id)} />
+
               {/* Updated date */}
               <p className="text-xs text-gray-400 mt-auto">
                 Updated {formatDate(row.updated_at)}
@@ -163,6 +246,13 @@ export function QuizzesClient({
                   className="flex-1 text-xs text-gray-500 hover:text-indigo-700 py-1 rounded hover:bg-indigo-50 transition-colors"
                 >
                   Edit
+                </button>
+                <button
+                  onClick={() => router.push(`/quizzes/${row.id}/analytics`)}
+                  title="Analytics"
+                  className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => duplicateQuiz(row.id)}
