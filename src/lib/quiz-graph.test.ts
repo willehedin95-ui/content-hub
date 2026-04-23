@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -70,6 +70,38 @@ describe("connectNodes", () => {
     q = connectNodes(q, { from: aId, to: bId, condition: { kind: "default" } });
     q = connectNodes(q, { from: aId, to: bId, condition: { kind: "option", questionElId: "el1", optionId: "opt1" } });
     expect(Object.values(q.edges)).toHaveLength(2);
+  });
+});
+
+describe("topoOrderSteps", () => {
+  it("returns steps in BFS order from start", () => {
+    let q = emptyQuiz();
+    // Add start node manually
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "A" });
+    const aId = Object.keys(q.nodes).find((k) => k !== "start1")!;
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "B" });
+    const bId = Object.keys(q.nodes).find((k) => k !== "start1" && k !== aId)!;
+    // Add exit node
+    q.nodes["exit1"] = { id: "exit1", kind: "exit", name: "Exit", size: { width: 180, height: 80 }, position: { x: 900, y: 0 }, redirectUrl: "" };
+    // Connect start->A->B->exit
+    q = connectNodes(q, { from: "start1", to: aId });
+    q = connectNodes(q, { from: aId, to: bId });
+    q = connectNodes(q, { from: bId, to: "exit1" });
+    const order = topoOrderSteps(q);
+    expect(order.map((n) => n.name)).toEqual(["A", "B"]);
+  });
+
+  it("handles cycles without infinite loop", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [aId, bId] = Object.keys(q.nodes);
+    // Create cycle
+    q = connectNodes(q, { from: aId, to: bId });
+    q = connectNodes(q, { from: bId, to: aId });
+    const order = topoOrderSteps(q);
+    expect(order).toHaveLength(2);
   });
 });
 
