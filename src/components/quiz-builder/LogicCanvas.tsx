@@ -61,6 +61,22 @@ function Inner() {
     });
   }, [data.nodes]);
 
+  // Build a lookup: { stepId -> { optionId -> letter } } for option→letter labeling
+  const optionLetterMap = useMemo(() => {
+    const map: Record<string, Record<string, string>> = {};
+    for (const node of Object.values(data.nodes)) {
+      if (node.kind !== "step") continue;
+      for (const el of node.subEls) {
+        if (el.kind !== "question") continue;
+        el.options.forEach((opt, idx) => {
+          if (!map[node.id]) map[node.id] = {};
+          map[node.id][opt.id] = String.fromCharCode(65 + idx); // A, B, C…
+        });
+      }
+    }
+    return map;
+  }, [data.nodes]);
+
   const rfEdges: Edge[] = useMemo(
     () =>
       Object.values(data.edges).map((e) => {
@@ -68,10 +84,12 @@ function Inner() {
         const analyticsLabel =
           analyticsEnabled && e.from ? funnelFor(e.from)?.sessions : undefined;
 
-        const conditionLabel =
-          e.condition?.kind === "option"
-            ? `opt:${e.condition.optionId.slice(-4)}`
-            : undefined;
+        // Show option letter (A, B, C) for conditional edges
+        let conditionLabel: string | undefined;
+        if (e.condition?.kind === "option") {
+          const letter = optionLetterMap[e.from]?.[e.condition.optionId];
+          conditionLabel = letter ?? `opt:${e.condition.optionId.slice(-4)}`;
+        }
 
         const label = analyticsLabel !== undefined
           ? analyticsLabel.toLocaleString()
@@ -84,7 +102,7 @@ function Inner() {
           label,
         };
       }),
-    [data.edges, analyticsEnabled, funnelFor],
+    [data.edges, analyticsEnabled, funnelFor, optionLetterMap],
   );
 
   const onNodesChange = useCallback(
