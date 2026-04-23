@@ -1,8 +1,8 @@
 // src/lib/quiz-swipe.test.ts
-// Tests for the pure remapClarflowIds helper — no network, no browser.
+// Tests for the pure remapClarflowIds, isHeyflowHtml, and parseHeyflowHtml helpers — no network, no browser.
 
 import { describe, it, expect } from "vitest";
-import { remapClarflowIds } from "./quiz-swipe";
+import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml } from "./quiz-swipe";
 import type { ClarflowData, ClarflowStepNode } from "./quiz-swipe";
 
 // ---------------------------------------------------------------------------
@@ -364,5 +364,347 @@ describe("remapClarflowIds", () => {
     for (const edge of Object.values(result.edges)) {
       expect(Object.keys(result.nodes)).toContain(edge.to);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Heyflow fixture HTML (minimal but realistic)
+// ---------------------------------------------------------------------------
+
+const HEYFLOW_FIXTURE_HTML = `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="generator" content="Heyflow" />
+  <meta property="og:image" content="https://example.com/og.jpg" />
+  <title>Skin Quiz</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" />
+  <script data-is-heyflow-script="true" src="heyflow.js"></script>
+</head>
+<body>
+  <!-- Screen 1: rich-text + multiple-choice -->
+  <section name="screen-aabbcc11" id="screen-aabbcc11" class="visible">
+    <div class="block" data-blocktype="rich-text" data-blockid="id-rt-1">
+      <div data-block-id="id-rt-1"
+           data-config='{"blockName":"richText","blockId":"id-rt-1","blockType":"rich-text","content":"<h2>How is your skin?</h2><p>Select the best description.</p>"}'>
+      </div>
+    </div>
+    <div class="block" data-blocktype="multiple-choice" data-blockid="id-mc-1">
+      <div data-block-id="id-mc-1"
+           data-config='{"blockName":"multipleChoice","blockId":"id-mc-1","blockType":"multiple-choice","options":[{"label":"Dry","id":"id-opt-1","emoji":null,"image":null},{"label":"Oily","id":"id-opt-2","emoji":null,"image":null},{"label":"Combination","id":"id-opt-3","emoji":null,"image":null}],"multiselect":false,"autoRedirect":true}'>
+        <input type="radio" data-destination="next" />
+        <input type="radio" data-destination="next" />
+        <input type="radio" data-destination="next" />
+      </div>
+    </div>
+    <div class="block" data-blocktype="progress-bar" data-blockid="id-pb-1">
+      <div data-block-id="id-pb-1" data-config='{"blockType":"progress-bar","value":25}'></div>
+    </div>
+  </section>
+
+  <!-- Screen 2: rich-text + image -->
+  <section name="screen-ddeeff22" id="screen-ddeeff22">
+    <div class="block" data-blocktype="rich-text" data-blockid="id-rt-2">
+      <div data-block-id="id-rt-2"
+           data-config='{"blockName":"richText","blockId":"id-rt-2","blockType":"rich-text","content":"<h2>Your Routine</h2><p>Based on your answers, here is what we recommend.</p>"}'>
+      </div>
+    </div>
+    <div class="block" data-blocktype="image" data-blockid="id-img-1">
+      <div data-block-id="id-img-1"
+           data-config='{"blockName":"image","blockId":"id-img-1","blockType":"image","url":"https://example.com/routine.jpg","alt":"Routine image"}'>
+      </div>
+    </div>
+    <div class="block" data-blocktype="generic-button" data-blockid="id-btn-1">
+      <div data-block-id="id-btn-1" data-config='{"blockType":"generic-button","label":"Continue"}'></div>
+    </div>
+  </section>
+</body>
+</html>`;
+
+const HEYFLOW_ID_PATTERN = /^(step|edge|exit|start|el|opt|vg)_\d+_[a-z0-9]+$/;
+
+// ---------------------------------------------------------------------------
+// isHeyflowHtml tests
+// ---------------------------------------------------------------------------
+
+describe("isHeyflowHtml", () => {
+  it("returns true for fixture with data-is-heyflow-script attribute", () => {
+    expect(isHeyflowHtml(HEYFLOW_FIXTURE_HTML)).toBe(true);
+  });
+
+  it("returns true for HTML with assets.prd.heyflow.com URL", () => {
+    expect(isHeyflowHtml('<script src="https://assets.prd.heyflow.com/flows/abc/www/index.html"></script>')).toBe(true);
+  });
+
+  it("returns true for HTML with meta generator=Heyflow", () => {
+    expect(isHeyflowHtml('<meta name="generator" content="Heyflow">')).toBe(true);
+  });
+
+  it("returns true for HTML with window.heyflow string", () => {
+    expect(isHeyflowHtml('<script>window.heyflow = {};</script>')).toBe(true);
+  });
+
+  it("returns false for empty string", () => {
+    expect(isHeyflowHtml("")).toBe(false);
+  });
+
+  it("returns false for non-Heyflow HTML", () => {
+    expect(isHeyflowHtml('<html><body><p>Hello</p></body></html>')).toBe(false);
+  });
+
+  it("returns false for Clarflow HTML", () => {
+    expect(isHeyflowHtml('<script>window.__CLARFLOW_DATA__ = {};</script>')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseHeyflowHtml tests
+// ---------------------------------------------------------------------------
+
+describe("parseHeyflowHtml", () => {
+  it("produces exactly 2 step nodes (one per screen)", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2);
+  });
+
+  it("produces 1 start node and 1 exit node", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const starts = Object.values(data.nodes).filter((n) => n.kind === "start");
+    const exits = Object.values(data.nodes).filter((n) => n.kind === "exit");
+    expect(starts).toHaveLength(1);
+    expect(exits).toHaveLength(1);
+  });
+
+  it("step names come from h2 content in rich-text blocks", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const names = steps.map((s) => s.name);
+    expect(names[0]).toMatch(/How is your skin/);
+    expect(names[1]).toMatch(/Your Routine/);
+  });
+
+  it("first screen has a question subEl with 3 options matching labels", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const firstStep = steps[0];
+    if (!firstStep || firstStep.kind !== "step") throw new Error("no first step");
+    const question = firstStep.subEls.find((e) => e.kind === "question");
+    expect(question).toBeDefined();
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.options).toHaveLength(3);
+    const labels = question.options.map((o) => o.label);
+    expect(labels).toContain("Dry");
+    expect(labels).toContain("Oily");
+    expect(labels).toContain("Combination");
+  });
+
+  it("question kindOf is 'single' (multiselect=false)", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const firstStep = steps[0];
+    if (!firstStep || firstStep.kind !== "step") throw new Error("no first step");
+    const question = firstStep.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.kindOf).toBe("single");
+  });
+
+  it("question layout is 'list' when no option images", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const firstStep = steps[0];
+    if (!firstStep || firstStep.kind !== "step") throw new Error("no first step");
+    const question = firstStep.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.layout).toBe("list");
+  });
+
+  it("second screen has an image subEl with correct URL", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const secondStep = steps[1];
+    if (!secondStep || secondStep.kind !== "step") throw new Error("no second step");
+    const img = secondStep.subEls.find((e) => e.kind === "image");
+    expect(img).toBeDefined();
+    if (!img || img.kind !== "image") throw new Error("no image");
+    expect(img.url).toBe("https://example.com/routine.jpg");
+    expect(img.alt).toBe("Routine image");
+  });
+
+  it("progress-bar and generic-button blocks are SKIPPED from subEls", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    for (const step of steps) {
+      if (step.kind !== "step") continue;
+      for (const el of step.subEls) {
+        if (el.kind === "custom_html") {
+          expect(el.html).not.toMatch(/data-blocktype="progress-bar"/);
+          expect(el.html).not.toMatch(/data-blocktype="generic-button"/);
+        }
+      }
+    }
+  });
+
+  it("edges form the chain: start -> step1 -> step2 -> exit", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const startNode = Object.values(data.nodes).find((n) => n.kind === "start")!;
+    const exitNode = Object.values(data.nodes).find((n) => n.kind === "exit")!;
+    const edges = Object.values(data.edges);
+    const visited = new Set<string>();
+    const queue = [startNode.id];
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      for (const e of edges) {
+        if (e.from === current && !visited.has(e.to)) queue.push(e.to);
+      }
+    }
+    expect(visited.has(exitNode.id)).toBe(true);
+    expect(visited.size).toBe(4);
+  });
+
+  it("all node ids are in internal format", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    for (const id of Object.keys(data.nodes)) {
+      expect(id).toMatch(HEYFLOW_ID_PATTERN);
+    }
+  });
+
+  it("all edge ids are in internal format", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    for (const id of Object.keys(data.edges)) {
+      expect(id).toMatch(HEYFLOW_ID_PATTERN);
+    }
+  });
+
+  it("all subEl ids are in internal format", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    for (const node of Object.values(data.nodes)) {
+      if (node.kind !== "step") continue;
+      for (const el of node.subEls) {
+        expect(el.id).toMatch(HEYFLOW_ID_PATTERN);
+      }
+    }
+  });
+
+  it("all question option ids are in internal format", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    for (const node of Object.values(data.nodes)) {
+      if (node.kind !== "step") continue;
+      for (const el of node.subEls) {
+        if (el.kind !== "question") continue;
+        for (const opt of el.options) {
+          expect(opt.id).toMatch(HEYFLOW_ID_PATTERN);
+        }
+      }
+    }
+  });
+
+  it("warnings array is empty for well-formed input", () => {
+    const { warnings } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("extracts page title from <title> tag", () => {
+    const { title } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    expect(title).toBe("Skin Quiz");
+  });
+
+  it("settings include font family from Google Fonts link", () => {
+    const { settings } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    expect(settings.fontSettings.fontFamily).toBe("Poppins");
+    expect(settings.fontSettings.enabled).toBe(true);
+  });
+
+  it("settings progressBar is true", () => {
+    const { settings } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    expect(settings.progressBar).toBe(true);
+  });
+
+  it("settings metadata.ogImage is extracted from og:image meta", () => {
+    const { settings } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    expect(settings.metadata.ogImage).toBe("https://example.com/og.jpg");
+  });
+
+  it("step positions are laid out horizontally (x increases, y=200)", () => {
+    const { data } = parseHeyflowHtml(HEYFLOW_FIXTURE_HTML);
+    const steps = Object.values(data.nodes)
+      .filter((n) => n.kind === "step")
+      .sort((a, b) => a.position.x - b.position.x);
+    expect(steps[0].position.x).toBeLessThan(steps[1].position.x);
+    expect(steps[0].position.y).toBe(200);
+    expect(steps[1].position.y).toBe(200);
+  });
+
+  it("produces warnings for unknown block types", () => {
+    const htmlWithUnknown = HEYFLOW_FIXTURE_HTML.replace(
+      'data-blocktype="progress-bar"',
+      'data-blocktype="mystery-widget"'
+    );
+    const { warnings } = parseHeyflowHtml(htmlWithUnknown);
+    expect(warnings.some((w) => w.includes("mystery-widget"))).toBe(true);
+  });
+
+  it("produces warning for date-picker blocks", () => {
+    const htmlWithDatePicker = HEYFLOW_FIXTURE_HTML.replace(
+      'data-blocktype="generic-button"',
+      'data-blocktype="date-picker"'
+    );
+    const { warnings } = parseHeyflowHtml(htmlWithDatePicker);
+    expect(warnings.some((w) => w.toLowerCase().includes("date picker"))).toBe(true);
+  });
+
+  it("handles HTML with no screens - produces 0 step nodes", () => {
+    const emptyHtml = `<!DOCTYPE html><html><head><meta name="generator" content="Heyflow"></head><body></body></html>`;
+    const { data } = parseHeyflowHtml(emptyHtml);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(0);
+  });
+
+  it("multiselect options produce kindOf='multi'", () => {
+    const htmlWithMulti = HEYFLOW_FIXTURE_HTML.replace('"multiselect":false', '"multiselect":true');
+    const { data } = parseHeyflowHtml(htmlWithMulti);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const firstStep = steps[0];
+    if (!firstStep || firstStep.kind !== "step") throw new Error("no step");
+    const question = firstStep.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.kindOf).toBe("multi");
+  });
+
+  it("option images produce layout='image_cards' and set imageUrl on options", () => {
+    const htmlWithImages = HEYFLOW_FIXTURE_HTML.replace(
+      '"image":null},{"label":"Oily","id":"id-opt-2","emoji":null,"image":null},{"label":"Combination","id":"id-opt-3","emoji":null,"image":null}',
+      '"image":"https://example.com/dry.jpg"},{"label":"Oily","id":"id-opt-2","emoji":null,"image":"https://example.com/oily.jpg"},{"label":"Combination","id":"id-opt-3","emoji":null,"image":"https://example.com/combo.jpg"}'
+    );
+    const { data } = parseHeyflowHtml(htmlWithImages);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const firstStep = steps[0];
+    if (!firstStep || firstStep.kind !== "step") throw new Error("no step");
+    const question = firstStep.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.layout).toBe("image_cards");
+    expect(question.options[0].imageUrl).toBe("https://example.com/dry.jpg");
+  });
+
+  it("conditional destination edges are resolved when screen name matches", () => {
+    const htmlWithCondEdge = HEYFLOW_FIXTURE_HTML.replace(
+      'data-destination="next"',
+      'data-destination="screen-ddeeff22"'
+    );
+    const { data, warnings } = parseHeyflowHtml(htmlWithCondEdge);
+    const condEdges = Object.values(data.edges).filter((e) => e.condition?.kind === "option");
+    expect(condEdges).toHaveLength(1);
+    expect(warnings.some((w) => w.includes("does not resolve"))).toBe(false);
+  });
+
+  it("unresolved conditional destination produces a warning", () => {
+    const htmlWithBadDest = HEYFLOW_FIXTURE_HTML.replace(
+      'data-destination="next"',
+      'data-destination="screen-nonexistent99"'
+    );
+    const { warnings } = parseHeyflowHtml(htmlWithBadDest);
+    expect(warnings.some((w) => w.includes("screen-nonexistent99"))).toBe(true);
   });
 });
