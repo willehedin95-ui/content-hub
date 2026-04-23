@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -310,5 +310,182 @@ describe("updateStepSubEls", () => {
     const q = emptyQuiz();
     const result = updateStepSubEls(q, "does-not-exist", []);
     expect(result).toBe(q);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper: builds a quiz with one step that has a title and a question subEl
+// ---------------------------------------------------------------------------
+function quizWithSubEls() {
+  let q = emptyQuiz();
+  q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+  const stepId = Object.keys(q.nodes)[0];
+  q = addSubEl(q, stepId, { kind: "title", text: "Hello" });
+  q = addSubEl(q, stepId, { kind: "question" });
+  return { q, stepId };
+}
+
+describe("updateSubEl", () => {
+  it("merges a patch into a title subEl", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const titleId = step.subEls[0].id;
+    const next = updateSubEl(q, stepId, titleId, { text: "Updated" });
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    expect(nextStep.subEls[0]).toMatchObject({ kind: "title", text: "Updated" });
+  });
+
+  it("does not mutate the original quiz", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const titleId = step.subEls[0].id;
+    updateSubEl(q, stepId, titleId, { text: "Changed" });
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls[0]).toMatchObject({ text: "Hello" });
+  });
+
+  it("is a no-op when stepId does not exist", () => {
+    const { q } = quizWithSubEls();
+    const result = updateSubEl(q, "nonexistent", "el1", { text: "x" });
+    expect(result).toBe(q);
+  });
+
+  it("is a no-op when elId does not exist in the step", () => {
+    const { q, stepId } = quizWithSubEls();
+    const result = updateSubEl(q, stepId, "does-not-exist", { text: "x" });
+    expect(result).toBe(q);
+  });
+});
+
+describe("removeSubEl", () => {
+  it("removes the matching subEl from the step", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const titleId = step.subEls[0].id;
+    const next = removeSubEl(q, stepId, titleId);
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    expect(nextStep.subEls).toHaveLength(1);
+    expect(nextStep.subEls[0].kind).toBe("question");
+  });
+
+  it("is a no-op for an unknown elId", () => {
+    const { q, stepId } = quizWithSubEls();
+    const next = removeSubEl(q, stepId, "bogus");
+    const step = next.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    expect(step.subEls).toHaveLength(2);
+  });
+
+  it("is a no-op for an unknown stepId", () => {
+    const { q } = quizWithSubEls();
+    const result = removeSubEl(q, "nonexistent", "el1");
+    expect(result).toBe(q);
+  });
+});
+
+describe("addOption", () => {
+  it("appends a new option to a question subEl", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question")!;
+    const next = addOption(q, stepId, questionEl.id, "Option C");
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    const nextQ = nextStep.subEls.find((e) => e.kind === "question");
+    if (!nextQ || nextQ.kind !== "question") throw new Error("not question");
+    expect(nextQ.options).toHaveLength(3);
+    expect(nextQ.options[2].label).toBe("Option C");
+    expect(nextQ.options[2].id).toMatch(/^opt_/);
+  });
+
+  it("defaults label to empty string when not provided", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question")!;
+    const next = addOption(q, stepId, questionEl.id);
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    const nextQ = nextStep.subEls.find((e) => e.kind === "question");
+    if (!nextQ || nextQ.kind !== "question") throw new Error("not question");
+    expect(nextQ.options[2].label).toBe("");
+  });
+
+  it("is a no-op when the subEl is not a question", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const titleId = step.subEls[0].id;
+    const result = addOption(q, stepId, titleId, "x");
+    expect(result).toBe(q);
+  });
+});
+
+describe("updateOption", () => {
+  it("merges a patch into the matching option", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question");
+    if (!questionEl || questionEl.kind !== "question") throw new Error("not question");
+    const optId = questionEl.options[0].id;
+    const next = updateOption(q, stepId, questionEl.id, optId, { label: "Changed A" });
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    const nextQ = nextStep.subEls.find((e) => e.kind === "question");
+    if (!nextQ || nextQ.kind !== "question") throw new Error("not question");
+    expect(nextQ.options[0].label).toBe("Changed A");
+  });
+
+  it("is a no-op for an unknown optionId", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question");
+    if (!questionEl || questionEl.kind !== "question") throw new Error("not question");
+    const result = updateOption(q, stepId, questionEl.id, "bogus-opt", { label: "x" });
+    const resultStep = result.nodes[stepId];
+    if (resultStep.kind !== "step") throw new Error("not step");
+    const resultQ = resultStep.subEls.find((e) => e.kind === "question");
+    if (!resultQ || resultQ.kind !== "question") throw new Error("not question");
+    expect(resultQ.options[0].label).toBe("Option A");
+  });
+});
+
+describe("removeOption", () => {
+  it("removes the matching option from a question subEl", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question");
+    if (!questionEl || questionEl.kind !== "question") throw new Error("not question");
+    const optId = questionEl.options[0].id;
+    const next = removeOption(q, stepId, questionEl.id, optId);
+    const nextStep = next.nodes[stepId];
+    if (nextStep.kind !== "step") throw new Error("not step");
+    const nextQ = nextStep.subEls.find((e) => e.kind === "question");
+    if (!nextQ || nextQ.kind !== "question") throw new Error("not question");
+    expect(nextQ.options).toHaveLength(1);
+    expect(nextQ.options[0].label).toBe("Option B");
+  });
+
+  it("is a no-op for an unknown optionId", () => {
+    const { q, stepId } = quizWithSubEls();
+    const step = q.nodes[stepId];
+    if (step.kind !== "step") throw new Error("not step");
+    const questionEl = step.subEls.find((e) => e.kind === "question");
+    if (!questionEl || questionEl.kind !== "question") throw new Error("not question");
+    const result = removeOption(q, stepId, questionEl.id, "bogus");
+    const resultStep = result.nodes[stepId];
+    if (resultStep.kind !== "step") throw new Error("not step");
+    const resultQ = resultStep.subEls.find((e) => e.kind === "question");
+    if (!resultQ || resultQ.kind !== "question") throw new Error("not question");
+    expect(resultQ.options).toHaveLength(2);
   });
 });

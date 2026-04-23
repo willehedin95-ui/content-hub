@@ -149,6 +149,112 @@ type AddSubElInput =
   | { kind: "custom_html"; html?: string }
   | { kind: "loading"; text?: string; seconds?: number };
 
+// ---------------------------------------------------------------------------
+// updateSubEl — merge a partial patch into a single subEl (immutable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a new QuizData with the given subEl patched. No-op if the step or el
+ * is missing. Patch is merged shallowly — just the fields you pass are updated.
+ */
+export function updateSubEl(
+  q: QuizData,
+  stepId: string,
+  elId: string,
+  patch: Partial<SubEl>,
+): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  const idx = node.subEls.findIndex((e) => e.id === elId);
+  if (idx === -1) return q;
+  const updated = node.subEls.map((e, i) =>
+    i === idx ? ({ ...e, ...patch } as SubEl) : e,
+  );
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls: updated } } };
+}
+
+// ---------------------------------------------------------------------------
+// removeSubEl — drop a subEl from a step (immutable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a new QuizData without the given subEl. No-op if step/el missing.
+ */
+export function removeSubEl(q: QuizData, stepId: string, elId: string): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  const filtered = node.subEls.filter((e) => e.id !== elId);
+  if (filtered.length === node.subEls.length) return q; // not found — no-op
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls: filtered } } };
+}
+
+// ---------------------------------------------------------------------------
+// Option helpers — operate on a question subEl's options array (immutable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Appends a new option to a question subEl. No-op if the el is not a question.
+ */
+export function addOption(
+  q: QuizData,
+  stepId: string,
+  questionElId: string,
+  label?: string,
+): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  const el = node.subEls.find((e) => e.id === questionElId);
+  if (!el || el.kind !== "question") return q;
+  const newOpt: QuestionOption = { id: newId("opt"), label: label ?? "" };
+  const updatedEl: SubEl = { ...el, options: [...el.options, newOpt] };
+  const subEls = node.subEls.map((e) => (e.id === questionElId ? updatedEl : e));
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls } } };
+}
+
+/**
+ * Merges a patch into a specific option of a question subEl. No-op if not found.
+ */
+export function updateOption(
+  q: QuizData,
+  stepId: string,
+  questionElId: string,
+  optionId: string,
+  patch: Partial<QuestionOption>,
+): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  const el = node.subEls.find((e) => e.id === questionElId);
+  if (!el || el.kind !== "question") return q;
+  const optIdx = el.options.findIndex((o) => o.id === optionId);
+  if (optIdx === -1) return q;
+  const updatedOptions = el.options.map((o, i) =>
+    i === optIdx ? { ...o, ...patch } : o,
+  );
+  const updatedEl: SubEl = { ...el, options: updatedOptions };
+  const subEls = node.subEls.map((e) => (e.id === questionElId ? updatedEl : e));
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls } } };
+}
+
+/**
+ * Removes a specific option from a question subEl. No-op if not found.
+ */
+export function removeOption(
+  q: QuizData,
+  stepId: string,
+  questionElId: string,
+  optionId: string,
+): QuizData {
+  const node = q.nodes[stepId];
+  if (!node || node.kind !== "step") return q;
+  const el = node.subEls.find((e) => e.id === questionElId);
+  if (!el || el.kind !== "question") return q;
+  const filteredOptions = el.options.filter((o) => o.id !== optionId);
+  if (filteredOptions.length === el.options.length) return q; // not found — no-op
+  const updatedEl: SubEl = { ...el, options: filteredOptions };
+  const subEls = node.subEls.map((e) => (e.id === questionElId ? updatedEl : e));
+  return { ...q, nodes: { ...q.nodes, [stepId]: { ...node, subEls } } };
+}
+
 export function addSubEl(q: QuizData, stepId: string, input: AddSubElInput): QuizData {
   const node = q.nodes[stepId];
   if (!node || node.kind !== "step") return q;
