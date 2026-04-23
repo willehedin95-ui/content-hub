@@ -2,6 +2,7 @@
 import { QuizTopBar } from "./QuizTopBar";
 import { LogicCanvas } from "./LogicCanvas";
 import { StepsTree } from "./StepsTree";
+import { StepEditor } from "./StepEditor";
 
 export function QuizShell() {
   return (
@@ -14,8 +15,8 @@ export function QuizShell() {
         <main className="flex-1 overflow-hidden bg-gray-100">
           <LogicCanvas />
         </main>
-        <aside className="w-96 border-l border-gray-200 bg-white overflow-y-auto">
-          <div className="p-4 text-sm text-gray-500">Step editor (chunk 5)</div>
+        <aside className="w-96 border-l border-gray-200 bg-white flex flex-col min-h-0">
+          <StepEditor />
         </aside>
       </div>
     </div>
