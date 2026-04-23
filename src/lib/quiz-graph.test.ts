@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition } from "./quiz-graph";
 import type { QuizData, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -36,5 +36,58 @@ describe("removeNode", () => {
     const next = removeNode(q, stepId);
     expect(next.nodes[stepId]).toBeUndefined();
     expect(next.edges["e1"]).toBeUndefined();
+  });
+});
+
+describe("connectNodes", () => {
+  it("creates an edge between two nodes", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [aId, bId] = Object.keys(q.nodes);
+    const next = connectNodes(q, { from: aId, to: bId });
+    const edges = Object.values(next.edges);
+    expect(edges).toHaveLength(1);
+    expect(edges[0].from).toBe(aId);
+    expect(edges[0].to).toBe(bId);
+  });
+
+  it("does not duplicate edges with the same condition", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [aId, bId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: aId, to: bId });
+    const q2 = connectNodes(q, { from: aId, to: bId });
+    expect(Object.values(q2.edges)).toHaveLength(1);
+  });
+
+  it("allows edges with different conditions between the same nodes", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [aId, bId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: aId, to: bId, condition: { kind: "default" } });
+    q = connectNodes(q, { from: aId, to: bId, condition: { kind: "option", questionElId: "el1", optionId: "opt1" } });
+    expect(Object.values(q.edges)).toHaveLength(2);
+  });
+});
+
+describe("setEdgeCondition", () => {
+  it("updates the condition on an existing edge", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    const [aId, bId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: aId, to: bId });
+    const edgeId = Object.keys(q.edges)[0];
+    const next = setEdgeCondition(q, edgeId, { kind: "option", questionElId: "el1", optionId: "opt1" });
+    expect(next.edges[edgeId].condition).toEqual({ kind: "option", questionElId: "el1", optionId: "opt1" });
+  });
+
+  it("returns q unchanged for unknown edgeId", () => {
+    const q = emptyQuiz();
+    const next = setEdgeCondition(q, "nonexistent", { kind: "default" });
+    expect(next).toBe(q);
   });
 });
