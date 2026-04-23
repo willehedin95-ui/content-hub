@@ -318,16 +318,19 @@ export async function adaptQuiz(opts: AdaptOpts): Promise<AdaptResult> {
   // 3. Count step nodes for context on complexity
   const stepCount = Object.values(data.nodes).filter((n) => n.kind === "step").length;
 
-  // max_tokens: 16000 base + 400 per step to handle large quizzes
-  const maxTokens = Math.min(16000 + stepCount * 400, 32000);
+  // max_tokens: 20000 base + 1200 per step. Sonnet 4.5 supports up to 64k output.
+  // Response carries full adapted data (~1-2k tokens per step for multi-subEl steps) plus settings.
+  const maxTokens = Math.min(20000 + stepCount * 1200, 60000);
 
-  // 4. Call Claude with prompt caching on the system prompt
+  // 4. Call Claude with prompt caching on the system prompt.
+  // Use streaming because Anthropic SDK requires it when max_tokens is high enough
+  // that the operation could exceed 10 min (non-streaming requests are rejected).
   const client = new Anthropic({ apiKey });
 
   // The system prompt contains CORE_KNOWLEDGE + product context. Both are stable
   // across multiple calls for the same product+market combination, so caching is
   // high-value here. Mark the whole system prompt as ephemeral cache.
-  const response = await client.messages.create({
+  const stream = client.messages.stream({
     model: "claude-sonnet-4-5-20250929",
     max_tokens: maxTokens,
     temperature: 0.7,
@@ -341,6 +344,8 @@ export async function adaptQuiz(opts: AdaptOpts): Promise<AdaptResult> {
     ],
     messages: [{ role: "user", content: userMessage }],
   });
+
+  const response = await stream.finalMessage();
 
   const inputTokens = response.usage.input_tokens;
   const outputTokens = response.usage.output_tokens;
