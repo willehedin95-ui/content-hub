@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Download, ArrowRight, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { AdaptPanel } from "@/components/quiz-builder/AdaptPanel";
 
 type Market = "se" | "dk" | "no";
 
 type SwipeResult = {
   quizId: string;
-  method: "clarflow" | "generic";
+  method: "clarflow" | "heyflow" | "generic";
   importedSteps: number;
   warnings: string[];
 };
@@ -245,7 +246,7 @@ export function SwipeClient() {
           <div className="flex gap-3">
             <button
               onClick={() => router.push(`/quizzes/${phase.result.quizId}/edit`)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
             >
               Open in editor
               <ArrowRight className="w-4 h-4" />
@@ -258,6 +259,13 @@ export function SwipeClient() {
               Import another
             </button>
           </div>
+
+          {/* AI Adaptation section */}
+          <AdaptPanel
+            quizId={phase.result.quizId}
+            targetMarket={market}
+            onCancel={() => router.push(`/quizzes/${phase.result.quizId}/edit`)}
+          />
         </div>
       )}
     </div>

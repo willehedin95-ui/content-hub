@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3 } from "lucide-react";
+import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { useQuizAnalytics } from "./QuizAnalyticsContext";
+import { AdaptPanel } from "./AdaptPanel";
 import type { ActiveTab } from "./QuizShell";
 
 type QuizTopBarProps = {
@@ -21,6 +22,7 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
   const [publishedUrl, setPublishedUrl] = useState<string | null>(quiz.published_url);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showAdaptPanel, setShowAdaptPanel] = useState(false);
 
   const handlePublish = async () => {
     setPublishState("loading");
@@ -55,7 +57,8 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
   const alreadyPublished = !!publishedUrl;
 
   return (
-    <div className="h-14 border-b border-gray-200 bg-white px-4 flex items-center gap-4">
+    <>
+    <div className="h-14 border-b border-gray-200 bg-white px-4 flex items-center gap-4 relative">
       <Link href="/quizzes" className="p-1.5 hover:bg-gray-100 rounded" aria-label="Back">
         <ArrowLeft size={18} />
       </Link>
@@ -161,6 +164,21 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
         </button>
       )}
 
+      {/* Adapt this quiz button */}
+      <button
+        type="button"
+        onClick={() => setShowAdaptPanel((v) => !v)}
+        title="Adapt this quiz copy for a specific product and market using AI"
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
+          showAdaptPanel
+            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        <Sparkles size={14} />
+        Adapt
+      </button>
+
       {/* Publish / Republish button */}
       <button
         type="button"
@@ -181,5 +199,32 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
         )}
       </button>
     </div>
+
+    {/* Adapt panel - floating overlay anchored below the top bar */}
+    {showAdaptPanel && (
+      <div className="fixed top-14 right-4 z-50 w-96 bg-white border border-gray-200 rounded-xl shadow-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-semibold text-gray-900">Adapt quiz copy</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAdaptPanel(false)}
+            className="p-1 hover:bg-gray-100 rounded text-gray-400"
+            aria-label="Close adapt panel"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <AdaptPanel
+          quizId={quiz.id}
+          targetMarket={quiz.market}
+          inlineMode
+          onCancel={() => setShowAdaptPanel(false)}
+        />
+      </div>
+    )}
+    </>
   );
 }
