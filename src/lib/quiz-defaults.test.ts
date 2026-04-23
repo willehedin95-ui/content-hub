@@ -50,4 +50,30 @@ describe("buildDefaultSettings", () => {
     const s = buildDefaultSettings();
     expect(s.backNavigation).toBe(true);
   });
+
+  it("has complete structural shape with all required fields", () => {
+    const s = buildDefaultSettings();
+    expect(s).toMatchObject({
+      brandColors: {
+        background: expect.any(String),
+        textPrimary: expect.any(String),
+        textSecondary: expect.any(String),
+        primaryBrand: expect.any(String),
+        optionBackground: expect.any(String),
+      },
+      fontSettings: {
+        enabled: expect.any(Boolean),
+        fontFamily: expect.any(String),
+      },
+      progressBar: expect.any(Boolean),
+      stepProgressCount: expect.any(Boolean),
+      backNavigation: expect.any(Boolean),
+      metadata: {
+        title: expect.any(String),
+        description: expect.any(String),
+      },
+      providers: expect.any(Object),
+      redirectUrl: expect.any(String),
+    });
+  });
 });

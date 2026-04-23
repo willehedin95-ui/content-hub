@@ -141,6 +141,24 @@ describe("createVariant", () => {
     expect(variant.trafficPct).toBe(50);
   });
 
+  it("reuses variantGroupId when creating a variant from an existing variant", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "Original" });
+    const origId = Object.keys(q.nodes)[0];
+    // Create first variant (orig + variant1 = 2 nodes sharing variantGroupId)
+    q = createVariant(q, origId);
+    const firstVariantId = Object.keys(q.nodes).find((k) => k !== origId)!;
+    const firstVariantGroupId = (q.nodes[firstVariantId] as StepNode).variantGroupId;
+    // Create a variant from the first variant (should add a third node to the SAME group)
+    q = createVariant(q, firstVariantId);
+    const nodes = Object.values(q.nodes);
+    expect(nodes).toHaveLength(3);
+    // All three should share the same variantGroupId
+    const group = getVariantGroup(q, origId);
+    expect(group).toHaveLength(3);
+    expect(group.every((n) => n.variantGroupId === firstVariantGroupId)).toBe(true);
+  });
+
   it("positions the variant below the original", () => {
     let q = emptyQuiz();
     q = addStepNode(q, { position: { x: 100, y: 100 }, name: "Original" });
