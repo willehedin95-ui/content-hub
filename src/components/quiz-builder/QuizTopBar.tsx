@@ -4,8 +4,14 @@ import { useState } from "react";
 import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3 } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { useQuizAnalytics } from "./QuizAnalyticsContext";
+import type { ActiveTab } from "./QuizShell";
 
-export function QuizTopBar() {
+type QuizTopBarProps = {
+  activeTab: ActiveTab;
+  setActiveTab: (tab: ActiveTab) => void;
+};
+
+export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
   const { quiz, saveState, setName } = useQuiz();
   const { enabled: analyticsEnabled, setEnabled: setAnalyticsEnabled, loading: analyticsLoading } =
     useQuizAnalytics();
@@ -58,6 +64,25 @@ export function QuizTopBar() {
         onChange={(e) => setName(e.target.value)}
         className="font-medium text-lg bg-transparent border-0 outline-0 focus:bg-gray-50 rounded px-2 py-1"
       />
+
+      {/* Tab switcher */}
+      <div className="flex items-center border border-gray-200 rounded-md overflow-hidden ml-2">
+        {(["editor", "preview", "settings"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-1.5 text-sm font-medium transition-colors capitalize ${
+              activeTab === tab
+                ? "bg-indigo-600 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1" />
 
       {/* Save indicator */}
@@ -104,7 +129,7 @@ export function QuizTopBar() {
         </span>
       )}
 
-      {/* Analytics toggle */}
+      {/* Analytics page link */}
       <Link
         href={`/quizzes/${quiz.id}/analytics`}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
@@ -114,25 +139,27 @@ export function QuizTopBar() {
         Analytics
       </Link>
 
-      {/* Overlay toggle */}
-      <button
-        type="button"
-        onClick={() => setAnalyticsEnabled(!analyticsEnabled)}
-        disabled={analyticsLoading}
-        title={analyticsEnabled ? "Hide analytics overlay" : "Show analytics overlay on canvas"}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
-          analyticsEnabled
-            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-            : "border-gray-200 text-gray-500 hover:bg-gray-50"
-        }`}
-      >
-        {analyticsLoading ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <BarChart3 size={14} />
-        )}
-        Overlay
-      </button>
+      {/* Overlay toggle (editor tab only) */}
+      {activeTab === "editor" && (
+        <button
+          type="button"
+          onClick={() => setAnalyticsEnabled(!analyticsEnabled)}
+          disabled={analyticsLoading}
+          title={analyticsEnabled ? "Hide analytics overlay" : "Show analytics overlay on canvas"}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
+            analyticsEnabled
+              ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+              : "border-gray-200 text-gray-500 hover:bg-gray-50"
+          }`}
+        >
+          {analyticsLoading ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <BarChart3 size={14} />
+          )}
+          Overlay
+        </button>
+      )}
 
       {/* Publish / Republish button */}
       <button

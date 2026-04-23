@@ -2,7 +2,7 @@
 import { useQuiz } from "./QuizContext";
 import { topoOrderSteps } from "@/lib/quiz-graph";
 
-export function StepsTree() {
+export function StepsTree({ readOnly = false }: { readOnly?: boolean }) {
   const { data, selectedNodeId, setSelectedNodeId } = useQuiz();
   const steps = topoOrderSteps(data);
 
@@ -19,7 +19,7 @@ export function StepsTree() {
         return (
           <li key={step.id}>
             <button
-              onClick={() => setSelectedNodeId(step.id)}
+              onClick={() => !readOnly && setSelectedNodeId(step.id)}
               className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
                 isSelected
                   ? "bg-indigo-50 text-indigo-900 font-medium"
