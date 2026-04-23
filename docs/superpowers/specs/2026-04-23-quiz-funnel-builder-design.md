@@ -48,7 +48,7 @@ type QuizData = {
 
 type Node =
   | { id: string; kind: 'start'; size: Size; position: Point }
-  | { id: string; kind: 'step'; name: string; size: Size; position: Point; rotation: number; subEls: SubEl[] }
+  | { id: string; kind: 'step'; name: string; size: Size; position: Point; rotation: number; subEls: SubEl[]; variantGroupId?: string; trafficPct?: number }
   | { id: string; kind: 'exit'; name: string; size: Size; position: Point; redirectUrl: string };
 
 type Edge = { id: string; from: string; to: string; condition?: RouteCondition };
@@ -70,6 +70,8 @@ type QuestionOption = { id: string; label: string; emoji?: string; imageUrl?: st
 
 Conditional routing is stored on edges via `condition`. A step with branching has multiple outgoing edges; the runtime picks the edge whose `condition.optionId` matches the user's answer, falling back to the `default` edge.
 
+**A/B variants live in the graph, not in a separate table** (confirmed by reverse-engineering Clarflow). Multiple step nodes sharing the same `variantGroupId` are variants of each other; they share inbound and outbound edges (conceptually attached to the group, not an individual node). The runtime reads all nodes with matching `variantGroupId`, picks one weighted by `trafficPct`, and persists the choice per session. Rendering on the canvas stacks variant nodes vertically in the same column. Removing A/B requires no schema change - just delete the sibling node.
+
 ### Supabase tables
 
 ```sql
@@ -90,16 +92,8 @@ create table quizzes (
   unique (market, slug)
 );
 
--- Per-step A/B variants (Clarflow-style: granular, not whole-quiz)
-create table quiz_variants (
-  id uuid primary key default gen_random_uuid(),
-  quiz_id uuid not null references quizzes(id) on delete cascade,
-  step_id text not null,                 -- nodes[step_id]
-  name text not null,                    -- 'A', 'B', 'emoji variant', etc.
-  subEls jsonb not null,                 -- override SubEl[] for this variant
-  traffic_pct int not null default 50,   -- sums to 100 across variants for a step
-  created_at timestamptz not null default now()
-);
+-- A/B variants live in quizzes.data.nodes (see data model above) - no separate table needed.
+-- Variants = sibling step nodes with matching variantGroupId, weighted by trafficPct.
 
 -- One row per session (a single quiz attempt)
 create table quiz_sessions (
@@ -108,10 +102,12 @@ create table quiz_sessions (
   started_at timestamptz not null default now(),
   completed_at timestamptz,
   exit_clicked boolean not null default false,
-  variant_assignments jsonb not null default '{}',  -- { stepId: variantId }
+  variant_assignments jsonb not null default '{}',  -- { variantGroupId: stepNodeId }
   utm jsonb,                             -- captured from landing URL
   user_agent text,
   market text,
+  device_type text,                      -- 'mobile' | 'tablet' | 'desktop' (parsed from UA)
+  referrer text,
   email text,                            -- captured when user opts in
   answers jsonb not null default '{}'    -- { questionElId: [optionId, ...] }
 );
@@ -121,8 +117,8 @@ create table quiz_events (
   id bigserial primary key,
   session_id uuid not null references quiz_sessions(id) on delete cascade,
   quiz_id uuid not null references quizzes(id) on delete cascade,
-  step_id text,
-  variant_id uuid,
+  step_id text,                          -- the chosen variant node id if in a variant group
+  variant_group_id text,                 -- null for non-variant steps
   event_type text not null,              -- 'step_view' | 'answer' | 'email_capture' | 'back' | 'exit_click' | 'abandon'
   option_id text,
   meta jsonb,
@@ -215,9 +211,8 @@ A new workspace package built as a single minified bundle, uploaded once to each
   </head>
   <body>
     <div id="quiz-root"></div>
-    <script>window.__QUIZ_DATA__ = { ...serialized QuizData... };
+    <script>window.__QUIZ_DATA__ = { ...serialized QuizData including variant nodes... };
             window.__QUIZ_SETTINGS__ = { ... };
-            window.__QUIZ_VARIANTS__ = { stepId: [{id, subEls, traffic_pct}, ...] };
             window.__QUIZ_CONFIG__ = { apiBaseUrl, quizId };</script>
     <script src="/_runtime/quiz-runtime.{hash}.js" defer></script>
     {customCode.bodyEnd}
@@ -227,7 +222,7 @@ A new workspace package built as a single minified bundle, uploaded once to each
 
 **Runtime responsibilities:**
 
-- On load: assign a variant per step with A/B variants (weighted random, persist to localStorage keyed by `quiz_{id}_variant_{stepId}`); POST `quiz_session_start` → `/api/quiz/session` to get a `session_id`
+- On load: for each `variantGroupId` in the graph, pick a node weighted by `trafficPct`, persist to localStorage keyed by `quiz_{id}_vg_{variantGroupId}`; POST `quiz_session_start` → `/api/quiz/session` (body includes the full variant assignment map) to get a `session_id`
 - Render current node (start → first step); handle step navigation via edge lookup
 - For each answer: fire `answer` event; compute next node using answer → edge condition; animate transition
 - Progress bar/back nav based on settings; back uses history stack
@@ -250,7 +245,7 @@ Extend `src/lib/cloudflare-pages.ts`:
   4. Ensure runtime bundle is present at `/_runtime/quiz-runtime.{hash}.{js,css}` (upload if missing or new version)
   5. Upload `quiz/{slug}/index.html` via existing Direct Upload API
   6. Update `quizzes.published_url` and `published_at`
-- `publishQuizABTest(quizId)`: same, but variants are baked into `__QUIZ_VARIANTS__` blob — no separate deploys; runtime picks variant
+- Variants ship inside `__QUIZ_DATA__.nodes` (grouped by `variantGroupId`); no separate publish action needed. Runtime assigns and persists per session.
 - Runtime bundle is built by a Vite config in `runtime/quiz-runtime/`, versioned by content hash
 
 Cache headers: `/_runtime/*` gets `immutable, max-age=31536000`; `quiz/{slug}/index.html` gets `no-cache` so edits go live instantly.
@@ -279,45 +274,69 @@ Cache headers: `/_runtime/*` gets `immutable, max-age=31536000`; `quiz/{slug}/in
 
 ## A/B Testing
 
-**Model:** per-step variants. A `quiz_variants` row overrides the `subEls` array of a specific step. `traffic_pct` distributes sessions.
+**Model:** variants are sibling step nodes in the graph (confirmed by reverse-engineering Clarflow - much simpler than a separate variant table). Nodes sharing a `variantGroupId` are variants of each other; they conceptually share inbound and outbound edges (the edges attach to the group, any variant node can resolve them).
 
 **Assignment:**
-- At step view, runtime checks `localStorage['quiz_{id}_variant_{stepId}']`. If absent, pick weighted random and persist.
-- `variant_assignments` on the session record is authoritative for analytics (written on session start + on each new variant assignment).
-- Variants are stable within a session but independent across steps (seeing variant A on step 2 does not correlate with variant on step 5).
+- At step view for a node in a variant group, runtime checks `localStorage['quiz_{id}_vg_{variantGroupId}']`. If absent, pick a variant weighted by each node's `trafficPct` (must sum to 100), persist, and log.
+- `variant_assignments` on the session record is authoritative for analytics (`{ variantGroupId: chosenStepNodeId }`).
+- Variants are stable within a session but independent across groups.
 
-**Editor UX:**
-- A step node with variants shows a small badge on the canvas.
-- Opening a step reveals a variant selector at the top of StepEditor. Clicking "+ Variant" clones the current subEls.
-- Traffic split slider per step (default 50/50).
-- "End test" button: picks the winner, copies its subEls to the base step, deletes variant rows.
+**Editor UX** (matches Clarflow's pattern):
+- Select a step node, click the "branch" icon in the floating toolbar - creates a sibling node with the same subEls as the original, stacked vertically under it on the canvas. Both nodes get the same `variantGroupId` and split traffic 50/50 by default.
+- Each variant node displays a small variant badge (A, B, C) at top-left.
+- Edges auto-resolve: the inbound edge targets the group; outbound edges attach from the group. Internal editor normalizes this by storing edges against the first node of the group and the runtime de-references.
+- Traffic split controls on the canvas: click the variant badge to open a small popover with `trafficPct` slider per variant and "Promote winner" / "Delete variant" actions.
+- Editing subEls only edits the currently-selected variant.
 
-**Analytics:** compare conversion (defined as reaching `exit_click`) and per-step dropoff between variants for the same step.
+**Canvas representation:** vertical stacking in same column; a subtle dashed border groups variants; lines enter/exit the group as a whole. React Flow supports this via a parent node or via custom edge routing.
 
-## Analytics Dashboard
+**Analytics:** per-variant step dropoff + completion rate shown in the variant comparison card on the analytics page. Canvas overlay shows per-variant sessions count when analytics is toggled on (each variant node shows its own count).
 
-Route: `/quizzes/[id]/analytics`.
+## Analytics
 
-**Computed views (all use `quiz_events` + `quiz_sessions`):**
+Three surfaces (mirrors Clarflow's proven split - confirmed by reverse-engineering):
 
-1. **Funnel view** — horizontal bar per step in topological order; width proportional to `sessions reaching step / sessions started`. Red delta between adjacent bars highlights dropoff.
-2. **Option distribution** — per question, stacked bar showing % selecting each option.
-3. **Variant comparison** — where variants exist, show pairs (A vs B) side-by-side with conversion, step-through rate, and option distribution.
-4. **Completion funnel** — started → email captured → exit clicked, as three big numbers with percentages.
-5. **Time per step** — median and p90 seconds between step_view and next step_view.
-6. **Meta attribution** — sessions grouped by utm_source/utm_campaign (from the `utm` JSONB captured on session start), with conversion rate per.
+### 1. Quizzes list page (`/quizzes`)
+
+Per-quiz KPI row next to each tile: Visitors, Completions, Completion Rate. Date range dropdown (default Last 30 days). Lightweight - just the three numbers, no chart.
+
+### 2. Canvas overlay (in editor, toggled by Analytics button in top bar)
+
+When on, every step node on the logic canvas shows:
+- **Sessions count** at top (e.g. "1 616")
+- **Dropoff %** with down-arrow indicator (e.g. "↘ 46.4%")
+- **Median time on step** (e.g. "🕐 10 s")
+- **Per-option selection %** next to each option inside the question element (e.g. "35-44 · 24%")
+- **Edge flow counts** - small number on each connection line showing sessions that took that path
+
+This is the primary daily-use surface. Offers instant visual dropoff intuition without leaving the editor.
+
+### 3. Per-funnel analytics page (`/quizzes/[id]/analytics`)
+
+Linked from the Quizzes list + from the editor top bar. Full-screen dedicated view with:
+
+- **Filters**: date range picker (+ preset dropdown: Today / Last 7 / Last 30 / Last 90 / Custom), device breakdown dropdown (All / Mobile / Tablet / Desktop), variant filter (when variants exist)
+- **KPI row**: Quiz Start, Quiz Completions, Quiz Completion Rate (big numbers)
+- **Funnel Drop-off Analysis**: vertical bar chart, one bar per step in topological order, bar height = visitors at step, labeled with count + % of starters. Red delta between adjacent bars.
+- **Option distribution**: per question, horizontal stacked bar showing % selecting each option.
+- **Variant comparison**: when a step has variants (`variantGroupId`), show a side-by-side card per variant with conversion rate, step-through rate, and option distribution.
+- **Completion funnel**: started → email captured → exit clicked as three big numbers with conversion rates between.
+- **Time per step**: median and p90 seconds between step_view and next event.
+- **Meta attribution**: sessions grouped by utm_source/utm_campaign, with conversion per.
+- **Customer Responses table**: paginated session log with Timestamp | Status (Completed/Abandoned) | Progress (visual bar, %) | Actions (View Details, Export CSV button at top). View Details opens a drawer with the full event trail for the session.
+- **Reset Analytics Data** button (destructive, with confirmation) - clears all `quiz_sessions` + `quiz_events` for this quiz. Used when republishing after big copy changes so dropoff baselines reset.
 
 **SQL shape (hot query):**
 
 ```sql
--- Sessions per step
+-- Sessions per step (used by canvas overlay + funnel view)
 select step_id, count(distinct session_id) as sessions
 from quiz_events
 where quiz_id = $1 and event_type = 'step_view' and created_at > $2
 group by step_id;
 ```
 
-Use Supabase RPC functions for the heavy aggregates; cache dashboard response for 60s client-side.
+Use Supabase RPC functions for the heavy aggregates. Client caches analytics response for 60s. Canvas overlay uses the same endpoint, reads from the same cache.
 
 **Meta Pixel wiring:** runtime fires `fbq('track', 'Lead', {content_name: quiz.name})` on email capture and `fbq('track', 'CompleteRegistration', {content_name: quiz.name})` on exit click. Pixel ID comes from `settings.providers.metaPixel.pixelId`. Values set to 0 (not a purchase signal).
 
@@ -331,10 +350,14 @@ All under `src/app/api/quiz/`:
 - `POST /api/quiz/[id]/publish` — build shell, upload to CF, update `published_url`
 - `POST /api/quiz/[id]/duplicate` — clone
 - `DELETE /api/quiz/[id]` — soft delete (status → archived)
-- `POST /api/quiz/[id]/variants` — create variant
-- `PATCH /api/quiz/variants/[variantId]` — update variant
-- `DELETE /api/quiz/variants/[variantId]`
+- `POST /api/quiz/[id]/reset-analytics` — clears `quiz_sessions` + `quiz_events` for this quiz
+- `GET /api/quiz/[id]/analytics` — aggregated stats for analytics page + canvas overlay (date range + device + variant filters via query params)
+- `GET /api/quiz/[id]/sessions` — paginated session list for Customer Responses table
+- `GET /api/quiz/[id]/sessions/[sessionId]` — full event trail for one session
+- `GET /api/quiz/[id]/sessions/export.csv` — CSV export of sessions + answers
 - `POST /api/quiz/swipe` — kick off Playwright import; returns new quiz id
+
+(Variants have no dedicated endpoints. They are ordinary step nodes in `quizzes.data.nodes`, managed via `PATCH /api/quiz/[id]` autosave.)
 
 **Runtime endpoints (called from published quiz, must be CORS-friendly):**
 
@@ -347,56 +370,57 @@ All under `src/app/api/quiz/`:
 Order matters; each phase should be demo-able.
 
 **Phase 1 — Scaffolding + data model (1 day)**
-- Supabase migrations for 4 tables
+- Supabase migrations for `quizzes`, `quiz_sessions`, `quiz_events`
 - TypeScript types in `src/types/quiz.ts`
-- Empty routes + list page at `/quizzes`
-- `createQuiz` API returns a hardcoded "Hello Quiz" draft
+- List page at `/quizzes` (tiles + per-quiz KPI row)
+- `createQuiz` API returns a minimal draft (single start + one empty step + one exit)
 
 **Phase 2 — Editor MVP (2 days)**
 - `QuizContext` + autosave
 - Logic canvas with React Flow, custom start/step/exit node renderers
-- Steps tree + add/delete/reorder nodes
-- Per-option branching with edge conditions
-- Basic StepEditor using existing Page Builder wrapped around a fake page
-- Element palette (drag-in title/text/question/image)
+- Steps tree (left sidebar, topo-ordered)
+- Per-option conditional routing (edge `condition.optionId`)
+- StepEditor wrapping existing Page Builder around the selected step's subEls
+- Element palette (drag-in title/text/question/image/custom_html/loading)
+- **A/B variants as sibling nodes**: branch button on node toolbar clones into a variant group; traffic-split popover; canvas stacks variants vertically with dashed group border
 
 **Phase 3 — Runtime + publish (2 days)**
 - Vite project in `runtime/quiz-runtime/`; Preact-based renderer; local dev via `/public/quiz-preview/{slug}`
-- HTML shell generator in `src/lib/quiz-publish.ts`
-- Extend `cloudflare-pages.ts` with `publishQuiz`
-- Session + events APIs; runtime fires events
+- Variant assignment in runtime (weighted random, localStorage-persisted per variantGroupId)
+- HTML shell generator in `src/lib/quiz-publish.ts`; injects `__QUIZ_DATA__` with variants baked in
+- Extend `cloudflare-pages.ts` with `publishQuiz` (determines CF project from market)
+- Session + events batch APIs; runtime fires events with buffering
 - Test publish to halsobladet.com/quiz/test-hydro13
 
-**Phase 4 — A/B variants (1 day)**
-- `quiz_variants` CRUD + editor UI
-- Runtime variant assignment + persistence
-- Bake variants into `__QUIZ_VARIANTS__` on publish
-
-**Phase 5 — Analytics dashboard (2 days)**
-- Supabase RPC functions for aggregates
-- Funnel view, option distribution, variant comparison components
-- Meta Pixel integration in runtime
+**Phase 4 — Analytics (2 days)**
+- Supabase RPC functions for aggregates (sessions-per-step, option-distribution, time-per-step, variant-comparison)
+- `/quizzes/[id]/analytics` page: KPIs, funnel drop-off chart, option distribution, variant comparison, completion funnel, time per step, utm attribution
+- Customer Responses table + session detail drawer + CSV export
+- Reset Analytics Data button
+- Canvas overlay: Analytics toggle in editor top bar; step nodes show sessions/dropoff/time + per-option %; edges show flow counts
+- Quiz list page pulls KPI row from same endpoint
+- Meta Pixel integration in runtime (Lead + CompleteRegistration events)
 - Klaviyo capture proxy
 
-**Phase 6 — Quiz Swiper (2 days)**
-- Clarflow fast-path (`window.__CLARFLOW_DATA__` extraction + ID remap)
+**Phase 5 — Quiz Swiper (2 days)**
+- Clarflow fast-path (`window.__CLARFLOW_DATA__` extraction + ID remap; also reads variants from the same graph)
 - Generic Playwright scraper (linear import with heuristic element mapping)
 - Image re-hosting to Supabase storage
-- Swipe UI page
+- Swipe UI page at `/quizzes/swipe`
 
-**Phase 7 — Hydro13 migration + launch (0.5 day)**
-- Import existing Clarflow Hydro13 v2 quiz via Swiper
+**Phase 6 — Hydro13 migration + launch (0.5 day)**
+- Import existing Clarflow Hydro13 v2 quiz via Swiper (fast-path on your own Clarflow tenant)
 - Touch-up pass in editor
-- Publish to halsobladet.com/quiz/hydro13-beauty (SE), with DK/NO versions duplicated
+- Publish to halsobladet.com/quiz/hydro13-beauty (SE), with DK/NO versions duplicated and re-published
 - Wire Meta Pixel + Klaviyo
-- Flip ads to new URL, monitor
+- Flip Meta ads to new URL, monitor dropoff vs Clarflow baseline
 
-**Total: 10 engineer-days.**
+**Total: 9.5 engineer-days.** (A/B folded into editor phase; analytics now one combined phase covering canvas overlay + dedicated page + KPI row.)
 
 ## Open Questions
 
 - **Preact vs vanilla runtime**: Preact adds ~3KB gz but simplifies DOM diffing as variants/steps swap. Recommend Preact. Decide during phase 3.
-- **Should variants affect edges too?** For v1, variants override `subEls` only. If we later want a variant to route to a different next step, extend variant schema to include edge overrides.
+- **Variant routing divergence**: in v1, variants share inbound/outbound edges at the group level - a variant cannot take a different next-step. If future demand requires this, attach outbound edges to individual variant nodes instead of the group. Schema already supports it (edges target node ids), so no migration needed.
 - **Image hosting during import**: re-upload scraped images to Supabase storage (`quiz-assets/...`) vs. hotlink original. Re-upload is safer (no broken quizzes if source deletes) but adds transfer cost. Recommend re-upload.
 - **Rate limiting on runtime endpoints**: `/api/quiz/events` is public and will be hit on every step. Use Supabase connection pooling + per-IP rate limit (e.g., 60 req/min) via an edge middleware.
 - **GDPR / cookie banner**: halsobladet.com doesn't have one today. Events use a session UUID, no third-party cookies. Meta Pixel is the only concern — needs consent banner if we add it. Decide before DK/NO launch.
