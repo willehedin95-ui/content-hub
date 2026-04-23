@@ -72,10 +72,13 @@ export function App({ data, settings, config }: AppProps) {
     const firstNode = resolveNextNode(data, startNode.id, null, null, assignments);
     setCurrentNode(firstNode);
 
-    // Fire PageView pixel immediately
-    if (settings.providers.metaPixel?.pixelId) {
+    // Fire PageView pixel immediately (skip in preview)
+    if (!config.preview && settings.providers.metaPixel?.pixelId) {
       firePixelEvent("PageView", {});
     }
+
+    // In preview mode skip all API calls - just render
+    if (config.preview) return;
 
     // Start session async (don't block render)
     const utm = extractUTM();
@@ -120,27 +123,31 @@ export function App({ data, settings, config }: AppProps) {
         const idx = orderedSteps.findIndex((s) => s.id === node.id);
         if (idx >= 0) setStepIndex(idx);
 
-        bufferRef.current?.push({
-          event_type: "step_view",
-          step_id: node.id,
-          variant_group_id: node.variantGroupId,
-        });
+        if (!config.preview) {
+          bufferRef.current?.push({
+            event_type: "step_view",
+            step_id: node.id,
+            variant_group_id: node.variantGroupId,
+          });
+        }
       }
     },
-    [currentNode, orderedSteps],
+    [currentNode, orderedSteps, config.preview],
   );
 
   const handleAnswer = useCallback(
     (questionElId: string, optionId: string) => {
       if (!currentNode || currentNode.kind !== "step") return;
 
-      bufferRef.current?.push({
-        event_type: "answer",
-        step_id: currentNode.id,
-        variant_group_id: currentNode.variantGroupId,
-        option_id: optionId,
-        meta: { questionElId },
-      });
+      if (!config.preview) {
+        bufferRef.current?.push({
+          event_type: "answer",
+          step_id: currentNode.id,
+          variant_group_id: currentNode.variantGroupId,
+          option_id: optionId,
+          meta: { questionElId },
+        });
+      }
 
       const next = resolveNextNode(
         data,
@@ -168,28 +175,30 @@ export function App({ data, settings, config }: AppProps) {
 
   const handleEmailSubmit = useCallback(
     async (email: string) => {
-      bufferRef.current?.push({
-        event_type: "email_capture",
-        step_id: currentNode?.kind === "step" ? currentNode.id : undefined,
-        meta: { email },
-      });
+      if (!config.preview) {
+        bufferRef.current?.push({
+          event_type: "email_capture",
+          step_id: currentNode?.kind === "step" ? currentNode.id : undefined,
+          meta: { email },
+        });
 
-      // Fire Lead pixel event
-      if (settings.providers.metaPixel?.pixelId) {
-        firePixelEvent("Lead", { content_name: settings.metadata.title, value: 0 });
-      }
+        // Fire Lead pixel event
+        if (settings.providers.metaPixel?.pixelId) {
+          firePixelEvent("Lead", { content_name: settings.metadata.title, value: 0 });
+        }
 
-      // Subscribe to Klaviyo
-      if (settings.providers.klaviyo?.listId && sessionId) {
-        try {
-          await subscribeKlaviyo(
-            config.apiBaseUrl,
-            sessionId,
-            email,
-            settings.providers.klaviyo.listId,
-          );
-        } catch (err) {
-          console.warn("[quiz-runtime] Klaviyo subscribe failed:", err);
+        // Subscribe to Klaviyo
+        if (settings.providers.klaviyo?.listId && sessionId) {
+          try {
+            await subscribeKlaviyo(
+              config.apiBaseUrl,
+              sessionId,
+              email,
+              settings.providers.klaviyo.listId,
+            );
+          } catch (err) {
+            console.warn("[quiz-runtime] Klaviyo subscribe failed:", err);
+          }
         }
       }
 
@@ -205,14 +214,16 @@ export function App({ data, settings, config }: AppProps) {
         if (next) navigateTo(next);
       }
     },
-    [currentNode, data, variantAssignments, navigateTo, sessionId, settings, config.apiBaseUrl],
+    [currentNode, data, variantAssignments, navigateTo, sessionId, settings, config],
   );
 
   const handleBack = useCallback(() => {
-    bufferRef.current?.push({
-      event_type: "back",
-      step_id: currentNode?.kind === "step" ? currentNode.id : undefined,
-    });
+    if (!config.preview) {
+      bufferRef.current?.push({
+        event_type: "back",
+        step_id: currentNode?.kind === "step" ? currentNode.id : undefined,
+      });
+    }
     setHistory((h) => {
       if (h.length === 0) return h;
       const prev = h[h.length - 1];
@@ -228,6 +239,13 @@ export function App({ data, settings, config }: AppProps) {
 
   const handleExitClick = useCallback(
     (exitNode: ExitNode) => {
+      if (config.preview) {
+        // In preview mode just show an alert instead of redirecting
+        const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "(no redirect URL)";
+        alert(`[Preview] Would redirect to:\n${redirectBase}`);
+        return;
+      }
+
       bufferRef.current?.push({ event_type: "exit_click" });
 
       // Fire CompleteRegistration pixel
@@ -250,7 +268,7 @@ export function App({ data, settings, config }: AppProps) {
         location.href = url.toString();
       });
     },
-    [settings, sessionId],
+    [settings, sessionId, config.preview],
   );
 
   // Render exit node as a CTA screen

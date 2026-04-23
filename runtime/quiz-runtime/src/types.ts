@@ -86,6 +86,8 @@ export type QuizSettings = {
 export type QuizConfig = {
   apiBaseUrl: string;
   quizId: string;
+  /** When true, the runtime skips all API calls (sessions, events, Klaviyo). */
+  preview?: boolean;
 };
 
 export type UTMParams = {
