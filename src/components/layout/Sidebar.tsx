@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio, Search, BookOpen, Smartphone, Mail } from "lucide-react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio, Search, BookOpen, Smartphone, Mail, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 import type { Workspace } from "@/types";
@@ -63,6 +63,7 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
   const nav: NavEntry[] = useMemo(() => [
     { href: "/", label: "Activity", icon: Radio },
     { href: "/pages", label: "Landing Pages", icon: Layers },
+    { href: "/quizzes", label: "Quizzes", icon: ListChecks },
     {
       label: "Ads",
       icon: Megaphone,
