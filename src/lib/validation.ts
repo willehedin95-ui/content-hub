@@ -25,6 +25,13 @@ export function isValidBudget(budget: number): boolean {
   return Number.isFinite(budget) && budget > 0;
 }
 
+export const VALID_MARKETS = new Set(["se", "dk", "no"] as const);
+export type Market = "se" | "dk" | "no";
+
+export function isValidMarket(value: string): value is Market {
+  return VALID_MARKETS.has(value as Market);
+}
+
 export const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 export const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov"]);
 export const ALLOWED_MEDIA_EXTENSIONS = new Set([...ALLOWED_IMAGE_EXTENSIONS, ...ALLOWED_VIDEO_EXTENSIONS]);
