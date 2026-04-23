@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -29,16 +29,35 @@ function Inner() {
   const { data, setData, selectedNodeId, setSelectedNodeId } = useQuiz();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const rfNodes: Node[] = useMemo(
-    () =>
-      Object.values(data.nodes).map((n: QuizNode) => ({
-        id: n.id,
-        type: n.kind,
-        position: n.position,
-        data: { node: n },
-      })),
-    [data.nodes],
+  // Local ReactFlow node state so measurement/dimension changes propagate
+  // (ReactFlow v12 keeps nodes visibility:hidden until measured via onNodesChange).
+  // We mirror positions from `data.nodes` into this local state and sync drags back.
+  const [rfNodes, setRfNodes] = useState<Node[]>(() =>
+    Object.values(data.nodes).map((n: QuizNode) => ({
+      id: n.id,
+      type: n.kind,
+      position: n.position,
+      data: { node: n },
+    })),
   );
+
+  // Keep rfNodes in sync with quiz data (add/remove/update from outside the canvas).
+  // Preserves ReactFlow-managed fields (measured, selected) when id still exists.
+  useEffect(() => {
+    setRfNodes((prev) => {
+      const byId = new Map(prev.map((n) => [n.id, n]));
+      return Object.values(data.nodes).map((n: QuizNode) => {
+        const existing = byId.get(n.id);
+        return {
+          ...(existing ?? {}),
+          id: n.id,
+          type: n.kind,
+          position: n.position,
+          data: { node: n },
+        } as Node;
+      });
+    });
+  }, [data.nodes]);
 
   const rfEdges: Edge[] = useMemo(
     () =>
@@ -56,19 +75,28 @@ function Inner() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const updated = applyNodeChanges(changes, rfNodes);
+      // Apply ALL changes (dimensions/measurement/position/select) to local state
+      setRfNodes((prev) => applyNodeChanges(changes, prev));
+
+      // Only persist position changes (after drag ends) back to the quiz data.
+      const positionChanges = changes.filter(
+        (c): c is Extract<NodeChange, { type: "position" }> =>
+          c.type === "position" && !c.dragging && !!c.position,
+      );
+      if (positionChanges.length === 0) return;
+
       setData((prev) => {
         const nodes = { ...prev.nodes };
-        for (const n of updated) {
-          const existing = nodes[n.id];
-          if (existing && n.position) {
-            nodes[n.id] = { ...existing, position: n.position };
+        for (const c of positionChanges) {
+          const existing = nodes[c.id];
+          if (existing && c.position) {
+            nodes[c.id] = { ...existing, position: c.position };
           }
         }
         return { ...prev, nodes };
       });
     },
-    [rfNodes, setData],
+    [setData],
   );
 
   const onConnect = useCallback(
@@ -129,7 +157,7 @@ function Inner() {
 
   return (
     // tabIndex makes the div focusable so keydown events fire when canvas is clicked
-    <div ref={containerRef} className="relative w-full h-full" tabIndex={0}>
+    <div ref={containerRef} className="absolute inset-0" tabIndex={0}>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}

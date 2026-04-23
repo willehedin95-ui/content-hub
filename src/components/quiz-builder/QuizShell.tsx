@@ -12,7 +12,7 @@ export function QuizShell() {
         <aside className="w-64 border-r border-gray-200 bg-white overflow-y-auto">
           <StepsTree />
         </aside>
-        <main className="flex-1 overflow-hidden bg-gray-100">
+        <main className="flex-1 overflow-hidden bg-gray-100 relative">
           <LogicCanvas />
         </main>
         <aside className="w-96 border-l border-gray-200 bg-white flex flex-col min-h-0">
