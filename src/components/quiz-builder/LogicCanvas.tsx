@@ -13,6 +13,7 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import { useQuiz } from "./QuizContext";
+import { useQuizAnalytics } from "./QuizAnalyticsContext";
 import { StartNode } from "./nodes/StartNode";
 import { StepNode } from "./nodes/StepNode";
 import { ExitNode } from "./nodes/ExitNode";
@@ -27,6 +28,7 @@ const nodeTypes = {
 
 function Inner() {
   const { data, setData, selectedNodeId, setSelectedNodeId } = useQuiz();
+  const { enabled: analyticsEnabled, funnelFor } = useQuizAnalytics();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Local ReactFlow node state so measurement/dimension changes propagate
@@ -61,16 +63,28 @@ function Inner() {
 
   const rfEdges: Edge[] = useMemo(
     () =>
-      Object.values(data.edges).map((e) => ({
-        id: e.id,
-        source: e.from,
-        target: e.to,
-        label:
+      Object.values(data.edges).map((e) => {
+        // When analytics overlay is on, show the session count on the source node as edge label
+        const analyticsLabel =
+          analyticsEnabled && e.from ? funnelFor(e.from)?.sessions : undefined;
+
+        const conditionLabel =
           e.condition?.kind === "option"
             ? `opt:${e.condition.optionId.slice(-4)}`
-            : undefined,
-      })),
-    [data.edges],
+            : undefined;
+
+        const label = analyticsLabel !== undefined
+          ? analyticsLabel.toLocaleString()
+          : conditionLabel;
+
+        return {
+          id: e.id,
+          source: e.from,
+          target: e.to,
+          label,
+        };
+      }),
+    [data.edges, analyticsEnabled, funnelFor],
   );
 
   const onNodesChange = useCallback(

@@ -1,11 +1,14 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3 } from "lucide-react";
 import { useQuiz } from "./QuizContext";
+import { useQuizAnalytics } from "./QuizAnalyticsContext";
 
 export function QuizTopBar() {
   const { quiz, saveState, setName } = useQuiz();
+  const { enabled: analyticsEnabled, setEnabled: setAnalyticsEnabled, loading: analyticsLoading } =
+    useQuizAnalytics();
   const [publishState, setPublishState] = useState<"idle" | "loading" | "done" | "error">(
     quiz.published_url ? "done" : "idle",
   );
@@ -100,6 +103,36 @@ export function QuizTopBar() {
           {publishError}
         </span>
       )}
+
+      {/* Analytics toggle */}
+      <Link
+        href={`/quizzes/${quiz.id}/analytics`}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+        title="View analytics page"
+      >
+        <BarChart3 size={14} />
+        Analytics
+      </Link>
+
+      {/* Overlay toggle */}
+      <button
+        type="button"
+        onClick={() => setAnalyticsEnabled(!analyticsEnabled)}
+        disabled={analyticsLoading}
+        title={analyticsEnabled ? "Hide analytics overlay" : "Show analytics overlay on canvas"}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors ${
+          analyticsEnabled
+            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+            : "border-gray-200 text-gray-500 hover:bg-gray-50"
+        }`}
+      >
+        {analyticsLoading ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <BarChart3 size={14} />
+        )}
+        Overlay
+      </button>
 
       {/* Publish / Republish button */}
       <button

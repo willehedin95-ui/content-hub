@@ -2,9 +2,10 @@
 import { useRef, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
-import { Edit, Copy, Trash2, Sparkles, GitBranch } from "lucide-react";
+import { Edit, Copy, Trash2, Sparkles, GitBranch, Users, TrendingDown, Clock } from "lucide-react";
 import type { StepNode as StepNodeData, SubEl } from "@/types/quiz";
 import { useQuiz } from "@/components/quiz-builder/QuizContext";
+import { useQuizAnalytics } from "@/components/quiz-builder/QuizAnalyticsContext";
 import { removeNode, duplicateStep, createVariant } from "@/lib/quiz-graph";
 import { VariantControls } from "@/components/quiz-builder/VariantControls";
 
@@ -34,7 +35,11 @@ function getOptionLabels(subEls: SubEl[]): string[] {
 export function StepNode({ data }: NodeProps<StepNodeType>) {
   const { node } = data;
   const { selectedNodeId, setSelectedNodeId, setData } = useQuiz();
+  const { enabled: analyticsEnabled, funnelFor, optionsFor } = useQuizAnalytics();
   const isSelected = selectedNodeId === node.id;
+
+  const funnelRow = analyticsEnabled ? funnelFor(node.id) : undefined;
+  const optionRows = analyticsEnabled ? optionsFor(node.id) : [];
   const [variantControlsOpen, setVariantControlsOpen] = useState(false);
   const abBadgeRef = useRef<HTMLButtonElement>(null);
 
@@ -148,6 +153,30 @@ export function StepNode({ data }: NodeProps<StepNodeType>) {
         )}
       </div>
 
+      {/* Analytics overlay strip */}
+      {analyticsEnabled && funnelRow && (
+        <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3 flex-wrap">
+          <span className="flex items-center gap-1 text-xs font-semibold text-indigo-700">
+            <Users size={11} />
+            {funnelRow.sessions.toLocaleString()}
+          </span>
+          {funnelRow.dropoff_pct > 0 && (
+            <span className="flex items-center gap-0.5 text-xs font-semibold text-red-500">
+              <TrendingDown size={11} />
+              {funnelRow.dropoff_pct}%
+            </span>
+          )}
+          {funnelRow.median_time_sec > 0 && (
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <Clock size={10} />
+              {funnelRow.median_time_sec < 60
+                ? `${Math.round(funnelRow.median_time_sec)}s`
+                : `${Math.floor(funnelRow.median_time_sec / 60)}m`}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Body */}
       <div className="px-3 py-2 space-y-1.5">
         {previewTitle ? (
@@ -158,14 +187,29 @@ export function StepNode({ data }: NodeProps<StepNodeType>) {
 
         {optionLabels.length > 0 && (
           <ul className="space-y-1 mt-1">
-            {optionLabels.map((label, i) => (
-              <li
-                key={i}
-                className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 truncate"
-              >
-                {label}
-              </li>
-            ))}
+            {optionLabels.map((label, i) => {
+              // Find the option id for this label to get its analytics %
+              const questionEl = node.subEls.find((el) => el.kind === "question");
+              const optId =
+                questionEl && questionEl.kind === "question"
+                  ? questionEl.options[i]?.id
+                  : undefined;
+              const optRow = optId ? optionRows.find((r) => r.option_id === optId) : undefined;
+
+              return (
+                <li
+                  key={i}
+                  className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1 flex items-center justify-between gap-1"
+                >
+                  <span className="truncate">{label}</span>
+                  {optRow && (
+                    <span className="text-indigo-600 font-semibold shrink-0">
+                      {optRow.option_pct_of_step}%
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
