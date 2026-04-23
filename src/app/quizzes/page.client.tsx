@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Globe, Copy, Archive, BarChart3 } from "lucide-react";
+import { Plus, Globe, Copy, Archive, BarChart3, Download } from "lucide-react";
 import type { QuizRow } from "@/types/quiz";
 
 const MARKET_LABELS: Record<string, string> = {
@@ -165,6 +165,14 @@ export function QuizzesClient({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push("/quizzes/swipe")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+            title="Import quiz from URL"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Import from URL
+          </button>
           {(["se", "dk", "no"] as const).map((market) => (
             <button
               key={market}
