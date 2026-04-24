@@ -2,7 +2,7 @@
 // Tests for the pure remapClarflowIds, isHeyflowHtml, and parseHeyflowHtml helpers — no network, no browser.
 
 import { describe, it, expect } from "vitest";
-import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml, pruneEmptySteps } from "./quiz-swipe";
+import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml, pruneEmptySteps, splitRichTextHtml } from "./quiz-swipe";
 import type { ClarflowData, ClarflowStepNode } from "./quiz-swipe";
 
 // ---------------------------------------------------------------------------
@@ -1052,5 +1052,220 @@ describe("parseHeyflowHtml", () => {
     }
 
     void stepIds; // suppress unused var lint
+  });
+});
+
+// ---------------------------------------------------------------------------
+// splitRichTextHtml unit tests
+// ---------------------------------------------------------------------------
+
+describe("splitRichTextHtml", () => {
+  it("rich-text with h2+img+p+img produces 4 subEls: title, image(a), text, image(b)", () => {
+    const html = '<h2>Title text</h2><img src="a.jpg" alt="A"/><p>Body copy</p><img src="b.jpg" alt="B"/>';
+    const result = splitRichTextHtml(html, "base");
+    expect(result).toHaveLength(4);
+    expect(result[0].kind).toBe("title");
+    expect(result[0].kind === "title" && result[0].text).toMatch(/Title text/);
+    expect(result[1].kind).toBe("image");
+    expect(result[1].kind === "image" && result[1].url).toBe("a.jpg");
+    expect(result[1].kind === "image" && result[1].alt).toBe("A");
+    expect(result[2].kind).toBe("text");
+    expect(result[2].kind === "text" && result[2].text).toMatch(/Body copy/);
+    expect(result[3].kind).toBe("image");
+    expect(result[3].kind === "image" && result[3].url).toBe("b.jpg");
+    expect(result[3].kind === "image" && result[3].alt).toBe("B");
+  });
+
+  it("rich-text with no images produces a single text/title chunk", () => {
+    const html = "<h2>Only heading</h2><p>Some text</p>";
+    const result = splitRichTextHtml(html, "base");
+    expect(result).toHaveLength(1);
+    expect(result[0].kind === "title" || result[0].kind === "text").toBe(true);
+  });
+
+  it("leading img produces image first, then text chunk", () => {
+    const html = '<img src="hero.jpg" alt="Hero"/><p>Caption</p>';
+    const result = splitRichTextHtml(html, "base");
+    expect(result).toHaveLength(2);
+    expect(result[0].kind).toBe("image");
+    expect(result[0].kind === "image" && result[0].url).toBe("hero.jpg");
+    expect(result[1].kind).toBe("text");
+  });
+
+  it("img without src is skipped", () => {
+    const html = '<img alt="no src"/><p>Text</p>';
+    const result = splitRichTextHtml(html, "base");
+    // Only the text chunk, no image
+    expect(result.every((e) => e.kind !== "image")).toBe(true);
+  });
+
+  it("empty html produces empty array", () => {
+    const result = splitRichTextHtml("", "base");
+    expect(result).toHaveLength(0);
+  });
+
+  it("whitespace-only html produces empty array", () => {
+    const result = splitRichTextHtml("   \n  ", "base");
+    expect(result).toHaveLength(0);
+  });
+
+  it("preserves inline formatting (<strong>, <em>, <a>) within text chunks", () => {
+    const html = '<h2>Title <strong>bold</strong></h2><img src="x.jpg"/><p><em>italic</em> text <a href="#">link</a></p>';
+    const result = splitRichTextHtml(html, "base");
+    expect(result).toHaveLength(3);
+    const titleEl = result[0];
+    expect(titleEl.kind === "title" && titleEl.text).toMatch(/<strong>/);
+    const textEl = result[2];
+    expect(textEl.kind === "text" && textEl.text).toMatch(/<em>/);
+    expect(textEl.kind === "text" && textEl.text).toMatch(/<a href/);
+  });
+
+  it("multiple consecutive images produce multiple image subEls", () => {
+    const html = '<img src="1.jpg"/><img src="2.jpg"/><img src="3.jpg"/>';
+    const result = splitRichTextHtml(html, "base");
+    expect(result).toHaveLength(3);
+    expect(result.every((e) => e.kind === "image")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseHeyflowHtml — new image extraction tests
+// ---------------------------------------------------------------------------
+
+// Helper: build a minimal single-screen Heyflow HTML fixture with a custom section body
+function makeHeyflowScreen(screenName: string, innerHtml: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta name="generator" content="Heyflow"><title>Test</title></head>
+<body>
+  <section name="${screenName}" id="${screenName}">
+    ${innerHtml}
+  </section>
+</body></html>`;
+}
+
+// Helper: JSON-encode a data-config value and embed it in a data-config attribute (single-quoted attr)
+// We use a div with the config embedded as a data attribute built programmatically in the test.
+// Actually since the fixture HTML must be a string literal, use double-quoted HTML attributes and
+// escape the JSON by putting it in a JS variable first.
+
+describe("parseHeyflowHtml — rich-text image extraction", () => {
+  it("rich-text block with embedded img produces image subEl alongside title/text subEls", () => {
+    const content = '<h2>Profile</h2><img src="https://assets.prd.heyflow.com/profile.jpg" alt="Profile"/><p>Your skin profile</p>';
+    const configJson = JSON.stringify({ blockType: "rich-text", content });
+    const html = makeHeyflowScreen("screen-a1b2c3d4", `
+      <div class="block" data-blocktype="rich-text" data-blockid="id-rt-img">
+        <div data-block-id="id-rt-img" data-config='${configJson.replace(/'/g, "&apos;")}'>
+        </div>
+      </div>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(1);
+    expect(imageEls[0].kind === "image" && imageEls[0].url).toBe("https://assets.prd.heyflow.com/profile.jpg");
+    // Title and text chunks should also be present
+    const textLike = step.subEls.filter((e) => e.kind === "title" || e.kind === "text");
+    expect(textLike.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("rich-text with 2 embedded images produces 2 image subEls", () => {
+    const content = '<h2>Testimonials</h2><img src="https://example.com/t1.jpg" alt="T1"/><p>Review 1</p><img src="https://example.com/t2.jpg" alt="T2"/>';
+    const configJson = JSON.stringify({ blockType: "rich-text", content });
+    const html = makeHeyflowScreen("screen-b2c3d4e5", `
+      <div class="block" data-blocktype="rich-text" data-blockid="id-rt-2img">
+        <div data-block-id="id-rt-2img" data-config='${configJson.replace(/'/g, "&apos;")}'>
+        </div>
+      </div>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(2);
+    const urls = imageEls.map((e) => (e.kind === "image" ? e.url : ""));
+    expect(urls).toContain("https://example.com/t1.jpg");
+    expect(urls).toContain("https://example.com/t2.jpg");
+  });
+
+  it("html block with embedded img produces image subEl (not custom_html)", () => {
+    // For html blocks, the parser reads configEl?.innerHTML, so we just put the img directly
+    const html = makeHeyflowScreen("screen-c3d4e5f6", `
+      <div class="block" data-blocktype="html" data-blockid="id-html-1">
+        <div data-block-id="id-html-1" data-config='{"blockType":"html"}'>
+          <div><img src="https://example.com/x.jpg" alt="X"/><p>Testimonial text here for length</p></div>
+        </div>
+      </div>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(1);
+    expect(imageEls[0].kind === "image" && imageEls[0].url).toBe("https://example.com/x.jpg");
+  });
+
+  it("html block with no text and no images (decorative) is skipped", () => {
+    const content = "<h2>Real Content</h2>";
+    const configJson = JSON.stringify({ blockType: "rich-text", content });
+    const html = makeHeyflowScreen("screen-d4e5f6a7", `
+      <div class="block" data-blocktype="rich-text" data-blockid="id-rt-real">
+        <div data-block-id="id-rt-real" data-config='${configJson.replace(/'/g, "&apos;")}'>
+        </div>
+      </div>
+      <div class="block" data-blocktype="html" data-blockid="id-html-dec">
+        <div data-block-id="id-html-dec" data-config='{"blockType":"html"}'>
+          <div></div>
+        </div>
+      </div>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    // Only the rich-text title should be present — no custom_html for the empty div
+    const customEls = step.subEls.filter((e) => e.kind === "custom_html");
+    expect(customEls).toHaveLength(0);
+  });
+
+  it("section safety net catches images missed by block parsers", () => {
+    // An img tag directly in the section (not inside a block) should be caught by safety net
+    const content = "<h2>Title</h2>";
+    const configJson = JSON.stringify({ blockType: "rich-text", content });
+    const html = makeHeyflowScreen("screen-e5f6a7b8", `
+      <div class="block" data-blocktype="rich-text" data-blockid="id-rt-sn">
+        <div data-block-id="id-rt-sn" data-config='${configJson.replace(/'/g, "&apos;")}'>
+        </div>
+      </div>
+      <img src="https://example.com/orphan.jpg" alt="Orphan"/>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(1);
+    expect(imageEls[0].kind === "image" && imageEls[0].url).toBe("https://example.com/orphan.jpg");
+  });
+
+  it("section safety net deduplicates: already-emitted images are not double-added", () => {
+    const configJson = JSON.stringify({ blockType: "image", url: "https://example.com/already.jpg", alt: "Already" });
+    const html = makeHeyflowScreen("screen-f6a7b8c9", `
+      <div class="block" data-blocktype="image" data-blockid="id-img-dd">
+        <div data-block-id="id-img-dd" data-config='${configJson.replace(/'/g, "&apos;")}'>
+          <img src="https://example.com/already.jpg" alt="Already"/>
+        </div>
+      </div>`);
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    // Only 1 image subEl — not doubled by safety net
+    expect(imageEls).toHaveLength(1);
   });
 });

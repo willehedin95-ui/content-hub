@@ -610,6 +610,95 @@ export async function importClarflowQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// splitRichTextHtml — split a rich-text HTML block into ordered SubEls,
+// extracting <img> tags as image subEls and grouping surrounding text.
+// Exported for unit testing.
+// ---------------------------------------------------------------------------
+
+export function splitRichTextHtml(html: string, baseId: string): SubEl[] {
+  // Dynamic require so jsdom is not bundled in the Edge runtime / client builds
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+
+  const dom = new JSDOM(`<div id="root">${html}</div>`);
+  const root = dom.window.document.getElementById("root")!;
+  const childNodes = Array.from(root.childNodes);
+
+  const result: SubEl[] = [];
+  let chunkNodes: globalThis.Node[] = [];
+  let chunkIndex = 0;
+
+  const flushChunk = () => {
+    if (chunkNodes.length === 0) return;
+
+    // Serialize chunk nodes back to HTML
+    const div = dom.window.document.createElement("div");
+    for (const n of chunkNodes) {
+      div.appendChild(n.cloneNode(true));
+    }
+    const chunkHtml = div.innerHTML.trim();
+    if (!chunkHtml) {
+      chunkNodes = [];
+      return;
+    }
+
+    // Determine kind: title if it starts with h1/h2 (block-level heading)
+    const firstEl = chunkNodes.find(
+      (n): n is globalThis.Element =>
+        n.nodeType === 1 // ELEMENT_NODE
+    ) as globalThis.Element | undefined;
+    const tag = firstEl?.tagName?.toLowerCase() ?? "";
+    const kind: "title" | "text" = tag === "h1" || tag === "h2" ? "title" : "text";
+
+    result.push({
+      id: `${baseId}_chunk${chunkIndex++}`,
+      kind,
+      text: chunkHtml,
+      isRichText: true,
+      contentFormat: "html",
+    });
+    chunkNodes = [];
+  };
+
+  for (const node of childNodes) {
+    if (node.nodeType === 1) {
+      // Element node
+      const el = node as globalThis.Element;
+      if (el.tagName.toLowerCase() === "img") {
+        // Flush pending chunk first
+        flushChunk();
+        // Emit an image subEl
+        const src = el.getAttribute("src") ?? "";
+        const alt = el.getAttribute("alt") ?? "";
+        if (src) {
+          result.push({
+            id: `${baseId}_img${chunkIndex++}`,
+            kind: "image",
+            url: src,
+            alt,
+          });
+        }
+      } else {
+        chunkNodes.push(node);
+      }
+    } else if (node.nodeType === 3) {
+      // Text node — include only if non-whitespace
+      const text = node.textContent ?? "";
+      if (text.trim()) {
+        chunkNodes.push(node);
+      }
+    } else {
+      chunkNodes.push(node);
+    }
+  }
+
+  // Flush any remaining chunk
+  flushChunk();
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Heyflow types — raw data-config JSON shapes
 // ---------------------------------------------------------------------------
 
@@ -785,17 +874,44 @@ export function parseHeyflowHtml(html: string): {
         case "rich-text": {
           // Use data-config.content if present, otherwise innerHTML of configEl or block
           const rawContent = config.content ?? configEl?.innerHTML ?? block.innerHTML ?? "";
-          // Check if it contains a block-level heading as top-level element
-          const hasTopLevelHeading = /^<h[12]/i.test(rawContent.trim());
-          const kind = (isFirstRichText && hasTopLevelHeading) ? "title" : "text";
-          isFirstRichText = false;
-          subEls.push({
-            id: newId("el"),
-            kind,
-            text: rawContent,
-            isRichText: true,
-            contentFormat: "html",
-          });
+          // Split on embedded <img> tags — extract as image subEls, keep text as title/text chunks
+          const splitEls = splitRichTextHtml(rawContent, newId("el"));
+          if (splitEls.length === 0) {
+            // Nothing to emit — skip
+          } else if (splitEls.length === 1 && splitEls[0].kind !== "image") {
+            // Single text chunk — apply isFirstRichText heading check for title/text kind
+            const hasTopLevelHeading = /^<h[12]/i.test(rawContent.trim());
+            const kind = (isFirstRichText && hasTopLevelHeading) ? "title" : "text";
+            isFirstRichText = false;
+            subEls.push({
+              id: newId("el"),
+              kind,
+              text: rawContent,
+              isRichText: true,
+              contentFormat: "html",
+            });
+          } else {
+            // Multiple chunks and/or images — emit in order
+            // First text chunk that is a "title" kind: only emit as title if it's first rich-text seen overall
+            let firstEl = true;
+            for (const el of splitEls) {
+              if (el.kind === "image") {
+                subEls.push(el);
+              } else {
+                const hasHeading = /^<h[12]/i.test((el.kind === "title" || el.kind === "text" ? el.text : "").trim());
+                const kind = (firstEl && isFirstRichText && hasHeading) ? "title" : "text";
+                subEls.push({
+                  id: newId("el"),
+                  kind,
+                  text: el.kind === "title" || el.kind === "text" ? el.text : "",
+                  isRichText: true,
+                  contentFormat: "html",
+                });
+              }
+              firstEl = false;
+            }
+            isFirstRichText = false;
+          }
           break;
         }
 
@@ -906,7 +1022,32 @@ export function parseHeyflowHtml(html: string): {
 
         case "html": {
           const rawHtml = configEl?.innerHTML ?? block.innerHTML ?? "";
-          subEls.push({ id: newId("el"), kind: "custom_html", html: rawHtml });
+          // Heuristic: skip decorative snippets (< 10 chars of text AND no images)
+          const textContent = rawHtml.replace(/<[^>]+>/g, "").trim();
+          const hasImages = /<img\s/i.test(rawHtml);
+          if (textContent.length < 10 && !hasImages) {
+            // Decorative/spacer block — skip entirely
+            break;
+          }
+          // Split on embedded <img> tags — same logic as rich-text
+          const splitEls = splitRichTextHtml(rawHtml, newId("el"));
+          const hasAnyImage = splitEls.some((e) => e.kind === "image");
+          if (!hasAnyImage) {
+            // No images found — emit as single custom_html (original behavior)
+            subEls.push({ id: newId("el"), kind: "custom_html", html: rawHtml });
+          } else {
+            // Has images — split and extract
+            for (const el of splitEls) {
+              if (el.kind === "image") {
+                subEls.push(el);
+              } else {
+                const text = el.kind === "title" || el.kind === "text" ? el.text : "";
+                if (text.trim()) {
+                  subEls.push({ id: newId("el"), kind: "custom_html", html: text });
+                }
+              }
+            }
+          }
           break;
         }
 
@@ -933,6 +1074,30 @@ export function parseHeyflowHtml(html: string): {
             warnings.push(`Unknown block type "${blockType}" imported as custom_html`);
           }
           break;
+        }
+      }
+    }
+
+    // Section-level image safety net:
+    // Find all <img> tags in the section that are not already referenced
+    // in an emitted image subEl. Emit any missed images at the end of the step.
+    {
+      const emittedUrls = new Set<string>(
+        subEls
+          .filter((e): e is Extract<SubEl, { kind: "image" }> => e.kind === "image")
+          .map((e) => e.url)
+      );
+      const allImgs = Array.from(section.querySelectorAll("img"));
+      for (const img of allImgs) {
+        const src = img.getAttribute("src") ?? "";
+        if (src && !emittedUrls.has(src)) {
+          emittedUrls.add(src);
+          subEls.push({
+            id: newId("el"),
+            kind: "image",
+            url: src,
+            alt: img.getAttribute("alt") ?? "",
+          });
         }
       }
     }
