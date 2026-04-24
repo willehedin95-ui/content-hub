@@ -345,7 +345,7 @@ function OptionButton({
   onClick,
 }: {
   option: QuestionOption;
-  layout: "list" | "cards" | "image_cards";
+  layout: "list" | "cards" | "image_cards" | "dropdown";
   selected: boolean;
   onClick: () => void;
 }) {
@@ -398,6 +398,14 @@ function QuestionEl({
     }
   };
 
+  // Dropdown layout uses a dedicated component — keep clickable-card paths
+  // as-is for list/cards/image_cards.
+  if (el.layout === "dropdown") {
+    return (
+      <DropdownQuestion el={el} onPick={(optId) => handleClick(optId)} market={market} />
+    );
+  }
+
   return (
     <div
       data-quiz-el="question"
@@ -424,6 +432,98 @@ function QuestionEl({
         >
           {t("continue", market)}
         </button>
+      )}
+    </div>
+  );
+}
+
+function DropdownQuestion({
+  el,
+  onPick,
+  market,
+}: {
+  el: Extract<SubEl, { kind: "question" }>;
+  onPick: (optId: string) => void;
+  market: string | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? el.options.filter((o) => o.label.toLowerCase().includes(q))
+    : el.options;
+
+  const placeholder =
+    el.dropdownPlaceholder || (el.searchable ? t("searchPlaceholder", market) : t("selectPlaceholder", market));
+
+  return (
+    <div
+      class={`quiz-dropdown${open ? " quiz-dropdown--open" : ""}`}
+      data-quiz-el="question"
+      data-quiz-el-id={el.id}
+      ref={rootRef}
+    >
+      <button
+        type="button"
+        class="quiz-dropdown-trigger"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span class={pickedLabel ? "" : "quiz-dropdown-placeholder"}>
+          {pickedLabel ?? placeholder}
+        </span>
+        <span class="quiz-dropdown-chevron" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div class="quiz-dropdown-panel">
+          {el.searchable && (
+            <input
+              type="text"
+              class="quiz-dropdown-search"
+              placeholder={placeholder}
+              value={query}
+              autoFocus
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+          )}
+          <ul class="quiz-dropdown-list">
+            {filtered.length === 0 && (
+              <li class="quiz-dropdown-empty">{t("noMatches", market)}</li>
+            )}
+            {filtered.map((opt) => (
+              <li key={opt.id}>
+                <button
+                  type="button"
+                  class="quiz-dropdown-item"
+                  data-quiz-opt-id={opt.id}
+                  onClick={() => {
+                    setPickedLabel(opt.label);
+                    setOpen(false);
+                    setQuery("");
+                    onPick(opt.id);
+                  }}
+                >
+                  {opt.emoji && <span class="quiz-dropdown-emoji">{opt.emoji}</span>}
+                  {opt.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -834,6 +934,80 @@ body {
 .quiz-email-error { font-size: 13px; color: #dc2626; }
 
 .quiz-continue-wrap { margin-top: 16px; }
+
+.quiz-dropdown { position: relative; width: 100%; }
+.quiz-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--quiz-option-bg);
+  border: 2px solid rgb(0,0,0);
+  border-radius: 6px;
+  padding: 14px;
+  font-size: 16px;
+  font-family: var(--quiz-font);
+  color: var(--quiz-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.quiz-dropdown--open .quiz-dropdown-trigger { border-color: var(--quiz-brand); }
+.quiz-dropdown-placeholder { color: rgba(0,0,0,0.45); }
+.quiz-dropdown-chevron { opacity: 0.5; transition: transform 0.2s; }
+.quiz-dropdown--open .quiz-dropdown-chevron { transform: rotate(180deg); }
+.quiz-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.12);
+  max-height: 320px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+.quiz-dropdown-search {
+  border: none;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: var(--quiz-font);
+  outline: none;
+  width: 100%;
+}
+.quiz-dropdown-list {
+  list-style: none;
+  padding: 4px 0;
+  margin: 0;
+  overflow-y: auto;
+}
+.quiz-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: var(--quiz-font);
+  color: var(--quiz-text-primary);
+  cursor: pointer;
+}
+.quiz-dropdown-item:hover { background: rgba(0,0,0,0.04); }
+.quiz-dropdown-emoji { font-size: 18px; }
+.quiz-dropdown-empty {
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--quiz-text-secondary);
+  font-style: italic;
+}
 
 .quiz-text-input {
   width: 100%;

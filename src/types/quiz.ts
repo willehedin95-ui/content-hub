@@ -45,9 +45,11 @@ export type SubEl =
       id: string;
       kind: "question";
       kindOf: "single" | "multi";
-      layout: "list" | "cards" | "image_cards";
+      layout: "list" | "cards" | "image_cards" | "dropdown";
       options: QuestionOption[];
       variable?: string;
+      searchable?: boolean;
+      dropdownPlaceholder?: string;
     }
   | {
       id: string;

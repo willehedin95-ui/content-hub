@@ -18,11 +18,16 @@ export type SubEl =
       id: string;
       kind: "question";
       kindOf: "single" | "multi";
-      layout: "list" | "cards" | "image_cards";
+      layout: "list" | "cards" | "image_cards" | "dropdown";
       options: QuestionOption[];
       /** If present, the picked option's label is stored as variables[variable]
        *  so later title/text can reference it with {variable}. */
       variable?: string;
+      /** Only meaningful for layout "dropdown": enables a search input. */
+      searchable?: boolean;
+      /** Only meaningful for layout "dropdown": placeholder shown before a
+       *  selection is made. */
+      dropdownPlaceholder?: string;
     }
   | {
       id: string;
