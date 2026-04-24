@@ -2344,12 +2344,13 @@ export async function importLlmQuiz(
   name?: string,
 ): Promise<ImportResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.warn("[quiz-swipe/llm] ANTHROPIC_API_KEY missing; skipping LLM fallback");
+    return null;
+  }
 
-  // Fetch initial HTML (jsdom for cleanup). No browser walk here — the
-  // fast-path tier above already handles SPA content; LLM runs on what
-  // the server returns statically. If the page is purely client-rendered,
-  // this won't help, but neither would most fetch-based importers.
+  // Fetch initial HTML (cheap). If it's a tiny client-render shell we'll
+  // render with Puppeteer below so Claude sees the hydrated DOM.
   const ua =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36";
   const res = await fetch(url, {
@@ -2357,7 +2358,58 @@ export async function importLlmQuiz(
     signal: AbortSignal.timeout(15_000),
   }).catch(() => null);
   if (!res || !res.ok) return null;
-  const rawHtml = await res.text();
+  let rawHtml = await res.text();
+
+  // If the initial payload looks like a bare SPA shell, re-fetch via
+  // Puppeteer so we capture the hydrated markup instead of 5 KB of <head>.
+  const BODY_BYTES_THRESHOLD = 20_000;
+  if (rawHtml.length < BODY_BYTES_THRESHOLD) {
+    console.log(`[quiz-swipe/llm] initial HTML only ${rawHtml.length}B (likely SPA shell); re-rendering with Puppeteer...`);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const puppeteer = require("puppeteer-core") as typeof import("puppeteer-core");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const chromium = require("@sparticuz/chromium") as { args: string[]; executablePath: () => Promise<string> };
+      const isLocal = process.env.NODE_ENV === "development";
+      const browser = await puppeteer.launch({
+        args: isLocal ? ["--no-sandbox"] : chromium.args,
+        executablePath: isLocal
+          ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          : await chromium.executablePath(),
+        headless: true,
+      });
+      try {
+        const page = await browser.newPage();
+        await page.setUserAgent(ua);
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+        await new Promise((r) => setTimeout(r, 2500));
+        // Dismiss common cookie banners so their copy doesn't dominate Claude's view
+        await page.evaluate(() => {
+          const selectors = [
+            "#onetrust-accept-btn-handler",
+            ".cky-btn-accept",
+            "#didomi-notice-agree-button",
+            "button[data-testid='uc-accept-all-button']",
+          ];
+          for (const sel of selectors) {
+            const el = document.querySelector(sel) as HTMLElement | null;
+            if (el) { el.click(); return; }
+          }
+          const byText = Array.from(document.querySelectorAll("button, a")).find((el) =>
+            /^accept all/i.test((el as HTMLElement).innerText || "")
+          ) as HTMLElement | null;
+          byText?.click();
+        }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 500));
+        rawHtml = await page.content();
+      } finally {
+        await browser.close();
+      }
+    } catch (err) {
+      console.warn(`[quiz-swipe/llm] Puppeteer re-render failed: ${(err as Error).message}`);
+      // continue with whatever HTML we have
+    }
+  }
 
   // Trim HTML to reduce tokens: drop <script>, <style>, SVG definitions.
   const { JSDOM } = require("jsdom") as typeof import("jsdom");
@@ -2368,9 +2420,10 @@ export async function importLlmQuiz(
   }
   const trimmed = doc.documentElement.outerHTML;
   if (trimmed.length > 250_000) {
-    // too big — LLM would timeout or cost too much
+    console.warn(`[quiz-swipe/llm] HTML too large (${trimmed.length} bytes); skipping`);
     return null;
   }
+  console.log(`[quiz-swipe/llm] Calling Claude with ${trimmed.length} bytes of HTML...`);
   const pageTitle = doc.title.trim() || "Imported Quiz";
 
   // Call Claude
@@ -2416,10 +2469,15 @@ export async function importLlmQuiz(
   let parsed: LlmOut;
   try {
     parsed = JSON.parse(jsonText) as LlmOut;
-  } catch {
+  } catch (err) {
+    console.warn(`[quiz-swipe/llm] JSON parse failed: ${(err as Error).message}. First 200 chars: ${jsonText.slice(0, 200)}`);
     return null;
   }
-  if (!parsed.steps || parsed.steps.length === 0) return null;
+  if (!parsed.steps || parsed.steps.length === 0) {
+    console.warn(`[quiz-swipe/llm] LLM returned no steps. Title: ${parsed.title ?? "(none)"}`);
+    return null;
+  }
+  console.log(`[quiz-swipe/llm] Claude returned ${parsed.steps.length} steps`);
 
   // Build QuizData
   const warnings: string[] = [
@@ -2562,18 +2620,47 @@ export async function swipeQuiz(
   if (nextjsResult) return nextjsResult;
 
   // 4. Generic fallback (puppeteer: carousel detection + click-through)
+  let genericResult: ImportResult | null = null;
+  let genericError: unknown = null;
   try {
-    const genericResult = await importGenericQuiz(url, workspaceId, market, name);
-    if (genericResult.importedSteps >= 2) return genericResult;
+    genericResult = await importGenericQuiz(url, workspaceId, market, name);
   } catch (err) {
+    genericError = err;
     console.warn("[swipeQuiz] generic importer threw, trying LLM fallback:", err);
   }
 
-  // 5. LLM last-resort extraction (requires ANTHROPIC_API_KEY)
+  // Check quality: a "successful" generic result with 1 empty step isn't
+  // useful. If the result has <2 steps OR if step 1 has neither heading
+  // nor options, escalate to LLM. This catches client-rendered SPAs that
+  // don't crash but also don't produce anything meaningful (Woofz).
+  const looksEmpty = (r: ImportResult | null): boolean => {
+    if (!r) return true;
+    if (r.importedSteps < 2) return true;
+    return false;
+  };
+
+  if (!looksEmpty(genericResult)) return genericResult!;
+
+  console.log(`[swipeQuiz] generic returned empty/weak (${genericResult?.importedSteps ?? 0} steps), escalating to LLM`);
+
+  // 5. LLM last-resort extraction (requires ANTHROPIC_API_KEY).
+  // Delete the low-quality generic row first so the user doesn't end up
+  // with a duplicate empty quiz alongside the LLM one.
+  if (genericResult) {
+    try {
+      const db = createServerSupabase();
+      await db.from("quizzes").delete().eq("id", genericResult.quizId);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   const llmResult = await importLlmQuiz(url, workspaceId, market, name);
   if (llmResult) return llmResult;
 
-  // Nothing worked — re-run generic (now likely throws) so the caller gets
-  // the useful error message instead of a silent failure.
+  // LLM didn't work either. Prefer the (weak) generic result if we have
+  // one so the user gets something instead of an error; otherwise rethrow.
+  if (genericResult) return genericResult;
+  if (genericError) throw genericError;
   return importGenericQuiz(url, workspaceId, market, name);
 }
