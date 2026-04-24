@@ -480,10 +480,34 @@ function QuestionEl({
   };
 
   // Dropdown layout uses a dedicated component — keep clickable-card paths
-  // as-is for list/cards/image_cards.
+  // as-is for list/cards/image_cards. Parent still owns the selected set
+  // so the Continue button for multi-select sits outside the dropdown.
   if (el.layout === "dropdown") {
     return (
-      <DropdownQuestion el={el} onPick={(optId) => handleClick(optId)} market={market} />
+      <div
+        data-quiz-el="question"
+        data-quiz-el-id={el.id}
+        class={`quiz-question quiz-question--dropdown`}
+      >
+        <DropdownQuestion
+          el={el}
+          selected={selected}
+          onPick={(optId) => handleClick(optId)}
+          market={market}
+        />
+        {el.kindOf === "multi" && selected.size > 0 && (
+          <button
+            class="quiz-btn quiz-btn--primary quiz-question-continue"
+            type="button"
+            onClick={() => {
+              const firstId = [...selected][0];
+              onAnswer(el.id, firstId);
+            }}
+          >
+            {t("continue", market)} ({selected.size})
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -520,16 +544,18 @@ function QuestionEl({
 
 function DropdownQuestion({
   el,
+  selected,
   onPick,
   market,
 }: {
   el: Extract<SubEl, { kind: "question" }>;
+  selected: Set<string>;
   onPick: (optId: string) => void;
   market: string | undefined;
 }) {
+  const isMulti = el.kindOf === "multi";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -549,13 +575,16 @@ function DropdownQuestion({
     : el.options;
 
   const placeholder =
-    el.dropdownPlaceholder || (el.searchable ? t("searchPlaceholder", market) : t("selectPlaceholder", market));
+    el.dropdownPlaceholder ||
+    (el.searchable ? t("searchPlaceholder", market) : t("selectPlaceholder", market));
+
+  // Trigger label: single = picked option's label, multi = chips or count
+  const pickedOptions = el.options.filter((o) => selected.has(o.id));
+  const hasPicks = pickedOptions.length > 0;
 
   return (
     <div
-      class={`quiz-dropdown${open ? " quiz-dropdown--open" : ""}`}
-      data-quiz-el="question"
-      data-quiz-el-id={el.id}
+      class={`quiz-dropdown${open ? " quiz-dropdown--open" : ""}${isMulti ? " quiz-dropdown--multi" : ""}`}
       ref={rootRef}
     >
       <button
@@ -564,9 +593,22 @@ function DropdownQuestion({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span class={pickedLabel ? "" : "quiz-dropdown-placeholder"}>
-          {pickedLabel ?? placeholder}
-        </span>
+        {isMulti && hasPicks ? (
+          <span class="quiz-dropdown-chips">
+            {pickedOptions.slice(0, 4).map((o) => (
+              <span key={o.id} class="quiz-dropdown-chip">{o.label}</span>
+            ))}
+            {pickedOptions.length > 4 && (
+              <span class="quiz-dropdown-chip quiz-dropdown-chip--more">
+                +{pickedOptions.length - 4}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span class={hasPicks ? "" : "quiz-dropdown-placeholder"}>
+            {hasPicks ? pickedOptions[0].label : placeholder}
+          </span>
+        )}
         <span class="quiz-dropdown-chevron" aria-hidden="true">▾</span>
       </button>
       {open && (
@@ -585,24 +627,33 @@ function DropdownQuestion({
             {filtered.length === 0 && (
               <li class="quiz-dropdown-empty">{t("noMatches", market)}</li>
             )}
-            {filtered.map((opt) => (
-              <li key={opt.id}>
-                <button
-                  type="button"
-                  class="quiz-dropdown-item"
-                  data-quiz-opt-id={opt.id}
-                  onClick={() => {
-                    setPickedLabel(opt.label);
-                    setOpen(false);
-                    setQuery("");
-                    onPick(opt.id);
-                  }}
-                >
-                  {opt.emoji && <span class="quiz-dropdown-emoji">{opt.emoji}</span>}
-                  {opt.label}
-                </button>
-              </li>
-            ))}
+            {filtered.map((opt) => {
+              const isSel = selected.has(opt.id);
+              return (
+                <li key={opt.id}>
+                  <button
+                    type="button"
+                    class={`quiz-dropdown-item${isSel ? " quiz-dropdown-item--selected" : ""}`}
+                    data-quiz-opt-id={opt.id}
+                    onClick={() => {
+                      onPick(opt.id);
+                      if (!isMulti) {
+                        setOpen(false);
+                        setQuery("");
+                      }
+                    }}
+                  >
+                    {isMulti && (
+                      <span class={`quiz-dropdown-check${isSel ? " quiz-dropdown-check--on" : ""}`} aria-hidden="true">
+                        {isSel ? "✓" : ""}
+                      </span>
+                    )}
+                    {opt.emoji && <span class="quiz-dropdown-emoji">{opt.emoji}</span>}
+                    {opt.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -1102,6 +1153,44 @@ body {
   cursor: pointer;
 }
 .quiz-dropdown-item:hover { background: rgba(0,0,0,0.04); }
+.quiz-dropdown-item--selected { background: color-mix(in srgb, var(--quiz-brand) 10%, transparent); }
+.quiz-dropdown-item--selected:hover { background: color-mix(in srgb, var(--quiz-brand) 14%, transparent); }
+.quiz-dropdown-check {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid rgba(0,0,0,0.2);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  color: #fff;
+  background: #fff;
+  flex-shrink: 0;
+}
+.quiz-dropdown-check--on { background: var(--quiz-brand); border-color: var(--quiz-brand); }
+.quiz-dropdown-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+.quiz-dropdown-chip {
+  font-size: 13px;
+  background: color-mix(in srgb, var(--quiz-brand) 12%, transparent);
+  color: var(--quiz-text-primary);
+  padding: 2px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quiz-dropdown-chip--more {
+  background: rgba(0,0,0,0.06);
+}
 .quiz-dropdown-emoji { font-size: 18px; }
 .quiz-dropdown-empty {
   padding: 12px 14px;
