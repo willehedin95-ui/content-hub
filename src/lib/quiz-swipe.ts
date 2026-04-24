@@ -1492,6 +1492,48 @@ function pickNextUrl(
   return null;
 }
 
+// Walk an arbitrary pageProps blob and pull the first plausible title/subtitle
+// pair. Covers funnel-builder shapes like MadMuscles' DIAPASON template
+// (props.titles[].headings.title.children) as well as simpler {title, subtitle}
+// shapes and raw `{"heading": "..."}` fields.
+function findTitleInPageProps(
+  pp: Record<string, unknown>,
+): { title?: string; subtitle?: string } {
+  const out: { title?: string; subtitle?: string } = {};
+  const visit = (v: unknown, depth = 0): void => {
+    if (!v || depth > 8) return;
+    if (typeof v === "string") return;
+    if (Array.isArray(v)) {
+      for (const item of v) visit(item, depth + 1);
+      return;
+    }
+    if (typeof v !== "object") return;
+    const obj = v as Record<string, unknown>;
+    // Common funnel-builder shape: { headings: { title: { children: "..." }, subTitle: { children: "..." } } }
+    const headings = obj.headings as Record<string, unknown> | undefined;
+    if (headings && typeof headings === "object") {
+      const t = (headings.title as Record<string, unknown> | undefined)?.children;
+      const s = (headings.subTitle as Record<string, unknown> | undefined)?.children
+        ?? (headings.subtitle as Record<string, unknown> | undefined)?.children;
+      if (!out.title && typeof t === "string" && t.trim()) out.title = t.trim();
+      if (!out.subtitle && typeof s === "string" && s.trim()) out.subtitle = s.trim();
+    }
+    // Direct flat shape
+    for (const key of ["title", "heading", "headline"]) {
+      const v2 = obj[key];
+      if (!out.title && typeof v2 === "string" && v2.trim() && v2.length < 200) out.title = v2.trim();
+    }
+    for (const key of ["subtitle", "subTitle", "description", "subheading"]) {
+      const v2 = obj[key];
+      if (!out.subtitle && typeof v2 === "string" && v2.trim() && v2.length < 400) out.subtitle = v2.trim();
+    }
+    if (out.title && out.subtitle) return;
+    for (const key of Object.keys(obj)) visit(obj[key], depth + 1);
+  };
+  visit(pp);
+  return out;
+}
+
 function extractStepFromNextPage(
   html: string,
   nextData: Record<string, unknown>,
@@ -1501,15 +1543,22 @@ function extractStepFromNextPage(
   const dom = new JSDOM(html);
   const doc = dom.window.document;
 
-  const heading =
+  let heading =
     (doc.querySelector("h1") as HTMLElement | null)?.textContent?.trim() ||
     (doc.querySelector("h2") as HTMLElement | null)?.textContent?.trim() ||
     "";
+
+  // Fall back to pageProps-embedded copy when DOM is client-rendered shell
+  const propsRoot = ((nextData.props as Record<string, unknown> | undefined)
+    ?.pageProps as Record<string, unknown> | undefined) ?? {};
+  const pageCopy = findTitleInPageProps(propsRoot);
+  if (!heading && pageCopy.title) heading = pageCopy.title;
 
   const paragraphs = Array.from(doc.querySelectorAll("p"))
     .map((p) => p.textContent?.trim() ?? "")
     .filter((t) => t.length > 5 && t.length < 400)
     .slice(0, 3);
+  if (paragraphs.length === 0 && pageCopy.subtitle) paragraphs.push(pageCopy.subtitle);
 
   // Options: look for anchor-wrapped clickables or option-like classes.
   const optionElements = Array.from(
@@ -1549,13 +1598,6 @@ function extractStepFromNextPage(
         return s;
       }
     });
-
-  // Reduce noise: also read pageProps fields that commonly carry copy (title,
-  // subtitle) if the DOM heading was empty
-  const props = ((nextData.props as Record<string, unknown> | undefined)
-    ?.pageProps as Record<string, unknown> | undefined) ?? {};
-  const pageCopy = JSON.stringify(props).slice(0, 20);
-  void pageCopy; // kept for debugging; not exposed
 
   if (!heading && options.length === 0 && paragraphs.length === 0) return null;
 
@@ -1882,6 +1924,50 @@ export async function importGenericQuiz(
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await new Promise((r) => setTimeout(r, 1500));
 
+    // Dismiss common cookie-consent / GDPR banners so they don't block the
+    // actual quiz UI during scraping. Covers CookieYes, OneTrust, Cookiebot,
+    // Didomi, and generic "Accept" buttons by text.
+    await page.evaluate(() => {
+      const byText = (re: RegExp): HTMLElement | null => {
+        const els = Array.from(document.querySelectorAll("button, a"));
+        return (els.find((el) => re.test((el as HTMLElement).innerText || "")) as HTMLElement | null) ?? null;
+      };
+      const selectors = [
+        "#onetrust-accept-btn-handler",
+        ".cky-btn-accept",
+        "#accept-recommended-btn-handler",
+        "[data-cky-tag=accept-button]",
+        "[aria-label*='Accept all' i]",
+        "[aria-label*='Accept cookies' i]",
+        "#didomi-notice-agree-button",
+        ".cc-btn.cc-dismiss, .cc-btn.cc-allow",
+        "button[data-testid='uc-accept-all-button']",
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (el) { el.click(); return; }
+      }
+      const byTextBtn =
+        byText(/^accept all/i) || byText(/^allow all/i) || byText(/^acceptera alla/i) || byText(/^godkänn alla/i);
+      byTextBtn?.click();
+    }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 400));
+
+    // tsx/esbuild injects __name() calls into compiled arrow functions that
+    // get stringified into page.evaluate(). The browser context doesn't know
+    // about it, so every evaluate throws ReferenceError. Polyfill it as a
+    // no-op so evaluate callbacks run regardless of how they were compiled.
+    await page.evaluateOnNewDocument(() => {
+      // @ts-expect-error runtime polyfill for tsx/esbuild helpers
+      if (typeof window.__name !== "function") window.__name = (fn: unknown) => fn;
+    });
+    await page
+      .evaluate(() => {
+        // @ts-expect-error runtime polyfill
+        if (typeof window.__name !== "function") window.__name = (fn: unknown) => fn;
+      })
+      .catch(() => {});
+
     pageTitle = await page.title().catch(() => "Imported Quiz");
 
     // Step-carousel detection: many custom SPAs render ALL screens into the
@@ -1978,9 +2064,11 @@ export async function importGenericQuiz(
 
         // Scope options to a visible question/step container when possible.
         // Fall back to whole document but keep visibility filter.
+        // Include labels for React SPAs (Woofz etc) that use <label> wrappers
+        // around their option tiles with styled-components class names.
         const allButtons = Array.from(
           document.querySelectorAll(
-            "button, [role='button'], [class*='option'], [class*='answer']"
+            "button, [role='button'], [class*='option'], [class*='answer'], [class*='choice'], label"
           )
         ).filter(isVisible);
         const optionButtons = allButtons
