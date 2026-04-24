@@ -88,6 +88,8 @@ export type QuizConfig = {
   quizId: string;
   /** When true, the runtime skips all API calls (sessions, events, Klaviyo). */
   preview?: boolean;
+  /** Market locale: 'se' | 'dk' | 'no' | 'en'. Drives i18n strings. */
+  market?: string;
 };
 
 export type UTMParams = {

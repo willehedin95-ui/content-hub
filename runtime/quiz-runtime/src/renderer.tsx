@@ -6,6 +6,22 @@
 import { h, Fragment } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { SubEl, QuestionOption, QuizSettings, StepNode } from "./types";
+import { t } from "./i18n";
+
+// ---------------------------------------------------------------------------
+// HTML sanitizer — strips inline styles/classes injected by rich text editors
+// Do NOT call on CustomHtmlEl (its formatting is intentional)
+// ---------------------------------------------------------------------------
+
+function stripStylesAndClasses(root: HTMLElement | null): void {
+  if (!root) return;
+  const walk = (el: Element) => {
+    el.removeAttribute("style");
+    el.removeAttribute("class");
+    for (const child of Array.from(el.children)) walk(child);
+  };
+  walk(root);
+}
 
 // ---------------------------------------------------------------------------
 // Individual SubEl renderers
@@ -15,7 +31,10 @@ function TitleEl({ el }: { el: Extract<SubEl, { kind: "title" }> }) {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     // Safe: content is editor-controlled rich text (not user input)
-    if (ref.current) ref.current.innerHTML = el.text; // nosec
+    if (ref.current) {
+      ref.current.innerHTML = el.text; // nosec
+      stripStylesAndClasses(ref.current);
+    }
   }, [el.text]);
   return (
     <h1
@@ -31,7 +50,10 @@ function TextEl({ el }: { el: Extract<SubEl, { kind: "text" }> }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Safe: content is editor-controlled rich text (not user input)
-    if (ref.current) ref.current.innerHTML = el.text; // nosec
+    if (ref.current) {
+      ref.current.innerHTML = el.text; // nosec
+      stripStylesAndClasses(ref.current);
+    }
   }, [el.text]);
   return (
     <div
@@ -132,9 +154,11 @@ function OptionButton({
 function QuestionEl({
   el,
   onAnswer,
+  market,
 }: {
   el: Extract<SubEl, { kind: "question" }>;
   onAnswer: (questionElId: string, optionId: string) => void;
+  market: string | undefined;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -177,7 +201,7 @@ function QuestionEl({
             onAnswer(el.id, firstId);
           }}
         >
-          Continue
+          {t("continue", market)}
         </button>
       )}
     </div>
@@ -190,8 +214,10 @@ function QuestionEl({
 
 export function EmailCaptureForm({
   onSubmit,
+  market,
 }: {
   onSubmit: (email: string) => void;
+  market: string | undefined;
 }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -199,7 +225,7 @@ export function EmailCaptureForm({
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     if (!email.includes("@")) {
-      setError("Please enter a valid email address.");
+      setError(t("invalidEmail", market));
       return;
     }
     setError("");
@@ -211,14 +237,14 @@ export function EmailCaptureForm({
       <input
         type="email"
         class="quiz-email-input"
-        placeholder="your@email.com"
+        placeholder={t("emailPlaceholder", market)}
         value={email}
         onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
         required
       />
       {error && <p class="quiz-email-error">{error}</p>}
       <button type="submit" class="quiz-btn quiz-btn--primary quiz-email-submit">
-        Continue
+        {t("continue", market)}
       </button>
     </form>
   );
@@ -234,13 +260,21 @@ export function StepRenderer({
   onLoadingComplete,
   onEmailSubmit,
   captureAtStepId,
+  market,
+  onContinue,
 }: {
   node: StepNode;
   onAnswer: (questionElId: string, optionId: string) => void;
   onLoadingComplete: () => void;
   onEmailSubmit: (email: string) => void;
   captureAtStepId: string | undefined;
+  market: string | undefined;
+  onContinue?: () => void;
 }) {
+  const hasQuestion = node.subEls.some((el) => el.kind === "question");
+  const hasLoading = node.subEls.some((el) => el.kind === "loading");
+  const showContinueBtn = !hasQuestion && !hasLoading && typeof onContinue === "function";
+
   return (
     <div class="quiz-step" data-step-id={node.id}>
       {node.subEls.map((el) => {
@@ -259,12 +293,23 @@ export function StepRenderer({
             );
           case "question":
             return (
-              <QuestionEl key={el.id} el={el} onAnswer={onAnswer} />
+              <QuestionEl key={el.id} el={el} onAnswer={onAnswer} market={market} />
             );
         }
       })}
       {captureAtStepId === node.id && (
-        <EmailCaptureForm onSubmit={onEmailSubmit} />
+        <EmailCaptureForm onSubmit={onEmailSubmit} market={market} />
+      )}
+      {showContinueBtn && (
+        <div class="quiz-continue-wrap">
+          <button
+            class="quiz-btn quiz-btn--primary"
+            type="button"
+            onClick={onContinue}
+          >
+            {t("continue", market)}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -332,133 +377,176 @@ body {
   flex-direction: column;
   min-height: 100vh;
 }
+
 .quiz-shell {
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
   width: 100%;
+  background: var(--quiz-bg);
 }
+
 .quiz-header {
   width: 100%;
+  max-width: 720px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  gap: 8px;
+  padding: 16px 20px;
+  gap: 12px;
 }
-.quiz-logo { height: 32px; object-fit: contain; }
+
+.quiz-logo { height: 36px; object-fit: contain; }
+
 .quiz-back-btn {
-  background: none;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 18px;
+  color: var(--quiz-text-primary);
+  background: rgba(0,0,0,0.04);
   border: none;
   cursor: pointer;
-  color: var(--quiz-text-secondary);
-  font-size: 14px;
-  padding: 6px 10px;
-  border-radius: 6px;
 }
-.quiz-back-btn:hover { background: rgba(0,0,0,0.06); }
+.quiz-back-btn:hover { background: rgba(0,0,0,0.08); }
+
 .quiz-step-count {
   font-size: 13px;
   color: var(--quiz-text-secondary);
   margin-left: auto;
 }
+
 .quiz-progress {
   width: 100%;
+  max-width: 720px;
   height: 4px;
-  background: rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.06);
   border-radius: 2px;
   overflow: hidden;
 }
+
 .quiz-progress-bar {
   height: 100%;
   background: var(--quiz-brand);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
+
 .quiz-content {
   width: 100%;
-  max-width: 600px;
-  padding: 24px 16px 48px;
+  max-width: 640px;
+  padding: 32px 20px 64px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   flex: 1;
 }
-.quiz-step { display: flex; flex-direction: column; gap: 16px; }
+
+.quiz-step { display: flex; flex-direction: column; gap: 20px; }
+
 .quiz-title {
-  font-size: clamp(22px, 5vw, 32px);
-  font-weight: 700;
-  line-height: 1.25;
+  font-size: clamp(28px, 5.5vw, 40px);
+  font-weight: 800;
+  line-height: 1.2;
   color: var(--quiz-text-primary);
+  letter-spacing: -0.015em;
+  margin-bottom: 4px;
 }
+
 .quiz-text {
   font-size: 16px;
   line-height: 1.6;
   color: var(--quiz-text-secondary);
 }
-.quiz-image { width: 100%; border-radius: 12px; object-fit: cover; max-height: 300px; }
-.quiz-custom-html {}
-.quiz-question { display: flex; flex-direction: column; gap: 10px; }
+
+.quiz-image { width: 100%; border-radius: 12px; object-fit: cover; max-height: 320px; }
+
+.quiz-custom-html { font-size: 15px; line-height: 1.6; color: var(--quiz-text-secondary); }
+.quiz-custom-html a { color: var(--quiz-brand); }
+.quiz-custom-html p { margin-bottom: 8px; }
+.quiz-custom-html p:last-child { margin-bottom: 0; }
+
+.quiz-question { display: flex; flex-direction: column; gap: 12px; }
 .quiz-question--cards { flex-direction: row; flex-wrap: wrap; }
 .quiz-question--image_cards { flex-direction: row; flex-wrap: wrap; }
+
 .quiz-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   background: var(--quiz-option-bg);
-  border: 2px solid transparent;
-  border-radius: 10px;
-  padding: 14px 16px;
+  border: 1.5px solid rgba(0,0,0,0.15);
+  border-radius: 12px;
+  padding: 18px 20px;
+  min-height: 56px;
   font-size: 16px;
+  font-weight: 500;
   font-family: var(--quiz-font);
   color: var(--quiz-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
   width: 100%;
 }
-.quiz-option:hover { border-color: var(--quiz-brand); }
+.quiz-option:hover {
+  border-color: rgba(0,0,0,0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
 .quiz-option--selected {
   border-color: var(--quiz-brand);
-  background: color-mix(in srgb, var(--quiz-brand) 10%, var(--quiz-option-bg));
+  border-width: 2px;
+  background: color-mix(in srgb, var(--quiz-brand) 8%, var(--quiz-option-bg));
 }
-.quiz-option--cards { width: calc(50% - 5px); flex-direction: column; text-align: center; padding: 16px 12px; }
-.quiz-option--image_cards { width: calc(50% - 5px); flex-direction: column; text-align: center; padding: 12px; }
-.quiz-option-img { width: 100%; height: 80px; object-fit: cover; border-radius: 8px; }
+.quiz-option--cards { width: calc(50% - 6px); flex-direction: column; text-align: center; padding: 20px 12px; }
+.quiz-option--image_cards { width: calc(50% - 6px); flex-direction: column; text-align: center; padding: 16px 12px; }
+.quiz-option-img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; }
 .quiz-option-emoji { font-size: 24px; }
-.quiz-option-label { font-weight: 500; }
-.quiz-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 32px 0; }
+.quiz-option-label { font-weight: 500; flex: 1; }
+
+.quiz-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 48px 0; }
 .quiz-loading-spinner {
-  width: 40px; height: 40px;
-  border: 3px solid rgba(0,0,0,0.1);
+  width: 44px; height: 44px;
+  border: 3px solid rgba(0,0,0,0.08);
   border-top-color: var(--quiz-brand);
   border-radius: 50%;
   animation: quiz-spin 0.8s linear infinite;
 }
 @keyframes quiz-spin { to { transform: rotate(360deg); } }
 .quiz-loading-text { font-size: 16px; color: var(--quiz-text-secondary); }
+
 .quiz-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 14px 28px; border-radius: 10px;
+  padding: 16px 28px; border-radius: 12px;
   font-size: 16px; font-weight: 600; font-family: var(--quiz-font);
-  cursor: pointer; border: none; transition: opacity 0.15s;
+  cursor: pointer; border: none; transition: opacity 0.15s, transform 0.1s;
 }
-.quiz-btn:hover { opacity: 0.88; }
+.quiz-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+.quiz-btn:active { transform: translateY(0); }
 .quiz-btn--primary { background: var(--quiz-brand); color: #fff; width: 100%; }
-.quiz-question-continue { margin-top: 8px; }
-.quiz-email-form { display: flex; flex-direction: column; gap: 10px; }
+.quiz-question-continue { margin-top: 12px; }
+
+.quiz-email-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .quiz-email-input {
-  width: 100%; padding: 14px 16px;
-  border: 2px solid rgba(0,0,0,0.12); border-radius: 10px;
+  width: 100%; padding: 16px 18px;
+  border: 1.5px solid rgba(0,0,0,0.15); border-radius: 12px;
   font-size: 16px; font-family: var(--quiz-font);
-  background: var(--quiz-option-bg); color: var(--quiz-text-primary);
+  background: #fff; color: var(--quiz-text-primary);
   outline: none;
+  transition: border-color 0.15s;
 }
-.quiz-email-input:focus { border-color: var(--quiz-brand); }
+.quiz-email-input:focus { border-color: var(--quiz-brand); border-width: 2px; }
 .quiz-email-error { font-size: 13px; color: #dc2626; }
-@media (max-width: 400px) {
+
+.quiz-continue-wrap { margin-top: 16px; }
+
+@media (max-width: 480px) {
   .quiz-option--cards, .quiz-option--image_cards { width: 100%; }
+  .quiz-content { padding: 24px 16px 48px; }
 }
   `;
   document.head.appendChild(style);

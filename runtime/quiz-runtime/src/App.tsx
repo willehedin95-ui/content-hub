@@ -20,6 +20,7 @@ import {
 import { startSession, flushEvents, subscribeKlaviyo } from "./api";
 import { StepRenderer, ProgressBar } from "./renderer";
 import { topoOrderSteps } from "./topo";
+import { t } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Pixel helpers
@@ -173,6 +174,18 @@ export function App({ data, settings, config }: AppProps) {
     if (next) navigateTo(next);
   }, [currentNode, data, variantAssignments, navigateTo]);
 
+  const handleContinue = useCallback(() => {
+    if (!currentNode || currentNode.kind !== "step") return;
+    const next = resolveNextNode(
+      data,
+      currentNode.id,
+      null,
+      null,
+      variantAssignments,
+    );
+    if (next) navigateTo(next);
+  }, [currentNode, data, variantAssignments, navigateTo]);
+
   const handleEmailSubmit = useCallback(
     async (email: string) => {
       if (!config.preview) {
@@ -277,13 +290,13 @@ export function App({ data, settings, config }: AppProps) {
     return (
       <div class="quiz-shell">
         <div class="quiz-content quiz-exit">
-          <p class="quiz-text">Loading your results...</p>
+          <p class="quiz-text">{t("loadingResults", config.market)}</p>
           <button
             class="quiz-btn quiz-btn--primary"
             type="button"
             onClick={() => handleExitClick(exitNode)}
           >
-            See my results
+            {t("seeResults", config.market)}
           </button>
         </div>
       </div>
@@ -335,6 +348,8 @@ export function App({ data, settings, config }: AppProps) {
           onLoadingComplete={handleLoadingComplete}
           onEmailSubmit={handleEmailSubmit}
           captureAtStepId={captureStepId}
+          market={config.market}
+          onContinue={handleContinue}
         />
       </div>
     </div>

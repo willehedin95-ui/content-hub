@@ -41,7 +41,7 @@ export function buildDefaultQuiz(): QuizData {
 export function buildDefaultSettings(): QuizSettings {
   return {
     brandColors: {
-      background: "#FFFFFF",
+      background: "#F7F8FA",
       textPrimary: "#1A1A1A",
       textSecondary: "#6B7280",
       primaryBrand: "#2563EB",
