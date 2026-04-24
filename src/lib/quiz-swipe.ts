@@ -1414,6 +1414,113 @@ export async function importHeyflowQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// detectStepCarousel — heuristic: find a container whose N children share a
+// class-prefix and where exactly 1 is currently visible. Returns an ordered
+// list of per-step extracts without having to click through. Used by the
+// generic importer as a fast-path before resorting to click-through.
+// ---------------------------------------------------------------------------
+
+export type CarouselStepExtract = {
+  heading: string;
+  paragraphs: string[];
+  options: string[];
+  optionImages: (string | null)[];
+  images: string[];
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function detectStepCarousel(page: any): Promise<CarouselStepExtract[] | null> {
+  try {
+    const result = await page.evaluate(() => {
+      const isVisible = (el: Element): boolean => {
+        if (!(el instanceof HTMLElement)) return false;
+        if (el.offsetParent === null) return false;
+        const cs = getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden") return false;
+        if (parseFloat(cs.opacity) < 0.1) return false;
+        return true;
+      };
+
+      // Rank candidate parents: many kids, shared class, 1 visible child.
+      let best: {
+        parent: Element;
+        kids: Element[];
+        sharedCls: string;
+        score: number;
+      } | null = null;
+
+      for (const el of document.querySelectorAll("*")) {
+        const kids = Array.from(el.children);
+        if (kids.length < 4 || kids.length > 80) continue;
+        const classLists = kids.map(
+          (k) => k.className?.toString().split(" ").filter(Boolean) || []
+        );
+        const firstCls = classLists[0]?.[0];
+        if (!firstCls) continue;
+        const withFirstCls = classLists.filter((cl) => cl.includes(firstCls)).length;
+        if (withFirstCls / kids.length < 0.7) continue;
+        const visible = kids.filter((k) => isVisible(k)).length;
+        if (visible !== 1) continue;
+
+        // Ignore container if it's clearly a cookie-consent / table / tiny text block.
+        const parentCls = (el.className?.toString() || "").toLowerCase();
+        if (/cookie|consent|modal|tooltip|menu|dropdown/.test(parentCls)) continue;
+
+        const score = withFirstCls * 10 - kids.length;
+        if (!best || score > best.score) {
+          best = { parent: el, kids, sharedCls: firstCls, score };
+        }
+      }
+
+      if (!best) return null;
+
+      const extractStep = (step: Element): CarouselStepExtract => {
+        const heading =
+          (step.querySelector("h1, h2, h3, [class*='title'], [class*='heading']") as HTMLElement | null)?.innerText?.slice(0, 300).trim() || "";
+
+        const paragraphs = Array.from(step.querySelectorAll("p, [class*='description'], [class*='subtitle']"))
+          .map((el) => (el as HTMLElement).innerText?.trim())
+          .filter((t) => t && t.length > 5 && t.length < 500)
+          .slice(0, 3);
+
+        // Options: find inner buttons/clickables scoped to THIS step. Dedupe.
+        const optionCandidates = Array.from(
+          step.querySelectorAll(
+            "button, [role='button'], label, [class*='answer'], [class*='option'], [class*='choice']"
+          )
+        );
+        const seen = new Set<string>();
+        const options: string[] = [];
+        const optionImages: (string | null)[] = [];
+        for (const el of optionCandidates) {
+          const text = (el as HTMLElement).innerText?.trim().replace(/\s+/g, " ");
+          if (!text || text.length > 150) continue;
+          if (seen.has(text)) continue;
+          seen.add(text);
+          options.push(text);
+          const img = el.querySelector("img") as HTMLImageElement | null;
+          optionImages.push(img?.src || null);
+          if (options.length >= 30) break;
+        }
+
+        const images = Array.from(step.querySelectorAll("img"))
+          .map((img) => (img as HTMLImageElement).src)
+          .filter((s) => s && !s.startsWith("data:") && s.length < 500)
+          .slice(0, 3);
+
+        return { heading, paragraphs, options, optionImages, images };
+      };
+
+      return best.kids.map(extractStep);
+    });
+
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // importGenericQuiz — fallback: puppeteer walk of the quiz page
 // ---------------------------------------------------------------------------
 
@@ -1455,37 +1562,121 @@ export async function importGenericQuiz(
 
     pageTitle = await page.title().catch(() => "Imported Quiz");
 
-    for (let stepIndex = 0; stepIndex < MAX_STEPS; stepIndex++) {
-      // Snapshot current step
+    // Step-carousel detection: many custom SPAs render ALL screens into the
+    // DOM and toggle visibility per step (PawChamp, Everskin, etc). If we can
+    // find a container with N similar siblings where exactly one is visible,
+    // extract every sibling as a step in one pass — much faster and more
+    // reliable than clicking through.
+    const carousel = await detectStepCarousel(page);
+    if (carousel && carousel.length >= 3) {
+      warnings.push(
+        `Detected step-carousel pattern with ${carousel.length} screens. Extracted in one pass, no click-through needed.`
+      );
+      for (let i = 0; i < carousel.length; i++) {
+        const sc = carousel[i];
+        const subEls: SubEl[] = [];
+        if (sc.heading) {
+          subEls.push({
+            id: newId("el"),
+            kind: "title",
+            text: sc.heading,
+            isRichText: true,
+            contentFormat: "html",
+          });
+        }
+        for (const para of sc.paragraphs) {
+          subEls.push({
+            id: newId("el"),
+            kind: "text",
+            text: para,
+            isRichText: true,
+            contentFormat: "html",
+          });
+        }
+        if (sc.options.length >= 2) {
+          subEls.push({
+            id: newId("el"),
+            kind: "question",
+            kindOf: "single",
+            layout: sc.images.length >= sc.options.length ? "image_cards" : "list",
+            options: sc.options.map((label, oi) => ({
+              id: newId("opt"),
+              label,
+              ...(sc.optionImages[oi] ? { imageUrl: sc.optionImages[oi] } : {}),
+            })),
+          });
+        }
+        for (const src of sc.images) {
+          subEls.push({ id: newId("el"), kind: "image", url: src, alt: "" });
+        }
+        if (subEls.length === 0) continue;
+        const stepNameWords = sc.heading.trim().split(/\s+/).slice(0, 3).join(" ");
+        const stepId = newId("step");
+        steps.push({
+          id: stepId,
+          kind: "step",
+          name: stepNameWords || `Step ${i + 1}`,
+          size: { width: 280, height: 360 },
+          position: { x: 300 + i * 340, y: 100 },
+          rotation: 0,
+          subEls,
+        });
+      }
+    }
+
+    const skipClickThrough = steps.length >= 3;
+
+    for (let stepIndex = 0; stepIndex < MAX_STEPS && !skipClickThrough; stepIndex++) {
+      // Snapshot current step.
+      // Visibility filter: many SPAs keep all steps in DOM and toggle visibility.
+      // Without this filter we grab buttons from hidden screens and merge them
+      // into the current one (PawChamp bug).
       const snapshot = await page.evaluate(() => {
-        const heading =
-          document.querySelector("h1")?.innerText ||
-          document.querySelector("h2")?.innerText ||
-          "";
+        const isVisible = (el: Element): boolean => {
+          if (!(el instanceof HTMLElement)) return false;
+          if (el.offsetParent === null) return false;
+          const cs = getComputedStyle(el);
+          if (cs.display === "none" || cs.visibility === "hidden") return false;
+          if (parseFloat(cs.opacity) < 0.1) return false;
+          return true;
+        };
+
+        const visibleHeadings = Array.from(
+          document.querySelectorAll("h1, h2, h3")
+        ).filter(isVisible);
+        const heading = (visibleHeadings[0] as HTMLElement | undefined)?.innerText || "";
 
         const paragraphs = Array.from(
           document.querySelectorAll("p, [class*='description'], [class*='subtitle']")
         )
+          .filter(isVisible)
           .map((el) => (el as HTMLElement).innerText?.trim())
           .filter((t) => t && t.length > 5)
           .slice(0, 3);
 
-        // Look for option buttons — button groups with 2+ items
-        const allButtons = Array.from(document.querySelectorAll("button, [role='button'], [class*='option'], [class*='answer']"));
+        // Scope options to a visible question/step container when possible.
+        // Fall back to whole document but keep visibility filter.
+        const allButtons = Array.from(
+          document.querySelectorAll(
+            "button, [role='button'], [class*='option'], [class*='answer']"
+          )
+        ).filter(isVisible);
         const optionButtons = allButtons
           .map((btn) => (btn as HTMLElement).innerText?.trim())
           .filter((t) => t && t.length > 0 && t.length < 200)
           .slice(0, 20);
 
         const images = Array.from(document.querySelectorAll("img"))
-          .map((img) => ({ src: img.src, alt: img.alt }))
+          .filter(isVisible)
+          .map((img) => ({ src: (img as HTMLImageElement).src, alt: (img as HTMLImageElement).alt }))
           .filter((i) => i.src && !i.src.startsWith("data:"))
           .slice(0, 3);
 
-        // Check if there's a "continue" or "next" button outside options
-        const continueBtn = document.querySelector(
-          "button[class*='continue'], button[class*='next'], button[class*='submit'], [data-action='next']"
-        );
+        const continueBtn = Array.from(
+          document.querySelectorAll(
+            "button[class*='continue'], button[class*='next'], button[class*='submit'], [data-action='next']"
+          )
+        ).find(isVisible);
 
         return { heading, paragraphs, optionButtons, images, hasContinue: !!continueBtn };
       });
@@ -1551,28 +1742,40 @@ export async function importGenericQuiz(
         subEls,
       });
 
-      // Try to advance to the next step
+      // Try to advance to the next step. Only click visible elements — hidden
+      // next buttons exist on other screens of the same carousel.
       const advanced = await page
         .evaluate(() => {
-          // 1. Click first option-looking button
-          const optBtn = document.querySelector(
-            "[class*='option'], [class*='answer'], [data-quiz-opt]"
-          ) as HTMLElement | null;
+          const isVisible = (el: Element): boolean => {
+            if (!(el instanceof HTMLElement)) return false;
+            if (el.offsetParent === null) return false;
+            const cs = getComputedStyle(el);
+            if (cs.display === "none" || cs.visibility === "hidden") return false;
+            if (parseFloat(cs.opacity) < 0.1) return false;
+            return true;
+          };
+
+          // 1. First visible option-looking element
+          const optBtn = Array.from(
+            document.querySelectorAll("[class*='option'], [class*='answer'], [data-quiz-opt]")
+          ).find(isVisible) as HTMLElement | undefined;
           if (optBtn) { optBtn.click(); return "option"; }
 
-          // 2. Click continue/next
-          const cont = document.querySelector(
-            "button[class*='continue'], button[class*='next'], button[class*='submit']"
-          ) as HTMLElement | null;
+          // 2. First visible continue/next
+          const cont = Array.from(
+            document.querySelectorAll(
+              "button[class*='continue'], button[class*='next'], button[class*='submit']"
+            )
+          ).find(isVisible) as HTMLElement | undefined;
           if (cont) { cont.click(); return "continue"; }
 
-          // 3. Click any button that isn't clearly a back/skip
-          const btn = Array.from(document.querySelectorAll("button")).find(
-            (b) => {
+          // 3. Any visible button that isn't clearly back/skip
+          const btn = Array.from(document.querySelectorAll("button"))
+            .filter(isVisible)
+            .find((b) => {
               const t = b.innerText.toLowerCase();
               return !t.includes("back") && !t.includes("skip") && !t.includes("close");
-            }
-          ) as HTMLElement | null;
+            }) as HTMLElement | undefined;
           if (btn) { btn.click(); return "button"; }
 
           return null;
