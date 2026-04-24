@@ -797,7 +797,19 @@ body {
   flex: 1;
 }
 
-.quiz-step { display: flex; flex-direction: column; gap: 20px; }
+.quiz-step {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: quiz-step-in 0.28s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes quiz-step-in {
+  from { opacity: 0; transform: translate3d(16px, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quiz-step { animation: none; }
+}
 
 .quiz-title {
   font-size: 22px;

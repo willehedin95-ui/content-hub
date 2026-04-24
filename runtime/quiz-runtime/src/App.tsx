@@ -388,6 +388,7 @@ export function App({ data, settings, config }: AppProps) {
 
       <div class="quiz-content">
         <StepRenderer
+          key={stepNode.id}
           node={stepNode}
           onAnswer={handleAnswer}
           onLoadingComplete={handleLoadingComplete}
