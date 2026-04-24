@@ -39,7 +39,13 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/cron") ||
     request.nextUrl.pathname.startsWith("/api/morning-brief") ||
     request.nextUrl.pathname.startsWith("/api/research/sources/bulk-import") ||
-    request.nextUrl.pathname.startsWith("/api/fillout-to-freshdesk")
+    request.nextUrl.pathname.startsWith("/api/fillout-to-freshdesk") ||
+    // Quiz runtime bundle (content-hashed JS served to published + preview quizzes)
+    request.nextUrl.pathname.startsWith("/_runtime/") ||
+    // Quiz runtime API endpoints (hit from published quizzes on external domains)
+    request.nextUrl.pathname.startsWith("/api/quiz/session") ||
+    request.nextUrl.pathname.startsWith("/api/quiz/events") ||
+    request.nextUrl.pathname.startsWith("/api/quiz/klaviyo-subscribe")
   ) {
     return supabaseResponse;
   }
