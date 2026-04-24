@@ -269,14 +269,29 @@ function TestimonialSliderEl({
 }
 
 /**
- * Defensive post-process sanitizer for custom_html blocks.
- * Strips elements that should never appear in rendered quiz content:
- * SVGs (stray Heyflow carousel chevrons), photo-carousel remnants,
- * hidden inputs, scripts, and styles.
- * If nothing visible remains the wrapper is hidden entirely.
+ * Detect if a custom_html block is "rich" (uses its own CSS/SVG/fonts) vs.
+ * a simple paragraph-only snippet we can safely inline.
+ *
+ * Rich blocks get rendered in a sandboxed iframe so their brand typography,
+ * CSS variables, SVG graphics, and keyframe animations survive intact.
+ *
+ * Simple blocks (plain HTML fragments from Heyflow photo-carousel remnants
+ * etc.) are still inlined and get the defensive sanitizer so they don't
+ * fight our theme.
  */
+function isRichHtmlBlock(html: string): boolean {
+  if (!html) return false;
+  if (html.length > 1500) return true;
+  if (/<style[\s>]/i.test(html)) return true;
+  if (/<svg[\s>]/i.test(html)) return true;
+  if (/<!doctype|<html[\s>]|<head[\s>]|<body[\s>]/i.test(html)) return true;
+  // Imports Google Fonts or any stylesheet
+  if (/<link[^>]+rel=["']stylesheet/i.test(html)) return true;
+  return false;
+}
+
+/** Sanitizer used for non-rich inlined blocks. */
 function sanitizeCustomHtml(root: HTMLDivElement): void {
-  // Tags to remove unconditionally
   const stripSelectors = [
     "svg",
     '[data-blocktype="photo-carousel"]',
@@ -289,24 +304,90 @@ function sanitizeCustomHtml(root: HTMLDivElement): void {
       el.parentNode?.removeChild(el);
     }
   }
-  // Hide wrapper when nothing visible remains
   if (root.innerText.trim().length === 0) {
     root.style.display = "none";
   }
 }
 
-function CustomHtmlEl({ el }: { el: Extract<SubEl, { kind: "custom_html" }> }) {
-  const ref = useRef<HTMLDivElement>(null);
+function CustomHtmlEl({
+  el,
+  variables,
+}: {
+  el: Extract<SubEl, { kind: "custom_html" }>;
+  variables?: Record<string, string>;
+}) {
+  const inlineRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const resolved = interpolate(el.html, variables);
+  const rich = isRichHtmlBlock(resolved);
+
+  // Inline path (simple blocks)
   useEffect(() => {
-    // Safe: content is editor-controlled HTML (not user input)
-    if (ref.current) {
-      ref.current.innerHTML = el.html; // nosec
-      sanitizeCustomHtml(ref.current);
-    }
-  }, [el.html]);
+    if (rich || !inlineRef.current) return;
+    inlineRef.current.innerHTML = resolved; // nosec
+    sanitizeCustomHtml(inlineRef.current);
+  }, [resolved, rich]);
+
+  // Rich path: auto-size iframe to content height. Iframe is same-origin
+  // via srcdoc so we can read scrollHeight directly.
+  useEffect(() => {
+    if (!rich || !iframeRef.current) return;
+    const iframe = iframeRef.current;
+    let observer: ResizeObserver | null = null;
+    let raf = 0;
+    const updateHeight = () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        const h = doc.documentElement?.scrollHeight ?? 0;
+        if (h > 0) iframe.style.height = h + "px";
+      } catch {
+        /* sandbox or not-yet-ready */
+      }
+    };
+    const onLoad = () => {
+      updateHeight();
+      raf = requestAnimationFrame(updateHeight);
+      try {
+        const doc = iframe.contentDocument;
+        if (doc && typeof ResizeObserver !== "undefined") {
+          observer = new ResizeObserver(updateHeight);
+          observer.observe(doc.documentElement);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    iframe.addEventListener("load", onLoad);
+    // Also run once in case the iframe already loaded before this effect ran.
+    onLoad();
+    return () => {
+      iframe.removeEventListener("load", onLoad);
+      observer?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [resolved, rich]);
+
+  if (rich) {
+    return (
+      <iframe
+        ref={iframeRef}
+        data-quiz-el="custom_html"
+        data-quiz-el-id={el.id}
+        class="quiz-custom-html-frame"
+        // Allow scripts (for author animations) and same-origin (so the
+        // parent can auto-resize the iframe based on content height).
+        // The HTML is author-controlled and trusted; we're not rendering
+        // arbitrary third-party submissions.
+        sandbox="allow-scripts allow-same-origin"
+        srcdoc={resolved}
+        title={`Custom block ${el.id}`}
+      />
+    );
+  }
   return (
     <div
-      ref={ref}
+      ref={inlineRef}
       data-quiz-el="custom_html"
       data-quiz-el-id={el.id}
       class="quiz-custom-html"
@@ -611,7 +692,7 @@ export function StepRenderer({
           case "image":
             return <ImageEl key={el.id} el={el} />;
           case "custom_html":
-            return <CustomHtmlEl key={el.id} el={el} />;
+            return <CustomHtmlEl key={el.id} el={el} variables={variables} />;
           case "loading":
             return (
               <LoadingEl key={el.id} el={el} onComplete={onLoadingComplete} />
@@ -852,6 +933,14 @@ body {
 .quiz-image { width: 100%; border-radius: 12px; object-fit: cover; max-height: 320px; }
 
 .quiz-custom-html { font-size: 15px; line-height: 1.6; color: var(--quiz-text-secondary); }
+.quiz-custom-html-frame {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  min-height: 120px;
+  /* iframe height is set dynamically by the runtime after load */
+}
 .quiz-custom-html a { color: var(--quiz-brand); }
 .quiz-custom-html p { margin-bottom: 8px; }
 .quiz-custom-html p:last-child { margin-bottom: 0; }
