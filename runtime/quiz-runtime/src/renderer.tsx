@@ -633,6 +633,47 @@ body {
 
 .quiz-continue-wrap { margin-top: 16px; }
 
+.quiz-preview-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  background: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  animation: quiz-toast-in 0.2s ease-out;
+  z-index: 9999;
+}
+@keyframes quiz-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Custom HTML on profile/result screens — strengthen visual hierarchy
+   without reintroducing arbitrary imported CSS. Targets common patterns
+   from imported quizzes (severity labels, stat rows, divider lines). */
+.quiz-custom-html h1, .quiz-custom-html h2, .quiz-custom-html h3 {
+  color: var(--quiz-text-primary);
+  line-height: 1.3;
+  margin: 12px 0 6px;
+}
+.quiz-custom-html h1 { font-size: 22px; font-weight: 700; }
+.quiz-custom-html h2 { font-size: 20px; font-weight: 700; }
+.quiz-custom-html h3 { font-size: 17px; font-weight: 600; }
+.quiz-custom-html strong, .quiz-custom-html b { color: var(--quiz-text-primary); }
+.quiz-custom-html hr {
+  border: none;
+  border-top: 1px solid rgba(0,0,0,0.08);
+  margin: 14px 0;
+}
+.quiz-custom-html ul, .quiz-custom-html ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.quiz-custom-html li { margin-bottom: 4px; }
+
 @media (max-width: 480px) {
   .quiz-content { padding: 20px 10px 48px; }
 }

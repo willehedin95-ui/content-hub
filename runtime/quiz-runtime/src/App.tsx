@@ -48,8 +48,16 @@ export function App({ data, settings, config }: AppProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [variantAssignments, setVariantAssignments] = useState<Record<string, string>>({});
   const [stepIndex, setStepIndex] = useState(0);
+  const [previewToast, setPreviewToast] = useState<string | null>(null);
   const bufferRef = useRef<EventBuffer | null>(null);
   const sessionInitialized = useRef(false);
+
+  // Auto-dismiss preview toast after 4s
+  useEffect(() => {
+    if (!previewToast) return;
+    const t = setTimeout(() => setPreviewToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [previewToast]);
 
   // Compute ordered steps for progress tracking (do once)
   const orderedSteps = topoOrderSteps(data);
@@ -267,9 +275,10 @@ export function App({ data, settings, config }: AppProps) {
   const handleExitClick = useCallback(
     (exitNode: ExitNode) => {
       if (config.preview) {
-        // In preview mode just show an alert instead of redirecting
+        // In preview mode surface the target as an inline toast instead of
+        // hijacking window.title via a native alert.
         const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "(no redirect URL)";
-        alert(`[Preview] Would redirect to:\n${redirectBase}`);
+        setPreviewToast(`[Preview] Would redirect to: ${redirectBase}`);
         return;
       }
 
@@ -313,6 +322,7 @@ export function App({ data, settings, config }: AppProps) {
             {t("seeResults", config.market)}
           </button>
         </div>
+        {previewToast && <div class="quiz-preview-toast">{previewToast}</div>}
       </div>
     );
   }
