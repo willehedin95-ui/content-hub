@@ -112,6 +112,20 @@ export function App({ data, settings, config }: AppProps) {
   // Cleanup buffer on unmount
   useEffect(() => () => bufferRef.current?.destroy(), []);
 
+  // Defensive auto-advance: if we ever land on a step with no subEls
+  // (e.g. persisted data from before pruneEmptySteps was introduced),
+  // immediately skip to the next node without adding to history.
+  useEffect(() => {
+    if (!currentNode || currentNode.kind !== "step") return;
+    const step = currentNode as StepNode;
+    if (step.subEls.length === 0) {
+      const next = resolveNextNode(data, step.id, null, null, variantAssignments);
+      if (next && next.id !== currentNode.id) {
+        navigateTo(next, false);
+      }
+    }
+  }, [currentNode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const navigateTo = useCallback(
     (node: QuizNode, addToHistory = true) => {
       if (addToHistory && currentNode) {
