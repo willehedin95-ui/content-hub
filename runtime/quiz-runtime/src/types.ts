@@ -8,6 +8,7 @@ export type QuestionOption = {
   label: string;
   emoji?: string;
   imageUrl?: string;
+  imageDescription?: string;
   value?: string;
 };
 

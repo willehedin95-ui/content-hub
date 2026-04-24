@@ -2508,17 +2508,18 @@ export async function importLlmQuiz(
       const opts = (s.options ?? []).filter((o) => o.label && o.label.length < 200);
       if (opts.length >= 2) {
         const hasImg = opts.filter((o) => o.imageUrl).length >= opts.length / 2;
+        const useDropdown = opts.length >= 15;
         subEls.push({
           id: newId("el"),
           kind: "question",
           kindOf: s.questionType,
-          layout: opts.length >= 8 ? "dropdown" : hasImg ? "image_cards" : "list",
+          layout: useDropdown ? "dropdown" : hasImg ? "image_cards" : "list",
           options: opts.map((o) => ({
             id: newId("opt"),
             label: o.label,
             ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}),
           })),
-          ...(opts.length >= 8 ? { searchable: true } : {}),
+          ...(useDropdown ? { searchable: true } : {}),
         });
       }
     } else if (s.questionType === "text_input") {

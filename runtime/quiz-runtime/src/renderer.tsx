@@ -447,6 +447,11 @@ function OptionButton({
       {layout === "image_cards" && option.imageUrl && (
         <img src={option.imageUrl} alt={option.label} class="quiz-option-img" />
       )}
+      {layout === "image_cards" && !option.imageUrl && option.imageDescription && (
+        <span class="quiz-option-img-placeholder" title={option.imageDescription}>
+          <span class="quiz-option-img-placeholder-label">{option.imageDescription}</span>
+        </span>
+      )}
       {option.emoji && <span class="quiz-option-emoji">{option.emoji}</span>}
       <span class="quiz-option-label">{option.label}</span>
     </button>
@@ -1047,6 +1052,24 @@ body {
 }
 .quiz-option--image_cards .quiz-option-label { padding: 10px 8px 12px; font-size: 14.4px; font-weight: 500; }
 .quiz-option-img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 8px; }
+.quiz-option-img-placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 2px dashed rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: rgba(0,0,0,0.4);
+}
+.quiz-option--image_cards .quiz-option-img-placeholder { border-radius: 10px 10px 0 0; border: 2px dashed rgba(255,255,255,0.25); color: rgba(255,255,255,0.55); }
+.quiz-option-img-placeholder-label {
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+  font-style: italic;
+}
 .quiz-option--image_cards .quiz-option-img { aspect-ratio: 1 / 1; border-radius: 10px 10px 0 0; }
 .quiz-option-emoji { font-size: 24px; }
 .quiz-option-label { font-weight: 400; flex: 1; }

@@ -35,6 +35,13 @@ export type QuestionOption = {
   label: string;
   emoji?: string;
   imageUrl?: string;
+  /**
+   * Author-facing placeholder when the importer (Gemini video extractor)
+   * could see that the source quiz had an illustration per option but
+   * couldn't download it. Rendered as a dashed placeholder until the user
+   * drops in a real image.
+   */
+  imageDescription?: string;
   value?: string;
 };
 

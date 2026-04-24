@@ -40,7 +40,7 @@ Return a JSON object of shape:
       "paragraphs": string[],                   // supporting copy (optional; <= 3 items)
       "questionType": "single" | "multi" | "text_input" | "range" | "info" | "result",
       "options": [                              // for single/multi
-        { "label": string, "emoji"?: string }
+        { "label": string, "emoji"?: string, "imageDescription"?: string }
       ],
       "inputType"?: "text" | "number" | "date", // for text_input
       "rangeMin"?: number,                      // for range
@@ -52,11 +52,13 @@ Return a JSON object of shape:
 }
 
 Rules:
-- Include every distinct screen the user sees. Do NOT skip info slides or loading screens — they're part of the funnel pacing.
+- Include every distinct screen the user sees. Do NOT skip info slides or loading screens, they're part of the funnel pacing.
 - Do NOT invent options that weren't shown; transcribe what's on screen.
 - Do NOT include system chrome (status bar, tab bar, app header beyond logo).
-- If the screen is clearly a result / profile / recommendation page, mark questionType "result" and fill customHtmlDescription with a precise visual description (colors, layout, elements).
-- If the video only partially shows a list of options (e.g. 50 breeds in a dropdown, only 5 visible while scrolled), include the visible labels plus an "..." entry.
+- Default questionType to "single" unless you clearly see the user select more than one option on that screen, OR the screen explicitly says "select all that apply" / "choose multiple" / "mark all". Asking "What breed is your dog?" is single.
+- If the screen is clearly a result / profile / recommendation / chart page, mark questionType "result" and fill customHtmlDescription with a precise visual description of the content (colors, layout, specific numbers, graph shape). NEVER include implementation metadata in customHtmlDescription (e.g. "this appears as a modal", "shown over loading screen"). The description becomes literal placeholder text in the imported quiz.
+- If each option card clearly displays an illustration / photo / icon beyond a single emoji, write a short imageDescription per option (e.g. "cartoon young puppy"). We can't extract the image but the description helps the author add one later. Do NOT invent imageDescriptions for text-only options.
+- If the video only partially shows a long list (e.g. 50 breeds in a dropdown, only 5 visible while scrolled), include the visible labels. Mark questionType "single" and the importer will auto-pick dropdown layout when >=15 options.
 - Strip emoji from the label into the "emoji" field when it's a single trailing emoji.
 - Return ONLY valid JSON. No prose, no code fences.`;
 
@@ -88,7 +90,7 @@ export async function importVideoQuiz(
     title?: string;
     paragraphs?: string[];
     questionType?: "single" | "multi" | "text_input" | "range" | "info" | "result";
-    options?: { label: string; emoji?: string }[];
+    options?: { label: string; emoji?: string; imageDescription?: string }[];
     inputType?: "text" | "number" | "date";
     rangeMin?: number;
     rangeMax?: number;
@@ -171,18 +173,31 @@ export async function importVideoQuiz(
     if (s.questionType === "single" || s.questionType === "multi") {
       const opts = (s.options ?? []).filter((o) => o.label && o.label.length < 200);
       if (opts.length >= 2) {
+        // Dropdown only for genuinely long lists. Below 15 options a chip/list
+        // layout is both more tappable and matches how the source app likely
+        // renders. Keep the dropdown escape hatch for 15+ items (breeds,
+        // countries, symptom lookups).
+        const useDropdown = opts.length >= 15;
+        const withImageDesc = opts.filter((o) => o.imageDescription && o.imageDescription.trim()).length;
+        const useImageCards = !useDropdown && withImageDesc >= opts.length * 0.6;
         subEls.push({
           id: newId("el"),
           kind: "question",
           kindOf: s.questionType,
-          layout: opts.length >= 8 ? "dropdown" : "list",
+          layout: useDropdown ? "dropdown" : useImageCards ? "image_cards" : "list",
           options: opts.map((o) => ({
             id: newId("opt"),
             label: o.label,
             ...(o.emoji ? { emoji: o.emoji } : {}),
+            ...(o.imageDescription && o.imageDescription.trim() ? { imageDescription: o.imageDescription.trim() } : {}),
           })),
-          ...(opts.length >= 8 ? { searchable: true } : {}),
+          ...(useDropdown ? { searchable: true } : {}),
         });
+        if (useImageCards) {
+          warnings.push(
+            `Step ${i + 1} "${s.title ?? "(untitled)"}" renders as image cards - option images are placeholders (Gemini can describe but not download). Drop in real illustrations from the product bank.`,
+          );
+        }
       } else if (opts.length === 1) {
         warnings.push(
           `Step ${i + 1} "${s.title ?? "(untitled)"}" has only 1 option — probably a data-capture that Gemini didn't label as text_input. Review.`,
