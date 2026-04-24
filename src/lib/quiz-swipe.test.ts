@@ -707,4 +707,128 @@ describe("parseHeyflowHtml", () => {
     const { warnings } = parseHeyflowHtml(htmlWithBadDest);
     expect(warnings.some((w) => w.includes("screen-nonexistent99"))).toBe(true);
   });
+
+  // ---------------------------------------------------------------------------
+  // photo-carousel extraction
+  // ---------------------------------------------------------------------------
+
+  it("photo-carousel with 3 <img> tags produces 3 image subEls with matching URLs", () => {
+    const htmlWithCarousel = `<!DOCTYPE html>
+<html><head><meta name="generator" content="Heyflow"><title>Carousel Test</title></head>
+<body>
+  <section name="screen-cc001122" id="screen-cc001122">
+    <div class="block" data-blocktype="photo-carousel" data-blockid="id-pc-1">
+      <div data-block-id="id-pc-1" data-config='{"blockType":"photo-carousel"}'>
+        <img src="https://example.com/img1.jpg" alt="Image 1" />
+        <img src="https://example.com/img2.jpg" alt="Image 2" />
+        <img src="https://example.com/img3.jpg" alt="Image 3" />
+        <svg><path d="M5 12l7-7 7 7"/></svg>
+        <svg><path d="M19 12l-7 7-7-7"/></svg>
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data, warnings } = parseHeyflowHtml(htmlWithCarousel);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(3);
+    const urls = imageEls.map((e) => (e.kind === "image" ? e.url : ""));
+    expect(urls).toContain("https://example.com/img1.jpg");
+    expect(urls).toContain("https://example.com/img2.jpg");
+    expect(urls).toContain("https://example.com/img3.jpg");
+    // Should produce no custom_html for the carousel
+    const customEls = step.subEls.filter((e) => e.kind === "custom_html");
+    expect(customEls).toHaveLength(0);
+    // Should not warn about skipped block
+    expect(warnings.some((w) => w.includes("no images"))).toBe(false);
+  });
+
+  it("photo-carousel with config.images array produces image subEls with alt text preserved", () => {
+    const htmlWithCarouselConfig = `<!DOCTYPE html>
+<html><head><meta name="generator" content="Heyflow"><title>Config Carousel Test</title></head>
+<body>
+  <section name="screen-cc003344" id="screen-cc003344">
+    <div class="block" data-blocktype="photo-carousel" data-blockid="id-pc-2">
+      <div data-block-id="id-pc-2"
+           data-config='{"blockType":"photo-carousel","images":[{"url":"https://example.com/a.jpg","alt":"Alpha"},{"url":"https://example.com/b.jpg","alt":"Beta"},{"url":"https://example.com/c.jpg","alt":"Gamma"}]}'>
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data, warnings } = parseHeyflowHtml(htmlWithCarouselConfig);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    expect(imageEls).toHaveLength(3);
+    const alts = imageEls.map((e) => (e.kind === "image" ? e.alt : ""));
+    expect(alts).toContain("Alpha");
+    expect(alts).toContain("Beta");
+    expect(alts).toContain("Gamma");
+    const urls = imageEls.map((e) => (e.kind === "image" ? e.url : ""));
+    expect(urls).toContain("https://example.com/a.jpg");
+    expect(urls).toContain("https://example.com/b.jpg");
+    expect(urls).toContain("https://example.com/c.jpg");
+    // Should produce no custom_html for the carousel
+    const customEls = step.subEls.filter((e) => e.kind === "custom_html");
+    expect(customEls).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("no images"))).toBe(false);
+  });
+
+  it("empty photo-carousel produces no subEls and a warning, never custom_html", () => {
+    const htmlWithEmptyCarousel = `<!DOCTYPE html>
+<html><head><meta name="generator" content="Heyflow"><title>Empty Carousel</title></head>
+<body>
+  <section name="screen-cc005566" id="screen-cc005566">
+    <div class="block" data-blocktype="photo-carousel" data-blockid="id-pc-3">
+      <div data-block-id="id-pc-3" data-config='{"blockType":"photo-carousel"}'>
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data, warnings } = parseHeyflowHtml(htmlWithEmptyCarousel);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    // No subEls from the empty carousel
+    expect(step.subEls).toHaveLength(0);
+    // Must not emit custom_html
+    const customEls = step.subEls.filter((e) => e.kind === "custom_html");
+    expect(customEls).toHaveLength(0);
+    // Must emit the "no images" warning
+    expect(warnings.some((w) => w.includes("no images"))).toBe(true);
+  });
+
+  it("photo-carousel deduplicates repeated image URLs", () => {
+    const htmlWithDupes = `<!DOCTYPE html>
+<html><head><meta name="generator" content="Heyflow"><title>Dupe Carousel</title></head>
+<body>
+  <section name="screen-cc007788" id="screen-cc007788">
+    <div class="block" data-blocktype="photo-carousel" data-blockid="id-pc-4">
+      <div data-block-id="id-pc-4"
+           data-config='{"blockType":"photo-carousel","items":[{"url":"https://example.com/x.jpg","alt":"X"},{"url":"https://example.com/x.jpg","alt":"X again"},{"url":"https://example.com/y.jpg","alt":"Y"}]}'>
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data } = parseHeyflowHtml(htmlWithDupes);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const imageEls = step.subEls.filter((e) => e.kind === "image");
+    // x.jpg appears twice in config but should only produce 1 subEl
+    expect(imageEls).toHaveLength(2);
+    const urls = imageEls.map((e) => (e.kind === "image" ? e.url : ""));
+    expect(urls).toContain("https://example.com/x.jpg");
+    expect(urls).toContain("https://example.com/y.jpg");
+  });
 });

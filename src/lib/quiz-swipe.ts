@@ -563,8 +563,10 @@ interface HeyflowBlockConfig {
   duration?: number;
   // generic-button
   label?: string;
-  // photo-carousel: array of items
+  // photo-carousel: Heyflow may use `items`, `images`, or `slides`
   items?: Array<{ url?: string; src?: string; alt?: string }>;
+  images?: Array<{ url?: string; src?: string; alt?: string }>;
+  slides?: Array<{ url?: string; src?: string; alt?: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -784,19 +786,41 @@ export function parseHeyflowHtml(html: string): {
         }
 
         case "photo-carousel": {
-          // Map each item to an image subEl
-          const items = config.items ?? [];
-          if (items.length > 0) {
-            for (const item of items) {
-              const url = item.url ?? item.src ?? "";
-              if (url) {
-                subEls.push({ id: newId("el"), kind: "image", url, alt: item.alt ?? "" });
-              }
+          // Step 1: Try to read image list from data-config JSON (three known key names)
+          const configImages =
+            config.images ??
+            config.slides ??
+            config.items ??
+            [];
+
+          const seen = new Set<string>();
+          const addImageSubEl = (url: string, alt: string) => {
+            if (!url || seen.has(url)) return;
+            seen.add(url);
+            subEls.push({ id: newId("el"), kind: "image", url, alt });
+          };
+
+          if (configImages.length > 0) {
+            for (const item of configImages) {
+              addImageSubEl(item.url ?? item.src ?? "", item.alt ?? "");
             }
-          } else {
-            // Fallback: wrap outer HTML as custom_html
-            subEls.push({ id: newId("el"), kind: "custom_html", html: block.outerHTML });
           }
+
+          // Step 2: If config yielded nothing, scrape <img> tags from the block DOM
+          if (seen.size === 0) {
+            const imgs = Array.from(block.querySelectorAll("img"));
+            for (const img of imgs) {
+              const src = img.getAttribute("src") ?? "";
+              const alt = img.getAttribute("alt") ?? "";
+              addImageSubEl(src, alt);
+            }
+          }
+
+          // Step 3: If still nothing, skip (never emit as custom_html)
+          if (seen.size === 0) {
+            warnings.push("Photo carousel imported but contained no images - block skipped");
+          }
+
           break;
         }
 
