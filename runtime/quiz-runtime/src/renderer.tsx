@@ -77,11 +77,41 @@ function ImageEl({ el }: { el: Extract<SubEl, { kind: "image" }> }) {
   );
 }
 
+/**
+ * Defensive post-process sanitizer for custom_html blocks.
+ * Strips elements that should never appear in rendered quiz content:
+ * SVGs (stray Heyflow carousel chevrons), photo-carousel remnants,
+ * hidden inputs, scripts, and styles.
+ * If nothing visible remains the wrapper is hidden entirely.
+ */
+function sanitizeCustomHtml(root: HTMLDivElement): void {
+  // Tags to remove unconditionally
+  const stripSelectors = [
+    "svg",
+    '[data-blocktype="photo-carousel"]',
+    "input",
+    "script",
+    "style",
+  ];
+  for (const sel of stripSelectors) {
+    for (const el of Array.from(root.querySelectorAll(sel))) {
+      el.parentNode?.removeChild(el);
+    }
+  }
+  // Hide wrapper when nothing visible remains
+  if (root.innerText.trim().length === 0) {
+    root.style.display = "none";
+  }
+}
+
 function CustomHtmlEl({ el }: { el: Extract<SubEl, { kind: "custom_html" }> }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Safe: content is editor-controlled HTML (not user input)
-    if (ref.current) ref.current.innerHTML = el.html; // nosec
+    if (ref.current) {
+      ref.current.innerHTML = el.html; // nosec
+      sanitizeCustomHtml(ref.current);
+    }
   }, [el.html]);
   return (
     <div
