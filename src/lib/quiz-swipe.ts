@@ -124,7 +124,7 @@ export interface ClarflowData {
 
 export interface ImportResult {
   quizId: string;
-  method: "clarflow" | "heyflow" | "nextjs" | "generic";
+  method: "clarflow" | "heyflow" | "nextjs" | "generic" | "llm";
   importedSteps: number;
   warnings: string[];
 }
@@ -2210,6 +2210,248 @@ export async function importGenericQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// importLlmQuiz — last-resort fallback: ask Claude Sonnet to extract quiz
+// structure from the rendered page HTML. Cheap-but-not-free (~$0.15 per
+// import) so we only reach for it after every cheaper fast-path has passed.
+// Expects ANTHROPIC_API_KEY; returns null when the key is missing or the
+// model returns unparsable JSON.
+// ---------------------------------------------------------------------------
+
+const LLM_EXTRACTION_PROMPT = `You extract quiz funnel structure from HTML into a strict JSON schema.
+
+Given an HTML document containing a lead-gen quiz / onboarding funnel, return a JSON object of shape:
+
+{
+  "title": string,                  // overall quiz name
+  "steps": [                        // ordered steps the user sees
+    {
+      "title": string,              // the main question or heading
+      "paragraphs": string[],       // supporting copy (optional)
+      "questionType": "single" | "multi" | "text_input" | "range" | "info",
+      "options": [                  // only for single/multi
+        { "label": string, "imageUrl"?: string }
+      ],
+      "inputType"?: "text" | "number" | "date",  // only for text_input
+      "rangeMin"?: number,          // only for range
+      "rangeMax"?: number,
+      "rangeUnit"?: string,
+      "images"?: string[]           // standalone images on the step
+    }
+  ]
+}
+
+Rules:
+- Only include steps the user actually fills in (skip intro landing pages with no input).
+- Do NOT invent options that aren't in the HTML.
+- Do NOT include cookie banners, privacy modals, footers, navigation.
+- Strip all inline HTML tags from text; plain text only.
+- If a step has dropdown with many options, include all of them.
+- Trim whitespace, collapse inner spaces.
+- Return ONLY valid JSON. No prose, no code fences.`;
+
+export async function importLlmQuiz(
+  url: string,
+  workspaceId: string,
+  market: "se" | "dk" | "no",
+  name?: string,
+): Promise<ImportResult | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  // Fetch initial HTML (jsdom for cleanup). No browser walk here — the
+  // fast-path tier above already handles SPA content; LLM runs on what
+  // the server returns statically. If the page is purely client-rendered,
+  // this won't help, but neither would most fetch-based importers.
+  const ua =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36";
+  const res = await fetch(url, {
+    headers: { "User-Agent": ua, Accept: "text/html,application/xhtml+xml" },
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const rawHtml = await res.text();
+
+  // Trim HTML to reduce tokens: drop <script>, <style>, SVG definitions.
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  const dom = new JSDOM(rawHtml);
+  const doc = dom.window.document;
+  for (const sel of ["script", "style", "svg", "link[rel='preload']", "noscript"]) {
+    doc.querySelectorAll(sel).forEach((el) => el.remove());
+  }
+  const trimmed = doc.documentElement.outerHTML;
+  if (trimmed.length > 250_000) {
+    // too big — LLM would timeout or cost too much
+    return null;
+  }
+  const pageTitle = doc.title.trim() || "Imported Quiz";
+
+  // Call Claude
+  const Anthropic = (require("@anthropic-ai/sdk") as { default: typeof import("@anthropic-ai/sdk").default })
+    .default;
+  const client = new Anthropic({ apiKey });
+  let jsonText: string;
+  try {
+    const msg = await client.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 8000,
+      system: LLM_EXTRACTION_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `URL: ${url}\n\nHTML:\n${trimmed}`,
+        },
+      ],
+    });
+    const textBlock = msg.content.find((c) => c.type === "text");
+    if (!textBlock || textBlock.type !== "text") return null;
+    jsonText = textBlock.text.trim();
+    // Strip leading ```json if present
+    jsonText = jsonText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  } catch (err) {
+    console.error("[quiz-swipe/llm] Claude call failed:", err);
+    return null;
+  }
+
+  type LlmStep = {
+    title?: string;
+    paragraphs?: string[];
+    questionType?: "single" | "multi" | "text_input" | "range" | "info";
+    options?: { label: string; imageUrl?: string }[];
+    inputType?: "text" | "number" | "date";
+    rangeMin?: number;
+    rangeMax?: number;
+    rangeUnit?: string;
+    images?: string[];
+  };
+  type LlmOut = { title?: string; steps?: LlmStep[] };
+
+  let parsed: LlmOut;
+  try {
+    parsed = JSON.parse(jsonText) as LlmOut;
+  } catch {
+    return null;
+  }
+  if (!parsed.steps || parsed.steps.length === 0) return null;
+
+  // Build QuizData
+  const warnings: string[] = [
+    `Imported via LLM extractor. Review carefully — LLMs can hallucinate options. ${parsed.steps.length} steps extracted.`,
+  ];
+  const startId = newId("start");
+  const exitId = newId("exit");
+  const nodes: Record<string, QuizNode> = {
+    [startId]: { id: startId, kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 200 } },
+    [exitId]: { id: exitId, kind: "exit", name: "Exit", size: { width: 180, height: 80 }, position: { x: 300 + parsed.steps.length * 340, y: 200 }, redirectUrl: "" },
+  };
+
+  const stepNodes: StepNode[] = parsed.steps.map((s, i) => {
+    const subEls: SubEl[] = [];
+    if (s.title) {
+      subEls.push({
+        id: newId("el"),
+        kind: "title",
+        text: s.title,
+        isRichText: true,
+        contentFormat: "html",
+      });
+    }
+    for (const p of s.paragraphs ?? []) {
+      subEls.push({ id: newId("el"), kind: "text", text: p, isRichText: true, contentFormat: "html" });
+    }
+    if (s.questionType === "single" || s.questionType === "multi") {
+      const opts = (s.options ?? []).filter((o) => o.label && o.label.length < 200);
+      if (opts.length >= 2) {
+        const hasImg = opts.filter((o) => o.imageUrl).length >= opts.length / 2;
+        subEls.push({
+          id: newId("el"),
+          kind: "question",
+          kindOf: s.questionType,
+          layout: opts.length >= 8 ? "dropdown" : hasImg ? "image_cards" : "list",
+          options: opts.map((o) => ({
+            id: newId("opt"),
+            label: o.label,
+            ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}),
+          })),
+          ...(opts.length >= 8 ? { searchable: true } : {}),
+        });
+      }
+    } else if (s.questionType === "text_input") {
+      subEls.push({
+        id: newId("el"),
+        kind: "text_input",
+        variable: `step_${i + 1}`,
+        inputType: s.inputType ?? "text",
+      });
+    } else if (s.questionType === "range") {
+      subEls.push({
+        id: newId("el"),
+        kind: "range_slider",
+        variable: `step_${i + 1}`,
+        min: s.rangeMin ?? 0,
+        max: s.rangeMax ?? 100,
+        unit: s.rangeUnit,
+      });
+    }
+    for (const img of s.images ?? []) {
+      try {
+        subEls.push({ id: newId("el"), kind: "image", url: new URL(img, url).href, alt: "" });
+      } catch {
+        /* skip malformed */
+      }
+    }
+    const stepNameWords = (s.title ?? "").trim().split(/\s+/).slice(0, 3).join(" ");
+    return {
+      id: newId("step"),
+      kind: "step",
+      name: stepNameWords || `Step ${i + 1}`,
+      size: { width: 280, height: 360 },
+      position: { x: 300 + i * 340, y: 100 },
+      rotation: 0,
+      subEls,
+    };
+  });
+
+  for (const sn of stepNodes) nodes[sn.id] = sn;
+
+  const edges: Record<string, QuizEdge> = {};
+  const eStart = newId("edge");
+  edges[eStart] = { id: eStart, from: startId, to: stepNodes[0].id, condition: { kind: "default" } };
+  for (let i = 0; i < stepNodes.length - 1; i++) {
+    const eid = newId("edge");
+    edges[eid] = { id: eid, from: stepNodes[i].id, to: stepNodes[i + 1].id, condition: { kind: "default" } };
+  }
+  const eLast = newId("edge");
+  edges[eLast] = { id: eLast, from: stepNodes[stepNodes.length - 1].id, to: exitId, condition: { kind: "default" } };
+
+  let quizData: QuizData = {
+    id: `quiz_${Date.now().toString(36)}`,
+    nodes,
+    edges,
+    camera: { x: 0, y: 0, z: 1 },
+  };
+  quizData = await rehostImages(quizData, quizData.id, warnings);
+
+  const quizName = name ?? parsed.title ?? pageTitle;
+  const settings: QuizSettings = {
+    ...buildDefaultSettings(),
+    metadata: { ...buildDefaultSettings().metadata, title: quizName },
+  };
+
+  const savedId = await saveQuizToDb(quizData, settings, {
+    workspaceId,
+    market,
+    name: quizName,
+  });
+
+  return {
+    quizId: savedId,
+    method: "llm",
+    importedSteps: stepNodes.length,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // swipeQuiz — top-level entry point: try clarflow first, fall back to generic
 // ---------------------------------------------------------------------------
 
@@ -2232,5 +2474,18 @@ export async function swipeQuiz(
   if (nextjsResult) return nextjsResult;
 
   // 4. Generic fallback (puppeteer: carousel detection + click-through)
+  try {
+    const genericResult = await importGenericQuiz(url, workspaceId, market, name);
+    if (genericResult.importedSteps >= 2) return genericResult;
+  } catch (err) {
+    console.warn("[swipeQuiz] generic importer threw, trying LLM fallback:", err);
+  }
+
+  // 5. LLM last-resort extraction (requires ANTHROPIC_API_KEY)
+  const llmResult = await importLlmQuiz(url, workspaceId, market, name);
+  if (llmResult) return llmResult;
+
+  // Nothing worked — re-run generic (now likely throws) so the caller gets
+  // the useful error message instead of a silent failure.
   return importGenericQuiz(url, workspaceId, market, name);
 }
