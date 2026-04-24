@@ -13,11 +13,22 @@ import { t } from "./i18n";
 // Do NOT call on CustomHtmlEl (its formatting is intentional)
 // ---------------------------------------------------------------------------
 
+// Keep color accents from imported rich-text but remove size/spacing/background
+// overrides that would fight our theme. Classes always dropped.
 function stripStylesAndClasses(root: HTMLElement | null): void {
   if (!root) return;
   const walk = (el: Element) => {
-    el.removeAttribute("style");
     el.removeAttribute("class");
+    const style = el.getAttribute("style");
+    if (style) {
+      const kept = style
+        .split(";")
+        .map((d) => d.trim())
+        .filter((d) => /^color\s*:/i.test(d))
+        .join("; ");
+      if (kept) el.setAttribute("style", kept);
+      else el.removeAttribute("style");
+    }
     for (const child of Array.from(el.children)) walk(child);
   };
   walk(root);
@@ -485,6 +496,15 @@ body {
   color: var(--quiz-text-primary);
   letter-spacing: -0.015em;
   margin-bottom: 4px;
+}
+.quiz-title h1, .quiz-title h2, .quiz-title h3,
+.quiz-title h4, .quiz-title h5, .quiz-title h6 {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  display: block;
+  margin: 0;
+  padding: 0;
 }
 
 .quiz-text {
