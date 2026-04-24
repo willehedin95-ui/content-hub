@@ -2109,12 +2109,40 @@ export async function importGenericQuiz(
         break;
       }
 
+      // Record URL/hash before waiting so we can detect client-side routing.
+      // Also snapshot the current visible heading so we can detect in-place
+      // DOM swaps (SPAs that don't touch URL).
+      const preUrl = page.url();
+      const preHeading = snapshot.heading;
+
       // Wait for transition
       await new Promise((r) => setTimeout(r, 1000));
 
-      // Check if page URL changed (exit)
-      const newUrl = page.url();
-      if (newUrl !== url && !newUrl.includes(new URL(url).hostname)) {
+      const postUrl = page.url();
+      const postHeading = await page.evaluate(() => {
+        const h = Array.from(document.querySelectorAll("h1, h2, h3")).find((el) => {
+          if (!(el instanceof HTMLElement)) return false;
+          if (el.offsetParent === null) return false;
+          const cs = getComputedStyle(el);
+          return cs.display !== "none" && cs.visibility !== "hidden";
+        });
+        return (h as HTMLElement | undefined)?.innerText ?? "";
+      }).catch(() => "");
+
+      // Exit if navigation left the origin
+      if (postUrl !== preUrl) {
+        try {
+          if (new URL(postUrl).hostname !== new URL(url).hostname) break;
+        } catch {
+          break;
+        }
+      }
+
+      // If neither URL/hash nor visible heading changed, our click did
+      // nothing — probably we hit an interstitial-waiting-for-animation or
+      // ran off the end of the quiz. Stop scraping to avoid infinite loops
+      // of collecting the same step.
+      if (postUrl === preUrl && postHeading === preHeading && postHeading.length > 0) {
         break;
       }
     }
