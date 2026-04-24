@@ -2,7 +2,7 @@
 // Tests for the pure remapClarflowIds, isHeyflowHtml, and parseHeyflowHtml helpers — no network, no browser.
 
 import { describe, it, expect } from "vitest";
-import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml, pruneEmptySteps, splitRichTextHtml } from "./quiz-swipe";
+import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml, pruneEmptySteps, splitRichTextHtml, extractHeyflowFlowId, resolveHeyflowOptionImageUrl } from "./quiz-swipe";
 import type { ClarflowData, ClarflowStepNode } from "./quiz-swipe";
 
 // ---------------------------------------------------------------------------
@@ -1267,5 +1267,135 @@ describe("parseHeyflowHtml — rich-text image extraction", () => {
     const imageEls = step.subEls.filter((e) => e.kind === "image");
     // Only 1 image subEl — not doubled by safety net
     expect(imageEls).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractHeyflowFlowId tests (Part A)
+// ---------------------------------------------------------------------------
+
+describe("extractHeyflowFlowId", () => {
+  it("extracts flowId from an assets.prd.heyflow.com URL in HTML", () => {
+    const html = '<script src="https://assets.prd.heyflow.com/flows/abc123def/www/index.js"></script>';
+    expect(extractHeyflowFlowId(html)).toBe("abc123def");
+  });
+
+  it("returns null when no Heyflow asset URL is present", () => {
+    expect(extractHeyflowFlowId("<html><body>no heyflow</body></html>")).toBeNull();
+  });
+
+  it("handles flowIds with hyphens and underscores", () => {
+    const html = '<link rel="stylesheet" href="https://assets.prd.heyflow.com/flows/my-flow_id-999/www/styles.css" />';
+    expect(extractHeyflowFlowId(html)).toBe("my-flow_id-999");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHeyflowOptionImageUrl tests (Part A)
+// ---------------------------------------------------------------------------
+
+describe("resolveHeyflowOptionImageUrl", () => {
+  const FLOW_ID = "seranova-flow-1";
+
+  it("returns an already-absolute https URL unchanged", () => {
+    const url = "https://assets.prd.heyflow.com/flows/seranova-flow-1/www/assets/abc-def/original.png";
+    expect(resolveHeyflowOptionImageUrl(url, FLOW_ID)).toBe(url);
+  });
+
+  it("returns an already-absolute http URL unchanged", () => {
+    const url = "http://example.com/image.png";
+    expect(resolveHeyflowOptionImageUrl(url, FLOW_ID)).toBe(url);
+  });
+
+  it("resolves a bare relative path to a full Heyflow CDN URL", () => {
+    const result = resolveHeyflowOptionImageUrl("abc-def/original.png", FLOW_ID);
+    expect(result).toBe(
+      `https://assets.prd.heyflow.com/flows/${FLOW_ID}/www/assets/abc-def/original.png`
+    );
+  });
+
+  it("resolves a relative path with leading slash", () => {
+    const result = resolveHeyflowOptionImageUrl("/abc-def/original.png", FLOW_ID);
+    expect(result).toBe(
+      `https://assets.prd.heyflow.com/flows/${FLOW_ID}/www/assets/abc-def/original.png`
+    );
+  });
+
+  it("returns relative path unchanged when flowId is null", () => {
+    expect(resolveHeyflowOptionImageUrl("abc-def/original.png", null)).toBe("abc-def/original.png");
+  });
+
+  it("returns empty string unchanged", () => {
+    expect(resolveHeyflowOptionImageUrl("", FLOW_ID)).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseHeyflowHtml — option image URL resolution (Part A integration test)
+// ---------------------------------------------------------------------------
+
+describe("parseHeyflowHtml — option image URL resolution", () => {
+  it("relative option image URL is resolved to absolute Heyflow CDN URL", () => {
+    // flowId 'testflow123' appears in a script src
+    const html = `<!DOCTYPE html>
+<html><head>
+  <meta name="generator" content="Heyflow">
+  <title>Option Image Test</title>
+  <script src="https://assets.prd.heyflow.com/flows/testflow123/www/index.js"></script>
+</head>
+<body>
+  <section name="screen-aa1122bb" id="screen-aa1122bb">
+    <div class="block" data-blocktype="multiple-choice" data-blockid="id-mc-opt">
+      <div data-block-id="id-mc-opt"
+           data-config='{"blockType":"multiple-choice","options":[{"label":"Dry","id":"opt-1","emoji":null,"image":"8d7f48df-3253-464a-abed-187b47063f12/original.png"},{"label":"Oily","id":"opt-2","emoji":null,"image":"9e8a59ef-4364-475b-bcfe-298c58174023/original.png"}],"multiselect":false}'>
+        <input type="radio" data-destination="next" />
+        <input type="radio" data-destination="next" />
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const question = step.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+
+    // Both option image URLs should be absolute now
+    expect(question.options[0].imageUrl).toBe(
+      "https://assets.prd.heyflow.com/flows/testflow123/www/assets/8d7f48df-3253-464a-abed-187b47063f12/original.png"
+    );
+    expect(question.options[1].imageUrl).toBe(
+      "https://assets.prd.heyflow.com/flows/testflow123/www/assets/9e8a59ef-4364-475b-bcfe-298c58174023/original.png"
+    );
+  });
+
+  it("absolute option image URLs are preserved as-is", () => {
+    const html = `<!DOCTYPE html>
+<html><head>
+  <meta name="generator" content="Heyflow">
+  <title>Abs Image Test</title>
+  <script src="https://assets.prd.heyflow.com/flows/testflow456/www/index.js"></script>
+</head>
+<body>
+  <section name="screen-cc3344dd" id="screen-cc3344dd">
+    <div class="block" data-blocktype="multiple-choice" data-blockid="id-mc-abs">
+      <div data-block-id="id-mc-abs"
+           data-config='{"blockType":"multiple-choice","options":[{"label":"Combo","id":"opt-abs","emoji":null,"image":"https://example.com/already-abs.jpg"}],"multiselect":false}'>
+        <input type="radio" data-destination="next" />
+      </div>
+    </div>
+  </section>
+</body></html>`;
+
+    const { data } = parseHeyflowHtml(html);
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    const step = steps[0];
+    if (!step || step.kind !== "step") throw new Error("no step");
+    const question = step.subEls.find((e) => e.kind === "question");
+    if (!question || question.kind !== "question") throw new Error("no question");
+    expect(question.options[0].imageUrl).toBe("https://example.com/already-abs.jpg");
   });
 });

@@ -439,7 +439,9 @@ function extractClarflowDataFromHtml(html: string): ClarflowData | null {
 }
 
 // ---------------------------------------------------------------------------
-// rehostImages — download external images and upload to Supabase storage
+// rehostImages — download external images and upload to Supabase storage.
+// Also rehost images referenced in question option imageUrls (Part B fix).
+// A shared URL->remote URL map deduplicates: same source URL uploaded once.
 // ---------------------------------------------------------------------------
 
 async function rehostImages(
@@ -450,50 +452,82 @@ async function rehostImages(
   const db = createServerSupabase();
   const nodes = { ...quizData.nodes };
 
+  // Shared dedup map: original URL -> Supabase public URL
+  const urlCache = new Map<string, string>();
+
+  /**
+   * Download `srcUrl` and upload to Supabase storage under `quizId`.
+   * Returns the public URL, or `null` on failure (warning is pushed).
+   * Deduplicates via `urlCache`.
+   */
+  async function rehostOne(srcUrl: string): Promise<string | null> {
+    if (urlCache.has(srcUrl)) return urlCache.get(srcUrl)!;
+
+    try {
+      const imageRes = await fetch(srcUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!imageRes.ok) {
+        warnings.push(`Image re-host failed (${imageRes.status}): ${srcUrl}`);
+        return null;
+      }
+      const buf = await imageRes.arrayBuffer();
+      const contentType = imageRes.headers.get("content-type") ?? "image/jpeg";
+      const ext = contentType.split("/").pop()?.split(";")[0] ?? "jpg";
+      const hash = crypto.createHash("sha256").update(Buffer.from(buf)).digest("hex").slice(0, 16);
+      const path = `quiz-assets/${quizId}/${hash}.${ext}`;
+
+      const { error } = await db.storage
+        .from("translated-images")
+        .upload(path, buf, {
+          contentType,
+          upsert: true,
+        });
+
+      if (error) {
+        warnings.push(`Image upload failed for ${srcUrl}: ${error.message}`);
+        return null;
+      }
+
+      const { data: urlData } = db.storage.from("translated-images").getPublicUrl(path);
+      urlCache.set(srcUrl, urlData.publicUrl);
+      return urlData.publicUrl;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`Image re-host error for ${srcUrl}: ${msg}`);
+      return null;
+    }
+  }
+
   for (const [nodeId, node] of Object.entries(nodes)) {
     if (node.kind !== "step") continue;
 
     const updatedSubEls = await Promise.all(
       node.subEls.map(async (el): Promise<SubEl> => {
-        if (el.kind !== "image" || !el.url || el.url.startsWith("data:")) return el;
-
-        try {
-          const imageRes = await fetch(el.url, {
-            headers: {
-              "User-Agent":
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-            },
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (!imageRes.ok) {
-            warnings.push(`Image re-host failed (${imageRes.status}): ${el.url}`);
-            return el;
-          }
-          const buf = await imageRes.arrayBuffer();
-          const contentType = imageRes.headers.get("content-type") ?? "image/jpeg";
-          const ext = contentType.split("/").pop()?.split(";")[0] ?? "jpg";
-          const hash = crypto.createHash("sha256").update(Buffer.from(buf)).digest("hex").slice(0, 16);
-          const path = `quiz-assets/${quizId}/${hash}.${ext}`;
-
-          const { error } = await db.storage
-            .from("translated-images")
-            .upload(path, buf, {
-              contentType,
-              upsert: true,
-            });
-
-          if (error) {
-            warnings.push(`Image upload failed for ${el.url}: ${error.message}`);
-            return el;
-          }
-
-          const { data: urlData } = db.storage.from("translated-images").getPublicUrl(path);
-          return { ...el, url: urlData.publicUrl };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          warnings.push(`Image re-host error for ${el.url}: ${msg}`);
-          return el;
+        // Rehost standalone image subEls
+        if (el.kind === "image") {
+          if (!el.url || el.url.startsWith("data:")) return el;
+          const remote = await rehostOne(el.url);
+          return remote ? { ...el, url: remote } : el;
         }
+
+        // Rehost question option imageUrls (Part B)
+        if (el.kind === "question") {
+          const updatedOptions = await Promise.all(
+            el.options.map(async (opt): Promise<QuestionOption> => {
+              if (!opt.imageUrl || opt.imageUrl.startsWith("data:")) return opt;
+              const remote = await rehostOne(opt.imageUrl);
+              return remote ? { ...opt, imageUrl: remote } : opt;
+            })
+          );
+          return { ...el, options: updatedOptions };
+        }
+
+        return el;
       })
     );
 
@@ -739,6 +773,41 @@ interface HeyflowBlockConfig {
 }
 
 // ---------------------------------------------------------------------------
+// extractHeyflowFlowId — parse the flowId from a Heyflow HTML page.
+// Heyflow embeds the flowId in asset URLs like:
+//   https://assets.prd.heyflow.com/flows/{flowId}/www/...
+// Returns null if not found.
+// Exported for testing.
+// ---------------------------------------------------------------------------
+
+export function extractHeyflowFlowId(html: string): string | null {
+  // Match any assets.prd.heyflow.com/flows/{flowId}/... URL
+  const match = html.match(/assets\.prd\.heyflow\.com\/flows\/([a-zA-Z0-9_-]+)\//);
+  return match ? match[1] : null;
+}
+
+// ---------------------------------------------------------------------------
+// resolveHeyflowOptionImageUrl — resolve a possibly-relative option image URL
+// to an absolute URL using the Heyflow asset base.
+// If the URL is already absolute, returns it unchanged.
+// Exported for testing.
+// ---------------------------------------------------------------------------
+
+export function resolveHeyflowOptionImageUrl(
+  rawUrl: string,
+  flowId: string | null
+): string {
+  if (!rawUrl) return rawUrl;
+  // Already absolute
+  if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) return rawUrl;
+  // Relative — needs base. If we don't have a flowId we can't resolve, return as-is.
+  if (!flowId) return rawUrl;
+  // Strip any leading slash to avoid double-slash
+  const rel = rawUrl.startsWith("/") ? rawUrl.slice(1) : rawUrl;
+  return `https://assets.prd.heyflow.com/flows/${flowId}/www/assets/${rel}`;
+}
+
+// ---------------------------------------------------------------------------
 // isHeyflowHtml — exported for testing: static detection
 // ---------------------------------------------------------------------------
 
@@ -769,6 +838,9 @@ export function parseHeyflowHtml(html: string): {
   const dom = new JSDOM(html);
   const document = dom.window.document;
   const warnings: string[] = [];
+
+  // Extract the Heyflow flowId from the raw HTML (Part A)
+  const flowId = extractHeyflowFlowId(html);
 
   // --- title & OG image ---
   const pageTitle = document.title || "Imported Quiz";
@@ -923,7 +995,8 @@ export function parseHeyflowHtml(html: string): {
               label: opt.label ?? "",
             };
             if (opt.emoji) result.emoji = opt.emoji;
-            if (opt.image) result.imageUrl = opt.image;
+            // Part A fix: resolve relative option image URLs to absolute using the flowId
+            if (opt.image) result.imageUrl = resolveHeyflowOptionImageUrl(opt.image, flowId);
             return result;
           });
 
