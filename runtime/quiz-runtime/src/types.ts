@@ -20,6 +20,33 @@ export type SubEl =
       kindOf: "single" | "multi";
       layout: "list" | "cards" | "image_cards";
       options: QuestionOption[];
+      /** If present, the picked option's label is stored as variables[variable]
+       *  so later title/text can reference it with {variable}. */
+      variable?: string;
+    }
+  | {
+      id: string;
+      kind: "text_input";
+      variable: string;
+      placeholder?: string;
+      inputType?: "text" | "number" | "date";
+      min?: number;
+      max?: number;
+    }
+  | {
+      id: string;
+      kind: "range_slider";
+      variable: string;
+      min: number;
+      max: number;
+      step?: number;
+      initial?: number;
+      unit?: string;
+    }
+  | {
+      id: string;
+      kind: "testimonial_slider";
+      items: { name: string; text: string; avatar?: string; rating?: number }[];
     }
   | { id: string; kind: "image"; url: string; alt: string }
   | { id: string; kind: "custom_html"; html: string }

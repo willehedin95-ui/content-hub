@@ -43,6 +43,34 @@ function subElToHtml(el: SubEl): string {
         `<div data-quiz-el="loading" data-quiz-el-id="${el.id}"` +
         ` data-quiz-seconds="${el.seconds}" data-quiz-style="${escapeAttr(el.style)}">${escapeHtml(el.text)}</div>`
       );
+
+    case "text_input":
+      return (
+        `<div data-quiz-el="text_input" data-quiz-el-id="${el.id}"` +
+        ` data-quiz-variable="${escapeAttr(el.variable)}"` +
+        ` data-quiz-input-type="${el.inputType ?? "text"}"` +
+        (el.placeholder ? ` data-quiz-placeholder="${escapeAttr(el.placeholder)}"` : "") +
+        `></div>`
+      );
+
+    case "range_slider":
+      return (
+        `<div data-quiz-el="range_slider" data-quiz-el-id="${el.id}"` +
+        ` data-quiz-variable="${escapeAttr(el.variable)}"` +
+        ` data-quiz-min="${el.min}" data-quiz-max="${el.max}"` +
+        (el.step != null ? ` data-quiz-step="${el.step}"` : "") +
+        (el.initial != null ? ` data-quiz-initial="${el.initial}"` : "") +
+        (el.unit ? ` data-quiz-unit="${escapeAttr(el.unit)}"` : "") +
+        `></div>`
+      );
+
+    case "testimonial_slider": {
+      const itemsJson = JSON.stringify(el.items).replace(/'/g, "&#39;");
+      return (
+        `<div data-quiz-el="testimonial_slider" data-quiz-el-id="${el.id}"` +
+        ` data-quiz-items='${itemsJson}'></div>`
+      );
+    }
   }
 }
 

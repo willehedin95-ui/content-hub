@@ -49,6 +49,9 @@ export function App({ data, settings, config }: AppProps) {
   const [variantAssignments, setVariantAssignments] = useState<Record<string, string>>({});
   const [stepIndex, setStepIndex] = useState(0);
   const [previewToast, setPreviewToast] = useState<string | null>(null);
+  // User answers keyed by variable name; used for {varName} interpolation in
+  // downstream title/text content.
+  const [variables, setVariables] = useState<Record<string, string>>({});
   const bufferRef = useRef<EventBuffer | null>(null);
   const sessionInitialized = useRef(false);
 
@@ -162,6 +165,17 @@ export function App({ data, settings, config }: AppProps) {
     (questionElId: string, optionId: string) => {
       if (!currentNode || currentNode.kind !== "step") return;
 
+      // Capture answer as variable if this question declares one
+      const q = currentNode.subEls.find(
+        (el) => el.id === questionElId && el.kind === "question",
+      );
+      if (q && q.kind === "question" && q.variable) {
+        const picked = q.options.find((o) => o.id === optionId);
+        if (picked) {
+          setVariables((prev) => ({ ...prev, [q.variable!]: picked.label }));
+        }
+      }
+
       if (!config.preview) {
         bufferRef.current?.push({
           event_type: "answer",
@@ -183,6 +197,13 @@ export function App({ data, settings, config }: AppProps) {
     },
     [currentNode, data, variantAssignments, navigateTo],
   );
+
+  // Capture a free-text / numeric / range value without navigating — useful
+  // for text_input / range_slider elements that don't move the flow on their
+  // own (the step's Continue button handles navigation).
+  const handleVariableChange = useCallback((variable: string, value: string) => {
+    setVariables((prev) => ({ ...prev, [variable]: value }));
+  }, []);
 
   const handleLoadingComplete = useCallback(() => {
     if (!currentNode || currentNode.kind !== "step") return;
@@ -374,6 +395,8 @@ export function App({ data, settings, config }: AppProps) {
           captureAtStepId={captureStepId}
           market={config.market}
           onContinue={handleContinue}
+          variables={variables}
+          onVariableChange={handleVariableChange}
         />
       </div>
     </div>

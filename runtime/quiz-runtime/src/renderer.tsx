@@ -37,18 +37,54 @@ function stripStylesAndClasses(root: HTMLElement | null): void {
 }
 
 // ---------------------------------------------------------------------------
+// Variable interpolation: {varName} in editor-controlled strings gets replaced
+// with the matching value from the runtime's variables map. Escapes HTML on
+// the injected value so a weird imported answer can't break attribute context.
+// Unknown vars are left as-is so authors can spot missing captures.
+// ---------------------------------------------------------------------------
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function interpolate(
+  text: string,
+  variables: Record<string, string> | undefined,
+): string {
+  if (!variables || !text.includes("{")) return text;
+  return text.replace(/\{([a-zA-Z_][\w]*)\}/g, (m, name) => {
+    const v = variables[name];
+    if (v == null) return m;
+    return escapeHtml(v);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Individual SubEl renderers
 // ---------------------------------------------------------------------------
 
-function TitleEl({ el }: { el: Extract<SubEl, { kind: "title" }> }) {
+function TitleEl({
+  el,
+  variables,
+}: {
+  el: Extract<SubEl, { kind: "title" }>;
+  variables?: Record<string, string>;
+}) {
   const ref = useRef<HTMLHeadingElement>(null);
+  const rendered = interpolate(el.text, variables);
   useEffect(() => {
-    // Safe: content is editor-controlled rich text (not user input)
+    // Safe: content is editor-controlled rich text (not user input); any
+    // injected variable value is HTML-escaped by interpolate().
     if (ref.current) {
-      ref.current.innerHTML = el.text; // nosec
+      ref.current.innerHTML = rendered; // nosec
       stripStylesAndClasses(ref.current);
     }
-  }, [el.text]);
+  }, [rendered]);
   return (
     <h1
       ref={ref}
@@ -59,15 +95,23 @@ function TitleEl({ el }: { el: Extract<SubEl, { kind: "title" }> }) {
   );
 }
 
-function TextEl({ el }: { el: Extract<SubEl, { kind: "text" }> }) {
+function TextEl({
+  el,
+  variables,
+}: {
+  el: Extract<SubEl, { kind: "text" }>;
+  variables?: Record<string, string>;
+}) {
   const ref = useRef<HTMLDivElement>(null);
+  const rendered = interpolate(el.text, variables);
   useEffect(() => {
-    // Safe: content is editor-controlled rich text (not user input)
+    // Safe: content is editor-controlled rich text (not user input); any
+    // injected variable value is HTML-escaped by interpolate().
     if (ref.current) {
-      ref.current.innerHTML = el.text; // nosec
+      ref.current.innerHTML = rendered; // nosec
       stripStylesAndClasses(ref.current);
     }
-  }, [el.text]);
+  }, [rendered]);
   return (
     <div
       ref={ref}
@@ -87,6 +131,140 @@ function ImageEl({ el }: { el: Extract<SubEl, { kind: "image" }> }) {
       alt={el.alt}
       class="quiz-image"
     />
+  );
+}
+
+function TextInputEl({
+  el,
+  variables,
+  onVariableChange,
+}: {
+  el: Extract<SubEl, { kind: "text_input" }>;
+  variables?: Record<string, string>;
+  onVariableChange?: (variable: string, value: string) => void;
+}) {
+  const [value, setValue] = useState(variables?.[el.variable] ?? "");
+  useEffect(() => {
+    onVariableChange?.(el.variable, value);
+  }, [value, el.variable, onVariableChange]);
+  const inputType =
+    el.inputType === "number" ? "number" : el.inputType === "date" ? "date" : "text";
+  return (
+    <input
+      type={inputType}
+      class="quiz-text-input"
+      data-quiz-el="text_input"
+      data-quiz-el-id={el.id}
+      placeholder={el.placeholder}
+      value={value}
+      min={el.min}
+      max={el.max}
+      onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+    />
+  );
+}
+
+function RangeSliderEl({
+  el,
+  variables,
+  onVariableChange,
+}: {
+  el: Extract<SubEl, { kind: "range_slider" }>;
+  variables?: Record<string, string>;
+  onVariableChange?: (variable: string, value: string) => void;
+}) {
+  const [value, setValue] = useState<number>(
+    Number(variables?.[el.variable] ?? el.initial ?? Math.round((el.min + el.max) / 2)),
+  );
+  useEffect(() => {
+    onVariableChange?.(el.variable, String(value));
+  }, [value, el.variable, onVariableChange]);
+  const unit = el.unit ?? "";
+  const pct = ((value - el.min) / (el.max - el.min)) * 100;
+  return (
+    <div
+      class="quiz-range"
+      data-quiz-el="range_slider"
+      data-quiz-el-id={el.id}
+    >
+      <div class="quiz-range-value">
+        {value}
+        {unit && ` ${unit}`}
+      </div>
+      <input
+        type="range"
+        class="quiz-range-input"
+        min={el.min}
+        max={el.max}
+        step={el.step ?? 1}
+        value={value}
+        style={`--quiz-range-pct: ${pct}%`}
+        onInput={(e) => setValue(Number((e.target as HTMLInputElement).value))}
+      />
+      <div class="quiz-range-bounds">
+        <span>{el.min}{unit && ` ${unit}`}</span>
+        <span>{el.max}{unit && ` ${unit}`}</span>
+      </div>
+    </div>
+  );
+}
+
+function TestimonialSliderEl({
+  el,
+}: {
+  el: Extract<SubEl, { kind: "testimonial_slider" }>;
+}) {
+  const [index, setIndex] = useState(0);
+  const n = el.items.length;
+  if (n === 0) return null;
+  const item = el.items[index];
+  const next = () => setIndex((i) => (i + 1) % n);
+  const prev = () => setIndex((i) => (i - 1 + n) % n);
+  return (
+    <div
+      class="quiz-testimonial-slider"
+      data-quiz-el="testimonial_slider"
+      data-quiz-el-id={el.id}
+    >
+      <div class="quiz-testimonial-card">
+        {item.avatar && (
+          <img src={item.avatar} alt={item.name} class="quiz-testimonial-avatar" />
+        )}
+        <div class="quiz-testimonial-body">
+          <div class="quiz-testimonial-name">{item.name}</div>
+          {typeof item.rating === "number" && (
+            <div class="quiz-testimonial-rating" aria-label={`${item.rating} stars`}>
+              {"★".repeat(Math.round(item.rating))}
+              <span class="quiz-testimonial-rating-empty">
+                {"★".repeat(Math.max(0, 5 - Math.round(item.rating)))}
+              </span>
+            </div>
+          )}
+          <div class="quiz-testimonial-text">{item.text}</div>
+        </div>
+      </div>
+      {n > 1 && (
+        <div class="quiz-testimonial-nav">
+          <button type="button" class="quiz-testimonial-prev" onClick={prev} aria-label="Previous">
+            &larr;
+          </button>
+          <span class="quiz-testimonial-dots">
+            {Array.from({ length: n }, (_, i) => (
+              <button
+                key={i}
+                type="button"
+                class={`quiz-testimonial-dot${i === index ? " quiz-testimonial-dot--active" : ""}`}
+                onClick={() => setIndex(i)}
+                aria-label={`Go to testimonial ${i + 1}`}
+              />
+            ))}
+          </span>
+          <button type="button" class="quiz-testimonial-next" onClick={next} aria-label="Next">
+            &rarr;
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -305,6 +483,8 @@ export function StepRenderer({
   captureAtStepId,
   market,
   onContinue,
+  variables,
+  onVariableChange,
 }: {
   node: StepNode;
   onAnswer: (questionElId: string, optionId: string) => void;
@@ -313,6 +493,8 @@ export function StepRenderer({
   captureAtStepId: string | undefined;
   market: string | undefined;
   onContinue?: () => void;
+  variables?: Record<string, string>;
+  onVariableChange?: (variable: string, value: string) => void;
 }) {
   const hasQuestion = node.subEls.some((el) => el.kind === "question");
   const hasLoading = node.subEls.some((el) => el.kind === "loading");
@@ -323,9 +505,9 @@ export function StepRenderer({
       {node.subEls.map((el) => {
         switch (el.kind) {
           case "title":
-            return <TitleEl key={el.id} el={el} />;
+            return <TitleEl key={el.id} el={el} variables={variables} />;
           case "text":
-            return <TextEl key={el.id} el={el} />;
+            return <TextEl key={el.id} el={el} variables={variables} />;
           case "image":
             return <ImageEl key={el.id} el={el} />;
           case "custom_html":
@@ -338,6 +520,26 @@ export function StepRenderer({
             return (
               <QuestionEl key={el.id} el={el} onAnswer={onAnswer} market={market} />
             );
+          case "text_input":
+            return (
+              <TextInputEl
+                key={el.id}
+                el={el}
+                variables={variables}
+                onVariableChange={onVariableChange}
+              />
+            );
+          case "range_slider":
+            return (
+              <RangeSliderEl
+                key={el.id}
+                el={el}
+                variables={variables}
+                onVariableChange={onVariableChange}
+              />
+            );
+          case "testimonial_slider":
+            return <TestimonialSliderEl key={el.id} el={el} />;
         }
       })}
       {captureAtStepId === node.id && (
@@ -632,6 +834,127 @@ body {
 .quiz-email-error { font-size: 13px; color: #dc2626; }
 
 .quiz-continue-wrap { margin-top: 16px; }
+
+.quiz-text-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid rgb(0,0,0);
+  border-radius: 6px;
+  font-size: 16px;
+  font-family: var(--quiz-font);
+  background: var(--quiz-option-bg);
+  color: var(--quiz-text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.quiz-text-input:focus {
+  border-color: var(--quiz-brand);
+}
+.quiz-text-input::placeholder {
+  color: rgba(0,0,0,0.35);
+}
+
+.quiz-range {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 4px;
+}
+.quiz-range-value {
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--quiz-text-primary);
+}
+.quiz-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--quiz-brand) 0,
+    var(--quiz-brand) var(--quiz-range-pct, 50%),
+    rgba(0,0,0,0.1) var(--quiz-range-pct, 50%),
+    rgba(0,0,0,0.1) 100%
+  );
+  outline: none;
+}
+.quiz-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--quiz-brand);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+.quiz-range-input::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--quiz-brand);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  cursor: pointer;
+  border: none;
+}
+.quiz-range-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--quiz-text-secondary);
+}
+
+.quiz-testimonial-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quiz-testimonial-card {
+  display: flex;
+  gap: 14px;
+  background: var(--quiz-option-bg);
+  border: 2px solid rgb(0,0,0);
+  border-radius: 10px;
+  padding: 16px;
+}
+.quiz-testimonial-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.quiz-testimonial-body { flex: 1; min-width: 0; }
+.quiz-testimonial-name { font-weight: 600; font-size: 15px; color: var(--quiz-text-primary); margin-bottom: 2px; }
+.quiz-testimonial-rating { color: #f59e0b; font-size: 13px; margin-bottom: 4px; letter-spacing: 1px; }
+.quiz-testimonial-rating-empty { color: rgba(0,0,0,0.15); }
+.quiz-testimonial-text { font-size: 14px; line-height: 1.5; color: var(--quiz-text-secondary); }
+.quiz-testimonial-nav { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.quiz-testimonial-prev, .quiz-testimonial-next {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--quiz-option-bg);
+  border: 1.5px solid rgba(0,0,0,0.15);
+  color: var(--quiz-text-primary);
+  font-size: 16px;
+  cursor: pointer;
+}
+.quiz-testimonial-dots { display: flex; gap: 6px; }
+.quiz-testimonial-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.2);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.quiz-testimonial-dot--active { background: var(--quiz-brand); transform: scale(1.2); }
 
 .quiz-preview-toast {
   position: fixed;
