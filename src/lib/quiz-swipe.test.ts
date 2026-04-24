@@ -2,7 +2,7 @@
 // Tests for the pure remapClarflowIds, isHeyflowHtml, and parseHeyflowHtml helpers — no network, no browser.
 
 import { describe, it, expect } from "vitest";
-import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml } from "./quiz-swipe";
+import { remapClarflowIds, isHeyflowHtml, parseHeyflowHtml, pruneEmptySteps } from "./quiz-swipe";
 import type { ClarflowData, ClarflowStepNode } from "./quiz-swipe";
 
 // ---------------------------------------------------------------------------
@@ -364,6 +364,133 @@ describe("remapClarflowIds", () => {
     for (const edge of Object.values(result.edges)) {
       expect(Object.keys(result.nodes)).toContain(edge.to);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pruneEmptySteps unit tests (pure function, no network/browser needed)
+// ---------------------------------------------------------------------------
+
+import type { QuizData, QuizNode, StepNode } from "@/types/quiz";
+
+function makeLinearQuizData(
+  stepCount: number,
+  emptyIndices: Set<number> = new Set(),
+): QuizData {
+  const startId = "start_test";
+  const exitId = "exit_test";
+  const stepIds = Array.from({ length: stepCount }, (_, i) => `step_test_${i}`);
+
+  const nodes: Record<string, QuizNode> = {
+    [startId]: { id: startId, kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } },
+    [exitId]: { id: exitId, kind: "exit", name: "Exit", size: { width: 180, height: 80 }, position: { x: 9999, y: 0 }, redirectUrl: "" },
+  };
+  for (let i = 0; i < stepCount; i++) {
+    const sid = stepIds[i];
+    const stepNode: StepNode = {
+      id: sid,
+      kind: "step",
+      name: `Step ${i + 1}`,
+      size: { width: 280, height: 360 },
+      position: { x: 300 + i * 320, y: 200 },
+      rotation: 0,
+      subEls: emptyIndices.has(i)
+        ? []
+        : [{ id: `el_test_${i}`, kind: "title", text: `Title ${i}`, isRichText: true, contentFormat: "html" }],
+    };
+    nodes[sid] = stepNode;
+  }
+
+  const edges: Record<string, import("@/types/quiz").QuizEdge> = {};
+  let edgeSeq = 0;
+  const addEdge = (from: string, to: string) => {
+    const eid = `edge_test_${edgeSeq++}`;
+    edges[eid] = { id: eid, from, to, condition: { kind: "default" } };
+  };
+  addEdge(startId, stepIds[0]);
+  for (let i = 0; i < stepCount - 1; i++) addEdge(stepIds[i], stepIds[i + 1]);
+  addEdge(stepIds[stepCount - 1], exitId);
+
+  return { id: "quiz_test", nodes, edges, camera: { x: 0, y: 0, z: 1 } };
+}
+
+describe("pruneEmptySteps", () => {
+  it("returns data unchanged when no empty steps exist", () => {
+    const data = makeLinearQuizData(3);
+    const { data: result, warnings } = pruneEmptySteps(data, []);
+    const steps = Object.values(result.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(3);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("removes a middle empty step and bridges edges", () => {
+    // step0 (content) -> step1 (empty) -> step2 (content)
+    const data = makeLinearQuizData(3, new Set([1]));
+    const { data: result, warnings } = pruneEmptySteps(data, []);
+
+    const steps = Object.values(result.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2);
+
+    const step0Id = "step_test_0";
+    const step2Id = "step_test_2";
+    const edges = Object.values(result.edges);
+
+    // Direct bridge edge step0 -> step2 should exist
+    const bridge = edges.find((e) => e.from === step0Id && e.to === step2Id);
+    expect(bridge).toBeDefined();
+
+    // The empty step1 must not appear in nodes
+    expect(result.nodes["step_test_1"]).toBeUndefined();
+
+    // Warning message should mention 1 removed screen
+    expect(warnings.some((w) => w.includes("1") && w.includes("empty"))).toBe(true);
+  });
+
+  it("removes the first step when it is empty", () => {
+    // step0 (empty) -> step1 (content) -> step2 (content)
+    const data = makeLinearQuizData(3, new Set([0]));
+    const { data: result } = pruneEmptySteps(data, []);
+    const steps = Object.values(result.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2);
+    expect(result.nodes["step_test_0"]).toBeUndefined();
+    // start -> step1 bridge should exist
+    const edges = Object.values(result.edges);
+    expect(edges.some((e) => e.from === "start_test" && e.to === "step_test_1")).toBe(true);
+  });
+
+  it("keeps steps that have a variantGroupId even when subEls is empty", () => {
+    const data = makeLinearQuizData(2, new Set([0]));
+    // Give step0 a variantGroupId so it should NOT be pruned
+    const step0 = data.nodes["step_test_0"] as StepNode;
+    (step0 as StepNode & { variantGroupId: string }).variantGroupId = "vg_test";
+
+    const { data: result } = pruneEmptySteps(data, []);
+    const steps = Object.values(result.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2); // step0 preserved because it has variantGroupId
+    expect(result.nodes["step_test_0"]).toBeDefined();
+  });
+
+  it("does not create duplicate edges when multiple empty steps are adjacent", () => {
+    // step0 (content) -> step1 (empty) -> step2 (empty) -> step3 (content)
+    const data = makeLinearQuizData(4, new Set([1, 2]));
+    const { data: result } = pruneEmptySteps(data, []);
+
+    const steps = Object.values(result.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2);
+
+    const edges = Object.values(result.edges);
+    // Count edges from step0 to step3 — should be exactly 1, not duplicated
+    const bridgeEdges = edges.filter(
+      (e) => e.from === "step_test_0" && e.to === "step_test_3",
+    );
+    expect(bridgeEdges).toHaveLength(1);
+  });
+
+  it("adds a single warning message with correct count for multiple removed steps", () => {
+    const data = makeLinearQuizData(5, new Set([1, 3]));
+    const { warnings } = pruneEmptySteps(data, []);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/2.*empty/i);
   });
 });
 
@@ -781,7 +908,8 @@ describe("parseHeyflowHtml", () => {
     expect(warnings.some((w) => w.includes("no images"))).toBe(false);
   });
 
-  it("empty photo-carousel produces no subEls and a warning, never custom_html", () => {
+  it("empty photo-carousel produces a warning and the step is pruned (no subEls left, so step is removed)", () => {
+    // A screen containing ONLY an empty carousel → no subEls → step gets pruned by pruneEmptySteps.
     const htmlWithEmptyCarousel = `<!DOCTYPE html>
 <html><head><meta name="generator" content="Heyflow"><title>Empty Carousel</title></head>
 <body>
@@ -794,17 +922,13 @@ describe("parseHeyflowHtml", () => {
 </body></html>`;
 
     const { data, warnings } = parseHeyflowHtml(htmlWithEmptyCarousel);
+    // The empty step is pruned — no steps remain
     const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
-    expect(steps).toHaveLength(1);
-    const step = steps[0];
-    if (!step || step.kind !== "step") throw new Error("no step");
-    // No subEls from the empty carousel
-    expect(step.subEls).toHaveLength(0);
-    // Must not emit custom_html
-    const customEls = step.subEls.filter((e) => e.kind === "custom_html");
-    expect(customEls).toHaveLength(0);
-    // Must emit the "no images" warning
+    expect(steps).toHaveLength(0);
+    // Must emit the "no images" warning from photo-carousel handler
     expect(warnings.some((w) => w.includes("no images"))).toBe(true);
+    // Must also emit the "removed empty screens" warning from pruneEmptySteps
+    expect(warnings.some((w) => w.toLowerCase().includes("removed") && w.includes("empty"))).toBe(true);
   });
 
   it("photo-carousel deduplicates repeated image URLs", () => {
@@ -830,5 +954,103 @@ describe("parseHeyflowHtml", () => {
     const urls = imageEls.map((e) => (e.kind === "image" ? e.url : ""));
     expect(urls).toContain("https://example.com/x.jpg");
     expect(urls).toContain("https://example.com/y.jpg");
+  });
+
+  // ---------------------------------------------------------------------------
+  // pruneEmptySteps integration: middle screen with only generic-button + progress-bar
+  // ---------------------------------------------------------------------------
+
+  it("middle screen with only generic-button + progress-bar is pruned: 2 steps, single edge from screen1 to screen3", () => {
+    // 3 screens: screen1 (rich-text + multiple-choice), screen2 (only skipped blocks),
+    // screen3 (rich-text + image)
+    const htmlWithEmptyMiddle = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="generator" content="Heyflow" />
+  <title>Empty Middle Screen Quiz</title>
+</head>
+<body>
+  <!-- Screen 1: has real content -->
+  <section name="screen-111111aa" id="screen-111111aa">
+    <div class="block" data-blocktype="rich-text" data-blockid="id-rt-s1">
+      <div data-block-id="id-rt-s1"
+           data-config='{"blockType":"rich-text","content":"<h2>Question 1</h2>"}'>
+      </div>
+    </div>
+    <div class="block" data-blocktype="multiple-choice" data-blockid="id-mc-s1">
+      <div data-block-id="id-mc-s1"
+           data-config='{"blockType":"multiple-choice","options":[{"label":"Yes","id":"opt-yes"},{"label":"No","id":"opt-no"}],"multiselect":false}'>
+        <input type="radio" data-destination="next" />
+        <input type="radio" data-destination="next" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Screen 2: ONLY skipped blocks → should be pruned -->
+  <section name="screen-222222bb" id="screen-222222bb">
+    <div class="block" data-blocktype="generic-button" data-blockid="id-btn-s2">
+      <div data-block-id="id-btn-s2" data-config='{"blockType":"generic-button","label":"Continue"}'></div>
+    </div>
+    <div class="block" data-blocktype="progress-bar" data-blockid="id-pb-s2">
+      <div data-block-id="id-pb-s2" data-config='{"blockType":"progress-bar","value":50}'></div>
+    </div>
+  </section>
+
+  <!-- Screen 3: has real content -->
+  <section name="screen-333333cc" id="screen-333333cc">
+    <div class="block" data-blocktype="rich-text" data-blockid="id-rt-s3">
+      <div data-block-id="id-rt-s3"
+           data-config='{"blockType":"rich-text","content":"<h2>Screen 3</h2>"}'>
+      </div>
+    </div>
+    <div class="block" data-blocktype="image" data-blockid="id-img-s3">
+      <div data-block-id="id-img-s3"
+           data-config='{"blockType":"image","url":"https://example.com/s3.jpg","alt":"Screen 3 image"}'>
+      </div>
+    </div>
+  </section>
+</body>
+</html>`;
+
+    const { data, warnings } = parseHeyflowHtml(htmlWithEmptyMiddle);
+
+    // Should have exactly 2 step nodes after pruning
+    const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+    expect(steps).toHaveLength(2);
+
+    // Neither step should be empty
+    for (const step of steps) {
+      if (step.kind !== "step") continue;
+      expect(step.subEls.length).toBeGreaterThan(0);
+    }
+
+    // There should be a direct edge from screen1's step to screen3's step
+    // (the middle empty screen was bridged out)
+    const stepIds = steps.map((s) => s.id);
+    const edges = Object.values(data.edges);
+
+    // The two steps should be connected: find an edge from stepId[0] to stepId[1]
+    // (they are in DOM order: screen1 then screen3)
+    const screen1Step = steps.find((s) => s.kind === "step" && s.subEls.some((e) => e.kind === "question"))!;
+    const screen3Step = steps.find((s) => s.kind === "step" && s.subEls.some((e) => e.kind === "image"))!;
+    expect(screen1Step).toBeDefined();
+    expect(screen3Step).toBeDefined();
+
+    const bridgeEdge = edges.find(
+      (e) => e.from === screen1Step.id && e.to === screen3Step.id,
+    );
+    expect(bridgeEdge).toBeDefined();
+
+    // A warning about removed screens should be present
+    expect(warnings.some((w) => w.toLowerCase().includes("removed") && w.includes("empty"))).toBe(true);
+    expect(warnings.some((w) => w.includes("1"))).toBe(true);
+
+    // All node ids still in internal format
+    for (const id of Object.keys(data.nodes)) {
+      expect(id).toMatch(HEYFLOW_ID_PATTERN);
+    }
+
+    void stepIds; // suppress unused var lint
   });
 });

@@ -229,6 +229,86 @@ export function remapClarflowIds(cf: ClarflowData): QuizData {
 }
 
 // ---------------------------------------------------------------------------
+// pruneEmptySteps — remove step nodes with no subEls (and no variantGroupId)
+// Pure function: returns updated { data, warnings }.
+// For each empty step, incoming edges are re-wired directly to outgoing
+// targets, preserving conditions from the incoming edge.
+// ---------------------------------------------------------------------------
+
+export function pruneEmptySteps(
+  data: QuizData,
+  warnings: string[]
+): { data: QuizData; warnings: string[] } {
+  const edges = Object.values(data.edges);
+
+  // Find empty, non-variant step nodes
+  const emptyStepIds = new Set(
+    Object.values(data.nodes)
+      .filter(
+        (n): n is StepNode =>
+          n.kind === "step" &&
+          n.subEls.length === 0 &&
+          !n.variantGroupId,
+      )
+      .map((n) => n.id),
+  );
+
+  if (emptyStepIds.size === 0) {
+    return { data, warnings };
+  }
+
+  const newNodes: Record<string, QuizNode> = { ...data.nodes };
+  const newEdges: Record<string, QuizEdge> = { ...data.edges };
+
+  // Existing edge set for duplicate detection: "from:to" strings
+  const existingPairs = new Set(edges.map((e) => `${e.from}:${e.to}`));
+
+  for (const emptyId of emptyStepIds) {
+    const incomingEdges = Object.values(newEdges).filter(
+      (e) => e.to === emptyId,
+    );
+    const outgoingEdges = Object.values(newEdges).filter(
+      (e) => e.from === emptyId,
+    );
+
+    // For each (incoming, outgoing) pair, create a bridge edge
+    for (const incoming of incomingEdges) {
+      for (const outgoing of outgoingEdges) {
+        const pairKey = `${incoming.from}:${outgoing.to}`;
+        if (!existingPairs.has(pairKey)) {
+          const bridgeId = newId("edge");
+          newEdges[bridgeId] = {
+            id: bridgeId,
+            from: incoming.from,
+            to: outgoing.to,
+            // Preserve condition from the incoming edge
+            condition: incoming.condition ?? { kind: "default" },
+          };
+          existingPairs.add(pairKey);
+        }
+      }
+    }
+
+    // Delete the empty step and all its edges
+    delete newNodes[emptyId];
+    for (const e of [...incomingEdges, ...outgoingEdges]) {
+      delete newEdges[e.id];
+      existingPairs.delete(`${e.from}:${e.to}`);
+    }
+  }
+
+  const updatedWarnings = [
+    ...warnings,
+    `Removed ${emptyStepIds.size} empty screen${emptyStepIds.size === 1 ? "" : "s"} that had no content`,
+  ];
+
+  return {
+    data: { ...data, nodes: newNodes, edges: newEdges },
+    warnings: updatedWarnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // remapSubEls — assign new ids to every subEl and its options
 // ---------------------------------------------------------------------------
 
@@ -955,12 +1035,17 @@ export function parseHeyflowHtml(html: string): {
     };
   }
 
-  const quizData: QuizData = {
+  let quizData: QuizData = {
     id: `quiz_${Date.now().toString(36)}`,
     nodes,
     edges,
     camera: { x: 0, y: 0, z: 1 },
   };
+
+  // Prune screens that only contained skipped blocks (generic-button, progress-bar)
+  const pruned = pruneEmptySteps(quizData, warnings);
+  quizData = pruned.data;
+  warnings.splice(0, warnings.length, ...pruned.warnings);
 
   // Build settings
   const defaults = buildDefaultSettings();
