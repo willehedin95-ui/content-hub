@@ -32,7 +32,8 @@ Return a JSON object of shape:
     "background": string,                       // hex, e.g. "#FFFFFF"
     "textPrimary": string,
     "primaryBrand": string,                     // main accent color (buttons, highlights)
-    "optionBackground": string                  // card/option background
+    "optionBackground": string,                 // card/option background
+    "optionBorder"?: string                     // outline color on unselected option cards - hex OR rgba like "rgba(0,0,0,0.1)". Leave blank if cards have no visible border (rely on shadow).
   },
   "steps": [
     {
@@ -104,6 +105,7 @@ export async function importVideoQuiz(
       textPrimary?: string;
       primaryBrand?: string;
       optionBackground?: string;
+      optionBorder?: string;
     };
     steps?: VideoStep[];
   };
@@ -180,11 +182,27 @@ export async function importVideoQuiz(
         const useDropdown = opts.length >= 15;
         const withImageDesc = opts.filter((o) => o.imageDescription && o.imageDescription.trim()).length;
         const useImageCards = !useDropdown && withImageDesc >= opts.length * 0.6;
+        const avgLen = opts.reduce((a, o) => a + o.label.length, 0) / opts.length;
+        // Multi-select with short labels -> chips (matches Woofz/Noom style)
+        const useChips =
+          !useDropdown &&
+          !useImageCards &&
+          s.questionType === "multi" &&
+          opts.length >= 3 &&
+          opts.length <= 14 &&
+          avgLen <= 22;
+        const layout: "dropdown" | "image_cards" | "chips" | "list" = useDropdown
+          ? "dropdown"
+          : useImageCards
+          ? "image_cards"
+          : useChips
+          ? "chips"
+          : "list";
         subEls.push({
           id: newId("el"),
           kind: "question",
           kindOf: s.questionType,
-          layout: useDropdown ? "dropdown" : useImageCards ? "image_cards" : "list",
+          layout,
           options: opts.map((o) => ({
             id: newId("opt"),
             label: o.label,
@@ -262,6 +280,8 @@ export async function importVideoQuiz(
       settings.brandColors.primaryBrand = parsed.brandColors.primaryBrand!;
     if (isHexColor(parsed.brandColors.optionBackground))
       settings.brandColors.optionBackground = parsed.brandColors.optionBackground!;
+    if (isValidCssColor(parsed.brandColors.optionBorder))
+      settings.brandColors.optionBorder = parsed.brandColors.optionBorder!;
   }
   const quizName = opts.name ?? parsed.title ?? "Imported video quiz";
   settings.metadata.title = quizName;
@@ -339,6 +359,14 @@ export async function uploadVideoToStorage(
 
 function isHexColor(v: string | undefined): v is string {
   return typeof v === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
+}
+
+function isValidCssColor(v: string | undefined): v is string {
+  if (!v || typeof v !== "string") return false;
+  const trimmed = v.trim();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) return true;
+  // Accept rgba/rgb/hsl for softer borders
+  return /^(rgb|rgba|hsl|hsla)\([\d\s.,%/-]+\)$/i.test(trimmed);
 }
 
 function escapeHtml(s: string): string {

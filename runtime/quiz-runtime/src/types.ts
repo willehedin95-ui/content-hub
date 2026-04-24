@@ -19,7 +19,7 @@ export type SubEl =
       id: string;
       kind: "question";
       kindOf: "single" | "multi";
-      layout: "list" | "cards" | "image_cards" | "dropdown";
+      layout: "list" | "cards" | "image_cards" | "chips" | "dropdown";
       options: QuestionOption[];
       /** If present, the picked option's label is stored as variables[variable]
        *  so later title/text can reference it with {variable}. */
@@ -101,6 +101,16 @@ export type QuizSettings = {
     textSecondary: string;
     primaryBrand: string;
     optionBackground: string;
+    optionBorder?: string;
+    optionSelectedBg?: string;
+  };
+  design?: {
+    optionRadius?: string;
+    optionPadding?: string;
+    optionBorderWidth?: string;
+    ctaRadius?: string;
+    ctaPadding?: string;
+    stepGap?: string;
   };
   fontSettings: { enabled: boolean; fontFamily: string };
   progressBar: boolean;

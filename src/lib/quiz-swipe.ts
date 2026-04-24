@@ -2509,11 +2509,22 @@ export async function importLlmQuiz(
       if (opts.length >= 2) {
         const hasImg = opts.filter((o) => o.imageUrl).length >= opts.length / 2;
         const useDropdown = opts.length >= 15;
+        const avgLen = opts.reduce((a, o) => a + o.label.length, 0) / opts.length;
+        const useChips =
+          !useDropdown && !hasImg && s.questionType === "multi" &&
+          opts.length >= 3 && opts.length <= 14 && avgLen <= 22;
+        const layout: "dropdown" | "image_cards" | "chips" | "list" = useDropdown
+          ? "dropdown"
+          : hasImg
+          ? "image_cards"
+          : useChips
+          ? "chips"
+          : "list";
         subEls.push({
           id: newId("el"),
           kind: "question",
           kindOf: s.questionType,
-          layout: useDropdown ? "dropdown" : hasImg ? "image_cards" : "list",
+          layout,
           options: opts.map((o) => ({
             id: newId("opt"),
             label: o.label,

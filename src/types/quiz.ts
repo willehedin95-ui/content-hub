@@ -52,7 +52,7 @@ export type SubEl =
       id: string;
       kind: "question";
       kindOf: "single" | "multi";
-      layout: "list" | "cards" | "image_cards" | "dropdown";
+      layout: "list" | "cards" | "image_cards" | "chips" | "dropdown";
       options: QuestionOption[];
       variable?: string;
       searchable?: boolean;
@@ -101,6 +101,22 @@ export type QuizSettings = {
     textSecondary: string;
     primaryBrand: string;
     optionBackground: string;
+    /** Option outline color. Default `rgba(107, 114, 128, 0.3)` (Clarflow
+     *  neutral). Swiped quizzes can set this to match the source. */
+    optionBorder?: string;
+    /** Optional override for the tinted fill applied when an option is
+     *  selected. Default is derived from primaryBrand at 10% alpha. */
+    optionSelectedBg?: string;
+  };
+  /** Visual tokens that control option / CTA shape + spacing. Match
+   *  Clarflow's defaults out of the box; importers can override per quiz. */
+  design?: {
+    optionRadius?: string;        // default "16px"
+    optionPadding?: string;       // default "16px"
+    optionBorderWidth?: string;   // default "2px"
+    ctaRadius?: string;           // default "12px"
+    ctaPadding?: string;          // default "16px 40px"
+    stepGap?: string;             // default "20px"
   };
   fontSettings: { enabled: boolean; fontFamily: string };
   progressBar: boolean;
