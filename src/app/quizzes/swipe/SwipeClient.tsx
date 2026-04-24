@@ -1,30 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Download, ArrowRight, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { Download, ArrowRight, AlertCircle, CheckCircle2, RefreshCw, Video, Link as LinkIcon, Upload } from "lucide-react";
 import { AdaptPanel } from "@/components/quiz-builder/AdaptPanel";
 
 type Market = "se" | "dk" | "no";
 
 type SwipeResult = {
   quizId: string;
-  method: "clarflow" | "heyflow" | "generic";
+  method: "clarflow" | "heyflow" | "nextjs" | "generic" | "llm";
   importedSteps: number;
   warnings: string[];
 };
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "progress"; step: number }
+  | { kind: "progress"; step: number; mode: "url" | "video" }
   | { kind: "success"; result: SwipeResult }
   | { kind: "error"; message: string };
 
-const PROGRESS_STEPS = [
-  "Launching browser...",
-  "Extracting quiz data...",
-  "Re-hosting images...",
+const URL_PROGRESS_STEPS = [
+  "Fetching page / launching browser...",
+  "Detecting quiz platform...",
+  "Extracting steps + re-hosting images...",
   "Creating quiz draft...",
+];
+
+const VIDEO_PROGRESS_STEPS = [
+  "Uploading video to storage...",
+  "Sending video to Gemini...",
+  "Gemini is watching the recording...",
+  "Building quiz from extracted steps...",
 ];
 
 const MARKET_OPTIONS: { value: Market; label: string }[] = [
@@ -35,27 +42,29 @@ const MARKET_OPTIONS: { value: Market; label: string }[] = [
 
 export function SwipeClient() {
   const router = useRouter();
+  const [mode, setMode] = useState<"url" | "video">("url");
   const [url, setUrl] = useState("");
   const [market, setMarket] = useState<Market>("se");
   const [name, setName] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
 
-  async function startImport() {
+  const currentSteps = mode === "video" ? VIDEO_PROGRESS_STEPS : URL_PROGRESS_STEPS;
+
+  async function startUrlImport() {
     if (!url.trim()) return;
-
-    setPhase({ kind: "progress", step: 0 });
-
-    // Simulate progress steps visually while the single API call runs.
-    // The steps are an approximation of what happens server-side.
+    setPhase({ kind: "progress", step: 0, mode: "url" });
     const progressTimer = setInterval(() => {
       setPhase((prev) => {
         if (prev.kind !== "progress") return prev;
         const next = prev.step + 1;
-        if (next >= PROGRESS_STEPS.length - 1) {
+        if (next >= URL_PROGRESS_STEPS.length - 1) {
           clearInterval(progressTimer);
-          return { kind: "progress", step: PROGRESS_STEPS.length - 1 };
+          return { kind: "progress", step: URL_PROGRESS_STEPS.length - 1, mode: "url" };
         }
-        return { kind: "progress", step: next };
+        return { kind: "progress", step: next, mode: "url" };
       });
     }, 3000);
 
@@ -65,28 +74,81 @@ export function SwipeClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim(), market, name: name.trim() || undefined }),
       });
-
       clearInterval(progressTimer);
-
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string };
+        const body = (await res.json().catch(() => ({ error: "Unknown error" }))) as { error?: string };
         setPhase({ kind: "error", message: body.error ?? `HTTP ${res.status}` });
         return;
       }
-
       const result = (await res.json()) as SwipeResult;
       setPhase({ kind: "success", result });
     } catch (err) {
       clearInterval(progressTimer);
-      const message = err instanceof Error ? err.message : "Unexpected error";
-      setPhase({ kind: "error", message });
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Unexpected error" });
+    }
+  }
+
+  async function startVideoImport() {
+    if (!videoFile) return;
+    setPhase({ kind: "progress", step: 0, mode: "video" });
+    const progressTimer = setInterval(() => {
+      setPhase((prev) => {
+        if (prev.kind !== "progress") return prev;
+        const next = prev.step + 1;
+        if (next >= VIDEO_PROGRESS_STEPS.length - 1) {
+          clearInterval(progressTimer);
+          return { kind: "progress", step: VIDEO_PROGRESS_STEPS.length - 1, mode: "video" };
+        }
+        return { kind: "progress", step: next, mode: "video" };
+      });
+    }, 15000);
+
+    try {
+      const fd = new FormData();
+      fd.append("video", videoFile);
+      fd.append("market", market);
+      if (name.trim()) fd.append("name", name.trim());
+
+      const res = await fetch("/api/quiz/swipe-video", { method: "POST", body: fd });
+      clearInterval(progressTimer);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({ error: "Unknown error" }))) as { error?: string };
+        setPhase({ kind: "error", message: body.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      const result = (await res.json()) as SwipeResult;
+      setPhase({ kind: "success", result });
+    } catch (err) {
+      clearInterval(progressTimer);
+      setPhase({ kind: "error", message: err instanceof Error ? err.message : "Unexpected error" });
     }
   }
 
   function reset() {
     setUrl("");
     setName("");
+    setVideoFile(null);
     setPhase({ kind: "idle" });
+  }
+
+  function handleFilePicked(f: File | undefined) {
+    if (!f) return;
+    if (!f.type.startsWith("video/")) {
+      setPhase({ kind: "error", message: `Not a video file: ${f.type}` });
+      return;
+    }
+    const MAX = 50 * 1024 * 1024;
+    if (f.size > MAX) {
+      setPhase({ kind: "error", message: `Video too large (${Math.round(f.size / 1024 / 1024)} MB). Max 50 MB.` });
+      return;
+    }
+    setVideoFile(f);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    handleFilePicked(e.dataTransfer.files[0]);
   }
 
   const isLoading = phase.kind === "progress";
@@ -98,86 +160,160 @@ export function SwipeClient() {
         <Download className="w-5 h-5 text-indigo-600" />
         <h1 className="text-2xl font-semibold text-gray-900">Import Quiz</h1>
       </div>
-      <p className="text-sm text-gray-500 mb-8 -mt-4">
-        Paste a competitor quiz URL to import it as an editable draft. Clarflow quizzes are
-        imported in seconds; other quiz platforms use a browser-based scraper.
+      <p className="text-sm text-gray-500 mb-6 -mt-4">
+        Swipe a competitor quiz either from a URL or from a screen-recording of the onboarding.
       </p>
 
-      {/* Form */}
       {(phase.kind === "idle" || phase.kind === "error") && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Quiz URL
-            </label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.clarflow.com/my-quiz"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
+        <>
+          {/* Mode tabs */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-6 w-fit">
+            <button
+              onClick={() => setMode("url")}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === "url" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
               disabled={isLoading}
-            />
+            >
+              <LinkIcon className="w-4 h-4" />
+              URL
+            </button>
+            <button
+              onClick={() => setMode("video")}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === "video" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+              disabled={isLoading}
+            >
+              <Video className="w-4 h-4" />
+              Video
+            </button>
           </div>
 
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Market</label>
-              <select
-                value={market}
-                onChange={(e) => setMarket(e.target.value as Market)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                disabled={isLoading}
-              >
-                {MARKET_OPTIONS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Name <span className="font-normal text-gray-400">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="My imported quiz"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-
-          {phase.kind === "error" && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div className="space-y-4">
+            {mode === "url" ? (
               <div>
-                <p className="font-medium">Import failed</p>
-                <p className="mt-0.5 text-red-600">{phase.message}</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quiz URL</label>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://example.clarflow.com/my-quiz"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Works with Clarflow, Heyflow, Next.js funnels, step-carousel SPAs, and more.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Screen recording of the onboarding
+                </label>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                    isDragOver
+                      ? "border-indigo-500 bg-indigo-50"
+                      : videoFile
+                      ? "border-green-400 bg-green-50"
+                      : "border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm"
+                    className="hidden"
+                    onChange={(e) => handleFilePicked(e.target.files?.[0])}
+                  />
+                  {videoFile ? (
+                    <>
+                      <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-gray-900">{videoFile.name}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {(videoFile.size / 1024 / 1024).toFixed(1)} MB - click to replace
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-gray-700">
+                        Click to select or drop a screen recording
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        mp4, mov, or webm - up to 50 MB
+                      </p>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Tip: on iOS use Control Center &rarr; Screen Record. Walk through the full
+                  onboarding, tapping options calmly so every screen is visible.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Market</label>
+                <select
+                  value={market}
+                  onChange={(e) => setMarket(e.target.value as Market)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  disabled={isLoading}
+                >
+                  {MARKET_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My imported quiz"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
+                  disabled={isLoading}
+                />
               </div>
             </div>
-          )}
 
-          <button
-            onClick={startImport}
-            disabled={!url.trim() || isLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Start Import
-          </button>
-        </div>
+            {phase.kind === "error" && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Import failed</p>
+                  <p className="mt-0.5 text-red-600">{phase.message}</p>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={mode === "url" ? startUrlImport : startVideoImport}
+              disabled={isLoading || (mode === "url" ? !url.trim() : !videoFile)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {mode === "url" ? <Download className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+              Start Import
+            </button>
+          </div>
+        </>
       )}
 
       {/* Progress */}
       {phase.kind === "progress" && (
         <div className="space-y-4">
           <div className="flex flex-col gap-2">
-            {PROGRESS_STEPS.map((label, idx) => {
+            {currentSteps.map((label, idx) => {
               const isActive = idx === phase.step;
               const isDone = idx < phase.step;
               return (
@@ -204,7 +340,9 @@ export function SwipeClient() {
             })}
           </div>
           <p className="text-xs text-gray-400">
-            This can take up to 2-3 minutes for complex quizzes.
+            {phase.mode === "video"
+              ? "Video extraction usually takes 2-4 minutes depending on length."
+              : "This can take up to 2-3 minutes for complex quizzes."}
           </p>
         </div>
       )}
@@ -220,9 +358,7 @@ export function SwipeClient() {
                 Imported{" "}
                 <span className="font-semibold">{phase.result.importedSteps} steps</span> using{" "}
                 <span className="font-semibold capitalize">{phase.result.method}</span> method.
-                {phase.result.warnings.length > 0 && (
-                  <> Some warnings - see below.</>
-                )}
+                {phase.result.warnings.length > 0 && <> Some warnings - see below.</>}
               </p>
             </div>
           </div>
@@ -260,7 +396,6 @@ export function SwipeClient() {
             </button>
           </div>
 
-          {/* AI Adaptation section */}
           <AdaptPanel
             quizId={phase.result.quizId}
             targetMarket={market}
