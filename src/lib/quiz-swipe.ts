@@ -644,6 +644,43 @@ export async function importClarflowQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// dedupeStepImages — remove standalone image subEls that duplicate images
+// already shown as option card thumbnails, and remove duplicate standalone
+// images (same URL → keep only first occurrence).
+//
+// Algorithm:
+//   1. Collect all imageUrls referenced in question.options[].imageUrl.
+//   2. Walk the subEls list; for each image subEl:
+//      a. If its url matches any option imageUrl → drop it.
+//      b. If its url was already seen in a prior standalone image → drop it.
+//   3. Non-image subEls are always kept.
+//
+// Exported for unit testing.
+// ---------------------------------------------------------------------------
+
+export function dedupeStepImages(subEls: SubEl[]): SubEl[] {
+  // Step 1: collect all URLs used by question option cards
+  const optionImageUrls = new Set<string>();
+  for (const el of subEls) {
+    if (el.kind === "question") {
+      for (const opt of el.options) {
+        if (opt.imageUrl) optionImageUrls.add(opt.imageUrl);
+      }
+    }
+  }
+
+  // Step 2: filter out duplicate standalone images
+  const seenStandaloneUrls = new Set<string>();
+  return subEls.filter((el) => {
+    if (el.kind !== "image") return true;
+    if (optionImageUrls.has(el.url)) return false;
+    if (seenStandaloneUrls.has(el.url)) return false;
+    seenStandaloneUrls.add(el.url);
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // splitRichTextHtml — split a rich-text HTML block into ordered SubEls,
 // extracting <img> tags as image subEls and grouping surrounding text.
 // Exported for unit testing.
@@ -1175,6 +1212,10 @@ export function parseHeyflowHtml(html: string): {
       }
     }
 
+    // Dedupe standalone image subEls that duplicate question option thumbnails
+    // or that repeat the same URL more than once.
+    const dedupedSubEls = dedupeStepImages(subEls);
+
     stepNodes.push({
       id: stepId,
       kind: "step",
@@ -1182,7 +1223,7 @@ export function parseHeyflowHtml(html: string): {
       size: { width: 280, height: 360 },
       position: { x: 300 + i * 320, y: 200 },
       rotation: 0,
-      subEls,
+      subEls: dedupedSubEls,
     });
   }
 

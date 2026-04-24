@@ -1399,3 +1399,78 @@ describe("parseHeyflowHtml — option image URL resolution", () => {
     expect(question.options[0].imageUrl).toBe("https://example.com/already-abs.jpg");
   });
 });
+
+// ---------------------------------------------------------------------------
+// dedupeStepImages
+// ---------------------------------------------------------------------------
+
+import { dedupeStepImages } from "./quiz-swipe";
+import type { SubEl } from "@/types/quiz";
+
+describe("dedupeStepImages", () => {
+  const imgEl = (url: string, id = url): Extract<SubEl, { kind: "image" }> => ({
+    id,
+    kind: "image",
+    url,
+    alt: "",
+  });
+
+  const questionEl = (imageUrls: string[]): Extract<SubEl, { kind: "question" }> => ({
+    id: "q1",
+    kind: "question",
+    kindOf: "single",
+    layout: "image_cards",
+    options: imageUrls.map((u, i) => ({ id: `opt${i}`, label: `Option ${i}`, imageUrl: u })),
+  });
+
+  it("drops standalone images that match option imageUrls (2 options, 3 standalone images)", () => {
+    // 1 question with options A and B, plus 3 standalone images A, C, B
+    const subEls: SubEl[] = [
+      questionEl(["https://cdn.example.com/A.jpg", "https://cdn.example.com/B.jpg"]),
+      imgEl("https://cdn.example.com/A.jpg", "img-a"),
+      imgEl("https://cdn.example.com/C.jpg", "img-c"),
+      imgEl("https://cdn.example.com/B.jpg", "img-b"),
+    ];
+    const result = dedupeStepImages(subEls);
+    const images = result.filter((e): e is Extract<SubEl, { kind: "image" }> => e.kind === "image");
+    expect(images).toHaveLength(1);
+    expect(images[0].url).toBe("https://cdn.example.com/C.jpg");
+  });
+
+  it("drops all standalone images when each matches an option URL", () => {
+    // 1 question with option A, plus 2 standalone images both A
+    const subEls: SubEl[] = [
+      questionEl(["https://cdn.example.com/A.jpg"]),
+      imgEl("https://cdn.example.com/A.jpg", "img-a1"),
+      imgEl("https://cdn.example.com/A.jpg", "img-a2"),
+    ];
+    const result = dedupeStepImages(subEls);
+    const images = result.filter((e) => e.kind === "image");
+    expect(images).toHaveLength(0);
+  });
+
+  it("deduplicates standalone images against each other when there is no question", () => {
+    // No question, 3 standalone images A, A, B — keep first A and B
+    const subEls: SubEl[] = [
+      imgEl("https://cdn.example.com/A.jpg", "img-a1"),
+      imgEl("https://cdn.example.com/A.jpg", "img-a2"),
+      imgEl("https://cdn.example.com/B.jpg", "img-b"),
+    ];
+    const result = dedupeStepImages(subEls);
+    const images = result.filter((e): e is Extract<SubEl, { kind: "image" }> => e.kind === "image");
+    expect(images).toHaveLength(2);
+    expect(images[0].url).toBe("https://cdn.example.com/A.jpg");
+    expect(images[1].url).toBe("https://cdn.example.com/B.jpg");
+  });
+
+  it("returns all images unchanged when no question and all URLs are distinct", () => {
+    const subEls: SubEl[] = [
+      imgEl("https://cdn.example.com/X.jpg", "img-x"),
+      imgEl("https://cdn.example.com/Y.jpg", "img-y"),
+      imgEl("https://cdn.example.com/Z.jpg", "img-z"),
+    ];
+    const result = dedupeStepImages(subEls);
+    const images = result.filter((e) => e.kind === "image");
+    expect(images).toHaveLength(3);
+  });
+});
