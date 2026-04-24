@@ -124,7 +124,7 @@ export interface ClarflowData {
 
 export interface ImportResult {
   quizId: string;
-  method: "clarflow" | "heyflow" | "generic";
+  method: "clarflow" | "heyflow" | "nextjs" | "generic";
   importedSteps: number;
   warnings: string[];
 }
@@ -1414,6 +1414,328 @@ export async function importHeyflowQuiz(
 }
 
 // ---------------------------------------------------------------------------
+// importNextJsQuiz — fast-path for Next.js quiz funnels that put each step on
+// its own URL and embed pageProps in <script id="__NEXT_DATA__">. Walks the
+// chain by reading pageProps.funnelQuizPath / pageProps.nextStep / first
+// internal anchor on the current screen, one page at a time. No browser
+// required — jsdom is enough because Next.js serves the step content in the
+// initial HTML.
+// ---------------------------------------------------------------------------
+
+type NextStepExtract = {
+  url: string;
+  heading: string;
+  paragraphs: string[];
+  options: { label: string; href?: string; imageUrl?: string }[];
+  images: string[];
+};
+
+function extractNextDataFromHtml(html: string): Record<string, unknown> | null {
+  const match = html.match(
+    /<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i
+  );
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function pickNextUrl(
+  nextData: Record<string, unknown>,
+  dom: import("jsdom").JSDOM,
+  baseUrl: string,
+): string | null {
+  const props = ((nextData.props as Record<string, unknown> | undefined)
+    ?.pageProps as Record<string, unknown> | undefined) ?? {};
+
+  // Pattern A: explicit funnel next-step field
+  const candidates = [
+    "funnelQuizPath",
+    "nextStepPath",
+    "nextStep",
+    "nextUrl",
+    "nextPath",
+  ];
+  for (const k of candidates) {
+    const v = props[k];
+    if (typeof v === "string" && v.length > 0) {
+      try {
+        return new URL(v, baseUrl).href;
+      } catch {
+        /* ignore malformed */
+      }
+    }
+  }
+
+  // Pattern B: first internal anchor on an option-looking element. Pick the
+  // first <a href> that points to the same origin and a different path than
+  // the current one.
+  const currentOrigin = new URL(baseUrl).origin;
+  const currentPath = new URL(baseUrl).pathname;
+  const anchors = Array.from(dom.window.document.querySelectorAll("a[href]"));
+  for (const a of anchors) {
+    const href = a.getAttribute("href");
+    if (!href) continue;
+    let abs: URL;
+    try {
+      abs = new URL(href, baseUrl);
+    } catch {
+      continue;
+    }
+    if (abs.origin !== currentOrigin) continue;
+    if (abs.pathname === currentPath) continue;
+    if (abs.pathname.includes("/terms") || abs.pathname.includes("/privacy")) continue;
+    return abs.href;
+  }
+  return null;
+}
+
+function extractStepFromNextPage(
+  html: string,
+  nextData: Record<string, unknown>,
+  currentUrl: string,
+): NextStepExtract | null {
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  const dom = new JSDOM(html);
+  const doc = dom.window.document;
+
+  const heading =
+    (doc.querySelector("h1") as HTMLElement | null)?.textContent?.trim() ||
+    (doc.querySelector("h2") as HTMLElement | null)?.textContent?.trim() ||
+    "";
+
+  const paragraphs = Array.from(doc.querySelectorAll("p"))
+    .map((p) => p.textContent?.trim() ?? "")
+    .filter((t) => t.length > 5 && t.length < 400)
+    .slice(0, 3);
+
+  // Options: look for anchor-wrapped clickables or option-like classes.
+  const optionElements = Array.from(
+    doc.querySelectorAll(
+      "a[href], button, [role='button'], [class*='option'], [class*='answer'], [class*='choice']"
+    )
+  );
+  const seen = new Set<string>();
+  const options: NextStepExtract["options"] = [];
+  for (const el of optionElements) {
+    const text = el.textContent?.trim().replace(/\s+/g, " ") ?? "";
+    if (!text || text.length > 150) continue;
+    if (/^(back|skip|close|menu|help|logo|\<|\>)$/i.test(text)) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    const href = el.tagName === "A"
+      ? (el as HTMLAnchorElement).getAttribute("href") ?? undefined
+      : el.closest("a")?.getAttribute("href") ?? undefined;
+    const img = el.querySelector("img") as HTMLImageElement | null;
+    const imgSrc = img?.getAttribute("src") ?? undefined;
+    options.push({
+      label: text,
+      ...(href ? { href } : {}),
+      ...(imgSrc ? { imageUrl: new URL(imgSrc, currentUrl).href } : {}),
+    });
+    if (options.length >= 12) break;
+  }
+
+  const images = Array.from(doc.querySelectorAll("img"))
+    .map((img) => img.getAttribute("src") ?? "")
+    .filter((s) => s && !s.startsWith("data:"))
+    .slice(0, 3)
+    .map((s) => {
+      try {
+        return new URL(s, currentUrl).href;
+      } catch {
+        return s;
+      }
+    });
+
+  // Reduce noise: also read pageProps fields that commonly carry copy (title,
+  // subtitle) if the DOM heading was empty
+  const props = ((nextData.props as Record<string, unknown> | undefined)
+    ?.pageProps as Record<string, unknown> | undefined) ?? {};
+  const pageCopy = JSON.stringify(props).slice(0, 20);
+  void pageCopy; // kept for debugging; not exposed
+
+  if (!heading && options.length === 0 && paragraphs.length === 0) return null;
+
+  return { url: currentUrl, heading, paragraphs, options, images };
+}
+
+export async function importNextJsQuiz(
+  url: string,
+  workspaceId: string,
+  market: "se" | "dk" | "no",
+  name?: string,
+): Promise<ImportResult | null> {
+  const warnings: string[] = [];
+  const MAX_STEPS = 30;
+  const ua =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36";
+
+  // Fetch first page to detect Next.js
+  const firstRes = await fetch(url, {
+    headers: { "User-Agent": ua, Accept: "text/html,application/xhtml+xml" },
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!firstRes || !firstRes.ok) return null;
+  const firstHtml = await firstRes.text();
+  const firstData = extractNextDataFromHtml(firstHtml);
+  if (!firstData) return null;
+
+  // Ensure it actually has pageProps; Next.js error pages also embed __NEXT_DATA__.
+  const props = ((firstData.props as Record<string, unknown> | undefined)
+    ?.pageProps as Record<string, unknown> | undefined) ?? {};
+  if (Object.keys(props).length === 0) return null;
+
+  // Quick heuristic: content must not be obvious marketing homepage. If the
+  // first page has no heading and no options, bail out.
+  const { JSDOM } = require("jsdom") as typeof import("jsdom");
+  const initialDom = new JSDOM(firstHtml);
+  const firstStep = extractStepFromNextPage(firstHtml, firstData, url);
+  if (!firstStep || (firstStep.options.length === 0 && !firstStep.heading)) {
+    return null;
+  }
+
+  const pageTitle =
+    (initialDom.window.document.title || "").trim() || "Imported Quiz";
+
+  // Walk the chain
+  const steps: NextStepExtract[] = [firstStep];
+  let currentUrl: string | null = pickNextUrl(firstData, initialDom, url);
+  const visited = new Set<string>([url]);
+
+  while (currentUrl && !visited.has(currentUrl) && steps.length < MAX_STEPS) {
+    visited.add(currentUrl);
+    let res: Response;
+    try {
+      res = await fetch(currentUrl, {
+        headers: { "User-Agent": ua, Accept: "text/html,application/xhtml+xml" },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      break;
+    }
+    if (!res.ok) break;
+    const html = await res.text();
+    const data = extractNextDataFromHtml(html);
+    if (!data) break;
+    const stepExtract = extractStepFromNextPage(html, data, currentUrl);
+    if (!stepExtract) break;
+    steps.push(stepExtract);
+    const dom = new JSDOM(html);
+    currentUrl = pickNextUrl(data, dom, currentUrl);
+  }
+
+  if (steps.length < 2) {
+    // Only one step found → don't commit to Next.js path; let click-through try.
+    return null;
+  }
+
+  // Build QuizData
+  const startId = newId("start");
+  const exitId = newId("exit");
+  const nodes: Record<string, QuizNode> = {
+    [startId]: { id: startId, kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 200 } },
+    [exitId]: { id: exitId, kind: "exit", name: "Exit", size: { width: 180, height: 80 }, position: { x: 300 + steps.length * 340, y: 200 }, redirectUrl: "" },
+  };
+
+  const stepNodes: StepNode[] = steps.map((se, i) => {
+    const subEls: SubEl[] = [];
+    if (se.heading) {
+      subEls.push({
+        id: newId("el"),
+        kind: "title",
+        text: se.heading,
+        isRichText: true,
+        contentFormat: "html",
+      });
+    }
+    for (const p of se.paragraphs) {
+      subEls.push({
+        id: newId("el"),
+        kind: "text",
+        text: p,
+        isRichText: true,
+        contentFormat: "html",
+      });
+    }
+    if (se.options.length >= 2) {
+      const hasImages = se.options.filter((o) => o.imageUrl).length >= se.options.length / 2;
+      subEls.push({
+        id: newId("el"),
+        kind: "question",
+        kindOf: "single",
+        layout: hasImages ? "image_cards" : "list",
+        options: se.options.map((o) => ({
+          id: newId("opt"),
+          label: o.label,
+          ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}),
+        })),
+      });
+    }
+    for (const imgUrl of se.images) {
+      subEls.push({ id: newId("el"), kind: "image", url: imgUrl, alt: "" });
+    }
+    const stepName = se.heading.trim().split(/\s+/).slice(0, 3).join(" ") || `Step ${i + 1}`;
+    return {
+      id: newId("step"),
+      kind: "step",
+      name: stepName,
+      size: { width: 280, height: 360 },
+      position: { x: 300 + i * 340, y: 100 },
+      rotation: 0,
+      subEls,
+    };
+  });
+
+  for (const sn of stepNodes) nodes[sn.id] = sn;
+
+  const edges: Record<string, QuizEdge> = {};
+  const eStart = newId("edge");
+  edges[eStart] = { id: eStart, from: startId, to: stepNodes[0].id, condition: { kind: "default" } };
+  for (let i = 0; i < stepNodes.length - 1; i++) {
+    const eid = newId("edge");
+    edges[eid] = { id: eid, from: stepNodes[i].id, to: stepNodes[i + 1].id, condition: { kind: "default" } };
+  }
+  const eLast = newId("edge");
+  edges[eLast] = { id: eLast, from: stepNodes[stepNodes.length - 1].id, to: exitId, condition: { kind: "default" } };
+
+  let quizData: QuizData = {
+    id: `quiz_${Date.now().toString(36)}`,
+    nodes,
+    edges,
+    camera: { x: 0, y: 0, z: 1 },
+  };
+
+  const quizName = name ?? pageTitle;
+  const settings: QuizSettings = {
+    ...buildDefaultSettings(),
+    metadata: { ...buildDefaultSettings().metadata, title: quizName },
+  };
+
+  // Re-host images
+  quizData = await rehostImages(quizData, quizData.id, warnings);
+
+  warnings.push(
+    `Imported via Next.js multi-page crawler (${steps.length} steps). Linear flow; add conditional routing as needed.`,
+  );
+
+  const savedId = await saveQuizToDb(quizData, settings, {
+    workspaceId,
+    market,
+    name: quizName,
+  });
+
+  return {
+    quizId: savedId,
+    method: "nextjs",
+    importedSteps: stepNodes.length,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // detectStepCarousel — heuristic: find a container whose N children share a
 // class-prefix and where exactly 1 is currently visible. Returns an ordered
 // list of per-step extracts without having to click through. Used by the
@@ -1877,6 +2199,10 @@ export async function swipeQuiz(
   const heyflowResult = await importHeyflowQuiz(url, workspaceId, market, name);
   if (heyflowResult) return heyflowResult;
 
-  // 3. Generic fallback (puppeteer)
+  // 3. Next.js multi-page fast-path (no browser needed)
+  const nextjsResult = await importNextJsQuiz(url, workspaceId, market, name);
+  if (nextjsResult) return nextjsResult;
+
+  // 4. Generic fallback (puppeteer: carousel detection + click-through)
   return importGenericQuiz(url, workspaceId, market, name);
 }
