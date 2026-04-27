@@ -189,6 +189,7 @@ export interface BuilderContextValue {
   setUrlMode: (v: "saved" | "custom") => void;
   switchToSavedUrl: () => void;
   filteredUrls: MarketProductUrl[];
+  pageLinkStats: { url: string; count: number }[];
 
   // --- Confirm dialog ---
   confirmAction: ConfirmAction | null;
@@ -434,6 +435,7 @@ export function BuilderProvider({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [fixingQuality, setFixingQuality] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [pageLinkStats, setPageLinkStats] = useState<{ url: string; count: number }[]>([]);
   const [slug, setSlug] = useState(translation.slug ?? pageSlug);
   const [clickedImage, setClickedImage] = useState<ClickedMedia | null>(null);
   const [clickedVideo, setClickedVideo] = useState<ClickedMedia | null>(null);
@@ -1083,6 +1085,12 @@ export function BuilderProvider({
       prevLinkUrl.current = topUrl;
     }
 
+    // Build link stats for Settings tab
+    const stats = Array.from(urlCounts.entries())
+      .map(([url, count]) => ({ url, count }))
+      .sort((a, b) => b.count - a.count);
+    setPageLinkStats(stats);
+
     // Element selection — clear stale ref on reload
     selectedElRef.current = null;
     setHasSelectedEl(false);
@@ -1440,6 +1448,34 @@ export function BuilderProvider({
     markDirty();
   }
 
+  function isVisible(el: HTMLElement): boolean {
+    let node: HTMLElement | null = el;
+    while (node) {
+      const style = node.ownerDocument?.defaultView?.getComputedStyle(node);
+      if (!style) break;
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+      node = node.parentElement;
+    }
+    return true;
+  }
+
+  function scanPageLinks() {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const counts = new Map<string, number>();
+    doc.querySelectorAll("a[href]").forEach((a) => {
+      const anchor = a as HTMLAnchorElement;
+      const href = anchor.href;
+      if (!href || href.startsWith("javascript:") || href === "#" || href.startsWith("mailto:")) return;
+      if (!isVisible(anchor)) return;
+      counts.set(href, (counts.get(href) || 0) + 1);
+    });
+    const stats = Array.from(counts.entries())
+      .map(([url, count]) => ({ url, count }))
+      .sort((a, b) => b.count - a.count);
+    setPageLinkStats(stats);
+  }
+
   function handleLinkUrlChange(newUrl: string) {
     setLinkUrl(newUrl);
     const doc = iframeRef.current?.contentDocument;
@@ -1453,6 +1489,7 @@ export function BuilderProvider({
     });
     prevLinkUrl.current = newUrl;
     markDirty();
+    scanPageLinks();
   }
 
   function switchToSavedUrl() {
@@ -2414,6 +2451,7 @@ export function BuilderProvider({
     setUrlMode,
     switchToSavedUrl,
     filteredUrls,
+    pageLinkStats,
 
     // Confirm dialog
     confirmAction,

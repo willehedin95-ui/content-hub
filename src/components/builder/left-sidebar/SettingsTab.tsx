@@ -9,6 +9,9 @@ import {
   MoveHorizontal,
   MoveVertical,
   MousePointerClick,
+  Link2,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { useBuilder } from "../BuilderContext";
 
@@ -87,6 +90,7 @@ export default function SettingsTab() {
     urlMode,
     setUrlMode,
     switchToSavedUrl,
+    pageLinkStats,
     // Custom code
     customHeadCode,
     setCustomHeadCode,
@@ -112,6 +116,14 @@ export default function SettingsTab() {
     blogFeaturedImageUrl,
     setBlogFeaturedImageUrl,
   } = useBuilder();
+
+  const [showLinkDetails, setShowLinkDetails] = useState(false);
+
+  const totalLinks = pageLinkStats.reduce((s, l) => s + l.count, 0);
+  const matchingEntry = pageLinkStats.find((s) => s.url === linkUrl);
+  const matchingCount = matchingEntry?.count ?? 0;
+  const otherLinks = pageLinkStats.filter((s) => s.url !== linkUrl);
+  const otherCount = totalLinks - matchingCount;
 
   return (
     <div className="px-3 py-3 space-y-3">
@@ -260,7 +272,132 @@ export default function SettingsTab() {
             className={inputClass}
           />
         )}
+
+        {/* Link stats summary */}
+        {totalLinks > 0 && (
+          <button
+            onClick={() => setShowLinkDetails(true)}
+            className="flex items-center gap-1.5 w-full text-left mt-1"
+          >
+            <Link2 className="w-3 h-3 text-gray-400 shrink-0" />
+            <span className="text-[11px] text-gray-500">
+              Replaces{" "}
+              <span className={matchingCount > 0 ? "font-semibold text-indigo-600" : "font-semibold text-gray-400"}>
+                {matchingCount}
+              </span>
+              {" "}of {totalLinks} links
+            </span>
+            {otherCount > 0 && (
+              <span className="text-[10px] text-gray-400 ml-auto">
+                {otherCount} unchanged
+              </span>
+            )}
+          </button>
+        )}
       </CollapsibleSection>
+
+      {/* Link details modal */}
+      {showLinkDetails && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowLinkDetails(false)}
+          />
+          <div className="relative bg-white rounded-xl shadow-2xl w-[480px] max-h-[70vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Links on this page
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {totalLinks} total links - {pageLinkStats.length} unique URLs
+                </p>
+              </div>
+              <button
+                onClick={() => setShowLinkDetails(false)}
+                className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto px-5 py-3 space-y-4">
+              {/* Matching links */}
+              {matchingCount > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider">
+                      Will be replaced ({matchingCount})
+                    </p>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                    <div className="flex items-start gap-2">
+                      <ExternalLink className="w-3 h-3 text-indigo-500 mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-indigo-700 break-all leading-relaxed">
+                        {linkUrl}
+                      </p>
+                      <span className="text-[10px] font-medium text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">
+                        {matchingCount}x
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Non-matching links */}
+              {otherLinks.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-gray-300" />
+                    <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider">
+                      Not affected ({otherCount})
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    {otherLinks.map((entry) => (
+                      <div
+                        key={entry.url}
+                        className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
+                      >
+                        <div className="flex items-start gap-2">
+                          <ExternalLink className="w-3 h-3 text-gray-400 mt-0.5 shrink-0" />
+                          <p className="text-[11px] text-gray-600 break-all leading-relaxed">
+                            {entry.url}
+                          </p>
+                          <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">
+                            {entry.count}x
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No matching links warning */}
+              {matchingCount === 0 && totalLinks > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                    The current destination URL doesn&apos;t match any links on this page.
+                    Changing it won&apos;t affect existing links.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                Only links matching the current destination URL are replaced when you change it.
+                All other links remain untouched.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Translation — default closed */}
       {!isSource && (
