@@ -1,34 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/daily-snapshot",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/pipeline-push",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/ad-performance-sync",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/ad-performance-sync",
-      "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/cron/auto-pause-bleeders",
-      "schedule": "30 6 * * *"
-    },
-    {
-      "path": "/api/cron/autopilot-execute",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/autopilot-concepts?workspace=hydro13",
-      "schedule": "30 8 * * *"
-    },
-    {
       "path": "/api/cron/invoice-check",
       "schedule": "0 7 * * *"
     },
@@ -73,40 +45,8 @@
       "schedule": "0 11 * * 0"
     },
     {
-      "path": "/api/cron/pagespeed-check",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/landing-page-health",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/zero-spend-alert",
-      "schedule": "45 6 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-empty-adsets",
-      "schedule": "15 7 * * *"
-    },
-    {
       "path": "/api/cron/deliverability-sync",
       "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/cron/process-swipe-queue",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/process-swipe-queue",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/cron/process-swipe-queue",
-      "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/cron/process-swipe-queue",
-      "schedule": "0 18 * * *"
     }
   ]
 }
