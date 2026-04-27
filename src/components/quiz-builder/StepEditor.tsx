@@ -54,6 +54,9 @@ function TitleEditor({ el, stepId }: EditorProps) {
         placeholder="Enter title text"
         className={`${inputBase} text-base font-semibold`}
       />
+      <p className="text-[11px] text-gray-400 mt-1">
+        Tip: use <code className="px-1 py-px rounded bg-gray-100 text-[10px]">{"{varName}"}</code> to insert a captured answer.
+      </p>
       <DeleteElButton
         onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))}
       />
@@ -76,6 +79,9 @@ function TextEditor({ el, stepId }: EditorProps) {
         rows={3}
         className={`${inputBase} resize-y`}
       />
+      <p className="text-[11px] text-gray-400 mt-1">
+        Tip: use <code className="px-1 py-px rounded bg-gray-100 text-[10px]">{"{varName}"}</code> to insert a captured answer.
+      </p>
       <DeleteElButton
         onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))}
       />
