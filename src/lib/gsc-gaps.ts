@@ -247,11 +247,40 @@ export async function addGapsToContentPlan(
   language: Language,
   gaps: GapKeyword[],
   productSlug: string
-): Promise<{ added: number; skipped: number }> {
+): Promise<{ added: number; skipped: number; blocked: number }> {
   const db = createServerSupabase();
-  const toAdd = gaps.filter((g) => g.type === "no_article");
 
-  if (toAdd.length === 0) return { added: 0, skipped: 0 };
+  // Honor the workspace's blog_topic_blocklist so we don't auto-discover
+  // topics that the product isn't suited for.
+  const { data: wsRow } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const blocklist = ((): string[] => {
+    const raw = (wsRow?.settings as Record<string, unknown> | null | undefined)?.blog_topic_blocklist;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0);
+  })();
+
+  const matchesBlocklist = (text: string): boolean => {
+    if (!blocklist.length) return false;
+    const lower = text.toLowerCase();
+    return blocklist.some((b) => lower.includes(b.toLowerCase()));
+  };
+
+  const noArticleGaps = gaps.filter((g) => g.type === "no_article");
+  const blockedGaps = noArticleGaps.filter(
+    (g) => matchesBlocklist(g.query) || matchesBlocklist(g.suggestedSlug) || matchesBlocklist(g.suggestedTitle)
+  );
+  if (blockedGaps.length > 0) {
+    console.log(
+      `[gsc-gaps] Skipped ${blockedGaps.length} blocklisted gaps: ${blockedGaps.map((g) => g.suggestedSlug).join(", ")}`
+    );
+  }
+  const toAdd = noArticleGaps.filter((g) => !blockedGaps.includes(g));
+
+  if (toAdd.length === 0) return { added: 0, skipped: 0, blocked: blockedGaps.length };
 
   // Assign priorities so GSC-discovered articles land BEFORE the
   // hardcoded content plan. New priorities start just below the lowest
@@ -295,7 +324,7 @@ export async function addGapsToContentPlan(
     }
   }
 
-  return { added, skipped };
+  return { added, skipped, blocked: blockedGaps.length };
 }
 
 // ---------------------------------------------------------------------------

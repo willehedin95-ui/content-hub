@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     gapsFound: number;
     added: number;
     skipped: number;
+    blocked: number;
     error?: string;
   }> = [];
 
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
           limit: (settings.gsc_gap_max_added_per_run as number) || 10,
         });
 
-        const { added, skipped } = await addGapsToContentPlan(
+        const { added, skipped, blocked } = await addGapsToContentPlan(
           ws.id as string,
           lang as Language,
           gaps,
@@ -62,10 +63,11 @@ export async function GET(req: NextRequest) {
           gapsFound: gaps.length,
           added,
           skipped,
+          blocked,
         });
 
         console.log(
-          `[gsc-gap-refresh] ${ws.slug} (${lang}): ${gaps.length} gaps, ${added} added, ${skipped} skipped`
+          `[gsc-gap-refresh] ${ws.slug} (${lang}): ${gaps.length} gaps, ${added} added, ${skipped} skipped, ${blocked} blocked`
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
@@ -76,6 +78,7 @@ export async function GET(req: NextRequest) {
           gapsFound: 0,
           added: 0,
           skipped: 0,
+          blocked: 0,
           error: message,
         });
       }

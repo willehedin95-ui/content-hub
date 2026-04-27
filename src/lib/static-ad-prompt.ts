@@ -1,8 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { withRetry, isTransientError } from "./retry";
 import { CLAUDE_MODEL, STATIC_STYLES, AWARENESS_STYLE_MAP, REPTILE_TRIGGERS, USE_JSON_PROMPTING, JSON_PROMPT_STYLES } from "./constants";
+import { getAdCopyLanguageByWorkspaceId } from "./workspace";
 import type { StaticStyleId, ReptileTriggerId } from "./constants";
 import type { ImageJob, CashDna, ProductFull, ProductSegment } from "@/types";
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: "English",
+  sv: "Swedish",
+  no: "Norwegian",
+  da: "Danish",
+  de: "German",
+};
 
 export { STATIC_STYLES };
 export type { StaticStyleId };
@@ -56,6 +65,14 @@ export async function generateImageBriefs(options: {
   styles?: StaticStyleId[];
   previousPrompts?: string[];
   productAppearance?: string;
+  /**
+   * Language for hooks, headlines, and any text rendered in the image.
+   * Defaults to looking up the workspace's `ad_copy_language` setting (which
+   * defaults to "en"). Set this for workspaces that publish ads directly in
+   * the local language (e.g. Hydro13/Renew "sv") rather than going through
+   * an English source → translation pipeline.
+   */
+  generationLanguage?: string;
 }): Promise<{ briefs: ImageBrief[]; usage: { input_tokens: number; output_tokens: number } }> {
   const { job, product, segment, iterationContext, count } = options;
   const cashDna = job.cash_dna as CashDna | null;
@@ -71,7 +88,16 @@ export async function generateImageBriefs(options: {
     ? options.styles
     : getStylesForAwareness(cashDna?.awareness_level, count);
 
-  const systemPrompt = buildBriefSystemPrompt();
+  // Resolve generation language: explicit param > workspace setting > "en".
+  // This drives the LANGUAGE RULE in the system prompt — e.g. Hydro13/Renew
+  // workspaces are configured with `ad_copy_language: "sv"` so hooks,
+  // headlines, and any visible text in generated images come out in Swedish.
+  const workspaceId = (job as { workspace_id?: string }).workspace_id;
+  const generationLanguage =
+    options.generationLanguage ??
+    (workspaceId ? await getAdCopyLanguageByWorkspaceId(workspaceId) : "en");
+
+  const systemPrompt = buildBriefSystemPrompt(generationLanguage);
   const userPrompt = buildBriefUserPrompt({
     productName: product.name,
     usps: product.usps ?? [],
@@ -174,7 +200,16 @@ function getPreferredCategories(style: StaticStyleId): string[] {
 
 // --- Prompt builders ---
 
-function buildBriefSystemPrompt(): string {
+function buildBriefSystemPrompt(generationLanguage: string): string {
+  const lang = generationLanguage.toLowerCase();
+  const langLabel = LANGUAGE_LABELS[lang] ?? "English";
+  const isEnglish = lang === "en";
+  const languageRule = isEnglish
+    ? `## LANGUAGE RULE (CRITICAL):
+ALL text in hooks, headlines, and any text embedded in prompts MUST be in ENGLISH. Never write hooks, headlines, or text overlays in Swedish, Norwegian, Danish, or any other language. The images will be translated to local languages later — the originals must always be English.`
+    : `## LANGUAGE RULE (CRITICAL):
+This workspace publishes ads directly in ${langLabel} — there is NO translation step afterward. ALL text in hooks, headlines, and any text rendered in the image (bottle labels, signs, packaging, captions, screen text, anything legible) MUST be in ${langLabel}. NEVER use English text in image prompts (no "COLLAGEN", "HYALURONIC ACID", "BEFORE / AFTER", etc.). If a scene risks rendering English text, either rewrite the text in ${langLabel} or remove it (label facing away, unlabeled, blurred out-of-focus).`;
+
   return `You are an expert direct response ad creative director specializing in native static image ads for Meta (Facebook/Instagram).
 
 Your job is to create distinct IMAGE BRIEFS that will be fed into an AI image generator (Nano Banana Pro). Each brief must use a DIFFERENT visual style to produce genuinely diverse ad creatives — not just text swaps on the same layout.
@@ -673,8 +708,7 @@ Each brief must have:
 - referenceStrategy: "product" or "none"
 - reptileTriggers: array of 1-2 trigger IDs embodied in the prompt
 
-## LANGUAGE RULE (CRITICAL):
-ALL text in hooks, headlines, and any text embedded in prompts MUST be in ENGLISH. Never write hooks, headlines, or text overlays in Swedish, Norwegian, Danish, or any other language. The images will be translated to local languages later — the originals must always be English.`;
+${languageRule}`;
 }
 
 function buildBriefUserPrompt(opts: {

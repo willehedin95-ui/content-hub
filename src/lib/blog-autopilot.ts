@@ -588,6 +588,29 @@ async function writeOneArticle(
 // Article selection
 // ---------------------------------------------------------------------------
 
+/**
+ * Topic blocklist for blog autopilot. Workspaces set `blog_topic_blocklist`
+ * in settings as an array of substrings (case-insensitive). Any planned
+ * article or DataForSEO suggestion whose slug, title, or primary keyword
+ * contains a blocklist substring is skipped — and matching plan rows are
+ * auto-deferred so they don't clutter the content plan UI.
+ *
+ * Used to keep autopilot from generating articles in topics the product is
+ * not suited for (e.g. "kollagen-gravid" / "kollagen-leder" for Hydro13,
+ * which is not intended for pregnant women or joint health).
+ */
+function isTopicBlocked(text: string | null | undefined, blocklist: string[]): boolean {
+  if (!text || !blocklist.length) return false;
+  const lower = text.toLowerCase();
+  return blocklist.some((b) => lower.includes(b.toLowerCase()));
+}
+
+function getBlocklistFromSettings(settings: Record<string, unknown> | null | undefined): string[] {
+  const raw = settings?.blog_topic_blocklist;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0);
+}
+
 async function pickNextArticle(
   db: ReturnType<typeof createServerSupabase>,
   workspaceId: string,
@@ -596,16 +619,19 @@ async function pickNextArticle(
 ): Promise<ArticleRequest | null> {
   const blogDomain = getProjectCustomDomain(language) || "";
 
-  // Get workspace default product slug as fallback
+  // Get workspace default product slug + topic blocklist
   const { data: wsData } = await db
     .from("workspaces")
     .select("settings")
     .eq("id", workspaceId)
     .single();
-  const wsProductSlug = (wsData?.settings as Record<string, unknown> | null)?.default_product as string | undefined;
+  const wsSettings = (wsData?.settings as Record<string, unknown> | null) ?? null;
+  const wsProductSlug = wsSettings?.default_product as string | undefined;
+  const blocklist = getBlocklistFromSettings(wsSettings);
 
   // 1. Try the blog_content_plan table: pick the highest-priority "planned" article
-  //    (skipping any slugs we've already failed on in this run)
+  //    (skipping any slugs we've already failed on in this run, and any topic on
+  //    the workspace's blog_topic_blocklist)
   let plannedQuery = db
     .from("blog_content_plan")
     .select("*")
@@ -614,11 +640,38 @@ async function pickNextArticle(
     .eq("status", "planned")
     .order("priority", { ascending: false })
     .order("created_at", { ascending: true })
-    .limit(1);
+    .limit(blocklist.length > 0 ? 20 : 1);
   if (excludeSlugs.length > 0) {
     plannedQuery = plannedQuery.not("slug", "in", `(${excludeSlugs.map((s) => `"${s}"`).join(",")})`);
   }
-  const { data: planned } = await plannedQuery.maybeSingle();
+  const { data: plannedRows } = await plannedQuery;
+
+  // Filter blocklisted rows out (and auto-defer them so they don't keep
+  // showing up as "planned" in the UI).
+  const matchedBlocked = (plannedRows ?? []).filter((row) =>
+    isTopicBlocked(row.slug, blocklist) ||
+    isTopicBlocked(row.title, blocklist) ||
+    isTopicBlocked(row.primary_keyword, blocklist)
+  );
+  if (matchedBlocked.length > 0) {
+    const blockedIds = matchedBlocked.map((r) => r.id);
+    await db
+      .from("blog_content_plan")
+      .update({ status: "deferred", updated_at: new Date().toISOString() })
+      .in("id", blockedIds);
+    console.log(
+      `[blog-autopilot] Auto-deferred ${matchedBlocked.length} blocklisted plan rows: ${matchedBlocked
+        .map((r) => r.slug)
+        .join(", ")}`
+    );
+  }
+
+  const planned = (plannedRows ?? []).find(
+    (row) =>
+      !isTopicBlocked(row.slug, blocklist) &&
+      !isTopicBlocked(row.title, blocklist) &&
+      !isTopicBlocked(row.primary_keyword, blocklist)
+  );
 
   if (planned) {
     // Mark as "writing" so concurrent runs don't pick the same article
@@ -671,13 +724,15 @@ async function pickNextArticle(
 
     const { suggestions } = await getKeywordSuggestions(seeds, market);
 
-    // Filter: volume > 200, competition index < 50, not already covered
+    // Filter: volume > 200, competition index < 50, not already covered, not blocklisted
     const candidates = suggestions
       .filter(
         (s) =>
           (s.searchVolume ?? 0) > 200 &&
           (s.competitionIndex ?? 100) < 50 &&
-          !existingSlugs.has(slugifyKeyword(s.keyword))
+          !existingSlugs.has(slugifyKeyword(s.keyword)) &&
+          !isTopicBlocked(s.keyword, blocklist) &&
+          !isTopicBlocked(slugifyKeyword(s.keyword), blocklist)
       )
       .sort((a, b) => (b.searchVolume ?? 0) - (a.searchVolume ?? 0))
       .slice(0, 1);
