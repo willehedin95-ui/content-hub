@@ -1,6 +1,7 @@
 "use client";
 import { useQuiz } from "./QuizContext";
 import { ElementPalette } from "./ElementPalette";
+import { ImagePicker } from "./ImagePicker";
 import { updateSubEl, removeSubEl, addOption, updateOption, removeOption, setOptionRoute, ensureDefaultEdge, topoOrderSteps } from "@/lib/quiz-graph";
 import type { SubEl } from "@/types/quiz";
 import { Trash2, PlusCircle, X, GitBranch } from "lucide-react";
@@ -95,48 +96,24 @@ function ImageEditor({ el, stepId }: EditorProps) {
   return (
     <div className="mb-3 p-3 border border-gray-200 rounded-md bg-white">
       <span className={labelBase}>Image</span>
-      <div className="flex gap-3">
-        {/* Thumbnail */}
-        <div className="shrink-0 w-16 h-16 rounded border border-gray-200 overflow-hidden bg-gray-100 flex items-center justify-center">
-          {el.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={el.url}
-              alt={el.alt || "preview"}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span className="text-xs text-gray-400 text-center px-1">No image</span>
-          )}
-        </div>
-        {/* Inputs */}
-        <div className="flex-1 flex flex-col gap-2">
-          <div>
-            <label className={labelBase}>Image URL</label>
-            <input
-              type="text"
-              value={el.url}
-              onChange={(e) =>
-                setData((prev) => updateSubEl(prev, stepId, el.id, { url: e.target.value }))
-              }
-              placeholder="https://example.com/image.jpg"
-              className={inputBase}
-            />
-          </div>
-          <div>
-            <label className={labelBase}>Alt text</label>
-            <input
-              type="text"
-              value={el.alt}
-              onChange={(e) =>
-                setData((prev) => updateSubEl(prev, stepId, el.id, { alt: e.target.value }))
-              }
-              placeholder="Describe the image"
-              className={inputBase}
-            />
-          </div>
-        </div>
+      <div className="mt-2">
+        <ImagePicker
+          value={el.url}
+          onChange={(url) =>
+            setData((prev) => updateSubEl(prev, stepId, el.id, { url }))
+          }
+        />
       </div>
+      <label className={`${labelBase} mt-2`}>Alt text</label>
+      <input
+        type="text"
+        value={el.alt}
+        onChange={(e) =>
+          setData((prev) => updateSubEl(prev, stepId, el.id, { alt: e.target.value }))
+        }
+        placeholder="Describe the image"
+        className={inputBase}
+      />
       <DeleteElButton
         onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))}
       />
@@ -337,28 +314,46 @@ function QuestionEditor({ el, stepId }: EditorProps) {
       {/* Options */}
       <div className="flex flex-col gap-1.5 mb-2">
         {el.options.map((opt) => (
-          <div key={opt.id} className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={opt.label}
-              onChange={(e) =>
-                setData((prev) =>
-                  updateOption(prev, stepId, el.id, opt.id, { label: e.target.value }),
-                )
-              }
-              placeholder="Option label"
-              className={`${inputBase} flex-1`}
-            />
-            <button
-              type="button"
-              onClick={() =>
-                setData((prev) => removeOption(prev, stepId, el.id, opt.id))
-              }
-              className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
-              aria-label={`Remove option ${opt.label}`}
-            >
-              <X size={14} />
-            </button>
+          <div key={opt.id} className="flex flex-col gap-1">
+            {el.layout === "image_cards" && (
+              <div className="mb-1">
+                <ImagePicker
+                  compact
+                  value={opt.imageUrl ?? ""}
+                  hint={opt.imageDescription}
+                  onChange={(url) =>
+                    setData((prev) =>
+                      updateOption(prev, stepId, el.id, opt.id, {
+                        imageUrl: url || undefined,
+                      }),
+                    )
+                  }
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={opt.label}
+                onChange={(e) =>
+                  setData((prev) =>
+                    updateOption(prev, stepId, el.id, opt.id, { label: e.target.value }),
+                  )
+                }
+                placeholder="Option label"
+                className={`${inputBase} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setData((prev) => removeOption(prev, stepId, el.id, opt.id))
+                }
+                className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                aria-label={`Remove option ${opt.label}`}
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
