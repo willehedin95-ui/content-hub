@@ -10,12 +10,18 @@ export function usePreviewToggle() {
   const params = useSearchParams();
   const pathname = usePathname();
   const [narrow, setNarrow] = useState(false);
+  // Defer the localStorage read until after mount so server-rendered HTML
+  // matches the first client render. Without this the toggle button would
+  // hydrate-mismatch when localStorage["quiz-editor.preview"]==="1" and the
+  // URL has no ?preview=1 (server renders off, client sees on).
+  const [mounted, setMounted] = useState(false);
 
   const urlSays = params.get("preview") === "1";
-  const lsSays = typeof window !== "undefined" && localStorage.getItem(LS_KEY) === "1";
+  const lsSays = mounted && localStorage.getItem(LS_KEY) === "1";
   const showPreview = !narrow && (urlSays || (!params.has("preview") && lsSays));
 
   useEffect(() => {
+    setMounted(true);
     function check() {
       setNarrow(window.innerWidth < NARROW_BP);
     }

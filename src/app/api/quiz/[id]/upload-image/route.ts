@@ -11,8 +11,12 @@ import { getWorkspaceId } from "@/lib/workspace";
 export const maxDuration = 30;
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+// SVG intentionally excluded: SVGs can carry inline <script> and our bucket
+// is publicly readable, so a crafted upload could phish via direct URL.
+// Stick to raster formats; if SVG is needed later, sanitize via DOMPurify
+// server-side before upload.
 const ALLOWED = new Set([
-  "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+  "image/jpeg", "image/png", "image/webp", "image/gif",
 ]);
 const BUCKET = "translated-images";
 
@@ -60,10 +64,7 @@ export async function POST(
     );
   }
 
-  const ext =
-    file.type === "image/svg+xml"
-      ? "svg"
-      : (file.type.split("/")[1] || "bin");
+  const ext = file.type.split("/")[1] || "bin";
   const path = `quiz-assets/${id}/uploaded/${crypto.randomUUID()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
   const { error: upErr } = await db.storage
