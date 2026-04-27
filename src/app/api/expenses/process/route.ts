@@ -28,6 +28,7 @@ interface ExpenseRow {
   category: "monthly" | "one_time" | "facebook_ads" | "google_ads";
   matched: boolean;
   receiptFile: string | null;
+  bankDescription: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -134,7 +135,7 @@ No markdown fences.`,
       }
 
       const res = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-4-5-20250929",
         max_tokens: 8000,
         messages: [{
           role: "user",
@@ -142,11 +143,18 @@ No markdown fences.`,
             ...imageContent,
             {
               type: "text",
-              text: `These are Nordea bank statement screenshots. Extract ALL debit transactions (purchases/charges).
+              text: `These are Swedish bank statement screenshots (likely Nordea). Extract ALL debit transactions (purchases/charges).
+
+CRITICAL - Foreign currency handling:
+- For foreign currency transactions, the bank shows BOTH the original amount (e.g. 29.99 USD) AND the converted SEK amount.
+- You MUST extract the SEK amount, NOT the original foreign currency amount.
+- The SEK amount is typically the main/rightmost amount on the transaction line.
+- Swedish number format uses comma as decimal separator (e.g. 1 234,56) - convert to standard decimal (1234.56) in your output.
+
 For each transaction provide:
-- description: Merchant/service name as shown
+- description: Merchant/service name exactly as shown on the statement
 - date: Transaction date in YYYY-MM-DD format
-- amount: Amount in SEK (positive number)
+- amount: Amount in SEK (positive number, use the SEK amount NOT the foreign currency amount)
 
 Only include debit/purchase transactions. Skip incoming transfers, salary deposits, and internal transfers.
 
@@ -188,6 +196,10 @@ No markdown fences.`,
       usedBankIdx.add(bestIdx);
     }
 
+    // If receipt is in SEK and no bank match, use receipt amount directly
+    const isSek = receipt.currency?.toUpperCase() === "SEK";
+    const fallbackSek = isSek && !bestMatch ? receipt.amount : null;
+
     const id = crypto.randomUUID();
     return {
       id,
@@ -195,11 +207,12 @@ No markdown fences.`,
       date: receipt.date || bestMatch?.date || "",
       receiptAmount: receipt.amount,
       receiptCurrency: receipt.currency,
-      sekAmount: bestMatch?.amount ?? null,
+      sekAmount: bestMatch?.amount ?? fallbackSek,
       vat: null,
       category: guessCategory(receipt.description) as ExpenseRow["category"],
       matched: !!bestMatch,
       receiptFile: receipt.filename,
+      bankDescription: bestMatch?.description ?? null,
     };
   });
 
@@ -211,6 +224,16 @@ No markdown fences.`,
   return NextResponse.json({ expenses, unmatchedBank });
 }
 
+/** Normalize Swedish characters and prepare words for matching */
+function normalizeWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/å/g, "a").replace(/ä/g, "a").replace(/ö/g, "o")
+    .replace(/[^a-z0-9]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+}
+
 /** Fuzzy match score between receipt and bank transaction (0-1) */
 function matchScore(
   receiptDesc: string,
@@ -218,8 +241,8 @@ function matchScore(
   receiptDate: string | null,
   bankDate: string
 ): number {
-  const r = receiptDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
-  const b = bankDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
+  const r = normalizeWords(receiptDesc);
+  const b = normalizeWords(bankDesc);
 
   // Word overlap score
   let wordMatches = 0;

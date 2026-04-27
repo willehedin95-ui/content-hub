@@ -29,6 +29,7 @@ interface ExpenseRow {
   category: "monthly" | "one_time" | "facebook_ads" | "google_ads";
   matched: boolean;
   receiptFile: string | null;
+  bankDescription: string | null;
 }
 
 type Step = "upload" | "processing" | "review" | "download";
@@ -110,14 +111,23 @@ function compressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File
 // ---------------------------------------------------------------------------
 // Client-side fuzzy matching (mirrors server-side matchScore in process/route)
 // ---------------------------------------------------------------------------
+function normalizeWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/å/g, "a").replace(/ä/g, "a").replace(/ö/g, "o")
+    .replace(/[^a-z0-9]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+}
+
 function clientMatchScore(
   receiptDesc: string,
   bankDesc: string,
   receiptDate: string | null,
   bankDate: string,
 ): number {
-  const r = receiptDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
-  const b = bankDesc.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter(Boolean);
+  const r = normalizeWords(receiptDesc);
+  const b = normalizeWords(bankDesc);
 
   let wordMatches = 0;
   for (const rw of r) {
@@ -250,6 +260,10 @@ export default function ExpensesTab() {
           usedIdx.add(bestIdx);
           exp.sekAmount = allBankTx[bestIdx].amount;
           exp.matched = true;
+          exp.bankDescription = allBankTx[bestIdx].description;
+        } else if (exp.receiptCurrency?.toUpperCase() === "SEK" && exp.receiptAmount != null) {
+          // Fallback: use receipt amount directly for SEK receipts
+          exp.sekAmount = exp.receiptAmount;
         }
       }
 
@@ -292,6 +306,7 @@ export default function ExpensesTab() {
         category: "one_time",
         matched: false,
         receiptFile: null,
+        bankDescription: null,
       },
     ]);
   }
@@ -734,6 +749,11 @@ export default function ExpensesTab() {
                             className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:border-indigo-400 focus:outline-none"
                           />
                         </div>
+                        {exp.bankDescription && (
+                          <div className="text-[10px] text-gray-400 truncate mt-0.5 pl-4" title={exp.bankDescription}>
+                            Bank: {exp.bankDescription}
+                          </div>
+                        )}
                       </td>
 
                       {/* VAT */}
