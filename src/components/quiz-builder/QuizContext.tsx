@@ -106,3 +106,19 @@ export function QuizProvider({
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
+
+/**
+ * Fires the callback whenever saveState transitions INTO "saved" from a
+ * different value. Used by the split-view preview iframe to know when it's
+ * safe to reload (i.e. the latest edit has been persisted).
+ */
+export function useSaveStateChange(onSaved: () => void) {
+  const { saveState } = useQuiz();
+  const prev = useRef<SaveState | null>(null);
+  useEffect(() => {
+    if (prev.current !== "saved" && saveState === "saved") {
+      onSaved();
+    }
+    prev.current = saveState;
+  }, [saveState, onSaved]);
+}
