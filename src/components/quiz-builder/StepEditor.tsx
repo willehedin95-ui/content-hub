@@ -375,6 +375,55 @@ function LoadingEditor({ el, stepId }: EditorProps) {
   );
 }
 
+function RangeSliderEditor({ el, stepId }: EditorProps) {
+  if (el.kind !== "range_slider") return null;
+  const { setData } = useQuiz();
+  const patch = (p: Partial<Extract<SubEl, { kind: "range_slider" }>>) =>
+    setData((prev) => updateSubEl(prev, stepId, el.id, p));
+  return (
+    <div className="mb-3 p-3 border border-gray-200 rounded-md bg-white">
+      <span className={labelBase}>Range slider</span>
+      <label className="block text-xs text-gray-500 mt-2">Variable</label>
+      <input
+        className={inputBase}
+        value={el.variable}
+        placeholder="score"
+        onChange={(e) => patch({ variable: e.target.value })}
+      />
+      <label className="block text-xs text-gray-500 mt-2">Unit (optional)</label>
+      <input
+        className={inputBase}
+        value={el.unit ?? ""}
+        placeholder="%, kg, hours..."
+        onChange={(e) => patch({ unit: e.target.value })}
+      />
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <div>
+          <label className="block text-xs text-gray-500">Min</label>
+          <input type="number" className={inputBase} value={el.min}
+            onChange={(e) => patch({ min: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500">Max</label>
+          <input type="number" className={inputBase} value={el.max}
+            onChange={(e) => patch({ max: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500">Step</label>
+          <input type="number" className={inputBase} value={el.step ?? 1}
+            onChange={(e) => patch({ step: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500">Initial</label>
+          <input type="number" className={inputBase} value={el.initial ?? Math.round((el.min + el.max) / 2)}
+            onChange={(e) => patch({ initial: Number(e.target.value) })} />
+        </div>
+      </div>
+      <DeleteElButton onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher: picks the right editor per kind
 // ---------------------------------------------------------------------------
@@ -387,6 +436,7 @@ function SubElEditor({ el, stepId }: EditorProps) {
     case "question":    return <QuestionEditor el={el} stepId={stepId} />;
     case "custom_html": return <CustomHtmlEditor el={el} stepId={stepId} />;
     case "loading":     return <LoadingEditor el={el} stepId={stepId} />;
+    case "range_slider": return <RangeSliderEditor el={el} stepId={stepId} />;
   }
 }
 
