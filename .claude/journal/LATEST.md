@@ -1,97 +1,113 @@
-# Session: 2026-04-21 21:58
+# Session: 2026-04-22 / 23 - Hydro13 iOS onboarding polish + QA infrastructure
 
-Massive SEO workflow session. Started with "why is there no GSC data for Hydro13?" — ended with Hydro13 fully migrated to get-renew.com Shopify blog + three major autopilot V2 features live in production.
+**Project**: Hydro13 iOS (NOT content-hub). Logged here per central journal convention.
+
+Long 2-day session focused on v1.1.0 onboarding redesign, visual polish bugs, and an overnight QA agent run that produced mixed results.
 
 ## What was done
 
-### SEO audit + pipeline fixes (commit d21e299)
-- Ran full audit of 15 Hydro13 articles on halsobladet.com. Found:
-  - 4/15 indexed, 0 total impressions, 0 clicks
-  - 10/15 had banned word "optimal" leaking through anti-slop
-  - Avg internal links 0.9 per article (designed for 5)
-  - 12/15 had zero research citations
-  - 3/15 had "Crawled - not indexed" (Google quality signal)
-- Root causes identified:
-  - Anti-slop was prompt-only, no post-processing validation
-  - Internal linking matched only full multi-word keywords (`\bkollagen hyaluronsyra\b`), rarely appearing verbatim
-  - Image tags missing `loading="lazy"`, `width`/`height`, `fetchpriority`
-- Fixed all three: `applyAntiSlop()` post-processor, `extractDistinguishingTerm()` expanding link matcher to distinguishing slug-words, `enhanceImageTags()` adding perf attributes with dimensions from sharp metadata.
-- Re-processed all 16 articles: internal links went 0.9 → 9.7 avg, 27 banned words replaced, all images got perf attrs.
+### Day 1 (2026-04-22)
 
-### Shopify migration (commit c425acf)
-- Created "Kollagen-guiden" blog on get-renew.com Shopify (handle=kollagen).
-- Built `src/lib/shopify-blog.ts` — Admin API wrappers (list/find/create/update/upsert article, GraphQL file upload via staged-uploads with sharp WebP pre-compression).
-- Built `src/lib/shopify-blog-publish.ts` — full publish flow: extract body → upload inline images → rewrite internal links to `/blogs/kollagen/slug` → strip theme duplicates (H1, hero-img) → inject scoped CSS that overrides Shopify's `:root{font-size:10px}` + serif default → upsertArticle.
-- Wired into `blog-autopilot.ts`: workspaces with `blog_publish_target: "shopify"` route there, others stay on CF Pages.
-- Migrated all 16 Hydro13 articles to get-renew.com with Shopify CDN images + width params.
-- Deleted Hydro13 files from halsobladet CF Pages manifest.
-- Redirects deferred (CF Pages direct-upload doesn't parse `_redirects` reliably; zone-level CF rules need a new API token scope).
+**Onboarding v1.1.0 redesign (commit `b86cbb1`)**
+- Welcome: fixed warmBackground seam, removed 'Hoppa intro', standardized CTA style, unclipped truncated body text
+- TooEarly: replaced horizontal timeline with AI-generated before/after split image (dag 0 / dag 60 chin area, stored in `Hydro13/Assets.xcassets/BeforeAfterSplit.imageset/`), clean typography, no more bounce animation
+- AgeRoutineSlide: simplified to age-only big cards (removed Hudvårdsrutin section entirely)
+- OnboardingTimelineSlide: converted from horizontal scroll to vertical list with connecting lines
+- SocialProofSlide: removed 'Typiska användarupplevelser' disclaimer
+- OnboardingView: dropped PurchaseSetupView from flow, 10 steps → 9
+- PurchaseSetupView: removed date picker collapsible (file kept for future Settings-edit)
+- Skin feel sheet → inline SkinFeelCard on Home (no more post-dose modal hijack)
+- Challenge simplification 5-tier → 2-tier (already in working tree from earlier session)
 
-### Per-day article cap (commit 0bd4424)
-- Replaced hardcoded `2/day` limit with workspace setting `blog_autopilot_max_per_day`.
-- Hydro13 set to `1/day` given get-renew.com is a new domain with no authority.
+**Overnight QA run v1 (HYD-217)**
+- Created Paperclip QA master issue with 83-scenario checklist
+- QA agent ran ~70 min, marked 59/83 checked, filed 3 bug issues (HYD-218 Journey scroll, HYD-219 broken tests, HYD-220 logDoseButton inaccessible in XCTest)
+- HYD-218 was auto-fixed by iOS Engineer agent during the run
 
-### Feature #1: PubMed-grounded citations (commit 22e8b1d)
-- `src/lib/pubmed.ts` — NCBI E-utilities client (esearch + esummary, progressive query broadening, SV→EN term mapping, 500ms rate limiter with 429 backoff).
-- `blog-writer.ts` — injects "Verified Research Sources" section in system prompt with strict rule: only cite URLs from this list. Post-process counts matching URLs; retries once if <3.
-- Opt-in via `blog_research_citations: true` per workspace. Hydro13 enabled.
-- Verified end-to-end: kollagen-biverkningar published with 3 real PubMed citations (PMIDs 26840887, 29949889, 40935395 — all collagen/skin peer-reviewed studies).
+### Day 2 (2026-04-23)
 
-### Feature #2: GSC gap detection (commit 1d1fe96)
-- `src/lib/gsc-gaps.ts` — detects `no_article` (homepage/category ranks for query) and `low_rank` (existing article pos 5-20) gaps from GSC data.
-- `no_article` gaps auto-insert into `blog_content_plan` as `source: gsc_gap` with high priority; autopilot picks them up naturally.
-- `low_rank` surfaced but not actioned (needs separate "update existing" path).
-- New cron `/api/cron/gsc-gap-refresh` at Monday 06:00 UTC (one hour after `gsc-sync`).
-- Workspace opt-outs: `gsc_gap_refresh_enabled: false`, tunable `gsc_gap_min_impressions` (default 5) + `gsc_gap_max_added_per_run` (default 10).
-- Tested: HappySleep found 1 real gap ("snarkkudde bäst i test", 9 impressions/30d, pos 36 on category index). Hydro13 found 0 (no GSC data yet for get-renew.com).
+**Morning fixes (commits `7b7723b`, `5f2336e`)**
+- HYD-220 root cause found via accessibility-tree dump: three separate issues, NOT just `.opacity(appearCards)`:
+  1. `.accessibilityIdentifier("homeTab")` on HomeView() bled down to descendant Buttons, overwriting `logDoseButton` identifier. Removed tab-level identifiers from ContentView
+  2. Notification permission dialog race with `addUIInterruptionMonitor`. Guarded with `--uitesting` check in both `NotificationManager.requestPermission` and `ReminderSetupView.requestNotificationPermission`
+  3. ProfileQuestionsPrompt overlay showed after skip-path. Guarded `checkProfileQuestions()` with `--uitesting` check
+- Test pass rate went from 17/34 → 29/34 after fixes (remaining 5 are brittle QAContinuationTests)
+- HYD-221 (medical claims): softened 'visar'/'bevisar' → 'tyder på' in Milestone.swift, DagensInsiktStore.swift, JourneyView.swift
 
-### Feature #3: Soft quality gate + review UI (commit 423b9b5)
-- `src/lib/soft-gate.ts` — 9 static checks (word count, title, meta desc, H2 count, citation minimum, hallucinated PubMed URLs, allowed external domains, banned phrases, internal link count).
-- `blog-autopilot.ts` — runs gate after internal-link injection. On fail: status=`pending_review`, reasons stored in `publish_error`, Telegram ping with reasons + review link.
-- Approve/reject API endpoints: `/api/review/[id]/approve` (publishes to Shopify), `/api/review/[id]/reject` (frees plan row for retry).
-- Minimal UI at `/blog-review` (list) + `/blog-review/[id]` (preview in sandboxed iframe + approve/reject buttons).
-- Opt-in via `blog_soft_gate_enabled: true`. Hydro13 enabled.
-- First live run: kollagen-celluliter passed all checks, auto-published.
+**Analytics gaps (commit `9879805`)**
+- Added 9 new events: skinFeel.logged, challenge.accepted/dismissed, returnFlow.shown/logged, streak.milestone, settings.reminderChanged/dataReset, dose.retroLogged
+- Wired previously-declared-but-unused `notification.permissionResult`
+- Cohort segmentation: `Analytics.setUserProperties` populates TelemetryDeck defaultParameters (primaryGoal, ageRange, purchaseType, currentRoutine) - applied to every signal automatically
+- Test-mode: `#if DEBUG` + `--uitesting` force `testMode=true` so QA/dev signals stay out of production metrics
+- Rehydration on cold launch from UserProfile
 
-### Images + polish
-- Found image upload bug: raw 5.88MB PNGs were being uploaded to Shopify (no compression). Fixed `uploadImageFromUrl` to sharp-compress to WebP 1920px @ 80% quality before upload. Added `?width=1200` params to existing migrated article images for retroactive resize.
-- Fixed title encoding (all Hydro13 articles had ASCII-stripped titles in DB + blog_content_plan; wrote `fix-all-hydro13-plan-titles.ts` to restore Swedish diacritics on 28 slugs — 16 published + 12 planned).
-- Generated images for 6 newly-published autopilot articles (15 images via Kie AI, ~$0.92).
+**TestFlight attempted upload (failed)**
+- Apple returned `FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED`. User to sign agreement in App Store Connect → user said they signed later but we didn't retry yet
+- Build + archive succeeded, only export/upload failed
+
+**Additional onboarding polish**
+- TooEarlySlide: replaced spring(bounce) with easeOut - user flagged bounce as inconsistent with other slides (commit `3dbd0a2`)
+- Combined OnboardingTimelineSlide + ChallengeSlide into one: 60-day ring + timeline, 'Jag är redo' CTA, fade-gradient above sticky CTA (commit `3dbd0a2`)
+- SkinFeelCard emoji rendered as `[?]` tofu glyphs on iPhone 17 iOS 26.3 simulator. Swapped Text(emoji) for Image(systemName:) SF Symbols (face.smiling.fill, face.dashed, face.dashed.fill) - commit `aef5cb7`
+- ReminderSetupView 'Påminn mig senare' no longer triggers permission dialog (was triggering it, opposite of intent). 'Börja resa' awaits permission response before transition using async/await - commit `aef5cb7`
+- Removed entire ProfileQuestionsPrompt + ExistingUserProfileFlow + supporting state/helpers. User found it intrusive (popped up instantly after skip-onboarding). Settings already has 'Min profil' section for same data (commit `201ff74`)
+
+**Overnight QA run v2 (HYD-224) - BURNED, cancelled**
+- Created new master plan with lessons from HYD-223 (QA process gap): require simctl erase at start, screenshot every interaction state, verify badges visually, fix HYD-220 first
+- Multiple auth failures hit us:
+  1. First attempt: Paperclip inherited `CLAUDECODE=1` from my Claude Code session → spawned subprocess saw nested-check, refused with "Invalid authentication credentials"
+  2. Fixed by restart with `env -u CLAUDECODE` - but this also stripped `CLAUDE_CODE_OAUTH_TOKEN` → 23 min run then auth-cache expired
+  3. Fixed by restart with `CLAUDE_CODE_OAUTH_TOKEN="$TOKEN"` explicit - agent ran ~30 min, managed to get to Step 1 av 7 TooEarly slide
+  4. Agent booted iPhone 17 Pro instead of iPhone 17 → SwiftData schema mismatch from old simulator data → 4 crashes of Hydro13 in sequence (18:05-18:07). Shut down + erased iPhone 17 Pro
+  5. After 90+ min cumulative claude-max token burn, 0/62 scenarios checked, 0 bug issues filed
+- Cancelled HYD-224, killed Paperclip + caffeinate + keepalive
 
 ## Decisions made
 
-1. **Shopify over CF Pages for Hydro13**: New domain, content + commerce unified, shorter conversion path. Halsobladet retained for HappySleep (sleep content stays where the sleep audience is). swedishbalance.se → halsobladet internal linking remains valid for sleep content; off-topic for kollagen.
-2. **Skip 301 redirects for halsobladet → get-renew**: Articles had 0 GSC impressions anyway, so minimal SEO cost. CF Pages `_redirects` didn't parse reliably for direct-upload deploys; zone-level CF rules would need a new API token scope (not worth the back-and-forth for something with near-zero impact).
-3. **1/day for Hydro13, not 2/day**: Reduces scaled-content-abuse signal on a new domain. Can tune up later if GSC data shows we're ranking.
-4. **"Soft" gate, not hard gate**: Most articles should still auto-publish. Gate targets real failure modes (hallucinated URLs, missing citations, thin content) — not perfectionist noise. Pending-review queue is the escape hatch, not the default path.
-5. **Drop leftover Swedish words from PubMed queries**: Initial translation let "marint", "dryck", "drickbart" leak into AND-joined queries, zeroing out results. Added `looksEnglish` heuristic + reordered regex (specific multi-word patterns before single-word fallbacks) so "marint kollagen" matches before `\bkollagen\b` consumes it.
-6. **Use `px` not `rem` in Shopify scoped CSS**: Shopify's Instrument theme sets `:root{font-size:10px}` so all rem values silently shrink. Switched `.hydro-article` CSS to absolute px with `!important` + `font-family: inherit` on all descendants to override theme's serif default.
-7. **No author bylines for now**: William pushed back on using himself as author (target audience = women focused on beauty/skin, founder doesn't match). Dropped the idea until real credentialed reviewer is available.
+1. **Swapped emoji for SF Symbols in SkinFeelCard** - iOS 26.3 simulator has intermittent emoji-font-loading bug. SF Symbols more reliable, respect Dynamic Type + dark mode, tint to brand colors. Decided NOT to do same for Badges yet (need real-device verification first) - tracked in HYD-223.
+
+2. **Removed profile-questions auto-popup entirely, not just delay** - user rage at getting nagged instantly after skip. Settings → Min profil already exists for same edits. Net -205 lines of dead code removed.
+
+3. **Combined challenge + timeline slides into one** - user flagged they said same thing differently. Kept 60-day ring visual for wow-factor, added timeline below, scroll-if-needed + fade-gradient above CTA to signal scroll.
+
+4. **Abandoned Paperclip QA overnight approach** - claude_local adapter too fragile for long-running interactive sessions. Auth keeps breaking in subtle ways, and agent burns tokens on retries without measurable progress. Going forward: manual user testing + chat-triggered spot-fixes + `xcodebuild test` XCUITest suite for regression. Documented in HYD-223.
 
 ## Current state
 
-Working:
-- Autopilot with PubMed citations + GSC gap detection + soft gate running in production
-- All 16 Hydro13 articles live on get-renew.com/blogs/kollagen/* with proper Swedish titles, Shopify CDN images (WebP via Accept header), width params for responsive resize, scoped CSS that beats theme styles
-- 6 new articles auto-generated today (including one that exercised the full PubMed → gate → publish → image-gen flow)
-- `blog-autopilot.ts` routes via `blog_publish_target` (cf_pages vs shopify)
-- Weekly cron will populate content plan from GSC gaps starting Monday
+**Shippable commits on main (not pushed to TestFlight yet):**
+- `b86cbb1` Onboarding v1.1.0 redesign
+- `284c58c` Challenge simplification 5→2 tiers
+- `056355a` Skin feel sheet → inline card
+- `7d57a1b` XCUITest align to v1.1.0 + QAContinuationTests
+- `7b7723b` HYD-220 unblock XCUITest (accessibility + permission + overlay fixes)
+- `5f2336e` HYD-221 soften medical claims
+- `9879805` Analytics gaps filled + cohort segmentation + test-mode
+- `3dbd0a2` Combine timeline + challenge, 8→7 steps, remove bounce
+- `aef5cb7` SkinFeelCard SF Symbols + reminder permission timing
+- `201ff74` Remove profile prompt + dead code
 
-Known issues / watchlist:
-- Existing 16 migrated articles have English-text AI images (EFSA screens, "GLOW FORMULA" bottles). Fix for future articles landed (prompt now requires Swedish text or avoidance). User decided not to regenerate existing images.
-- halsobladet → get-renew redirects not set; old URLs return homepage. Low priority since articles had 0 impressions.
-- `low_rank` gap type detected but not actioned (needs "update existing article" path, separate concern).
+Plus existing pre-session:
+- `3dfba8a` HYD-218 Journey auto-scroll fix (from QA v1 overnight)
+
+**TestFlight:** App Store Connect agreement signed by user but we haven't retried upload. Build at version 14.
+
+**Paperclip QA:** Infrastructure dead. Master HYD-224 cancelled. Don't restart unless we have a better auth-stable approach.
+
+**XCUITests:** 29/34 passing. Remaining 5 are brittle QAContinuationTests (scroll-timing + compound accessibility labels). Tracked in HYD-222.
 
 ## Blockers / Open questions
 
-- None. All three features tested end-to-end and live in production.
+- **TestFlight upload** pending retry after agreement signature
+- **Apple Developer Organization conversion** (Incensor AB) - user has started planning, D-U-N-S-lookup pending. Guide given but user handling async
+- **HYD-222** flaky QAContinuationTests (5 Journey/Settings tests with scroll-position and compound-label issues)
+- **HYD-223** QA process improvements (screenshot every interaction state, erase sim upfront, real-device smoke test)
+- **Day-60 selfie prompt** deliberately suppressed in HomeView.swift:725 - subagent flagged as potential bug OR intentional (user never gave verdict)
+- **Badges emoji rendering** on real device - unverified. If same `[?]` bug as SkinFeelCard, swap to SF Symbols
 
 ## Next up
 
-1. Wait ~1 week for morgondagens and following cron runs to execute the full stack (PubMed → gate → publish → image-gen). Check that everything runs cleanly without manual intervention.
-2. Once GSC data starts appearing for get-renew.com (2-4 weeks), gap detection will surface Hydro13-specific opportunities automatically.
-3. Potential follow-ups (documented in backlog):
-   - "Update existing article" path for `low_rank` gaps
-   - Auto-sunset articles with position >30 after 90 days (content pruning)
-   - GA4 integration surfaced on SEO tab (we have the lib, no UI consumer)
-   - Author bio when a credentialed reviewer is available
+1. Retry TestFlight upload: `bash scripts/upload-testflight.sh --force`
+2. When live: smoke-test v1.1.0 onboarding + SkinFeelCard + reminder permission on real device
+3. If Badges show `[?]` on real device: swap emoji → SF Symbols (~30 min)
+4. Manual onboarding sweep to catch remaining UX issues before Apple review
+5. Apple Developer Org enrollment for Incensor AB (user async)
