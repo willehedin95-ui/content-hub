@@ -79,7 +79,7 @@ const SUBEL_DEFAULTS = {
   image:              { kind: "image", url: "", alt: "" },
   custom_html:        { kind: "custom_html", html: "" },
   loading:            { kind: "loading", text: "Loading...", style: "dots", seconds: 3 },
-  range_slider:       { kind: "range_slider", variable: "score", min: 0, max: 100, step: 1, initial: 50 },
+  range_slider:       { kind: "range_slider", variable: "score", min: 0, max: 100, step: 1, initial: 50, unit: "" },
   text_input:         { kind: "text_input", variable: "answer", inputType: "text", placeholder: "" },
   testimonial_slider: { kind: "testimonial_slider", items: [{ name: "Customer", text: "...", rating: 5 }] },
 };
@@ -213,6 +213,15 @@ Click "Product bank" opens a modal listing `product_images` from the workspace, 
 - Unit tests for `SUBEL_DEFAULTS` lookups in `quiz-graph.ts`.
 - Manual happy-path walkthrough on the running dev server: create empty quiz, add each new subEl from palette, edit fields, save, see live preview in split-view update.
 - Existing 223 tests must still pass; `npx tsc --noEmit` clean.
+
+## Notes for the planner
+
+- `searchable` and `dropdownPlaceholder` on `question` are added on-demand (only when layout switches to `dropdown`), not part of `SUBEL_DEFAULTS`.
+- `QuizContext` already exposes `saveState` via context value, but consumers need a `useEffect` subscribed to its transitions to trigger iframe reload. Sequence the small `useEffect` hook in the split-view component before wiring iframe reload.
+- The phone-frame iframe always points at `/quizzes/[id]/preview`, which renders the whole quiz starting from the first step. Navigating between steps in the editor does NOT reposition the preview; the user can either start the preview over manually inside the iframe or use the manual refresh button. (Tracking the editor's selected step in the preview is out of scope for Fas D.)
+- Product-bank picker modal: workspaces can have many `product_images`. For Fas B keep it simple - paginated grid with 20 per page, simple text-search by alt text. No sophisticated filtering.
+- Test plan addition: smoke-test the upload API route (happy-path multipart upload, unsupported file type rejection, oversize rejection). `ImagePicker` happy-path can be manual unless we set up component tests later.
+- Effort table omits ~0.5h for the `QuizContext` saveState subscription hook; budget accordingly.
 
 ## Out of scope
 
