@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X, Eye, EyeOff } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { useQuizAnalytics } from "./QuizAnalyticsContext";
 import { AdaptPanel } from "./AdaptPanel";
+import { usePreviewToggle } from "./usePreviewToggle";
 import type { ActiveTab } from "./QuizShell";
 
 type QuizTopBarProps = {
@@ -23,6 +24,7 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showAdaptPanel, setShowAdaptPanel] = useState(false);
+  const { showPreview, toggle: togglePreview, narrow: previewNarrow } = usePreviewToggle();
 
   const handlePublish = async () => {
     setPublishState("loading");
@@ -141,6 +143,28 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
         <BarChart3 size={14} />
         Analytics
       </Link>
+
+      {/* Split-view preview toggle */}
+      <button
+        type="button"
+        onClick={togglePreview}
+        disabled={previewNarrow}
+        title={
+          previewNarrow
+            ? "Available on screens 1024px wide and above"
+            : showPreview
+              ? "Hide preview"
+              : "Show preview"
+        }
+        className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs border transition-colors ${
+          showPreview
+            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+            : "bg-white border-gray-200 text-gray-600"
+        } ${previewNarrow ? "opacity-50 cursor-not-allowed" : "hover:border-indigo-300"}`}
+      >
+        {showPreview ? <EyeOff size={12} /> : <Eye size={12} />}
+        Preview
+      </button>
 
       {/* Overlay toggle (editor tab only) */}
       {activeTab === "editor" && (
