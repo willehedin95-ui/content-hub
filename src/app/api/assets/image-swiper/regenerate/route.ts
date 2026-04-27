@@ -6,10 +6,11 @@ export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { prompt, product, aspect_ratio } = body as {
+  const { prompt, product, aspect_ratio, competitor_image_url } = body as {
     prompt?: string;
     product?: string;
     aspect_ratio?: string;
+    competitor_image_url?: string;
   };
 
   if (!prompt) {
@@ -42,7 +43,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const taskId = await createImageTask(prompt, productHeroUrls, ratio, "2K");
+    // In replica mode, competitor image is prepended as visual reference
+    const referenceImages = competitor_image_url
+      ? [competitor_image_url, ...productHeroUrls]
+      : productHeroUrls;
+
+    const taskId = await createImageTask(prompt, referenceImages, ratio, "2K");
     const result = await pollTaskResult(taskId);
 
     if (result.urls.length === 0) {

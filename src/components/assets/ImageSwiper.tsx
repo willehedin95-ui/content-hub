@@ -48,7 +48,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [urlInput, setUrlInput] = useState("");
   const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
-  const [mode, setMode] = useState<"standard" | "ugc">("standard");
+  const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Analysis + Generation
@@ -57,6 +57,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
   const [measuredRatio, setMeasuredRatio] = useState<string>("4:5");
+  const [resolvedCompetitorUrl, setResolvedCompetitorUrl] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -170,6 +171,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         throw new Error("No image URL available");
       }
 
+      // Store the resolved HTTP URL for replica mode retries
+      setResolvedCompetitorUrl(imageUrl);
+
       // Call image swiper API
       setPhase("analyzing");
       setStatusMessage("Analyzing competitor image...");
@@ -239,7 +243,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -350,6 +354,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           prompt: finalPrompt,
           ...(product && { product }),
           aspect_ratio: retryRatio,
+          // In replica mode, pass the competitor image as visual reference
+          ...(mode === "replica" && resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
         }),
       });
 
@@ -366,7 +372,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, measuredRatio]);
+  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -381,6 +387,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setAnalysis(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
+    setResolvedCompetitorUrl(null);
     setStatusMessage("");
     setSaving(false);
     setSaved(false);
@@ -531,6 +538,17 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                   )}
                 >
                   UGC
+                </button>
+                <button
+                  onClick={() => setMode("replica")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                    mode === "replica"
+                      ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                      : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  )}
+                >
+                  Replica
                 </button>
               </div>
             </div>

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     image_url?: string;
     product?: string;
     notes?: string;
-    mode?: "standard" | "ugc";
+    mode?: "standard" | "ugc" | "replica";
   };
 
   if (!image_url) {
@@ -203,9 +203,9 @@ export async function POST(req: NextRequest) {
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
           if (subject.is_competitor_product && product) {
-            // In UGC mode: minimal description — rely on reference image for appearance
+            // In UGC/Replica mode: minimal description — rely on reference image for appearance
             // In standard mode: full description for accurate product rendering
-            subject.description = isUgc
+            subject.description = (isUgc || mode === "replica")
               ? `the ${product.name} bottle (exact appearance from reference image — do NOT generate any text or labels on the bottle)`
               : `${product.name} — ${product.description || "premium wellness product"}`;
             subject.type = "product";
@@ -220,11 +220,23 @@ export async function POST(req: NextRequest) {
       // Add generation task instruction at the top level
       nanaBananaJson.task = "generate_image";
 
+      const isReplica = mode === "replica";
       const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
 
       let instruction: string;
 
-      if (isUgc) {
+      if (isReplica) {
+        // Replica mode — send original as reference + simple swap instruction
+        // Extract demographic from Claude's subjects analysis
+        const personSubjects = (extraction.subjects || []).filter(
+          (s: Record<string, unknown>) => s.type === "person"
+        );
+        const demographic = personSubjects.length > 0
+          ? personSubjects[0].description?.split(",").slice(0, 2).join(",").trim() || "woman"
+          : "person";
+
+        instruction = `Replace the person with a different ${demographic}`;
+      } else if (isUgc) {
         // UGC mode — strong authenticity instructions
         const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo. CRITICAL: Do NOT generate, invent, or write ANY text on the product bottle — no labels, no descriptions, no ingredient lists. The bottle appearance must come ONLY from the reference images.`;
 
@@ -249,9 +261,16 @@ export async function POST(req: NextRequest) {
       if (notes) {
         instruction += ` Additional instructions: ${notes}`;
       }
-      nanaBananaJson.instruction = instruction;
 
-      const nanaBananaPrompt = JSON.stringify(nanaBananaJson);
+      // In replica mode, send ONLY the simple instruction as prompt (no JSON extraction).
+      // The original image is the reference - the JSON blob just confuses Nano Banana.
+      let nanaBananaPrompt: string;
+      if (isReplica) {
+        nanaBananaPrompt = instruction;
+      } else {
+        nanaBananaJson.instruction = instruction;
+        nanaBananaPrompt = JSON.stringify(nanaBananaJson);
+      }
 
       // Log Claude usage
       const inputTokens = response.usage.input_tokens;
@@ -290,9 +309,14 @@ export async function POST(req: NextRequest) {
       // Use programmatically measured aspect ratio (not Claude's guess)
       const detectedRatio = await aspectRatioPromise;
 
+      // In replica mode, send the original image as reference + simple swap prompt
+      const referenceImages = isReplica
+        ? [image_url, ...productHeroUrls]
+        : productHeroUrls;
+
       const imageTaskId = await createImageTask(
         nanaBananaPrompt,
-        productHeroUrls,
+        referenceImages,
         detectedRatio,
         "2K"
       );
