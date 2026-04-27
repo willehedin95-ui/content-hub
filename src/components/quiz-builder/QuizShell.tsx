@@ -5,32 +5,42 @@ import { LogicCanvas } from "./LogicCanvas";
 import { StepsTree } from "./StepsTree";
 import { StepEditor } from "./StepEditor";
 import { SettingsPanel } from "./SettingsPanel";
+import { PreviewPane as SplitPreviewPane } from "./PreviewPane";
 import { useQuiz } from "./QuizContext";
+import { usePreviewToggle } from "./usePreviewToggle";
 
 export type ActiveTab = "editor" | "preview" | "settings";
 
 export function QuizShell() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("editor");
   const { quiz } = useQuiz();
+  const { showPreview } = usePreviewToggle();
+
+  // Split-view preview is only meaningful on the editor tab; the dedicated
+  // preview tab already shows a full-pane preview, and the settings tab has
+  // no canvas to flank.
+  const splitPreviewActive = showPreview && activeTab === "editor";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
       <QuizTopBar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 flex min-h-0">
-        {/* Left sidebar - always visible */}
-        <aside className="w-64 border-r border-gray-200 bg-white overflow-y-auto">
-          <StepsTree readOnly={activeTab === "settings"} />
-        </aside>
+        {/* Left sidebar - always visible (collapses to 60px in split-view) */}
+        <StepsTree
+          readOnly={activeTab === "settings"}
+          collapsed={splitPreviewActive}
+        />
 
         {/* Main content area: swaps by tab */}
         {activeTab === "editor" && (
           <>
-            <main className="flex-1 overflow-hidden bg-gray-100 relative">
+            <main className="flex-1 overflow-hidden bg-gray-100 relative min-w-0">
               <LogicCanvas />
             </main>
             <aside className="w-96 border-l border-gray-200 bg-white flex flex-col min-h-0">
               <StepEditor />
             </aside>
+            {splitPreviewActive && <SplitPreviewPane />}
           </>
         )}
 
