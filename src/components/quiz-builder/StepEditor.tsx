@@ -268,6 +268,72 @@ function QuestionEditor({ el, stepId }: EditorProps) {
         ))}
       </div>
 
+      {/* Layout selector */}
+      <label className="block text-xs text-gray-500 mt-1">Layout</label>
+      <select
+        className={inputBase}
+        value={el.layout}
+        onChange={(e) =>
+          setData((prev) =>
+            updateSubEl(prev, stepId, el.id, { layout: e.target.value as typeof el.layout }),
+          )
+        }
+      >
+        <option value="list">List (vertical stack)</option>
+        <option value="cards">Cards (2 per row)</option>
+        <option value="image_cards">Image cards (with photos)</option>
+        <option value="chips">Chips (pill grid, multi-select)</option>
+        <option value="dropdown">Dropdown (15+ options)</option>
+      </select>
+
+      {/* Variable */}
+      <label className="block text-xs text-gray-500 mt-2">
+        Variable <span className="text-gray-400 font-normal">(optional)</span>
+      </label>
+      <input
+        className={inputBase}
+        value={el.variable ?? ""}
+        placeholder="e.g. age - the picked label is stored as {age}"
+        onChange={(e) =>
+          setData((prev) =>
+            updateSubEl(prev, stepId, el.id, { variable: e.target.value || undefined }),
+          )
+        }
+      />
+
+      {/* Dropdown-only controls */}
+      {el.layout === "dropdown" && (
+        <>
+          <label className="flex items-center gap-2 mt-2 text-xs text-gray-700">
+            <input
+              type="checkbox"
+              checked={el.searchable ?? false}
+              onChange={(e) =>
+                setData((prev) =>
+                  updateSubEl(prev, stepId, el.id, {
+                    searchable: e.target.checked || undefined,
+                  }),
+                )
+              }
+            />
+            Searchable (filter as you type)
+          </label>
+          <label className="block text-xs text-gray-500 mt-2">Placeholder</label>
+          <input
+            className={inputBase}
+            value={el.dropdownPlaceholder ?? ""}
+            placeholder="Pick an option"
+            onChange={(e) =>
+              setData((prev) =>
+                updateSubEl(prev, stepId, el.id, {
+                  dropdownPlaceholder: e.target.value || undefined,
+                }),
+              )
+            }
+          />
+        </>
+      )}
+
       {/* Options */}
       <div className="flex flex-col gap-1.5 mb-2">
         {el.options.map((opt) => (
