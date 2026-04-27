@@ -807,15 +807,39 @@ npx tsc --noEmit
 
 - [ ] **Step 3: Smoke test from a terminal** (dev server running):
 
+Set `COOKIE` to your session cookie header (copy from browser devtools - `Application -> Cookies -> sb-...-auth-token`). If you don't have one handy, skip this step and rely on the UI smoke in Task 11; the rejection-case branches will still get visual coverage when the picker hits them.
+
+**Happy path:**
+
 ```
-curl -X POST -H "Cookie: $YOUR_SESSION_COOKIE" \
+curl -X POST -H "Cookie: $COOKIE" \
   -F "image=@/path/to/test.png" \
   http://localhost:3000/api/quiz/<quizId>/upload-image
 ```
 
-If you don't have a session cookie handy, skip and rely on the UI smoke in Task 11.
-
 Expected: `{"url":"https://...supabase.co/.../quiz-assets/.../uploaded/UUID.png"}`. Open the URL - the image should load.
+
+**Unsupported type (PDF):**
+
+```
+curl -i -X POST -H "Cookie: $COOKIE" \
+  -F "image=@/path/to/anything.pdf;type=application/pdf" \
+  http://localhost:3000/api/quiz/<quizId>/upload-image
+```
+
+Expected: `HTTP/1.1 415 Unsupported Media Type` and body `{"error":"Unsupported image type: application/pdf"}`.
+
+**Oversize (>10 MB):**
+
+```
+mkfile -n 12m /tmp/big.png 2>/dev/null || dd if=/dev/zero of=/tmp/big.png bs=1m count=12
+curl -i -X POST -H "Cookie: $COOKIE" \
+  -F "image=@/tmp/big.png;type=image/png" \
+  http://localhost:3000/api/quiz/<quizId>/upload-image
+rm /tmp/big.png
+```
+
+Expected: `HTTP/1.1 413 Content Too Large` and body `{"error":"Image too large (12 MB; max 10 MB)"}`.
 
 - [ ] **Step 4: Commit**
 
@@ -851,7 +875,10 @@ type ImagePickerProps = {
   compact?: boolean;
 };
 
-type ProductImage = { id: string; url: string; alt: string | null };
+// `/api/products` already returns each product with its product_images joined
+// as `product_images: { id, url, category }[]`. We flatten across products and
+// search by category since there is no per-image alt field today.
+type ProductImage = { id: string; url: string; category: string | null };
 
 export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps) {
   const { quiz } = useQuiz();
@@ -889,13 +916,12 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
 
   useEffect(() => {
     if (!showBank || bankImgs !== null) return;
-    fetch(`/api/products?images=true`)
+    fetch(`/api/products`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: { product_images?: ProductImage[] }[] | ProductImage[]) => {
-        const flat: ProductImage[] = Array.isArray(data)
-          ? (data as ProductImage[])
-          : (data as { product_images?: ProductImage[] }[])
-              .flatMap((p) => p.product_images ?? []);
+      .then((products: { product_images?: ProductImage[] }[]) => {
+        const flat: ProductImage[] = (products ?? []).flatMap(
+          (p) => p.product_images ?? [],
+        );
         setBankImgs(flat);
       })
       .catch(() => setBankImgs([]));
@@ -903,7 +929,7 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
 
   const filteredBank = bankImgs?.filter((img) =>
     bankQuery.trim()
-      ? (img.alt ?? "").toLowerCase().includes(bankQuery.trim().toLowerCase())
+      ? (img.category ?? "").toLowerCase().includes(bankQuery.trim().toLowerCase())
       : true,
   );
 
@@ -971,8 +997,9 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
             {filteredBank?.slice(0, 60).map((img) => (
               <button key={img.id} type="button"
                 onClick={() => { onChange(img.url); setShowBank(false); }}
-                className="aspect-square rounded overflow-hidden border border-gray-200 hover:border-indigo-400">
-                <Image src={img.url} alt={img.alt ?? ""} width={120} height={120}
+                className="aspect-square rounded overflow-hidden border border-gray-200 hover:border-indigo-400"
+                title={img.category ?? ""}>
+                <Image src={img.url} alt={img.category ?? ""} width={120} height={120}
                   className="w-full h-full object-cover" unoptimized />
               </button>
             ))}
@@ -991,14 +1018,15 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
 }
 ```
 
-- [ ] **Step 2: Verify the assumed `/api/products?images=true` endpoint**
+- [ ] **Step 2: Sanity-check the `/api/products` response shape**
 
-Look for it:
+The plan assumes `GET /api/products` returns `{ id, ..., product_images: { id, url, category }[] }[]`. Verify with:
+
 ```
-grep -rn "api/products" src/app/api/ src/components/
+curl -s -H "Cookie: $COOKIE" http://localhost:3000/api/products | python3 -m json.tool | head -40
 ```
 
-If it doesn't return product_images joined, either (a) extend it - if you do, add `?images=true` flag that joins `product_images` and returns them, or (b) inline the query in `ImagePicker.tsx` (`fetch('/api/products')` then for each, fetch images, OR just make a new lightweight `GET /api/quiz/[id]/product-images` route). Pick whichever is least invasive in the existing codebase. Document the choice in the commit message.
+Expected: an array where each entry has a `product_images` array with `id`, `url`, and `category`. If the shape differs (different field names, different nesting), update `ProductImage` and the `flatMap` accordingly before moving on. Do NOT change `/api/products` itself - the picker adapts to existing shape.
 
 - [ ] **Step 3: Typecheck**
 
@@ -1009,7 +1037,7 @@ npx tsc --noEmit
 - [ ] **Step 4: Commit**
 
 ```
-git add src/components/quiz-builder/ImagePicker.tsx <other files>
+git add src/components/quiz-builder/ImagePicker.tsx
 git commit -m "feat(quiz-builder): ImagePicker with upload / product-bank / URL sources"
 ```
 
@@ -1031,11 +1059,19 @@ Add to existing imports:
 import { ImagePicker } from "./ImagePicker";
 ```
 
-- [ ] **Step 3: Manual smoke**
+(This same import is reused by Task 12's per-option image picker - adding it once here is enough.)
+
+- [ ] **Step 3: Typecheck**
+
+```
+npx tsc --noEmit
+```
+
+- [ ] **Step 4: Manual smoke**
 
 Add Image to a step. Click Upload, pick a local PNG, see it appear in the preview within ~1s after save. Try Product bank - the modal lists images. Try URL - paste a public image URL.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```
 git add src/components/quiz-builder/StepEditor.tsx
