@@ -144,10 +144,13 @@ export function updateStepSubEls(q: QuizData, stepId: string, subEls: SubEl[]): 
 type AddSubElInput =
   | { kind: "title"; text?: string }
   | { kind: "text"; text?: string }
-  | { kind: "question"; kindOf?: "single" | "multi"; layout?: "list" | "cards" | "image_cards" }
+  | { kind: "question"; kindOf?: "single" | "multi"; layout?: "list" | "cards" | "image_cards" | "chips" | "dropdown" }
   | { kind: "image"; url?: string; alt?: string }
   | { kind: "custom_html"; html?: string }
-  | { kind: "loading"; text?: string; seconds?: number };
+  | { kind: "loading"; text?: string; seconds?: number }
+  | { kind: "range_slider"; variable?: string; min?: number; max?: number }
+  | { kind: "text_input"; variable?: string; inputType?: "text" | "number" | "date" }
+  | { kind: "testimonial_slider" };
 
 // ---------------------------------------------------------------------------
 // updateSubEl — merge a partial patch into a single subEl (immutable)
@@ -469,6 +472,36 @@ export function addSubEl(q: QuizData, stepId: string, input: AddSubElInput): Qui
       break;
     case "loading":
       el = { id, kind: "loading", text: input.text ?? "Loading...", style: "dots", seconds: input.seconds ?? 3 };
+      break;
+    case "range_slider":
+      el = {
+        id,
+        kind: "range_slider",
+        variable: input.variable ?? "score",
+        min: input.min ?? 0,
+        max: input.max ?? 100,
+        step: 1,
+        initial: 50,
+        unit: "",
+      };
+      break;
+    case "text_input":
+      el = {
+        id,
+        kind: "text_input",
+        variable: input.variable ?? "answer",
+        inputType: input.inputType ?? "text",
+        placeholder: "",
+      };
+      break;
+    case "testimonial_slider":
+      el = {
+        id,
+        kind: "testimonial_slider",
+        items: [
+          { name: "Customer", text: "Best product I've ever tried.", rating: 5 },
+        ],
+      };
       break;
   }
 

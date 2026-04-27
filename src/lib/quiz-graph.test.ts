@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge } from "./quiz-graph";
-import type { QuizData, StepNode } from "@/types/quiz";
+import type { QuizData, QuizNode, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
   it("produces prefixed ids with timestamp + random suffix", () => {
@@ -282,6 +282,63 @@ describe("addSubEl", () => {
     expect(step.subEls).toHaveLength(2);
     expect(step.subEls[0].kind).toBe("title");
     expect(step.subEls[1].kind).toBe("image");
+  });
+
+  // -------------------------------------------------------------------------
+  // New subEl kinds: range_slider, text_input, testimonial_slider
+  // -------------------------------------------------------------------------
+  function makeQuizWithEmptyStep(): QuizData {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "S1" });
+    return q;
+  }
+
+  it("addSubEl creates a range_slider with sensible defaults", () => {
+    const start = makeQuizWithEmptyStep();
+    const stepId = Object.keys(start.nodes).find(
+      (k) => start.nodes[k].kind === "step",
+    )!;
+    const updated = addSubEl(start, stepId, { kind: "range_slider" });
+    const step = updated.nodes[stepId] as Extract<QuizNode, { kind: "step" }>;
+    const el = step.subEls[step.subEls.length - 1];
+    expect(el.kind).toBe("range_slider");
+    if (el.kind !== "range_slider") return;
+    expect(el.variable).toBe("score");
+    expect(el.min).toBe(0);
+    expect(el.max).toBe(100);
+    expect(el.step).toBe(1);
+    expect(el.initial).toBe(50);
+    expect(el.unit).toBe("");
+  });
+
+  it("addSubEl creates a text_input with sensible defaults", () => {
+    const start = makeQuizWithEmptyStep();
+    const stepId = Object.keys(start.nodes).find(
+      (k) => start.nodes[k].kind === "step",
+    )!;
+    const updated = addSubEl(start, stepId, { kind: "text_input" });
+    const step = updated.nodes[stepId] as Extract<QuizNode, { kind: "step" }>;
+    const el = step.subEls[step.subEls.length - 1];
+    expect(el.kind).toBe("text_input");
+    if (el.kind !== "text_input") return;
+    expect(el.variable).toBe("answer");
+    expect(el.inputType).toBe("text");
+    expect(el.placeholder).toBe("");
+  });
+
+  it("addSubEl creates a testimonial_slider with one starter item", () => {
+    const start = makeQuizWithEmptyStep();
+    const stepId = Object.keys(start.nodes).find(
+      (k) => start.nodes[k].kind === "step",
+    )!;
+    const updated = addSubEl(start, stepId, { kind: "testimonial_slider" });
+    const step = updated.nodes[stepId] as Extract<QuizNode, { kind: "step" }>;
+    const el = step.subEls[step.subEls.length - 1];
+    expect(el.kind).toBe("testimonial_slider");
+    if (el.kind !== "testimonial_slider") return;
+    expect(el.items).toHaveLength(1);
+    expect(el.items[0].name).toBe("Customer");
+    expect(el.items[0].rating).toBe(5);
   });
 });
 
