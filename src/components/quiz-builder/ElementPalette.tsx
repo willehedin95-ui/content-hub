@@ -1,10 +1,15 @@
 "use client";
-import { Type, AlignLeft, HelpCircle, Image, Code, Loader } from "lucide-react";
+import {
+  Type, AlignLeft, HelpCircle, Image, Code, Loader,
+  SlidersHorizontal, TextCursorInput, MessageSquareQuote,
+} from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { addSubEl } from "@/lib/quiz-graph";
 
 type PaletteItem = {
-  kind: "title" | "text" | "question" | "image" | "custom_html" | "loading";
+  kind:
+    | "title" | "text" | "question" | "image" | "custom_html" | "loading"
+    | "range_slider" | "text_input" | "testimonial_slider";
   label: string;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 };
@@ -16,6 +21,9 @@ const PALETTE_ITEMS: PaletteItem[] = [
   { kind: "image", label: "Image", Icon: Image },
   { kind: "custom_html", label: "Custom HTML", Icon: Code },
   { kind: "loading", label: "Loading", Icon: Loader },
+  { kind: "range_slider", label: "Range", Icon: SlidersHorizontal },
+  { kind: "text_input", label: "Input", Icon: TextCursorInput },
+  { kind: "testimonial_slider", label: "Reviews", Icon: MessageSquareQuote },
 ];
 
 export function ElementPalette() {
