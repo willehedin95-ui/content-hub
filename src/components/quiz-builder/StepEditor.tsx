@@ -488,6 +488,79 @@ function TextInputEditor({ el, stepId }: EditorProps) {
   );
 }
 
+function TestimonialSliderEditor({ el, stepId }: EditorProps) {
+  if (el.kind !== "testimonial_slider") return null;
+  const { setData } = useQuiz();
+  const updateItems = (items: Extract<SubEl, { kind: "testimonial_slider" }>["items"]) =>
+    setData((prev) => updateSubEl(prev, stepId, el.id, { items }));
+  const updateAt = (i: number, patch: Partial<Extract<SubEl, { kind: "testimonial_slider" }>["items"][number]>) => {
+    const next = el.items.map((it, idx) => (idx === i ? { ...it, ...patch } : it));
+    updateItems(next);
+  };
+  const removeAt = (i: number) => updateItems(el.items.filter((_, idx) => idx !== i));
+  const addItem = () =>
+    updateItems([...el.items, { name: "New customer", text: "", rating: 5 }]);
+
+  return (
+    <div className="mb-3 p-3 border border-gray-200 rounded-md bg-white">
+      <span className={labelBase}>Testimonials</span>
+      <div className="flex flex-col gap-2 mt-2">
+        {el.items.map((item, i) => (
+          <div key={i} className="border border-gray-200 rounded-md p-2 bg-gray-50">
+            <div className="flex items-center gap-1.5 mb-1">
+              <input
+                className={`${inputBase} flex-1`}
+                value={item.name}
+                placeholder="Name"
+                onChange={(e) => updateAt(i, { name: e.target.value })}
+              />
+              <button
+                type="button"
+                aria-label="Remove testimonial"
+                onClick={() => removeAt(i)}
+                className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <input
+              className={`${inputBase} mb-1`}
+              value={item.avatar ?? ""}
+              placeholder="Avatar URL (optional)"
+              onChange={(e) => updateAt(i, { avatar: e.target.value || undefined })}
+            />
+            <select
+              className={`${inputBase} mb-1`}
+              value={item.rating ?? 5}
+              onChange={(e) => updateAt(i, { rating: Number(e.target.value) })}
+            >
+              {[5, 4, 3, 2, 1, 0].map((r) => (
+                <option key={r} value={r}>{r} {r === 1 ? "star" : "stars"}</option>
+              ))}
+            </select>
+            <textarea
+              className={`${inputBase} resize-none`}
+              rows={3}
+              value={item.text}
+              placeholder="Review text"
+              onChange={(e) => updateAt(i, { text: e.target.value })}
+            />
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={addItem}
+        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 transition-colors mt-2"
+      >
+        <PlusCircle size={13} />
+        Add testimonial
+      </button>
+      <DeleteElButton onClick={() => setData((prev) => removeSubEl(prev, stepId, el.id))} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher: picks the right editor per kind
 // ---------------------------------------------------------------------------
@@ -502,6 +575,7 @@ function SubElEditor({ el, stepId }: EditorProps) {
     case "loading":     return <LoadingEditor el={el} stepId={stepId} />;
     case "range_slider": return <RangeSliderEditor el={el} stepId={stepId} />;
     case "text_input": return <TextInputEditor el={el} stepId={stepId} />;
+    case "testimonial_slider": return <TestimonialSliderEditor el={el} stepId={stepId} />;
   }
 }
 
