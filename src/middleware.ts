@@ -45,7 +45,9 @@ export async function middleware(request: NextRequest) {
     // Quiz runtime API endpoints (hit from published quizzes on external domains)
     request.nextUrl.pathname.startsWith("/api/quiz/session") ||
     request.nextUrl.pathname.startsWith("/api/quiz/events") ||
-    request.nextUrl.pathname.startsWith("/api/quiz/klaviyo-subscribe")
+    request.nextUrl.pathname.startsWith("/api/quiz/klaviyo-subscribe") ||
+    // Hydro13 iOS app subscription lookup (auth via x-api-key header)
+    request.nextUrl.pathname.startsWith("/api/loop/")
   ) {
     return supabaseResponse;
   }
