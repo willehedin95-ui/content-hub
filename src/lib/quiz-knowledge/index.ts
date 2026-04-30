@@ -27,6 +27,8 @@ export const QUESTION_LIBRARY = loadDoc("03-question-library.md");
 export const PATTERNS = loadDoc("04-patterns.md");
 export const TEARDOWN_LESSONS = loadDoc("05-teardown-lessons.md");
 export const ADAPTATION_GUIDE = loadDoc("06-adaptation-guide.md");
+export const POST_QUIZ_EMAIL = loadDoc("07-post-quiz-email.md");
+export const VILLAIN_FRAMEWORK = loadDoc("08-villain-framework.md");
 
 export const FULL_KNOWLEDGE = [
   FOUNDATION,
@@ -36,6 +38,8 @@ export const FULL_KNOWLEDGE = [
   PATTERNS,
   TEARDOWN_LESSONS,
   ADAPTATION_GUIDE,
+  POST_QUIZ_EMAIL,
+  VILLAIN_FRAMEWORK,
 ].join("\n\n---\n\n");
 
 /**

@@ -29,6 +29,12 @@ export type SubEl =
       /** Only meaningful for layout "dropdown": placeholder shown before a
        *  selection is made. */
       dropdownPlaceholder?: string;
+      /** Optional escape link rendered under the CTA. When clicked, the
+       *  flow advances by submitting the named optionId (which must exist
+       *  in `options`) - bypassing min-1-selection / dropdown-pick rules.
+       *  raising.dog / EveryDoggy "I don't know" / "None of the above"
+       *  pattern. Multi-select also clears any prior picks before submit. */
+      escapeOption?: { label: string; optionId: string };
     }
   | {
       id: string;

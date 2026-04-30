@@ -8,10 +8,12 @@ const ALLOWED_ORIGINS = new Set([
   "https://halsobladet.com",
   "https://smarthelse.dk",
   "https://helseguiden.com",
+  "https://quiz.doginwork.se",
   // Allow pages.dev preview URLs for testing
   "https://halsobladet-blog.pages.dev",
   "https://smarthelse.pages.dev",
   "https://helseguiden.pages.dev",
+  "https://doginwork-quiz.pages.dev",
 ]);
 
 function isAllowedOrigin(origin: string | null): boolean {

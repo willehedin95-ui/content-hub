@@ -85,6 +85,65 @@ Info slides (the "breather" / "insight panel") belong **BETWEEN question cluster
 
 Rule of thumb: one insight panel for every 4-5 questions.
 
+### 16. Drop-off Diagnosis (per-question CVR tracking)
+
+You cannot fix what you do not measure. Every question in your quiz has its own drop-off rate. The key insight: **find the ONE question killing your funnel and split-test until it normalizes**.
+
+Real example (The Funnel Professor): a quiz funnel went from 19% completion to 25% by fixing one question. Original Q4: "What solutions have you tried before?" with too many options = 22% drop-off. Simplified to 4 options + "None of the above" = 9% drop-off. 6% more completions = thousands more buyers.
+
+**Benchmarks to track per question:**
+
+| Question | Normal drop-off |
+|---|---|
+| Q1 (entry) | 30-40% (this is the biggest filter, expected) |
+| Q2-Qn | Under 15% each |
+| Loading screens | Should be near 0% (they can't click away) |
+| Email gate | 20-30% is normal |
+| Overall completion | Aim for 25%+ on cold traffic |
+
+**Fix strategy:**
+
+If any single non-entry question has 10%+ drop-off, that's your priority A/B test. Common fixes:
+
+- Too many options → simplify to 4 max + "None of the above"
+- Question feels too personal too early → move it later in the arc
+- Confusing wording → rewrite for 5th-grade reading level
+- Long input field (text/date) → replace with multi-choice if possible
+
+**Don't optimize for 100% completion.** High-converting quiz funnels deliberately filter. 25% completion at 5% offer-page CVR beats 80% completion at 0.5% offer-page CVR. Depth beats volume.
+
+### 17. Low-Friction Entry Rule
+
+The single most counter-intuitive principle in quiz funnels:
+
+> Don't try to hook them with your first question. Get them clicking first. Hook them once they're in.
+
+Most marketers think Q1 needs to be powerful, aspirational, emotionally charged. "What do you want to achieve?" sounds like a great opener.
+
+**Wrong.** Look at every high-converting quiz funnel - Bioma, Nooro, Lunavia, SkinnyFit, Spartan, Raising.dog, EveryDoggy, Woofz, PawChamp - they ALL start the same way:
+
+> Question 1: Age or gender.
+
+That's it. The most boring question imaginable. **Why this works:**
+
+- **Zero cognitive load** - "How old are you?" requires no thinking. They just click.
+- **Starts the yes-chain** - one click in, they're committed. Quitting now feels like wasted effort.
+- **Sets up personalization** - implied promise: "we need this to tailor your results." Now every question feels customized.
+
+The aspirational stuff - "What do you want to achieve?" - belongs at Q3 or Q4. By then they're already invested. The emotional questions hit harder because they've committed to the process.
+
+**The proven entry sequence:**
+
+| # | Question | Format |
+|---|---|---|
+| Q1 | Age range | Single-select, 4-5 buckets |
+| Q2 | Gender (or second demographic) | Single-select |
+| Q3 | Goals/desires (NOW you go aspirational) | Multi-select |
+| Q4 | Pain points/struggles | Multi-select |
+| Q5+ | Deeper diagnosis, life events, behavior | Mixed formats |
+
+Reverse the order at your peril. Front-loading aspirational questions kills Q1 completion.
+
 ---
 
 ## The Meta-Rule

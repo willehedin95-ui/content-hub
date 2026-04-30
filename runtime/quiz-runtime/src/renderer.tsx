@@ -52,13 +52,57 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Compute the Swedish possessive form of a name. If the name ends in s, x or z
+ * we don't append another s ("Jens" → "Jens", not "Jenss"). Otherwise we add
+ * "s" for the standard genitive form ("Bella" → "Bellas"). This mirrors the
+ * informal Swedish convention favoured by content authors.
+ */
+function swedishPossessive(name: string): string {
+  if (!name) return name;
+  const last = name.slice(-1).toLowerCase();
+  if (last === "s" || last === "x" || last === "z") return name;
+  return name + "s";
+}
+
+// Per-variable fallback when the captured value is empty/whitespace. Without
+// fallbacks the offer page reads "träningsplan är klar" instead of "Din valps
+// träningsplan är klar" if the user skipped the name input. We map well-known
+// pet variables to graceful defaults.
+const VARIABLE_FALLBACKS: Record<string, string> = {
+  name: "Din valp",
+  breed: "din valp",
+  primary_pain: "beteendeproblem",
+  upcoming_event_value: "",
+  time_per_day: "10 min/dag",
+};
+
+function pickValue(name: string, raw: string | undefined): string | undefined {
+  if (raw != null && raw.trim() !== "") return raw;
+  if (name in VARIABLE_FALLBACKS) return VARIABLE_FALLBACKS[name];
+  return undefined;
+}
+
 export function interpolate(
   text: string,
   variables: Record<string, string> | undefined,
 ): string {
-  if (!variables || !text.includes("{")) return text;
+  if (!text.includes("{")) return text;
   return text.replace(/\{([a-zA-Z_][\w]*)\}/g, (m, name) => {
-    const v = variables[name];
+    // Derived possessive: `{name_pos}` resolves to the Swedish genitive of
+    // `{name}` ("Bella" → "Bellas", "Jens" → "Jens"). Falls back to "Din
+    // valps" when name is empty so all "{name_pos} träningsplan" copy still
+    // reads naturally.
+    if (name.endsWith("_pos")) {
+      const base = name.slice(0, -"_pos".length);
+      const raw = variables?.[base];
+      const v = pickValue(base, raw);
+      if (v == null) return m;
+      if (v === "Din valp") return escapeHtml("Din valps");
+      return escapeHtml(swedishPossessive(v));
+    }
+    const raw = variables?.[name];
+    const v = pickValue(name, raw);
     if (v == null) return m;
     return escapeHtml(v);
   });
@@ -279,6 +323,77 @@ function TestimonialSliderEl({
  * etc.) are still inlined and get the defensive sanitizer so they don't
  * fight our theme.
  */
+/**
+ * Wrap rich custom_html content in a minimal HTML document that picks up the
+ * parent quiz's font + brand colours. Without the wrapper the iframe srcdoc
+ * is parsed as a bare fragment and the browser uses its default UA stylesheet
+ * (which is serif on most platforms) - that clashed with the rest of the
+ * quiz that renders in Quicksand. We read CSS variables off the parent root
+ * and re-declare them inside the iframe so author CSS can keep using them.
+ */
+function wrapCustomHtmlForIframe(authorHtml: string): string {
+  // Discover parent quiz's CSS variables so we can mirror them into the iframe.
+  // Falls back to the same defaults injected by injectStyles() so the wrapper
+  // still works in unit tests / SSR environments.
+  let cssVars = "";
+  let fontFamily = "'Quicksand', system-ui, -apple-system, sans-serif";
+  let textColor = "#1A1A1A";
+  let bgColor = "transparent";
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    const cs = getComputedStyle(document.documentElement);
+    const get = (name: string, fallback: string) => {
+      const v = cs.getPropertyValue(name).trim();
+      return v || fallback;
+    };
+    fontFamily = get("--quiz-font", fontFamily);
+    textColor = get("--quiz-text-primary", textColor);
+    bgColor = get("--quiz-bg", bgColor);
+    const varNames = [
+      "--quiz-bg",
+      "--quiz-text-primary",
+      "--quiz-text-secondary",
+      "--quiz-brand",
+      "--quiz-option-bg",
+      "--quiz-option-border",
+      "--quiz-option-selected-bg",
+      "--quiz-option-radius",
+      "--quiz-option-padding",
+      "--quiz-option-border-width",
+      "--quiz-cta-radius",
+      "--quiz-cta-padding",
+      "--quiz-step-gap",
+      "--quiz-font",
+    ];
+    cssVars = varNames
+      .map((n) => `  ${n}: ${get(n, "").trim() || "initial"};`)
+      .join("\n");
+  }
+
+  return `<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap">
+<style>
+:root {
+${cssVars}
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  font-family: ${fontFamily};
+  color: ${textColor};
+  background: ${bgColor};
+  -webkit-font-smoothing: antialiased;
+}
+body { padding: 0; margin: 0; }
+</style>
+</head>
+<body>${authorHtml}</body>
+</html>`;
+}
+
 function isRichHtmlBlock(html: string): boolean {
   if (!html) return false;
   if (html.length > 1500) return true;
@@ -369,6 +484,12 @@ function CustomHtmlEl({
   }, [resolved, rich]);
 
   if (rich) {
+    // Wrap author HTML in a minimal document that inherits the parent quiz's
+    // font + design tokens. Without this the iframe falls back to the user
+    // agent default (often a serif on iOS/Safari) which clashes with the
+    // rest of the quiz UI. We read CSS variables off the parent root and
+    // mirror them into the iframe so author CSS can use them too.
+    const wrappedSrcdoc = wrapCustomHtmlForIframe(resolved);
     return (
       <iframe
         ref={iframeRef}
@@ -380,7 +501,7 @@ function CustomHtmlEl({
         // The HTML is author-controlled and trusted; we're not rendering
         // arbitrary third-party submissions.
         sandbox="allow-scripts allow-same-origin"
-        srcdoc={resolved}
+        srcdoc={wrappedSrcdoc}
         title={`Custom block ${el.id}`}
       />
     );
@@ -398,14 +519,21 @@ function CustomHtmlEl({
 function LoadingEl({
   el,
   onComplete,
+  variables,
 }: {
   el: Extract<SubEl, { kind: "loading" }>;
   onComplete: () => void;
+  variables?: Record<string, string>;
 }) {
   useEffect(() => {
     const t = setTimeout(onComplete, el.seconds * 1000);
     return () => clearTimeout(t);
   }, [el.seconds, onComplete]);
+
+  // Loading text supports {var} interpolation but is rendered as plain text -
+  // authors should keep it short, no inline HTML. Variable values are still
+  // HTML-escaped by interpolate(), so they're safe even if rendered as text.
+  const rendered = interpolate(el.text ?? "", variables);
 
   return (
     <div
@@ -414,7 +542,7 @@ function LoadingEl({
       class="quiz-loading"
     >
       <div class="quiz-loading-spinner" />
-      {el.text && <p class="quiz-loading-text">{el.text}</p>}
+      {rendered && <p class="quiz-loading-text">{rendered}</p>}
     </div>
   );
 }
@@ -424,19 +552,30 @@ function OptionButton({
   layout,
   selected,
   onClick,
+  variables,
+  kindOf,
 }: {
   option: QuestionOption;
   layout: "list" | "cards" | "image_cards" | "chips" | "dropdown";
   selected: boolean;
   onClick: () => void;
+  variables?: Record<string, string>;
+  kindOf?: "single" | "multi";
 }) {
   const cls = [
     "quiz-option",
     `quiz-option--${layout}`,
+    kindOf === "multi" ? "quiz-option--multi" : "",
     selected ? "quiz-option--selected" : "",
   ]
     .filter(Boolean)
     .join(" ");
+  const label = interpolate(option.label, variables);
+  // raising.dog pattern: multi-select shows a square checkbox left, single-
+  // select on list/cards shows a right-arrow chevron. Both indicators are
+  // hidden for image_cards (the photo IS the indicator) and chips (compact).
+  const showCheckbox = kindOf === "multi" && (layout === "list" || layout === "cards");
+  const showArrow = kindOf === "single" && (layout === "list" || layout === "cards");
   return (
     <button
       class={cls}
@@ -445,7 +584,7 @@ function OptionButton({
       type="button"
     >
       {layout === "image_cards" && option.imageUrl && (
-        <img src={option.imageUrl} alt={option.label} class="quiz-option-img" />
+        <img src={option.imageUrl} alt={label} class="quiz-option-img" />
       )}
       {layout === "image_cards" && !option.imageUrl && option.imageDescription && (
         <span class="quiz-option-img-placeholder" title={option.imageDescription}>
@@ -453,7 +592,23 @@ function OptionButton({
         </span>
       )}
       {option.emoji && <span class="quiz-option-emoji">{option.emoji}</span>}
-      <span class="quiz-option-label">{option.label}</span>
+      <span class="quiz-option-label">{label}</span>
+      {showArrow && (
+        <span class="quiz-option-arrow" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 5L13 10L7 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      )}
+      {showCheckbox && (
+        <span class={`quiz-option-checkbox${selected ? " quiz-option-checkbox--checked" : ""}`} aria-hidden="true">
+          {selected && (
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 10.5L8 14.5L16 6.5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          )}
+        </span>
+      )}
     </button>
   );
 }
@@ -462,18 +617,25 @@ function QuestionEl({
   el,
   onAnswer,
   market,
+  variables,
 }: {
   el: Extract<SubEl, { kind: "question" }>;
   onAnswer: (questionElId: string, optionId: string) => void;
   market: string | undefined;
+  variables?: Record<string, string>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const handleClick = (optId: string) => {
     if (el.kindOf === "single") {
       setSelected(new Set([optId]));
-      // Small delay so user sees the selection before advance
-      setTimeout(() => onAnswer(el.id, optId), 200);
+      // Auto-advance only for the visual layouts where a click IS the answer
+      // (cards, list, image_cards, chips). Dropdown is a search/typing UX
+      // where a misclick should not jump the user forward - they pick, then
+      // confirm with Continue.
+      if (el.layout !== "dropdown") {
+        setTimeout(() => onAnswer(el.id, optId), 200);
+      }
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
@@ -500,21 +662,33 @@ function QuestionEl({
           onPick={(optId) => handleClick(optId)}
           market={market}
         />
-        {el.kindOf === "multi" && selected.size > 0 && (
+        {selected.size > 0 && (
           <button
             class="quiz-btn quiz-btn--primary quiz-question-continue"
             type="button"
-            onClick={() => {
-              const firstId = [...selected][0];
-              onAnswer(el.id, firstId);
-            }}
+            onClick={() => onAnswer(el.id, [...selected][0])}
           >
-            {t("continue", market)} ({selected.size})
+            {t("continue", market)}{el.kindOf === "multi" ? ` (${selected.size})` : ""}
+          </button>
+        )}
+        {el.escapeOption && (
+          <button
+            class="quiz-escape-link"
+            type="button"
+            onClick={() => onAnswer(el.id, el.escapeOption!.optionId)}
+          >
+            {el.escapeOption.label}
           </button>
         )}
       </div>
     );
   }
+
+  // Hide the escape option from the visible card grid - it's rendered as a
+  // text-link under the CTA instead. (raising.dog / EveryDoggy pattern.)
+  const visibleOptions = el.escapeOption
+    ? el.options.filter((o) => o.id !== el.escapeOption!.optionId)
+    : el.options;
 
   return (
     <div
@@ -522,26 +696,43 @@ function QuestionEl({
       data-quiz-el-id={el.id}
       class={`quiz-question quiz-question--${el.layout}`}
     >
-      {el.options.map((opt) => (
+      {visibleOptions.map((opt) => (
         <OptionButton
           key={opt.id}
           option={opt}
           layout={el.layout}
           selected={selected.has(opt.id)}
           onClick={() => handleClick(opt.id)}
+          variables={variables}
+          kindOf={el.kindOf}
         />
       ))}
-      {el.kindOf === "multi" && selected.size > 0 && (
-        <button
-          class="quiz-btn quiz-btn--primary quiz-question-continue"
-          type="button"
-          onClick={() => {
-            const firstId = [...selected][0];
-            onAnswer(el.id, firstId);
-          }}
-        >
-          {t("continue", market)}
-        </button>
+      {(el.kindOf === "multi" || (el.kindOf === "single" && el.escapeOption)) && (
+        <div class="quiz-question-bottom">
+          {el.kindOf === "multi" && (
+            <button
+              class="quiz-btn quiz-btn--primary quiz-question-continue"
+              type="button"
+              disabled={selected.size === 0}
+              onClick={() => {
+                if (selected.size === 0) return;
+                const firstId = [...selected][0];
+                onAnswer(el.id, firstId);
+              }}
+            >
+              {t("continue", market)}
+            </button>
+          )}
+          {el.escapeOption && (
+            <button
+              class="quiz-escape-link"
+              type="button"
+              onClick={() => onAnswer(el.id, el.escapeOption!.optionId)}
+            >
+              {el.escapeOption.label}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -558,109 +749,126 @@ function DropdownQuestion({
   onPick: (optId: string) => void;
   market: string | undefined;
 }) {
+  // Inline-typeable autocomplete (raising.dog pattern). The user types
+  // directly into the always-visible input; suggestions render inline below.
+  // No "trigger button + modal panel" pattern - that felt heavy-handed and
+  // didn't match the rest of the quiz UI.
   const isMulti = el.kindOf === "multi";
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const pickedOptions = el.options.filter((o) => selected.has(o.id));
+  const hasPicks = pickedOptions.length > 0;
+
+  // For single-select we initialise the input with the picked label so the
+  // user sees their choice as text after picking. They can edit to swap
+  // breeds without re-opening anything.
+  const initialQuery = !isMulti && hasPicks ? pickedOptions[0].label : "";
+  const [query, setQuery] = useState(initialQuery);
+  const [focused, setFocused] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) return;
     const onDocClick = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setFocused(false);
       }
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
+  }, []);
 
   const q = query.trim().toLowerCase();
+  // For single-select: if the input matches the picked label exactly, show
+  // no suggestions (they've made their choice). If they edit, show
+  // suggestions again. For multi-select: always filter on the typed text.
+  const exactPickedMatch =
+    !isMulti &&
+    hasPicks &&
+    pickedOptions[0].label.toLowerCase() === q;
   const filtered = q
     ? el.options.filter((o) => o.label.toLowerCase().includes(q))
     : el.options;
+  const showSuggestions = focused && !exactPickedMatch;
 
   const placeholder =
     el.dropdownPlaceholder ||
     (el.searchable ? t("searchPlaceholder", market) : t("selectPlaceholder", market));
 
-  // Trigger label: single = picked option's label, multi = chips or count
-  const pickedOptions = el.options.filter((o) => selected.has(o.id));
-  const hasPicks = pickedOptions.length > 0;
-
   return (
     <div
-      class={`quiz-dropdown${open ? " quiz-dropdown--open" : ""}${isMulti ? " quiz-dropdown--multi" : ""}`}
+      class={`quiz-dropdown${focused ? " quiz-dropdown--open" : ""}${isMulti ? " quiz-dropdown--multi" : ""}`}
       ref={rootRef}
     >
-      <button
-        type="button"
-        class="quiz-dropdown-trigger"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        {isMulti && hasPicks ? (
-          <span class="quiz-dropdown-chips">
-            {pickedOptions.slice(0, 4).map((o) => (
-              <span key={o.id} class="quiz-dropdown-chip">{o.label}</span>
-            ))}
-            {pickedOptions.length > 4 && (
-              <span class="quiz-dropdown-chip quiz-dropdown-chip--more">
-                +{pickedOptions.length - 4}
-              </span>
-            )}
-          </span>
-        ) : (
-          <span class={hasPicks ? "" : "quiz-dropdown-placeholder"}>
-            {hasPicks ? pickedOptions[0].label : placeholder}
-          </span>
-        )}
-        <span class="quiz-dropdown-chevron" aria-hidden="true">▾</span>
-      </button>
-      {open && (
-        <div class="quiz-dropdown-panel">
-          {el.searchable && (
-            <input
-              type="text"
-              class="quiz-dropdown-search"
-              placeholder={placeholder}
-              value={query}
-              autoFocus
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            />
+      {/* Multi-select shows the chip-row above the input so users see their
+          picks while typing more. Single-select shows the picked label as
+          input text. */}
+      {isMulti && hasPicks && (
+        <div class="quiz-dropdown-chips quiz-dropdown-chips--stack">
+          {pickedOptions.slice(0, 4).map((o) => (
+            <span key={o.id} class="quiz-dropdown-chip">{o.label}</span>
+          ))}
+          {pickedOptions.length > 4 && (
+            <span class="quiz-dropdown-chip quiz-dropdown-chip--more">
+              +{pickedOptions.length - 4}
+            </span>
           )}
-          <ul class="quiz-dropdown-list">
-            {filtered.length === 0 && (
-              <li class="quiz-dropdown-empty">{t("noMatches", market)}</li>
-            )}
-            {filtered.map((opt) => {
-              const isSel = selected.has(opt.id);
-              return (
-                <li key={opt.id}>
-                  <button
-                    type="button"
-                    class={`quiz-dropdown-item${isSel ? " quiz-dropdown-item--selected" : ""}`}
-                    data-quiz-opt-id={opt.id}
-                    onClick={() => {
-                      onPick(opt.id);
-                      if (!isMulti) {
-                        setOpen(false);
-                        setQuery("");
-                      }
-                    }}
-                  >
-                    {isMulti && (
-                      <span class={`quiz-dropdown-check${isSel ? " quiz-dropdown-check--on" : ""}`} aria-hidden="true">
-                        {isSel ? "✓" : ""}
-                      </span>
-                    )}
-                    {opt.emoji && <span class="quiz-dropdown-emoji">{opt.emoji}</span>}
-                    {opt.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
         </div>
+      )}
+      <input
+        ref={inputRef}
+        type="text"
+        class="quiz-dropdown-input"
+        placeholder={placeholder}
+        value={query}
+        autoComplete="off"
+        autoCapitalize="words"
+        spellcheck={false}
+        onFocus={() => setFocused(true)}
+        onInput={(e) => {
+          setQuery((e.target as HTMLInputElement).value);
+          setFocused(true);
+        }}
+      />
+      {showSuggestions && (
+        <ul class="quiz-dropdown-list">
+          {filtered.length === 0 && (
+            <li class="quiz-dropdown-empty">{t("noMatches", market)}</li>
+          )}
+          {filtered.slice(0, 50).map((opt) => {
+            const isSel = selected.has(opt.id);
+            return (
+              <li key={opt.id}>
+                <button
+                  type="button"
+                  class={`quiz-dropdown-item${isSel ? " quiz-dropdown-item--selected" : ""}`}
+                  data-quiz-opt-id={opt.id}
+                  onMouseDown={(e) => {
+                    // Prevent the input from blurring before we register the click.
+                    e.preventDefault();
+                  }}
+                  onClick={() => {
+                    onPick(opt.id);
+                    if (!isMulti) {
+                      setQuery(opt.label);
+                      setFocused(false);
+                      inputRef.current?.blur();
+                    } else {
+                      setQuery("");
+                      inputRef.current?.focus();
+                    }
+                  }}
+                >
+                  {isMulti && (
+                    <span class={`quiz-dropdown-check${isSel ? " quiz-dropdown-check--on" : ""}`} aria-hidden="true">
+                      {isSel ? "✓" : ""}
+                    </span>
+                  )}
+                  {opt.emoji && <span class="quiz-dropdown-emoji">{opt.emoji}</span>}
+                  {opt.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
@@ -735,7 +943,28 @@ export function StepRenderer({
 }) {
   const hasQuestion = node.subEls.some((el) => el.kind === "question");
   const hasLoading = node.subEls.some((el) => el.kind === "loading");
-  const showContinueBtn = !hasQuestion && !hasLoading && typeof onContinue === "function";
+  // Commit-gate steps render their own Yes/No UI inside the custom_html
+  // iframe (PawChamp modal-over-loading pattern). The runtime hides its own
+  // Continue button so the user only sees the modal's buttons; the iframe
+  // postMessages "quiz-runtime-continue" back to advance the flow.
+  const isCommitGate = !!node.name && /^commit/i.test(node.name);
+  const showContinueBtn =
+    !hasQuestion && !hasLoading && !isCommitGate && typeof onContinue === "function";
+
+  // Disable Continue when a required text_input is empty. Otherwise users can
+  // skip the name step entirely and downstream {name}/{name_pos} interpolation
+  // breaks (William reproduced this on v16 - "träningsplan är klar" missing
+  // the "Bellas" prefix). We treat all text_input subEls as required.
+  const textInputs = node.subEls.filter(
+    (el): el is Extract<SubEl, { kind: "text_input" }> => el.kind === "text_input",
+  );
+  const continueDisabled =
+    showContinueBtn &&
+    textInputs.length > 0 &&
+    textInputs.some((el) => {
+      const v = variables?.[el.variable];
+      return v == null || v.trim().length === 0;
+    });
 
   return (
     <div class="quiz-step" data-step-id={node.id}>
@@ -751,11 +980,11 @@ export function StepRenderer({
             return <CustomHtmlEl key={el.id} el={el} variables={variables} />;
           case "loading":
             return (
-              <LoadingEl key={el.id} el={el} onComplete={onLoadingComplete} />
+              <LoadingEl key={el.id} el={el} onComplete={onLoadingComplete} variables={variables} />
             );
           case "question":
             return (
-              <QuestionEl key={el.id} el={el} onAnswer={onAnswer} market={market} />
+              <QuestionEl key={el.id} el={el} onAnswer={onAnswer} market={market} variables={variables} />
             );
           case "text_input":
             return (
@@ -788,6 +1017,7 @@ export function StepRenderer({
             class="quiz-btn quiz-btn--primary"
             type="button"
             onClick={onContinue}
+            disabled={continueDisabled}
           >
             {t("continue", market)}
           </button>
@@ -889,12 +1119,20 @@ body {
   max-width: 720px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 20px;
   gap: 12px;
 }
-
-.quiz-logo { height: 36px; object-fit: contain; }
+/* Equal-flex side containers ensure logo sits in exact center regardless of
+ * whether back-btn or step-count are present. Each side reserves the same
+ * width so the middle column is mathematically centered. */
+.quiz-header-side {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.quiz-header-side--end { justify-content: flex-end; }
+.quiz-logo { height: 24px; object-fit: contain; flex: 0 0 auto; }
 
 .quiz-back-btn {
   width: 36px;
@@ -947,11 +1185,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  animation: quiz-step-in 0.28s cubic-bezier(.2,.8,.2,1) both;
+  animation: quiz-step-in 0.28s ease-out both;
 }
+/* Opacity-only animation. Note: a non-none transform on .quiz-step would
+ * create a containing block for descendants and break position fixed on the
+ * .quiz-question-bottom CTA (per CSS spec). Slide-in was nice-to-have. */
 @keyframes quiz-step-in {
-  from { opacity: 0; transform: translate3d(16px, 0, 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .quiz-step { animation: none; }
@@ -1040,12 +1281,40 @@ body {
 .quiz-option--selected {
   background: var(--quiz-option-selected-bg);
   border-color: var(--quiz-brand);
-  transform: scale(1.02);
 }
 .quiz-option:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--quiz-bg), 0 0 0 4px var(--quiz-brand);
 }
+
+/* raising.dog inspired indicators */
+.quiz-option-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1.5px solid var(--quiz-option-border);
+  background: #FFFFFF;
+  flex: 0 0 auto;
+  margin-left: auto;
+  transition: background 0.15s, border-color 0.15s;
+}
+.quiz-option-checkbox--checked {
+  background: var(--quiz-brand);
+  border-color: var(--quiz-brand);
+}
+.quiz-option-arrow {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: rgba(0, 0, 0, 0.35);
+  flex: 0 0 auto;
+}
+.quiz-option--selected .quiz-option-arrow { color: var(--quiz-brand); }
+.quiz-option--cards .quiz-option-arrow { display: none; }
+.quiz-option--cards .quiz-option-checkbox { display: none; }
 
 .quiz-option--cards {
   width: calc(50% - 5px);
@@ -1112,7 +1381,8 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   padding: var(--quiz-cta-padding);
   border-radius: var(--quiz-cta-radius);
-  font-size: 16px; font-weight: 500; font-family: var(--quiz-font);
+  font-size: 18px; font-weight: 700; font-family: var(--quiz-font);
+  letter-spacing: 0.2px;
   cursor: pointer; border: none;
   transition: opacity 0.2s, transform 0.2s, background-color 0.2s;
   min-height: 56px;
@@ -1120,12 +1390,75 @@ body {
 .quiz-btn:hover { opacity: 0.92; }
 .quiz-btn:active { transform: scale(0.98); }
 .quiz-btn[disabled] {
-  background: #D1D5DB !important;
-  color: #9CA3AF !important;
+  background: color-mix(in srgb, var(--quiz-brand) 45%, #FFFFFF) !important;
+  color: #FFFFFF !important;
   cursor: not-allowed;
+  opacity: 1 !important;
 }
 .quiz-btn--primary { background: var(--quiz-brand); color: #fff; width: 100%; }
-.quiz-question-continue { margin-top: 16px; }
+
+/* Fixed-bottom CTA + escape-link wrapper for multi-select questions and
+ * single-select with escape (raising.dog / EveryDoggy pattern). Pinned to
+ * viewport bottom so the user always sees it regardless of how many options
+ * the question has. Padding-bottom on .quiz-content reserves space so the
+ * last option isn't hidden under the wrapper. */
+.quiz-question-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px 16px;
+  background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
+}
+.quiz-question-bottom .quiz-question-continue {
+  width: 100%;
+  max-width: 680px;
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  position: static;
+}
+.quiz-question-bottom .quiz-escape-link { padding: 8px 16px; }
+/* Reserve scrollable space so the fixed wrapper never covers the last option.
+ * Applied universally - quiz-step layouts without a fixed bottom only get a
+ * little extra breathing room, no UX cost. */
+.quiz-content { padding-bottom: 160px; }
+/* Inline CTA fallback (used by dropdown layout where Continue is rendered
+ * inline below the input, not in the fixed wrapper). */
+.quiz-question--dropdown .quiz-question-continue {
+  position: static;
+  margin-top: 24px;
+}
+
+/* Escape link rendered under the CTA (raising.dog / EveryDoggy
+ * "I don't know my dog's breed" / "None of the above" pattern). Bypasses
+ * normal validation - submits with a hidden option-id so analytics still
+ * captures the answer. */
+.quiz-escape-link {
+  display: block;
+  margin: 0 auto;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  font-family: var(--quiz-font);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--quiz-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  text-align: center;
+}
+.quiz-escape-link:hover { opacity: 0.75; }
+.quiz-escape-link:focus-visible {
+  outline: 2px solid var(--quiz-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 .quiz-email-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .quiz-email-input {
@@ -1142,55 +1475,37 @@ body {
 .quiz-continue-wrap { margin-top: 16px; }
 
 .quiz-dropdown { position: relative; width: 100%; }
-.quiz-dropdown-trigger {
+.quiz-dropdown-input {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   background: var(--quiz-option-bg);
-  border: 2px solid rgb(0,0,0);
-  border-radius: 6px;
-  padding: 14px;
+  border: 2px solid var(--quiz-option-border);
+  border-radius: var(--quiz-option-radius, 16px);
+  padding: 14px 16px;
   font-size: 16px;
   font-family: var(--quiz-font);
   color: var(--quiz-text-primary);
-  cursor: pointer;
-  text-align: left;
-}
-.quiz-dropdown--open .quiz-dropdown-trigger { border-color: var(--quiz-brand); }
-.quiz-dropdown-placeholder { color: rgba(0,0,0,0.45); }
-.quiz-dropdown-chevron { opacity: 0.5; transition: transform 0.2s; }
-.quiz-dropdown--open .quiz-dropdown-chevron { transform: rotate(180deg); }
-.quiz-dropdown-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1.5px solid rgba(0,0,0,0.15);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.12);
-  max-height: 320px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  z-index: 20;
-}
-.quiz-dropdown-search {
-  border: none;
-  border-bottom: 1px solid rgba(0,0,0,0.1);
-  padding: 12px 14px;
-  font-size: 15px;
-  font-family: var(--quiz-font);
   outline: none;
-  width: 100%;
+  transition: border-color 0.15s;
+}
+.quiz-dropdown-input::placeholder { color: rgba(0,0,0,0.35); }
+.quiz-dropdown-input:focus,
+.quiz-dropdown--open .quiz-dropdown-input { border-color: var(--quiz-brand); }
+.quiz-dropdown-chips--stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 .quiz-dropdown-list {
   list-style: none;
   padding: 4px 0;
-  margin: 0;
+  margin: 6px 0 0 0;
   overflow-y: auto;
+  max-height: 280px;
+  background: #fff;
+  border: 1.5px solid var(--quiz-option-border);
+  border-radius: var(--quiz-option-radius, 16px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 .quiz-dropdown-item {
   display: flex;
@@ -1256,8 +1571,8 @@ body {
 .quiz-text-input {
   width: 100%;
   padding: 14px 16px;
-  border: 2px solid rgb(0,0,0);
-  border-radius: 6px;
+  border: 2px solid var(--quiz-option-border);
+  border-radius: var(--quiz-option-radius, 16px);
   font-size: 16px;
   font-family: var(--quiz-font);
   background: var(--quiz-option-bg);

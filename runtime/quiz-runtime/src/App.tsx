@@ -26,6 +26,27 @@ import { t } from "./i18n";
 // Pixel helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Fires the exit redirect on mount. Used by the exit-node screen so users
+ * don't have to click an extra button - the loading splash transitions
+ * straight to the destination URL.
+ */
+function ExitAutoRedirect({
+  node,
+  onTrigger,
+}: {
+  node: ExitNode;
+  onTrigger: (n: ExitNode) => void;
+}) {
+  const fired = useRef(false);
+  useEffect(() => {
+    if (fired.current) return;
+    fired.current = true;
+    onTrigger(node);
+  }, [node, onTrigger]);
+  return null;
+}
+
 function firePixelEvent(eventName: string, params: Record<string, unknown>) {
   if (typeof window.fbq === "function") {
     window.fbq("track", eventName, params);
@@ -123,6 +144,37 @@ export function App({ data, settings, config }: AppProps) {
   // Cleanup buffer on unmount
   useEffect(() => () => bufferRef.current?.destroy(), []);
 
+  // PawChamp-style commit-gate steps render their own Yes/No UI inside an
+  // iframe (custom_html). They postMessage `quiz-runtime-continue` to advance
+  // the flow. We capture an optional `value` so analytics can still see which
+  // option the user picked.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data;
+      if (!d || typeof d !== "object" || d.type !== "quiz-runtime-continue") return;
+      if (!currentNode || currentNode.kind !== "step") return;
+      if (!config.preview) {
+        bufferRef.current?.push({
+          event_type: "answer",
+          step_id: currentNode.id,
+          variant_group_id: currentNode.variantGroupId,
+          option_id: typeof d.value === "string" ? d.value : "yes",
+          meta: { source: "commit_gate_modal" },
+        });
+      }
+      const next = resolveNextNode(
+        data,
+        currentNode.id,
+        null,
+        null,
+        variantAssignments,
+      );
+      if (next) navigateTo(next);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [currentNode, data, variantAssignments, config.preview]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Defensive auto-advance: if we ever land on a step with no subEls
   // (e.g. persisted data from before pruneEmptySteps was introduced),
   // immediately skip to the next node without adding to history.
@@ -172,7 +224,17 @@ export function App({ data, settings, config }: AppProps) {
       if (q && q.kind === "question" && q.variable) {
         const picked = q.options.find((o) => o.id === optionId);
         if (picked) {
-          setVariables((prev) => ({ ...prev, [q.variable!]: picked.label }));
+          // Always capture label as the primary variable. Also expose the
+          // optional `value` field as `<variable>_value` so authors can
+          // store derived data (e.g. label="Hane", value="han" for
+          // pronoun substitution) without losing the human-readable label.
+          setVariables((prev) => ({
+            ...prev,
+            [q.variable!]: picked.label,
+            ...(picked.value !== undefined
+              ? { [`${q.variable!}_value`]: picked.value }
+              : {}),
+          }));
         }
       }
 
@@ -313,35 +375,39 @@ export function App({ data, settings, config }: AppProps) {
         });
       }
 
-      // Flush events before redirect
-      void bufferRef.current?.flush().finally(() => {
-        // Build redirect URL with UTM
-        const redirectBase =
-          exitNode.redirectUrl || settings.redirectUrl || "";
-        const url = new URL(redirectBase, location.href);
-        url.searchParams.set("utm_source", "quiz");
-        url.searchParams.set("utm_campaign", document.title || "quiz");
-        if (sessionId) url.searchParams.set("utm_content", sessionId);
-        location.href = url.toString();
+      // Build the redirect URL up front so we never lose it to a hanging flush.
+      const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
+      const url = new URL(redirectBase, location.href);
+      url.searchParams.set("utm_source", "quiz");
+      url.searchParams.set("utm_campaign", document.title || "quiz");
+      if (sessionId) url.searchParams.set("utm_content", sessionId);
+      const target = url.toString();
+
+      // Race the flush against a 1.5s timeout - if events can't reach the hub
+      // (CORS error, blocked network, slow API) we still redirect on time.
+      const flushPromise = bufferRef.current?.flush().catch(() => {}) ?? Promise.resolve();
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+      void Promise.race([flushPromise, timeoutPromise]).finally(() => {
+        location.href = target;
       });
     },
     [settings, sessionId, config.preview],
   );
 
-  // Render exit node as a CTA screen
+  // Render exit node as an auto-redirecting "loading" splash. The previous
+  // pattern (loading text + a "See my results" button) confused users - the
+  // text said it was loading but nothing happened until they clicked. Now we
+  // fire handleExitClick on mount and just show the spinner while flush +
+  // redirect resolve. handleExitClick already races the flush against a
+  // 1.5s timeout so the redirect is always prompt.
   if (currentNode?.kind === "exit") {
     const exitNode = currentNode as ExitNode;
     return (
       <div class="quiz-shell">
         <div class="quiz-content quiz-exit">
+          <ExitAutoRedirect node={exitNode} onTrigger={handleExitClick} />
+          <div class="quiz-loading-spinner" />
           <p class="quiz-text">{t("loadingResults", config.market)}</p>
-          <button
-            class="quiz-btn quiz-btn--primary"
-            type="button"
-            onClick={() => handleExitClick(exitNode)}
-          >
-            {t("seeResults", config.market)}
-          </button>
         </div>
         {previewToast && <div class="quiz-preview-toast">{previewToast}</div>}
       </div>
@@ -367,19 +433,23 @@ export function App({ data, settings, config }: AppProps) {
   return (
     <div class="quiz-shell">
       <div class="quiz-header">
-        {canGoBack && (
-          <button class="quiz-back-btn" type="button" onClick={handleBack} aria-label="Go back">
-            &larr;
-          </button>
-        )}
+        <div class="quiz-header-side quiz-header-side--start">
+          {canGoBack && (
+            <button class="quiz-back-btn" type="button" onClick={handleBack} aria-label="Go back">
+              &larr;
+            </button>
+          )}
+        </div>
         {settings.brandLogo?.enabled && settings.brandLogo.url && (
           <img src={settings.brandLogo.url} alt="Logo" class="quiz-logo" />
         )}
-        {settings.stepProgressCount && (
-          <span class="quiz-step-count">
-            {stepIndex + 1} / {totalSteps}
-          </span>
-        )}
+        <div class="quiz-header-side quiz-header-side--end">
+          {settings.stepProgressCount && (
+            <span class="quiz-step-count">
+              {stepIndex + 1} / {totalSteps}
+            </span>
+          )}
+        </div>
       </div>
 
       {settings.progressBar && (

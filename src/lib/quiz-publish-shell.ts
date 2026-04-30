@@ -80,10 +80,12 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
 </script>`
     : "";
 
-  // Serialize quiz data - full graph (runtime resolves variants client-side)
-  const quizDataJson = JSON.stringify(data);
-  const settingsJson = JSON.stringify(settings);
-  const configJson = JSON.stringify({
+  // Serialize quiz data - full graph (runtime resolves variants client-side).
+  // Escape "</script>" and "<!--" so user-authored HTML stored in custom_html
+  // blocks can't terminate the surrounding <script> tag or open an HTML comment.
+  const quizDataJson = serializeForInlineScript(data);
+  const settingsJson = serializeForInlineScript(settings);
+  const configJson = serializeForInlineScript({
     apiBaseUrl,
     quizId: id,
     market,
@@ -128,4 +130,17 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return s.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/**
+ * JSON.stringify a value into a form that's safe to inline inside a `<script>`
+ * tag. Handles two parser-level hazards: a literal `</script>` inside string
+ * data terminates the script block early, and `<!--` opens an HTML comment.
+ * U+2028/U+2029 are JSON-legal but break legacy JS parsers that read the
+ * source as text.
+ */
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/<\/(script)/gi, "<\\/$1")
+    .replace(/<!--/g, "<\\!--");
 }

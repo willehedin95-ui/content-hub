@@ -151,6 +151,71 @@ Key techniques in this framework:
 
 ---
 
+## Framework 5: The 5-Section Logical Flow (Spartan model)
+
+Tight, sales-mechanism-disguised-as-diagnostic framework from Spartan ($10M/mo men's hair care). Best for commoditized physical products in saturated categories where you need to reframe the user's frame of reference, not just segment them. ~12-18 questions total.
+
+### Section 1: The Diagnosis (5 questions)
+
+Map the user's exact problem with five tight questions. Every answer gets reused later on the sales page.
+
+1. How old are you? (zero-friction entry)
+2. Where is the pain/issue located? (specifics)
+3. Do you experience these specific symptoms? (multi-select)
+4. How severe is it? (quantification)
+5. When did it start? (duration → sunk cost)
+
+By the end of section 1, you've mapped their exact problem in their own words. Don't add more questions here. The discipline matters.
+
+### Section 2: The Aspiration Bridge (1 question + 1 social-proof slide)
+
+Pivot immediately from pain to outcome.
+
+- Q: "What results are you expecting?" (multi-select)
+- Then a social proof slide that connects their pain to your solution: "Most users with [their selected symptom] start seeing [their selected outcome] within X weeks."
+
+This single move converts "I have a problem" into "I have a problem your product solves." Anchors credibility in one screen.
+
+### Section 3: The Personalization (2 questions)
+
+Two product-variant questions that LOOK like personalization but actually qualify the SKU recommendation.
+
+Examples (steal the slot, swap the content):
+- Hair care → "What's your hair type?" / "How long is your hair?"
+- Skincare → "What's your skin type?" / "Where do you mainly experience this?"
+- Supplements → "What flavor would you prefer?" / "How many servings per day?"
+
+These slides personalize the result page AND let the system route them to the correct SKU recommendation.
+
+### Section 4: The Pre-Framing (2-3 question/info-slide pairs)
+
+Each pair = one question + one info slide that defuses the objection that question raises.
+
+Examples:
+- Q: "How much time do you spend on this daily?" → Info: "Most users only need 2 minutes a day."
+- Q: "Does this run in your family?" → Info: "Genetics load the gun, lifestyle pulls the trigger. The right routine controls the trigger."
+- Q: "How often do you experience stress?" → Info: "Stress can accelerate [their condition] by up to X%. The protocol below addresses this directly."
+
+You're handling objections before they form AND educating them on root causes that justify your mechanism. Each info slide reframes an objection or competitor.
+
+### Section 5: The Solution (3 slides)
+
+Synthesize everything into a clinical-sounding profile + time-bound promise + commitment gates.
+
+1. **The diagnosis card**: "Based on your answers — Age 38, [pain location], moderate severity, [duration], [genetics + stress] — your profile is [clinical-sounding label]." Loads like a medical chart.
+2. **The promise with timeline**: "Based on your profile, we expect you to see visible results by [current month + 6]." This is the AOV-anchor — the 6-month timeline frames the 6-month supply on the offer page.
+3. **The yes ladder**: 2 micro-commitment yes/no questions. "Are you determined to stop this?" / "Does this routine sound good to you?" Two yeses → offer page.
+
+### Why this framework wins for commoditized DR products
+
+- Spartan-style products compete in saturated categories where claims are commodities
+- The quiz becomes the differentiator — it's a sales mechanism dressed as diagnostic
+- Anchors AOV (6-month supply) inside the quiz before the offer page renders
+- Pre-handles objections inside the funnel
+- Yes ladder makes the sale feel inevitable
+
+---
+
 ## Picking a framework
 
 | Audience | Product | Framework |
@@ -158,5 +223,6 @@ Key techniques in this framework:
 | Cold, problem-aware | Physical (supplements, pain, appearance) | Gradualization Sequence + 5-Phase Funnel |
 | Solution-aware, warm | Commoditized product | Transformational Arc (shorter) |
 | Identity/lifestyle | Apps, mental health, beauty | Liven 5-Stage |
+| Saturated commodity DR | Hair care, men's health, supplements | Spartan 5-Section |
 
 Mix freely. Arc + Gradualization stacks especially well in 20-question funnels.

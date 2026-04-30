@@ -16,8 +16,16 @@ import { getRuntimeBundle, generateQuizShell } from "@/lib/quiz-publish-shell";
 import type { QuizRow } from "@/types/quiz";
 
 // ---------------------------------------------------------------------------
-// Market -> CF Pages project name mapping
+// Publish target resolution
 // ---------------------------------------------------------------------------
+
+type PublishTarget = {
+  projectName: string;
+  domain: string;
+  /** Path under the domain. Default "/quiz/" for shared market projects, "/"
+   *  for workspaces with a dedicated subdomain. */
+  pathPrefix: string;
+};
 
 /** Maps quiz market to the CF Pages project name (matches the env-var convention). */
 function getQuizProjectName(market: "se" | "dk" | "no"): string {
@@ -39,6 +47,45 @@ function getQuizDomain(market: "se" | "dk" | "no"): string {
     no: process.env.CF_PAGES_DOMAIN_NO ?? "helseguiden.com",
   };
   return map[market] ?? `${getQuizProjectName(market)}.pages.dev`;
+}
+
+/**
+ * Resolve where to publish this quiz. Workspace-level overrides win over
+ * market mapping, so a workspace like Doginwork can publish to its own
+ * subdomain (quiz.doginwork.se) without changing the shared market projects.
+ *
+ * Workspace settings shape:
+ * ```
+ * settings.quiz_publish = {
+ *   cf_pages_project: "doginwork-quiz",
+ *   domain: "quiz.doginwork.se",
+ *   path_prefix: "/"  // optional, defaults to "/"
+ * }
+ * ```
+ */
+async function getPublishTarget(workspaceId: string, market: "se" | "dk" | "no"): Promise<PublishTarget> {
+  const db = createServerSupabase();
+  const { data: ws } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  const settings = ws?.settings as { quiz_publish?: { cf_pages_project?: string; domain?: string; path_prefix?: string } } | null;
+  const override = settings?.quiz_publish;
+  if (override?.cf_pages_project && override?.domain) {
+    return {
+      projectName: override.cf_pages_project,
+      domain: override.domain,
+      pathPrefix: override.path_prefix ?? "/",
+    };
+  }
+
+  return {
+    projectName: getQuizProjectName(market),
+    domain: getQuizDomain(market),
+    pathPrefix: "/quiz/",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,9 +146,10 @@ export async function publishQuiz(
   }
   const typedQuiz = quiz as QuizRow;
 
-  // 2. Get CF config
+  // 2. Get CF config + per-workspace publish target
   const { accountId, apiToken } = getConfig();
-  const projectName = getQuizProjectName(typedQuiz.market);
+  const target = await getPublishTarget(typedQuiz.workspace_id, typedQuiz.market);
+  const { projectName, domain, pathPrefix } = target;
 
   // 3. Discover compiled runtime bundle
   const bundle = getRuntimeBundle();
@@ -121,7 +169,7 @@ export async function publishQuiz(
   const html = generateQuizShell(typedQuiz, bundle.hash, apiBaseUrl);
 
   // 7. Upload quiz HTML
-  const htmlPath = `/quiz/${typedQuiz.slug}/index.html`;
+  const htmlPath = `${pathPrefix}${typedQuiz.slug}/index.html`;
   const htmlBuffer = Buffer.from(html, "utf-8");
   const htmlHash = md5hex(htmlBuffer);
 
@@ -162,8 +210,7 @@ export async function publishQuiz(
   await mergeManifest(projectName, newPaths);
 
   // 10. Build public URL
-  const domain = getQuizDomain(typedQuiz.market);
-  const publicUrl = `https://${domain}/quiz/${typedQuiz.slug}`;
+  const publicUrl = `https://${domain}${pathPrefix}${typedQuiz.slug}`;
   const publishedAt = new Date().toISOString();
 
   // 11. Update quizzes row

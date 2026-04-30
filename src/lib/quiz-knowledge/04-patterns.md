@@ -87,11 +87,11 @@ Don't use a single long loading screen. Break into 2-3 shorter loaders (5-7 seco
 
 ---
 
-## The Profile Trifecta (the close)
+## The Profile Trifecta (the close) - Mars Men 3-Card System
 
-Three-slide sequence at the end of a quiz. High-converting on physical-condition products. Originally from app onboarding, now standard in DTC.
+Three-slide sequence at the end of a quiz. High-converting on physical-condition products. Originally from app onboarding, now standard in DTC. Mars Men ($100M+ men's health) refined the canonical implementation.
 
-### Slide 1: The Profile Page
+### Slide 1: The Profile Page (how cooked you are)
 
 All their answers summarized. Show severity. Clinical visuals. Color-coded alarm levels.
 
@@ -100,23 +100,112 @@ All their answers summarized. Show severity. Clinical visuals. Color-coded alarm
 > Duration: 2+ years
 > Impact areas: Energy, focus, sleep quality
 
-Creates urgency + fear by showing them how "cooked" they are.
+**The job:** create urgency + fear. Show them how "cooked" they are. The user looks at this card and thinks "shit, this is worse than I thought."
 
-### Slide 2: The Future-Pacing Page
+This is the **doctor's diagnosis** moment - the user trusts the prescription because they trust the process that led to it.
+
+### Slide 2: The Future-Pacing Page (where you can be)
 
 Where they could be with the right intervention. Graphs work exceptionally well here.
 
 > "By [specific date 90 days out], 87% of people with your profile report [specific outcome]"
 
-Be specific on the date (e.g. "February 6") — specificity beats vague promises. Split the graph into two lines: "Current trajectory (no change)" vs "With intervention" — the contrast does the selling.
+**Specificity is non-negotiable on the date** (e.g. "February 6", not "in 90 days"). Specific dates feel like forecasts, not vague promises.
 
-### Slide 3: The Offer Page
+Split the graph into two lines: "Current trajectory (no change)" vs "With intervention" - the visual contrast does the selling. Adding a red warning band on the do-nothing trajectory amplifies fear of inaction.
+
+For event-driven funnels: reference the user's captured event ("by your wedding on June 5"). Captured-and-callback is the highest-leverage personalization move.
+
+### Slide 3: The Offer Page (perfect for you)
 
 Based on the answers, their personalized recommendation.
 
 > "Based on your profile, we built this for you..."
 
-Add a final micro-loading screen confirming "sourcing your product..." right before the offer page renders. The anticipation peak hits the offer at maximum desire.
+**The trick:** add a final micro-loading screen confirming "sourcing your product..." or "claiming your offer..." right before the offer page renders. 3-5 seconds. The anticipation peak hits the offer at maximum desire.
+
+By this point the user has been through 15+ questions, seen their profile diagnosed, watched themselves projected into the future with intervention. They don't question the prescription. They trust it.
+
+> "You don't question the doctor when he writes your prescription."
+> -- The Funnel Professor on Mars Men
+
+---
+
+## The "Take Quiz" CTA pattern (Happy Mammoth)
+
+Most brands run ads like:
+
+```
+Ad → Product Page (Buy Now)
+```
+
+Higher-converting brands run:
+
+```
+Ad → "Take Quiz" / "Get Your Free Diagnosis" → Quiz → Offer
+```
+
+### Why this works
+
+**Customers love taking quizzes.** Frame the ad CTA as "Get Your Free Diagnosis" / "Find Your [X] Profile" / "Take the 2-Minute Assessment" instead of "Shop Now."
+
+**You're giving them value, not extracting it.**
+
+The goal of an ad is to **get the click**, not sell. A quiz CTA gets cheaper clicks because:
+
+- The promise is information, not a transaction
+- The user feels they're getting a free diagnostic tool, not being sold
+- Click-through rate climbs (lower CPM)
+- Quiz completion → offer page CVR is 3-5%+ vs 1-2% on direct product page
+
+### How to position the entry
+
+Weak: "Take our quiz"
+
+Strong:
+- "Get your personalized [X] diagnosis (2 minutes)"
+- "Find your [X] profile"
+- "Take this 1-minute quiz to claim your discount"
+- "Discover what's causing your [problem]"
+
+Frame it as **free value** they're receiving, not effort they're donating.
+
+### When NOT to use
+
+Solution-aware audiences who already want to buy can be sent direct to product pages. The quiz CTA works best for **problem-aware to solution-aware** segments (Schwartz Stage 2-3). They have a problem but haven't committed to a solution yet.
+
+---
+
+## "Did You Know" stat opener
+
+Pattern for quiz entry pages OR offer pages. Open with a counter-intuitive or eye-catching statistic that:
+
+1. Makes the user pause (interrupts scroll/scan)
+2. Promises a specific outcome
+3. Sets up the case for your product
+
+Examples:
+
+- "Did you know: 82% of users who used our app for 2 weeks saw improvements in their dog's behavior?" (Dogo)
+- "65% of users started their training with Woofz and advanced in their goals within the first month*" (Woofz)
+- "98% of our users notice positive changes in their dog's behavior just 1 week after starting" (EveryDoggy)
+- "Over 200 000 books already ordered!" + 4.8/5 stars (Raising.dog)
+
+### The structure
+
+```
+"Did you know: [counter-intuitive or impressive stat]"
+* [small disclaimer about source if needed]
+```
+
+The asterisk-disclaimer makes the stat feel rigorous, not made up. Even if the source is "based on user-reported survey data," cite it.
+
+### Where to place
+
+- **Quiz entry page** (positions the funnel as backed by data)
+- **Loading screen** (captive attention - drop the stat there)
+- **Offer page hero** (anchors the offer in scientific-feeling claims)
+- **Email subject lines** ("Did you know 82%...")
 
 ---
 
