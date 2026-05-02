@@ -574,8 +574,8 @@ function OptionButton({
   // raising.dog pattern: multi-select shows a square checkbox left, single-
   // select on list/cards shows a right-arrow chevron. Both indicators are
   // hidden for image_cards (the photo IS the indicator) and chips (compact).
-  const showCheckbox = kindOf === "multi" && (layout === "list" || layout === "cards");
-  const showArrow = kindOf === "single" && (layout === "list" || layout === "cards");
+  const showCheckbox = kindOf === "multi" && (layout === "list" || layout === "cards" || layout === "image_cards");
+  const showArrow = kindOf === "single" && (layout === "list" || layout === "cards" || layout === "image_cards");
   return (
     <button
       class={cls}
@@ -1012,7 +1012,7 @@ export function StepRenderer({
         <EmailCaptureForm onSubmit={onEmailSubmit} market={market} />
       )}
       {showContinueBtn && (
-        <div class="quiz-continue-wrap">
+        <div class="quiz-continue-wrap" data-step-name={node.name ?? ""}>
           <button
             class="quiz-btn quiz-btn--primary"
             type="button"
@@ -1253,7 +1253,10 @@ body {
 
 .quiz-question { display: flex; flex-direction: column; gap: 10px; }
 .quiz-question--cards { flex-direction: row; flex-wrap: wrap; gap: 10px; }
-.quiz-question--image_cards { flex-direction: row; flex-wrap: wrap; gap: 10px; }
+/* image_cards = PawChamp-style row med thumbnail vänster, label center,
+ * checkbox höger. Single-column 100%-bredd så fler alternativ syns utan
+ * scroll och layouten matchar resten av multi-frågorna. (William 2026-04-30) */
+.quiz-question--image_cards { flex-direction: column; gap: 10px; }
 .quiz-question--chips { flex-direction: row; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
 
 /* Base option: Clarflow-style soft-border card. All brand tokens from
@@ -1323,14 +1326,16 @@ body {
   padding: var(--quiz-option-padding);
 }
 .quiz-option--image_cards {
-  width: calc(50% - 5px);
-  flex-direction: column;
-  text-align: center;
-  padding: 0;
+  width: 100%;
+  flex-direction: row;
+  text-align: left;
+  padding: 6px 10px;
   overflow: hidden;
   min-height: 0;
+  align-items: center;
+  gap: 12px;
 }
-.quiz-option--image_cards .quiz-option-label { padding: 10px 8px 12px; font-size: 15px; font-weight: 500; }
+.quiz-option--image_cards .quiz-option-label { padding: 0; font-size: 15px; font-weight: 500; flex: 1; line-height: 1.3; }
 
 .quiz-option--chips {
   width: auto;
@@ -1355,14 +1360,14 @@ body {
   padding: 12px;
   color: rgba(0,0,0,0.4);
 }
-.quiz-option--image_cards .quiz-option-img-placeholder { border-radius: 10px 10px 0 0; border: 2px dashed rgba(255,255,255,0.25); color: rgba(255,255,255,0.55); }
+.quiz-option--image_cards .quiz-option-img-placeholder { width: 56px; height: 56px; aspect-ratio: 1 / 1; border-radius: 8px; border: 2px dashed rgba(0,0,0,0.15); flex: 0 0 56px; }
 .quiz-option-img-placeholder-label {
   font-size: 11px;
   line-height: 1.35;
   text-align: center;
   font-style: italic;
 }
-.quiz-option--image_cards .quiz-option-img { aspect-ratio: 1 / 1; border-radius: 10px 10px 0 0; }
+.quiz-option--image_cards .quiz-option-img { width: 56px; height: 56px; aspect-ratio: 1 / 1; border-radius: 8px; flex: 0 0 56px; object-fit: contain; }
 .quiz-option-emoji { font-size: 24px; }
 .quiz-option-label { font-weight: 400; flex: 1; }
 
@@ -1426,7 +1431,9 @@ body {
 /* Reserve scrollable space so the fixed wrapper never covers the last option.
  * Applied universally - quiz-step layouts without a fixed bottom only get a
  * little extra breathing room, no UX cost. */
-.quiz-content { padding-bottom: 160px; }
+/* Bottom-buffer för fixed CTAs (.quiz-question-bottom OR .quiz-continue-wrap).
+ * Nu när alla CTAs är fixed-bottom appliceras 180px alltid. */
+.quiz-content { padding-bottom: 180px; }
 /* Inline CTA fallback (used by dropdown layout where Continue is rendered
  * inline below the input, not in the fixed wrapper). */
 .quiz-question--dropdown .quiz-question-continue {
@@ -1472,7 +1479,34 @@ body {
 .quiz-email-input:focus { border-color: var(--quiz-brand); border-width: 2px; }
 .quiz-email-error { font-size: 13px; color: #dc2626; }
 
-.quiz-continue-wrap { margin-top: 16px; }
+/* Inline Continue (slider/text_input/custom_html): fixed-bottom samma stil
+ * som .quiz-question-bottom så CTA-positionen är enhetlig genom hela quizet
+ * (William 2026-04-30). */
+.quiz-continue-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 16px 16px;
+  background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
+}
+.quiz-continue-wrap .quiz-btn--primary {
+  width: 100%;
+  max-width: 680px;
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+/* Steg som ska ha inline-CTA istället för fixed-bottom (William 2026-04-30
+ * - profile-card behöver natural flow så CTA inte täcker innehåll). */
+.quiz-continue-wrap[data-step-name*="Profil"] {
+  position: static;
+  background: transparent;
+  padding: 24px 0 8px;
+}
 
 .quiz-dropdown { position: relative; width: 100%; }
 .quiz-dropdown-input {
@@ -1731,7 +1765,8 @@ body {
 .quiz-custom-html li { margin-bottom: 4px; }
 
 @media (max-width: 480px) {
-  .quiz-content { padding: 20px 10px 48px; }
+  /* Mobile: tight horizontal padding + 180px bottom för fixed CTA. */
+  .quiz-content { padding: 20px 10px 180px; }
 }
   `;
   document.head.appendChild(style);

@@ -102,7 +102,57 @@ export function App({ data, settings, config }: AppProps) {
       return;
     }
 
-    const firstNode = resolveNextNode(data, startNode.id, null, null, assignments);
+    let firstNode = resolveNextNode(data, startNode.id, null, null, assignments);
+
+    // Dev-shortcut: ?goto=<keyword> hoppar direkt till första step vars
+    // node.name (case-insensitive) innehåller keyword. Förfyller också
+    // typiska variabler så interpolation fungerar. Användbart för att
+    // iterera på en specifik slide utan att klicka igenom hela quizet.
+    // Exempel: ?goto=block+9, ?goto=profil, ?goto=loading, ?goto=offer
+    try {
+      const params = new URLSearchParams(location.search);
+      const goto = params.get("goto");
+      if (goto && goto.trim()) {
+        const keyword = goto.trim().toLowerCase();
+        const match = Object.values(data.nodes).find(
+          (n) => n.kind === "step" && (n.name ?? "").toLowerCase().includes(keyword),
+        );
+        if (match) {
+          firstNode = match;
+          // Förfyll vanliga variabler så {name}/{breed}/etc interpolerar.
+          // Override per param: ?vars=name:Bella,breed:Tax
+          const defaults: Record<string, string> = {
+            name: "Bella",
+            name_pos: "Bellas",
+            gender: "Hane",
+            gender_value: "han",
+            breed: "Golden retriever",
+            primary_pain: "Drar i kopplet",
+            primary_pain_value: "koppeldragning",
+            age: "7-12 mån",
+            time_per_day: "10 min/dag",
+            ignores_owner_value: "Spridd",
+            seeks_affection_value: "Stark",
+          };
+          const varsParam = params.get("vars");
+          if (varsParam) {
+            varsParam.split(",").forEach((kv) => {
+              const [k, v] = kv.split(":");
+              if (k && v) defaults[k.trim()] = v.trim();
+            });
+          }
+          setVariables(defaults);
+          // eslint-disable-next-line no-console
+          console.info(`[quiz-runtime] goto=${goto} → ${match.id} (${match.kind === "step" ? match.name : ""})`);
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn(`[quiz-runtime] goto=${goto} no match`);
+        }
+      }
+    } catch {
+      /* ignore - fail gracefully if URL parsing breaks */
+    }
+
     setCurrentNode(firstNode);
 
     // Fire PageView pixel immediately (skip in preview)
