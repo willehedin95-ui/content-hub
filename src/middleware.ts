@@ -46,6 +46,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/quiz/session") ||
     request.nextUrl.pathname.startsWith("/api/quiz/events") ||
     request.nextUrl.pathname.startsWith("/api/quiz/klaviyo-subscribe") ||
+    // Shopify webhook: HMAC-authenticated, called by Shopify servers
+    request.nextUrl.pathname.startsWith("/api/quiz/shopify-webhook") ||
     // Hydro13 iOS app subscription lookup (auth via x-api-key header)
     request.nextUrl.pathname.startsWith("/api/loop/")
   ) {
