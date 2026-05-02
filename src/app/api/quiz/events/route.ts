@@ -66,6 +66,7 @@ const VALID_EVENT_TYPES = new Set([
   "back",
   "exit_click",
   "abandon",
+  "purchase", // Logged by /api/quiz/shopify-webhook on order/create
 ]);
 
 export async function POST(req: NextRequest) {

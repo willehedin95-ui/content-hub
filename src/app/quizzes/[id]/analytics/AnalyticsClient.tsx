@@ -51,8 +51,17 @@ type Summary = {
   median_time_to_exit_sec: number;
 };
 
+type Purchases = {
+  count: number;
+  revenue: number;
+  currency: string | null;
+  rate: number; // 0..1, purchases / starts
+  aov: number;
+};
+
 type AnalyticsData = {
   summary: Summary;
+  purchases?: Purchases;
   funnel: FunnelStep[];
   options: OptionRow[];
   variants: VariantRow[];
@@ -1116,6 +1125,28 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
               label="Completion Rate"
               value={`${summary.completion_rate}%`}
               sub={`Median time: ${fmtDuration(summary.median_time_to_exit_sec)}`}
+            />
+          </div>
+        )}
+
+        {/* Purchase KPI row - only renders when the Shopify webhook has
+            attributed at least one order back to a quiz session */}
+        {analyticsData?.purchases && analyticsData.purchases.count > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <KpiCard
+              label="Purchases"
+              value={analyticsData.purchases.count.toLocaleString()}
+              sub={`From ${summary?.starts.toLocaleString() ?? 0} starts`}
+            />
+            <KpiCard
+              label="Revenue"
+              value={`${Math.round(analyticsData.purchases.revenue).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`.trim()}
+              sub={`AOV ${Math.round(analyticsData.purchases.aov).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`}
+            />
+            <KpiCard
+              label="Purchase Rate"
+              value={`${(analyticsData.purchases.rate * 100).toFixed(2)}%`}
+              sub={`${analyticsData.purchases.count} of ${summary?.starts ?? 0}`}
             />
           </div>
         )}

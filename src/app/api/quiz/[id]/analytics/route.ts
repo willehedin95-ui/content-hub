@@ -75,8 +75,18 @@ export async function GET(
     }
   }
 
-  // Run all 4 RPCs in parallel
-  const [summaryRes, funnelRes, optionsRes, variantsRes] = await Promise.all([
+  // Run all 4 RPCs + purchase aggregation in parallel. Purchase aggregation
+  // queries quiz_sessions directly (no RPC required) and degrades silently
+  // if the purchased column hasn't been created yet.
+  const purchasePromise = db
+    .from("quiz_sessions")
+    .select("purchase_value, purchase_currency, purchased_at")
+    .eq("quiz_id", id)
+    .eq("purchased", true)
+    .gte("started_at", sinceIso)
+    .lte("started_at", untilIso);
+
+  const [summaryRes, funnelRes, optionsRes, variantsRes, purchaseRes] = await Promise.all([
     db.rpc("quiz_summary", {
       quiz_id_in: id,
       since: sinceIso,
@@ -99,6 +109,7 @@ export async function GET(
       since: sinceIso,
       until: untilIso,
     }),
+    purchasePromise,
   ]);
 
   if (summaryRes.error) return safeError(summaryRes.error, "Failed to load summary");
@@ -109,6 +120,22 @@ export async function GET(
   // quiz_summary returns a single row in an array
   const summaryRow = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
 
+  // Aggregate purchases. If the column doesn't exist yet (DDL not run),
+  // purchaseRes.error will be set - degrade silently to zeros so the rest
+  // of the dashboard still loads.
+  type PurchaseRow = { purchase_value: number | null; purchase_currency: string | null; purchased_at: string | null };
+  const purchaseRows: PurchaseRow[] =
+    purchaseRes.error ? [] : ((purchaseRes.data as PurchaseRow[] | null) ?? []);
+  const purchases = {
+    count: purchaseRows.length,
+    revenue: purchaseRows.reduce((sum, r) => sum + (r.purchase_value ?? 0), 0),
+    currency: purchaseRows[0]?.purchase_currency ?? null,
+    rate: summaryRow?.starts ? purchaseRows.length / Number(summaryRow.starts) : 0,
+    aov: purchaseRows.length
+      ? purchaseRows.reduce((sum, r) => sum + (r.purchase_value ?? 0), 0) / purchaseRows.length
+      : 0,
+  };
+
   const response = NextResponse.json({
     summary: summaryRow ?? {
       starts: 0,
@@ -117,6 +144,7 @@ export async function GET(
       email_captures: 0,
       median_time_to_exit_sec: 0,
     },
+    purchases,
     funnel: funnelRes.data ?? [],
     options: optionsRes.data ?? [],
     variants: variantsRes.data ?? [],
