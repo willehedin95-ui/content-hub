@@ -145,6 +145,32 @@ Strategic retention play. Kollagen kräver 60-90 dagar för synliga resultat - c
 - [ ] Page builder: multi-select alignment toolbar (flexbox align/distribute selected elements). (added 2026-03-10)
 - [ ] **Auto-scheduling** — AI picks optimal publish time based on historical performance. (added 2025-02-25)
 
+## Doginwork Valpakademin Quiz (live at quiz.doginwork.se/valpakademin)
+
+Massiv overhaul-iteration v24→v64 över 3 dagar (2026-04-30 → 2026-05-02). Profile-card future-pacing-graf, offer-page hel rewrite (v19→v20), pricing reveal LP-style 1999→997, Pattern A/C placement, ?goto-dev-shortcut. Full audit i `doginwork/audit-2026-04-30-v58.md`. Quiz is launch-ready visually + structurally. Blocked on Marie-side fixes + IA-rewrite-decision.
+
+### Pågående diskussion (PAUSAD vid wrap-up 2026-05-02)
+- [ ] **Offer-page IA-rewrite** — William påpekade att copy inte introducerar Valpakademin/Marie i logisk ordning. Hero-copy ska säga "Vi rekommenderar Valpakademin", Marie ska introduceras innan name-drops, online-pill ska skippas helt (defensiv "inte en app"-copy). Plan presenterad, väntar på Williams OK. (added 2026-05-02, NEXT UP)
+- [ ] **Hero-bild på offer-page** — William sa "använd EveryDoggys" men det är copyright-issue. Behöver hans nano-banana split before/after-image. (added 2026-05-02)
+- [ ] **Expertise-bild på profile-card** — Borttagen i v64 (ersatt av future-pacing-graf). Om vi vill ha den någonstans behöver William generisk training-bild (ej Marie-foto). (added 2026-05-02, LOW)
+
+### William-side blockers (uppdaterade 2026-05-02)
+- [ ] **QUIZ2026 Shopify discount code (50% off)** — UPPDATERAD: William höjer base-pris från 997 → 1999 i Shopify, skapar QUIZ2026 = 50% off → 997 kr. Offer-pagen visar redan 1999 → 997. (updated 2026-05-02, was 10% off)
+- [ ] **Activate `info@doginwork.com` mailbox** — Footer på offer-page länkar dit. Currently dead. (added 2026-04-30)
+- [ ] **Real customer testimonial photos** — All 5 avatar-X.jpg är randomuser.me-stock. Behöver Maries OK för riktiga kund-foton. (added 2026-04-30)
+- [ ] **Block 9 thumbnail-uppgrade** — 7 webp uppladdade 2026-05-01 men några matchar inte beteendet 100% (Skäller mycket = chihuahua, Hoppar på folk = springande hund). Antingen acceptera eller regenerera via nano-banana. (updated 2026-05-01)
+- [ ] **Trustpilot setup** — Konto exists, inga reviews. Aktivera som final-step i kursen. (added 2026-04-30)
+- [ ] **Marie installerar custom Shopify-app** — Behövs för unique-discount-codes-system (deferred till v2). Skippa för nu. (added 2026-05-01, LOW)
+
+### Quiz-side optimizations (Claude can do, post-launch)
+- [ ] **Slider-frågor (b10/b14/b21)** — alla "rate importance" där alla picker 8-10. Inget insight - reframe till agree-scale eller ta bort. (added 2026-04-30)
+- [ ] **End-to-end test på real iPhone Safari** — All UI har Playwright-simulerad 390px. Verifiera safe-area, sticky CTA-bar, font rendering på riktig enhet innan launch. (added 2026-04-30)
+- [ ] **Did You Know-stat på loading-screen** — Per audit H1, ~5-8% CVR-lift för 30 min arbete. Lägg till "Visste du? 80%+ av kunder ser tydlig förändring inom 4 veckor*" på bload. (added 2026-05-01)
+- [ ] **Variera CTA-text per step** — Nu är alla "Fortsätt". Per docs Pattern J ger "Få min plan"/"Visa min profil" osv ~1-3% lift. (added 2026-05-01)
+- [ ] **Live calc interstitial efter b11** — "Bella kan {N}% av grundkommandon" - Woofz-stealable. (added 2026-05-01)
+- [ ] **Plan-ID på profile + offer** — "Plan #VK-XXXX-2026" - Woofz case-file-känsla. (added 2026-05-01)
+- [ ] **Unique discount codes v2** — Bulk-skapa via Shopify API, allocator-endpoint i Supabase, ~4h dev. Vänta tills CVR är validerad. (added 2026-05-01, LOW)
+
 ## Hydro13 iOS App
 - [x] ~~**Automated TestFlight uploads**~~ — Nightly launchd job at 22:00, `scripts/upload-testflight.sh`, commit-based skip, auto build number increment. App Store Connect API key (Developer role). v1.1.0 build 4 uploaded. (done 2026-03-30)
 - [ ] **App Store screenshots with AI** — Use [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) to generate professional ASO screenshots. Scaffolds a Next.js project, exports all 4 Apple sizes. Swedish locale. `npx skills add ParthJadhav/app-store-screenshots`. (added 2026-03-23)
