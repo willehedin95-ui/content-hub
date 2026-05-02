@@ -135,6 +135,9 @@ export type QuizSettings = {
 export type QuizConfig = {
   apiBaseUrl: string;
   quizId: string;
+  /** Quiz slug, used for utm_campaign on the exit redirect (so analytics
+   *  can group sessions by quiz without leaking the title). */
+  quizSlug?: string;
   /** When true, the runtime skips all API calls (sessions, events, Klaviyo). */
   preview?: boolean;
   /** Market locale: 'se' | 'dk' | 'no' | 'en'. Drives i18n strings. */

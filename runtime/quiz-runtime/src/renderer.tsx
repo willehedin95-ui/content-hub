@@ -73,6 +73,8 @@ const VARIABLE_FALLBACKS: Record<string, string> = {
   name: "Din valp",
   breed: "din valp",
   primary_pain: "beteendeproblem",
+  primary_pain_value: "beteendet",
+  problem_duration: "ett tag",
   upcoming_event_value: "",
   time_per_day: "10 min/dag",
 };

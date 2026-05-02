@@ -151,6 +151,29 @@ export async function publishQuiz(
   const target = await getPublishTarget(typedQuiz.workspace_id, typedQuiz.market);
   const { projectName, domain, pathPrefix } = target;
 
+  // 2b. Workspace-level Meta Pixel fallback. If the quiz has no pixel ID set
+  //     in its own settings, inherit from `workspaces.meta_config.pixel_id`.
+  //     This means new quizzes get tracking automatically without per-quiz
+  //     config, and removing a workspace pixel disables tracking everywhere.
+  const { data: ws } = await db
+    .from("workspaces")
+    .select("meta_config")
+    .eq("id", typedQuiz.workspace_id)
+    .maybeSingle();
+  const workspacePixelId = (ws?.meta_config as { pixel_id?: string } | null)?.pixel_id;
+  if (workspacePixelId && !typedQuiz.settings.providers?.metaPixel?.pixelId) {
+    typedQuiz.settings = {
+      ...typedQuiz.settings,
+      providers: {
+        ...typedQuiz.settings.providers,
+        metaPixel: {
+          ...(typedQuiz.settings.providers?.metaPixel ?? {}),
+          pixelId: workspacePixelId,
+        },
+      },
+    };
+  }
+
   // 3. Discover compiled runtime bundle
   const bundle = getRuntimeBundle();
 

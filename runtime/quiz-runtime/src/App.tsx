@@ -198,10 +198,45 @@ export function App({ data, settings, config }: AppProps) {
   // iframe (custom_html). They postMessage `quiz-runtime-continue` to advance
   // the flow. We capture an optional `value` so analytics can still see which
   // option the user picked.
+  //
+  // Analytics-only events (no flow advance) use `quiz-runtime-event` so iframes
+  // can fire intermediate signals (e.g. modal-1 click before the step actually
+  // continues on modal-2). Schema: { type, event_type, option_id?, meta? }.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const d = e.data;
-      if (!d || typeof d !== "object" || d.type !== "quiz-runtime-continue") return;
+      if (!d || typeof d !== "object") return;
+
+      // Analytics-only event (does not advance the flow)
+      if (d.type === "quiz-runtime-event" && typeof d.event_type === "string") {
+        if (!config.preview && currentNode && currentNode.kind === "step") {
+          bufferRef.current?.push({
+            event_type: d.event_type,
+            step_id: currentNode.id,
+            variant_group_id: currentNode.variantGroupId,
+            option_id: typeof d.option_id === "string" ? d.option_id : undefined,
+            meta:
+              d.meta && typeof d.meta === "object" ? (d.meta as Record<string, unknown>) : undefined,
+          });
+          // High-intent commit-gate "yes" → fire Meta Pixel Lead. The runtime's
+          // existing Lead-on-email path stays untouched; this surfaces the
+          // commit-gate signal as well so audiences can be built from intent
+          // even when no email is captured.
+          if (
+            settings.providers.metaPixel?.pixelId &&
+            typeof d.option_id === "string" &&
+            d.option_id.endsWith("_yes")
+          ) {
+            firePixelEvent("Lead", {
+              content_name: settings.metadata.title,
+              content_category: "commit_gate",
+            });
+          }
+        }
+        return;
+      }
+
+      if (d.type !== "quiz-runtime-continue") return;
       if (!currentNode || currentNode.kind !== "step") return;
       if (!config.preview) {
         bufferRef.current?.push({
@@ -223,7 +258,7 @@ export function App({ data, settings, config }: AppProps) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [currentNode, data, variantAssignments, config.preview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentNode, data, variantAssignments, config.preview, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Defensive auto-advance: if we ever land on a step with no subEls
   // (e.g. persisted data from before pruneEmptySteps was introduced),
@@ -257,10 +292,24 @@ export function App({ data, settings, config }: AppProps) {
             step_id: node.id,
             variant_group_id: node.variantGroupId,
           });
+
+          // Fire Meta Pixel InitiateCheckout when the user lands on the
+          // offer page (last step before exit). Detection by step name -
+          // build-quiz.py uses "Offer page" / "offer". This is the highest
+          // upstream-of-purchase intent signal we have client-side.
+          if (settings.providers.metaPixel?.pixelId && node.kind === "step") {
+            const stepName = (node.name ?? "").toLowerCase();
+            if (stepName.includes("offer")) {
+              firePixelEvent("InitiateCheckout", {
+                content_name: settings.metadata.title,
+                content_category: "offer_page",
+              });
+            }
+          }
         }
       }
     },
-    [currentNode, orderedSteps, config.preview],
+    [currentNode, orderedSteps, config.preview, settings],
   );
 
   const handleAnswer = useCallback(
@@ -426,11 +475,25 @@ export function App({ data, settings, config }: AppProps) {
       }
 
       // Build the redirect URL up front so we never lose it to a hanging flush.
+      // UTM strategy: utm_source=quiz, utm_medium=funnel, utm_campaign=<slug>,
+      // utm_content=<sessionId> (links Shopify orders back to a quiz session
+      // via custom-attribute capture or a Shopify webhook), utm_term=<pain>
+      // (so GA4/Shopify can segment by primary problem the user reported).
+      // Extra qz_* params survive even if the destination page strips utm_*.
       const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
       const url = new URL(redirectBase, location.href);
       url.searchParams.set("utm_source", "quiz");
-      url.searchParams.set("utm_campaign", document.title || "quiz");
+      url.searchParams.set("utm_medium", "funnel");
+      url.searchParams.set("utm_campaign", config.quizSlug || "quiz");
       if (sessionId) url.searchParams.set("utm_content", sessionId);
+      const pain = variables.primary_pain_value || variables.primary_pain;
+      if (pain) url.searchParams.set("utm_term", pain);
+      // Extra (non-utm) custom params for Shopify-side attribution
+      if (sessionId) url.searchParams.set("qz_sid", sessionId);
+      if (pain) url.searchParams.set("qz_pain", pain);
+      if (variables.breed) url.searchParams.set("qz_breed", variables.breed);
+      if (variables.time_per_day) url.searchParams.set("qz_time", variables.time_per_day);
+      if (variables.age) url.searchParams.set("qz_age", variables.age);
       const target = url.toString();
 
       // Race the flush against a 1.5s timeout - if events can't reach the hub
@@ -441,7 +504,7 @@ export function App({ data, settings, config }: AppProps) {
         location.href = target;
       });
     },
-    [settings, sessionId, config.preview],
+    [settings, sessionId, config.preview, config.quizSlug, variables],
   );
 
   // Render exit node as an auto-redirecting "loading" splash. The previous

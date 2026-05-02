@@ -88,6 +88,7 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
   const configJson = serializeForInlineScript({
     apiBaseUrl,
     quizId: id,
+    quizSlug: slug,
     market,
   });
 
