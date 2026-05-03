@@ -21,7 +21,7 @@ const nextConfig: NextConfig = {
     // Make sure the quiz-runtime bundle is packaged into the serverless
     // function for /_runtime/[filename] (and any other route that reads
     // it via fs at runtime, e.g. /quizzes/[id]/preview, /api/quiz/[id]/publish).
-    "/_runtime/\\[filename\\]": ["./runtime/quiz-runtime/dist/**/*"],
+    "/quiz-bundle/\\[filename\\]": ["./runtime/quiz-runtime/dist/**/*"],
     "/quizzes/\\[id\\]/preview": ["./runtime/quiz-runtime/dist/**/*"],
     "/api/quiz/\\[id\\]/publish": ["./runtime/quiz-runtime/dist/**/*"],
   },

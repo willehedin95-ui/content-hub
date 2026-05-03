@@ -42,7 +42,10 @@ export async function GET(
   let html: string;
   try {
     const { hash } = getRuntimeBundle();
-    const baseHtml = generateQuizShell(quiz, hash, "");
+    // For preview iframe, load the bundle from /quiz-bundle/[filename]
+    // (the Next.js route in this app). The published version uses the
+    // default /_runtime/ path which CF Pages serves directly.
+    const baseHtml = generateQuizShell(quiz, hash, "", "/quiz-bundle/");
 
     // Patch __QUIZ_CONFIG__ to include preview:true and clear apiBaseUrl
     html = baseHtml.replace(

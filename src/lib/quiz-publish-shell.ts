@@ -57,11 +57,17 @@ export function getRuntimeBundle(): BundleInfo {
  *
  * The `quiz` row's data.nodes should already have variants baked in
  * (the full graph is passed to the runtime which resolves variants client-side).
+ *
+ * `runtimeScriptBase` defaults to `/_runtime/` which is the path CF Pages
+ * serves the bundle at after publish. The Vercel-hosted preview iframe
+ * passes `/quiz-bundle/` which is a Next.js route that reads the bundle
+ * from disk. Both paths produce the same JS, just from different origins.
  */
 export function generateQuizShell(
   quiz: QuizRow,
   bundleHash: string,
   apiBaseUrl: string,
+  runtimeScriptBase: string = "/_runtime/",
 ): string {
   const { settings, data, id, slug, market } = quiz;
   const { metadata, providers, customCode } = settings;
@@ -112,7 +118,7 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
       window.__QUIZ_SETTINGS__ = ${settingsJson};
       window.__QUIZ_CONFIG__ = ${configJson};
     </script>
-    <script src="/_runtime/quiz-runtime.${bundleHash}.js" defer></script>
+    <script src="${runtimeScriptBase}quiz-runtime.${bundleHash}.js" defer></script>
     ${customCode?.bodyEnd ?? ""}
   </body>
 </html>`;

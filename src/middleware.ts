@@ -42,6 +42,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/fillout-to-freshdesk") ||
     // Quiz runtime bundle (content-hashed JS served to published + preview quizzes)
     request.nextUrl.pathname.startsWith("/_runtime/") ||
+    // Preview iframe loads the runtime bundle from /quiz-bundle/[filename]
+    request.nextUrl.pathname.startsWith("/quiz-bundle/") ||
     // Quiz runtime API endpoints (hit from published quizzes on external domains)
     request.nextUrl.pathname.startsWith("/api/quiz/session") ||
     request.nextUrl.pathname.startsWith("/api/quiz/events") ||
