@@ -145,21 +145,33 @@ export function extractUTM(): UTMParams {
 export class EventBuffer {
   private buf: QuizEvent[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private apiEventsUrl: string;
 
   constructor(
     private sessionId: string,
     private flushFn: (sessionId: string, events: QuizEvent[]) => Promise<void>,
+    apiBaseUrl: string,
   ) {
+    this.apiEventsUrl = `${apiBaseUrl}/api/quiz/events`;
     this.flushTimer = setInterval(() => void this.flush(), 2000);
+    // Use both visibilitychange (tab switch / app background) and pagehide
+    // (actual unload). Beacon-flush guarantees delivery even after tab
+    // close - regular fetch (even with keepalive) gets cancelled on
+    // synchronous tab teardown.
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") void this.flush();
+      if (document.visibilityState === "hidden") this.flushBeacon();
     });
+    window.addEventListener("pagehide", () => this.flushBeacon());
   }
 
   push(event: Omit<QuizEvent, "ts">): void {
     this.buf.push({ ...event, ts: Date.now() });
   }
 
+  /**
+   * Normal flush via fetch+keepalive. Used by the 2s interval and
+   * explicit calls. Returns events to buffer on failure.
+   */
   async flush(): Promise<void> {
     if (this.buf.length === 0) return;
     const toSend = this.buf.splice(0);
@@ -168,6 +180,50 @@ export class EventBuffer {
     } catch {
       // Put events back if flush fails - best effort
       this.buf.unshift(...toSend);
+    }
+  }
+
+  /**
+   * Synchronous flush for unload-time delivery. Uses navigator.sendBeacon
+   * which the browser guarantees to deliver even after tab close. Falls
+   * back to fetch+keepalive if Beacon API is unavailable. Drains the
+   * buffer immediately so unload isn't blocked.
+   */
+  flushBeacon(): void {
+    if (this.buf.length === 0) return;
+    const toSend = this.buf.splice(0);
+    const payload = JSON.stringify({
+      session_id: this.sessionId,
+      events: toSend.map((e) => ({
+        event_type: e.event_type,
+        step_id: e.step_id,
+        variant_group_id: e.variant_group_id,
+        option_id: e.option_id,
+        meta: e.meta,
+      })),
+    });
+    let sent = false;
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+        const blob = new Blob([payload], { type: "application/json" });
+        sent = navigator.sendBeacon(this.apiEventsUrl, blob);
+      }
+    } catch {
+      sent = false;
+    }
+    if (!sent) {
+      // Last-resort: fire-and-forget keepalive fetch
+      try {
+        void fetch(this.apiEventsUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true,
+        });
+      } catch {
+        // give up - put events back so a future flush() still has a chance
+        this.buf.unshift(...toSend);
+      }
     }
   }
 

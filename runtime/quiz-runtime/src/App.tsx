@@ -197,16 +197,27 @@ export function App({ data, settings, config }: AppProps) {
     )
       .then((sid) => {
         setSessionId(sid);
-        bufferRef.current = new EventBuffer(sid, (sId, evts) =>
-          flushEvents(config.apiBaseUrl, sId, evts),
+        bufferRef.current = new EventBuffer(
+          sid,
+          (sId, evts) => flushEvents(config.apiBaseUrl, sId, evts),
+          config.apiBaseUrl,
         );
-        // Log first step view
+        // Log first step view + force-flush immediately. This guarantees
+        // the event lands even if the visitor bounces within the 2s flush
+        // interval - the EventBuffer's normal interval and the
+        // pagehide/sendBeacon fallback together ensure no events are
+        // dropped, but we want the first step_view recorded as fast as
+        // possible (Meta Pixel PageView and our analytics agree on the
+        // start count).
         if (firstNode && firstNode.kind === "step") {
           bufferRef.current.push({
             event_type: "step_view",
             step_id: firstNode.id,
             variant_group_id: firstNode.variantGroupId,
           });
+          // Immediate (non-blocking) flush so step_view is in DB inside
+          // ~200ms instead of waiting for the next 2s interval tick.
+          void bufferRef.current.flush();
         }
       })
       .catch((err) => {
