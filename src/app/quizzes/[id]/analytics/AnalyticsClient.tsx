@@ -472,70 +472,51 @@ function FunnelChart({
   }
 
   const maxSessions = Math.max(...steps.map((s) => byId.get(s.id)!.sessions), 1);
+  const COL_WIDTH = 110;
 
   return (
-    <div className="overflow-x-auto">
-      <div className="flex items-end gap-3 min-w-max pb-4">
-        {steps.map((step, idx) => {
-          const row = byId.get(step.id)!;
-          const heightPct = (row.sessions / maxSessions) * 100;
-          const nextRow = idx < steps.length - 1 ? byId.get(steps[idx + 1].id) : null;
-          const dropPct =
-            nextRow && row.sessions > 0
-              ? Math.round(((row.sessions - nextRow.sessions) / row.sessions) * 100)
-              : null;
-
-          return (
-            <div key={step.id} className="flex flex-col items-center gap-1" style={{ width: 100 }}>
-              {/* Bar */}
-              <div className="relative flex flex-col justify-end" style={{ height: 180 }}>
-                <div
-                  className="w-16 bg-indigo-500 rounded-t-md transition-all"
-                  style={{ height: `${Math.max(heightPct, 2)}%` }}
-                />
-                {/* Session count label */}
-                <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold text-gray-700 whitespace-nowrap">
-                  {row.sessions.toLocaleString()}
-                </span>
-              </div>
-
-              {/* Drop arrow between bars */}
-              {dropPct !== null && (
-                <div className="absolute ml-24 -translate-y-12 flex flex-col items-center">
-                  <span className="text-xs font-medium text-red-500">-{dropPct}%</span>
-                </div>
-              )}
-
-              {/* Step name */}
-              <span className="text-xs text-gray-600 text-center line-clamp-2 max-w-[96px]">
-                {step.name}
-              </span>
-              {/* Median time */}
-              {row.median_time_sec > 0 && (
-                <span className="text-xs text-gray-400">
-                  {fmtDuration(row.median_time_sec)}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Drop % annotations between bars */}
-      {steps.length > 1 && (
-        <div className="flex gap-3 min-w-max mt-1">
+    <div className="overflow-x-auto -mx-2 px-2">
+      <div className="min-w-max pt-2">
+        {/* Bars row - generous top padding so the session-count label
+            never gets clipped, and bars vertically anchored at bottom. */}
+        <div className="flex items-end gap-3 pt-8 pb-2">
           {steps.map((step, idx) => {
-            if (idx === steps.length - 1) return <div key={step.id} style={{ width: 100 }} />;
             const row = byId.get(step.id)!;
-            const nextRow = byId.get(steps[idx + 1].id);
+            const heightPct = Math.max((row.sessions / maxSessions) * 100, 2);
+            const nextRow = idx < steps.length - 1 ? byId.get(steps[idx + 1].id) : null;
             const dropPct =
               nextRow && row.sessions > 0
                 ? Math.round(((row.sessions - nextRow.sessions) / row.sessions) * 100)
                 : null;
+
             return (
-              <div key={step.id} className="flex items-center justify-end" style={{ width: 100 }}>
-                {dropPct !== null && dropPct > 0 && (
-                  <span className="text-xs font-semibold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">
+              <div
+                key={step.id}
+                className="relative flex-shrink-0 flex flex-col items-center"
+                style={{ width: COL_WIDTH }}
+              >
+                {/* Bar with count label that sits just above the bar's top */}
+                <div className="relative w-full" style={{ height: 180 }}>
+                  <div
+                    className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 bg-indigo-500 rounded-t-md"
+                    style={{ height: `${heightPct}%` }}
+                  />
+                  <span
+                    className="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-gray-900 whitespace-nowrap"
+                    style={{ bottom: `calc(${heightPct}% + 6px)` }}
+                  >
+                    {row.sessions.toLocaleString()}
+                  </span>
+                </div>
+
+                {/* Drop-off pill positioned in the gap to the right of THIS
+                    bar (i.e. between this bar and the next). Hidden on the
+                    last bar. Vertically centered against the bar height. */}
+                {dropPct !== null && dropPct > 0 && idx < steps.length - 1 && (
+                  <span
+                    className="absolute text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded px-1.5 py-0.5 whitespace-nowrap z-10"
+                    style={{ right: -10, top: 90 }}
+                  >
                     -{dropPct}%
                   </span>
                 )}
@@ -543,7 +524,34 @@ function FunnelChart({
             );
           })}
         </div>
-      )}
+
+        {/* Step labels row - separate so chart bars stay clean and labels
+            wrap naturally without clipping. */}
+        <div className="flex gap-3">
+          {steps.map((step) => {
+            const row = byId.get(step.id)!;
+            return (
+              <div
+                key={step.id}
+                className="flex-shrink-0 flex flex-col items-center text-center px-1"
+                style={{ width: COL_WIDTH }}
+              >
+                <span
+                  className="text-xs text-gray-700 font-medium leading-snug break-words"
+                  title={step.name}
+                >
+                  {step.name}
+                </span>
+                {row.median_time_sec > 0 && (
+                  <span className="text-[10px] text-gray-400 mt-0.5">
+                    {fmtDuration(row.median_time_sec)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
