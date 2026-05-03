@@ -33,6 +33,10 @@ type OptionRow = {
   option_id: string;
   option_count: number;
   option_pct_of_step: number;
+  // Server-enriched labels (added 2026-05-03 to replace raw IDs in UI):
+  step_name?: string;
+  question_label?: string;
+  option_label?: string;
 };
 
 type VariantRow = {
@@ -570,14 +574,17 @@ function OptionDistribution({
     groups.get(key)!.push(opt);
   }
 
-  // Get step name from data
-  function stepName(stepId: string): string {
+  // Prefer server-enriched labels (resolved against current quiz_data on
+  // the API side, where legacy events are also filtered). Fall back to
+  // local quiz.data lookup for older API responses.
+  function stepName(stepId: string, fallback?: string): string {
+    if (fallback) return fallback;
     const node = data.nodes[stepId];
     return node && node.kind === "step" ? node.name : stepId;
   }
 
-  // Get option label from step subEls
-  function optionLabel(stepId: string, optionId: string): string {
+  function optionLabel(stepId: string, optionId: string, fallback?: string): string {
+    if (fallback) return fallback;
     const node = data.nodes[stepId];
     if (!node || node.kind !== "step") return optionId;
     for (const el of node.subEls) {
@@ -604,19 +611,22 @@ function OptionDistribution({
       {[...groups.entries()].map(([key, rows]) => {
         const [stepId] = key.split("::");
         const total = rows.reduce((s, r) => s + r.option_count, 0);
+        const enrichedStep = rows[0]?.step_name;
+        // Sort options by count desc so most-picked is on top
+        const sorted = [...rows].sort((a, b) => b.option_count - a.option_count);
         return (
           <div key={key} className="space-y-2">
             <div className="text-sm font-medium text-gray-700">
-              {stepName(stepId)}
+              {stepName(stepId, enrichedStep)}
               <span className="text-xs font-normal text-gray-400 ml-2">
                 ({total.toLocaleString()} answers)
               </span>
             </div>
             <div className="space-y-1.5">
-              {rows.map((r, i) => (
+              {sorted.map((r, i) => (
                 <div key={r.option_id} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-600 w-36 truncate shrink-0">
-                    {optionLabel(stepId, r.option_id)}
+                  <span className="text-xs text-gray-700 w-44 truncate shrink-0" title={optionLabel(stepId, r.option_id, r.option_label)}>
+                    {optionLabel(stepId, r.option_id, r.option_label)}
                   </span>
                   <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
                     <div
@@ -624,8 +634,11 @@ function OptionDistribution({
                       style={{ width: `${r.option_pct_of_step}%` }}
                     />
                   </div>
-                  <span className="text-xs font-semibold text-gray-700 w-10 text-right shrink-0">
-                    {r.option_pct_of_step}%
+                  <span className="text-xs text-gray-500 w-12 text-right shrink-0 tabular-nums">
+                    {r.option_count}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-700 w-12 text-right shrink-0 tabular-nums">
+                    {r.option_pct_of_step.toFixed(1)}%
                   </span>
                 </div>
               ))}
@@ -1444,6 +1457,16 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
           </div>
         )}
 
+        {/* Funnel Drop-off Chart (moved to top - most-used metric) */}
+        {analyticsData && (
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-gray-700 mb-5 uppercase tracking-wide">
+              Funnel Drop-off
+            </h2>
+            <FunnelChart funnel={analyticsData.funnel} data={quiz.data} />
+          </div>
+        )}
+
         {/* Cohorts: by primary_pain / breed / device / utm_source / utm_campaign */}
         {analyticsData?.cohorts && (
           <div className="space-y-4">
@@ -1515,16 +1538,6 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
                 <div className="text-xs text-gray-500 mt-1">Exit Clicked</div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Funnel Drop-off Chart */}
-        {analyticsData && (
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-5 uppercase tracking-wide">
-              Funnel Drop-off
-            </h2>
-            <FunnelChart funnel={analyticsData.funnel} data={quiz.data} />
           </div>
         )}
 

@@ -102,22 +102,45 @@ export async function GET(
   // those denormalized on the session.
   const quizDataPromise = db.from("quizzes").select("data").eq("id", id).maybeSingle();
 
-  const [summaryRes, funnelRes, optionsRes, variantsRes, sessionsRes, quizDataRes] = await Promise.all([
+  // Compute option distribution directly from quiz_events instead of via the
+  // quiz_option_distribution RPC, which returned only one row per step in
+  // production (suspected DISTINCT ON bug). Raw aggregation here is more
+  // reliable and lets us include question label + option label inline.
+  const allAnswersPromise = db
+    .from("quiz_events")
+    .select("step_id, option_id, meta")
+    .eq("quiz_id", id)
+    .eq("event_type", "answer")
+    .gte("created_at", sinceIso)
+    .lte("created_at", untilIso);
+
+  const [summaryRes, funnelRes, variantsRes, sessionsRes, quizDataRes, allAnswersRes] = await Promise.all([
     db.rpc("quiz_summary", { quiz_id_in: id, since: sinceIso, until: untilIso }),
     db.rpc("quiz_funnel_stats", { quiz_id_in: id, since: sinceIso, until: untilIso, device_filter: device, variant_filter: variantFilter }),
-    db.rpc("quiz_option_distribution", { quiz_id_in: id, since: sinceIso, until: untilIso }),
     db.rpc("quiz_variant_comparison", { quiz_id_in: id, since: sinceIso, until: untilIso }),
     sessionsPromise,
     quizDataPromise,
+    allAnswersPromise,
   ]);
 
   if (summaryRes.error) return safeError(summaryRes.error, "Failed to load summary");
   if (funnelRes.error) return safeError(funnelRes.error, "Failed to load funnel");
-  if (optionsRes.error) return safeError(optionsRes.error, "Failed to load options");
   if (variantsRes.error) return safeError(variantsRes.error, "Failed to load variants");
 
   const summaryRow = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
   const sessions: SessionRow[] = (sessionsRes.data as SessionRow[] | null) ?? [];
+
+  // Type for option distribution rows (computed below from raw answer events)
+  type EnrichedOptionRow = {
+    step_id: string;
+    question_el_id?: string;
+    option_id: string;
+    option_count: number;
+    option_pct_of_step: number;
+    step_name: string;
+    question_label: string;
+    option_label: string;
+  };
 
   // Build option_id -> { variable, value, label } map from quiz definition.
   // Lets cohort code map answer events back to human-readable labels.
@@ -126,17 +149,26 @@ export async function GET(
     id: string;
     name?: string;
     subEls?: Array<{
+      id?: string;
       kind: string;
       variable?: string;
+      title?: string;
+      text?: string;
       options?: Array<{ id: string; label: string; value?: string }>;
     }>;
   };
   const quizData = (quizDataRes.data as { data?: { nodes?: Record<string, QuizNode> } } | null)?.data;
   const nodes: Record<string, QuizNode> = quizData?.nodes ?? {};
   const optionMeta = new Map<string, { variable: string; label: string; value?: string; stepId: string }>();
+  const stepNames = new Map<string, string>();
+  // For option distribution we also want question label + canonical step set
+  const currentStepIds = new Set<string>();
+  const questionElLabel = new Map<string, string>(); // question_el_id -> label/variable
   let painStepId = "", breedStepId = "", ageStepId = "", timeStepId = "";
   for (const n of Object.values(nodes)) {
     if (n.kind !== "step") continue;
+    currentStepIds.add(n.id);
+    stepNames.set(n.id, n.name ?? "");
     const name = (n.name ?? "").toLowerCase();
     if (name.includes("beteendeproblem")) painStepId = n.id;
     else if (name.includes("ras")) breedStepId = n.id;
@@ -144,11 +176,59 @@ export async function GET(
     else if (name.includes("tid per dag")) timeStepId = n.id;
     for (const el of n.subEls ?? []) {
       if (el.kind !== "question" || !el.variable) continue;
+      if (el.id) questionElLabel.set(el.id, el.variable);
       for (const o of el.options ?? []) {
         optionMeta.set(o.id, { variable: el.variable, label: o.label, value: o.value, stepId: n.id });
       }
     }
   }
+
+  // Compute option distribution from raw answer events. Filter to current
+  // quiz steps and aggregate counts per (step_id, option_id). Multi-select
+  // questions naturally produce multiple events per session - we count each
+  // option pick once.
+  const allAnswers = (allAnswersRes.data as Array<{ step_id: string; option_id: string; meta?: Record<string, unknown> | null }> | null) ?? [];
+  const optionCounts = new Map<string, Map<string, number>>(); // step_id -> Map(option_id -> count)
+  for (const a of allAnswers) {
+    if (!a.step_id || !a.option_id) continue;
+    if (!currentStepIds.has(a.step_id)) continue;
+    // Skip commit-gate answer-events from option distribution since those
+    // are tracked separately in commit_gate panel.
+    const src = (a.meta as { source?: string } | null)?.source ?? "";
+    if (src.startsWith("commit_gate")) continue;
+    let stepMap = optionCounts.get(a.step_id);
+    if (!stepMap) {
+      stepMap = new Map();
+      optionCounts.set(a.step_id, stepMap);
+    }
+    stepMap.set(a.option_id, (stepMap.get(a.option_id) ?? 0) + 1);
+  }
+  const enrichedOptions: EnrichedOptionRow[] = [];
+  for (const [stepId, optMap] of optionCounts.entries()) {
+    const stepTotal = Array.from(optMap.values()).reduce((s, n) => s + n, 0);
+    for (const [optionId, count] of optMap.entries()) {
+      const meta = optionMeta.get(optionId);
+      enrichedOptions.push({
+        step_id: stepId,
+        question_el_id: undefined,
+        option_id: optionId,
+        option_count: count,
+        option_pct_of_step: stepTotal ? Math.round((count / stepTotal) * 1000) / 10 : 0,
+        step_name: stepNames.get(stepId) ?? stepId,
+        question_label: meta?.variable ?? "",
+        option_label: meta?.label ?? optionId,
+      });
+    }
+  }
+  // Sort: step order in current quiz first, then count desc within step
+  const stepIndex = new Map<string, number>();
+  Array.from(currentStepIds).forEach((sid, i) => stepIndex.set(sid, i));
+  enrichedOptions.sort((a, b) => {
+    const sa = stepIndex.get(a.step_id) ?? 999;
+    const sb = stepIndex.get(b.step_id) ?? 999;
+    if (sa !== sb) return sa - sb;
+    return b.option_count - a.option_count;
+  });
 
   // Fetch answer events for cohort attributes + commit-gate analytics.
   const cohortStepIds = [painStepId, breedStepId, ageStepId, timeStepId].filter(Boolean);
@@ -310,7 +390,7 @@ export async function GET(
     },
     purchases,
     funnel: funnelRes.data ?? [],
-    options: optionsRes.data ?? [],
+    options: enrichedOptions,
     variants: variantsRes.data ?? [],
     cohorts,
     commit_gate: commitGate,
