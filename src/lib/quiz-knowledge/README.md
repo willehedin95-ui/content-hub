@@ -15,6 +15,7 @@ This folder exists to be **read by Claude during quiz adaptation** and by humans
 - `06-adaptation-guide.md` — Step-by-step on adapting an imported competitor quiz to your product + market. The main system prompt for the AI lives here.
 - `07-post-quiz-email.md` — Klaviyo segmentation + merge-tagging playbook for post-quiz email flows. How to use quiz answers as zero-party data.
 - `08-villain-framework.md` — Donald Miller StoryBrand applied to DR. 7 villain archetypes, 5-step process to find your villain, 5 rules of villain marketing, real examples from $100M+ funnels.
+- `09-funnel-professor-pillars.md` — Funnel Professor 3-pillar framework (positioning + graduality + personalization), KPI targets (Q1 50-70% / completion 20-30% / completion-to-purchase 10%+), Q1-first iteration playbook, application checklist.
 
 ## Usage in code
 

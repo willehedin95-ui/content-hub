@@ -29,6 +29,7 @@ export const TEARDOWN_LESSONS = loadDoc("05-teardown-lessons.md");
 export const ADAPTATION_GUIDE = loadDoc("06-adaptation-guide.md");
 export const POST_QUIZ_EMAIL = loadDoc("07-post-quiz-email.md");
 export const VILLAIN_FRAMEWORK = loadDoc("08-villain-framework.md");
+export const FUNNEL_PROFESSOR_PILLARS = loadDoc("09-funnel-professor-pillars.md");
 
 export const FULL_KNOWLEDGE = [
   FOUNDATION,
@@ -40,6 +41,7 @@ export const FULL_KNOWLEDGE = [
   ADAPTATION_GUIDE,
   POST_QUIZ_EMAIL,
   VILLAIN_FRAMEWORK,
+  FUNNEL_PROFESSOR_PILLARS,
 ].join("\n\n---\n\n");
 
 /**

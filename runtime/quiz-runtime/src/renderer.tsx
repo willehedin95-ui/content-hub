@@ -1413,7 +1413,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--quiz-keyboard-inset, 0);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -1421,6 +1421,7 @@ body {
   gap: 4px;
   padding: 12px 16px 16px;
   background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
+  transition: bottom 0.18s ease-out;
 }
 .quiz-question-bottom .quiz-question-continue {
   width: 100%;
@@ -1483,18 +1484,23 @@ body {
 
 /* Inline Continue (slider/text_input/custom_html): fixed-bottom samma stil
  * som .quiz-question-bottom så CTA-positionen är enhetlig genom hela quizet
- * (William 2026-04-30). */
+ * (William 2026-04-30).
+ *
+ * bottom-värdet använder --quiz-keyboard-inset (set av App.tsx VisualViewport-
+ * listener 2026-05-03) så CTA pushas upp ovanför iOS/Android-tangentbordet på
+ * text_input/dropdown-steg. Fallback till 0 när keyboard ej öppen. */
 .quiz-continue-wrap {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--quiz-keyboard-inset, 0);
   z-index: 50;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 12px 16px 16px;
   background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
+  transition: bottom 0.18s ease-out;
 }
 .quiz-continue-wrap .quiz-btn--primary {
   width: 100%;

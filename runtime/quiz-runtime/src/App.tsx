@@ -83,6 +83,29 @@ export function App({ data, settings, config }: AppProps) {
     return () => clearTimeout(t);
   }, [previewToast]);
 
+  // Mobile keyboard handling: track on-screen keyboard height via VisualViewport
+  // API and expose as --quiz-keyboard-inset CSS var. Used by .quiz-continue-wrap
+  // to push fixed-bottom CTA above keyboard on text_input/dropdown steps so user
+  // can submit without dismissing keyboard first (William 2026-05-03).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty(
+        "--quiz-keyboard-inset",
+        `${inset}px`,
+      );
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   // Compute ordered steps for progress tracking (do once)
   const orderedSteps = topoOrderSteps(data);
   const totalSteps = orderedSteps.length;
