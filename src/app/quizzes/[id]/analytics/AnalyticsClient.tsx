@@ -122,6 +122,13 @@ type SessionRow = {
   utm: Record<string, string> | null;
   answers: Record<string, string[]> | null;
   variant_assignments: Record<string, string> | null;
+  // Server-enriched (added 2026-05-03): inline answer summary so the
+  // sessions table renders as a research view without per-row fetches.
+  answers_summary?: Record<string, string[]>;
+  answers_full?: Record<string, string[]>;
+  purchased?: boolean;
+  purchase_value?: number | null;
+  purchase_currency?: string | null;
 };
 
 type SessionsPage = {
@@ -1049,15 +1056,19 @@ function SessionsTable({
   data: QuizData;
 }) {
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<"all" | "completed" | "abandoned">("all");
+  const [status, setStatus] = useState<"all" | "completed" | "abandoned" | "purchased">("all");
+  const [filterVar, setFilterVar] = useState<string>("");
+  const [filterVal, setFilterVal] = useState<string>("");
   const [sessionsData, setSessionsData] = useState<SessionsPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerSessionId, setDrawerSessionId] = useState<string | null>(null);
 
   const load = useCallback(
-    (p: number, s: typeof status) => {
+    (p: number, s: typeof status, fv?: string, fval?: string) => {
       setLoading(true);
-      fetch(`/api/quiz/${quizId}/sessions?page=${p}&status=${s}`)
+      let qs = `page=${p}&status=${s}`;
+      if (fv && fval) qs += `&filter_var=${encodeURIComponent(fv)}&filter_val=${encodeURIComponent(fval)}`;
+      fetch(`/api/quiz/${quizId}/sessions?${qs}`)
         .then((r) => r.json())
         .then((d: SessionsPage) => {
           setSessionsData(d);
@@ -1070,28 +1081,39 @@ function SessionsTable({
   );
 
   useEffect(() => {
-    load(1, status);
-  }, [load, status]);
+    load(1, status, filterVar, filterVal);
+  }, [load, status, filterVar, filterVal]);
 
   const totalPages = sessionsData ? Math.ceil(sessionsData.total / sessionsData.pageSize) : 0;
 
-  function stepCountForSession(session: SessionRow): number {
-    const steps = Object.values(quizData.nodes).filter((n) => n.kind === "step").length;
-    const answers = session.answers ? Object.keys(session.answers).length : 0;
-    return answers;
-  }
-
+  // Step-progress is now derived from the per-session answers_summary
+  // (server-resolved). Sessions that completed (exit_clicked) show 100%.
   function progressPct(session: SessionRow): number {
+    if (session.exit_clicked) return 100;
     const total = Object.values(quizData.nodes).filter((n) => n.kind === "step").length;
     if (total === 0) return 0;
-    const done = stepCountForSession(session);
+    const done = Object.keys(session.answers_full ?? session.answers_summary ?? {}).length;
     return Math.min(100, Math.round((done / total) * 100));
+  }
+
+  // Build dropdown options for the cross-session filter from quiz_data
+  type OptionDef = { variable: string; label: string };
+  const filterableVars: Array<{ variable: string; label: string; options: string[] }> = [];
+  for (const n of Object.values(quizData.nodes)) {
+    if (n.kind !== "step") continue;
+    for (const el of (n as { subEls?: Array<{ kind: string; variable?: string; options?: OptionDef[]; }> }).subEls ?? []) {
+      if (el.kind !== "question" || !el.variable) continue;
+      const opts = (el.options ?? []).map((o) => o.label).slice(0, 30);
+      if (opts.length && !filterableVars.find((f) => f.variable === el.variable)) {
+        filterableVars.push({ variable: el.variable, label: el.variable, options: opts });
+      }
+    }
   }
 
   return (
     <div className="space-y-3">
       {/* Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
@@ -1100,11 +1122,52 @@ function SessionsTable({
           <option value="all">All sessions</option>
           <option value="completed">Completed</option>
           <option value="abandoned">Abandoned</option>
+          <option value="purchased">Purchased</option>
         </select>
+        <select
+          value={filterVar}
+          onChange={(e) => {
+            setFilterVar(e.target.value);
+            setFilterVal("");
+          }}
+          className="text-xs border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white"
+        >
+          <option value="">Filter by question...</option>
+          {filterableVars.map((f) => (
+            <option key={f.variable} value={f.variable}>
+              {f.variable}
+            </option>
+          ))}
+        </select>
+        {filterVar && (
+          <select
+            value={filterVal}
+            onChange={(e) => setFilterVal(e.target.value)}
+            className="text-xs border border-gray-200 rounded px-2 py-1.5 text-gray-700 bg-white"
+          >
+            <option value="">Any answer</option>
+            {(filterableVars.find((f) => f.variable === filterVar)?.options ?? []).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        )}
+        {(filterVar || filterVal) && (
+          <button
+            onClick={() => {
+              setFilterVar("");
+              setFilterVal("");
+            }}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            Clear filter
+          </button>
+        )}
         <a
           href={`/api/quiz/${quizId}/sessions/export`}
           download
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors ml-auto"
         >
           <Download size={12} />
           Export CSV
@@ -1116,79 +1179,79 @@ function SessionsTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Timestamp
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Status
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Progress
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Actions
-              </th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">When</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Age</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Breed</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Primary pain</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Severity</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Time/day</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Progress</th>
+              <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={4} className="text-center py-8 text-gray-400 text-sm">
-                  Loading...
-                </td>
+                <td colSpan={10} className="text-center py-8 text-gray-400 text-sm">Loading...</td>
               </tr>
             )}
             {!loading && (!sessionsData || sessionsData.sessions.length === 0) && (
               <tr>
-                <td colSpan={4} className="text-center py-8 text-gray-400 text-sm">
-                  No sessions found.
-                </td>
+                <td colSpan={10} className="text-center py-8 text-gray-400 text-sm">No sessions found.</td>
               </tr>
             )}
             {!loading &&
               sessionsData?.sessions.map((session) => {
                 const pct = progressPct(session);
                 const dur = sessionDuration(session);
+                const ans = session.answers_summary ?? {};
+                const fmt = (key: string) => (ans[key] ?? []).join(", ") || "-";
                 return (
-                  <tr
-                    key={session.id}
-                    className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="text-xs text-gray-700">
-                        {fmtDate(session.started_at)}
-                      </div>
+                  <tr key={session.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <div className="text-xs text-gray-700">{fmtDate(session.started_at)}</div>
                       <div className="text-xs text-gray-400">
                         {fmtTime(session.started_at)}
                         {dur !== null && ` - ${fmtDuration(dur)}`}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                          session.exit_clicked
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {session.exit_clicked ? "Completed" : "Abandoned"}
-                      </span>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {session.purchased ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                          Purchased
+                        </span>
+                      ) : session.exit_clicked ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          Completed
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                          Abandoned
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-xs text-gray-700">{fmt("gender")}</td>
+                    <td className="px-3 py-3 text-xs text-gray-700">{fmt("age")}</td>
+                    <td className="px-3 py-3 text-xs text-gray-700">{fmt("breed")}</td>
+                    <td className="px-3 py-3 text-xs text-gray-800 max-w-[180px] truncate" title={fmt("primary_pain")}>
+                      {fmt("primary_pain")}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{fmt("problem_duration")}</td>
+                    <td className="px-3 py-3 text-xs text-gray-700 whitespace-nowrap">{fmt("time_per_day")}</td>
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-gray-100 rounded-full h-2 max-w-[80px] overflow-hidden">
-                          <div
-                            className="h-full bg-indigo-500 rounded-full"
-                            style={{ width: `${pct}%` }}
-                          />
+                        <div className="flex-1 bg-gray-100 rounded-full h-2 w-[60px] overflow-hidden">
+                          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
                         </div>
-                        <span className="text-xs text-gray-500">{pct}%</span>
+                        <span className="text-xs text-gray-500 tabular-nums">{pct}%</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <button
                         onClick={() => setDrawerSessionId(session.id)}
-                        className="text-xs text-indigo-600 hover:underline"
+                        className="text-xs text-indigo-600 hover:underline whitespace-nowrap"
                       >
                         View Details
                       </button>
