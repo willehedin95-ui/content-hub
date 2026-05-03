@@ -1,5 +1,8 @@
 # Content Hub - Task Backlog
-Updated: 2026-04-21
+Updated: 2026-05-03
+
+## Quiz Editor UX (2026-05-03)
+- [ ] **A/B variants as tabs on a single canvas node** — Today the editor renders each variant in a variant group as a separate side-by-side node connected with edges (e.g. Landing A → Landing B → Block 1). Visually misleading - looks like sequential steps but the runtime resolves to ONE variant per session via `resolveNode(variantGroupId)`. Refactor `QuizEditorClient.tsx` (and the React Flow node renderer) so variants in a group collapse into a single "card with A/B/C tabs" node. Sidebar should also list each variant indented under its parent step. Files: `src/app/quizzes/[id]/edit/QuizEditorClient.tsx`, the React Flow custom node component. (added 2026-05-03)
 
 ## Blog Autopilot V2 (2026-04-21)
 Three major upgrades landed. All running in production for Hydro13; HappySleep defaults off.
@@ -149,10 +152,30 @@ Strategic retention play. Kollagen kräver 60-90 dagar för synliga resultat - c
 
 Massiv overhaul-iteration v24→v64 över 3 dagar (2026-04-30 → 2026-05-02). Profile-card future-pacing-graf, offer-page hel rewrite (v19→v20), pricing reveal LP-style 1999→997, Pattern A/C placement, ?goto-dev-shortcut. Full audit i `doginwork/audit-2026-04-30-v58.md`. Quiz is launch-ready visually + structurally. Blocked on Marie-side fixes + IA-rewrite-decision.
 
-### Pågående diskussion (PAUSAD vid wrap-up 2026-05-02)
-- [ ] **Offer-page IA-rewrite** — William påpekade att copy inte introducerar Valpakademin/Marie i logisk ordning. Hero-copy ska säga "Vi rekommenderar Valpakademin", Marie ska introduceras innan name-drops, online-pill ska skippas helt (defensiv "inte en app"-copy). Plan presenterad, väntar på Williams OK. (added 2026-05-02, NEXT UP)
-- [ ] **Hero-bild på offer-page** — William sa "använd EveryDoggys" men det är copyright-issue. Behöver hans nano-banana split before/after-image. (added 2026-05-02)
-- [ ] **Expertise-bild på profile-card** — Borttagen i v64 (ersatt av future-pacing-graf). Om vi vill ha den någonstans behöver William generisk training-bild (ej Marie-foto). (added 2026-05-02, LOW)
+### Session 2026-05-03 huvudwork
+- [x] ~~**Offer-page IA-rewrite**~~ — Hero rewritten med "Vi rekommenderar Valpakademin för {name}" + personalization mirror, Marie founder flyttad upp innan name-drops, online-pill borttagen, icon-tiles redundans borttagen. Live. (done 2026-05-03)
+- [x] ~~**Image webp pipeline**~~ — Sharp-baserad optimization auto-runs på publish via `optimize-quiz-assets.ts`. 6.63 MB sparat på 42 filer (avg -65%). Alla code-refs `.png/.jpg` → `.webp`. (done 2026-05-03)
+- [x] ~~**Mobile keyboard CTA fix**~~ — VisualViewport-listener sätter `--quiz-keyboard-inset` så fixed-bottom-CTAs pushas ovanför iOS/Android-tangentbordet. (done 2026-05-03)
+- [x] ~~**Landing-bild swap**~~ — French bulldog tennis-boll → golden retriever på cream-blanket (Higgsfield Nano Banana 2). 2.1MB → 63KB (-97%). (done 2026-05-03)
+- [x] ~~**Reformulera b5 "Ignorerar?"**~~ — Bytt till "Hur ofta tittar {name} upp på dig under en promenad?" - neutralt, samma data. (done 2026-05-03)
+- [x] ~~**Lägg till b16ba yes/no + b16c puppy-blues YES/NO branching**~~ — Liven-style naming-drop ("valpdepression") + 70% stat (ManyPets 2023). Conditional routing. (done 2026-05-03)
+- [x] ~~**Ta bort dead-data frågor**~~ — b4, b7, b13, b14, b21, b10, b20 borttagna. Quiz från 31 → 24 steps. (done 2026-05-03)
+- [x] ~~**Funnel Professor framework till quiz-knowledge**~~ — `09-funnel-professor-pillars.md` registrerad i index/README/FULL_KNOWLEDGE. (done 2026-05-03)
+- [x] ~~**A/B test landing-slide**~~ — Variant A control vs Variant B "specific revelation" framing per FP. 50/50 split via variantGroupId. Live. (done 2026-05-03)
+
+### NEXT UP (priority order efter session 2026-05-03)
+- [ ] **Fix /api/quiz/session CORS** — `Access-Control-Allow-Origin: null` fel blockerar all per-step analytics från `quiz.doginwork.se`. Utan detta är A/B-testet flying blind. **HÖGSTA PRIO** - allt annat kvalitets-arbete på quizet är ovärderlig utan mätning. (added 2026-05-03)
+- [ ] **Ad-to-quiz congruency audit** — Maries Meta-ads pitchar "Valpakademin" (kursen). Quiz lovar "personlig träningsplan". Plan ≠ kurs. Per FP är detta positioning #1. Antingen pivot ads → "diagnos"-framing ELLER pivot quiz → "kurs"-framing. (added 2026-05-03)
+- [ ] **William mobile walk-through** — 24-step quiz med conditional routing + ny emotional architecture inte testad live på iPhone. Notera friction-punkter. (added 2026-05-03)
+- [ ] **A/B-test deadline + utvärdering** — Sätt 1-2 vecks fönster eller ~500 sessions per variant. Sen evaluation. Förutsätter analytics fixed först. (added 2026-05-03)
+
+### William-side blockers (uppdaterade 2026-05-02)
+- [ ] **QUIZ2026 Shopify discount code (50% off)** — UPPDATERAD: William höjer base-pris från 997 → 1999 i Shopify, skapar QUIZ2026 = 50% off → 997 kr. Offer-pagen visar redan 1999 → 997. (updated 2026-05-02, was 10% off)
+- [ ] **Activate `info@doginwork.com` mailbox** — Footer på offer-page länkar dit. Currently dead. (added 2026-04-30)
+- [ ] **Real customer testimonial photos** — All 5 avatar-X.jpg är randomuser.me-stock. Behöver Maries OK för riktiga kund-foton. (added 2026-04-30)
+- [ ] **Block 9 thumbnail-uppgrade** — 7 webp uppladdade 2026-05-01 men några matchar inte beteendet 100% (Skäller mycket = chihuahua, Hoppar på folk = springande hund). Antingen acceptera eller regenerera via nano-banana. (updated 2026-05-01)
+- [ ] **Trustpilot setup** — Konto exists, inga reviews. Aktivera som final-step i kursen. (added 2026-04-30)
+- [ ] **Marie installerar custom Shopify-app** — Behövs för unique-discount-codes-system (deferred till v2). Skippa för nu. (added 2026-05-01, LOW)
 
 ### William-side blockers (uppdaterade 2026-05-02)
 - [ ] **QUIZ2026 Shopify discount code (50% off)** — UPPDATERAD: William höjer base-pris från 997 → 1999 i Shopify, skapar QUIZ2026 = 50% off → 997 kr. Offer-pagen visar redan 1999 → 997. (updated 2026-05-02, was 10% off)
@@ -163,7 +186,7 @@ Massiv overhaul-iteration v24→v64 över 3 dagar (2026-04-30 → 2026-05-02). P
 - [ ] **Marie installerar custom Shopify-app** — Behövs för unique-discount-codes-system (deferred till v2). Skippa för nu. (added 2026-05-01, LOW)
 
 ### Quiz-side optimizations (Claude can do, post-launch)
-- [ ] **Slider-frågor (b10/b14/b21)** — alla "rate importance" där alla picker 8-10. Inget insight - reframe till agree-scale eller ta bort. (added 2026-04-30)
+- [x] ~~**Slider-frågor (b10/b14/b21)**~~ — alla 3 borttagna 2026-05-03 (dead data + slider-fatigue). (done 2026-05-03)
 - [ ] **End-to-end test på real iPhone Safari** — All UI har Playwright-simulerad 390px. Verifiera safe-area, sticky CTA-bar, font rendering på riktig enhet innan launch. (added 2026-04-30)
 - [ ] **Did You Know-stat på loading-screen** — Per audit H1, ~5-8% CVR-lift för 30 min arbete. Lägg till "Visste du? 80%+ av kunder ser tydlig förändring inom 4 veckor*" på bload. (added 2026-05-01)
 - [ ] **Variera CTA-text per step** — Nu är alla "Fortsätt". Per docs Pattern J ger "Få min plan"/"Visa min profil" osv ~1-3% lift. (added 2026-05-01)
