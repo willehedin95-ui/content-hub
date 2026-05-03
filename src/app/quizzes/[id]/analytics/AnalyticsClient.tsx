@@ -59,12 +59,51 @@ type Purchases = {
   aov: number;
 };
 
+type CohortRow = {
+  key: string;
+  sessions: number;
+  completions: number;
+  completion_rate: number;
+  purchases: number;
+  purchase_rate: number;
+  revenue: number;
+  aov: number;
+};
+
+type Cohorts = {
+  pain: CohortRow[];
+  breed: CohortRow[];
+  age: CohortRow[];
+  time_per_day: CohortRow[];
+  device: CohortRow[];
+  utm_source: CohortRow[];
+  utm_campaign: CohortRow[];
+};
+
+type CommitGate = {
+  counts: { commit_redo_yes: number; commit_redo_no: number; commit_time_yes: number; commit_time_no: number };
+  yes_rate_q1: number;
+  yes_rate_q2: number;
+  paths: { yes_yes: number; yes_no: number; no_yes: number; no_no: number };
+  path_purchases: { yes_yes: number; yes_no: number; no_yes: number; no_no: number };
+};
+
+type TimePattern = {
+  by_hour_utc: number[];
+  by_dow: number[];
+  time_series: Array<{ date: string; count: number }>;
+  duration_buckets: Record<string, number>;
+};
+
 type AnalyticsData = {
   summary: Summary;
   purchases?: Purchases;
   funnel: FunnelStep[];
   options: OptionRow[];
   variants: VariantRow[];
+  cohorts?: Cohorts;
+  commit_gate?: CommitGate;
+  time_pattern?: TimePattern;
   range: { since: string; until: string };
 };
 
@@ -147,6 +186,260 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
       <span className="text-sm text-gray-500">{label}</span>
       <span className="text-3xl font-bold text-gray-900">{value}</span>
       {sub && <span className="text-xs text-gray-400">{sub}</span>}
+    </div>
+  );
+}
+
+// ─── Cohort table (pain / breed / device / utm-source) ─────────────────────────
+
+function CohortTable({
+  title,
+  rows,
+  currency,
+  compact = false,
+}: {
+  title: string;
+  rows: CohortRow[];
+  currency: string;
+  compact?: boolean;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{title}</h3>
+        <p className="text-xs text-gray-400 mt-3">No data in selected range.</p>
+      </div>
+    );
+  }
+  const totalSessions = rows.reduce((s, r) => s + r.sessions, 0);
+  const maxSessions = Math.max(...rows.map((r) => r.sessions));
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-gray-400 border-b border-gray-100">
+              <th className="text-left font-medium py-2 pr-3">Segment</th>
+              <th className="text-right font-medium py-2 px-2">Sessions</th>
+              <th className="text-right font-medium py-2 px-2">Compl.</th>
+              <th className="text-right font-medium py-2 px-2">Compl. %</th>
+              {!compact && <th className="text-right font-medium py-2 px-2">Purchases</th>}
+              <th className="text-right font-medium py-2 px-2">Buy %</th>
+              {!compact && <th className="text-right font-medium py-2 px-2">Revenue</th>}
+              {!compact && <th className="text-right font-medium py-2 pl-2">AOV</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-b border-gray-50 last:border-0">
+                <td className="py-2 pr-3 text-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate max-w-[180px]">{r.key}</span>
+                    <span className="text-xs text-gray-400">
+                      {totalSessions ? `${Math.round((r.sessions / totalSessions) * 100)}%` : "0%"}
+                    </span>
+                  </div>
+                  <div className="h-1 bg-gray-100 rounded-full mt-1.5 max-w-[200px]">
+                    <div
+                      className="h-1 bg-indigo-500 rounded-full"
+                      style={{ width: `${maxSessions ? (r.sessions / maxSessions) * 100 : 0}%` }}
+                    />
+                  </div>
+                </td>
+                <td className="text-right py-2 px-2 text-gray-700 tabular-nums">{r.sessions}</td>
+                <td className="text-right py-2 px-2 text-gray-700 tabular-nums">{r.completions}</td>
+                <td className="text-right py-2 px-2 tabular-nums">
+                  <span className={r.completion_rate >= 30 ? "text-emerald-600 font-semibold" : "text-gray-600"}>
+                    {r.completion_rate.toFixed(1)}%
+                  </span>
+                </td>
+                {!compact && (
+                  <td className="text-right py-2 px-2 text-gray-700 tabular-nums">{r.purchases}</td>
+                )}
+                <td className="text-right py-2 px-2 tabular-nums">
+                  <span className={r.purchase_rate >= 5 ? "text-emerald-600 font-semibold" : "text-gray-600"}>
+                    {r.purchase_rate.toFixed(2)}%
+                  </span>
+                </td>
+                {!compact && (
+                  <td className="text-right py-2 px-2 text-gray-800 tabular-nums">
+                    {r.revenue > 0 ? `${Math.round(r.revenue).toLocaleString()} ${currency}` : "-"}
+                  </td>
+                )}
+                {!compact && (
+                  <td className="text-right py-2 pl-2 text-gray-600 tabular-nums">
+                    {r.aov > 0 ? Math.round(r.aov).toLocaleString() : "-"}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Commit-gate panel ────────────────────────────────────────────────────────
+
+function CommitGatePanel({ data }: { data: CommitGate }) {
+  const q1Total = data.counts.commit_redo_yes + data.counts.commit_redo_no;
+  const q2Total = data.counts.commit_time_yes + data.counts.commit_time_no;
+  const pathRows: Array<{ path: string; sessions: number; purchases: number; rate: number; label: string }> = [
+    { path: "yes_yes", label: "Yes -> Yes (high commitment)", sessions: data.paths.yes_yes, purchases: data.path_purchases.yes_yes, rate: 0 },
+    { path: "yes_no", label: "Yes -> No (cooled at time)", sessions: data.paths.yes_no, purchases: data.path_purchases.yes_no, rate: 0 },
+    { path: "no_yes", label: "No -> Yes (warmed up)", sessions: data.paths.no_yes, purchases: data.path_purchases.no_yes, rate: 0 },
+    { path: "no_no", label: "No -> No (low commitment)", sessions: data.paths.no_no, purchases: data.path_purchases.no_no, rate: 0 },
+  ].map((r) => ({ ...r, rate: r.sessions ? (r.purchases / r.sessions) * 100 : 0 }));
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Commit-gate flow</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="border border-gray-100 rounded-lg p-4">
+          <div className="text-xs uppercase tracking-wide text-gray-400">Modal 1 - "Är du redo?"</div>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{data.yes_rate_q1.toFixed(1)}% yes</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {data.counts.commit_redo_yes} Ja  /  {data.counts.commit_redo_no} Behöver tänka  ({q1Total} total)
+          </div>
+        </div>
+        <div className="border border-gray-100 rounded-lg p-4">
+          <div className="text-xs uppercase tracking-wide text-gray-400">Modal 2 - "Kan du investera tiden?"</div>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{data.yes_rate_q2.toFixed(1)}% yes</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {data.counts.commit_time_yes} Ja  /  {data.counts.commit_time_no} Behöver tänka  ({q2Total} total)
+          </div>
+        </div>
+      </div>
+      <div>
+        <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Path purchase rate</div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-400 border-b border-gray-100">
+              <th className="text-left font-medium py-2">Path</th>
+              <th className="text-right font-medium py-2 px-2">Sessions</th>
+              <th className="text-right font-medium py-2 px-2">Purchases</th>
+              <th className="text-right font-medium py-2 pl-2">Buy %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pathRows.map((r) => (
+              <tr key={r.path} className="border-b border-gray-50 last:border-0">
+                <td className="py-2 text-gray-700">{r.label}</td>
+                <td className="text-right py-2 px-2 tabular-nums">{r.sessions}</td>
+                <td className="text-right py-2 px-2 tabular-nums">{r.purchases}</td>
+                <td className="text-right py-2 pl-2 tabular-nums">
+                  <span className={r.rate >= 5 ? "text-emerald-600 font-semibold" : "text-gray-600"}>
+                    {r.rate.toFixed(2)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Time pattern panel ───────────────────────────────────────────────────────
+
+function TimePatternPanel({ data }: { data: TimePattern }) {
+  const dowNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const maxHour = Math.max(1, ...data.by_hour_utc);
+  const maxDow = Math.max(1, ...data.by_dow);
+  const maxDay = Math.max(1, ...data.time_series.map((d) => d.count));
+  const durLabels: Record<string, string> = {
+    lt30: "< 30s",
+    "30-60": "30-60s",
+    "60-120": "1-2 min",
+    "120-300": "2-5 min",
+    "300-600": "5-10 min",
+    gt600: "> 10 min",
+  };
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Time patterns</h3>
+
+      {data.time_series.length > 0 && (
+        <div>
+          <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Sessions per day</div>
+          <div className="flex items-end gap-1 h-24">
+            {data.time_series.map((d) => (
+              <div
+                key={d.date}
+                className="flex-1 flex flex-col items-center justify-end gap-1"
+                title={`${d.date}: ${d.count}`}
+              >
+                <div
+                  className="w-full bg-indigo-500 rounded-t"
+                  style={{ height: `${(d.count / maxDay) * 100}%`, minHeight: d.count ? 2 : 0 }}
+                />
+                <span className="text-[10px] text-gray-400">{d.date.slice(8)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">By hour of day (UTC)</div>
+          <div className="flex items-end gap-0.5 h-20">
+            {data.by_hour_utc.map((c, h) => (
+              <div key={h} className="flex-1 flex flex-col items-center" title={`${h}h: ${c}`}>
+                <div
+                  className="w-full bg-emerald-500 rounded-t"
+                  style={{ height: `${(c / maxHour) * 100}%`, minHeight: c ? 2 : 0 }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+            <span>00</span>
+            <span>06</span>
+            <span>12</span>
+            <span>18</span>
+            <span>23</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">By day of week</div>
+          <div className="flex items-end gap-2 h-20">
+            {data.by_dow.map((c, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${dowNames[i]}: ${c}`}>
+                <div
+                  className="w-full bg-amber-500 rounded-t"
+                  style={{ height: `${(c / maxDow) * 100}%`, minHeight: c ? 2 : 0 }}
+                />
+                <span className="text-[10px] text-gray-500">{dowNames[i]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Completion duration distribution</div>
+        <div className="grid grid-cols-6 gap-2">
+          {Object.entries(data.duration_buckets).map(([k, v]) => {
+            const max = Math.max(1, ...Object.values(data.duration_buckets));
+            return (
+              <div key={k} className="flex flex-col items-center gap-1">
+                <div className="text-xs font-bold text-gray-800">{v}</div>
+                <div className="w-full h-12 bg-gray-100 rounded relative overflow-hidden">
+                  <div
+                    className="absolute bottom-0 left-0 right-0 bg-purple-500"
+                    style={{ height: `${(v / max) * 100}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-gray-500">{durLabels[k] ?? k}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1149,6 +1442,35 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
               sub={`${analyticsData.purchases.count} of ${summary?.starts ?? 0}`}
             />
           </div>
+        )}
+
+        {/* Cohorts: by primary_pain / breed / device / utm_source / utm_campaign */}
+        {analyticsData?.cohorts && (
+          <div className="space-y-4">
+            <CohortTable title="By primary pain" rows={analyticsData.cohorts.pain} currency={analyticsData.purchases?.currency ?? "SEK"} />
+            <CohortTable title="By breed (top 12)" rows={analyticsData.cohorts.breed.slice(0, 12)} currency={analyticsData.purchases?.currency ?? "SEK"} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <CohortTable title="By time per day" rows={analyticsData.cohorts.time_per_day} currency={analyticsData.purchases?.currency ?? "SEK"} compact />
+              <CohortTable title="By age" rows={analyticsData.cohorts.age} currency={analyticsData.purchases?.currency ?? "SEK"} compact />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <CohortTable title="By device" rows={analyticsData.cohorts.device} currency={analyticsData.purchases?.currency ?? "SEK"} compact />
+              <CohortTable title="By traffic source" rows={analyticsData.cohorts.utm_source} currency={analyticsData.purchases?.currency ?? "SEK"} compact />
+            </div>
+            {analyticsData.cohorts.utm_campaign.length > 0 && (
+              <CohortTable title="By campaign" rows={analyticsData.cohorts.utm_campaign} currency={analyticsData.purchases?.currency ?? "SEK"} />
+            )}
+          </div>
+        )}
+
+        {/* Commit-gate flow */}
+        {analyticsData?.commit_gate && (analyticsData.commit_gate.counts.commit_redo_yes + analyticsData.commit_gate.counts.commit_redo_no) > 0 && (
+          <CommitGatePanel data={analyticsData.commit_gate} />
+        )}
+
+        {/* Time-of-day + day-of-week + duration histograms */}
+        {analyticsData?.time_pattern && (
+          <TimePatternPanel data={analyticsData.time_pattern} />
         )}
 
         {/* Completion funnel: big 3 numbers */}
