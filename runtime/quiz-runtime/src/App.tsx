@@ -115,6 +115,33 @@ export function App({ data, settings, config }: AppProps) {
     if (sessionInitialized.current) return;
     sessionInitialized.current = true;
 
+    // Optional URL-override for variant testing: ?variant=A|B
+    // Maps "A" / "B" / "0" / "1" to the first/second step in each variant
+    // group (in node-order). Or pass `?variant=<stepId>` for an exact pick.
+    // Also cleans the localStorage cache so the override takes effect now.
+    try {
+      const params = new URLSearchParams(location.search);
+      const variantParam = params.get("variant");
+      if (variantParam) {
+        const groups: Record<string, string[]> = {};
+        for (const node of Object.values(data.nodes)) {
+          if (node.kind !== "step" || !node.variantGroupId) continue;
+          if (!groups[node.variantGroupId]) groups[node.variantGroupId] = [];
+          groups[node.variantGroupId].push(node.id);
+        }
+        const v = variantParam.toUpperCase();
+        for (const [groupId, members] of Object.entries(groups)) {
+          let pickedId: string | null = null;
+          if (v === "A" || v === "0") pickedId = members[0];
+          else if (v === "B" || v === "1") pickedId = members[1] ?? members[0];
+          else if (data.nodes[variantParam]) pickedId = variantParam; // exact step id
+          if (pickedId) {
+            localStorage.setItem(`quiz_${config.quizId}_vg_${groupId}`, pickedId);
+          }
+        }
+      }
+    } catch { /* swallow */ }
+
     const assignments = resolveVariants(data, config.quizId);
     setVariantAssignments(assignments);
 
