@@ -503,20 +503,35 @@ export function App({ data, settings, config }: AppProps) {
       // via custom-attribute capture or a Shopify webhook), utm_term=<pain>
       // (so GA4/Shopify can segment by primary problem the user reported).
       // Extra qz_* params survive even if the destination page strips utm_*.
+      //
+      // Heuristic: when the redirect base is a Shopify cart-permalink
+      // (`/cart/<variant>:<qty>`), the quiz is going DIRECTLY to checkout.
+      // In that case all attribution goes via `attributes[<key>]` syntax so
+      // it lands in `order.note_attributes` for our webhook to read. For
+      // any other destination (LP page, /products/...) we keep using plain
+      // utm/qz query params so trackers and the existing qz-attribution.js
+      // ScriptTag continue to find them.
       const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
       const url = new URL(redirectBase, location.href);
-      url.searchParams.set("utm_source", "quiz");
-      url.searchParams.set("utm_medium", "funnel");
-      url.searchParams.set("utm_campaign", config.quizSlug || "quiz");
-      if (sessionId) url.searchParams.set("utm_content", sessionId);
+      const isCartPermalink = /^\/cart\/\d+:\d+/i.test(url.pathname);
+      const setParam = (key: string, value: string) => {
+        if (isCartPermalink) {
+          url.searchParams.set(`attributes[${key}]`, value);
+        } else {
+          url.searchParams.set(key, value);
+        }
+      };
+      setParam("utm_source", "quiz");
+      setParam("utm_medium", "funnel");
+      setParam("utm_campaign", config.quizSlug || "quiz");
+      if (sessionId) setParam("utm_content", sessionId);
       const pain = variables.primary_pain_value || variables.primary_pain;
-      if (pain) url.searchParams.set("utm_term", pain);
-      // Extra (non-utm) custom params for Shopify-side attribution
-      if (sessionId) url.searchParams.set("qz_sid", sessionId);
-      if (pain) url.searchParams.set("qz_pain", pain);
-      if (variables.breed) url.searchParams.set("qz_breed", variables.breed);
-      if (variables.time_per_day) url.searchParams.set("qz_time", variables.time_per_day);
-      if (variables.age) url.searchParams.set("qz_age", variables.age);
+      if (pain) setParam("utm_term", pain);
+      if (sessionId) setParam("qz_sid", sessionId);
+      if (pain) setParam("qz_pain", pain);
+      if (variables.breed) setParam("qz_breed", variables.breed);
+      if (variables.time_per_day) setParam("qz_time", variables.time_per_day);
+      if (variables.age) setParam("qz_age", variables.age);
       const target = url.toString();
 
       // Race the flush against a 1.5s timeout - if events can't reach the hub
