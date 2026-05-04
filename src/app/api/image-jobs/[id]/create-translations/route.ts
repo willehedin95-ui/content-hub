@@ -26,7 +26,7 @@ export async function POST(
   // Verify job exists and is in "ready" status
   const { data: job, error: jobError } = await db
     .from("image_jobs")
-    .select("id, status, target_languages, target_ratios")
+    .select("id, status, target_languages, target_ratios, source_language")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -81,16 +81,34 @@ export async function POST(
   }
 
   // Normal images: all ratios as "pending"
+  // EXCEPTION: when target language === source language, skip text-translation Kie
+  // call for the primary ratio (no transform needed - just use original). Secondary
+  // ratios still need pending status so outpainting runs. Saves one Kie call per
+  // image for SE-only workspaces (doginwork) or any workspace where source matches
+  // a target language.
+  const sourceLang = job.source_language as string | null;
   for (const si of translatableImages) {
     const langs = getLangsForImage(si);
     for (const lang of langs) {
+      const isSameLanguage = sourceLang && lang === sourceLang;
       for (const ratio of ratios) {
-        translationRows.push({
-          source_image_id: si.id,
-          language: lang,
-          aspect_ratio: ratio,
-          status: "pending",
-        });
+        if (isSameLanguage && ratio === primaryRatio) {
+          // Source language at primary ratio = no transformation needed
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "completed",
+            translated_url: si.original_url,
+          });
+        } else {
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
       }
     }
   }

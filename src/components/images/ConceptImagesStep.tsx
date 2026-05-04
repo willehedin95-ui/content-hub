@@ -775,7 +775,11 @@ export default function ConceptImagesStep({
           {/* Generate more: variations for swipe concepts, styles for regular concepts */}
           {hasExistingImages && (isCompetitorSwipe ? renderVariationSection() : renderGenerateSection())}
 
-          {/* Language selection + Translate All */}
+          {/* Language selection + Translate All. Hidden when workspace has no
+              non-source languages (e.g. doginwork: source=sv, languages=[sv]) -
+              nothing to translate, so showing an empty section + disabled button
+              just adds visual noise. */}
+          {wsLanguages.filter((lang) => lang.value !== job.source_language).length > 0 && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Target Languages</label>
@@ -848,6 +852,7 @@ export default function ConceptImagesStep({
                 )}
               </div>
             </div>
+          )}
 
             {/* Translate confirmation dialog */}
             {showTranslateConfirm && (() => {
