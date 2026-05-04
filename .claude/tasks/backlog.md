@@ -1,5 +1,5 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-03
+Updated: 2026-05-04
 
 ## Quiz Editor UX (2026-05-03)
 - [ ] **A/B variants as tabs on a single canvas node** — Today the editor renders each variant in a variant group as a separate side-by-side node connected with edges (e.g. Landing A → Landing B → Block 1). Visually misleading - looks like sequential steps but the runtime resolves to ONE variant per session via `resolveNode(variantGroupId)`. Refactor `QuizEditorClient.tsx` (and the React Flow node renderer) so variants in a group collapse into a single "card with A/B/C tabs" node. Sidebar should also list each variant indented under its parent step. Files: `src/app/quizzes/[id]/edit/QuizEditorClient.tsx`, the React Flow custom node component. (added 2026-05-03)
@@ -163,19 +163,21 @@ Massiv overhaul-iteration v24→v64 över 3 dagar (2026-04-30 → 2026-05-02). P
 - [x] ~~**Funnel Professor framework till quiz-knowledge**~~ — `09-funnel-professor-pillars.md` registrerad i index/README/FULL_KNOWLEDGE. (done 2026-05-03)
 - [x] ~~**A/B test landing-slide**~~ — Variant A control vs Variant B "specific revelation" framing per FP. 50/50 split via variantGroupId. Live. (done 2026-05-03)
 
-### NEXT UP (priority order efter session 2026-05-03)
+### NEXT UP (priority order efter session 2026-05-04)
 - [ ] **Fix /api/quiz/session CORS** — `Access-Control-Allow-Origin: null` fel blockerar all per-step analytics från `quiz.doginwork.se`. Utan detta är A/B-testet flying blind. **HÖGSTA PRIO** - allt annat kvalitets-arbete på quizet är ovärderlig utan mätning. (added 2026-05-03)
 - [ ] **Ad-to-quiz congruency audit** — Maries Meta-ads pitchar "Valpakademin" (kursen). Quiz lovar "personlig träningsplan". Plan ≠ kurs. Per FP är detta positioning #1. Antingen pivot ads → "diagnos"-framing ELLER pivot quiz → "kurs"-framing. (added 2026-05-03)
-- [ ] **William mobile walk-through** — 24-step quiz med conditional routing + ny emotional architecture inte testad live på iPhone. Notera friction-punkter. (added 2026-05-03)
+- [ ] **William mobile walk-through** — 24-step quiz med conditional routing + ny emotional architecture inte testad live på iPhone. Notera friction-punkter. Special: end-to-end CTA → checkout-flödet på offer-page (klick på inline `.v20-cta` postMessar continue → Shopify cart-permalink → checkout). (updated 2026-05-04)
 - [ ] **A/B-test deadline + utvärdering** — Sätt 1-2 vecks fönster eller ~500 sessions per variant. Sen evaluation. Förutsätter analytics fixed först. (added 2026-05-03)
 
-### William-side blockers (uppdaterade 2026-05-02)
-- [ ] **QUIZ2026 Shopify discount code (50% off)** — UPPDATERAD: William höjer base-pris från 997 → 1999 i Shopify, skapar QUIZ2026 = 50% off → 997 kr. Offer-pagen visar redan 1999 → 997. (updated 2026-05-02, was 10% off)
-- [ ] **Activate `info@doginwork.com` mailbox** — Footer på offer-page länkar dit. Currently dead. (added 2026-04-30)
-- [ ] **Real customer testimonial photos** — All 5 avatar-X.jpg är randomuser.me-stock. Behöver Maries OK för riktiga kund-foton. (added 2026-04-30)
-- [ ] **Block 9 thumbnail-uppgrade** — 7 webp uppladdade 2026-05-01 men några matchar inte beteendet 100% (Skäller mycket = chihuahua, Hoppar på folk = springande hund). Antingen acceptera eller regenerera via nano-banana. (updated 2026-05-01)
-- [ ] **Trustpilot setup** — Konto exists, inga reviews. Aktivera som final-step i kursen. (added 2026-04-30)
-- [ ] **Marie installerar custom Shopify-app** — Behövs för unique-discount-codes-system (deferred till v2). Skippa för nu. (added 2026-05-01, LOW)
+### Session 2026-05-04 huvudwork
+- [x] ~~**Profil + Offer split**~~ — Tillbaka till två separata sidor (b24 + boffer) efter merged-experiment. App.tsx detekterar isProfilStep/isOfferStep, .quiz-content-padding tas bort på båda för full-bleed hero/timer. (done 2026-05-04)
+- [x] ~~**Sticky offer-timer i parent-DOM**~~ — Renderas via OfferTimerBar i App.tsx på offer-step only. sessionStorage-sync med inner offer-stack timer (samma key). Klampar till 00:00, ingen auto-reset. (done 2026-05-04)
+- [x] ~~**Modal-overlay full viewport via iframe-expansion**~~ — bload commit-gate-modaler postMessar 'quiz-modal-open' → App.tsx adderar .modal-active → CSS gör iframe position:fixed inset:0 så iframens egna overlay täcker viewport. Iframes kan inte ha cross-iframe overlays utan denna trick. (done 2026-05-04)
+- [x] ~~**Profile-card hero-fix**~~ — Cropade profile-hero.png 10% från top (oönskad whitespace mellan header och puppy-collage). Behöll bottom-whitespace för title-overlay. PawChamp-clone headline "Den sista träningsplanen [name] behöver" + "Vi förutser stora framsteg till [datum]" (dynamiskt today+28d). Chart med 5 X-axis-datum + Nu/Mål-pills som SVG-element. (done 2026-05-04)
+- [x] ~~**Offer-page LP-ordning**~~ — Sektion-omflöde: Product intro → Vad du lär dig (4-fas) → Marie founder → Testimonials (before/after-bilder från LP) → 4 bonusar → 87% stat → Offer stack → Primary CTA → Garanti → Comparison → Urgency → FAQ. Borttagna: gamla 4-stegsmetoden, v20-mission, repeat CTA-pillar, sticky bottom-bar, runtime auto-Continue (inline .v20-cta postMessar). (done 2026-05-04)
+- [x] ~~**Marie credentials-collage från LP**~~ — Bytte från cirkel-headshot till credentials-collage-bild (marie-credentials.webp - Marie i mitten med diplom + certifikat utspridda). Visuell trovärdighet utan att lista certifieringar i text. (done 2026-05-04)
+- [x] ~~**Valpakademin produktbox från LP**~~ — Lade upp valpakademin-box.webp (svart kursbox + golden retriever + Doginwork-logo på gul cirkel-bakgrund) som product intro-bild. (done 2026-05-04)
+- [x] ~~**Before/after testimonial-bilder**~~ — Williams färdiga before-after-1/2/3.webp uppladdade och swappade in i testimonial-cards. Headline ändrad från "Familjer precis som du" till "Före och efter Valpakademin". (done 2026-05-04)
 
 ### William-side blockers (uppdaterade 2026-05-02)
 - [ ] **QUIZ2026 Shopify discount code (50% off)** — UPPDATERAD: William höjer base-pris från 997 → 1999 i Shopify, skapar QUIZ2026 = 50% off → 997 kr. Offer-pagen visar redan 1999 → 997. (updated 2026-05-02, was 10% off)
