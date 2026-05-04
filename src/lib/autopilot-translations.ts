@@ -92,7 +92,7 @@ export async function triggerAutopilotTranslations(jobId: string): Promise<{
   const targetRatios = (job.target_ratios as string[])?.length ? job.target_ratios as string[] : ["4:5"];
 
   // Step 1: Create image_translation rows
-  const translationRows = await createTranslationRows(db, jobId, targetLangs, targetRatios);
+  const translationRows = await createTranslationRows(db, jobId, targetLangs, targetRatios, (job.source_language as string | null) ?? null);
   console.log(`[autopilot-translate] Created ${translationRows} translation rows for job ${jobId}`);
 
   // Update job status to processing
@@ -145,7 +145,8 @@ async function createTranslationRows(
   db: DB,
   jobId: string,
   targetLangs: string[],
-  targetRatios: string[]
+  targetRatios: string[],
+  sourceLang: string | null
 ): Promise<number> {
   const { data: sourceImages } = await db
     .from("source_images")
@@ -171,17 +172,32 @@ async function createTranslationRows(
   const rows: { source_image_id: string; language: string; aspect_ratio: string; status: string; translated_url?: string }[] = [];
 
   // Normal images: all ratios as "pending"
+  // EXCEPTION: when target language === source language, skip text-translation
+  // Kie call for the primary ratio (no transform needed - just use original).
+  // Mirrors the create-translations route fix for SE-only workspaces (doginwork)
+  // or any case where source matches a target language.
   for (const si of translatableImages) {
     for (const lang of targetLangs) {
+      const isSameLanguage = sourceLang && lang === sourceLang;
       for (const ratio of targetRatios) {
         const key = `${si.id}:${lang}:${ratio}`;
-        if (existingKeys.has(key)) continue; // Already exists
-        rows.push({
-          source_image_id: si.id,
-          language: lang,
-          aspect_ratio: ratio,
-          status: "pending",
-        });
+        if (existingKeys.has(key)) continue;
+        if (isSameLanguage && ratio === primaryRatio) {
+          rows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "completed",
+            translated_url: si.original_url,
+          });
+        } else {
+          rows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
       }
     }
   }

@@ -89,20 +89,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Clear from launch pad if all markets pushed
-  const { data: remaining } = await db
-    .from("concept_lifecycle")
-    .select("stage")
-    .in("image_job_market_id", (marketRows ?? []).map((m) => m.id))
-    .eq("stage", "launchpad")
-    .is("exited_at", null);
+  // Clear from launch pad ONLY if at least one push succeeded AND no remaining
+  // launchpad lifecycle rows. Previously cleared whenever 'remaining' was empty,
+  // which incorrectly removed concepts that had NO concept_lifecycle rows at
+  // all (legacy/manually-set launchpad_priority) — even when every push failed.
+  // Result: user clicked Push on a concept that errored out, concept disappeared
+  // from Launch Pad, and they had to re-add it manually.
+  const allPushed = pushResult.results.length > 0 && pushResult.results.every((r) => r.status === "pushed");
 
-  if (!remaining || remaining.length === 0) {
-    await db
-      .from("image_jobs")
-      .update({ launchpad_priority: null })
-      .eq("id", conceptId)
-      .eq("workspace_id", workspaceId);
+  if (allPushed) {
+    const { data: remaining } = await db
+      .from("concept_lifecycle")
+      .select("stage")
+      .in("image_job_market_id", (marketRows ?? []).map((m) => m.id))
+      .eq("stage", "launchpad")
+      .is("exited_at", null);
+
+    if (!remaining || remaining.length === 0) {
+      await db
+        .from("image_jobs")
+        .update({ launchpad_priority: null })
+        .eq("id", conceptId)
+        .eq("workspace_id", workspaceId);
+    }
   }
 
   return NextResponse.json({ success: true, results: pushResult.results });
