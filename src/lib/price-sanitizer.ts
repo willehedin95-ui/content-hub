@@ -63,8 +63,19 @@ export function stripPricesFromString(str: string): string {
     rx.lastIndex = 0;
     out = out.replace(rx, " ");
   }
-  // Clean up double spaces + spaces before punctuation
-  out = out.replace(/\s+/g, " ").replace(/\s+([,.!?;:])/g, "$1").trim();
+  // Clean up double horizontal spaces + spaces before punctuation, while
+  // PRESERVING paragraph breaks (\n\n) in fields like ad_copy_primary.
+  // Previously used /\s+/g which matched \n as well, collapsing every
+  // \n\n into a single space — wall-of-text ad copy. The price-strip
+  // regex above replaces matches with " " (horizontal space), so we
+  // only need to collapse horizontal runs, not any whitespace.
+  out = out
+    .replace(/[ \t]+/g, " ")           // collapse runs of spaces/tabs to one
+    .replace(/ ([,.!?;:])/g, "$1")     // no space before punctuation
+    .replace(/[ \t]+\n/g, "\n")        // no trailing horizontal space at line end
+    .replace(/\n[ \t]+/g, "\n")        // no leading horizontal space at line start
+    .replace(/\n{3,}/g, "\n\n")        // limit blank lines to one
+    .trim();
   return out;
 }
 
