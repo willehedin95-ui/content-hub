@@ -13,7 +13,7 @@
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getLanguagesByWorkspaceId, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
+import { getLanguagesByWorkspaceId, getAdCopyLanguageByWorkspaceId, getForceNoProductByWorkspaceId } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { sendPhoto, sendMessageWithInlineKeyboard, sendMediaGroup } from "@/lib/telegram";
 import {
@@ -127,6 +127,14 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 
   // --- Determine generation language (e.g. "sv" for Hydro13) ---
   const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
+
+  // --- Resolve effective forceNoProduct ---
+  // OR the per-call flag (e.g. "native" board name) with the workspace-level
+  // setting. Digital-only workspaces (doginwork = course) set
+  // settings.force_no_product=true so no caller can accidentally inject a
+  // product hero image into ads.
+  const workspaceForceNoProduct = await getForceNoProductByWorkspaceId(workspaceId);
+  const effectiveForceNoProduct = input.forceNoProduct === true || workspaceForceNoProduct;
 
   // --- Build prompts ---
   const swipeMode = input.swipeMode ?? "adapt";
@@ -336,21 +344,21 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   }
 
   // --- PRODUCT REFERENCE safety net ---
-  // When forceNoProduct is set (e.g. source board name contains "native"),
-  // override Claude's include_product_reference to false and strip product
-  // name mentions from prompt text. This prevents product hero reference
-  // images from being passed to Nano Banana, which would render an accurate
-  // product bottle in native/UGC scenes where no product should appear.
+  // When effectiveForceNoProduct is set (native board name OR digital-only
+  // workspace), override Claude's include_product_reference to false and
+  // strip product name mentions from prompt text. This prevents product hero
+  // reference images from being passed to Nano Banana, which would render an
+  // accurate product bottle in native/UGC scenes where no product should appear.
   //
-  // When forceNoProduct is NOT set, trust Claude's decision — the competitor
-  // ad likely shows a product and we want our product in the same style.
+  // When NOT set, trust Claude's decision — the competitor ad likely shows a
+  // product and we want our product in the same style.
   const productName = product.name; // e.g. "Hydro13", "HappySleep"
-  if (input.forceNoProduct) {
+  if (effectiveForceNoProduct) {
     for (const ip of parsed.image_prompts) {
       if (ip.include_product_reference === true) {
         ip.include_product_reference = false;
         console.warn(
-          `[swipe-competitor] Overrode include_product_reference to false for "${productName}" (forceNoProduct from native board).`
+          `[swipe-competitor] Overrode include_product_reference to false for "${productName}" (effectiveForceNoProduct=true; per-call=${input.forceNoProduct === true}, workspace=${workspaceForceNoProduct}).`
         );
       }
       if (typeof ip.prompt !== "object" || ip.prompt === null) continue;

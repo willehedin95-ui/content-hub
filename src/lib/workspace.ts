@@ -160,6 +160,22 @@ export async function getAdCopyLanguageByWorkspaceId(workspaceId: string): Promi
 }
 
 /**
+ * Workspaces that sell digital-only products (courses, services) should never
+ * have a physical product injected into ad images. Set `force_no_product=true`
+ * in workspace settings to enforce this regardless of board name.
+ */
+export async function getForceNoProductByWorkspaceId(workspaceId: string): Promise<boolean> {
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const settings = data?.settings as Record<string, unknown> | null;
+  return settings?.force_no_product === true;
+}
+
+/**
  * Clear the workspace cache. Call after modifying workspaces.
  */
 export function clearWorkspaceCache() {
