@@ -447,16 +447,26 @@ function CustomHtmlEl({
 
   // Rich path: auto-size iframe to content height. Iframe is same-origin
   // via srcdoc so we can read scrollHeight directly.
+  // Tar max av documentElement + body scrollHeight + boundingClientRect
+  // för att fånga både margins och post-load image growth (William 2026-05-03).
   useEffect(() => {
     if (!rich || !iframeRef.current) return;
     const iframe = iframeRef.current;
     let observer: ResizeObserver | null = null;
     let raf = 0;
+    const imgListeners: Array<{ img: HTMLImageElement; handler: () => void }> = [];
     const updateHeight = () => {
       try {
         const doc = iframe.contentDocument;
         if (!doc) return;
-        const h = doc.documentElement?.scrollHeight ?? 0;
+        const html = doc.documentElement;
+        const body = doc.body;
+        const h = Math.max(
+          html?.scrollHeight ?? 0,
+          html?.offsetHeight ?? 0,
+          body?.scrollHeight ?? 0,
+          body?.offsetHeight ?? 0,
+        );
         if (h > 0) iframe.style.height = h + "px";
       } catch {
         /* sandbox or not-yet-ready */
@@ -467,9 +477,20 @@ function CustomHtmlEl({
       raf = requestAnimationFrame(updateHeight);
       try {
         const doc = iframe.contentDocument;
-        if (doc && typeof ResizeObserver !== "undefined") {
+        if (!doc) return;
+        if (typeof ResizeObserver !== "undefined") {
           observer = new ResizeObserver(updateHeight);
           observer.observe(doc.documentElement);
+          if (doc.body) observer.observe(doc.body);
+        }
+        // Re-measure när varje img inuti iframen laddat klart.
+        // ResizeObserver fångar inte alltid img-load-reflows tidigt nog.
+        for (const img of Array.from(doc.images)) {
+          if (img.complete) continue;
+          const handler = () => updateHeight();
+          img.addEventListener("load", handler);
+          img.addEventListener("error", handler);
+          imgListeners.push({ img, handler });
         }
       } catch {
         /* ignore */
@@ -481,6 +502,10 @@ function CustomHtmlEl({
     return () => {
       iframe.removeEventListener("load", onLoad);
       observer?.disconnect();
+      for (const { img, handler } of imgListeners) {
+        img.removeEventListener("load", handler);
+        img.removeEventListener("error", handler);
+      }
       if (raf) cancelAnimationFrame(raf);
     };
   }, [resolved, rich]);
@@ -504,6 +529,10 @@ function CustomHtmlEl({
         // arbitrary third-party submissions.
         sandbox="allow-scripts allow-same-origin"
         srcdoc={wrappedSrcdoc}
+        // scrolling="no" + CSS overflow:hidden förhindrar nested scroll om
+        // height-mätningen är minimal undershoot. Page scrollar normalt
+        // outside iframe (William 2026-05-03).
+        scrolling="no"
         title={`Custom block ${el.id}`}
       />
     );
@@ -919,6 +948,52 @@ export function EmailCaptureForm({
 }
 
 // ---------------------------------------------------------------------------
+// Offer timer-bar (Profil + Offer step). Renderas mellan profile-card och
+// offer-body sub-els i StepRenderer så position:sticky fungerar mot
+// parent-page-scroll. Inuti iframen funkar sticky inte (iframen själv
+// scrollar inte). 10-min countdown persisterad i sessionStorage.
+// (William 2026-05-04)
+// ---------------------------------------------------------------------------
+
+export function OfferTimerBar() {
+  const TOTAL_SECONDS = 10 * 60;
+  const STORAGE_KEY = "quiz-offer-timer-end";
+  const [remaining, setRemaining] = useState<number>(TOTAL_SECONDS);
+
+  useEffect(() => {
+    let endTs: number;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        endTs = parseInt(saved, 10);
+      } else {
+        endTs = Date.now() + TOTAL_SECONDS * 1000;
+        sessionStorage.setItem(STORAGE_KEY, String(endTs));
+      }
+    } catch {
+      endTs = Date.now() + TOTAL_SECONDS * 1000;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.floor((endTs - Date.now()) / 1000));
+      setRemaining(left);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
+  const ss = String(remaining % 60).padStart(2, "0");
+
+  return (
+    <div class="quiz-offer-timer">
+      <span class="quiz-offer-timer-text">Personligt erbjudande löper ut</span>
+      <span class="quiz-offer-timer-clock">{mm}:{ss}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Step renderer
 // ---------------------------------------------------------------------------
 
@@ -1247,8 +1322,77 @@ body {
   border: none;
   background: transparent;
   min-height: 120px;
-  /* iframe height is set dynamically by the runtime after load */
+  /* iframe height is set dynamically by the runtime after load.
+   * overflow:hidden + scrolling=no på elementet förhindrar nested scroll
+   * om height-mätningen är minimal undershoot (William 2026-05-03 - testimonial-
+   * sliden visade dubbel scrollbar pga avatar-images laddades efter initial
+   * scrollHeight-mätning). Page scrollar normalt outside iframe. */
+  overflow: hidden;
 }
+
+/* När iframens commit-gate öppnar modal, expandera iframen till full
+ * viewport så iframens egna lokala overlay täcker hela skärmen (inte bara
+ * iframens normala area). Iframes är "windows" som content inuti inte kan
+ * visuellt escape från - därför kan parent-backdrop aldrig hamna BAKOM
+ * iframen och samtidigt ha modal-content från iframen ovanpå. Lösning:
+ * gör iframen själv viewport-stor (William 2026-05-04).
+ *
+ * App.tsx togglar .modal-active på .quiz-shell baserat på postMessage
+ * från iframen ('quiz-modal-open'/'quiz-modal-close'). */
+.quiz-shell.modal-active .quiz-custom-html-frame {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 100;
+  animation: quiz-modal-in 0.2s ease-out;
+}
+.quiz-shell.modal-active {
+  /* Lås body-scroll när modal är aktiv så användaren inte kan rulla ifrån
+   * fokuset och hitta gamla iframe-positionen. */
+  overflow: hidden;
+}
+@keyframes quiz-modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Offer timer-bar för profil+offer-steget (b24). Renderas mellan profile-
+ * card och offer-body sub-els i StepRenderer (inte i parent App.tsx) så
+ * den hamnar visuellt EFTER profile-card och blir sticky när användaren
+ * scrollar förbi - inte fixed-from-top. Edge-to-edge via 100vw + negative
+ * margin för att bryta ut ur .quiz-content's horizontal padding. (William
+ * 2026-05-04). */
+.quiz-offer-timer {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  width: 100vw;
+  margin-left: calc((100vw - 100%) / -2);
+  margin-right: calc((100vw - 100%) / -2);
+  margin-top: 24px;
+  margin-bottom: 16px;
+  background: linear-gradient(90deg, #FF7A45 0%, #FF9D6E 100%);
+  color: #FFFFFF;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 6px 20px rgba(255, 122, 69, 0.25);
+}
+.quiz-offer-timer-text {
+  font-size: 14px;
+  font-weight: 700;
+}
+.quiz-offer-timer-clock {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.18);
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+
 .quiz-custom-html a { color: var(--quiz-brand); }
 .quiz-custom-html p { margin-bottom: 8px; }
 .quiz-custom-html p:last-child { margin-bottom: 0; }
@@ -1437,6 +1581,22 @@ body {
 /* Bottom-buffer för fixed CTAs (.quiz-question-bottom OR .quiz-continue-wrap).
  * Nu när alla CTAs är fixed-bottom appliceras 180px alltid. */
 .quiz-content { padding-bottom: 180px; }
+
+/* Profil-steget (b24) + Offer-steget (boffer) ska ha edge-to-edge content -
+ * profile-card-heron är full-bleed (puppy graduation image), och offer-
+ * timer-bannern på offer-steget ska gå hela vägen ut. Ta bort .quiz-content's
+ * horizontal + top padding så iframen blir full viewport-bredd. (William
+ * 2026-05-04 v3 - splittade tillbaka från merged) */
+.quiz-shell.profil-step .quiz-content,
+.quiz-shell.offer-step .quiz-content {
+  padding: 0 0 64px;
+  gap: 0;
+}
+
+/* Offer-step: göm runtime's auto-Continue button. Sidan har inline CTA-
+ * knappar (.v20-cta) som postMessar continue själva. (William 2026-05-04 v3) */
+.quiz-shell.offer-step .quiz-continue-wrap { display: none; }
+.quiz-shell.offer-step .quiz-content { padding-bottom: 32px; }
 /* Inline CTA fallback (used by dropdown layout where Continue is rendered
  * inline below the input, not in the fixed wrapper). */
 .quiz-question--dropdown .quiz-question-continue {
@@ -1509,11 +1669,20 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 /* Steg som ska ha inline-CTA istället för fixed-bottom (William 2026-04-30
- * - profile-card behöver natural flow så CTA inte täcker innehåll). */
-.quiz-continue-wrap[data-step-name*="Profil"] {
+ * - profile-card behöver natural flow så CTA inte täcker innehåll).
+ *
+ * 2026-05-03: Utökad till educational interstitials (Pattern Reveal,
+ * Competitive destruction, Puppy blues) - sticky CTA gjorde att användare
+ * skippade slidens content innan de läst. Inline CTA tvingar scroll =
+ * tvingar konsumption, per quiz-knowledge "loading screen captive attention"-
+ * principen applicerad på högvärdiga insight panels. */
+.quiz-continue-wrap[data-step-name*="Profil"],
+.quiz-continue-wrap[data-step-name*="Pattern Reveal"],
+.quiz-continue-wrap[data-step-name*="Competitive destruction"],
+.quiz-continue-wrap[data-step-name*="Puppy blues"] {
   position: static;
   background: transparent;
-  padding: 24px 0 8px;
+  padding: 24px 16px 8px;
 }
 
 .quiz-dropdown { position: relative; width: 100%; }

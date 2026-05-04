@@ -18,7 +18,7 @@ import {
   detectDeviceType,
 } from "./state";
 import { startSession, flushEvents, subscribeKlaviyo } from "./api";
-import { StepRenderer, ProgressBar } from "./renderer";
+import { StepRenderer, ProgressBar, OfferTimerBar } from "./renderer";
 import { topoOrderSteps } from "./topo";
 import { t } from "./i18n";
 
@@ -70,6 +70,12 @@ export function App({ data, settings, config }: AppProps) {
   const [variantAssignments, setVariantAssignments] = useState<Record<string, string>>({});
   const [stepIndex, setStepIndex] = useState(0);
   const [previewToast, setPreviewToast] = useState<string | null>(null);
+  // Iframe-driven modal active state (commit-gates inuti bload skickar
+  // postMessage 'quiz-modal-open'/'quiz-modal-close'). När true renderar vi
+  // en page-level backdrop som täcker hela viewporten - iframens egna lokala
+  // overlay räckte inte eftersom den bara dimmar iframens area, inte page-
+  // headern och content runt iframen (William 2026-05-04).
+  const [modalActive, setModalActive] = useState(false);
   // User answers keyed by variable name; used for {varName} interpolation in
   // downstream title/text content.
   const [variables, setVariables] = useState<Record<string, string>>({});
@@ -267,6 +273,19 @@ export function App({ data, settings, config }: AppProps) {
     const onMessage = (e: MessageEvent) => {
       const d = e.data;
       if (!d || typeof d !== "object") return;
+
+      // Modal toggle från iframen (commit-gate modaler i bload).
+      // Page-level backdrop dimmar hela viewporten istället för bara iframens
+      // area. Iframens egen lokala overlay (rgba 0,0,0,0.32) räckte inte -
+      // page header + content runt iframen syntes igenom.
+      if (d.type === "quiz-modal-open") {
+        setModalActive(true);
+        return;
+      }
+      if (d.type === "quiz-modal-close") {
+        setModalActive(false);
+        return;
+      }
 
       // Analytics-only event (does not advance the flow)
       if (d.type === "quiz-runtime-event" && typeof d.event_type === "string") {
@@ -619,8 +638,21 @@ export function App({ data, settings, config }: AppProps) {
   const canGoBack = settings.backNavigation && history.length > 0;
   const captureStepId = settings.providers.klaviyo?.captureAtStepId;
 
+  // 2026-05-04 v3: splittade tillbaka från merged "Profil + Offer".
+  // Profil-sidan = hero + stat-card + chart (edge-to-edge). Offer-sidan =
+  // sticky timer-banner + product intro + Marie + ... + FAQ.
+  const isProfilStep = !!stepNode.name && /Block 24 - Profil/i.test(stepNode.name);
+  const isOfferStep = !!stepNode.name && /^Offer page/i.test(stepNode.name);
+
+  const shellClasses = [
+    "quiz-shell",
+    modalActive && "modal-active",
+    isProfilStep && "profil-step",
+    isOfferStep && "offer-step",
+  ].filter(Boolean).join(" ");
+
   return (
-    <div class="quiz-shell">
+    <div class={shellClasses}>
       <div class="quiz-header">
         <div class="quiz-header-side quiz-header-side--start">
           {canGoBack && (
@@ -641,9 +673,14 @@ export function App({ data, settings, config }: AppProps) {
         </div>
       </div>
 
-      {settings.progressBar && (
+      {settings.progressBar && !isProfilStep && !isOfferStep && (
         <ProgressBar current={stepIndex + 1} total={totalSteps} />
       )}
+
+      {/* Offer-timer renderas i parent-DOM ovanför .quiz-content endast
+       * på offer-steget. Sticky:top:0 funkar mot parent-page-scroll.
+       * (William 2026-05-04 v3) */}
+      {isOfferStep && <OfferTimerBar />}
 
       <div class="quiz-content">
         <StepRenderer
