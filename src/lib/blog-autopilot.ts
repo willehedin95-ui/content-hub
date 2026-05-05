@@ -393,7 +393,7 @@ async function writeOneArticle(
               `Titel: ${article.seoTitle}\n` +
               `Ord: ${article.wordCount}\n\n` +
               `*Gate-flaggor:*\n${gate.reasons.map((r) => `• ${r}`).join("\n")}\n\n` +
-              `[Öppna review](${hubUrl}/review/${translation.id})`
+              `[Öppna review](${hubUrl}/blog-review/${translation.id})`
           );
         }
       } catch (err) {
