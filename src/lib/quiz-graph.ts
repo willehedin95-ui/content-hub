@@ -59,6 +59,18 @@ export function setEdgeCondition(q: QuizData, edgeId: string, condition: RouteCo
 export function topoOrderSteps(q: QuizData): StepNode[] {
   const steps = Object.values(q.nodes).filter((n): n is StepNode => n.kind === "step");
   const stepIds = new Set(steps.map((s) => s.id));
+  // Group variant siblings so we can place them adjacently when one is reached
+  // via BFS. Without this, variant_group siblings whose only inbound edge is
+  // the runtime variant-resolution swap (not a real graph edge) end up at the
+  // tail via the unreachable-steps fallback (visually disconnected from their
+  // sibling in funnel charts and editor lists).
+  const siblingsByGroup = new Map<string, StepNode[]>();
+  for (const s of steps) {
+    if (!s.variantGroupId) continue;
+    const arr = siblingsByGroup.get(s.variantGroupId) ?? [];
+    arr.push(s);
+    siblingsByGroup.set(s.variantGroupId, arr);
+  }
   const start = Object.values(q.nodes).find((n) => n.kind === "start");
   const queue: string[] = [];
   if (start) {
@@ -75,7 +87,16 @@ export function topoOrderSteps(q: QuizData): StepNode[] {
     if (visited.has(id)) continue;
     visited.add(id);
     const node = q.nodes[id];
-    if (node && node.kind === "step") order.push(node);
+    if (node && node.kind === "step") {
+      order.push(node);
+      if (node.variantGroupId) {
+        const sibs = siblingsByGroup.get(node.variantGroupId) ?? [];
+        for (let i = sibs.length - 1; i >= 0; i--) {
+          const sib = sibs[i];
+          if (sib.id !== id && !visited.has(sib.id)) queue.unshift(sib.id);
+        }
+      }
+    }
     for (const e of Object.values(q.edges)) {
       if (e.from === id && stepIds.has(e.to) && !visited.has(e.to)) queue.push(e.to);
     }

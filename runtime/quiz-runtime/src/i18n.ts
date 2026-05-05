@@ -9,6 +9,7 @@ export const T = {
   emailPlaceholder:  { se: 'din@epost.se',                dk: 'din@email.dk',               no: 'din@e-post.no',               en: 'your@email.com' },
   invalidEmail:      { se: 'Ange en giltig e-postadress.', dk: 'Indtast en gyldig e-mailadresse.', no: 'Oppgi en gyldig e-postadresse.', en: 'Please enter a valid email address.' },
   loadingResults:    { se: 'Laddar ditt resultat...',     dk: 'Indlæser dit resultat...',    no: 'Laster resultatet ditt...',   en: 'Loading your results...' },
+  loadingCheckout:   { se: 'Tar dig till kassan...',       dk: 'Tager dig til kassen...',     no: 'Tar deg til kassen...',       en: 'Taking you to checkout...' },
   searchPlaceholder: { se: 'Sök...',                      dk: 'Søg...',                      no: 'Søk...',                      en: 'Search...' },
   selectPlaceholder: { se: 'Välj ett alternativ',         dk: 'Vælg en mulighed',            no: 'Velg et alternativ',          en: 'Select an option' },
   noMatches:         { se: 'Inga träffar',                dk: 'Ingen resultater',            no: 'Ingen treff',                 en: 'No matches' },

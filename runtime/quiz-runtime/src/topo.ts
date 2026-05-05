@@ -6,6 +6,17 @@ export function topoOrderSteps(data: QuizData): StepNode[] {
     (n): n is StepNode => n.kind === "step",
   );
   const stepIds = new Set(steps.map((s) => s.id));
+  // Group variant siblings so we can place them adjacently when one is
+  // reached via BFS. Variant siblings are connected by runtime resolution
+  // (variantAssignments swap), not by real graph edges, so without this
+  // they'd fall through to the unreachable-steps fallback at the end.
+  const siblingsByGroup = new Map<string, StepNode[]>();
+  for (const s of steps) {
+    if (!s.variantGroupId) continue;
+    const arr = siblingsByGroup.get(s.variantGroupId) ?? [];
+    arr.push(s);
+    siblingsByGroup.set(s.variantGroupId, arr);
+  }
   const start = Object.values(data.nodes).find((n) => n.kind === "start");
   const queue: string[] = [];
 
@@ -25,7 +36,16 @@ export function topoOrderSteps(data: QuizData): StepNode[] {
     if (visited.has(id)) continue;
     visited.add(id);
     const node = data.nodes[id];
-    if (node && node.kind === "step") order.push(node);
+    if (node && node.kind === "step") {
+      order.push(node);
+      if (node.variantGroupId) {
+        const sibs = siblingsByGroup.get(node.variantGroupId) ?? [];
+        for (let i = sibs.length - 1; i >= 0; i--) {
+          const sib = sibs[i];
+          if (sib.id !== id && !visited.has(sib.id)) queue.unshift(sib.id);
+        }
+      }
+    }
     for (const e of Object.values(data.edges)) {
       if (e.from === id && stepIds.has(e.to) && !visited.has(e.to)) {
         queue.push(e.to);

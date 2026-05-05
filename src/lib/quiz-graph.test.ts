@@ -103,6 +103,27 @@ describe("topoOrderSteps", () => {
     const order = topoOrderSteps(q);
     expect(order).toHaveLength(2);
   });
+
+  it("places variant_group siblings adjacent to their canonical sibling", () => {
+    let q = emptyQuiz();
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "Landing A" });
+    const aId = Object.keys(q.nodes).find((k) => k !== "start1")!;
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "B1" });
+    const b1Id = Object.keys(q.nodes).find((k) => k !== "start1" && k !== aId)!;
+    q = addStepNode(q, { position: { x: 900, y: 0 }, name: "B2" });
+    const b2Id = Object.keys(q.nodes).find((k) => ![ "start1", aId, b1Id ].includes(k))!;
+    // Sibling variant of Landing A - reachable only via runtime variant
+    // resolution, not via a real edge. Without the fix this would land at
+    // the tail via the unreachable-steps fallback.
+    q = createVariant(q, aId);
+    const variantId = Object.keys(q.nodes).find((k) => ![ "start1", aId, b1Id, b2Id ].includes(k))!;
+    q = connectNodes(q, { from: "start1", to: aId });
+    q = connectNodes(q, { from: aId, to: b1Id });
+    q = connectNodes(q, { from: b1Id, to: b2Id });
+    const order = topoOrderSteps(q).map((s) => s.id);
+    expect(order).toEqual([aId, variantId, b1Id, b2Id]);
+  });
 });
 
 describe("setEdgeCondition", () => {

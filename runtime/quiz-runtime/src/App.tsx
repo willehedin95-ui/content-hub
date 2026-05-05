@@ -610,12 +610,23 @@ export function App({ data, settings, config }: AppProps) {
   // 1.5s timeout so the redirect is always prompt.
   if (currentNode?.kind === "exit") {
     const exitNode = currentNode as ExitNode;
+    const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
+    let isCartPermalink = false;
+    try {
+      const url = new URL(redirectBase, location.href);
+      isCartPermalink = /^\/cart\/\d+:\d+/i.test(url.pathname);
+    } catch {
+      /* fall through to default copy */
+    }
+    const loadingLabel = isCartPermalink
+      ? t("loadingCheckout", config.market)
+      : t("loadingResults", config.market);
     return (
       <div class="quiz-shell">
         <div class="quiz-content quiz-exit">
           <ExitAutoRedirect node={exitNode} onTrigger={handleExitClick} />
           <div class="quiz-loading-spinner" />
-          <p class="quiz-text">{t("loadingResults", config.market)}</p>
+          <p class="quiz-text">{loadingLabel}</p>
         </div>
         {previewToast && <div class="quiz-preview-toast">{previewToast}</div>}
       </div>
