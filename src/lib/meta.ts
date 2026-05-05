@@ -244,7 +244,58 @@ export async function createAdCreative(params: {
 }): Promise<{ id: string }> {
   const cta = params.callToAction || "LEARN_MORE";
   const pageId = params.pageId || getPageId();
+  const usePacRules = !!(params.assetCustomizationRules && params.assetCustomizationRules.length > 0);
 
+  // SINGLE-IMAGE NON-DCO PATH (no PAC rules):
+  // Build a traditional creative with object_story_spec.link_data instead of
+  // asset_feed_spec. asset_feed_spec is treated as dynamic-creative content by
+  // Meta even with one of each field, and gets rejected by non-DCO ad sets
+  // (subcode 1885998 "Annonser med dynamiskt innehåll kan bara skapas i
+  // annonsuppsättningar med dynamiskt innehåll"). asset_feed_spec is still
+  // used when PAC rules are present, since rules require it.
+  if (!usePacRules && params.images.length === 1) {
+    const linkData: Record<string, unknown> = {
+      link: params.linkUrl,
+      image_hash: params.images[0].hash,
+      message: params.bodies[0] ?? "",
+      call_to_action: { type: cta, value: { link: params.linkUrl } },
+    };
+    if (params.titles && params.titles[0]) {
+      linkData.name = params.titles[0];
+    }
+
+    const objectStorySpec: Record<string, unknown> = {
+      page_id: pageId,
+      link_data: linkData,
+      ...(params.instagramUserId ? { instagram_user_id: params.instagramUserId } : {}),
+    };
+
+    // If multiple body/title variations exist, add asset_feed_spec WITHOUT
+    // images/link_urls so Meta rotates copy only (still non-DCO compatible).
+    const hasCopyVariations =
+      params.bodies.length > 1 || (params.titles && params.titles.length > 1);
+    const assetFeedSpec: Record<string, unknown> | undefined = hasCopyVariations
+      ? {
+          bodies: params.bodies.map((text) => ({ text })),
+          titles: params.titles && params.titles.length > 0
+            ? params.titles.map((text) => ({ text }))
+            : undefined,
+          optimization_type: "DEGREES_OF_FREEDOM",
+        }
+      : undefined;
+
+    return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: params.name,
+        object_story_spec: objectStorySpec,
+        ...(assetFeedSpec ? { asset_feed_spec: assetFeedSpec } : {}),
+      }),
+    });
+  }
+
+  // PAC-rules path: keep asset_feed_spec with multiple images + labels.
   const images = params.images.map((img) => {
     if (img.label) {
       return { hash: img.hash, adlabels: [{ name: img.label }] };
