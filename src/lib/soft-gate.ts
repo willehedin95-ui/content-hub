@@ -131,6 +131,7 @@ export function runSoftGate(ctx: GateContext): GateResult {
       if (h.includes("get-renew.com") || h.includes("halsobladet.com")) return false;
       if (h.includes("swedishbalance.se") || h.includes("smarthelse.dk")) return false;
       if (h.includes("helseguiden.com")) return false;
+      if (h.includes("doginwork.se")) return false; // doginwork blog + quiz subdomain
       return true;
     });
   const unknownDomains = new Set<string>();

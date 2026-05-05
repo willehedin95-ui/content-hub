@@ -326,7 +326,7 @@ async function writeOneArticle(
   // `blog_soft_gate_enabled` — default off to preserve backward-compat.
   if (settings.blog_soft_gate_enabled === true) {
     const { runSoftGate } = await import("./soft-gate");
-    const { VERIFIED_EXTERNAL_LINKS } = await import("./blog-writer");
+    const { VERIFIED_EXTERNAL_LINKS, PRODUCT_ALLOWED_DOMAINS } = await import("./blog-writer");
     const linksForLang = VERIFIED_EXTERNAL_LINKS[language as "sv" | "da" | "no"] ?? {};
     const verifiedDomains = Object.values(linksForLang)
       .map((link) => {
@@ -337,6 +337,10 @@ async function writeOneArticle(
         }
       })
       .filter(Boolean);
+    // Merge product-specific allowed domains (e.g. doginwork blog links to
+    // SKK, Jordbruksverket etc. - not on the health-YMYL list above).
+    const productExtras = PRODUCT_ALLOWED_DOMAINS[nextArticle.productSlug] ?? [];
+    verifiedDomains.push(...productExtras);
 
     // Known slugs on the target blog — for internal link resolvability check
     const { data: allTrans } = await db

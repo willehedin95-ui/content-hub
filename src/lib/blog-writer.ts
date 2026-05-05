@@ -288,6 +288,25 @@ export const VERIFIED_EXTERNAL_LINKS: Record<string, Record<string, ExternalLink
   },
 };
 
+/**
+ * Workspace-specific extra allowed external domains for soft-gate.
+ * Used in addition to the language-keyed VERIFIED_EXTERNAL_LINKS above.
+ *
+ * Doginwork blog is dog-training content, not health YMYL — it links out to
+ * dog-specific authorities (Svenska Kennelklubben, Jordbruksverket) instead
+ * of medical sources, so the gate's allow-list needs the override.
+ */
+export const PRODUCT_ALLOWED_DOMAINS: Record<string, string[]> = {
+  valpakademin: [
+    "skk.se",                  // Svenska Kennelklubben
+    "jordbruksverket.se",      // svenska hundlagar, registrering
+    "1177.se",                 // medicinska valp-frågor (vaccination, parasiter)
+    "sbk.se",                  // Svenska Brukshundklubben
+    "agria.se",                // hundförsäkring + hund-content (auktoritet)
+    "manypets.com",            // ManyPets (puppy blues-undersökningen 2023)
+  ],
+};
+
 // Post-processing: fix any remaining wrong health site URLs that Claude might hallucinate
 const URL_REPLACEMENTS: [RegExp, string][] = [
   // Common hallucinated Swedish 1177 paths → real URLs
@@ -447,7 +466,10 @@ export interface ArticleResult {
 export async function generateBlogArticle(
   request: ArticleRequest & { enableResearchCitations?: boolean }
 ): Promise<ArticleResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // Trim defensively: .env.local pulled from Vercel CLI sometimes wraps
+  // values with trailing literal `\n` which dotenv interprets as a newline,
+  // breaking auth headers/keys. Same fix applied in dataforseo.ts:getAuth.
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
   // Fetch product context from product bank
