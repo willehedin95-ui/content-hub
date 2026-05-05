@@ -133,7 +133,7 @@ export interface PushResult {
  */
 export async function pushConceptToMeta(
   jobId: string,
-  opts?: { languages?: string[]; workspaceId?: string; metaConfig?: Record<string, unknown> | null; wsSettings?: Record<string, unknown> }
+  opts?: { languages?: string[]; workspaceId?: string; metaConfig?: Record<string, unknown> | null; wsSettings?: Record<string, unknown>; activateNow?: boolean }
 ): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
   const db = createServerSupabase();
   const wsId = opts?.workspaceId ?? await getWorkspaceId();
@@ -231,6 +231,10 @@ export async function pushConceptToMeta(
   const conceptName = job.name.replace(/^#\d+\s*/, "").replace(/^R\d+\s*/, "").toLowerCase();
 
   // Load default schedule time from workspace settings (e.g. "03:00")
+  // OR activate immediately when caller passes activateNow=true (manual push
+  // from launchpad UI). Without a startTime, ad sets are created PAUSED — fine
+  // for cron/autopilot pushes (user reviews before going live), wrong for
+  // manual UI pushes ("I clicked Push, why isn't it on?").
   let scheduledStartTime: string | null = null;
   const wsSettings = opts?.wsSettings ?? await getWorkspaceSettings();
   const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
@@ -244,6 +248,10 @@ export async function pushConceptToMeta(
       scheduled.setDate(scheduled.getDate() + 1);
     }
     scheduledStartTime = scheduled.toISOString();
+  } else if (opts?.activateNow) {
+    // Start ~60s in the future so Meta has time to receive the creation
+    // request and activate the ad set without race conditions.
+    scheduledStartTime = new Date(Date.now() + 60_000).toISOString();
   }
 
   // Get landing page URLs for each language (page A)

@@ -57,7 +57,10 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Image push (original logic) ---
-  const pushResult = await pushConceptToMeta(conceptId, { languages });
+  // activateNow=true: manual UI push activates ad sets immediately. Cron and
+  // autopilot pushes don't pass this flag, so they still get the safe-default
+  // PAUSED behavior (or scheduled time from workspace settings).
+  const pushResult = await pushConceptToMeta(conceptId, { languages, activateNow: true });
 
   const now = new Date().toISOString();
   const { data: marketRows } = await db
