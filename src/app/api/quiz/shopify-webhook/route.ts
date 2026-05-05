@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { sendMessage } from "@/lib/telegram";
 
 export const runtime = "nodejs"; // Need crypto + raw body access
 
@@ -231,6 +232,84 @@ async function sendCAPIPurchase(
 }
 
 // ---------------------------------------------------------------------------
+// Telegram purchase notification
+// ---------------------------------------------------------------------------
+
+function isValpakademinOrder(order: ShopifyOrder): boolean {
+  return (order.line_items ?? []).some((li) =>
+    (li.title ?? "").toLowerCase().includes("valpakademin"),
+  );
+}
+
+function buildPurchaseMessage(
+  order: ShopifyOrder,
+  attr: QuizAttribution,
+  shopDomain: string,
+  sessionMatched: boolean,
+): string {
+  const lines: string[] = [];
+  lines.push(`Köp av Valpakademin`);
+  lines.push("");
+
+  const value = parseFloat(order.total_price);
+  const valueStr = Number.isFinite(value)
+    ? `${Math.round(value)} ${order.currency}`
+    : order.total_price;
+  lines.push(`Order #${order.order_number} - ${valueStr}`);
+
+  const firstName = order.billing_address?.first_name ?? "";
+  const lastName = order.billing_address?.last_name ?? "";
+  const fullName = `${firstName} ${lastName}`.trim();
+  const email = order.email ?? order.customer?.email ?? "";
+  if (fullName || email) {
+    const who = [fullName, email].filter(Boolean).join(" - ");
+    lines.push(who);
+  }
+
+  lines.push("");
+
+  // Source detection: quiz session match wins. If qz_sid was present and
+  // resolved a session, this came through the quiz funnel. Otherwise it's
+  // a direct LP purchase (or some other path - utm_source still surfaced).
+  if (sessionMatched && attr.qz_sid) {
+    lines.push(`Källa: Quiz`);
+    if (attr.qz_pain) lines.push(`- Primärt problem: ${attr.qz_pain}`);
+    if (attr.qz_breed) lines.push(`- Ras: ${attr.qz_breed}`);
+    if (attr.qz_age) lines.push(`- Ålder: ${attr.qz_age}`);
+    if (attr.qz_time) lines.push(`- Tid per dag: ${attr.qz_time}`);
+  } else {
+    lines.push(`Källa: Direkt LP`);
+    if (attr.utm_source) lines.push(`- UTM source: ${attr.utm_source}`);
+    if (attr.utm_campaign) lines.push(`- UTM campaign: ${attr.utm_campaign}`);
+    if (attr.utm_medium) lines.push(`- UTM medium: ${attr.utm_medium}`);
+  }
+
+  if (shopDomain) {
+    lines.push("");
+    lines.push(`https://${shopDomain}/admin/orders/${order.id}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function sendPurchaseTelegram(
+  order: ShopifyOrder,
+  attr: QuizAttribution,
+  shopDomain: string,
+  sessionMatched: boolean,
+): Promise<void> {
+  if (!isValpakademinOrder(order)) return;
+  const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+  if (!chatId) return;
+  const text = buildPurchaseMessage(order, attr, shopDomain, sessionMatched);
+  try {
+    await sendMessage(chatId, text, { disable_web_page_preview: true });
+  } catch (err) {
+    console.error("[shopify-webhook] Telegram send failed:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
@@ -327,6 +406,11 @@ export async function POST(req: NextRequest) {
   if (token) {
     capiResult = await sendCAPIPurchase(ws.pixel_id, token, order, attr);
   }
+
+  // Telegram notification for Valpakademin orders. Source = Quiz when we
+  // resolved a quiz session via qz_sid, otherwise Direct LP (or other path
+  // surfaced via utm_*).
+  await sendPurchaseTelegram(order, attr, shopDomain, sessionUpdated);
 
   return NextResponse.json({
     ok: true,
