@@ -879,7 +879,11 @@ export async function deploySitemapAndRobots(
     const isBlog = pageInfo?.content_type === "seo_blog";
     const catSlug = isBlog && pageInfo?.blog_category ? slugifyCategory(pageInfo.blog_category) : undefined;
     const urlPath = isBlog ? getArticlePath(t.slug!, catSlug) : t.slug!;
-    const loc = `${baseUrl}/${urlPath}`;
+    // CF Pages serves these as directories (path/index.html), so non-slash URLs
+    // 308-redirect to the slash version. Sitemap must use the slash form to
+    // match what the server actually serves and what we declare as canonical;
+    // mismatched URLs caused crawled-but-not-indexed verdicts in GSC.
+    const loc = isBlog ? `${baseUrl}/${urlPath}/` : `${baseUrl}/${urlPath}`;
     const lastmod = t.updated_at
       ? new Date(t.updated_at).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0];

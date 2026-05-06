@@ -517,7 +517,33 @@ async function writeOneArticle(
       | string
       | undefined) || "cf_pages";
 
-  if (publishTargetForPost !== "shopify") {
+  if (publishTargetForPost === "shopify") {
+    // Shopify owns sitemap, homepage, RSS — but we still need to ping GSC so
+    // the article gets discovered via the platform's own sitemap.xml. Without
+    // this, Shopify-published articles sit in "URL unknown to Google" until
+    // Google decides to re-fetch the sitemap on its own schedule.
+    if (isGscConfigured()) {
+      const settings = (wsForTarget?.settings as Record<string, unknown> | null) || {};
+      const props =
+        (settings.gsc_properties as Array<{
+          property: string;
+          language: string;
+          is_primary?: boolean;
+        }>) ?? [];
+      const primary = props.find(
+        (p) => p.language === language && p.is_primary !== false
+      );
+      if (primary) {
+        const host = primary.property.startsWith("sc-domain:")
+          ? primary.property.slice("sc-domain:".length)
+          : new URL(primary.property).hostname;
+        const sitemapUrl = `https://${host}/sitemap.xml`;
+        await runDeployStep("gsc_sitemap_submit", deployContext, () =>
+          submitSitemap(primary.property, sitemapUrl)
+        );
+      }
+    }
+  } else {
     await runDeployStep("blog_homepage", deployContext, () =>
       deployBlogHomepage(language)
     );

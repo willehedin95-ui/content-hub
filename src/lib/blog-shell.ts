@@ -330,7 +330,7 @@ function buildHreflangTags(
 
   // Self-referencing hreflang (required by Google)
   const hreflang = HREFLANG_MAP[currentLang] || currentLang;
-  tags.push(`<link rel="alternate" hreflang="${hreflang}" href="${esc(currentBaseUrl)}/${esc(urlPath)}">`);
+  tags.push(`<link rel="alternate" hreflang="${hreflang}" href="${esc(currentBaseUrl)}/${esc(urlPath)}/">`);
 
   // Other languages — only include if the domain is configured
   const allLangs: Language[] = ["sv", "da", "no"];
@@ -339,11 +339,11 @@ function buildHreflangTags(
     const domain = getBlogDomain(lang);
     if (!domain) continue;
     const hl = HREFLANG_MAP[lang] || lang;
-    tags.push(`<link rel="alternate" hreflang="${hl}" href="https://${esc(domain)}/${esc(urlPath)}">`);
+    tags.push(`<link rel="alternate" hreflang="${hl}" href="https://${esc(domain)}/${esc(urlPath)}/">`);
   }
 
   // x-default points to Swedish version
-  tags.push(`<link rel="alternate" hreflang="x-default" href="${esc(currentBaseUrl)}/${esc(urlPath)}">`);
+  tags.push(`<link rel="alternate" hreflang="x-default" href="${esc(currentBaseUrl)}/${esc(urlPath)}/">`);
 
   return tags.join("\n  ");
 }
@@ -436,7 +436,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     "@type": "Article",
     headline: opts.seoTitle,
     description: opts.seoDescription,
-    url: `${opts.baseUrl}/${urlPath}`,
+    url: `${opts.baseUrl}/${urlPath}/`,
     datePublished: opts.publishedAt,
     dateModified: opts.updatedAt,
     ...(absoluteImageUrl ? { image: absoluteImageUrl } : {}),
@@ -520,13 +520,13 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta property="og:type" content="article">
   <meta property="og:title" content="${esc(opts.seoTitle)}">
   <meta property="og:description" content="${esc(opts.seoDescription)}">
-  <meta property="og:url" content="${esc(opts.baseUrl)}/${esc(urlPath)}">
+  <meta property="og:url" content="${esc(opts.baseUrl)}/${esc(urlPath)}/">
   ${ogImage}
   <meta name="twitter:card" content="${absoluteImageUrl ? "summary_large_image" : "summary"}">
   <meta name="twitter:title" content="${esc(opts.seoTitle)}">
   <meta name="twitter:description" content="${esc(opts.seoDescription)}">
   ${absoluteImageUrl ? `<meta name="twitter:image" content="${esc(absoluteImageUrl)}">` : ""}
-  <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}">
+  <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}/">
   ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl)}
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
   <script type="application/ld+json">${articleSchema}</script>
