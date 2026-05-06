@@ -31,7 +31,7 @@ import {
   deployBlogHomepage,
   deployBlogRssFeed,
 } from "./blog-deploy";
-import { sendTelegramNotification, isTelegramDisabled } from "./telegram";
+import { sendTelegramNotification } from "./telegram";
 import {
   isDataForSeoConfigured,
   getKeywordSuggestions,
@@ -66,6 +66,7 @@ export interface AutopilotResult {
     slug: string;
     language: string;
     workspaceId: string;
+    productSlug?: string;
   };
 }
 
@@ -542,7 +543,10 @@ async function writeOneArticle(
     }
   }
 
-  // Send Telegram notification (respect workspace notifications_disabled flag)
+  // Send Telegram notification.
+  // Uses a dedicated `blog_notifications_disabled` flag (default off = enabled)
+  // so the workspace-wide `notifications_disabled` kill-switch (used to silence
+  // Meta autopilot spam) doesn't also tank blog publish pings.
   try {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     const { data: wsRow } = await db
@@ -550,7 +554,10 @@ async function writeOneArticle(
       .select("settings")
       .eq("id", workspaceId)
       .single();
-    if (chatId && !isTelegramDisabled(wsRow)) {
+    const blogNotifsDisabled =
+      ((wsRow?.settings as Record<string, unknown> | null)
+        ?.blog_notifications_disabled as boolean | undefined) === true;
+    if (chatId && !blogNotifsDisabled) {
       await sendTelegramNotification(
         chatId,
         `📝 *Blog article published*\n\n` +
@@ -584,6 +591,7 @@ async function writeOneArticle(
       slug: nextArticle.slug,
       language,
       workspaceId,
+      productSlug: nextArticle.productSlug,
     },
   };
 }
@@ -921,7 +929,10 @@ async function publishBlogArticle(
       .select("settings")
       .eq("id", workspaceId)
       .single();
-    if (chatId && !isTelegramDisabled(wsRow)) {
+    const blogNotifsDisabled =
+      ((wsRow?.settings as Record<string, unknown> | null)
+        ?.blog_notifications_disabled as boolean | undefined) === true;
+    if (chatId && !blogNotifsDisabled) {
       try {
         await sendTelegramNotification(
           chatId,
@@ -1192,6 +1203,7 @@ export async function generateBlogImagesAndRepublish(job: NonNullable<AutopilotR
       category: job.category,
       articleHtml: job.articleHtml,
       slug: job.slug,
+      productSlug: job.productSlug,
     });
 
     if (imageResult.generated === 0) {
