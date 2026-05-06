@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/cron/blog-autopilot?workspace=hydro13&lang=sv",
-      "schedule": "40 9 * * *"
+      "schedule": "40 9 * * 1,3,5"
     },
     {
       "path": "/api/cron/blog-images-retry",
