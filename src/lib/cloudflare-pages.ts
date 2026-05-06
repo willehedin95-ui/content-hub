@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { Language } from "@/types";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchWithRetry, withRetry } from "./retry";
-import { slugifyCategory, getArticlePath } from "@/lib/blog-shell";
+import { slugifyCategory, getArticlePath, getAboutPath, getAuthorPath } from "@/lib/blog-shell";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
 
@@ -901,6 +901,15 @@ export async function deploySitemapAndRobots(
       `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(catSlug)}/</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`
     );
   }
+
+  // Add EEAT static pages (about + author) to sitemap so Google can discover
+  // the publisher and author entities the article schema references.
+  urls.push(
+    `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(getAboutPath(language))}/</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>`
+  );
+  urls.push(
+    `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(getAuthorPath(language))}/</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>`
+  );
 
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

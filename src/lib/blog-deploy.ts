@@ -12,9 +12,13 @@ import {
   createDeployment,
 } from "@/lib/cloudflare-pages";
 import {
+  generateAboutPage,
+  generateAuthorPage,
   generateBlogHomepage,
   generateCategoryPage,
   generateRssFeed,
+  getAboutPath,
+  getAuthorPath,
   getDefaultBlogConfig,
   slugifyCategory,
   type BlogArticleSummary,
@@ -143,6 +147,31 @@ export async function deployBlogHomepage(
       path: `/${cat.slug}/index.html`,
       hash: md5hex(catBuffer),
       content: catBuffer,
+      contentType: "text/html",
+    });
+  }
+
+  // Static EEAT pages: /om-oss/ and /forfattare/erik-lindberg/. These give
+  // Google a real entity to resolve the author byline against and a separate
+  // About page describing the publisher. Without them the byline is cosmetic
+  // and the org has no authoritative description page.
+  const aboutHtml = generateAboutPage({ language, blogConfig: config, baseUrl });
+  if (aboutHtml) {
+    const aboutBuf = Buffer.from(aboutHtml, "utf-8");
+    newFiles.push({
+      path: `/${getAboutPath(language)}/index.html`,
+      hash: md5hex(aboutBuf),
+      content: aboutBuf,
+      contentType: "text/html",
+    });
+  }
+  const authorHtml = generateAuthorPage({ language, blogConfig: config, baseUrl });
+  if (authorHtml) {
+    const authorBuf = Buffer.from(authorHtml, "utf-8");
+    newFiles.push({
+      path: `/${getAuthorPath(language)}/index.html`,
+      hash: md5hex(authorBuf),
+      content: authorBuf,
       contentType: "text/html",
     });
   }

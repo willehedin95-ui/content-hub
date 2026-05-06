@@ -6,6 +6,100 @@ import { STORAGE_BUCKET } from "./constants";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://fbpefeqqqfrcmfmjmeij.supabase.co";
 const AUTHOR_AVATAR_URL = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/blog/author-erik-lindberg.png`;
 
+// Author identity. Single editor across all three blogs to keep the persona
+// coherent. Bio is intentionally modest — Erik is presented as the editor
+// curating content, not a subject-matter expert with claimed credentials.
+const AUTHOR_NAME = "Erik Lindberg";
+const AUTHOR_SLUG = "erik-lindberg";
+
+interface AuthorContent {
+  authorPath: string;
+  authorTitle: string;
+  authorRole: string;
+  authorBio: string[];
+  aboutPath: string;
+  aboutTitle: string;
+  aboutBody: string[];
+}
+
+const PAGE_CONTENT: Record<Language, AuthorContent> = {
+  sv: {
+    authorPath: `forfattare/${AUTHOR_SLUG}`,
+    authorTitle: `${AUTHOR_NAME} - Redaktör`,
+    authorRole: "Redaktör, Hälsobladet",
+    authorBio: [
+      "Erik Lindberg är redaktör för Hälsobladet och ansvarar för redaktionsarbetet bakom guider, produkttester och hälsoartiklar. Han har en bakgrund inom hälsojournalistik och har skrivit om sömn, kost och välmående i över ett decennium.",
+      "Som redaktör samarbetar Erik med läkare, sömnforskare och produkttestare för att kvalitetssäkra det som publiceras. Alla artiklar bygger på publicerade studier och refererar till primärkällor när det är relevant.",
+      "Hälsobladet är en del av Swedish Balance, ett svenskt företag som specialiserar sig på sömnprodukter. Vi tar inte emot ersättning för att skriva positiva produktomdömen.",
+    ],
+    aboutPath: "om-oss",
+    aboutTitle: "Om Hälsobladet",
+    aboutBody: [
+      "Hälsobladet drivs av Swedish Balance AB, ett svenskt företag som specialiserar sig på sömnprodukter och hälsoguider. Vi grundades med målet att hjälpa människor sova bättre och må bättre genom evidensbaserad information.",
+      "Vad vi gör: vi testar och jämför kuddar, sömntillskott och andra produkter, och vi skriver guider om sömn, hälsa och vardagsproblem som påverkar livskvaliteten. Vårt redaktionsarbete leds av Erik Lindberg, och vi konsulterar läkare och sömnforskare när vi skriver om medicinska ämnen.",
+      "Vad vi inte gör: vi tar inte emot betalning från tillverkare för positiva produktomdömen. Vissa länkar till produkter är annonslänkar — det innebär att vi får en mindre ersättning om du handlar via dem, men det påverkar inte vilka produkter vi rekommenderar eller vad vi skriver. Detta står även i den specifika artikelns disclosure.",
+      "Kontakt: redaktion@halsobladet.com",
+    ],
+  },
+  da: {
+    authorPath: `forfattere/${AUTHOR_SLUG}`,
+    authorTitle: `${AUTHOR_NAME} - Redaktør`,
+    authorRole: "Redaktør, SmartHelse",
+    authorBio: [
+      "Erik Lindberg er redaktør for SmartHelse og ansvarlig for redaktionsarbejdet bag guides, produkttests og sundhedsartikler. Han har en baggrund inden for sundhedsjournalistik og har skrevet om søvn, kost og velvære i over et årti.",
+      "Som redaktør samarbejder Erik med læger, søvnforskere og produkttestere for at kvalitetssikre det, der publiceres. Alle artikler bygger på publicerede studier og refererer til primærkilder, når det er relevant.",
+      "SmartHelse er en del af Swedish Balance, et svensk firma der specialiserer sig i søvnprodukter. Vi modtager ikke betaling for at skrive positive produktanmeldelser.",
+    ],
+    aboutPath: "om-os",
+    aboutTitle: "Om SmartHelse",
+    aboutBody: [
+      "SmartHelse drives af Swedish Balance AB, et svensk firma der specialiserer sig i søvnprodukter og sundhedsguides. Vi blev grundlagt med målet at hjælpe folk med at sove bedre og have det bedre gennem evidensbaseret information.",
+      "Hvad vi gør: vi tester og sammenligner puder, søvntilskud og andre produkter, og vi skriver guides om søvn, sundhed og dagligdagsproblemer der påvirker livskvaliteten. Vores redaktionsarbejde ledes af Erik Lindberg, og vi konsulterer læger og søvnforskere, når vi skriver om medicinske emner.",
+      "Hvad vi ikke gør: vi modtager ikke betaling fra producenter for positive produktanmeldelser. Visse links til produkter er annoncelinks — det betyder, at vi får en mindre kompensation, hvis du handler via dem, men det påvirker ikke, hvilke produkter vi anbefaler, eller hvad vi skriver. Dette står også i den enkelte artikels disclosure.",
+      "Kontakt: redaktion@smarthelse.dk",
+    ],
+  },
+  no: {
+    authorPath: `forfattere/${AUTHOR_SLUG}`,
+    authorTitle: `${AUTHOR_NAME} - Redaktør`,
+    authorRole: "Redaktør, Helseguiden",
+    authorBio: [
+      "Erik Lindberg er redaktør for Helseguiden og ansvarlig for redaksjonsarbeidet bak guider, produkttester og helseartikler. Han har en bakgrunn innen helsejournalistikk og har skrevet om søvn, kosthold og velvære i over et tiår.",
+      "Som redaktør samarbeider Erik med leger, søvnforskere og produkttestere for å kvalitetssikre det som publiseres. Alle artikler bygger på publiserte studier og refererer til primærkilder når det er relevant.",
+      "Helseguiden er en del av Swedish Balance, et svensk selskap som spesialiserer seg på søvnprodukter. Vi tar ikke imot betaling for å skrive positive produktanmeldelser.",
+    ],
+    aboutPath: "om-oss",
+    aboutTitle: "Om Helseguiden",
+    aboutBody: [
+      "Helseguiden drives av Swedish Balance AB, et svensk selskap som spesialiserer seg på søvnprodukter og helseguider. Vi ble grunnlagt med målet om å hjelpe folk å sove bedre og ha det bedre gjennom evidensbasert informasjon.",
+      "Hva vi gjør: vi tester og sammenligner puter, søvntilskudd og andre produkter, og vi skriver guider om søvn, helse og hverdagsproblemer som påvirker livskvaliteten. Vårt redaksjonsarbeid ledes av Erik Lindberg, og vi konsulterer leger og søvnforskere når vi skriver om medisinske emner.",
+      "Hva vi ikke gjør: vi tar ikke imot betaling fra produsenter for positive produktanmeldelser. Enkelte lenker til produkter er annonselenker — det betyr at vi får en mindre kompensasjon hvis du handler via dem, men det påvirker ikke hvilke produkter vi anbefaler eller hva vi skriver. Dette står også i den enkelte artikkelens disclosure.",
+      "Kontakt: redaksjon@helseguiden.com",
+    ],
+  },
+};
+
+export function getAuthorPath(lang: Language): string {
+  return PAGE_CONTENT[lang]?.authorPath ?? `forfattare/${AUTHOR_SLUG}`;
+}
+
+export function getAboutPath(lang: Language): string {
+  return PAGE_CONTENT[lang]?.aboutPath ?? "om-oss";
+}
+
+const FOOTER_NAV_LABELS: Record<Language, { about: string; author: string }> = {
+  sv: { about: "Om oss", author: "Författare" },
+  da: { about: "Om os", author: "Forfattere" },
+  no: { about: "Om oss", author: "Forfattere" },
+};
+
+function renderFooterNav(language: Language, baseUrl: string): string {
+  const labels = FOOTER_NAV_LABELS[language] ?? FOOTER_NAV_LABELS.sv;
+  const c = PAGE_CONTENT[language];
+  if (!c || c.authorBio.length === 0) return "";
+  return `<nav class="blog-shell-footer-nav"><a href="${baseUrl}/${c.aboutPath}/">${labels.about}</a> · <a href="${baseUrl}/${c.authorPath}/">${labels.author}: ${AUTHOR_NAME}</a></nav>`;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -430,7 +524,10 @@ export function wrapInBlogShell(opts: WrapOptions): string {
       })
     : "";
 
-  // Schema: Article JSON-LD
+  // Schema: Article JSON-LD. Includes Person author with @id pointing at the
+  // dedicated author page so Google can resolve the entity across articles
+  // (E-E-A-T signal). Without this the byline is purely cosmetic.
+  const authorPageUrl = `${opts.baseUrl}/${getAuthorPath(opts.language)}/`;
   const articleSchema = JSON.stringify({
     "@context": "https://schema.org",
     "@type": "Article",
@@ -440,6 +537,15 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     datePublished: opts.publishedAt,
     dateModified: opts.updatedAt,
     ...(absoluteImageUrl ? { image: absoluteImageUrl } : {}),
+    author: {
+      "@type": "Person",
+      "@id": authorPageUrl,
+      name: AUTHOR_NAME,
+      url: authorPageUrl,
+      image: AUTHOR_AVATAR_URL,
+      jobTitle: PAGE_CONTENT[opts.language]?.authorRole ?? "Editor",
+      worksFor: { "@type": "Organization", name: langConfig.blog_name },
+    },
     publisher: {
       "@type": "Organization",
       name: langConfig.blog_name,
@@ -479,18 +585,20 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     opts.language === "sv" ? "sv-SE" : opts.language === "da" ? "da-DK" : "nb-NO",
     { year: "numeric", month: "long", day: "numeric" }
   );
-  const authorName = "Erik Lindberg";
+  const authorName = AUTHOR_NAME;
   const lastUpdatedLabel =
     opts.language === "sv" ? "Senast uppdaterad" :
     opts.language === "da" ? "Sidst opdateret" : "Sist oppdatert";
   const byPrefix = opts.language === "da" ? "Af" : "Av";
 
-  // Build author byline HTML — injected into article after hero image
+  // Build author byline HTML — injected into article after hero image.
+  // The name links to the author bio page so the cosmetic byline becomes a
+  // real entity reference Google can crawl.
   const authorBylineHtml = `
     <div class="blog-shell-byline">
-      <img class="blog-shell-avatar" src="${AUTHOR_AVATAR_URL}" alt="${authorName}">
+      <a href="${esc(authorPageUrl)}"><img class="blog-shell-avatar" src="${AUTHOR_AVATAR_URL}" alt="${authorName}"></a>
       <div>
-        <span class="blog-shell-byline-name">${byPrefix} ${esc(authorName)}</span>
+        <a class="blog-shell-byline-name" href="${esc(authorPageUrl)}">${byPrefix} ${esc(authorName)}</a>
         <span class="blog-shell-byline-date">${lastUpdatedLabel} ${dateFormatted}</span>
       </div>
     </div>`;
@@ -564,6 +672,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <footer class="blog-shell-footer">
     <div class="blog-shell-container">
       <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      ${renderFooterNav(opts.language, opts.baseUrl)}
       <p class="blog-shell-disclosure">${esc(langConfig.affiliate_disclosure)}</p>
       <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
     </div>
@@ -640,6 +749,7 @@ export function generateBlogHomepage(opts: HomepageOptions): string {
   <footer class="blog-shell-footer">
     <div class="blog-shell-container">
       <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      ${renderFooterNav(opts.language, opts.baseUrl)}
       <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
     </div>
   </footer>
@@ -717,12 +827,150 @@ export function generateCategoryPage(opts: CategoryPageOptions): string {
   <footer class="blog-shell-footer">
     <div class="blog-shell-container">
       <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      ${renderFooterNav(opts.language, opts.baseUrl)}
       <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
     </div>
   </footer>
 </body>
 </html>`;
 }
+
+// ---------------------------------------------------------------------------
+// Author bio + About page (E-E-A-T signals)
+// ---------------------------------------------------------------------------
+
+interface StaticPageOptions {
+  language: Language;
+  blogConfig: BlogConfig;
+  baseUrl: string;
+}
+
+function renderStaticPage(
+  opts: StaticPageOptions,
+  pageTitle: string,
+  pagePath: string,
+  bodyHtml: string,
+  jsonLd: string
+): string {
+  const langConfig =
+    opts.blogConfig.languages[opts.language] ??
+    getDefaultBlogConfig().languages[opts.language] ??
+    getDefaultBlogConfig().languages.sv;
+  const color = opts.blogConfig.primary_color || "#16a34a";
+  const pageUrl = `${opts.baseUrl}/${pagePath}/`;
+
+  return `<!DOCTYPE html>
+<html lang="${opts.language}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer-when-downgrade">
+  <title>${esc(pageTitle)} | ${esc(langConfig.blog_name)}</title>
+  <meta name="description" content="${esc(pageTitle)} - ${esc(langConfig.blog_name)}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${esc(pageTitle)}">
+  <meta property="og:url" content="${esc(pageUrl)}">
+  <link rel="canonical" href="${esc(pageUrl)}">
+  <script type="application/ld+json">${jsonLd}</script>
+  <style>${BLOG_SHELL_CSS(color)}${HOMEPAGE_EXTRA_CSS}${STATIC_PAGE_CSS}</style>
+</head>
+<body>
+  <header class="blog-shell-header">
+    <div class="blog-shell-container">
+      <a href="${esc(opts.baseUrl)}/" class="blog-shell-logo">
+        <svg class="blog-shell-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1c1 2 2 4.5 2 8 0 5.5-4.78 11-10 11Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        ${esc(langConfig.blog_name)}
+      </a>
+    </div>
+  </header>
+
+  <main class="blog-shell-main">
+    <div class="blog-shell-container">
+      <article class="blog-shell-static">
+        ${bodyHtml}
+      </article>
+    </div>
+  </main>
+
+  <footer class="blog-shell-footer">
+    <div class="blog-shell-container">
+      <p class="blog-shell-about">${esc(langConfig.about_text)}</p>
+      ${renderFooterNav(opts.language, opts.baseUrl)}
+      <p class="blog-shell-copyright">${esc(langConfig.copyright_text)}</p>
+    </div>
+  </footer>
+</body>
+</html>`;
+}
+
+export function generateAboutPage(opts: StaticPageOptions): string {
+  const c = PAGE_CONTENT[opts.language];
+  if (!c || c.aboutBody.length === 0) return "";
+  const langConfig =
+    opts.blogConfig.languages[opts.language] ??
+    getDefaultBlogConfig().languages[opts.language] ??
+    getDefaultBlogConfig().languages.sv;
+  const aboutUrl = `${opts.baseUrl}/${c.aboutPath}/`;
+  const orgJsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": aboutUrl,
+    name: langConfig.blog_name,
+    url: opts.baseUrl,
+    parentOrganization: { "@type": "Organization", name: "Swedish Balance AB" },
+    ...(opts.blogConfig.logo_url
+      ? { logo: { "@type": "ImageObject", url: opts.blogConfig.logo_url } }
+      : {}),
+  });
+  const bodyHtml = `
+    <h1>${esc(c.aboutTitle)}</h1>
+    ${c.aboutBody.map((p) => `<p>${esc(p)}</p>`).join("\n    ")}
+  `;
+  return renderStaticPage(opts, c.aboutTitle, c.aboutPath, bodyHtml, orgJsonLd);
+}
+
+export function generateAuthorPage(opts: StaticPageOptions): string {
+  const c = PAGE_CONTENT[opts.language];
+  if (!c || c.authorBio.length === 0) return "";
+  const langConfig =
+    opts.blogConfig.languages[opts.language] ??
+    getDefaultBlogConfig().languages[opts.language] ??
+    getDefaultBlogConfig().languages.sv;
+  const authorUrl = `${opts.baseUrl}/${c.authorPath}/`;
+  const personJsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "@id": authorUrl,
+    name: AUTHOR_NAME,
+    url: authorUrl,
+    image: AUTHOR_AVATAR_URL,
+    jobTitle: c.authorRole,
+    description: c.authorBio[0],
+    worksFor: { "@type": "Organization", name: langConfig.blog_name },
+  });
+  const bodyHtml = `
+    <div class="blog-shell-author-hero">
+      <img class="blog-shell-author-avatar" src="${AUTHOR_AVATAR_URL}" alt="${AUTHOR_NAME}">
+      <div>
+        <h1>${esc(AUTHOR_NAME)}</h1>
+        <p class="blog-shell-author-role">${esc(c.authorRole)}</p>
+      </div>
+    </div>
+    ${c.authorBio.map((p) => `<p>${esc(p)}</p>`).join("\n    ")}
+  `;
+  return renderStaticPage(opts, c.authorTitle, c.authorPath, bodyHtml, personJsonLd);
+}
+
+const STATIC_PAGE_CSS = `
+.blog-shell-static{max-width:680px;margin:32px auto;padding:0 4px}
+.blog-shell-static h1{font-size:1.9rem;line-height:1.25;margin:0 0 24px}
+.blog-shell-static p{margin:0 0 18px;color:#374151}
+.blog-shell-author-hero{display:flex;gap:18px;align-items:center;margin:0 0 24px}
+.blog-shell-author-avatar{width:84px;height:84px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.blog-shell-author-hero h1{margin:0;font-size:1.6rem}
+.blog-shell-author-role{margin:4px 0 0;color:#6b7280;font-size:.95rem}
+@media(max-width:600px){.blog-shell-static h1{font-size:1.5rem}}
+`;
 
 // ---------------------------------------------------------------------------
 // RSS feed
@@ -803,7 +1051,9 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-sep{margin:0 6px;color:#d1d5db}
 .blog-shell-byline{display:flex;align-items:center;gap:12px;padding:8px 0 12px}
 .blog-shell-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0}
-.blog-shell-byline-name{display:block;font-weight:600;color:#374151;font-size:.9rem}
+.blog-shell-byline-name{display:block;font-weight:600;color:#374151;font-size:.9rem;text-decoration:none}
+.blog-shell-byline-name:hover{color:${primaryColor}}
+.blog-shell-byline > a{flex-shrink:0}
 .blog-shell-byline-date{display:block;font-size:.8rem;color:#9ca3af;margin-top:2px}
 .blog-shell-main{padding:0 0 40px}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;max-width:100%;display:block}
@@ -820,6 +1070,9 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-card h3,.blog-shell-card h2{font-size:.95rem;margin:12px 12px 4px;line-height:1.3}
 .blog-shell-card p{font-size:.8rem;color:#6b7280;margin:0 12px 12px;line-height:1.4}
 .blog-shell-footer{background:#f9fafb;border-top:1px solid #e5e7eb;padding:32px 0;font-size:.85rem;color:#6b7280}
+.blog-shell-footer-nav{margin:8px 0;font-size:.85rem}
+.blog-shell-footer-nav a{color:${primaryColor};text-decoration:none}
+.blog-shell-footer-nav a:hover{text-decoration:underline}
 .blog-shell-about{margin:0 0 12px}
 .blog-shell-disclosure{margin:0 0 12px;font-size:.8rem;color:#9ca3af;font-style:italic}
 .blog-shell-copyright{margin:0;color:#9ca3af}
