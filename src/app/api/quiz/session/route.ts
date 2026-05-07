@@ -3,9 +3,11 @@
 // CORS-friendly - called from CF Pages domains.
 
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getCORSHeaders, handleOptions } from "../_cors";
+import { isBlockedIP } from "../_block-ip";
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -36,6 +38,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "quizId is required" },
       { status: 400, headers: corsHeaders },
+    );
+  }
+
+  // Block internal/test IPs - return a fake UUID so the runtime continues
+  // working but no DB row is created. Subsequent event POSTs from this
+  // session will 404 on the events route's session lookup, which the
+  // runtime tolerates silently (events are fire-and-forget buffered).
+  if (isBlockedIP(req)) {
+    return NextResponse.json(
+      { session_id: randomUUID() },
+      { headers: corsHeaders },
     );
   }
 

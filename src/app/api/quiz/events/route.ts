@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getCORSHeaders, handleOptions } from "../_cors";
+import { isBlockedIP } from "../_block-ip";
 
 export async function OPTIONS(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -97,6 +98,13 @@ export async function POST(req: NextRequest) {
 
   if (body.events.length === 0) {
     return NextResponse.json({ ok: true }, { headers: corsHeaders });
+  }
+
+  // Internal/test IPs are silently dropped here too. Their session_id from
+  // /api/quiz/session was a fake UUID with no matching DB row anyway, but
+  // bailing early avoids logging "Session not found" noise for our own tests.
+  if (isBlockedIP(req)) {
+    return NextResponse.json({ ok: true, _internal: true }, { headers: corsHeaders });
   }
 
   const db = createServerSupabase();

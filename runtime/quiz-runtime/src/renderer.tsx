@@ -611,6 +611,7 @@ function OptionButton({
     <button
       class={cls}
       data-quiz-opt-id={option.id}
+      data-quiz-opt-value={option.value}
       onClick={onClick}
       type="button"
     >
@@ -622,8 +623,17 @@ function OptionButton({
           <span class="quiz-option-img-placeholder-label">{option.imageDescription}</span>
         </span>
       )}
-      {option.emoji && <span class="quiz-option-emoji">{option.emoji}</span>}
-      <span class="quiz-option-label">{label}</span>
+      {layout === "image_cards" ? (
+        <span class="quiz-option-row">
+          {option.emoji && <span class="quiz-option-emoji">{option.emoji}</span>}
+          <span class="quiz-option-label">{label}</span>
+        </span>
+      ) : (
+        <>
+          {option.emoji && <span class="quiz-option-emoji">{option.emoji}</span>}
+          <span class="quiz-option-label">{label}</span>
+        </>
+      )}
       {showArrow && (
         <span class="quiz-option-arrow" aria-hidden="true">
           <svg viewBox="0 0 20 20" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1399,10 +1409,11 @@ body {
 
 .quiz-question { display: flex; flex-direction: column; gap: 10px; }
 .quiz-question--cards { flex-direction: row; flex-wrap: wrap; gap: 10px; }
-/* image_cards = PawChamp-style row med thumbnail vänster, label center,
- * checkbox höger. Single-column 100%-bredd så fler alternativ syns utan
- * scroll och layouten matchar resten av multi-frågorna. (William 2026-04-30) */
-.quiz-question--image_cards { flex-direction: column; gap: 10px; }
+/* image_cards = Woofz-style grid med stor bild ovanför label. 2-kol när
+ * få options, wrap vid fler. Bild dominerar visuellt - perfekt för
+ * gender/age-segmentering där visuell distinktion mellan alternativ
+ * gör scanningen snabbare. (William 2026-05-07) */
+.quiz-question--image_cards { flex-direction: row; flex-wrap: wrap; gap: 10px; }
 .quiz-question--chips { flex-direction: row; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
 
 /* Base option: Clarflow-style soft-border card. All brand tokens from
@@ -1472,16 +1483,40 @@ body {
   padding: var(--quiz-option-padding);
 }
 .quiz-option--image_cards {
-  width: 100%;
-  flex-direction: row;
-  text-align: left;
-  padding: 6px 10px;
+  width: calc(50% - 5px);
+  flex-direction: column;
+  text-align: center;
+  padding: 10px 8px 8px;
   overflow: hidden;
   min-height: 0;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
-.quiz-option--image_cards .quiz-option-label { padding: 0; font-size: 15px; font-weight: 500; flex: 1; line-height: 1.3; }
+.quiz-option--image_cards .quiz-option-label { padding: 0; font-size: 15px; font-weight: 500; line-height: 1.3; text-align: center; }
+/* Hide arrow on image_cards (Woofz-style: image dominates, no chevron chrome). */
+.quiz-option--image_cards .quiz-option-arrow { display: none; }
+/* Emoji + label render inline as one row under the image: "♂ Hane" */
+.quiz-option--image_cards .quiz-option-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.quiz-option--image_cards .quiz-option-emoji { font-size: 16px; line-height: 1; }
+
+/* Subtle gender tint on image_cards (Doginwork). Only applies when option.value
+ * is "han"/"hon" - other quizzes using image_cards keep the default brand bg. */
+.quiz-option--image_cards[data-quiz-opt-value="han"] {
+  background: #E8F0F9;
+}
+.quiz-option--image_cards[data-quiz-opt-value="hon"] {
+  background: #F8E8EC;
+}
+.quiz-option--image_cards[data-quiz-opt-value="han"]:hover {
+  background: #DCE8F5;
+}
+.quiz-option--image_cards[data-quiz-opt-value="hon"]:hover {
+  background: #F5DCE3;
+}
 
 .quiz-option--chips {
   width: auto;
@@ -1506,14 +1541,14 @@ body {
   padding: 12px;
   color: rgba(0,0,0,0.4);
 }
-.quiz-option--image_cards .quiz-option-img-placeholder { width: 56px; height: 56px; aspect-ratio: 1 / 1; border-radius: 8px; border: 2px dashed rgba(0,0,0,0.15); flex: 0 0 56px; }
+.quiz-option--image_cards .quiz-option-img-placeholder { width: 100%; max-width: 140px; aspect-ratio: 1 / 1; border-radius: 12px; border: 2px dashed rgba(0,0,0,0.15); flex: 0 0 auto; margin: 0 auto; }
 .quiz-option-img-placeholder-label {
   font-size: 11px;
   line-height: 1.35;
   text-align: center;
   font-style: italic;
 }
-.quiz-option--image_cards .quiz-option-img { width: 56px; height: 56px; aspect-ratio: 1 / 1; border-radius: 8px; flex: 0 0 56px; object-fit: contain; }
+.quiz-option--image_cards .quiz-option-img { width: 100%; max-width: 110px; height: auto; aspect-ratio: 1 / 1; border-radius: 12px; flex: 0 0 auto; object-fit: contain; margin: 0 auto; }
 .quiz-option-emoji { font-size: 24px; }
 .quiz-option-label { font-weight: 400; flex: 1; }
 
