@@ -693,21 +693,48 @@ Detta är INTE en personlig blogg från Marie. Det är en redaktionell artikel d
 **ALDRIG använd första person singular ("jag", "min metod", "jag har sett under 14 år"). ALDRIG.**
 
 **Använd istället:**
-- Tredje person editorial: "Forskningen kring valpens utvecklingsfaser visar...", "Beprövad erfarenhet pekar på...", "Hundägare beskriver det ofta som..."
-- Doginwork som varumärke (vi-form): "På Doginwork rekommenderar vi...", "Vi har sammanställt..." - sparsamt, inte i varje stycke
-- Generisk auktoritet: "Erfarna hundinstruktörer pekar på...", "Inom svensk hundträning är konsensus att..."
+- Tredje person editorial: "Forskning visar att...", "Hundägare beskriver det ofta som..."
+- Doginwork som varumärke (vi-form): "På Doginwork rekommenderar vi..." - sparsamt
+- Generisk auktoritet: "Erfarna hundinstruktörer brukar säga...", "I svensk hundträning är det vanligt att..."
+
+## CRITICAL: LÄSNIVÅ - SKRIV ENKELT
+
+**Målgruppen är stressade valpägare, inte akademiker.** Många läser på högstadie-/Aftonbladet-nivå. Skriv så enkelt som möjligt utan att tappa innehåll.
+
+**Hårda regler för läsnivå:**
+
+1. **Korta meningar.** Max ~15 ord per mening i snitt. Bryt långa meningar i två. Punkt-och-ny-mening är din vän.
+
+2. **Vanliga ord, inte fackord.** Skriv "hjärnan växer fort" inte "kognitiv utveckling". "Den fasen" inte "fenomenet". "Det är vanligt" inte "det är dokumenterat".
+
+3. **Konkret, inte abstrakt.** "Valpen biter dina händer när du leker" inte "interaktion mellan valp och ägare karakteriseras av oralt kontaktsökande beteende".
+
+4. **Active voice.** "Valpen lär sig sitt-kommandot" inte "sitt-kommandot lärs in av valpen".
+
+5. **Förbjudet språk:**
+   - Substantiverade verb ("genomförande" → "att göra det", "implementering" → "att börja")
+   - Passiv-konstruktioner med "blir" / "gjordes" / "ska göras" → använd aktiv form
+   - Långa fackord-kedjor: "utvecklingspsykologisk problematik" → "vanliga problem under valpens växande"
+   - Engelska låneord: "fokus" istället för "focus", "metod" istället för "framework"
+   - Latinska/grekiska ord när det finns svenskt: "tillfällig" inte "temporär", "vanlig" inte "frekvent"
+
+6. **Förklara fackord direkt om de MÅSTE användas:**
+   - "Hormonpåverkan (kroppsliga ämnen som styr humör och beteende)"
+   - "Spökålder (en period då valpen plötsligt är rädd för saker den inte var rädd för förut)"
+
+7. **Mottot:** Skriv som om du förklarar för en stressad granne i köket, inte en kollega på universitetet.
 
 **Tonefördelning:**
-- Objektiv informativ huvudkropp (definition, biologi, vad funkar, vad undvika, tidsram)
-- Korta empati-pauser ("Den här fasen är inte ovanlig", "Detta är en normal del av valpens utveckling") utan att glida in i Marie:s första person
+- Objektiv informativ huvudkropp (vad händer, varför, vad funkar, vad undvika, tidsram)
+- Korta empati-konstateringar ("Den här fasen är inte ovanlig", "De flesta valpfamiljer går igenom det här") - utan första person
 - Hänvisningar till Doginwork och Valpakademin reserverat till CTA-box mot slutet
 
 **Förbjudet (Marie:s personliga grupp-röst):**
-- "Jag har sett tusentals familjer..." → ändra till "Erfarna instruktörer rapporterar att..."
-- "Min metod är..." → ändra till "Doginworks 4-stegsmetod är..."
-- "I min FB-grupp möter jag det här ofta" → ändra till "Hundägare beskriver upplevelsen ofta i ungefär dessa termer"
-- "HÅLL UT!" / "Lycka till!" / utropstecken-glädjeavslut → ej redaktionell ton
-- "Du gör helt rätt" / "Det är inte ditt fel" som direkta tilltal → omskrivs som objektiva konstateringar ("Det här är inte ett tecken på att ägaren har misslyckats")
+- "Jag har sett tusentals familjer..." → "Det är vanligt..."
+- "Min metod är..." → "Doginworks metod är..."
+- "I min FB-grupp möter jag det här" → "Hundägare beskriver det ofta så här"
+- "HÅLL UT!" / "Lycka till!" / utropstecken-glädje → utelämnas helt
+- Direkta du-uppmaningar med "du måste" / "du ska" → omformulera som "ett bra sätt är att..."
 
 ## Målgrupp - Christine
 

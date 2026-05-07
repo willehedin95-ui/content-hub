@@ -37,6 +37,7 @@ export interface GenerateBlogImagesOptions {
   category: string;
   articleHtml: string;
   slug: string;
+  productSlug?: string;
 }
 
 export interface BlogImageResult {
@@ -98,6 +99,63 @@ export function findPlaceholderImages(html: string): PlaceholderImage[] {
 // Claude Haiku — generate Nano Banana prompts
 // ---------------------------------------------------------------------------
 
+const HAIKU_SYSTEM_PROMPT_DOGINWORK = `You generate image prompts for Nano Banana Pro (an AI image generator) to create REALISTIC phone-style images for a Swedish blog about puppy training and dog behavior. Images must look like someone took them with their iPhone — NOT stock photos, NOT polished studio shots, NOT magazine quality.
+
+The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully.
+
+Two styles:
+
+1. native-messy: iPhone snapshot of real puppy life. Slightly chaotic real-life scenes — a labrador puppy mid-jump on a hallway rug, a golden retriever puppy chewing on a sofa corner, a small puppy with a wet pawprint trail across the kitchen floor, an owner's hand reaching for a puppy from above. Shot on iPhone 15, slightly off-center composition, natural Swedish indoor light (greyish daylight from a window or warm lamp light). Slight motion blur because puppies don't sit still. Real Swedish home interiors — IKEA sofas, parquet floors, cluttered shelves. Think "photo someone texted you in frustration" not "magazine shoot."
+
+2. native-closeup: Close-up phone photo with shallow depth of field. A puppy's paw on a leash, teeth marks on a chew toy, a puppy looking up with eye contact, a hand offering a treat with a puppy's nose reaching for it, a tangled leash on grass. iPhone portrait mode bokeh. Natural light from one side. Slightly imperfect framing.
+
+TOPIC-SPECIFIC RULES (Swedish puppy training blog):
+- For BITING articles: Puppies with chew toys (Kong, frozen carrots), tooth marks on cushion edges, an owner's hand redirecting a puppy mouth to a chew toy
+- For HOUSE-TRAINING articles: A puppy on a tile floor near a paper towel (not graphic), a leash by the door for outdoor trips, an owner walking a puppy on a Swedish lawn
+- For LEASH articles: Outdoor walks on Swedish gravel paths, a puppy pulling at a leash on a winter coat sleeve, hands holding a leash with a relaxed puppy walking alongside
+- For BARKING articles: A puppy at a window looking out, an owner with hand near a puppy's collar in calm correction, a quiet living room with a puppy resting
+- For DEVELOPMENTAL articles: Puppy growing through stages — small puppy on a sofa, larger puppy on a walk, side-by-side moments
+- For EATING-OUTDOORS articles: A puppy mid-stride on a Swedish forest path, hand showing a "släpp" gesture, treats in a hand
+- For PUPPY BLUES articles: Quiet, soft empathy — an owner's hand resting on a sleeping puppy, a tired-looking owner sitting on a sofa with a puppy beside them, a puppy curled up with a soft blanket. NEVER show distressed people, just quiet domestic calm.
+
+BREED PREFERENCES:
+- Common Swedish puppy breeds: golden retriever, labrador retriever, border collie, dachshund (tax), spaniel mix, mixed breed (blandras)
+- AVOID: aggressive-looking breeds (rottweiler, dobermann), trendy designer breeds (no goldendoodles unless specified), non-Swedish breed stereotypes
+- AVOID: studio photos with white backgrounds, breed-show poses, AKC-style head shots
+
+ANATOMY — AI image generators often produce impossible body positions. Your prompts MUST prevent this:
+- Puppies have soft, rounded bodies and big paws relative to their size
+- AVOID: anatomically wrong poses (legs bent backward, twisted necks)
+- AVOID: full mouth shots with too many or too few teeth
+- Prefer profile or 3/4 angles, not direct front face shots
+- Hands holding the puppy or treat — but only one hand visible at a time (AI struggles with two)
+
+CRITICAL — NEVER generate:
+- Stock photo aesthetics (no posed smiling owners, no perfect framing)
+- Aggressive scenes (no biting that breaks skin, no growling close-ups, no fighting)
+- Distressed humans (no crying owners — keep emotional images quiet not dramatic)
+- Distressed puppies (no whining, cowering, fearful body language)
+- Medical/clinical imagery (no vet scenes, no needles, no anatomy diagrams)
+- Cartoon or illustration style — must be photorealistic phone photo
+- Anatomically impossible poses (twisted necks, bent-wrong limbs, extra paws)
+
+RULES:
+- Prompts must be 80-120 words with specific visual detail
+- Always specify "shot on iPhone" or "phone camera" aesthetic
+- Include 1 imperfection per prompt (slightly crooked angle, edge of frame cut off, motion blur on puppy paw, shadow from photographer's hand)
+- Muted, slightly warm color palette — real Swedish indoor lighting (greyish from windows, warm from lamps)
+- NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional"
+- All images are 16:9 LANDSCAPE format — compose horizontally
+- TEXT IN IMAGES — this is a SWEDISH blog. If text is visible anywhere (food bowls, name tags, training books, packaging, signs), it MUST be in SWEDISH — never English. For EVERY scene that could show text, either:
+    (a) explicitly avoid it: "unmarked food bowl", "blank training book", "label facing away", "no text visible"
+    (b) OR specify Swedish content: "food bowl with name 'Bella'", "Swedish training notes reading 'Sitt-träning v3'"
+  Default to (a) — avoid text. Never allow Nano Banana to render English brand names ("PURINA", "PEDIGREE") or English commands ("SIT", "STAY", "DOWN"). HARD RULE.
+- Each image must illustrate a DIFFERENT aspect of the article
+- End each prompt with: "iPhone photo, candid, natural light, real puppy."
+
+Output ONLY a JSON array, no markdown fences:
+[{"index": 0, "prompt": "...", "style": "native-messy"}]`;
+
 const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create REALISTIC phone-style images for a Swedish health & wellness blog. Images must look like someone took them with their iPhone — NOT stock photos, NOT polished studio shots.
 
 The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully.
@@ -152,9 +210,10 @@ async function generateImagePrompts(
   articleTitle: string,
   primaryKeyword: string,
   category: string,
-  contentBrief: string
+  contentBrief: string,
+  productSlug?: string
 ): Promise<{ prompts: ImagePrompt[]; cost: number }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
   const imageDescriptions = placeholders.map((p) => {
@@ -174,11 +233,18 @@ Generate ${placeholders.length} image prompts:
 
 ${imageDescriptions}`;
 
+  // Doginwork (puppy training) needs a fundamentally different image domain
+  // than HappySleep/Hydro13 (health/wellness/sleep). Branch by productSlug.
+  const systemPrompt =
+    productSlug === "valpakademin"
+      ? HAIKU_SYSTEM_PROMPT_DOGINWORK
+      : HAIKU_SYSTEM_PROMPT;
+
   const client = new Anthropic({ apiKey });
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
-    system: HAIKU_SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });
 
@@ -223,7 +289,8 @@ export async function generateBlogImages(
     articleTitle,
     primaryKeyword,
     category,
-    contentBrief
+    contentBrief,
+    opts.productSlug
   );
 
   console.log(`[blog-images] Generated ${prompts.length} image prompts (Haiku cost: $${haikuCost.toFixed(4)})`);
