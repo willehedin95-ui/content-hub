@@ -407,6 +407,37 @@ export async function POST(req: NextRequest) {
     capiResult = await sendCAPIPurchase(ws.pixel_id, token, order, attr);
   }
 
+  // Log CAPI attempt to meta_capi_events. Schema matches syncOrdersToCAPI's
+  // upsert in meta-capi.ts so reconciliation queries can union across both
+  // sources (webhook-driven vs cron-sync). onConflict on event_id keeps the
+  // table idempotent on Shopify's webhook retries.
+  //
+  // Wrapped in try/catch: a logging failure must NOT cause the webhook to
+  // 500. Shopify would retry the order and we'd risk attribution duplication
+  // or noisy errors. Logging is best-effort - the actual CAPI POST already
+  // succeeded or failed by this point.
+  try {
+    await db.from("meta_capi_events").upsert(
+      {
+        event_id: `shopify_${order.id}`,
+        event_name: "Purchase",
+        shopify_order_id: order.id,
+        shopify_order_number: order.order_number,
+        pixel_id: ws.pixel_id,
+        event_time: new Date(order.created_at).toISOString(),
+        value: parseFloat(order.total_price),
+        currency: order.currency,
+        status: capiResult.ok ? "sent" : "failed",
+        response_data: capiResult.ok ? { events_received: capiResult.events_received } : null,
+        error_message: capiResult.ok ? null : capiResult.error ?? null,
+        sent_at: new Date().toISOString(),
+      },
+      { onConflict: "event_id" },
+    );
+  } catch (logErr) {
+    console.error("[shopify-webhook] meta_capi_events log failed:", logErr);
+  }
+
   // Telegram notification for Valpakademin orders. Source = Quiz when we
   // resolved a quiz session via qz_sid, otherwise Direct LP (or other path
   // surfaced via utm_*).

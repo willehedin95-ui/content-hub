@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
+import { topoOrderSteps } from "@/lib/quiz-graph";
+import type { QuizData } from "@/types/quiz";
 
 type DateRange = "today" | "last_7d" | "last_30d" | "last_90d" | "custom";
 
@@ -108,7 +110,7 @@ export async function GET(
   // reliable and lets us include question label + option label inline.
   const allAnswersPromise = db
     .from("quiz_events")
-    .select("step_id, option_id, meta")
+    .select("session_id, step_id, option_id, meta")
     .eq("quiz_id", id)
     .eq("event_type", "answer")
     .gte("created_at", sinceIso)
@@ -187,7 +189,7 @@ export async function GET(
   // quiz steps and aggregate counts per (step_id, option_id). Multi-select
   // questions naturally produce multiple events per session - we count each
   // option pick once.
-  const allAnswers = (allAnswersRes.data as Array<{ step_id: string; option_id: string; meta?: Record<string, unknown> | null }> | null) ?? [];
+  const allAnswers = (allAnswersRes.data as Array<{ session_id: string; step_id: string; option_id: string; meta?: Record<string, unknown> | null }> | null) ?? [];
   const optionCounts = new Map<string, Map<string, number>>(); // step_id -> Map(option_id -> count)
   for (const a of allAnswers) {
     if (!a.step_id || !a.option_id) continue;
@@ -229,6 +231,33 @@ export async function GET(
     if (sa !== sb) return sa - sb;
     return b.option_count - a.option_count;
   });
+
+  // ─── Identify Q1 + Offer steps for FP metrics + cohort consistency ─────────
+  // Cohorts below also use offerStepId so "completion %" everywhere on the
+  // dashboard means "reached offer" (FP definition), not "clicked CTA".
+  const orderedSteps = quizData ? topoOrderSteps(quizData as QuizData) : [];
+  const q1StepNode = orderedSteps.find((s) =>
+    (s.subEls ?? []).some((el) => el.kind === "question"),
+  ) ?? orderedSteps[0] ?? null;
+  const offerStepNode = orderedSteps.find((s) => /^Offer page/i.test(s.name ?? "")) ?? null;
+  const q1StepId = q1StepNode?.id ?? null;
+  const offerStepId = offerStepNode?.id ?? null;
+
+  // Sessions that fired step_view for the offer page step. This is the
+  // FP-style "completion" - reached offer page, regardless of CTA click.
+  const offerReachedRes = offerStepId
+    ? await db
+        .from("quiz_events")
+        .select("session_id")
+        .eq("quiz_id", id)
+        .eq("event_type", "step_view")
+        .eq("step_id", offerStepId)
+        .gte("created_at", sinceIso)
+        .lte("created_at", untilIso)
+    : { data: [] as Array<{ session_id: string }> };
+  const offerReachedSet = new Set(
+    ((offerReachedRes.data as Array<{ session_id: string }> | null) ?? []).map((r) => r.session_id),
+  );
 
   // Fetch answer events for cohort attributes + commit-gate analytics.
   const cohortStepIds = [painStepId, breedStepId, ageStepId, timeStepId].filter(Boolean);
@@ -277,7 +306,8 @@ export async function GET(
         rows.set(key, row);
       }
       row.sessions++;
-      if (s.exit_clicked) row.completions++;
+      // FP-style completion: "reached offer page" (step_view), not "clicked CTA".
+      if (offerReachedSet.has(s.id)) row.completions++;
       if (s.purchased) {
         row.purchases++;
         row.revenue += Number(s.purchase_value ?? 0);
@@ -384,11 +414,39 @@ export async function GET(
       : 0,
   };
 
+  // ─── Funnel Professor-style metrics ────────────────────────────────────────
+  // Industry definitions (per @DTC_Quizbuilder benchmarks):
+  //   Q1 Start Rate       = sessions that answered Q1   / starts.   Aim 50-70%.
+  //   Quiz Completion Rate = sessions that reached offer / starts.   Aim 20-30%.
+  //   Completion -> Purchase = purchases / sessions that reached offer. Aim 10%+.
+  // q1StepId / offerStepId already identified above (used by cohort builder).
+  // q1_sessions = distinct sessions that fired an answer event on Q1.
+  // step_view alone fires synchronously on session start, so it's not a useful
+  // engagement signal - the first real interaction is clicking a Q1 option.
+  const offerSessions = offerReachedSet.size;
+  const q1Sessions = q1StepId
+    ? new Set(allAnswers.filter((a) => a.step_id === q1StepId).map((a) => a.session_id)).size
+    : 0;
+
+  const totalStarts = Number(summaryRow?.starts ?? 0);
+  const fpMetrics = {
+    q1_step_id: q1StepId,
+    q1_step_name: q1StepNode?.name ?? null,
+    offer_step_id: offerStepId,
+    offer_step_name: offerStepNode?.name ?? null,
+    q1_sessions: q1Sessions,
+    offer_sessions: offerSessions,
+    q1_start_rate: totalStarts > 0 ? (q1Sessions / totalStarts) * 100 : 0,
+    completion_rate: totalStarts > 0 ? (offerSessions / totalStarts) * 100 : 0,
+    completion_to_purchase: offerSessions > 0 ? (purchaseRows.length / offerSessions) * 100 : 0,
+  };
+
   const response = NextResponse.json({
     summary: summaryRow ?? {
       starts: 0, completions: 0, completion_rate: 0, email_captures: 0, median_time_to_exit_sec: 0,
     },
     purchases,
+    fp_metrics: fpMetrics,
     funnel: funnelRes.data ?? [],
     options: enrichedOptions,
     variants: variantsRes.data ?? [],

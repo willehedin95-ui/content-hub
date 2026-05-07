@@ -63,6 +63,22 @@ type Purchases = {
   aov: number;
 };
 
+// Funnel Professor-style metrics. Definitions match @DTC_Quizbuilder benchmarks:
+//   Q1 Start Rate          = answered Q1   / starts.        Aim 50-70%.
+//   Quiz Completion Rate   = reached offer / starts.        Aim 20-30%.
+//   Completion -> Purchase = purchased     / reached offer. Aim 10%+.
+type FpMetrics = {
+  q1_step_id: string | null;
+  q1_step_name: string | null;
+  offer_step_id: string | null;
+  offer_step_name: string | null;
+  q1_sessions: number;
+  offer_sessions: number;
+  q1_start_rate: number;
+  completion_rate: number;
+  completion_to_purchase: number;
+};
+
 type CohortRow = {
   key: string;
   sessions: number;
@@ -102,6 +118,7 @@ type TimePattern = {
 type AnalyticsData = {
   summary: Summary;
   purchases?: Purchases;
+  fp_metrics?: FpMetrics;
   funnel: FunnelStep[];
   options: OptionRow[];
   variants: VariantRow[];
@@ -191,11 +208,59 @@ function sessionDuration(s: SessionRow): number | null {
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+type Benchmark = {
+  // Numeric percent value to evaluate against the band.
+  pct: number;
+  // Inclusive lower bound of "good" band (green).
+  goodMin: number;
+  // Optional inclusive upper bound. When omitted, anything >= goodMin is green.
+  goodMax?: number;
+  // Label describing the band, shown under the value.
+  label: string;
+};
+
+function benchmarkColor(b: Benchmark): "good" | "warn" | "bad" {
+  const { pct, goodMin, goodMax } = b;
+  if (pct >= goodMin && (goodMax === undefined || pct <= goodMax)) return "good";
+  // "warn" = within 30% relative tolerance of the good band.
+  const lowerWarn = goodMin * 0.7;
+  if (pct >= lowerWarn) return "warn";
+  return "bad";
+}
+
+function BenchmarkBadge({ benchmark }: { benchmark: Benchmark }) {
+  const color = benchmarkColor(benchmark);
+  const cls =
+    color === "good"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+      : color === "warn"
+        ? "bg-amber-50 text-amber-700 border-amber-100"
+        : "bg-red-50 text-red-700 border-red-100";
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 ${cls}`}>
+      {benchmark.label}
+    </span>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  benchmark,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  benchmark?: Benchmark;
+}) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col gap-1">
       <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-3xl font-bold text-gray-900">{value}</span>
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-3xl font-bold text-gray-900">{value}</span>
+        {benchmark && <BenchmarkBadge benchmark={benchmark} />}
+      </div>
       {sub && <span className="text-xs text-gray-400">{sub}</span>}
     </div>
   );
@@ -1487,33 +1552,56 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
           </div>
         )}
 
-        {/* KPI row */}
+        {/* KPI row - Funnel Professor framework.
+            Row 1: entry funnel rates. Row 2: money + the offer-to-purchase rate. */}
         {summary !== undefined && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard
               label="Quiz Starts"
               value={summary.starts.toLocaleString()}
+              sub={analyticsData?.fp_metrics?.q1_step_name ?? undefined}
             />
             <KpiCard
-              label="Quiz Completions"
-              value={summary.completions.toLocaleString()}
+              label="Q1 Start Rate"
+              value={`${(analyticsData?.fp_metrics?.q1_start_rate ?? 0).toFixed(1)}%`}
+              sub={`${analyticsData?.fp_metrics?.q1_sessions.toLocaleString() ?? 0} answered Q1 / ${summary.starts.toLocaleString()} starts`}
+              benchmark={
+                analyticsData?.fp_metrics
+                  ? {
+                      pct: analyticsData.fp_metrics.q1_start_rate,
+                      goodMin: 50,
+                      goodMax: 70,
+                      label: "Aim 50-70%",
+                    }
+                  : undefined
+              }
             />
             <KpiCard
-              label="Completion Rate"
-              value={`${summary.completion_rate}%`}
-              sub={`Median time: ${fmtDuration(summary.median_time_to_exit_sec)}`}
+              label="Quiz Completion Rate"
+              value={`${(analyticsData?.fp_metrics?.completion_rate ?? 0).toFixed(1)}%`}
+              sub={`${analyticsData?.fp_metrics?.offer_sessions.toLocaleString() ?? 0} reached offer / ${summary.starts.toLocaleString()} starts`}
+              benchmark={
+                analyticsData?.fp_metrics
+                  ? {
+                      pct: analyticsData.fp_metrics.completion_rate,
+                      goodMin: 20,
+                      goodMax: 30,
+                      label: "Aim 20-30%",
+                    }
+                  : undefined
+              }
             />
           </div>
         )}
 
-        {/* Purchase KPI row - only renders when the Shopify webhook has
-            attributed at least one order back to a quiz session */}
+        {/* Money + offer-to-purchase row - only renders when the Shopify
+            webhook has attributed at least one order back to a quiz session */}
         {analyticsData?.purchases && analyticsData.purchases.count > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard
               label="Purchases"
               value={analyticsData.purchases.count.toLocaleString()}
-              sub={`From ${summary?.starts.toLocaleString() ?? 0} starts`}
+              sub={`${(analyticsData.purchases.rate * 100).toFixed(2)}% of ${summary?.starts ?? 0} starts`}
             />
             <KpiCard
               label="Revenue"
@@ -1521,9 +1609,18 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
               sub={`AOV ${Math.round(analyticsData.purchases.aov).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`}
             />
             <KpiCard
-              label="Purchase Rate"
-              value={`${(analyticsData.purchases.rate * 100).toFixed(2)}%`}
-              sub={`${analyticsData.purchases.count} of ${summary?.starts ?? 0}`}
+              label="Completion → Purchase"
+              value={`${(analyticsData.fp_metrics?.completion_to_purchase ?? 0).toFixed(1)}%`}
+              sub={`${analyticsData.purchases.count} purchased / ${analyticsData.fp_metrics?.offer_sessions ?? 0} reached offer`}
+              benchmark={
+                analyticsData.fp_metrics
+                  ? {
+                      pct: analyticsData.fp_metrics.completion_to_purchase,
+                      goodMin: 10,
+                      label: "Aim 10%+",
+                    }
+                  : undefined
+              }
             />
           </div>
         )}
@@ -1567,8 +1664,10 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
           <TimePatternPanel data={analyticsData.time_pattern} />
         )}
 
-        {/* Completion funnel: big 3 numbers */}
-        {summary !== undefined && (
+        {/* Completion funnel - FP-style: Started -> Reached Offer -> Purchased.
+            "Reached Offer" replaces the old "Exit Clicked" definition so the
+            completion rate here matches the FP benchmark target shown above. */}
+        {summary !== undefined && analyticsData?.fp_metrics && (
           <div className="bg-white border border-gray-200 rounded-xl p-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-5 uppercase tracking-wide">
               Completion Funnel
@@ -1583,32 +1682,38 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
               <div className="flex flex-col items-center text-gray-400">
                 <div className="text-sm font-semibold text-indigo-500">
                   {summary.starts > 0
-                    ? `${Math.round((summary.email_captures / summary.starts) * 100)}%`
+                    ? `${Math.round((analyticsData.fp_metrics.offer_sessions / summary.starts) * 100)}%`
                     : "0%"}
                 </div>
                 <div className="w-8 h-px bg-gray-300 my-1" />
               </div>
               <div className="text-center px-6">
                 <div className="text-3xl font-bold text-gray-900">
-                  {summary.email_captures.toLocaleString()}
+                  {analyticsData.fp_metrics.offer_sessions.toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Email Captured</div>
+                <div className="text-xs text-gray-500 mt-1">Reached Offer</div>
               </div>
               <div className="flex flex-col items-center text-gray-400">
                 <div className="text-sm font-semibold text-indigo-500">
-                  {summary.starts > 0
-                    ? `${Math.round((summary.completions / summary.starts) * 100)}%`
+                  {analyticsData.fp_metrics.offer_sessions > 0
+                    ? `${Math.round((analyticsData.purchases?.count ?? 0) / analyticsData.fp_metrics.offer_sessions * 100)}%`
                     : "0%"}
                 </div>
                 <div className="w-8 h-px bg-gray-300 my-1" />
               </div>
               <div className="text-center px-6">
                 <div className="text-3xl font-bold text-gray-900">
-                  {summary.completions.toLocaleString()}
+                  {(analyticsData.purchases?.count ?? 0).toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">Exit Clicked</div>
+                <div className="text-xs text-gray-500 mt-1">Purchased</div>
               </div>
             </div>
+            {(summary.email_captures > 0 || analyticsData.summary.completions > 0) && (
+              <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap gap-x-6 gap-y-1">
+                <span>Email captured: <span className="font-semibold text-gray-700">{summary.email_captures.toLocaleString()}</span></span>
+                <span>Offer CTA clicked: <span className="font-semibold text-gray-700">{analyticsData.summary.completions.toLocaleString()}</span> ({analyticsData.fp_metrics.offer_sessions > 0 ? Math.round((analyticsData.summary.completions / analyticsData.fp_metrics.offer_sessions) * 100) : 0}% of those who reached offer)</span>
+              </div>
+            )}
           </div>
         )}
 
