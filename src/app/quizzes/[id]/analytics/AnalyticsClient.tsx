@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -1386,37 +1386,102 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
   const [error, setError] = useState<string | null>(null);
   const [showReset, setShowReset] = useState(false);
 
-  // Variant groups from quiz data
-  const variantGroups = Array.from(
-    new Set(
-      Object.values(quiz.data.nodes)
-        .filter((n): n is StepNode => n.kind === "step" && !!n.variantGroupId)
-        .map((n) => n.variantGroupId!),
-    ),
+  // Variant members grouped by variantGroupId. Each member is an A/B variant
+  // step. We keep them grouped because all variants within a group are
+  // mutually exclusive paths through the quiz (one user = one variant) - so
+  // each variant gets its own funnel chart, not a combined one.
+  const variantMembersByGroup = useMemo(() => {
+    const groups = new Map<
+      string,
+      Array<{ groupId: string; stepId: string; stepName: string }>
+    >();
+    for (const node of Object.values(quiz.data.nodes)) {
+      if (node.kind !== "step" || !node.variantGroupId) continue;
+      const arr = groups.get(node.variantGroupId) ?? [];
+      arr.push({
+        groupId: node.variantGroupId,
+        stepId: node.id,
+        stepName: node.name ?? node.id,
+      });
+      groups.set(node.variantGroupId, arr);
+    }
+    return groups;
+  }, [quiz.data]);
+
+  const variantMembers = useMemo(
+    () => Array.from(variantMembersByGroup.values()).flat(),
+    [variantMembersByGroup],
   );
 
   const [variantFilter, setVariantFilter] = useState<string>("all");
+  const [perVariantFunnels, setPerVariantFunnels] = useState<
+    Record<string, FunnelStep[]>
+  >({});
 
   const fetchAnalytics = useCallback(() => {
     setLoading(true);
     setError(null);
 
-    let url = `/api/quiz/${quiz.id}/analytics?range=${range}&device=${device}`;
+    let baseUrl = `/api/quiz/${quiz.id}/analytics?range=${range}&device=${device}`;
     if (range === "custom" && customSince && customUntil) {
-      url += `&since=${customSince}&until=${customUntil}`;
-    }
-    if (variantFilter !== "all") {
-      url += `&variant_group=${variantFilter}`;
+      baseUrl += `&since=${customSince}&until=${customUntil}`;
     }
 
-    fetch(url)
-      .then((r) =>
-        r.ok ? r.json() : r.json().then((e: { error: string }) => Promise.reject(new Error(e.error))),
+    const mainUrl =
+      variantFilter !== "all"
+        ? `${baseUrl}&variant_group=${variantFilter}`
+        : baseUrl;
+
+    const mainPromise = fetch(mainUrl).then((r) =>
+      r.ok
+        ? (r.json() as Promise<AnalyticsData>)
+        : r
+            .json()
+            .then((e: { error: string }) =>
+              Promise.reject(new Error(e.error)),
+            ),
+    );
+
+    // When viewing "All variants", also fetch a filtered funnel per variant
+    // so each variant renders as its own monotonic chart. Per-variant errors
+    // are swallowed so a single failure doesn't blank the whole page.
+    const variantPromise: Promise<Array<AnalyticsData | null>> =
+      variantFilter === "all" && variantMembers.length > 0
+        ? Promise.all(
+            variantMembers.map((m) =>
+              fetch(`${baseUrl}&variant_group=${m.groupId}:${m.stepId}`)
+                .then((r) =>
+                  r.ok ? (r.json() as Promise<AnalyticsData>) : null,
+                )
+                .catch(() => null),
+            ),
+          )
+        : Promise.resolve([]);
+
+    Promise.all([mainPromise, variantPromise])
+      .then(([main, variantResults]) => {
+        setAnalyticsData(main);
+        const fn: Record<string, FunnelStep[]> = {};
+        variantResults.forEach((d, i) => {
+          if (!d) return;
+          const m = variantMembers[i];
+          fn[`${m.groupId}:${m.stepId}`] = d.funnel ?? [];
+        });
+        setPerVariantFunnels(fn);
+      })
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : String(e)),
       )
-      .then((d: AnalyticsData) => setAnalyticsData(d))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [quiz.id, range, device, customSince, customUntil, variantFilter]);
+  }, [
+    quiz.id,
+    range,
+    device,
+    customSince,
+    customUntil,
+    variantFilter,
+    variantMembers,
+  ]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -1503,18 +1568,24 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
             <option value="desktop">Desktop</option>
           </select>
 
-          {variantGroups.length > 0 && (
+          {variantMembers.length > 0 && (
             <select
               value={variantFilter}
               onChange={(e) => setVariantFilter(e.target.value)}
               className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="all">All variants</option>
-              {variantGroups.map((gId) => (
-                <option key={gId} value={gId}>
-                  Group {gId.slice(-6)}
-                </option>
-              ))}
+              <option value="all">All variants (split charts)</option>
+              {Array.from(variantMembersByGroup.entries()).flatMap(
+                ([groupId, members]) =>
+                  members.map((m) => (
+                    <option
+                      key={`${groupId}:${m.stepId}`}
+                      value={`${groupId}:${m.stepId}`}
+                    >
+                      Only: {m.stepName}
+                    </option>
+                  )),
+              )}
             </select>
           )}
 
@@ -1625,13 +1696,82 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
           </div>
         )}
 
-        {/* Funnel Drop-off Chart (moved to top - most-used metric) */}
+        {/* Funnel Drop-off Chart (moved to top - most-used metric).
+            When the quiz has A/B variants and "All variants" is selected, we
+            render one chart per variant. Mixing variants into a single chart
+            makes the funnel look non-monotonic (numbers go up at the variant
+            merge-point) because variant siblings are mutually exclusive paths
+            that converge - splitting them keeps each chart as a real funnel. */}
         {analyticsData && (
           <div className="bg-white border border-gray-200 rounded-xl p-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-5 uppercase tracking-wide">
               Funnel Drop-off
             </h2>
-            <FunnelChart funnel={analyticsData.funnel} data={quiz.data} />
+            {variantFilter === "all" && variantMembers.length > 0 ? (
+              <div className="space-y-8">
+                {Array.from(variantMembersByGroup.entries()).map(
+                  ([groupId, members]) => (
+                    <div key={groupId} className="space-y-5">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        A/B Test - {members.map((m) => m.stepName).join(" vs ")}
+                      </div>
+                      {members.map((m) => {
+                        const key = `${m.groupId}:${m.stepId}`;
+                        const funnel = perVariantFunnels[key];
+                        const starts = funnel?.[0]?.sessions ?? 0;
+                        const reachedOffer =
+                          funnel && funnel.length > 0
+                            ? funnel[funnel.length - 1].sessions
+                            : 0;
+                        const completionPct =
+                          starts > 0
+                            ? Math.round((reachedOffer / starts) * 100)
+                            : 0;
+                        return (
+                          <div
+                            key={key}
+                            className="border-l-2 border-indigo-200 pl-4"
+                          >
+                            <div className="flex items-baseline gap-3 mb-3">
+                              <div className="text-sm font-semibold text-gray-800">
+                                {m.stepName}
+                              </div>
+                              {funnel ? (
+                                <div className="text-xs text-gray-500">
+                                  {starts} starts -&gt; {reachedOffer} reached
+                                  end ({completionPct}%)
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-400">
+                                  loading...
+                                </div>
+                              )}
+                            </div>
+                            {funnel ? (
+                              funnel.length > 0 ? (
+                                <FunnelChart
+                                  funnel={funnel}
+                                  data={quiz.data}
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-400 py-4">
+                                  No sessions for this variant in this date
+                                  range.
+                                </div>
+                              )
+                            ) : (
+                              <div className="h-40 animate-pulse bg-gray-50 rounded" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <FunnelChart funnel={analyticsData.funnel} data={quiz.data} />
+            )}
           </div>
         )}
 
