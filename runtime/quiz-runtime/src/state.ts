@@ -43,8 +43,16 @@ export function resolveVariants(
   for (const [groupId, members] of Object.entries(groups)) {
     const key = `quiz_${quizId}_vg_${groupId}`;
     const stored = localStorage.getItem(key);
-    if (stored && data.nodes[stored]) {
-      assignments[groupId] = stored;
+    const storedNode = stored ? data.nodes[stored] : null;
+    // Re-pick when the stored variant has been disabled (trafficPct === 0).
+    // Without this check, returning visitors stay on a variant the operator
+    // has explicitly turned off, contaminating the active test.
+    const storedPct =
+      storedNode && storedNode.kind === "step"
+        ? (storedNode as StepNode).trafficPct ?? 0
+        : 0;
+    if (storedNode && storedPct > 0) {
+      assignments[groupId] = stored!;
     } else {
       const picked = weightedPick(members);
       localStorage.setItem(key, picked.id);
