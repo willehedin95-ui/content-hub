@@ -1630,12 +1630,12 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
             <KpiCard
               label="Quiz Starts"
               value={summary.starts.toLocaleString()}
-              sub={analyticsData?.fp_metrics?.q1_step_name ?? undefined}
+              sub="Total sessions in range"
             />
             <KpiCard
               label="Q1 Start Rate"
               value={`${(analyticsData?.fp_metrics?.q1_start_rate ?? 0).toFixed(1)}%`}
-              sub={`${analyticsData?.fp_metrics?.q1_sessions.toLocaleString() ?? 0} answered Q1 / ${summary.starts.toLocaleString()} starts`}
+              sub={`${analyticsData?.fp_metrics?.q1_sessions.toLocaleString() ?? 0} answered Q1${analyticsData?.fp_metrics?.q1_step_name ? ` (${analyticsData.fp_metrics.q1_step_name})` : ""} / ${summary.starts.toLocaleString()} starts`}
               benchmark={
                 analyticsData?.fp_metrics
                   ? {
