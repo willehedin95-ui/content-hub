@@ -233,8 +233,20 @@ export async function GET(
   });
 
   // ─── Identify Q1 + Offer steps for FP metrics + cohort consistency ─────────
-  // Cohorts below also use offerStepId so "completion %" everywhere on the
+  // Cohorts below also use offerStepIds so "completion %" everywhere on the
   // dashboard means "reached offer" (FP definition), not "clicked CTA".
+  //
+  // Variant-aware: when the quiz has A/B variants, the "first question" or
+  // "offer" step can exist as multiple physical step_ids (one per path).
+  // We expand the canonical step into the set of equivalent step_ids so the
+  // metric counts a user once regardless of which variant they took.
+  //
+  //   Q1   = first step in topo with a question subEl. Expanded to all steps
+  //          carrying a question with the same `variable` (e.g. all "Kön"
+  //          steps across A/B paths).
+  //   Offer = step whose name starts with "Offer page". Expanded to siblings
+  //          in its variantGroupId, plus any other step matching the name
+  //          pattern (covers both proper variants and parallel-named steps).
   const orderedSteps = quizData ? topoOrderSteps(quizData as QuizData) : [];
   const q1StepNode = orderedSteps.find((s) =>
     (s.subEls ?? []).some((el) => el.kind === "question"),
@@ -243,15 +255,50 @@ export async function GET(
   const q1StepId = q1StepNode?.id ?? null;
   const offerStepId = offerStepNode?.id ?? null;
 
-  // Sessions that fired step_view for the offer page step. This is the
+  // Q1 expansion: every step whose first question shares Q1's variable.
+  const q1Variable = q1StepNode
+    ? (q1StepNode.subEls ?? []).find((el) => el.kind === "question")?.variable
+    : undefined;
+  const q1StepIds = q1Variable
+    ? orderedSteps
+        .filter((s) =>
+          (s.subEls ?? []).some(
+            (el) => el.kind === "question" && el.variable === q1Variable,
+          ),
+        )
+        .map((s) => s.id)
+    : q1StepNode
+      ? [q1StepNode.id]
+      : [];
+  const q1StepIdSet = new Set(q1StepIds);
+
+  // Offer expansion: same name match plus any variant-group siblings of the
+  // primary offer node. Covers both clean variant setups and quizzes that
+  // simply duplicate the offer page across paths.
+  const offerStepIds = (() => {
+    if (!offerStepNode) return [] as string[];
+    const ids = new Set<string>([offerStepNode.id]);
+    for (const s of orderedSteps) {
+      if (/^Offer page/i.test(s.name ?? "")) ids.add(s.id);
+      if (
+        offerStepNode.variantGroupId &&
+        s.variantGroupId === offerStepNode.variantGroupId
+      ) {
+        ids.add(s.id);
+      }
+    }
+    return Array.from(ids);
+  })();
+
+  // Sessions that fired step_view for any offer-page step. This is the
   // FP-style "completion" - reached offer page, regardless of CTA click.
-  const offerReachedRes = offerStepId
+  const offerReachedRes = offerStepIds.length
     ? await db
         .from("quiz_events")
         .select("session_id")
         .eq("quiz_id", id)
         .eq("event_type", "step_view")
-        .eq("step_id", offerStepId)
+        .in("step_id", offerStepIds)
         .gte("created_at", sinceIso)
         .lte("created_at", untilIso)
     : { data: [] as Array<{ session_id: string }> };
@@ -423,9 +470,26 @@ export async function GET(
   // q1_sessions = distinct sessions that fired an answer event on Q1.
   // step_view alone fires synchronously on session start, so it's not a useful
   // engagement signal - the first real interaction is clicking a Q1 option.
-  const offerSessions = offerReachedSet.size;
-  const q1Sessions = q1StepId
-    ? new Set(allAnswers.filter((a) => a.step_id === q1StepId).map((a) => a.session_id)).size
+  // Numerator and denominator must be drawn from the same time window: only
+  // count Q1 answers + offer views from sessions that ALSO started in window.
+  // Without this gate, a session started 60 days ago whose user returned and
+  // answered Q1 yesterday would inflate today's Q1 rate above 100%.
+  const startsSessionIds = new Set(sessions.map((s) => s.id));
+  const offerSessions = Array.from(offerReachedSet).filter((sid) =>
+    startsSessionIds.has(sid),
+  ).length;
+  // Q1 sessions = distinct in-window sessions that answered ANY equivalent Q1
+  // step_id (covers branching paths where the same logical question lives on
+  // multiple physical step nodes).
+  const q1Sessions = q1StepIdSet.size
+    ? new Set(
+        allAnswers
+          .filter(
+            (a) =>
+              q1StepIdSet.has(a.step_id) && startsSessionIds.has(a.session_id),
+          )
+          .map((a) => a.session_id),
+      ).size
     : 0;
 
   const totalStarts = Number(summaryRow?.starts ?? 0);
