@@ -89,6 +89,50 @@ async function getPublishTarget(workspaceId: string, market: "se" | "dk" | "no")
 }
 
 // ---------------------------------------------------------------------------
+// API base URL sanity check
+// ---------------------------------------------------------------------------
+
+/**
+ * Confirm `apiBaseUrl` is reachable AND hosts our quiz API before baking it
+ * into the published HTML shell. Without this, a misconfigured APP_URL bakes
+ * a dead/foreign URL into the shell and every session/event POST silently
+ * 404s on someone else's server.
+ *
+ * Detection: OPTIONS /api/quiz/session with an allowed origin. Our handler
+ * always returns 204 with the exact CORS method header "POST, OPTIONS". A
+ * stranger's 404 page won't.
+ */
+async function verifyApiBaseUrl(apiBaseUrl: string): Promise<void> {
+  if (!/^https?:\/\//i.test(apiBaseUrl)) {
+    throw new Error(`[quiz-publish] apiBaseUrl is not http(s): ${apiBaseUrl}`);
+  }
+
+  const probeUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/quiz/session`;
+  let res: Response;
+  try {
+    res = await fetch(probeUrl, {
+      method: "OPTIONS",
+      headers: { Origin: "https://halsobladet.com" },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (e) {
+    throw new Error(
+      `[quiz-publish] Could not reach ${probeUrl}: ${(e as Error).message}. ` +
+      `Check that APP_URL points to the live content-hub deployment.`,
+    );
+  }
+
+  const allowMethods = res.headers.get("access-control-allow-methods") ?? "";
+  if (res.status !== 204 || !allowMethods.toUpperCase().includes("POST")) {
+    throw new Error(
+      `[quiz-publish] ${probeUrl} returned ${res.status} without expected ` +
+      `CORS headers - APP_URL is probably pointing to a different deployment. ` +
+      `Verify APP_URL=${apiBaseUrl} hosts /api/quiz/session.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Runtime bundle upload (idempotent)
 // ---------------------------------------------------------------------------
 
@@ -187,6 +231,13 @@ export async function publishQuiz(
   if (!apiBaseUrl) {
     throw new Error("[quiz-publish] APP_URL or VERCEL_URL env var must be set");
   }
+
+  // 5b. Sanity check: confirm apiBaseUrl actually hosts our quiz API. Without
+  // this we silently bake whatever URL APP_URL points at into the shell - and
+  // if it points at a stranger's deployment (happened once: APP_URL was set to
+  // an old auto-generated alias that another Vercel project later claimed),
+  // every session/event POST 404s and zero data lands in quiz_sessions.
+  await verifyApiBaseUrl(apiBaseUrl);
 
   // 6. Generate HTML shell
   const html = generateQuizShell(typedQuiz, bundle.hash, apiBaseUrl);
