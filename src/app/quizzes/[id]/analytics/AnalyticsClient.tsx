@@ -1628,7 +1628,7 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
         {summary !== undefined && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard
-              label="Quiz Starts"
+              label="Sessions"
               value={summary.starts.toLocaleString()}
               sub="Total sessions in range"
             />
@@ -1666,18 +1666,31 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
         )}
 
         {/* Money + offer-to-purchase row - only renders when the Shopify
-            webhook has attributed at least one order back to a quiz session */}
+            webhook has attributed at least one order back to a quiz session.
+            Cart Conversion Rate (purchases / starts) is the business-facing
+            metric for ad spend decisions. Completion -> Purchase is the
+            funnel-internal version (offer page -> checkout). */}
         {analyticsData?.purchases && analyticsData.purchases.count > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               label="Purchases"
               value={analyticsData.purchases.count.toLocaleString()}
-              sub={`${(analyticsData.purchases.rate * 100).toFixed(2)}% of ${summary?.starts ?? 0} starts`}
+              sub={`AOV ${Math.round(analyticsData.purchases.aov).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`.trim()}
             />
             <KpiCard
               label="Revenue"
               value={`${Math.round(analyticsData.purchases.revenue).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`.trim()}
-              sub={`AOV ${Math.round(analyticsData.purchases.aov).toLocaleString()} ${analyticsData.purchases.currency ?? ""}`}
+              sub={`${summary?.starts ?? 0} sessions in range`}
+            />
+            <KpiCard
+              label="Cart Conversion Rate"
+              value={`${(analyticsData.purchases.rate * 100).toFixed(2)}%`}
+              sub={`${analyticsData.purchases.count} purchased / ${summary?.starts ?? 0} sessions`}
+              benchmark={{
+                pct: analyticsData.purchases.rate * 100,
+                goodMin: 3,
+                label: "Aim 3%+",
+              }}
             />
             <KpiCard
               label="Completion → Purchase"
