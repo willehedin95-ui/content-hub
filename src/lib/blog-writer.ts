@@ -8,6 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "./constants";
 import { BLOG_TEMPLATES } from "./blog-templates";
 import { createServerSupabase } from "./supabase-admin";
+import { NATURLIG_SVENSKA_SKILL } from "./naturlig-svenska-skill";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -464,7 +465,10 @@ export interface ArticleResult {
 // ---------------------------------------------------------------------------
 
 export async function generateBlogArticle(
-  request: ArticleRequest & { enableResearchCitations?: boolean }
+  request: ArticleRequest & {
+    enableResearchCitations?: boolean;
+    naturalSwedishPass?: boolean;
+  }
 ): Promise<ArticleResult> {
   // Trim defensively: .env.local pulled from Vercel CLI sometimes wraps
   // values with trailing literal `\n` which dotenv interprets as a newline,
@@ -630,6 +634,28 @@ Return the complete revised article HTML (same structure, just with the added ci
   }
   if (antiSlop.phrasesFound.length > 0) {
     console.warn(`[blog-writer] Anti-slop: banned phrases still present: ${antiSlop.phrasesFound.join(", ")}`);
+  }
+
+  // Naturlig svenska second pass: rewrites text for natural Swedish narrative
+  // structure, fixing AI-tells (em-dash glue, stacked short sentences,
+  // translated metaphors, anglicismer, modal particles, typography).
+  // Gated by workspace setting `blog_natural_swedish_pass` and only for sv
+  // language (the skill is Swedish-specific).
+  if (request.language === "sv" && request.naturalSwedishPass) {
+    try {
+      const ns = await naturligSvenskaPass(client, cleanHtml);
+      cleanHtml = ns.html;
+      inputTokens += ns.inputTokens;
+      outputTokens += ns.outputTokens;
+      console.log(
+        `[blog-writer] Naturlig svenska pass: +${ns.inputTokens}in/${ns.outputTokens}out tokens`,
+      );
+    } catch (err) {
+      console.warn(
+        "[blog-writer] Naturlig svenska pass failed, keeping original:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   // Calculate approximate word count
@@ -1136,6 +1162,84 @@ ${templateHtml}
 12. TABLES: Put the 2 most important columns FIRST — on mobile only the first 2 columns are visible. Example: "Kudde" + "Betyg" as columns 1-2, then "Pris" + "Bäst för" as 3-4. Always wrap tables in <div class="table-wrap">...</div>.
 
 Return ONLY the HTML document. No explanations, no code fences, no commentary.`;
+}
+
+// ---------------------------------------------------------------------------
+// Naturlig svenska pass - rewrites HTML to fix AI-tells in Swedish text
+// ---------------------------------------------------------------------------
+
+async function naturligSvenskaPass(
+  client: Anthropic,
+  html: string,
+): Promise<{ html: string; inputTokens: number; outputTokens: number }> {
+  const systemPrompt = `${NATURLIG_SVENSKA_SKILL}
+
+---
+
+# Din uppgift just nu
+
+Du får en svensk artikel som HTML. Tillämpa naturlig-svenska-skill:en på den.
+
+Hårda regler för det här passet:
+1. Behåll ALL HTML-struktur intakt: alla taggar, klassnamn, href, src, alt, <style>-block, <a>-länkar.
+2. Behåll FAQ-strukturen som den är (faq-section, faq-item etc).
+3. Behåll alla länkar exakt som dom är - URL:er får inte ändras.
+4. Behåll bildplaceholders och bild-alt-text.
+5. Behåll H1, H2, H3-strukturen och rubrik-texterna - de får putsas men inte bytas ut konceptuellt.
+6. SKRIV OM brödtexten enligt skill:ens principer - berättarstruktur först, sen tekniskt.
+7. Returnera ENDAST HTML, inga förklaringar eller kommentarer, inga code fences.
+
+OBS: Skriv inte om hela artikeln strukturellt - sektioner och deras ordning ska bevaras. Det här passet är för att förbättra texten INOM varje stycke + sektioners rytm/flow, inte att omarrangera artikeln.`;
+
+  const userPrompt = `Här är artikeln att tillämpa naturlig-svenska-skill:en på:
+
+${html}`;
+
+  // Use streaming for safety with long articles (>10k tokens output is common)
+  let outHtml = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  const stream = client.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 32000,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  for await (const event of stream) {
+    if (event.type === "content_block_delta") {
+      const delta = event.delta as unknown as { type: string; text?: string };
+      if (delta.type === "text_delta" && delta.text) {
+        outHtml += delta.text;
+      }
+    }
+    if (event.type === "message_delta") {
+      const usage = (event as unknown as { usage?: { output_tokens?: number } }).usage;
+      if (usage?.output_tokens) outputTokens = usage.output_tokens;
+    }
+    if (event.type === "message_start") {
+      const usage = (event as unknown as { message?: { usage?: { input_tokens?: number } } })
+        .message?.usage;
+      if (usage?.input_tokens) inputTokens = usage.input_tokens;
+    }
+  }
+
+  // Strip code fences if model accidentally added them
+  const cleaned = outHtml
+    .replace(/^```(?:html?)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+
+  // Defensive sanity-check: if output is dramatically shorter than input
+  // the rewrite probably broke something. Keep original.
+  if (cleaned.length < html.length * 0.5) {
+    throw new Error(
+      `Naturlig svenska pass output too short: ${cleaned.length} vs original ${html.length}`,
+    );
+  }
+
+  return { html: cleaned, inputTokens, outputTokens };
 }
 
 // ---------------------------------------------------------------------------

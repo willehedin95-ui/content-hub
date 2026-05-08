@@ -222,6 +222,8 @@ async function writeOneArticle(
     .single();
   const settings = (wsForRes?.settings ?? {}) as Record<string, unknown>;
   const enableResearchCitations = settings.blog_research_citations === true;
+  // Default ON for natural-Swedish second-pass; opt out via setting=false.
+  const naturalSwedishPass = settings.blog_natural_swedish_pass !== false;
 
   // Generate the article
   let article;
@@ -231,6 +233,7 @@ async function writeOneArticle(
       language,
       blogDomain,
       enableResearchCitations,
+      naturalSwedishPass,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Article generation failed";

@@ -82,6 +82,12 @@ const SCOPED_CSS = `<style>
 .hydro-article .before-after .label { font-weight: 600 !important; text-align: center; margin-bottom: 8px; font-size: 13px !important; text-transform: uppercase; letter-spacing: 0.05em; }
 .hydro-article .before-after .before .label { color: #9ca3af !important; }
 .hydro-article .before-after .after .label { color: #059669 !important; }
+/* Hide theme's blog-post-image placeholder block (some themes - notably
+ * Horizon - render a placeholder web component instead of binding to
+ * article.image automatically). Safe across themes: only matches blocks
+ * that contain a placeholder-image element. */
+.image-block:has(placeholder-image),
+.shopify-block:has(placeholder-image) { display: none !important; }
 @media(max-width: 640px) {
   .hydro-article { padding: 8px 14px 32px; font-size: 16px; }
   .hydro-article h1 { font-size: 26px !important; margin: 0 0 10px !important; }
@@ -264,11 +270,18 @@ export async function publishToShopify(args: PublishToShopifyArgs): Promise<Publ
     );
   }
 
-  // 5. Strip theme duplicates (first H1 + hero img class) and wrap in scoped container
+  // 5. Strip theme duplicates (first H1 + hero img class) and wrap in scoped container.
+  // Note: Horizon-themed shops (e.g. doginwork.se) don't auto-bind article.image
+  // to the blog-post-image block - they render a placeholder instead. For those
+  // shops we KEEP the body hero img so it renders inline at the top. We hide
+  // the theme's placeholder block via CSS rule in SCOPED_CSS above.
+  const themeRendersHero = !creds.storefrontHost?.includes("doginwork.se");
   const $final = cheerio.load(`<div id="r">${processed}</div>`);
   $final("#r > div, #r").find("style").remove();
   $final("h1").first().remove();
-  $final("img.hero-img, img.featured-img").first().remove();
+  if (themeRendersHero) {
+    $final("img.hero-img, img.featured-img").first().remove();
+  }
   const finalInner = $final("#r").html() || processed;
   const bodyHtml = `${SCOPED_CSS}\n<div class="hydro-article">\n${finalInner}\n</div>`;
 
