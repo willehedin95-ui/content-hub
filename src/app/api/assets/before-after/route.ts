@@ -338,33 +338,40 @@ function buildPrompt(args: {
   const promptObj: Record<string, unknown> = hasSource
     ? {
         // ---- PURE-CLONE SWIPE MODE ----
-        // Minimal prompt: delegate everything visual to the reference image
-        // itself. NO body zone preset, NO intensity template, NO outfit/
-        // lighting/angle randomization. The reference IS the spec.
+        // Minimal prompt: delegate everything visual to the reference image.
+        // Explicit crop/composition instructions extracted by Claude vision
+        // so Nano Banana doesn't default to its own portrait conventions.
         task: "generate_image",
         mode: "pure_clone_swipe",
+        crop_specification:
+          vision?.composition?.framing ??
+          "match the reference image's crop tightness exactly - do NOT zoom out, do NOT add headroom, do NOT widen the frame to include shoulders or chest if the reference does not show them",
+        composition_specification:
+          vision?.composition?.camera ??
+          "match the reference image's camera angle, distance, and perspective exactly",
         instruction_priority:
-          "THE REFERENCE IMAGE IS THE COMPLETE VISUAL SPECIFICATION. Match it as closely as possible in EVERY visual aspect: composition, framing, crop tightness, camera angle, lighting direction and color, background, expression, outfit, the structure of the before/after pair, the skin-condition difference between the two halves. The reference image overrides any default body-zone or intensity assumptions - do NOT apply your own templates, READ the reference.",
+          "THE REFERENCE IMAGE IS THE COMPLETE VISUAL SPECIFICATION. Match it as closely as possible. Most importantly: MATCH THE CROP TIGHTNESS. If the face fills 90% of the reference frame, the face must fill 90% of the generated frame. Do NOT zoom out to a 'normal' portrait crop just because that is your default.",
         subject: {
           demographic: demographicToString(demographic),
           identity_lock:
-            "Both halves show the SAME new person. Face structure, hair color, eye color, age all consistent across both halves. The new person is DIFFERENT from the reference's person (subtly different facial features so it's clearly a different individual) but in the same general demographic ballpark as the reference UNLESS 'subject.demographic' specifies otherwise (then follow the demographic spec exactly even if it differs from the reference person).",
+            "Both halves show the SAME new person. The new person is DIFFERENT from the reference's person (subtly different facial features) but in the same demographic ballpark UNLESS 'subject.demographic' specifies otherwise (then follow it).",
         },
         skin_transition_match:
-          "Read the skin-condition difference shown between the reference's two halves and match THAT exact level. If the reference shows a subtle improvement, match subtle. If dramatic, match dramatic. Do NOT default to a fixed intensity level - the reference is the ground truth.",
+          "Read the skin-condition difference shown between the reference's two halves and match THAT exact level. The reference is the ground truth for intensity.",
         style: sharedStyle,
         hard_constraints: [
-          "NEAR-CLONE GOAL: the generated image should look almost identical to the reference. Match composition, framing, crop, camera angle, lighting, background, expression, outfit, pair structure, and skin transition - all from reading the reference image.",
-          "NEVER render any text, labels, watermarks, captions, or overlays. The image must be completely free of text.",
-          "DIFFERENT PERSON: do NOT generate an exact copy of the reference person's face. The new person has subtly different facial features (different exact nose shape, jaw, eye spacing) so a viewer can tell it's a different individual.",
-          "If 'subject.demographic' specifies a DIFFERENT age/ethnicity/hair_color from the reference person, follow 'subject.demographic'. The user's demographic overrides take priority over the reference person's demographic.",
-          "Both halves must show the SAME new person.",
-          "DO NOT apply default body-zone framing templates. DO NOT apply default intensity-level templates. The reference image is the spec.",
-          "Tiny natural micro-variations allowed (a few degrees of head angle, slight outfit color shift, slight hair fall difference) so it's not a pixel-exact copy - but otherwise everything matches the reference.",
-          "NO MIRRORING between halves: if reference shows the right cheek in both halves, generated shows the right cheek in both halves - never mirror-flip.",
+          "CROP TIGHTNESS IS THE HIGHEST PRIORITY: match the reference's crop EXACTLY. Do NOT generate a wider crop than the reference. Do NOT add headroom. Do NOT include shoulders or chest if the reference shows only the face. If the reference's face fills the frame, the generated face fills the frame.",
+          "COMPOSITION: match the reference's exact camera angle, distance, and perspective. Do NOT use a standard portrait composition unless the reference happens to be one.",
+          "NEVER render any text, labels, watermarks, captions, or overlays.",
+          "DIFFERENT PERSON: do NOT generate an exact copy of the reference person's face. Subtly different facial features so it's clearly a different individual.",
+          "If 'subject.demographic' specifies a DIFFERENT demographic from the reference person, follow 'subject.demographic'.",
+          "Both halves show the SAME new person.",
+          "DO NOT apply default body-zone or intensity templates. The reference image is the spec.",
+          "Tiny natural micro-variations between generated and reference are fine (a few degrees of head angle) so it's not a pixel-exact copy - but the crop/composition/framing must match.",
+          "NO MIRRORING between halves.",
         ],
         instruction:
-          "Generate a near-clone of the reference image with a different person from 'subject.demographic'. Match the reference visually in every aspect. Only differences: different exact facial features and tiny micro-variations. NO TEXT IN THE IMAGE.",
+          "Generate a near-clone of the reference image with a different person from 'subject.demographic'. THE MOST IMPORTANT thing to match is the crop tightness / composition / framing - read the reference and copy its exact crop. Only differences allowed: different facial features and tiny micro-variations. NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----
