@@ -64,8 +64,47 @@ const ACCENTS: (string | null)[] = [
   "slight warm undertone in the skin",
 ];
 
+const TOPS = [
+  "heather grey crew-neck t-shirt",
+  "soft white cotton tee",
+  "navy blue v-neck sweater",
+  "muted dusty-pink crew sweater",
+  "black thin-knit top",
+  "cream-colored linen blouse",
+  "olive green casual tee",
+  "light beige loose top",
+  "deep burgundy lounge top",
+  "soft sage-green crew neck",
+];
+
+const LIGHTING_VARIANTS = [
+  "bright morning window light from the side, slight warm tone",
+  "soft midday overhead light, neutral white balance",
+  "warm late-afternoon golden light streaming from a window",
+  "neutral indoor overhead bulb light, slightly dimmer",
+  "cool diffuse window light on a cloudy day",
+  "warm bathroom vanity light, slightly yellow",
+  "soft morning kitchen light, cool and bright",
+];
+
+const HEAD_TILTS = [
+  "head straight on, neutral tilt",
+  "head very slightly tilted to the left, by a few degrees",
+  "head very slightly tilted to the right, by a few degrees",
+  "head straight on with chin slightly raised",
+  "head straight on with chin slightly lowered",
+];
+
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function pickPair<T>(arr: readonly T[]): [T, T] {
+  if (arr.length < 2) return [arr[0], arr[0]];
+  const a = pick(arr);
+  let b = pick(arr);
+  while (b === a) b = pick(arr);
+  return [a, b];
 }
 
 interface Demographic {
@@ -182,40 +221,60 @@ function buildPrompt(args: {
 }): string {
   const { zone, demographic, intensity, vision, hasSource, notes } = args;
 
+  const [beforeTop, afterTop] = pickPair(TOPS);
+  const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
+  const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
+
   const promptObj: Record<string, unknown> = {
     task: "generate_image",
     format:
-      "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo.",
+      "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo. CRITICAL: these are TWO SEPARATE photos of the same person taken on different days - NOT two halves of one studio session.",
     subject: {
       demographic: demographicToString(demographic),
       body_zone: zone,
       expression: "neutral, relaxed face - same general expression in both halves (no need to vary the expression on purpose)",
-      hair: "same hair color, same general hair style in both halves (no need to vary the hair on purpose)",
+      hair: "same hair color, same general hair style in both halves",
       identity_lock:
-        "Both halves show the SAME person - same face structure, same eye color, same hair color, same age, same overall appearance. Identity must be unmistakable - this is one person photographed on two different occasions.",
+        "Both halves show the SAME person - same face structure, same eye color, same hair color, same age, same overall appearance. Identity must be unmistakable.",
+    },
+    before_half: {
+      outfit: beforeTop,
+      lighting: beforeLight,
+      head_position: beforeTilt,
+      skin_state: "more visible aging signs appropriate to the chosen intensity level (see 'transformation' field)",
+      day_context: "this photo was taken on Day 1, before any skincare regime",
+    },
+    after_half: {
+      outfit: afterTop,
+      lighting: afterLight,
+      head_position: afterTilt,
+      skin_state: "improved skin (smoother, more even, healthier glow) per the chosen intensity level",
+      day_context: "this photo was taken weeks later, after the skincare regime",
     },
     composition: {
       camera: vision?.composition?.camera ?? "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
       framing: vision?.composition?.framing ?? "tight zone-appropriate crop",
-      lighting: vision?.composition?.lighting ?? "natural soft ambient light from a window or open room, no studio setup, no harsh shadows",
-      background: vision?.composition?.background ?? "neutral home environment, plain wall or soft out-of-focus interior",
+      background: vision?.composition?.background ?? "neutral home environment, plain wall or soft out-of-focus interior - can be a slightly different spot in the home for each half",
       realism_note:
-        "The two halves should look like two SEPARATE selfies the same person took on DIFFERENT DAYS - NOT a controlled side-by-side B/A shoot in a clinic or studio. Body zone, framing, hair, and expression stay similar between halves. But these natural variations are expected and desired: slightly different head angle (small handheld phone variation), slightly different lighting (different time of day or a different room), and a clearly different top or shirt (the photos were taken days or weeks apart, not in the same session). The background can be the same room or a different room in the same home. The overall feel is two casual phone selfies posted in a real customer testimonial.",
+        "The two halves must look like two SEPARATE phone selfies the same person took on DIFFERENT DAYS. Body zone and hair stay similar. Outfit, lighting, and head angle ARE DIFFERENT per the before_half/after_half specs above - this is not optional, it is required.",
     },
     transformation: INTENSITY_PROMPTS[intensity],
     style:
       "Realistic smartphone-quality photo (iPhone-style), authentic UGC feel. Visible pores, natural skin texture, real imperfections in BOTH halves. NO airbrushing, NO unrealistic smoothing, NO filters, NO beauty mode. The 'after' improvement must look like collagen or skincare results over time - NOT plastic surgery, NOT cosmetic procedures, NOT digital retouching.",
     hard_constraints: [
       "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-      "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, slight angle, slight lighting) differ.",
-      "AVOID: identical clothing in both halves. AVOID: identical lighting between halves. AVOID: identical angle/tilt between halves. AVOID: anything that makes this look like a controlled clinical or studio shoot.",
+      `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
+      `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
+      `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. These MUST be slightly different angles.`,
+      "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, lighting, angle) differ.",
+      "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical head angle. FORBIDDEN: anything that makes this look like a clinical or studio shoot.",
       hasSource
-        ? "A reference image is provided. Use it ONLY for composition, crop, general lighting style, and background. The PERSON in the generated image must be the randomized scandinavian woman described in 'subject.demographic', NOT the person in the reference image. Do NOT copy the reference person's face."
-        : "No reference image is provided. Build the scene from the subject and composition specs.",
-      "Both halves must have the same realistic skin texture - the 'before' has more visible aging signs appropriate to the intensity level, the 'after' has fewer. Both look like real un-retouched skin.",
+        ? "A reference image is provided. Use it ONLY for composition, crop, and general framing style. The PERSON must be the randomized scandinavian woman in 'subject.demographic', NOT the person in the reference. Do NOT copy the reference person's face. Do NOT copy the reference person's clothing - use the outfit specs in before_half/after_half."
+        : "No reference image is provided. Build the scene from the subject, composition, and per-half specs.",
+      "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin.",
     ],
     instruction:
-      "Generate a clean before/after split image with the randomized scandinavian woman in the specified body zone, showing the specified intensity of skin improvement. The two halves should feel like two casual selfies taken on different days, NOT a clinical side-by-side. ABSOLUTELY NO TEXT IN THE IMAGE.",
+      "Generate a single before/after split image. The before-half and after-half are TWO SEPARATE photos of the same scandinavian woman taken weeks apart. Use the explicit per-half outfit, lighting, and head-angle specs - they MUST be visibly different between the halves. Same person, different days, different shirts, different light. ABSOLUTELY NO TEXT IN THE IMAGE.",
   };
 
   if (notes) {
