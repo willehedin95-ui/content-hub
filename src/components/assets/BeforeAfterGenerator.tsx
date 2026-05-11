@@ -125,6 +125,22 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const abortRef = useRef<AbortController | null>(null);
   const detectAbortRef = useRef<AbortController | null>(null);
 
+  const applyDetection = useCallback(
+    (json: { zone?: string | null; demographic?: { age?: string | null; ethnicity?: string | null; hair_color?: string | null } | null }) => {
+      const zone = json.zone;
+      if (zone && zone !== "other") {
+        setBodyZone(zone);
+      }
+      const d = json.demographic;
+      if (d) {
+        if (d.age) setAge(d.age);
+        if (d.ethnicity) setEthnicity(d.ethnicity);
+        if (d.hair_color) setHairColor(d.hair_color);
+      }
+    },
+    []
+  );
+
   const detectZoneFromUrl = useCallback(async (imageUrl: string) => {
     detectAbortRef.current?.abort();
     const controller = new AbortController();
@@ -140,10 +156,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       });
       if (!res.ok) return;
       const json = await res.json();
-      const zone = json.zone as string | null | undefined;
-      if (zone && zone !== "other") {
-        setBodyZone(zone);
-      }
+      applyDetection(json);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       // Silent fail - user can still pick manually
@@ -152,7 +165,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setDetectingZone(false);
       }
     }
-  }, []);
+  }, [applyDetection]);
 
   const uploadAndDetect = useCallback(async (file: File) => {
     detectAbortRef.current?.abort();
@@ -181,10 +194,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       });
       if (!detectRes.ok) return;
       const json = await detectRes.json();
-      const zone = json.zone as string | null | undefined;
-      if (zone && zone !== "other") {
-        setBodyZone(zone);
-      }
+      applyDetection(json);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       // Silent fail
@@ -193,7 +203,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setDetectingZone(false);
       }
     }
-  }, []);
+  }, [applyDetection]);
 
   const handleFileSelect = useCallback((file: File) => {
     setError(null);
