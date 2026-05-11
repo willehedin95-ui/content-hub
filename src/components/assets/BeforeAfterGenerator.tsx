@@ -11,6 +11,7 @@ import {
   Sparkles,
   RefreshCw,
   Shuffle,
+  Plus,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,16 +31,16 @@ interface Demographic {
   accent: string | null;
 }
 
-const BODY_ZONES: { value: string; label: string }[] = [
-  { value: "full_face_front", label: "Full face (front)" },
-  { value: "face_profile", label: "Face profile / 3-quarter" },
-  { value: "eye_area", label: "Eye area + crow's feet" },
-  { value: "forehead", label: "Forehead" },
-  { value: "neck_decolletage", label: "Neck + decolletage" },
-  { value: "cheek_closeup", label: "Cheek closeup" },
-  { value: "arm_skin", label: "Arm / skin texture" },
-  { value: "hands", label: "Hands" },
-  { value: "other", label: "Other (free text)" },
+const BODY_ZONES: { value: string; label: string; image?: string }[] = [
+  { value: "full_face_front", label: "Full face", image: "/images/body-zones/full_face_front.webp" },
+  { value: "face_profile", label: "Profile", image: "/images/body-zones/face_profile.webp" },
+  { value: "eye_area", label: "Eye area", image: "/images/body-zones/eye_area.webp" },
+  { value: "forehead", label: "Forehead", image: "/images/body-zones/forehead.webp" },
+  { value: "neck_decolletage", label: "Neck", image: "/images/body-zones/neck_decolletage.webp" },
+  { value: "cheek_closeup", label: "Cheek", image: "/images/body-zones/cheek_closeup.webp" },
+  { value: "arm_skin", label: "Arm", image: "/images/body-zones/arm_skin.webp" },
+  { value: "hands", label: "Hands", image: "/images/body-zones/hands.webp" },
+  { value: "other", label: "Other" },
 ];
 
 const INTENSITIES: { value: Intensity; label: string; description: string }[] = [
@@ -471,15 +472,48 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
 
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">Body zone</label>
-            <select
-              value={bodyZone}
-              onChange={(e) => setBodyZone(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-            >
-              {BODY_ZONES.map((z) => (
-                <option key={z.value} value={z.value}>{z.label}</option>
-              ))}
-            </select>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {BODY_ZONES.map((z) => {
+                const isActive = bodyZone === z.value;
+                const isOther = z.value === "other";
+                return (
+                  <button
+                    key={z.value}
+                    onClick={() => setBodyZone(z.value)}
+                    className={cn(
+                      "group relative rounded-lg overflow-hidden border-2 text-left transition-all",
+                      isActive
+                        ? "border-indigo-500 ring-2 ring-indigo-200"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="aspect-square w-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {z.image ? (
+                        <img
+                          src={z.image}
+                          alt={z.label}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 text-gray-400">
+                          <Plus className="w-6 h-6" />
+                          <span className="text-[10px] uppercase tracking-wide">{isOther ? "Custom" : ""}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className={cn(
+                        "px-2 py-1.5 text-xs font-medium text-center transition-colors",
+                        isActive ? "bg-indigo-50 text-indigo-700" : "bg-white text-gray-600"
+                      )}
+                    >
+                      {z.label}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
             {bodyZone === "other" && (
               <input
                 type="text"
