@@ -14,14 +14,14 @@ const POLL_TIMEOUT_MS = 720_000;
 type Intensity = "subtle" | "moderate" | "dramatic";
 
 const BODY_ZONE_PRESETS = {
-  full_face_front: "Tight portrait crop, full face front view. Frame from just below the chin to just above the hairline, both eyes visible, head fills most of the frame. Shoulders may peek in at the bottom edge.",
-  face_profile: "Tight 3-quarter or side profile crop. Frame from chin to forehead, showing one cheek and jawline prominently, partial nose, one ear may peek in. Head fills most of the frame.",
-  eye_area: "EXTREME MACRO CROP. Frame is very tight - ONLY one eye area is in frame: the eye itself, upper lid, lower lid with any crow's feet, outer brow tip, and just the edge of the nose bridge at one side. The frame MUST NOT include: the mouth, chin, jaw, ear, hairline, or the forehead beyond the immediate brow area. Roughly 1/8th the size of a full-face shot.",
-  forehead: "EXTREME MACRO CROP on the forehead. Frame shows ONLY the area from the upper edge of the brows up to the hairline. The frame MUST NOT include: the full eyes (only the very top of the brows is visible at the bottom edge), mouth, chin, jaw, cheeks, nose. Glasses frame may sometimes be visible at the bottom edge. A thin horizontal slice, roughly 1/6th the size of a full-face shot.",
-  neck_decolletage: "TIGHT MACRO CROP on the neck and upper decolletage. Frame shows ONLY the neck (from just below the chin/jawline), the throat, and the upper chest down to the collarbone or hint of a thin top strap. The frame MUST NOT include: the full face, mouth, eyes, nose. The chin may barely peek in at the very top edge but the rest of the face is cropped out.",
-  cheek_closeup: "EXTREME MACRO CROP on one cheek. Frame is so tight that ONLY cheek skin fills most of the frame - showing pores, skin texture, fine lines, and natural skin variation. The frame MUST NOT include: the eyes, the full mouth (maybe just the corner of the lips at one edge), chin, forehead, or the other side of the face. Perhaps the edge of the nose or a hint of the ear at one side. Roughly 1/10th the size of a full-face shot.",
-  arm_skin: "TIGHT MACRO CROP on the skin of the upper arm or forearm. Frame shows ONLY skin texture filling most of the frame - with just a sliver of clothing edge or out-of-focus background at the frame edge. The frame MUST NOT include: the face, head, body, hand, or the full arm structure. Just a skin section.",
-  hands: "TIGHT MACRO CROP on the back of one hand and lower wrist. Frame shows ONLY the hand from the wrist down through the fingers. The frame MUST NOT include: the face, body, or arm above the wrist. Just the hand filling most of the frame.",
+  full_face_front: "Tight portrait crop, full face front view. Frame from just below the chin to just above the hairline, both eyes visible, head fills most of the frame. Shoulders may peek in at the bottom edge. Lifestyle selfie framing.",
+  face_profile: "Tight 3-quarter or side profile crop, lifestyle selfie style. Frame from chin to forehead, showing one cheek and jawline prominently, partial nose, one ear may peek in. Head fills most of the frame.",
+  eye_area: "Tight close-up on one eye area, lifestyle skincare-style framing (NOT a medical scan, NOT a clinical examination). Frame shows the eye, upper and lower lid, outer brow, and the bridge of the nose at one side, plus a hint of the upper cheek at the bottom edge. The frame does not include: the mouth, chin, jaw, ear, hairline, or the forehead beyond the brow area. Lifestyle phone-photo close-up, casual.",
+  forehead: "Tight close-up on the forehead, lifestyle selfie framing. Frame shows the area from just above the brows up to the hairline, with the brows visible at the bottom edge. The frame does not include: the eyes, mouth, chin, jaw, cheeks, full nose. Glasses frame may sometimes be visible at the bottom edge. A horizontal slice across the forehead, casual phone-photo framing.",
+  neck_decolletage: "Tight close-up on the neck and upper decolletage, lifestyle selfie framing. Frame shows the neck (from just below the chin/jawline), the throat, and the upper chest down to the collarbone or hint of a thin top strap. The frame does not include the full face - the chin may barely peek in at the very top but the rest of the face is cropped out.",
+  cheek_closeup: "Tight close-up on one cheek, lifestyle skincare-style framing (NOT a medical scan). Frame is tight enough that cheek skin fills most of the frame, showing natural skin texture and pores. The frame does not include: the eyes, the full mouth (maybe just the corner of the lips at one edge), chin, forehead, or the other side of the face. Perhaps the edge of the nose or a hint of the ear at one side. Casual phone-photo macro.",
+  arm_skin: "Tight close-up on the skin of the upper arm or forearm. Frame shows skin texture filling most of the frame, with just a sliver of clothing edge or out-of-focus background at the frame edge. The frame does not include: the face, head, body, hand, or the full arm structure. Casual lifestyle macro.",
+  hands: "Tight close-up on the back of one hand and lower wrist. Frame shows the hand from the wrist down through the fingers. The frame does not include: the face, body, or arm above the wrist. Casual lifestyle phone-photo framing.",
 } as const;
 
 type ZoneKey = keyof typeof BODY_ZONE_PRESETS;
@@ -134,11 +134,11 @@ function demographicToString(d: Demographic): string {
 
 const INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "BEFORE half: naturally tired skin - slightly dull tone, softened contours, faintly more visible fine lines and undereye creasing. AFTER half: healthy glowing skin - marginally smoother texture, slightly more even tone, healthier glow. The difference must be visible on close inspection but extremely believable. Think 30 days of skincare use.",
+    "BEFORE half: skin looks slightly tired - softer contours, visible natural skin texture, slightly neutral tone. AFTER half: skin looks slightly more rested - marginally smoother texture, slightly more even tone, gentle natural glow. The visual difference is subtle but visible on close inspection.",
   moderate:
-    "BEFORE half: naturally tired skin - dull tone, softened contours, visibly fine lines, slight undereye darkness, slight skin texture unevenness. AFTER half: healthy glowing skin - smoother texture, noticeably reduced fine lines and crow's feet, more even tone, clear healthy glow. The difference is obvious but still realistic. Think 60 to 90 days of skincare use.",
+    "BEFORE half: skin looks tired - softer contours, visible natural skin texture, slightly neutral tone, gently tired look around the eyes. AFTER half: skin looks visibly rested - smoother texture, more even tone, natural glow, brighter look around the eyes. The visual difference is clear but realistic.",
   dramatic:
-    "BEFORE half: noticeably tired and aged skin - dull tone, visible fine lines and wrinkles, slight sagging, undereye darkness, uneven texture. AFTER half: visibly firmer healthy glowing skin - much smoother texture, notably reduced wrinkles and sagging, brighter and more even tone. The difference is striking but stops short of looking unrealistic.",
+    "BEFORE half: skin looks quite tired - softer contours, prominent natural skin texture, slightly uneven tone, tired look around the eyes. AFTER half: skin looks visibly rested and bright - much smoother texture, more even tone, clear natural glow, bright look around the eyes. The visual difference is striking but realistic and natural.",
 };
 
 interface BodyZoneVision {
@@ -235,7 +235,7 @@ function buildPrompt(args: {
     "ENVIRONMENT (lived-in, authentic): Real home setting with mundane details visible in soft focus - matte tiles with tiny grout imperfections, a mirror with faint dust streaks, an unmade bed with white duvet in soft folds, kitchen counter with a casual mug, a hand towel casually draped on a rail, a phone case with tiny scratches and a fingerprint smudge. The vibe is 'she hit record without cleaning'. " +
     "FORBIDDEN PHRASING (these words trigger polished AI look even when negated): do NOT default to 'professional', 'magazine', 'stock', 'editorial'. " +
     "FORBIDDEN LOOK: ring light glow, studio lighting setup, controlled three-point lighting, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect facial symmetry, dead/frozen eyes, floating product, empty backdrop. " +
-    "The 'after' improvement is real skincare results over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
+    "The 'after' visual is a naturally rested look over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
 
   const promptObj: Record<string, unknown> = hasSource
     ? {
@@ -249,7 +249,7 @@ function buildPrompt(args: {
           "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
         zone_framing: zone,
         format:
-          "Single image, side-by-side split. Two SEPARATE selfies the same person took at least 60 days apart - one before starting a skincare regime, one after. The reference image guides body zone identification and crop tightness only. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles - but always shot from the same side (no mirroring).",
+          "Single image, side-by-side split. Two SEPARATE casual selfies the same person took at least 60 days apart - one on a tired day, one on a rested day. The reference image guides body zone identification and crop tightness only. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles - but always shot from the same side (no mirroring).",
         subject: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
@@ -269,15 +269,15 @@ function buildPrompt(args: {
           outfit: beforeTop,
           lighting: beforeLight,
           head_position: beforeTilt,
-          skin_state: "more visible aging signs appropriate to the chosen intensity (see 'transformation' field)",
-          day_context: "this photo was taken on Day 0, before starting any skincare regime",
+          skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
+          day_context: "this photo was taken on a tired day",
         },
         after_half: {
           outfit: afterTop,
           lighting: afterLight,
           head_position: afterTilt,
-          skin_state: "improved skin (smoother, more even, healthier glow) per the chosen intensity",
-          day_context: "this photo was taken at least 60 days later, after the skincare regime - in a different room or at a different time of day from the 'before'",
+          skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
+          day_context: "this photo was taken weeks later on a rested day - in a different room or at a different time of day from the 'before'",
         },
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
@@ -293,7 +293,7 @@ function buildPrompt(args: {
           "FORBIDDEN: copying the reference person's face. FORBIDDEN: matching the reference's background/lighting/room in the generated image.",
           "FORBIDDEN: identical head angle, identical hair fall, identical outfit, identical lighting between halves. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
           "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry.",
-          "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
+          "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
         ],
         instruction:
           "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took 60+ days apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
@@ -320,15 +320,15 @@ function buildPrompt(args: {
           outfit: beforeTop,
           lighting: beforeLight,
           head_position: beforeTilt,
-          skin_state: "more visible aging signs appropriate to the chosen intensity level (see 'transformation' field)",
-          day_context: "this photo was taken on Day 1, before any skincare regime",
+          skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
+          day_context: "this photo was taken on a tired day",
         },
         after_half: {
           outfit: afterTop,
           lighting: afterLight,
           head_position: afterTilt,
-          skin_state: "improved skin (smoother, more even, healthier glow) per the chosen intensity level",
-          day_context: "this photo was taken weeks later, after the skincare regime",
+          skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
+          day_context: "this photo was taken weeks later on a rested day",
         },
         composition: {
           camera: "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
@@ -349,7 +349,7 @@ function buildPrompt(args: {
           "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, lighting, micro-angle) differ.",
           "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
           "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
-          "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
+          "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
         ],
         instruction:
           "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
