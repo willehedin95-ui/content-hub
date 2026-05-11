@@ -547,6 +547,154 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setShowSaveModal(false);
   }, [sourceUrl, sourceFile]);
 
+  const swipeMode = Boolean(sourceUrl);
+
+  const formControls = (
+    <>
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <label className="block text-xs font-medium text-gray-700">Body zone</label>
+          {detectingZone && (
+            <span className="flex items-center gap-1 text-xs text-indigo-600">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Detecting from source...
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          {BODY_ZONES.map((z) => {
+            const isActive = bodyZone === z.value;
+            const isOther = z.value === "other";
+            return (
+              <button
+                key={z.value}
+                onClick={() => setBodyZone(z.value)}
+                className={cn(
+                  "group relative rounded-lg overflow-hidden border-2 text-left transition-all",
+                  isActive
+                    ? "border-indigo-500 ring-2 ring-indigo-200"
+                    : "border-gray-200 hover:border-gray-300"
+                )}
+              >
+                <div className="aspect-square w-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                  {z.image ? (
+                    <img
+                      src={z.image}
+                      alt={z.label}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-gray-400">
+                      <Plus className="w-6 h-6" />
+                      <span className="text-[10px] uppercase tracking-wide">{isOther ? "Custom" : ""}</span>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={cn(
+                    "px-2 py-1.5 text-xs font-medium text-center transition-colors",
+                    isActive ? "bg-indigo-50 text-indigo-700" : "bg-white text-gray-600"
+                  )}
+                >
+                  {z.label}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {bodyZone === "other" && (
+          <input
+            type="text"
+            value={customZone}
+            onChange={(e) => setCustomZone(e.target.value)}
+            placeholder="Describe the body zone (e.g. 'tight crop on the brow bone between the brows')"
+            className="w-full mt-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+          />
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">Intensity</label>
+        <div className="flex gap-2">
+          {INTENSITIES.map((i) => (
+            <button
+              key={i.value}
+              onClick={() => setIntensity(i.value)}
+              title={i.description}
+              className={cn(
+                "flex-1 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                intensity === i.value
+                  ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                  : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              )}
+            >
+              {i.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">
+          {INTENSITIES.find((i) => i.value === intensity)?.description}
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          Notes <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="e.g. 'subtle freckles' or 'wearing thin glasses'"
+          className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+        />
+      </div>
+
+      <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+        <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
+          Customize person <span className="text-gray-400 font-normal">(optional)</span>
+        </summary>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Age</label>
+            <select
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {AGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Ethnicity</label>
+            <select
+              value={ethnicity}
+              onChange={(e) => setEthnicity(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {ETHNICITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Hair color</label>
+            <input
+              type="text"
+              value={hairColor}
+              onChange={(e) => setHairColor(e.target.value)}
+              placeholder="Random"
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            />
+          </div>
+        </div>
+      </details>
+    </>
+  );
+
   return (
     <div className="space-y-6">
       {error && (
@@ -585,9 +733,14 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             {sourceUrl ? (
               <div className="flex items-center gap-3">
                 <img src={sourceUrl} alt="Source" className="h-20 rounded border border-gray-200" />
-                <div className="text-left">
-                  <p className="text-xs font-medium text-gray-700">Source image loaded (optional)</p>
-                  <p className="text-xs text-indigo-600 mt-0.5">Click to change</p>
+                <div className="text-left flex-1">
+                  <p className="text-xs font-medium text-gray-700">Source loaded - ready to swipe</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {detectingZone
+                      ? "Analyzing source..."
+                      : "Everything is auto-detected. Just click Generate below, or expand Customize to tweak."}
+                  </p>
+                  <p className="text-xs text-indigo-600 mt-0.5">Click image to change source</p>
                 </div>
               </div>
             ) : (
@@ -631,153 +784,34 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             </>
           )}
 
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <label className="block text-xs font-medium text-gray-700">Body zone</label>
-              {detectingZone && (
-                <span className="flex items-center gap-1 text-xs text-indigo-600">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Detecting from source...
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {BODY_ZONES.map((z) => {
-                const isActive = bodyZone === z.value;
-                const isOther = z.value === "other";
-                return (
-                  <button
-                    key={z.value}
-                    onClick={() => setBodyZone(z.value)}
-                    className={cn(
-                      "group relative rounded-lg overflow-hidden border-2 text-left transition-all",
-                      isActive
-                        ? "border-indigo-500 ring-2 ring-indigo-200"
-                        : "border-gray-200 hover:border-gray-300"
-                    )}
-                  >
-                    <div className="aspect-square w-full bg-gray-100 flex items-center justify-center overflow-hidden">
-                      {z.image ? (
-                        <img
-                          src={z.image}
-                          alt={z.label}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 text-gray-400">
-                          <Plus className="w-6 h-6" />
-                          <span className="text-[10px] uppercase tracking-wide">{isOther ? "Custom" : ""}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div
-                      className={cn(
-                        "px-2 py-1.5 text-xs font-medium text-center transition-colors",
-                        isActive ? "bg-indigo-50 text-indigo-700" : "bg-white text-gray-600"
-                      )}
-                    >
-                      {z.label}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            {bodyZone === "other" && (
-              <input
-                type="text"
-                value={customZone}
-                onChange={(e) => setCustomZone(e.target.value)}
-                placeholder="Describe the body zone (e.g. 'tight crop on the brow bone between the brows')"
-                className="w-full mt-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-              />
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Intensity</label>
-            <div className="flex gap-2">
-              {INTENSITIES.map((i) => (
-                <button
-                  key={i.value}
-                  onClick={() => setIntensity(i.value)}
-                  title={i.description}
-                  className={cn(
-                    "flex-1 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
-                    intensity === i.value
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  )}
-                >
-                  {i.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">
-              {INTENSITIES.find((i) => i.value === intensity)?.description}
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-              Notes <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. 'subtle freckles' or 'wearing thin glasses'"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-            />
-          </div>
-
-          <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
-            <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
-              Customize person <span className="text-gray-400 font-normal">(optional, defaults are random scandinavian)</span>
-            </summary>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Age</label>
-                <select
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-                >
-                  {AGE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+          {swipeMode ? (
+            <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+              <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
+                Customize <span className="text-gray-400 font-normal">(optional - tweak what was auto-detected from source)</span>
+              </summary>
+              <div className="mt-4 space-y-4">
+                {formControls}
               </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Ethnicity</label>
-                <select
-                  value={ethnicity}
-                  onChange={(e) => setEthnicity(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-                >
-                  {ETHNICITY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Hair color</label>
-                <input
-                  type="text"
-                  value={hairColor}
-                  onChange={(e) => setHairColor(e.target.value)}
-                  placeholder="Random"
-                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-                />
-              </div>
-            </div>
-          </details>
+            </details>
+          ) : (
+            formControls
+          )}
 
           <button
             onClick={handleGenerate}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            disabled={detectingZone}
+            className={cn(
+              "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors",
+              detectingZone
+                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                : "bg-indigo-600 text-white hover:bg-indigo-700"
+            )}
           >
-            Generate Before/After
+            {detectingZone
+              ? "Analyzing source..."
+              : swipeMode
+              ? "Generate near-clone"
+              : "Generate Before/After"}
           </button>
         </div>
       )}
