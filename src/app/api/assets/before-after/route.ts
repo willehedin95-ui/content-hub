@@ -134,11 +134,11 @@ function demographicToString(d: Demographic): string {
 
 const INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "The after-half shows marginally smoother texture, very subtle reduction in fine lines, slightly more even skin tone. The difference must be visible on close inspection but extremely believable - barely noticeable at first glance. Think 30 days of skincare use.",
+    "BEFORE half: naturally tired skin - slightly dull tone, softened contours, faintly more visible fine lines and undereye creasing. AFTER half: healthy glowing skin - marginally smoother texture, slightly more even tone, healthier glow. The difference must be visible on close inspection but extremely believable. Think 30 days of skincare use.",
   moderate:
-    "The after-half shows clearly smoother texture, noticeably reduced fine lines and crow's feet, more even skin tone, healthier glow. The difference is obvious but still realistic. Think 60 to 90 days of skincare use.",
+    "BEFORE half: naturally tired skin - dull tone, softened contours, visibly fine lines, slight undereye darkness, slight skin texture unevenness. AFTER half: healthy glowing skin - smoother texture, noticeably reduced fine lines and crow's feet, more even tone, clear healthy glow. The difference is obvious but still realistic. Think 60 to 90 days of skincare use.",
   dramatic:
-    "The after-half shows significant improvement: visibly firmer skin, much smoother texture, notably reduced wrinkles and sagging, brighter and more even skin tone, healthy glow. The difference is striking but stops short of looking unrealistic or photoshopped.",
+    "BEFORE half: noticeably tired and aged skin - dull tone, visible fine lines and wrinkles, slight sagging, undereye darkness, uneven texture. AFTER half: visibly firmer healthy glowing skin - much smoother texture, notably reduced wrinkles and sagging, brighter and more even tone. The difference is striking but stops short of looking unrealistic.",
 };
 
 interface BodyZoneVision {
@@ -226,13 +226,16 @@ function buildPrompt(args: {
   const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
 
   const sharedStyle =
-    "CRITICAL UGC AUTHENTICITY: The image must pass the 'Instagram scroll test' - a viewer scrolling Instagram should NOT be able to tell this is AI-generated within 3 seconds. If it looks like a generated image, you have failed. " +
-    "Camera: iPhone 16 Pro front-facing camera, handheld at arm's length. iPhone color science (slight HDR, natural saturation, occasional minor edge sharpening). Slight wide-angle distortion when subject is close (nose/forehead very subtly enlarged toward the camera). Autoexposure is NOT perfect - one cheek can be a quarter-stop brighter than the other, T-zone has slight specular highlights, shadows are not crushed. " +
-    "Skin (BOTH halves): visible pore structure especially on the nose and cheeks, faint natural redness around nostrils/cheeks, slight T-zone or forehead shine, soft under-eye detail with natural blue undertone, occasional small visible blemish, faint freckle, or stray vellus hair. Skin is asymmetric - the face is NOT perfectly symmetric, one eye is slightly different from the other, one nostril is slightly different shape, one ear is slightly more visible. " +
-    "Hair: natural flyaways, slight imperfect fall - NOT styled, NOT brushed perfectly, NOT smoothed. A few strands cross the face or stick out at the temples. " +
-    "Composition is casual and unstaged: head NOT perfectly centered, framing slightly off, slight imperfect autofocus possible at edges. NO ring light, NO studio lighting, NO controlled backdrop, NO professional setup. " +
-    "FORBIDDEN: any sign of beauty filter, cosmetic smoothing, retouching, AI rendering polish, perfect symmetry, magazine portrait look, glossy stock photo feel. " +
-    "The 'after' improvement is real skincare results - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
+    "CRITICAL UGC AUTHENTICITY: The image must pass the 'Instagram scroll test' - a viewer scrolling Instagram should NOT be able to tell this is AI-generated within 3 seconds. If it looks AI, you have failed. " +
+    "CAMERA: Captured on an iPhone 16 Pro using the front camera at high resolution, with the typical computational look of a real smartphone photo. Raw handheld realism and the color science of an actual iPhone image. Slight wide-angle distortion when subject is close (nose/forehead very subtly enlarged toward the camera). Everything remains in full focus with no artificial blur - real phones don't blur backgrounds like DSLRs do. Autoexposure is not perfect - one cheek can be a quarter-stop brighter than the other, T-zone has slight specular highlights, shadows are not crushed. " +
+    "LIGHTING (specify direction, never controlled): Natural daylight from a window on one specific side of the frame, producing gentle highlights and soft falloff toward the background. OR flat neutral indoor bathroom lighting from above. OR soft natural daylight from a frosted window on one side. Lighting is uneven across the face - one side slightly brighter than the other. " +
+    "SKIN: Visible pore structure on cheeks and nose, faint natural redness around the nose, slight shine or sheen on the forehead, soft under-eye detail with faint undereye creasing, occasional small visible blemish, faint freckle, or stray vellus hair. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape. " +
+    "HAIR: Slightly messy with loose strands falling naturally. Not styled, not brushed perfectly. A few flyaways near the temples or strands crossing the face. " +
+    "COMPOSITION: Slightly off-center framing, asymmetrical stance, sometimes the top of the head is cut off slightly or there is too much headroom. Not posed-portrait centered. " +
+    "ENVIRONMENT (lived-in, authentic): Real home setting with mundane details visible in soft focus - matte tiles with tiny grout imperfections, a mirror with faint dust streaks, an unmade bed with white duvet in soft folds, kitchen counter with a casual mug, a hand towel casually draped on a rail, a phone case with tiny scratches and a fingerprint smudge. The vibe is 'she hit record without cleaning'. " +
+    "FORBIDDEN PHRASING (these words trigger polished AI look even when negated): do NOT default to 'professional', 'magazine', 'stock', 'editorial'. " +
+    "FORBIDDEN LOOK: ring light glow, studio lighting setup, controlled three-point lighting, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect facial symmetry, dead/frozen eyes, floating product, empty backdrop. " +
+    "The 'after' improvement is real skincare results over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
 
   const promptObj: Record<string, unknown> = hasSource
     ? {
