@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const ASPECT_RATIO = "16:9";
+const RESOLUTION = "1K";
+const POLL_TIMEOUT_MS = 720_000;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -31,8 +33,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const referenceImages = image_url ? [image_url] : [];
-    const taskId = await createImageTask(finalPrompt, referenceImages, ASPECT_RATIO, "2K");
-    const result = await pollTaskResult(taskId);
+    const taskId = await createImageTask(finalPrompt, referenceImages, ASPECT_RATIO, RESOLUTION);
+    const result = await pollTaskResult(taskId, POLL_TIMEOUT_MS);
 
     if (result.urls.length === 0) {
       return NextResponse.json({ error: "No image generated" }, { status: 500 });
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         task_id: taskId,
         aspect_ratio: ASPECT_RATIO,
+        resolution: RESOLUTION,
         is_retry: true,
         has_source: Boolean(image_url),
         has_edits: Boolean(edit_instructions?.trim()),

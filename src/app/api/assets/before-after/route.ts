@@ -5,9 +5,11 @@ import { CLAUDE_MODEL } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const ASPECT_RATIO = "16:9";
+const RESOLUTION = "1K";
+const POLL_TIMEOUT_MS = 720_000;
 
 type Intensity = "subtle" | "moderate" | "dramatic";
 
@@ -322,8 +324,8 @@ export async function POST(req: NextRequest) {
       });
 
       const referenceImages = image_url ? [image_url] : [];
-      const taskId = await createImageTask(prompt, referenceImages, ASPECT_RATIO, "2K");
-      const result = await pollTaskResult(taskId);
+      const taskId = await createImageTask(prompt, referenceImages, ASPECT_RATIO, RESOLUTION);
+      const result = await pollTaskResult(taskId, POLL_TIMEOUT_MS);
 
       if (result.urls.length === 0) {
         await emit({ step: "error", message: "No image generated" });
@@ -338,6 +340,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           task_id: taskId,
           aspect_ratio: ASPECT_RATIO,
+          resolution: RESOLUTION,
           body_zone,
           intensity,
           has_source: Boolean(image_url),
