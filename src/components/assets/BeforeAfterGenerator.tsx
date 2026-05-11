@@ -128,6 +128,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [retrying, setRetrying] = useState(false);
   const [rerolling, setRerolling] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const autoGenTriggeredRef = useRef(false);
   const detectAbortRef = useRef<AbortController | null>(null);
 
   const applyDetection = useCallback(
@@ -234,6 +235,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setUrlInput("");
     setResolvedSourceUrl(null);
     setSourceDemographic(null);
+    autoGenTriggeredRef.current = false;
     void uploadAndDetect(file);
   }, [uploadAndDetect]);
 
@@ -264,6 +266,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSourceFile(null);
     setResolvedSourceUrl(url);
     setSourceDemographic(null);
+    autoGenTriggeredRef.current = false;
     void detectZoneFromUrl(url);
   }, [urlInput, detectZoneFromUrl]);
 
@@ -540,6 +543,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setDetectedZone(null);
     setResolvedSourceUrl(null);
     setSourceDemographic(null);
+    autoGenTriggeredRef.current = false;
     setStatusMessage("");
     setSaving(false);
     setSaved(false);
@@ -548,6 +552,21 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   }, [sourceUrl, sourceFile]);
 
   const swipeMode = Boolean(sourceUrl);
+
+  // Auto-trigger generation in swipe mode once detection completes.
+  // Fires exactly once per source upload (guarded by autoGenTriggeredRef).
+  useEffect(() => {
+    if (
+      swipeMode &&
+      resolvedSourceUrl &&
+      !detectingZone &&
+      phase === "upload" &&
+      !autoGenTriggeredRef.current
+    ) {
+      autoGenTriggeredRef.current = true;
+      void runGeneration({ reuseSourceUrl: resolvedSourceUrl });
+    }
+  }, [swipeMode, resolvedSourceUrl, detectingZone, phase, runGeneration]);
 
   const formControls = (
     <>
@@ -738,11 +757,11 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
               <div className="flex items-center gap-3">
                 <img src={sourceUrl} alt="Source" className="h-20 rounded border border-gray-200" />
                 <div className="text-left flex-1">
-                  <p className="text-xs font-medium text-gray-700">Source loaded - ready to swipe</p>
+                  <p className="text-xs font-medium text-gray-700">Source loaded - generating near-clone</p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {detectingZone
-                      ? "Analyzing source..."
-                      : "Everything is auto-detected. Just click Generate below, or expand Customize to tweak."}
+                      ? "Analyzing source, then auto-generating..."
+                      : "Generation will start automatically."}
                   </p>
                   <p className="text-xs text-indigo-600 mt-0.5">Click image to change source</p>
                 </div>
@@ -801,22 +820,14 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             formControls
           )}
 
-          <button
-            onClick={handleGenerate}
-            disabled={detectingZone}
-            className={cn(
-              "w-full py-2.5 rounded-lg text-sm font-semibold transition-colors",
-              detectingZone
-                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                : "bg-indigo-600 text-white hover:bg-indigo-700"
-            )}
-          >
-            {detectingZone
-              ? "Analyzing source..."
-              : swipeMode
-              ? "Generate near-clone"
-              : "Generate Before/After"}
-          </button>
+          {!swipeMode && (
+            <button
+              onClick={handleGenerate}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            >
+              Generate Before/After
+            </button>
+          )}
         </div>
       )}
 
