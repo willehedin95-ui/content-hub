@@ -338,59 +338,64 @@ function buildPrompt(args: {
   const promptObj: Record<string, unknown> = hasSource
     ? {
         // ---- SOURCE-ANCHORED MODE ----
-        // Source defines the PHOTOGRAPHIC STYLE: lighting, framing, expression,
-        // composition. The new person is in the same photographic style but is
-        // a DIFFERENT demographic from the source (user-picked or randomized).
+        // Generate a NEAR-CLONE of the reference image: match everything
+        // (lighting, framing, expression, composition, background, outfit
+        // style, the before/after pair structure). Only difference: a subtly
+        // different person identity (in the same demographic ballpark by
+        // default, or user-specified if overrides provided) and small
+        // micro-variations so it is not an exact pixel copy.
         task: "generate_image",
-        mode: "source_anchored_pair",
+        mode: "near_clone_swipe",
         zone_framing_priority:
-          "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
+          "Match the reference image's framing/crop exactly. The body zone framing in 'zone_framing' is a fallback - the REFERENCE IMAGE itself is the primary visual template.",
         zone_framing: zone,
         format:
-          "Single image, side-by-side split. The output reproduces the photographic style of the reference image (lighting, framing, expression, composition) using a DIFFERENT person. Both halves show the SAME body zone with the SAME tight crop matching the reference. The two halves match each other closely in lighting and framing - they look like back-to-back shots, only the skin condition and a subtle outfit shift differ.",
+          "Single image, side-by-side split that is a NEAR-CLONE of the reference image. Reproduce the reference's overall composition, framing, lighting, expression, background, and the structure of its before/after pair. The new person is technically different from the reference person but should look very similar (subtly different facial features, slightly different exact angle, slightly different outfit color). The viewer should feel 'this looks just like that other before/after I saw'.",
         subject: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
           expression: vision?.composition
-            ? `Match the expression in the reference image closely. ${expressionRule}`
+            ? `Match the expression(s) in the reference image very closely (same emotional tone, same mouth/eye relaxation). ${expressionRule}`
             : expressionRule,
-          hair: "same hair color and general length from the demographic above in both halves. Hair fall and positioning are very similar between halves (these are back-to-back shots, not different days). Style of hair (down, up, etc.) should approximately match what is visible in the reference image.",
+          hair: "Hair color and length closely match the reference person's hair (unless the user has overridden hair_color in 'demographic'). Hair fall and positioning approximately match the reference, with only tiny natural differences.",
           identity_lock:
-            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity unmistakable. The person is DIFFERENT from the reference image's person (see 'demographic' for the new person's features).",
+            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. The new person looks similar to the reference person but has subtly different facial features (different exact nose shape, different exact jaw, different exact eye spacing) so it's recognizably a different individual.",
         },
-        source_match: {
-          body_zone_focus: zone,
+        clone_match: {
           framing_and_crop: vision?.composition?.framing ?? "match the reference's framing and crop tightness exactly",
           camera_style: vision?.composition?.camera ?? "match the reference's camera angle, distance, and perspective exactly",
-          lighting_style: vision?.composition?.lighting ?? "match the reference's lighting direction, quality, and color temperature closely - same general style (e.g. soft window light from left, warm tone) in both halves",
-          background: vision?.composition?.background ?? "use a similar background style to the reference (same general environment - bathroom, kitchen, bedroom, neutral wall - with similar overall feel). Both halves use a similar background to each other.",
+          lighting_style: vision?.composition?.lighting ?? "match the reference's lighting direction, quality, and color temperature exactly - same lighting in both halves of the generated image",
+          background: vision?.composition?.background ?? "match the reference's background closely - same type of environment, same color palette, same wall/surface style. Both halves use a similar background to each other (matching the reference).",
+          outfit_style: "Match the general outfit style visible in the reference (e.g. if reference shows a white robe/towel, use a similar white robe/towel). Allow subtle color or fabric variation between halves and from reference but stay in the same garment category.",
+          pair_structure: "If the reference image has TWO halves (a before/after pair), reproduce that exact structure: left half = before state, right half = after state, same orientation, same general composition for each half.",
           critical_note:
-            "The reference image defines the photographic STYLE - lighting, framing, expression, composition, background style - for BOTH halves. The new person is a different demographic but is photographed in the same style as the reference. Both halves match each other closely in style; they are back-to-back shots of the new person in the same setting. Subtle outfit shift between halves is allowed; lighting and framing must stay consistent across the two halves and aligned with the reference.",
+            "The reference image IS the template. The generated image should make a viewer go 'this looks just like that other B/A I saw'. Match everything visually. Only differences: a subtly different person identity (similar demographic, different exact face), tiny natural micro-variations (a few degrees angle, slight outfit color shift) so it's not an exact pixel-copy.",
         },
         outfit_pair: {
           before_half: beforeTop,
           after_half: afterTop,
-          note: "Both tops are casual at-home wear in the same general style as the reference's outfit. Just different color/material between halves.",
+          note: "Tops should be in the same general style as the reference's outfit. Use these specific descriptors only if the reference is ambiguous about outfit; otherwise prefer matching the reference's actual outfit with subtle color variation.",
         },
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: [
-          "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP' the generated image must show ONLY that body part - no full face when a macro crop is specified. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
-          "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. Head direction must be CONSISTENT between halves.",
+          "NEAR-CLONE GOAL: the generated image should look almost identical to the reference image - same composition, same lighting, same framing, same expression, same background, same outfit style, same pair structure. Only the person's identity differs (subtly) and tiny natural variations exist (different exact angle, slight outfit color shift).",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          "PHOTOGRAPHIC STYLE MATCH: the reference image defines lighting, framing, expression, and composition. The generated image must look photographically similar to the reference (same style of phone selfie, same kind of lighting direction and quality, same kind of crop and angle). The PERSON is different from the reference but is photographed in the same style.",
-          "DEMOGRAPHIC IS INDEPENDENT of the reference. Do NOT copy the reference person's face, age, hair color, ethnicity. The new person is described entirely in 'subject.demographic'. If the reference person is a 40-year-old blonde and 'subject.demographic' says 60-year-old brunette, use the 60-year-old brunette.",
+          "DIFFERENT PERSON: do NOT generate an exact copy of the reference person's face. The new person is in the same demographic ballpark (same age range, same hair color and ethnicity from 'subject.demographic') but has subtly different facial features so a viewer can tell it's a different individual.",
+          "If 'subject.demographic' specifies a DIFFERENT age/ethnicity/hair_color from the reference person, follow 'subject.demographic'. The user's overrides take priority over the reference's demographic.",
           "Both halves must show the SAME new person - the woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
-          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. Visibly different but both in the same general casual style as the reference's outfit.`,
-          "Lighting STAYS THE SAME between halves: do NOT shift lighting direction or color temperature between halves. Both halves use the same lighting style (matching the reference).",
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored. Both halves stay very close to the reference's pose.`,
-          "FORBIDDEN: copying the reference person's face/age/hair_color/ethnicity. FORBIDDEN: switching backgrounds or lighting style between halves. FORBIDDEN: deviating from the reference's framing/crop.",
-          "FORBIDDEN: identical head angle, identical hair fall, identical outfit between halves. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
-          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry.",
-          "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
+          "BACKGROUND: match the reference's background closely. SAME environment in both halves of the generated image.",
+          "LIGHTING: match the reference's lighting closely. SAME lighting style in both halves of the generated image.",
+          "FRAMING: match the reference's crop and framing exactly. SAME crop in both halves.",
+          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. Subtle color shift only; both stay in the same general outfit style as the reference.`,
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored. Pose closely matches the reference's pose in each corresponding half.`,
+          "NO MIRRORING between halves: if reference shows the right cheek, both halves show the right cheek - NEVER mirror-flip.",
+          "FORBIDDEN: generating an exact copy of the reference person's face. FORBIDDEN: deviating from the reference's composition/lighting/framing/background. FORBIDDEN: any sign that this is a completely fresh generation - it should feel like a near-clone of the reference.",
+          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image inherits the reference's realism level.",
+          "Both halves must have realistic un-retouched skin texture matching the reference's realism level. Skin condition differs only per the transformation intensity.",
         ],
         instruction:
-          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. SECOND, match the reference image's photographic style: lighting direction/quality, framing, camera angle, expression, background. THIRD, use the new person from 'subject.demographic' - NOT the reference's person. Both halves match each other closely in style (back-to-back shots, not different days). Only outfit shifts subtly and skin condition differs per the transformation. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a single before/after split image that is a NEAR-CLONE of the reference image. Match the reference exactly in: composition, framing, crop, lighting, expression, background, outfit style, before/after pair structure. The PERSON is technically different (subtly different facial features) but in the same demographic ballpark as the reference (unless 'subject.demographic' specifies overrides, then follow those). Skin condition differs between halves per the transformation. Subtle micro-variations only so the result is not a pixel-exact copy. ABSOLUTELY NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----
@@ -472,6 +477,7 @@ export async function POST(req: NextRequest) {
     ethnicity,
     age,
     hair_color,
+    source_demographic,
   } = body as {
     image_url?: string;
     body_zone?: string;
@@ -481,6 +487,11 @@ export async function POST(req: NextRequest) {
     ethnicity?: string;
     age?: string;
     hair_color?: string;
+    source_demographic?: {
+      age?: string | null;
+      ethnicity?: string | null;
+      hair_color?: string | null;
+    } | null;
   };
 
   if (!body_zone) {
@@ -490,13 +501,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "intensity must be subtle | moderate | dramatic" }, { status: 400 });
   }
 
+  // Resolve demographics: user override > source-detected > random (later)
+  const ageOverride = age && AGE_RANGES.includes(age) ? age : undefined;
+  const ageFromSource =
+    source_demographic?.age && AGE_RANGES.includes(source_demographic.age)
+      ? source_demographic.age
+      : undefined;
+
+  const ethnicityOverride =
+    ethnicity && ethnicity in ETHNICITY_PROFILES ? (ethnicity as Ethnicity) : undefined;
+  const ethnicityFromSource =
+    source_demographic?.ethnicity && source_demographic.ethnicity in ETHNICITY_PROFILES
+      ? (source_demographic.ethnicity as Ethnicity)
+      : undefined;
+
+  const hairColorOverride = hair_color?.trim() || undefined;
+  const hairColorFromSource = source_demographic?.hair_color?.trim() || undefined;
+
   const overrides: DemographicOverrides = {
-    age: age && AGE_RANGES.includes(age) ? age : undefined,
-    ethnicity:
-      ethnicity && ethnicity in ETHNICITY_PROFILES
-        ? (ethnicity as Ethnicity)
-        : undefined,
-    hair_color: hair_color?.trim() || undefined,
+    age: ageOverride ?? ageFromSource,
+    ethnicity: ethnicityOverride ?? ethnicityFromSource,
+    hair_color: hairColorOverride ?? hairColorFromSource,
   };
 
   const resolveZone = (zoneKey: string, custom?: string): string => {

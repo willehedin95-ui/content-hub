@@ -118,6 +118,11 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
   const [demographic, setDemographic] = useState<Demographic | null>(null);
   const [detectedZone, setDetectedZone] = useState<string | null>(null);
+  const [sourceDemographic, setSourceDemographic] = useState<{
+    age: string | null;
+    ethnicity: string | null;
+    hair_color: string | null;
+  } | null>(null);
   const [resolvedSourceUrl, setResolvedSourceUrl] = useState<string | null>(null);
   const [detectingZone, setDetectingZone] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -126,14 +131,28 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const detectAbortRef = useRef<AbortController | null>(null);
 
   const applyDetection = useCallback(
-    (json: { zone?: string | null }) => {
+    (json: {
+      zone?: string | null;
+      demographic?: {
+        age?: string | null;
+        ethnicity?: string | null;
+        hair_color?: string | null;
+      } | null;
+    }) => {
       const zone = json.zone;
       if (zone && zone !== "other") {
         setBodyZone(zone);
       }
-      // Note: demographic is intentionally NOT auto-applied from source.
-      // The source defines the photographic style (lighting/framing/expression),
-      // not the person. Demographic comes from the user's overrides or randomization.
+      // Store source demographic as implicit fallback (NOT auto-filled in the
+      // UI overrides - user picks those separately). Backend uses this when
+      // the user doesn't override the corresponding field.
+      if (json.demographic) {
+        setSourceDemographic({
+          age: json.demographic.age ?? null,
+          ethnicity: json.demographic.ethnicity ?? null,
+          hair_color: json.demographic.hair_color ?? null,
+        });
+      }
     },
     []
   );
@@ -214,6 +233,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSourceUrl(url);
     setUrlInput("");
     setResolvedSourceUrl(null);
+    setSourceDemographic(null);
     void uploadAndDetect(file);
   }, [uploadAndDetect]);
 
@@ -243,6 +263,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSourceUrl(url);
     setSourceFile(null);
     setResolvedSourceUrl(url);
+    setSourceDemographic(null);
     void detectZoneFromUrl(url);
   }, [urlInput, detectZoneFromUrl]);
 
@@ -331,6 +352,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             age: age || undefined,
             ethnicity: ethnicity || undefined,
             hair_color: hairColor.trim() || undefined,
+            source_demographic: sourceDemographic ?? undefined,
           }),
           signal: controller.signal,
         });
@@ -385,7 +407,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setPhase("upload");
       }
     },
-    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor]
+    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, sourceDemographic]
   );
 
   const handleGenerate = useCallback(() => {
@@ -517,6 +539,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setDemographic(null);
     setDetectedZone(null);
     setResolvedSourceUrl(null);
+    setSourceDemographic(null);
     setStatusMessage("");
     setSaving(false);
     setSaved(false);
