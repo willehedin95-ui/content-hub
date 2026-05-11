@@ -237,48 +237,58 @@ function buildPrompt(args: {
   const promptObj: Record<string, unknown> = hasSource
     ? {
         // ---- SOURCE-ANCHORED MODE ----
-        // User uploaded a competitor B/A. Match its composition tightly.
-        // The two halves match each other closely, mirroring the source pair.
+        // Source provides body zone identification and crop style only.
+        // Halves vary in background/lighting/outfit/angle since they are
+        // "two selfies 60+ days apart".
         task: "generate_image",
         mode: "source_anchored_pair",
         format:
-          "Single image, side-by-side split. Reproduce the visual structure of the provided reference image (a before/after pair) using a DIFFERENT person. Both halves match the reference's composition, background, lighting, framing, and body zone. Only the skin condition differs between halves (per the transformation spec).",
+          "Single image, side-by-side split. Two SEPARATE selfies the same person took at least 60 days apart - one before starting a skincare regime, one after. The reference image guides body zone identification and crop tightness only. The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles.",
         subject: {
           demographic: demographicToString(demographic),
           body_zone: zone,
-          expression: "neutral, relaxed - similar general expression in both halves but with natural micro-variations (a tiny shift in the mouth, slightly different eye relaxation - NOT identical poses)",
-          hair: "scandinavian hair as per demographic, falling naturally. Same color and general length/style in both halves, BUT the hair falls slightly differently - a few strands repositioned, one half might have a stray hair across the temple that the other doesn't. NOT identical.",
+          expression: "neutral, relaxed face - same general expression in both halves with natural micro-variations",
+          hair: "same scandinavian hair color and general length, but hair fall and positioning are NATURALLY different between halves (different day = different hair state)",
           identity_lock:
-            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity must be unmistakable.",
+            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity unmistakable.",
         },
         source_match: {
-          camera: vision?.composition?.camera ?? "match the reference's camera angle and distance",
-          framing: vision?.composition?.framing ?? "match the reference's framing and crop",
-          lighting: vision?.composition?.lighting ?? "match the reference's general lighting style",
-          background: vision?.composition?.background ?? "match the reference's background",
-          critical_note:
-            "LOCKED to reference (do NOT change between halves): background, room/setting, overall lighting style and direction, body zone framing, general crop. ALLOWED to vary naturally between halves (this is REQUIRED to avoid a clinical clone look): head angle by a few degrees (small handheld variation), exact distance to camera (a few cm closer or further), how the hair falls (some strands repositioned), micro-expression. Think: same person took two selfies five seconds apart - not identical poses, but the room and lighting are the same.",
+          body_zone_focus: zone,
+          framing_and_crop: vision?.composition?.framing ?? "match the reference's framing and crop tightness",
+          camera_style: vision?.composition?.camera ?? "match the reference's camera angle style (e.g. 3-quarter profile, front-facing, macro closeup)",
+          note:
+            "The reference image is for BODY ZONE IDENTIFICATION and CROP-STYLE REFERENCE ONLY. Do NOT copy: the reference's background, the reference's lighting, the reference's room/setting, the reference's person. The generated photos are taken at least 60 days apart in the new person's own home environment - the two halves have DIFFERENT backgrounds and DIFFERENT lighting from each other and from the reference.",
         },
-        outfit_pair: {
-          before_half: beforeTop,
-          after_half: afterTop,
-          note: "Both tops are casual at-home wear in the same style - just different color/material. Both halves use lighting that matches the reference.",
+        before_half: {
+          outfit: beforeTop,
+          lighting: beforeLight,
+          head_position: beforeTilt,
+          skin_state: "more visible aging signs appropriate to the chosen intensity (see 'transformation' field)",
+          day_context: "this photo was taken on Day 0, before starting any skincare regime",
+        },
+        after_half: {
+          outfit: afterTop,
+          lighting: afterLight,
+          head_position: afterTilt,
+          skin_state: "improved skin (smoother, more even, healthier glow) per the chosen intensity",
+          day_context: "this photo was taken at least 60 days later, after the skincare regime - in a different room or at a different time of day from the 'before'",
         },
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: [
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          "REQUIRED variation between halves (to avoid the clinical clone look): head angle differs by 2-6 degrees, hair falls differently in a few strand positions, distance to camera shifts slightly, expression has a subtle micro-shift. The two halves are like two selfies the same person took within seconds, NOT a posed pair.",
-          "LOCKED across halves (must NOT change): background, room, general lighting style/direction, body zone framing, general crop. The reference image defines these.",
-          "Both halves must show the SAME new person - the randomized scandinavian woman in 'subject.demographic'. NOT the person in the reference. Identity is unmistakably the same in both halves.",
-          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These are different colors but both casual at-home style.`,
-          "FORBIDDEN: copying the reference person's face. FORBIDDEN: switching backgrounds between halves. FORBIDDEN: changing lighting style between halves. FORBIDDEN: introducing kitchen vs bathroom contrast or any environment shift.",
-          "FORBIDDEN: identical head angle between halves. FORBIDDEN: hair falling identically in both halves. FORBIDDEN: cloned/posed pair look. Each half must be its own distinct moment.",
+          "The reference image guides BODY ZONE and CROP ONLY. Do NOT copy the reference's background, lighting, room, or person.",
+          "Both halves must show the SAME new person - the randomized scandinavian woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
+          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These MUST be visibly different.`,
+          `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - the photos are 60+ days apart.`,
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. These MUST be slightly different angles.`,
+          "FORBIDDEN: copying the reference person's face. FORBIDDEN: matching the reference's background/lighting/room in the generated image.",
+          "FORBIDDEN: identical head angle, identical hair fall, identical outfit, identical lighting between halves. The two halves are from DIFFERENT DAYS, not the same session.",
           "FORBIDDEN: professional photoshoot look. FORBIDDEN: studio lighting. FORBIDDEN: magazine portrait quality. FORBIDDEN: glossy retouched stock photo look. FORBIDDEN: any sign of AI rendering polish or perfect symmetry.",
           "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
         ],
         instruction:
-          "Generate a single before/after split image that mirrors the structure of the reference image. Use the randomized scandinavian woman from 'subject.demographic' - NOT the reference person. Match the reference's background, lighting, framing, and crop. Both halves are a controlled pair, not 'photos from different days'. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a single before/after split image. The reference image tells you the body zone and crop style - use those. Then build two selfies of the randomized scandinavian woman, taken at least 60 days apart, in different backgrounds with different lighting, wearing different tops, with slightly different head angles. Same person, different days. ABSOLUTELY NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----
