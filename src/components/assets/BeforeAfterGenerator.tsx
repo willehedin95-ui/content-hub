@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Shuffle,
   Plus,
+  Copy,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,14 @@ interface Props {
 function demographicLine(d: Demographic): string {
   const accent = d.accent ? `, ${d.accent}` : "";
   return `${d.age} yrs, ${d.hair_color}, ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
+}
+
+function formatPrompt(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
 }
 
 export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = null }: Props) {
@@ -279,6 +288,14 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   }, [runGeneration, resolvedSourceUrl]);
 
   const [editInstructions, setEditInstructions] = useState("");
+  const [promptCopied, setPromptCopied] = useState(false);
+
+  const handleCopyPrompt = useCallback(() => {
+    if (!promptUsed) return;
+    void navigator.clipboard.writeText(formatPrompt(promptUsed));
+    setPromptCopied(true);
+    setTimeout(() => setPromptCopied(false), 1500);
+  }, [promptUsed]);
   const handleRetry = useCallback(async () => {
     if (!promptUsed) return;
     setRetrying(true);
@@ -695,6 +712,33 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
               </button>
             </div>
           </div>
+
+          {promptUsed && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Full prompt used</p>
+                <button
+                  onClick={handleCopyPrompt}
+                  className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  {promptCopied ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <pre className="text-[11px] text-gray-600 bg-gray-50 rounded-lg p-3 overflow-auto max-h-96 font-mono leading-relaxed whitespace-pre-wrap break-words">
+                {formatPrompt(promptUsed)}
+              </pre>
+            </div>
+          )}
 
           {showSaveModal && (
             <div
