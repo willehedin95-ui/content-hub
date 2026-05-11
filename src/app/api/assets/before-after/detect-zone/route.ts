@@ -15,6 +15,9 @@ const ZONE_KEYS = [
   "cheek_closeup",
   "arm_skin",
   "hands",
+  "hair_scalp",
+  "leg_thigh",
+  "chest_macro",
 ] as const;
 
 const SYSTEM_PROMPT = `You are a visual analyst. Given an image (typically a before/after pair showing a body zone), identify which body zone is the focus.
@@ -22,12 +25,15 @@ const SYSTEM_PROMPT = `You are a visual analyst. Given an image (typically a bef
 Pick the closest match from these keys:
 - full_face_front: full face front view
 - face_profile: 3-quarter or side profile of the face
-- eye_area: macro on one eye including crow's feet area
+- eye_area: macro on one eye including the area around it
 - forehead: tight crop on forehead between brows and hairline
-- neck_decolletage: neck and upper chest
+- neck_decolletage: neck and upper chest with chin/jaw visible
 - cheek_closeup: macro on cheek
-- arm_skin: arm skin texture
+- arm_skin: arm skin texture macro
 - hands: back of hand or wrist
+- hair_scalp: top-down or 3/4 view of the hair parting / scalp
+- leg_thigh: macro on the upper thigh or knee skin
+- chest_macro: macro on decolletage skin only, no face visible, top edge of clothing visible
 
 If none match well, return "other".
 

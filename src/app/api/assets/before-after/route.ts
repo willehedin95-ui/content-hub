@@ -22,21 +22,107 @@ const BODY_ZONE_PRESETS = {
   cheek_closeup: "Tight close-up on one cheek, lifestyle skincare-style framing (NOT a medical scan). Frame is tight enough that cheek skin fills most of the frame, showing natural skin texture and pores. The frame does not include: the eyes, the full mouth (maybe just the corner of the lips at one edge), chin, forehead, or the other side of the face. Perhaps the edge of the nose or a hint of the ear at one side. Casual phone-photo macro.",
   arm_skin: "Tight close-up on the skin of the upper arm or forearm. Frame shows skin texture filling most of the frame, with just a sliver of clothing edge or out-of-focus background at the frame edge. The frame does not include: the face, head, body, hand, or the full arm structure. Casual lifestyle macro.",
   hands: "Tight close-up on the back of one hand and lower wrist. Frame shows the hand from the wrist down through the fingers. The frame does not include: the face, body, or arm above the wrist. Casual lifestyle phone-photo framing.",
+  hair_scalp: "Tight close-up on the hair parting line, top-down or 3-quarter angle from above. Frame shows hair density at the central parting where the scalp is faintly visible between hair strands. Casual haircare close-up framing, NOT a medical scan, NOT a clinical hair examination. The frame does not include: the eyes, mouth, ears, full face. Maybe a hint of forehead at the bottom edge.",
+  leg_thigh: "Tight close-up on the upper thigh or knee skin, lifestyle skincare close-up framing (NOT a medical scan, NOT a full-body photo). Frame is tight enough that ONLY skin texture fills most of the frame. A sliver of light-colored shorts/leggings or out-of-focus background is visible at one edge of the frame to anchor casual context. The frame does not include: the face, body, or full leg - just a skin section.",
+  chest_macro: "Tight close-up on the upper decolletage area, lifestyle skincare close-up framing (NOT a medical scan). Frame shows skin texture from just above the collarbone down to where a thin v-neck or t-shirt edge is visible at the bottom. The frame does not include: the face, mouth, eyes, jaw, or any bare chest below the visible top edge. The top edge of clothing must be visible to anchor context.",
 } as const;
 
 type ZoneKey = keyof typeof BODY_ZONE_PRESETS;
 
-const AGE_RANGES = ["40-45", "46-50", "51-55", "56-60", "61-65"];
-const HAIR_COLORS = [
-  "natural blonde",
-  "dark blonde",
-  "light brown",
-  "brunette",
-  "salt-and-pepper",
-  "silver-grey",
-  "ash-blonde",
-  "warm honey blonde",
+const AGE_RANGES = [
+  "30-35",
+  "36-40",
+  "40-45",
+  "46-50",
+  "51-55",
+  "56-60",
+  "61-65",
+  "66-70",
+  "71-75",
 ];
+
+type Ethnicity =
+  | "scandinavian"
+  | "north_european"
+  | "mediterranean"
+  | "east_asian"
+  | "south_asian"
+  | "latin"
+  | "middle_eastern"
+  | "african";
+
+const ETHNICITY_PROFILES: Record<
+  Ethnicity,
+  {
+    label: string;
+    hair_colors: string[];
+    eye_colors: string[];
+    skin_tones: string[];
+  }
+> = {
+  scandinavian: {
+    label: "Scandinavian",
+    hair_colors: [
+      "natural blonde",
+      "dark blonde",
+      "light brown",
+      "brunette",
+      "salt-and-pepper",
+      "silver-grey",
+      "ash-blonde",
+      "warm honey blonde",
+    ],
+    eye_colors: ["blue", "blue-grey", "green", "hazel", "light brown"],
+    skin_tones: [
+      "fair scandinavian skin",
+      "light beige scandinavian skin",
+      "light pink-fair scandinavian skin",
+      "neutral fair scandinavian skin",
+    ],
+  },
+  north_european: {
+    label: "Northern European",
+    hair_colors: ["dark blonde", "light brown", "brunette", "auburn", "salt-and-pepper", "silver-grey"],
+    eye_colors: ["blue", "green", "hazel", "light brown", "grey-blue"],
+    skin_tones: ["fair European skin", "neutral fair skin", "light beige skin", "light cool-toned skin"],
+  },
+  mediterranean: {
+    label: "Mediterranean",
+    hair_colors: ["dark brown", "brunette", "black", "auburn", "salt-and-pepper"],
+    eye_colors: ["brown", "dark brown", "hazel", "green"],
+    skin_tones: ["warm olive skin", "light olive skin", "warm beige Mediterranean skin", "tan Mediterranean skin"],
+  },
+  east_asian: {
+    label: "East Asian",
+    hair_colors: ["black", "dark brown", "near-black brunette", "salt-and-pepper", "grey"],
+    eye_colors: ["dark brown", "brown", "near-black"],
+    skin_tones: ["warm beige East Asian skin", "light East Asian skin", "neutral fair East Asian skin", "warm porcelain skin"],
+  },
+  south_asian: {
+    label: "South Asian",
+    hair_colors: ["black", "dark brown", "near-black", "salt-and-pepper"],
+    eye_colors: ["dark brown", "brown", "near-black"],
+    skin_tones: ["warm golden South Asian skin", "medium tan South Asian skin", "warm beige South Asian skin"],
+  },
+  latin: {
+    label: "Latin / Hispanic",
+    hair_colors: ["dark brown", "brunette", "black", "warm brown", "salt-and-pepper"],
+    eye_colors: ["brown", "dark brown", "hazel"],
+    skin_tones: ["warm beige Latin skin", "tan Latin skin", "medium warm skin"],
+  },
+  middle_eastern: {
+    label: "Middle Eastern",
+    hair_colors: ["dark brown", "black", "near-black brunette", "salt-and-pepper"],
+    eye_colors: ["dark brown", "brown", "hazel"],
+    skin_tones: ["warm olive Middle Eastern skin", "medium golden skin", "warm beige skin"],
+  },
+  african: {
+    label: "African / African American",
+    hair_colors: ["black", "dark brown", "salt-and-pepper", "grey afro"],
+    eye_colors: ["dark brown", "brown", "near-black"],
+    skin_tones: ["warm deep brown skin", "medium-brown skin", "rich umber skin", "warm cocoa skin"],
+  },
+};
 const HAIR_STYLES = [
   "shoulder-length hair worn down with a slight wave",
   "long straight hair worn down",
@@ -45,13 +131,6 @@ const HAIR_STYLES = [
   "loose natural waves worn down",
   "hair pulled back simply behind the ears",
   "shoulder-length bob, slightly tousled",
-];
-const EYE_COLORS = ["blue", "blue-grey", "green", "hazel", "light brown"];
-const SKIN_TONES = [
-  "fair scandinavian skin",
-  "light beige scandinavian skin",
-  "light pink-fair scandinavian skin",
-  "neutral fair scandinavian skin",
 ];
 const ACCENTS: (string | null)[] = [
   null,
@@ -93,6 +172,7 @@ const HEAD_TILTS = [
   "head straight on with chin slightly lowered",
   "head straight on, very slightly closer to the camera",
   "head straight on, very slightly further from the camera",
+  "head turned very subtly in a 3-quarter angle (NEVER mirrored vs the other half - same direction)",
 ];
 
 function pick<T>(arr: readonly T[]): T {
@@ -109,6 +189,7 @@ function pickPair<T>(arr: readonly T[]): [T, T] {
 
 interface Demographic {
   age: string;
+  ethnicity: Ethnicity;
   hair_color: string;
   hair_style: string;
   eye_color: string;
@@ -116,20 +197,30 @@ interface Demographic {
   accent: string | null;
 }
 
-function randomDemographic(): Demographic {
+interface DemographicOverrides {
+  age?: string;
+  ethnicity?: Ethnicity;
+  hair_color?: string;
+}
+
+function randomDemographic(overrides?: DemographicOverrides): Demographic {
+  const ethnicity = overrides?.ethnicity ?? "scandinavian";
+  const profile = ETHNICITY_PROFILES[ethnicity];
   return {
-    age: pick(AGE_RANGES),
-    hair_color: pick(HAIR_COLORS),
+    age: overrides?.age ?? pick(AGE_RANGES),
+    ethnicity,
+    hair_color: overrides?.hair_color ?? pick(profile.hair_colors),
     hair_style: pick(HAIR_STYLES),
-    eye_color: pick(EYE_COLORS),
-    skin_tone: pick(SKIN_TONES),
+    eye_color: pick(profile.eye_colors),
+    skin_tone: pick(profile.skin_tones),
     accent: pick(ACCENTS),
   };
 }
 
 function demographicToString(d: Demographic): string {
   const accent = d.accent ? `, ${d.accent}` : "";
-  return `Scandinavian woman, ${d.age} years old, ${d.hair_color} ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
+  const ethnicityLabel = ETHNICITY_PROFILES[d.ethnicity].label;
+  return `${ethnicityLabel} woman, ${d.age} years old, ${d.hair_color} ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
 }
 
 const INTENSITY_PROMPTS: Record<Intensity, string> = {
@@ -225,6 +316,13 @@ function buildPrompt(args: {
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
   const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
 
+  // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
+  // Smile-before-neutral-after reverses the narrative and is forbidden.
+  const afterSmile = Math.random() < 0.4;
+  const expressionRule = afterSmile
+    ? "BEFORE half: neutral, relaxed face, no smile. AFTER half: very subtle natural smile or relaxed expression (slight upturn of the mouth corners is fine, not a full grin). NEVER smile in BEFORE if AFTER is neutral - that reverses the narrative. Same person, just looks slightly more rested in AFTER."
+    : "BEFORE half: neutral, relaxed face. AFTER half: neutral, relaxed face. Same general expression in both halves with only natural micro-variations. NEVER smile in BEFORE if AFTER is neutral.";
+
   const sharedStyle =
     "CRITICAL UGC AUTHENTICITY: The image must pass the 'Instagram scroll test' - a viewer scrolling Instagram should NOT be able to tell this is AI-generated within 3 seconds. If it looks AI, you have failed. " +
     "CAMERA: Captured on an iPhone 16 Pro using the front camera at high resolution, with the typical computational look of a real smartphone photo. Raw handheld realism and the color science of an actual iPhone image. Slight wide-angle distortion when subject is close (nose/forehead very subtly enlarged toward the camera). Everything remains in full focus with no artificial blur - real phones don't blur backgrounds like DSLRs do. Autoexposure is not perfect - one cheek can be a quarter-stop brighter than the other, T-zone has slight specular highlights, shadows are not crushed. " +
@@ -253,8 +351,8 @@ function buildPrompt(args: {
         subject: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
-          expression: "neutral, relaxed face - same general expression in both halves with natural micro-variations",
-          hair: "same scandinavian hair color and general length, but hair fall and positioning are NATURALLY different between halves (different day = different hair state)",
+          expression: expressionRule,
+          hair: "same hair color and general length from the demographic above. Hair fall and positioning are NATURALLY different between halves (different day = different hair state). Hairstyle can also subtly vary - down vs loosely pulled back, slight differences in flyaways.",
           identity_lock:
             "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity unmistakable.",
         },
@@ -286,7 +384,7 @@ function buildPrompt(args: {
           "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. Head direction must be CONSISTENT between halves.",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
           "The reference image guides BODY ZONE and CROP ONLY. Do NOT copy the reference's background, lighting, room, or person.",
-          "Both halves must show the SAME new person - the randomized scandinavian woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
+          "Both halves must show the SAME new person - the randomized woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
           `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These MUST be visibly different.`,
           `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - the photos are 60+ days apart.`,
           `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored.`,
@@ -311,7 +409,7 @@ function buildPrompt(args: {
         subject: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
-          expression: "neutral, relaxed face - same general expression in both halves (no need to vary the expression on purpose)",
+          expression: expressionRule,
           hair: "same hair color, same general hair style in both halves",
           identity_lock:
             "Both halves show the SAME person - same face structure, same eye color, same hair color, same age, same overall appearance. Identity must be unmistakable.",
@@ -375,12 +473,18 @@ export async function POST(req: NextRequest) {
     custom_zone,
     intensity = "moderate",
     notes,
+    ethnicity,
+    age,
+    hair_color,
   } = body as {
     image_url?: string;
     body_zone?: string;
     custom_zone?: string;
     intensity?: Intensity;
     notes?: string;
+    ethnicity?: string;
+    age?: string;
+    hair_color?: string;
   };
 
   if (!body_zone) {
@@ -389,6 +493,15 @@ export async function POST(req: NextRequest) {
   if (!["subtle", "moderate", "dramatic"].includes(intensity)) {
     return NextResponse.json({ error: "intensity must be subtle | moderate | dramatic" }, { status: 400 });
   }
+
+  const overrides: DemographicOverrides = {
+    age: age && AGE_RANGES.includes(age) ? age : undefined,
+    ethnicity:
+      ethnicity && ethnicity in ETHNICITY_PROFILES
+        ? (ethnicity as Ethnicity)
+        : undefined,
+    hair_color: hair_color?.trim() || undefined,
+  };
 
   const resolveZone = (zoneKey: string, custom?: string): string => {
     if (zoneKey === "other") {
@@ -444,7 +557,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const demographic = randomDemographic();
+      const demographic = randomDemographic(overrides);
       const resolvedZone = resolveZone(body_zone, custom_zone);
 
       const prompt = buildPrompt({

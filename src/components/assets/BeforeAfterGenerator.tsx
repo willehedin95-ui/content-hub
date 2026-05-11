@@ -25,6 +25,7 @@ type Intensity = "subtle" | "moderate" | "dramatic";
 
 interface Demographic {
   age: string;
+  ethnicity?: string;
   hair_color: string;
   hair_style: string;
   eye_color: string;
@@ -38,9 +39,12 @@ const BODY_ZONES: { value: string; label: string; image?: string }[] = [
   { value: "eye_area", label: "Eye area", image: "/images/body-zones/eye_area.webp" },
   { value: "forehead", label: "Forehead", image: "/images/body-zones/forehead.webp" },
   { value: "neck_decolletage", label: "Neck", image: "/images/body-zones/neck_decolletage.webp" },
+  { value: "chest_macro", label: "Chest", image: "/images/body-zones/chest_macro.webp" },
   { value: "cheek_closeup", label: "Cheek", image: "/images/body-zones/cheek_closeup.webp" },
   { value: "arm_skin", label: "Arm", image: "/images/body-zones/arm_skin.webp" },
+  { value: "leg_thigh", label: "Leg", image: "/images/body-zones/leg_thigh.webp" },
   { value: "hands", label: "Hands", image: "/images/body-zones/hands.webp" },
+  { value: "hair_scalp", label: "Hair", image: "/images/body-zones/hair_scalp.webp" },
   { value: "other", label: "Other" },
 ];
 
@@ -48,6 +52,30 @@ const INTENSITIES: { value: Intensity; label: string; description: string }[] = 
   { value: "subtle", label: "Subtle", description: "Marginal improvement, barely noticeable" },
   { value: "moderate", label: "Moderate", description: "Clear improvement, still realistic" },
   { value: "dramatic", label: "Dramatic", description: "Striking improvement, stops short of unreal" },
+];
+
+const AGE_OPTIONS = [
+  { value: "", label: "Random" },
+  { value: "30-35", label: "30-35" },
+  { value: "36-40", label: "36-40" },
+  { value: "40-45", label: "40-45" },
+  { value: "46-50", label: "46-50" },
+  { value: "51-55", label: "51-55" },
+  { value: "56-60", label: "56-60" },
+  { value: "61-65", label: "61-65" },
+  { value: "66-70", label: "66-70" },
+  { value: "71-75", label: "71-75" },
+];
+
+const ETHNICITY_OPTIONS = [
+  { value: "scandinavian", label: "Scandinavian (default)" },
+  { value: "north_european", label: "Northern European" },
+  { value: "mediterranean", label: "Mediterranean" },
+  { value: "east_asian", label: "East Asian" },
+  { value: "south_asian", label: "South Asian" },
+  { value: "latin", label: "Latin / Hispanic" },
+  { value: "middle_eastern", label: "Middle Eastern" },
+  { value: "african", label: "African / African American" },
 ];
 
 interface Props {
@@ -80,6 +108,9 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [customZone, setCustomZone] = useState("");
   const [intensity, setIntensity] = useState<Intensity>("moderate");
   const [notes, setNotes] = useState("");
+  const [age, setAge] = useState<string>("");
+  const [ethnicity, setEthnicity] = useState<string>("scandinavian");
+  const [hairColor, setHairColor] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusMessage, setStatusMessage] = useState("");
@@ -290,6 +321,9 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             custom_zone: bodyZone === "other" ? customZone.trim() : undefined,
             intensity,
             notes: notes.trim() || undefined,
+            age: age || undefined,
+            ethnicity: ethnicity || undefined,
+            hair_color: hairColor.trim() || undefined,
           }),
           signal: controller.signal,
         });
@@ -344,7 +378,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setPhase("upload");
       }
     },
-    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes]
+    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor]
   );
 
   const handleGenerate = useCallback(() => {
@@ -467,6 +501,9 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setCustomZone("");
     setIntensity("moderate");
     setNotes("");
+    setAge("");
+    setEthnicity("scandinavian");
+    setHairColor("");
     setError(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
@@ -663,6 +700,48 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
             />
           </div>
+
+          <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+            <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
+              Customize person <span className="text-gray-400 font-normal">(optional, defaults are random scandinavian)</span>
+            </summary>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Age</label>
+                <select
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                >
+                  {AGE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Ethnicity</label>
+                <select
+                  value={ethnicity}
+                  onChange={(e) => setEthnicity(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                >
+                  {ETHNICITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Hair color</label>
+                <input
+                  type="text"
+                  value={hairColor}
+                  onChange={(e) => setHairColor(e.target.value)}
+                  placeholder="Random"
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                />
+              </div>
+            </div>
+          </details>
 
           <button
             onClick={handleGenerate}
