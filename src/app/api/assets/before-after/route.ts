@@ -338,44 +338,39 @@ function buildPrompt(args: {
   const promptObj: Record<string, unknown> = hasSource
     ? {
         // ---- SOURCE-ANCHORED MODE ----
-        // Source provides body zone identification and crop style only.
-        // Halves vary in background/lighting/outfit/angle since they are
-        // "two selfies 60+ days apart".
+        // Source defines the PHOTOGRAPHIC STYLE: lighting, framing, expression,
+        // composition. The new person is in the same photographic style but is
+        // a DIFFERENT demographic from the source (user-picked or randomized).
         task: "generate_image",
         mode: "source_anchored_pair",
         zone_framing_priority:
           "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
         zone_framing: zone,
         format:
-          "Single image, side-by-side split. Two SEPARATE casual selfies the same person took at least 60 days apart - one on a tired day, one on a rested day. The reference image guides body zone identification and crop tightness only. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles - but always shot from the same side (no mirroring).",
+          "Single image, side-by-side split. The output reproduces the photographic style of the reference image (lighting, framing, expression, composition) using a DIFFERENT person. Both halves show the SAME body zone with the SAME tight crop matching the reference. The two halves match each other closely in lighting and framing - they look like back-to-back shots, only the skin condition and a subtle outfit shift differ.",
         subject: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
-          expression: expressionRule,
-          hair: "same hair color and general length from the demographic above. Hair fall and positioning are NATURALLY different between halves (different day = different hair state). Hairstyle can also subtly vary - down vs loosely pulled back, slight differences in flyaways.",
+          expression: vision?.composition
+            ? `Match the expression in the reference image closely. ${expressionRule}`
+            : expressionRule,
+          hair: "same hair color and general length from the demographic above in both halves. Hair fall and positioning are very similar between halves (these are back-to-back shots, not different days). Style of hair (down, up, etc.) should approximately match what is visible in the reference image.",
           identity_lock:
-            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity unmistakable.",
+            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity unmistakable. The person is DIFFERENT from the reference image's person (see 'demographic' for the new person's features).",
         },
         source_match: {
           body_zone_focus: zone,
-          framing_and_crop: vision?.composition?.framing ?? "match the reference's framing and crop tightness",
-          camera_style: vision?.composition?.camera ?? "match the reference's camera angle style (e.g. 3-quarter profile, front-facing, macro closeup)",
-          note:
-            "The reference image is for BODY ZONE IDENTIFICATION and CROP-STYLE REFERENCE ONLY. Do NOT copy: the reference's background, the reference's lighting, the reference's room/setting, the reference's person. The generated photos are taken at least 60 days apart in the new person's own home environment - the two halves have DIFFERENT backgrounds and DIFFERENT lighting from each other and from the reference.",
+          framing_and_crop: vision?.composition?.framing ?? "match the reference's framing and crop tightness exactly",
+          camera_style: vision?.composition?.camera ?? "match the reference's camera angle, distance, and perspective exactly",
+          lighting_style: vision?.composition?.lighting ?? "match the reference's lighting direction, quality, and color temperature closely - same general style (e.g. soft window light from left, warm tone) in both halves",
+          background: vision?.composition?.background ?? "use a similar background style to the reference (same general environment - bathroom, kitchen, bedroom, neutral wall - with similar overall feel). Both halves use a similar background to each other.",
+          critical_note:
+            "The reference image defines the photographic STYLE - lighting, framing, expression, composition, background style - for BOTH halves. The new person is a different demographic but is photographed in the same style as the reference. Both halves match each other closely in style; they are back-to-back shots of the new person in the same setting. Subtle outfit shift between halves is allowed; lighting and framing must stay consistent across the two halves and aligned with the reference.",
         },
-        before_half: {
-          outfit: beforeTop,
-          lighting: beforeLight,
-          head_position: beforeTilt,
-          skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
-          day_context: "this photo was taken on a tired day",
-        },
-        after_half: {
-          outfit: afterTop,
-          lighting: afterLight,
-          head_position: afterTilt,
-          skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
-          day_context: "this photo was taken weeks later on a rested day - in a different room or at a different time of day from the 'before'",
+        outfit_pair: {
+          before_half: beforeTop,
+          after_half: afterTop,
+          note: "Both tops are casual at-home wear in the same general style as the reference's outfit. Just different color/material between halves.",
         },
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
@@ -383,18 +378,19 @@ function buildPrompt(args: {
           "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP' the generated image must show ONLY that body part - no full face when a macro crop is specified. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
           "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. Head direction must be CONSISTENT between halves.",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          "The reference image guides BODY ZONE and CROP ONLY. Do NOT copy the reference's background, lighting, room, or person.",
-          "Both halves must show the SAME new person - the randomized woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
-          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These MUST be visibly different.`,
-          `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - the photos are 60+ days apart.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored.`,
-          "FORBIDDEN: copying the reference person's face. FORBIDDEN: matching the reference's background/lighting/room in the generated image.",
-          "FORBIDDEN: identical head angle, identical hair fall, identical outfit, identical lighting between halves. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+          "PHOTOGRAPHIC STYLE MATCH: the reference image defines lighting, framing, expression, and composition. The generated image must look photographically similar to the reference (same style of phone selfie, same kind of lighting direction and quality, same kind of crop and angle). The PERSON is different from the reference but is photographed in the same style.",
+          "DEMOGRAPHIC IS INDEPENDENT of the reference. Do NOT copy the reference person's face, age, hair color, ethnicity. The new person is described entirely in 'subject.demographic'. If the reference person is a 40-year-old blonde and 'subject.demographic' says 60-year-old brunette, use the 60-year-old brunette.",
+          "Both halves must show the SAME new person - the woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
+          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. Visibly different but both in the same general casual style as the reference's outfit.`,
+          "Lighting STAYS THE SAME between halves: do NOT shift lighting direction or color temperature between halves. Both halves use the same lighting style (matching the reference).",
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored. Both halves stay very close to the reference's pose.`,
+          "FORBIDDEN: copying the reference person's face/age/hair_color/ethnicity. FORBIDDEN: switching backgrounds or lighting style between halves. FORBIDDEN: deviating from the reference's framing/crop.",
+          "FORBIDDEN: identical head angle, identical hair fall, identical outfit between halves. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
           "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry.",
           "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
         ],
         instruction:
-          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took 60+ days apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. SECOND, match the reference image's photographic style: lighting direction/quality, framing, camera angle, expression, background. THIRD, use the new person from 'subject.demographic' - NOT the reference's person. Both halves match each other closely in style (back-to-back shots, not different days). Only outfit shifts subtly and skin condition differs per the transformation. ABSOLUTELY NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----

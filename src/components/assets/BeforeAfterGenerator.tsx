@@ -126,17 +126,14 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const detectAbortRef = useRef<AbortController | null>(null);
 
   const applyDetection = useCallback(
-    (json: { zone?: string | null; demographic?: { age?: string | null; ethnicity?: string | null; hair_color?: string | null } | null }) => {
+    (json: { zone?: string | null }) => {
       const zone = json.zone;
       if (zone && zone !== "other") {
         setBodyZone(zone);
       }
-      const d = json.demographic;
-      if (d) {
-        if (d.age) setAge(d.age);
-        if (d.ethnicity) setEthnicity(d.ethnicity);
-        if (d.hair_color) setHairColor(d.hair_color);
-      }
+      // Note: demographic is intentionally NOT auto-applied from source.
+      // The source defines the photographic style (lighting/framing/expression),
+      // not the person. Demographic comes from the user's overrides or randomization.
     },
     []
   );
