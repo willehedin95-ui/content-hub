@@ -337,65 +337,34 @@ function buildPrompt(args: {
 
   const promptObj: Record<string, unknown> = hasSource
     ? {
-        // ---- SOURCE-ANCHORED MODE ----
-        // Generate a NEAR-CLONE of the reference image: match everything
-        // (lighting, framing, expression, composition, background, outfit
-        // style, the before/after pair structure). Only difference: a subtly
-        // different person identity (in the same demographic ballpark by
-        // default, or user-specified if overrides provided) and small
-        // micro-variations so it is not an exact pixel copy.
+        // ---- PURE-CLONE SWIPE MODE ----
+        // Minimal prompt: delegate everything visual to the reference image
+        // itself. NO body zone preset, NO intensity template, NO outfit/
+        // lighting/angle randomization. The reference IS the spec.
         task: "generate_image",
-        mode: "near_clone_swipe",
-        zone_framing_priority:
-          "Match the reference image's framing/crop exactly. The body zone framing in 'zone_framing' is a fallback - the REFERENCE IMAGE itself is the primary visual template.",
-        zone_framing: zone,
-        format:
-          "Single image, side-by-side split that is a NEAR-CLONE of the reference image. Reproduce the reference's overall composition, framing, lighting, expression, background, and the structure of its before/after pair. The new person is technically different from the reference person but should look very similar (subtly different facial features, slightly different exact angle, slightly different outfit color). The viewer should feel 'this looks just like that other before/after I saw'.",
+        mode: "pure_clone_swipe",
+        instruction_priority:
+          "THE REFERENCE IMAGE IS THE COMPLETE VISUAL SPECIFICATION. Match it as closely as possible in EVERY visual aspect: composition, framing, crop tightness, camera angle, lighting direction and color, background, expression, outfit, the structure of the before/after pair, the skin-condition difference between the two halves. The reference image overrides any default body-zone or intensity assumptions - do NOT apply your own templates, READ the reference.",
         subject: {
           demographic: demographicToString(demographic),
-          body_zone_framing: zone,
-          expression: vision?.composition
-            ? `Match the expression(s) in the reference image very closely (same emotional tone, same mouth/eye relaxation). ${expressionRule}`
-            : expressionRule,
-          hair: "Hair color and length closely match the reference person's hair (unless the user has overridden hair_color in 'demographic'). Hair fall and positioning approximately match the reference, with only tiny natural differences.",
           identity_lock:
-            "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. The new person looks similar to the reference person but has subtly different facial features (different exact nose shape, different exact jaw, different exact eye spacing) so it's recognizably a different individual.",
+            "Both halves show the SAME new person. Face structure, hair color, eye color, age all consistent across both halves. The new person is DIFFERENT from the reference's person (subtly different facial features so it's clearly a different individual) but in the same general demographic ballpark as the reference UNLESS 'subject.demographic' specifies otherwise (then follow the demographic spec exactly even if it differs from the reference person).",
         },
-        clone_match: {
-          framing_and_crop: vision?.composition?.framing ?? "match the reference's framing and crop tightness exactly",
-          camera_style: vision?.composition?.camera ?? "match the reference's camera angle, distance, and perspective exactly",
-          lighting_style: vision?.composition?.lighting ?? "match the reference's lighting direction, quality, and color temperature exactly - same lighting in both halves of the generated image",
-          background: vision?.composition?.background ?? "match the reference's background closely - same type of environment, same color palette, same wall/surface style. Both halves use a similar background to each other (matching the reference).",
-          outfit_style: "Match the general outfit style visible in the reference (e.g. if reference shows a white robe/towel, use a similar white robe/towel). Allow subtle color or fabric variation between halves and from reference but stay in the same garment category.",
-          pair_structure: "If the reference image has TWO halves (a before/after pair), reproduce that exact structure: left half = before state, right half = after state, same orientation, same general composition for each half.",
-          critical_note:
-            "The reference image IS the template. The generated image should make a viewer go 'this looks just like that other B/A I saw'. Match everything visually. Only differences: a subtly different person identity (similar demographic, different exact face), tiny natural micro-variations (a few degrees angle, slight outfit color shift) so it's not an exact pixel-copy.",
-        },
-        outfit_pair: {
-          before_half: beforeTop,
-          after_half: afterTop,
-          note: "Tops should be in the same general style as the reference's outfit. Use these specific descriptors only if the reference is ambiguous about outfit; otherwise prefer matching the reference's actual outfit with subtle color variation.",
-        },
-        transformation: INTENSITY_PROMPTS[intensity],
+        skin_transition_match:
+          "Read the skin-condition difference shown between the reference's two halves and match THAT exact level. If the reference shows a subtle improvement, match subtle. If dramatic, match dramatic. Do NOT default to a fixed intensity level - the reference is the ground truth.",
         style: sharedStyle,
         hard_constraints: [
-          "NEAR-CLONE GOAL: the generated image should look almost identical to the reference image - same composition, same lighting, same framing, same expression, same background, same outfit style, same pair structure. Only the person's identity differs (subtly) and tiny natural variations exist (different exact angle, slight outfit color shift).",
-          "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          "DIFFERENT PERSON: do NOT generate an exact copy of the reference person's face. The new person is in the same demographic ballpark (same age range, same hair color and ethnicity from 'subject.demographic') but has subtly different facial features so a viewer can tell it's a different individual.",
-          "If 'subject.demographic' specifies a DIFFERENT age/ethnicity/hair_color from the reference person, follow 'subject.demographic'. The user's overrides take priority over the reference's demographic.",
-          "Both halves must show the SAME new person - the woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
-          "BACKGROUND: match the reference's background closely. SAME environment in both halves of the generated image.",
-          "LIGHTING: match the reference's lighting closely. SAME lighting style in both halves of the generated image.",
-          "FRAMING: match the reference's crop and framing exactly. SAME crop in both halves.",
-          `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. Subtle color shift only; both stay in the same general outfit style as the reference.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored. Pose closely matches the reference's pose in each corresponding half.`,
-          "NO MIRRORING between halves: if reference shows the right cheek, both halves show the right cheek - NEVER mirror-flip.",
-          "FORBIDDEN: generating an exact copy of the reference person's face. FORBIDDEN: deviating from the reference's composition/lighting/framing/background. FORBIDDEN: any sign that this is a completely fresh generation - it should feel like a near-clone of the reference.",
-          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image inherits the reference's realism level.",
-          "Both halves must have realistic un-retouched skin texture matching the reference's realism level. Skin condition differs only per the transformation intensity.",
+          "NEAR-CLONE GOAL: the generated image should look almost identical to the reference. Match composition, framing, crop, camera angle, lighting, background, expression, outfit, pair structure, and skin transition - all from reading the reference image.",
+          "NEVER render any text, labels, watermarks, captions, or overlays. The image must be completely free of text.",
+          "DIFFERENT PERSON: do NOT generate an exact copy of the reference person's face. The new person has subtly different facial features (different exact nose shape, jaw, eye spacing) so a viewer can tell it's a different individual.",
+          "If 'subject.demographic' specifies a DIFFERENT age/ethnicity/hair_color from the reference person, follow 'subject.demographic'. The user's demographic overrides take priority over the reference person's demographic.",
+          "Both halves must show the SAME new person.",
+          "DO NOT apply default body-zone framing templates. DO NOT apply default intensity-level templates. The reference image is the spec.",
+          "Tiny natural micro-variations allowed (a few degrees of head angle, slight outfit color shift, slight hair fall difference) so it's not a pixel-exact copy - but otherwise everything matches the reference.",
+          "NO MIRRORING between halves: if reference shows the right cheek in both halves, generated shows the right cheek in both halves - never mirror-flip.",
         ],
         instruction:
-          "Generate a single before/after split image that is a NEAR-CLONE of the reference image. Match the reference exactly in: composition, framing, crop, lighting, expression, background, outfit style, before/after pair structure. The PERSON is technically different (subtly different facial features) but in the same demographic ballpark as the reference (unless 'subject.demographic' specifies overrides, then follow those). Skin condition differs between halves per the transformation. Subtle micro-variations only so the result is not a pixel-exact copy. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a near-clone of the reference image with a different person from 'subject.demographic'. Match the reference visually in every aspect. Only differences: different exact facial features and tiny micro-variations. NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----
