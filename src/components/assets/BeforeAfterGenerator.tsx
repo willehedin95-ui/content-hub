@@ -88,9 +88,81 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [demographic, setDemographic] = useState<Demographic | null>(null);
   const [detectedZone, setDetectedZone] = useState<string | null>(null);
   const [resolvedSourceUrl, setResolvedSourceUrl] = useState<string | null>(null);
+  const [detectingZone, setDetectingZone] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [rerolling, setRerolling] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const detectAbortRef = useRef<AbortController | null>(null);
+
+  const detectZoneFromUrl = useCallback(async (imageUrl: string) => {
+    detectAbortRef.current?.abort();
+    const controller = new AbortController();
+    detectAbortRef.current = controller;
+
+    setDetectingZone(true);
+    try {
+      const res = await fetch("/api/assets/before-after/detect-zone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: imageUrl }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const zone = json.zone as string | null | undefined;
+      if (zone && zone !== "other") {
+        setBodyZone(zone);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Silent fail - user can still pick manually
+    } finally {
+      if (detectAbortRef.current === controller) {
+        setDetectingZone(false);
+      }
+    }
+  }, []);
+
+  const uploadAndDetect = useCallback(async (file: File) => {
+    detectAbortRef.current?.abort();
+    const controller = new AbortController();
+    detectAbortRef.current = controller;
+
+    setDetectingZone(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await fetch("/api/upload-temp", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      if (!uploadRes.ok) return;
+      const { url } = await uploadRes.json();
+      setResolvedSourceUrl(url);
+
+      // Now run detection with the uploaded URL
+      const detectRes = await fetch("/api/assets/before-after/detect-zone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: url }),
+        signal: controller.signal,
+      });
+      if (!detectRes.ok) return;
+      const json = await detectRes.json();
+      const zone = json.zone as string | null | undefined;
+      if (zone && zone !== "other") {
+        setBodyZone(zone);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Silent fail
+    } finally {
+      if (detectAbortRef.current === controller) {
+        setDetectingZone(false);
+      }
+    }
+  }, []);
 
   const handleFileSelect = useCallback((file: File) => {
     setError(null);
@@ -103,7 +175,9 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSourceFile(file);
     setSourceUrl(url);
     setUrlInput("");
-  }, []);
+    setResolvedSourceUrl(null);
+    void uploadAndDetect(file);
+  }, [uploadAndDetect]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -127,9 +201,12 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       return;
     }
     setError(null);
-    setSourceUrl(urlInput.trim());
+    const url = urlInput.trim();
+    setSourceUrl(url);
     setSourceFile(null);
-  }, [urlInput]);
+    setResolvedSourceUrl(url);
+    void detectZoneFromUrl(url);
+  }, [urlInput, detectZoneFromUrl]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLInputElement>) => {
@@ -180,7 +257,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       setDetectedZone(null);
 
       try {
-        let imageUrl: string | null = overrides?.reuseSourceUrl ?? null;
+        let imageUrl: string | null = overrides?.reuseSourceUrl ?? resolvedSourceUrl ?? null;
 
         if (!imageUrl && sourceFile && !sourceUrl?.startsWith("http")) {
           setPhase("uploading");
@@ -488,7 +565,15 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Body zone</label>
+            <div className="flex items-center gap-2 mb-1.5">
+              <label className="block text-xs font-medium text-gray-700">Body zone</label>
+              {detectingZone && (
+                <span className="flex items-center gap-1 text-xs text-indigo-600">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Detecting from source...
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {BODY_ZONES.map((z) => {
                 const isActive = bodyZone === z.value;
