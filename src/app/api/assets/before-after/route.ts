@@ -226,7 +226,13 @@ function buildPrompt(args: {
   const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
 
   const sharedStyle =
-    "CRITICAL UGC AUTHENTICITY RULES: Both halves MUST look like real photos captured on an iPhone 16 Pro with the typical computational look of an actual smartphone photo. Preserve raw handheld realism and iPhone color science (slight HDR processing, natural color reproduction, occasional minor over-sharpening on edges). Skin in BOTH halves must show fully realistic texture: visible pores on cheeks/nose/forehead, faint natural redness, slight T-zone or forehead shine, soft under-eye detail, micro-imperfections like a small blemish, an uneven freckle, or a stray hair. Hair has natural flyaways and slight imperfect fall - not styled. Composition feels casual and unstaged: subtly off-center framing, slightly imperfect autofocus where it would naturally occur. Absolutely NO cosmetic smoothing, NO beauty filter, NO retouching, NO artificial bokeh, NO professional studio lighting, NO magazine-portrait polish. The 'after' improvement is real skincare results over time - NOT plastic surgery, NOT cosmetic procedures, NOT a filter, NOT digital retouching.";
+    "CRITICAL UGC AUTHENTICITY: The image must pass the 'Instagram scroll test' - a viewer scrolling Instagram should NOT be able to tell this is AI-generated within 3 seconds. If it looks like a generated image, you have failed. " +
+    "Camera: iPhone 16 Pro front-facing camera, handheld at arm's length. iPhone color science (slight HDR, natural saturation, occasional minor edge sharpening). Slight wide-angle distortion when subject is close (nose/forehead very subtly enlarged toward the camera). Autoexposure is NOT perfect - one cheek can be a quarter-stop brighter than the other, T-zone has slight specular highlights, shadows are not crushed. " +
+    "Skin (BOTH halves): visible pore structure especially on the nose and cheeks, faint natural redness around nostrils/cheeks, slight T-zone or forehead shine, soft under-eye detail with natural blue undertone, occasional small visible blemish, faint freckle, or stray vellus hair. Skin is asymmetric - the face is NOT perfectly symmetric, one eye is slightly different from the other, one nostril is slightly different shape, one ear is slightly more visible. " +
+    "Hair: natural flyaways, slight imperfect fall - NOT styled, NOT brushed perfectly, NOT smoothed. A few strands cross the face or stick out at the temples. " +
+    "Composition is casual and unstaged: head NOT perfectly centered, framing slightly off, slight imperfect autofocus possible at edges. NO ring light, NO studio lighting, NO controlled backdrop, NO professional setup. " +
+    "FORBIDDEN: any sign of beauty filter, cosmetic smoothing, retouching, AI rendering polish, perfect symmetry, magazine portrait look, glossy stock photo feel. " +
+    "The 'after' improvement is real skincare results - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
 
   const promptObj: Record<string, unknown> = hasSource
     ? {
@@ -240,18 +246,18 @@ function buildPrompt(args: {
         subject: {
           demographic: demographicToString(demographic),
           body_zone: zone,
-          expression: "neutral, relaxed - matching the expression in the reference image",
-          hair: "scandinavian hair as per demographic, falling naturally - match the general hair length and style of the reference person but in the new demographic's color",
+          expression: "neutral, relaxed - similar general expression in both halves but with natural micro-variations (a tiny shift in the mouth, slightly different eye relaxation - NOT identical poses)",
+          hair: "scandinavian hair as per demographic, falling naturally. Same color and general length/style in both halves, BUT the hair falls slightly differently - a few strands repositioned, one half might have a stray hair across the temple that the other doesn't. NOT identical.",
           identity_lock:
             "Both halves show the SAME new person - same face structure, same eye color, same hair color, same age. Identity must be unmistakable.",
         },
         source_match: {
-          camera: vision?.composition?.camera ?? "match the reference's camera angle exactly",
-          framing: vision?.composition?.framing ?? "match the reference's framing and crop exactly",
-          lighting: vision?.composition?.lighting ?? "match the reference's lighting exactly",
-          background: vision?.composition?.background ?? "match the reference's background exactly",
+          camera: vision?.composition?.camera ?? "match the reference's camera angle and distance",
+          framing: vision?.composition?.framing ?? "match the reference's framing and crop",
+          lighting: vision?.composition?.lighting ?? "match the reference's general lighting style",
+          background: vision?.composition?.background ?? "match the reference's background",
           critical_note:
-            "BOTH halves use the SAME camera angle, SAME background, SAME lighting, SAME crop - matching the reference image. The two halves are NOT 'photos taken on different days' - they are a CONTROLLED PAIR that mirrors the reference structure. Variation between halves: only skin condition (per intensity) and a subtle outfit/top change. Do NOT introduce big lighting changes, do NOT change the background between halves, do NOT shift to a different room.",
+            "LOCKED to reference (do NOT change between halves): background, room/setting, overall lighting style and direction, body zone framing, general crop. ALLOWED to vary naturally between halves (this is REQUIRED to avoid a clinical clone look): head angle by a few degrees (small handheld variation), exact distance to camera (a few cm closer or further), how the hair falls (some strands repositioned), micro-expression. Think: same person took two selfies five seconds apart - not identical poses, but the room and lighting are the same.",
         },
         outfit_pair: {
           before_half: beforeTop,
@@ -262,11 +268,13 @@ function buildPrompt(args: {
         style: sharedStyle,
         hard_constraints: [
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          "STRONG ANCHOR: The reference image's background, lighting, crop, camera angle, and body zone framing MUST be matched closely. Do NOT switch backgrounds between halves. Do NOT shift lighting style between halves. The reference defines the visual template.",
+          "REQUIRED variation between halves (to avoid the clinical clone look): head angle differs by 2-6 degrees, hair falls differently in a few strand positions, distance to camera shifts slightly, expression has a subtle micro-shift. The two halves are like two selfies the same person took within seconds, NOT a posed pair.",
+          "LOCKED across halves (must NOT change): background, room, general lighting style/direction, body zone framing, general crop. The reference image defines these.",
           "Both halves must show the SAME new person - the randomized scandinavian woman in 'subject.demographic'. NOT the person in the reference. Identity is unmistakably the same in both halves.",
           `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These are different colors but both casual at-home style.`,
           "FORBIDDEN: copying the reference person's face. FORBIDDEN: switching backgrounds between halves. FORBIDDEN: changing lighting style between halves. FORBIDDEN: introducing kitchen vs bathroom contrast or any environment shift.",
-          "FORBIDDEN: professional photoshoot look. FORBIDDEN: studio lighting. FORBIDDEN: magazine portrait quality. FORBIDDEN: glossy retouched stock photo look.",
+          "FORBIDDEN: identical head angle between halves. FORBIDDEN: hair falling identically in both halves. FORBIDDEN: cloned/posed pair look. Each half must be its own distinct moment.",
+          "FORBIDDEN: professional photoshoot look. FORBIDDEN: studio lighting. FORBIDDEN: magazine portrait quality. FORBIDDEN: glossy retouched stock photo look. FORBIDDEN: any sign of AI rendering polish or perfect symmetry.",
           "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
         ],
         instruction:
