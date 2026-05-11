@@ -8,8 +8,9 @@ import AssetGrid from "./AssetGrid";
 import UrlImportModal from "./UrlImportModal";
 import VideoSwiper from "./VideoSwiper";
 import ImageSwiper from "./ImageSwiper";
+import BeforeAfterGenerator from "./BeforeAfterGenerator";
 
-const VALID_VIEWS: AssetView[] = ["images", "videos", "swipe-image", "swipe-video"];
+const VALID_VIEWS: AssetView[] = ["images", "videos", "swipe-image", "swipe-video", "before-after"];
 
 interface Props {
   initialAssets: Asset[];
@@ -83,6 +84,12 @@ function AssetManagerInner({ initialAssets }: Props) {
           )}
           {activeView === "swipe-video" && (
             <VideoSwiper />
+          )}
+          {activeView === "before-after" && (
+            <BeforeAfterGenerator
+              onAssetCreated={(asset) => setAssets(prev => [asset, ...prev])}
+              defaultProduct={activeProduct !== "all" && activeProduct !== "general" ? activeProduct : null}
+            />
           )}
         </div>
       </div>
