@@ -14,14 +14,14 @@ const POLL_TIMEOUT_MS = 720_000;
 type Intensity = "subtle" | "moderate" | "dramatic";
 
 const BODY_ZONE_PRESETS = {
-  full_face_front: "Full face, front view, tight portrait crop showing the face from chin to forehead, both eyes visible",
-  face_profile: "Face in 3-quarter or side profile view, showing one cheek, jawline, and partial nose, tight crop",
-  eye_area: "Tight macro crop on one eye and the surrounding area including crow's feet, under-eye, and outer brow",
-  forehead: "Tight crop on forehead between the brows and the hairline, showing forehead lines",
-  neck_decolletage: "Tight crop on the neck and upper decolletage from jaw to collarbone, showing neck skin texture",
-  cheek_closeup: "Macro-style closeup on one cheek showing pores, skin texture, and fine lines",
-  arm_skin: "Closeup of upper arm or forearm skin showing texture, slight cellulite, or skin tone variation",
-  hands: "Closeup of the back of one hand and lower wrist, showing hand skin texture and veins",
+  full_face_front: "Tight portrait crop, full face front view. Frame from just below the chin to just above the hairline, both eyes visible, head fills most of the frame. Shoulders may peek in at the bottom edge.",
+  face_profile: "Tight 3-quarter or side profile crop. Frame from chin to forehead, showing one cheek and jawline prominently, partial nose, one ear may peek in. Head fills most of the frame.",
+  eye_area: "EXTREME MACRO CROP. Frame is very tight - ONLY one eye area is in frame: the eye itself, upper lid, lower lid with any crow's feet, outer brow tip, and just the edge of the nose bridge at one side. The frame MUST NOT include: the mouth, chin, jaw, ear, hairline, or the forehead beyond the immediate brow area. Roughly 1/8th the size of a full-face shot.",
+  forehead: "EXTREME MACRO CROP on the forehead. Frame shows ONLY the area from the upper edge of the brows up to the hairline. The frame MUST NOT include: the full eyes (only the very top of the brows is visible at the bottom edge), mouth, chin, jaw, cheeks, nose. Glasses frame may sometimes be visible at the bottom edge. A thin horizontal slice, roughly 1/6th the size of a full-face shot.",
+  neck_decolletage: "TIGHT MACRO CROP on the neck and upper decolletage. Frame shows ONLY the neck (from just below the chin/jawline), the throat, and the upper chest down to the collarbone or hint of a thin top strap. The frame MUST NOT include: the full face, mouth, eyes, nose. The chin may barely peek in at the very top edge but the rest of the face is cropped out.",
+  cheek_closeup: "EXTREME MACRO CROP on one cheek. Frame is so tight that ONLY cheek skin fills most of the frame - showing pores, skin texture, fine lines, and natural skin variation. The frame MUST NOT include: the eyes, the full mouth (maybe just the corner of the lips at one edge), chin, forehead, or the other side of the face. Perhaps the edge of the nose or a hint of the ear at one side. Roughly 1/10th the size of a full-face shot.",
+  arm_skin: "TIGHT MACRO CROP on the skin of the upper arm or forearm. Frame shows ONLY skin texture filling most of the frame - with just a sliver of clothing edge or out-of-focus background at the frame edge. The frame MUST NOT include: the face, head, body, hand, or the full arm structure. Just a skin section.",
+  hands: "TIGHT MACRO CROP on the back of one hand and lower wrist. Frame shows ONLY the hand from the wrist down through the fingers. The frame MUST NOT include: the face, body, or arm above the wrist. Just the hand filling most of the frame.",
 } as const;
 
 type ZoneKey = keyof typeof BODY_ZONE_PRESETS;
@@ -89,10 +89,10 @@ const LIGHTING_VARIANTS = [
 
 const HEAD_TILTS = [
   "head straight on, neutral tilt",
-  "head very slightly tilted to the left, by a few degrees",
-  "head very slightly tilted to the right, by a few degrees",
   "head straight on with chin slightly raised",
   "head straight on with chin slightly lowered",
+  "head straight on, very slightly closer to the camera",
+  "head straight on, very slightly further from the camera",
 ];
 
 function pick<T>(arr: readonly T[]): T {
@@ -245,11 +245,14 @@ function buildPrompt(args: {
         // "two selfies 60+ days apart".
         task: "generate_image",
         mode: "source_anchored_pair",
+        zone_framing_priority:
+          "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
+        zone_framing: zone,
         format:
-          "Single image, side-by-side split. Two SEPARATE selfies the same person took at least 60 days apart - one before starting a skincare regime, one after. The reference image guides body zone identification and crop tightness only. The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles.",
+          "Single image, side-by-side split. Two SEPARATE selfies the same person took at least 60 days apart - one before starting a skincare regime, one after. The reference image guides body zone identification and crop tightness only. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The TWO halves are NOT taken in the same session - they have different lighting, different backgrounds, different outfits, different head angles - but always shot from the same side (no mirroring).",
         subject: {
           demographic: demographicToString(demographic),
-          body_zone: zone,
+          body_zone_framing: zone,
           expression: "neutral, relaxed face - same general expression in both halves with natural micro-variations",
           hair: "same scandinavian hair color and general length, but hair fall and positioning are NATURALLY different between halves (different day = different hair state)",
           identity_lock:
@@ -279,30 +282,35 @@ function buildPrompt(args: {
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: [
+          "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP' the generated image must show ONLY that body part - no full face when a macro crop is specified. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
+          "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. Head direction must be CONSISTENT between halves.",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
           "The reference image guides BODY ZONE and CROP ONLY. Do NOT copy the reference's background, lighting, room, or person.",
           "Both halves must show the SAME new person - the randomized scandinavian woman in 'subject.demographic'. Identity is unmistakably the same in both halves.",
           `BEFORE half top: ${beforeTop}. AFTER half top: ${afterTop}. These MUST be visibly different.`,
           `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - the photos are 60+ days apart.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. These MUST be slightly different angles.`,
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored.`,
           "FORBIDDEN: copying the reference person's face. FORBIDDEN: matching the reference's background/lighting/room in the generated image.",
-          "FORBIDDEN: identical head angle, identical hair fall, identical outfit, identical lighting between halves. The two halves are from DIFFERENT DAYS, not the same session.",
-          "FORBIDDEN: professional photoshoot look. FORBIDDEN: studio lighting. FORBIDDEN: magazine portrait quality. FORBIDDEN: glossy retouched stock photo look. FORBIDDEN: any sign of AI rendering polish or perfect symmetry.",
+          "FORBIDDEN: identical head angle, identical hair fall, identical outfit, identical lighting between halves. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry.",
           "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
         ],
         instruction:
-          "Generate a single before/after split image. The reference image tells you the body zone and crop style - use those. Then build two selfies of the randomized scandinavian woman, taken at least 60 days apart, in different backgrounds with different lighting, wearing different tops, with slightly different head angles. Same person, different days. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took 60+ days apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
       }
     : {
         // ---- FREE MODE ----
         // No source. Generate from scratch as two selfies on different days.
         task: "generate_image",
         mode: "different_days",
+        zone_framing_priority:
+          "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
+        zone_framing: zone,
         format:
-          "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo. These are TWO SEPARATE photos of the same person taken on different days - NOT two halves of one studio session.",
+          "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo. These are TWO SEPARATE photos of the same person taken on different days - NOT two halves of one studio session.",
         subject: {
           demographic: demographicToString(demographic),
-          body_zone: zone,
+          body_zone_framing: zone,
           expression: "neutral, relaxed face - same general expression in both halves (no need to vary the expression on purpose)",
           hair: "same hair color, same general hair style in both halves",
           identity_lock:
@@ -332,17 +340,19 @@ function buildPrompt(args: {
         transformation: INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: [
+          "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
+          "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. If 'before' faces slightly right, 'after' also faces slightly right. Head direction must be CONSISTENT between halves.",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
           `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
           `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. These MUST be slightly different angles.`,
-          "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, lighting, angle) differ.",
-          "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical head angle. FORBIDDEN: anything that makes this look like a clinical or studio shoot.",
-          "FORBIDDEN: professional photoshoot look. FORBIDDEN: studio lighting. FORBIDDEN: magazine portrait quality. FORBIDDEN: AI-rendered marketing image feel. FORBIDDEN: glossy retouched stock photo look. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored.`,
+          "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, lighting, micro-angle) differ.",
+          "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
           "Both halves must have realistic un-retouched skin texture - the 'before' has more visible aging signs, the 'after' has fewer. Both look like real phone-camera skin with all its natural imperfections preserved.",
         ],
         instruction:
-          "Generate a single before/after split image. The before-half and after-half are TWO SEPARATE photos of the same scandinavian woman taken weeks apart. Use the explicit per-half outfit, lighting, and head-angle specs - they MUST be visibly different between the halves. Same person, different days, different shirts, different light. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
       };
 
   if (notes) {
