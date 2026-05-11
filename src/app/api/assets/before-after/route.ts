@@ -189,31 +189,33 @@ function buildPrompt(args: {
     subject: {
       demographic: demographicToString(demographic),
       body_zone: zone,
-      expression: "neutral, relaxed face",
+      expression: "neutral, relaxed face - same general expression in both halves (no need to vary the expression on purpose)",
+      hair: "same hair color, same general hair style in both halves (no need to vary the hair on purpose)",
       identity_lock:
-        "BOTH halves must show the EXACT SAME person - identical face shape, hair color, hair style, eye color, age. ONLY the skin condition differs between halves.",
+        "Both halves show the SAME person - same face structure, same eye color, same hair color, same age, same overall appearance. Identity must be unmistakable - this is one person photographed on two different occasions.",
     },
     composition: {
-      camera: vision?.composition?.camera ?? "natural smartphone angle, eye-level or very slightly above, casual unstaged framing",
+      camera: vision?.composition?.camera ?? "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
       framing: vision?.composition?.framing ?? "tight zone-appropriate crop",
       lighting: vision?.composition?.lighting ?? "natural soft ambient light from a window or open room, no studio setup, no harsh shadows",
       background: vision?.composition?.background ?? "neutral home environment, plain wall or soft out-of-focus interior",
-      composition_lock:
-        "Camera angle, framing, lighting, and background must be IDENTICAL between the two halves.",
+      realism_note:
+        "The two halves should look like two SEPARATE selfies the same person took on DIFFERENT DAYS - NOT a controlled side-by-side B/A shoot in a clinic or studio. Body zone, framing, hair, and expression stay similar between halves. But these natural variations are expected and desired: slightly different head angle (small handheld phone variation), slightly different lighting (different time of day or a different room), and a clearly different top or shirt (the photos were taken days or weeks apart, not in the same session). The background can be the same room or a different room in the same home. The overall feel is two casual phone selfies posted in a real customer testimonial.",
     },
     transformation: INTENSITY_PROMPTS[intensity],
     style:
       "Realistic smartphone-quality photo (iPhone-style), authentic UGC feel. Visible pores, natural skin texture, real imperfections in BOTH halves. NO airbrushing, NO unrealistic smoothing, NO filters, NO beauty mode. The 'after' improvement must look like collagen or skincare results over time - NOT plastic surgery, NOT cosmetic procedures, NOT digital retouching.",
     hard_constraints: [
       "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-      "Both halves must show the same person - same face, same hair, same age. Only skin condition differs.",
+      "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, slight angle, slight lighting) differ.",
+      "AVOID: identical clothing in both halves. AVOID: identical lighting between halves. AVOID: identical angle/tilt between halves. AVOID: anything that makes this look like a controlled clinical or studio shoot.",
       hasSource
-        ? "A reference image is provided. Use it ONLY for composition, crop, lighting, and background. The PERSON in the generated image must be the randomized scandinavian woman described in 'subject.demographic', NOT the person in the reference image. Do NOT copy the reference person's face."
+        ? "A reference image is provided. Use it ONLY for composition, crop, general lighting style, and background. The PERSON in the generated image must be the randomized scandinavian woman described in 'subject.demographic', NOT the person in the reference image. Do NOT copy the reference person's face."
         : "No reference image is provided. Build the scene from the subject and composition specs.",
       "Both halves must have the same realistic skin texture - the 'before' has more visible aging signs appropriate to the intensity level, the 'after' has fewer. Both look like real un-retouched skin.",
     ],
     instruction:
-      "Generate a clean before/after split image with the randomized scandinavian woman in the specified body zone, showing the specified intensity of skin improvement. ABSOLUTELY NO TEXT IN THE IMAGE.",
+      "Generate a clean before/after split image with the randomized scandinavian woman in the specified body zone, showing the specified intensity of skin improvement. The two halves should feel like two casual selfies taken on different days, NOT a clinical side-by-side. ABSOLUTELY NO TEXT IN THE IMAGE.",
   };
 
   if (notes) {
