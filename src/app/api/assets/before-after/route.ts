@@ -302,6 +302,62 @@ Return ONLY JSON in this exact shape (no markdown fences, no commentary):
   };
 }
 
+function buildSwipePromptFromSpec(args: {
+  spec: Record<string, unknown>;
+  overrides: DemographicOverrides;
+  notes?: string;
+}): string {
+  // Deep-clone the spec so we don't mutate caller's object.
+  const spec = JSON.parse(JSON.stringify(args.spec)) as Record<string, unknown>;
+  const subject = (spec.subject as Record<string, unknown>) ?? {};
+
+  // Force the model to generate a DIFFERENT person while preserving everything
+  // else from the spec. The reference image will be passed as a visual ref.
+  subject.face = {
+    preserve_original: false,
+    note:
+      "Generate a person with subtly different facial features from the reference - different exact nose shape, different jaw, different eye spacing - so a viewer can tell it is a different individual, but stay in the same demographic ballpark as described in 'description' (unless overridden below).",
+  };
+
+  // Apply user overrides to the spec's subject if provided.
+  if (args.overrides.age) {
+    subject.age_override = args.overrides.age;
+    subject.description = `${(subject.description as string) || ""} (USER OVERRIDE: age range ${args.overrides.age})`.trim();
+  }
+  if (args.overrides.ethnicity) {
+    const label = ETHNICITY_PROFILES[args.overrides.ethnicity].label;
+    subject.ethnicity_override = label;
+    subject.description = `${(subject.description as string) || ""} (USER OVERRIDE: ethnicity ${label})`.trim();
+  }
+  if (args.overrides.hair_color) {
+    const hair = (subject.hair as Record<string, unknown>) ?? {};
+    hair.color = args.overrides.hair_color;
+    subject.hair = hair;
+  }
+  spec.subject = subject;
+
+  // Apply user notes as an additional instruction layer.
+  if (args.notes) {
+    spec.user_notes = args.notes;
+  }
+
+  // Add task + identity_lock + minimal hard constraints around the spec.
+  spec.task = "generate_image";
+  spec.mode = "spec_clone";
+  spec.identity_lock =
+    "Both halves of the split image show the SAME new person (same face, same hair, same age, same outfit). Only skin condition differs per pair_structure.";
+  spec.hard_constraints = [
+    "NO text, labels, watermarks, captions, or overlays anywhere in the image.",
+    "Generate a person with subtly different facial features from the reference. Stay in the same demographic ballpark unless a USER OVERRIDE is specified in subject (then follow the override).",
+    "Both halves of the before/after split show the SAME new person.",
+    "Match the reference image's framing, crop, composition, background, lighting, outfit, and overall photographic style exactly per the photography/background sections above.",
+    "Match the source's skin transition intensity (see pair_structure.transition_intensity) - do not invent a different intensity level.",
+    "No mirroring between halves.",
+  ];
+
+  return JSON.stringify(spec);
+}
+
 function buildPrompt(args: {
   zone: string;
   demographic: Demographic;
@@ -436,6 +492,7 @@ export async function POST(req: NextRequest) {
     age,
     hair_color,
     source_demographic,
+    source_spec,
   } = body as {
     image_url?: string;
     body_zone?: string;
@@ -450,6 +507,7 @@ export async function POST(req: NextRequest) {
       ethnicity?: string | null;
       hair_color?: string | null;
     } | null;
+    source_spec?: Record<string, unknown> | null;
   };
 
   if (!body_zone) {
@@ -539,14 +597,23 @@ export async function POST(req: NextRequest) {
       const demographic = randomDemographic(overrides);
       const resolvedZone = resolveZone(body_zone, custom_zone);
 
-      const prompt = buildPrompt({
-        zone: resolvedZone,
-        demographic,
-        intensity,
-        vision,
-        hasSource: Boolean(image_url),
-        notes,
-      });
+      // If source_spec is provided (swipe mode), use it directly as the
+      // Nano Banana prompt with face.preserve_original = false + user
+      // overrides applied. Otherwise fall back to the templated builder.
+      const prompt = source_spec
+        ? buildSwipePromptFromSpec({
+            spec: source_spec,
+            overrides,
+            notes,
+          })
+        : buildPrompt({
+            zone: resolvedZone,
+            demographic,
+            intensity,
+            vision,
+            hasSource: Boolean(image_url),
+            notes,
+          });
 
       await emit({
         step: "generating",
