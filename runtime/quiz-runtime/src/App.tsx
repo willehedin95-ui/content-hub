@@ -170,11 +170,35 @@ export function App({ data, settings, config }: AppProps) {
       const goto = params.get("goto");
       if (goto && goto.trim()) {
         const keyword = goto.trim().toLowerCase();
-        const match = Object.values(data.nodes).find(
-          (n) => n.kind === "step" && (n.name ?? "").toLowerCase().includes(keyword),
+        // Prefer exact (case-insensitive) name match so test URLs can target
+        // variant siblings unambiguously (e.g. "Offer page" vs "Offer page
+        // (B variant)" - includes() would match both, find() returns first).
+        // Fall back to includes() for partial keywords like "offer" / "block 9".
+        const steps = Object.values(data.nodes).filter((n) => n.kind === "step");
+        const exactMatch = steps.find(
+          (n) => (n.name ?? "").toLowerCase() === keyword,
         );
+        const match =
+          exactMatch ??
+          steps.find((n) => (n.name ?? "").toLowerCase().includes(keyword));
         if (match) {
           firstNode = match;
+          // Force variant assignment so the matched variant is what renders
+          // even if localStorage has the user assigned to a sibling. Necessary
+          // because resolveNode() swaps any variantGroupId node to whatever
+          // variantAssignments says, so without this override the goto-target
+          // is silently replaced. Persist to localStorage so the assignment
+          // sticks for the rest of the session.
+          if (match.kind === "step" && match.variantGroupId) {
+            assignments[match.variantGroupId] = match.id;
+            setVariantAssignments({ ...assignments });
+            try {
+              localStorage.setItem(
+                `quiz_${config.quizId}_vg_${match.variantGroupId}`,
+                match.id,
+              );
+            } catch { /* swallow */ }
+          }
           // Förfyll vanliga variabler så {name}/{breed}/etc interpolerar.
           // Override per param: ?vars=name:Bella,breed:Tax
           const defaults: Record<string, string> = {
