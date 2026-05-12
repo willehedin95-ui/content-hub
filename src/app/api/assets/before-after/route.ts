@@ -166,14 +166,41 @@ const LIGHTING_VARIANTS = [
   "soft morning kitchen light, cool and bright",
 ];
 
-const HEAD_TILTS = [
+const STRAIGHT_HEAD_OPTIONS = [
   "head straight on, neutral tilt",
   "head straight on with chin slightly raised",
   "head straight on with chin slightly lowered",
   "head straight on, very slightly closer to the camera",
   "head straight on, very slightly further from the camera",
-  "head leaned slightly toward the right shoulder, a few degrees (this is an ear-toward-shoulder LEAN, body and shoulders still squared to the camera - NOT a body turn, NOT a mirror flip)",
-  "head leaned slightly toward the left shoulder, a few degrees (this is an ear-toward-shoulder LEAN, body and shoulders still squared to the camera - NOT a body turn, NOT a mirror flip)",
+];
+
+// Lean-side options use a SINGLE direction (right OR left, picked once per
+// generation) so we never pair "right lean" with "left lean" between halves -
+// that combination caused mirror-flip output even with the constraint.
+function leanOptionsForSide(side: "right" | "left"): string[] {
+  return [
+    `head leaned slightly toward the ${side} shoulder, a noticeable few degrees (ear-toward-shoulder LEAN, body still squared to camera)`,
+    `head leaned very subtly toward the ${side} shoulder, just a small lean (ear-toward-shoulder, body still squared)`,
+    "head straight on relative to the body (no lean), with chin slightly raised",
+    "head straight on relative to the body (no lean), with chin slightly lowered",
+    "head straight on relative to the body (no lean), neutral",
+  ];
+}
+
+function pickHeadTilts(): [string, string] {
+  // Three modes - all keep the BODY squared so no mirror-flip is possible.
+  // Mode A: both halves straight-on (chin/distance variations)
+  // Mode B: both halves use right-shoulder lean variations
+  // Mode C: both halves use left-shoulder lean variations
+  const mode = pick(["straight", "right_lean", "left_lean"] as const);
+  if (mode === "straight") return pickPair(STRAIGHT_HEAD_OPTIONS);
+  return pickPair(leanOptionsForSide(mode === "right_lean" ? "right" : "left"));
+}
+
+const BODY_ORIENTATIONS = [
+  "facing the camera straight on, both shoulders squared to the camera",
+  "body squared to the camera with a very subtle relaxed lean of the shoulders",
+  "body squared to the camera, shoulders relaxed, head and torso aligned with the lens",
 ];
 
 const HAIR_ARRANGEMENTS = [
@@ -369,8 +396,9 @@ function buildPrompt(args: {
 
   const [beforeTop, afterTop] = pickPair(TOPS);
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
-  const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
+  const [beforeTilt, afterTilt] = pickHeadTilts();
   const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
+  const bodyOrientation = pick(BODY_ORIENTATIONS);
 
   // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
   // Smile-before-neutral-after reverses the narrative and is forbidden.
@@ -426,6 +454,7 @@ function buildPrompt(args: {
           body_zone_framing: zone,
           expression: expressionRule,
           hair: "same hair color, same general hair style and length in both halves, but with natural between-photos variation in how loose strands fall (see before_half/after_half hair_arrangement)",
+          body_orientation: bodyOrientation,
           identity_lock:
             "Both halves show the SAME person on two different days - recognizably the same individual (same face structure, eye color, hair color, age) but natural between-photos variations are EXPECTED and desired. Hair falls differently, head leans slightly differently, micro-expression shifts. Do NOT clone the pose - these are two separate phone selfies the person took weeks apart, not two frames from one session.",
         },
@@ -456,7 +485,7 @@ function buildPrompt(args: {
         style: sharedStyle,
         hard_constraints: [
           "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
-          "NO MIRROR-FLIP between halves: the BODY orientation must match. If 'before' shows the right cheek prominent, 'after' also shows the right cheek prominent (NEVER horizontally flipped). Shoulders and torso angle stay CONSISTENT between halves. The HEAD itself, however, IS allowed to lean differently (per head_position) - an ear-toward-shoulder lean toward one side in one half and the other side in the other half is a natural pose change, NOT a mirror flip, as long as the body stays squared the same way in both halves.",
+          `NO MIRROR-FLIP between halves: BOTH halves use the EXACT SAME body orientation - "${bodyOrientation}". The torso, shoulders, and which-side-of-the-face-is-toward-the-camera are IDENTICAL between halves. If 'before' shows the right side of the face more prominent, 'after' also shows the right side more prominent (NEVER horizontally flipped). The HEAD itself, however, IS allowed to lean slightly differently (per head_position - this is a small ear-toward-shoulder lean, not a body turn). The whole composition must NOT be a mirror of the other half.`,
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
           `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
           `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
