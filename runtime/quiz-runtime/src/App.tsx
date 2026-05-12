@@ -185,7 +185,8 @@ export function App({ data, settings, config }: AppProps) {
             breed: "Golden retriever",
             primary_pain: "Drar i kopplet",
             primary_pain_value: "koppeldragning",
-            age: "7-12 mån",
+            age: "7-12 månader",
+            age_value: "7-12 mån",
             time_per_day: "10 min/dag",
             ignores_owner_value: "Spridd",
             seeks_affection_value: "Stark",
@@ -690,8 +691,16 @@ export function App({ data, settings, config }: AppProps) {
 
       {/* Offer-timer renderas i parent-DOM ovanför .quiz-content endast
        * på offer-steget. Sticky:top:0 funkar mot parent-page-scroll.
-       * (William 2026-05-04 v3) */}
-      {isOfferStep && <OfferTimerBar />}
+       * (William 2026-05-04 v3)
+       *
+       * Variant-undantag: A/B-variants av offer page får INTE auto-injicera
+       * parent-timer-baren. Tanken är att varianten själv bestämmer sin
+       * urgency-strategi (t.ex. ingen timer alls, eller en egen
+       * today+2-deadline). Match: namn med "(B variant)" / "(variant)" /
+       * "(B)" etc. Original "Offer page" behåller timern. */}
+      {isOfferStep && !/\(.*variant.*\)/i.test(stepNode.name ?? "") && (
+        <OfferTimerBar />
+      )}
 
       <div class="quiz-content">
         <StepRenderer

@@ -77,6 +77,10 @@ const VARIABLE_FALLBACKS: Record<string, string> = {
   problem_duration: "ett tag",
   upcoming_event_value: "",
   time_per_day: "10 min/dag",
+  age: "valpen",
+  age_value: "okänd",
+  gender: "valpen",
+  gender_value: "den",
 };
 
 function pickValue(name: string, raw: string | undefined): string | undefined {

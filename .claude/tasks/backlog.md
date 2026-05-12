@@ -1,5 +1,28 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-04
+Updated: 2026-05-12
+
+## Before/After generator tool (2026-05-11 → 2026-05-12)
+New tool in `/assets` built this session. Live on commit `8e3e674`. Files: `BeforeAfterGenerator.tsx`, `src/app/api/assets/before-after/*`. See `memory/before-after-tool.md` for architecture.
+
+- [x] ~~Build whole stack (component, 3 API routes, 11 zone thumbnails via Higgsfield, auto-detect, auto-trigger, swipe vs create modes)~~ (done 2026-05-11)
+- [x] ~~Integrate NANO BANANA PRO PROMPT.pdf spec technique (spec-as-prompt with preserve_original: true)~~ (commit `8e3e674`, 2026-05-12)
+- [ ] **TEST commit `8e3e674` swipe output quality** — last untested. If still AI-looking, fallback options:
+  - Try Higgsfield's nano-banana with role-tagged `medias` references
+  - Build Replicate InsightFace face-swap pipeline (preserve source pixels except face)
+  - Accept as "style inspiration" tool
+- [ ] Add more body zone templates (William mentioned more variety after analyzing 48 competitor B/A images)
+- [ ] Remove unused `vision` parameter from `buildPrompt` in swipe branch (now leftover after spec-based refactor)
+
+## Knowledge Architecture Upgrade (2026-05-08, deferred)
+- [ ] **Migrate to Obsidian + MCP + Hermes capture pipeline** — Current memory system (`MEMORY.md` + `.claude/projects/.../memory/`) works for Claude Code but locks knowledge in. Migration plan based on Funnel Professor / Karpathy LLM Wiki pattern (see `memory/funnel-professor.md` for context). Concrete steps:
+  1. Create `~/Obsidian/Vault/` with `raw/wiki/outputs/` + `AGENTS.md` schema file
+  2. Migrate FP-articles + topic files from `memory/` to vault (cp, no transformation needed - already markdown)
+  3. Install Obsidian MCP server, point it at vault, add to Claude Code/Cowork settings
+  4. Add custom instruction "search vault before answering"
+  5. Set up Hermes on Hostinger VPS (~$10/mo VPS + AI model costs), connect Telegram bot
+  6. Hermes custom skill: when user sends X-link / article URL → scrape → summarise → save to `raw/` → run `/wiki` to update relevant wiki pages
+  7. Cron: every Monday 09:00 generate brief (3 connections + 1 pattern + 1 question) across all active projects
+  Reference: 6 X-posts in 2026-05-08 session (cyrilXBT 4-layer architecture, sourfraser AI employee, KanikaBK claude-obsidian, AunySillyMe vault structure, NickSpisak_ Karpathy 7-min, RodmanAi obsidian-skills). Hermes agent video walkthrough also captured. **~4-6h setup, then runs forever. Defers MEMORY.md ceiling problem and makes knowledge LLM-agnostic.** (added 2026-05-08)
 
 ## Quiz Editor UX (2026-05-03)
 - [ ] **A/B variants as tabs on a single canvas node** — Today the editor renders each variant in a variant group as a separate side-by-side node connected with edges (e.g. Landing A → Landing B → Block 1). Visually misleading - looks like sequential steps but the runtime resolves to ONE variant per session via `resolveNode(variantGroupId)`. Refactor `QuizEditorClient.tsx` (and the React Flow node renderer) so variants in a group collapse into a single "card with A/B/C tabs" node. Sidebar should also list each variant indented under its parent step. Files: `src/app/quizzes/[id]/edit/QuizEditorClient.tsx`, the React Flow custom node component. (added 2026-05-03)
