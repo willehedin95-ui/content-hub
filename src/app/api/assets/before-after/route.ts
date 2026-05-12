@@ -281,6 +281,15 @@ const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
     "BEFORE half: nails look quite damaged - clearly ridged, peeling at the tips, dull or yellowish surface, very short and uneven shape, visibly weak and brittle. AFTER half: nails look strikingly healthier - smooth glossy natural surface, even healthy pink color, well-shaped with a clean white free edge, visibly longer. Striking but still natural-looking - NO polish, NO gel, NO fake tips, NO manicure styling.",
 };
 
+const HAIR_INTENSITY_PROMPTS: Record<Intensity, string> = {
+  subtle:
+    "BEFORE half: hair density looks slightly less than ideal at the middle parting - a faint strip of scalp visible between strands, slightly limp/flat at the crown, no visible baby-hair activity at the hairline. AFTER half: marginally denser - parting line slightly narrower with a touch less scalp showing through, a few soft tapered short 'baby hairs' (new-growth wispies) standing up at the hairline and along the part edge, slightly more crown volume. The hair LENGTH does NOT change between halves - hair grows ~1cm/month, so length stays the same. Same hair color, same style.",
+  moderate:
+    "BEFORE half: hair shows visible thinning at the parting - the middle parting line is wide with clearly visible scalp skin between strands, crown looks flat with less density, hair has a limp/dull surface, no visible regrowth at the hairline. AFTER half: hair density is noticeably better - parting line visibly narrower with less scalp showing through (hair covers more of the part), soft tapered short 'baby hairs' visible standing up along the hairline and the part edges (clearly new-growth wispies with soft tapered tips, NOT blunt-end breakage), subtle natural shine on the strands, more volume at the crown. Clear improvement but realistic - hair is NOT longer, just denser and healthier-looking. Same hair color, same style.",
+  dramatic:
+    "BEFORE half: hair shows clear thinning - the middle parting line is wide with prominent visible scalp skin between sparse strands, flat sparse crown, dull lifeless surface, recessed/sparse hairline with no baby hairs, generally thin and limp look. AFTER half: hair looks strikingly healthier and denser - parting line much narrower with the scalp mostly covered, multiple soft tapered short 'baby hairs' visible standing up along the hairline and the part edges (soft regrowth tips, NOT blunt-end breakage), visible glossy sheen, much more volume at the crown, hairline looks fuller. Striking but still realistic - NO dramatic length increase, NO bald-to-full overpromise. Same hair color, same style, same hair length - just denser and healthier-looking.",
+};
+
 const NAIL_HAND_POSES = [
   "hand in a relaxed loose curl, fingers gently bent, nails clearly visible from above",
   "hand held up with fingers slightly fanned out, knuckles partly visible, nails facing the camera",
@@ -424,6 +433,7 @@ function buildPrompt(args: {
 }): string {
   const { zone, zoneKey, demographic, intensity, vision, hasSource, notes } = args;
   const isNails = zoneKey === "nails";
+  const isHair = zoneKey === "hair_scalp";
 
   const [beforeTop, afterTop] = pickPair(TOPS);
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
@@ -503,10 +513,15 @@ function buildPrompt(args: {
                 background: beforeNailBg,
                 day_context: "this photo was taken on day 0, before starting collagen / nail-strengthening supplement",
               }
-            : {
-                skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
-                day_context: "this photo was taken on a tired day",
-              }),
+            : isHair
+              ? {
+                  hair_state: "thinning-look hair density per the chosen intensity (see 'transformation' field) - wider parting line with visible scalp showing through, flat/limp crown, no visible new-growth baby hairs at the hairline",
+                  day_context: "this photo was taken on day 0, before starting collagen / biotin hair-strengthening supplement",
+                }
+              : {
+                  skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
+                  day_context: "this photo was taken on a tired day",
+                }),
         },
         after_half: {
           outfit: afterTop,
@@ -520,10 +535,15 @@ function buildPrompt(args: {
                 background: afterNailBg,
                 day_context: "this photo was taken weeks later, after the nail-strengthening regime",
               }
-            : {
-                skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
-                day_context: "this photo was taken weeks later on a rested day",
-              }),
+            : isHair
+              ? {
+                  hair_state: "denser-look hair per the chosen intensity - narrower parting line with less scalp showing through, more volume at the crown, soft tapered short baby hairs visible at the hairline and along the part edges (new-growth wispies, NOT breakage), subtle natural shine. Same hair length as BEFORE - density and regrowth signals only.",
+                  day_context: "this photo was taken weeks later, after the collagen / biotin regime",
+                }
+              : {
+                  skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
+                  day_context: "this photo was taken weeks later on a rested day",
+                }),
         },
         composition: {
           camera: "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
@@ -535,7 +555,11 @@ function buildPrompt(args: {
             ? "The two halves must look like two SEPARATE phone close-ups the same person took on DIFFERENT DAYS - one before, one weeks later. Hand pose, lighting, and background DIFFER between halves per the before_half/after_half specs - because two separate phone photos on different days never have identical pose or surroundings. What stays constant: the hand itself (same skin tone, same hand size, same finger proportions, same individual) and which side of the hand is shown (no mirror flip)."
             : "The two halves must look like two SEPARATE phone selfies the same person took on DIFFERENT DAYS. Body zone and hair stay similar. Outfit, lighting, and head angle ARE DIFFERENT per the before_half/after_half specs above - this is not optional, it is required.",
         },
-        transformation: isNails ? NAIL_INTENSITY_PROMPTS[intensity] : INTENSITY_PROMPTS[intensity],
+        transformation: isNails
+          ? NAIL_INTENSITY_PROMPTS[intensity]
+          : isHair
+            ? HAIR_INTENSITY_PROMPTS[intensity]
+            : INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: isNails
           ? [
@@ -568,10 +592,20 @@ function buildPrompt(args: {
               "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
               "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
               "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
+              ...(isHair
+                ? [
+                    "HAIR LENGTH STAYS THE SAME between halves: hair grows about 1cm per month - across the implied weeks-apart timeframe the hair length is the SAME in BEFORE and AFTER. NEVER show longer hair in the AFTER. The improvement is in DENSITY and REGROWTH at the parting/hairline, not length.",
+                    "BABY HAIRS IN AFTER = NEW GROWTH (positive signal, not breakage): if the AFTER half shows soft short wispy strands standing up at the hairline or along the parting line, those are SOFT-TIPPED tapered new-growth hairs - NOT blunt-end broken hairs scattered across the head. Place them specifically at the HAIRLINE and PART EDGES, not as random frizz throughout. In the BEFORE half there are NO baby hairs visible - the regrowth only appears in AFTER.",
+                    "PARTING LINE WIDTH is the primary improvement signal: BEFORE half = wide parting line with clearly visible scalp skin between strands. AFTER half = noticeably narrower parting line with less scalp showing through. This is the dominant marketing cue in the category (Nutrafol, Viviscal, Vital Proteins all use this). Do not skip it.",
+                    "Hair COLOR stays identical between halves - same warm honey blonde, same scandinavian-blonde, same brunette, etc. The supplement does not change hair color. The AFTER half is NOT a different woman with different hair.",
+                  ]
+                : []),
             ],
         instruction: isNails
           ? "Generate a single before/after split image of fingernails on the SAME hand, taken weeks apart. FIRST, lock the zone framing: the image MUST be a tight close-up of fingernails ONLY - no face, no body, no wrist. The hand pose is similar between halves so the nails are comparable. BEFORE half = weak/short/ridged nails per intensity. AFTER half = healthier/longer/smoother nails per intensity. Both halves show natural bare nails (NO polish, NO gel, NO salon manicure). ABSOLUTELY NO TEXT IN THE IMAGE."
-          : "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
+          : isHair
+            ? "Generate a single before/after split image of the SAME woman's hair parting, taken weeks apart. FIRST, lock the zone framing: top-down or 3-quarter angle on the central hair parting, no face in frame (maybe a hint of forehead at the bottom edge). BEFORE half = wider parting with visible scalp, no new-growth baby hairs, flat/limp look per intensity. AFTER half = narrower parting with less scalp showing, soft tapered new-growth 'baby hairs' at the hairline and part edges, subtle volume per intensity. Hair LENGTH and COLOR are IDENTICAL in both halves - only density and regrowth differ. ABSOLUTELY NO TEXT IN THE IMAGE."
+            : "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
       };
 
   if (notes) {
