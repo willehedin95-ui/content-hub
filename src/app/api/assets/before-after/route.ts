@@ -281,6 +281,25 @@ const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
     "BEFORE half: nails look quite damaged - clearly ridged, peeling at the tips, dull or yellowish surface, very short and uneven shape, visibly weak and brittle. AFTER half: nails look strikingly healthier - smooth glossy natural surface, even healthy pink color, well-shaped with a clean white free edge, visibly longer. Striking but still natural-looking - NO polish, NO gel, NO fake tips, NO manicure styling.",
 };
 
+const NAIL_HAND_POSES = [
+  "hand in a relaxed loose curl, fingers gently bent, nails clearly visible from above",
+  "hand held up with fingers slightly fanned out, knuckles partly visible, nails facing the camera",
+  "hand resting palm-up with fingers naturally curled toward the camera, nail tips dominant in frame",
+  "hand held vertically with fingers angled toward the camera, casual 'showing my nails' pose",
+  "hand slightly cupped with fingers loosely together, nails visible from the side-top angle",
+  "hand held flat with fingers slightly spread, nails facing the camera straight on",
+];
+
+const NAIL_BACKGROUNDS = [
+  "soft out-of-focus light wall in a home (cream, off-white, or pale grey)",
+  "soft out-of-focus wooden table or surface in the background",
+  "soft out-of-focus kitchen counter in the background",
+  "plain neutral grey backdrop, casual",
+  "soft out-of-focus window light in the background, blurred indoor scene",
+  "soft out-of-focus pale neutral fabric (a sleeve, blanket, or t-shirt corner)",
+  "soft out-of-focus desk or bedside table in the background",
+];
+
 interface BodyZoneVision {
   detected_zone: ZoneKey | "other" | null;
   composition: {
@@ -411,6 +430,8 @@ function buildPrompt(args: {
   const [beforeTilt, afterTilt] = pickHeadTilts();
   const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
   const bodyOrientation = pick(BODY_ORIENTATIONS);
+  const [beforeHandPose, afterHandPose] = pickPair(NAIL_HAND_POSES);
+  const [beforeNailBg, afterNailBg] = pickPair(NAIL_BACKGROUNDS);
 
   // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
   // Smile-before-neutral-after reverses the narrative and is forbidden.
@@ -478,6 +499,8 @@ function buildPrompt(args: {
           ...(isNails
             ? {
                 nail_state: "weak-looking nails per the chosen intensity (see 'transformation' field) - short, ridged, possibly dull or yellowish, uneven free edge",
+                hand_pose: beforeHandPose,
+                background: beforeNailBg,
                 day_context: "this photo was taken on day 0, before starting collagen / nail-strengthening supplement",
               }
             : {
@@ -493,6 +516,8 @@ function buildPrompt(args: {
           ...(isNails
             ? {
                 nail_state: "healthier-looking nails per the chosen intensity - smoother surface, more even pink color, well-shaped, visibly longer free edge with a clean white tip",
+                hand_pose: afterHandPose,
+                background: afterNailBg,
                 day_context: "this photo was taken weeks later, after the nail-strengthening regime",
               }
             : {
@@ -507,7 +532,7 @@ function buildPrompt(args: {
             ? "neutral plain background - a wall, table surface, or out-of-focus interior. The hand is the only subject."
             : "neutral home environment, plain wall or soft out-of-focus interior - can be a slightly different spot in the home for each half",
           realism_note: isNails
-            ? "The two halves must look like two SEPARATE phone close-ups the same person took on DIFFERENT DAYS - one before, one weeks later. The hand pose and finger arrangement stays similar (so the nails are comparable) but lighting and background can differ slightly. The hand belongs to the SAME person both halves (same skin tone, same hand size, same individual)."
+            ? "The two halves must look like two SEPARATE phone close-ups the same person took on DIFFERENT DAYS - one before, one weeks later. Hand pose, lighting, and background DIFFER between halves per the before_half/after_half specs - because two separate phone photos on different days never have identical pose or surroundings. What stays constant: the hand itself (same skin tone, same hand size, same finger proportions, same individual) and which side of the hand is shown (no mirror flip)."
             : "The two halves must look like two SEPARATE phone selfies the same person took on DIFFERENT DAYS. Body zone and hair stay similar. Outfit, lighting, and head angle ARE DIFFERENT per the before_half/after_half specs above - this is not optional, it is required.",
         },
         transformation: isNails ? NAIL_INTENSITY_PROMPTS[intensity] : INTENSITY_PROMPTS[intensity],
@@ -515,10 +540,12 @@ function buildPrompt(args: {
         hard_constraints: isNails
           ? [
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. The image MUST show ONLY a tight close-up of fingernails on one hand. The frame does NOT include the face, body, wrist, or arm. Both halves use the SAME tight nail crop.",
-              "NO MIRROR-FLIP between halves: the hand is oriented the SAME way in both halves (same fingers visible, same hand pose). If 'before' shows the back of the hand, 'after' also shows the back of the hand. If 'before' shows the palm side partly, so does 'after'. NEVER horizontally flip the composition.",
+              "NO MIRROR-FLIP between halves: which side of the hand is shown stays consistent. If 'before' shows the back/top of the hand, 'after' also shows the back/top. If 'before' shows the palm side, so does 'after'. NEVER horizontally flip the whole composition.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
-              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These should differ slightly - two separate photos on different days.`,
-              "SAME PERSON / SAME HAND: both halves show the same individual's hand - same skin tone, same finger length proportions, same hand size, same individual. The 'after' hand is NOT a different person's hand - just the same hand weeks later.",
+              `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. These MUST visibly differ - the hand is in two genuinely different casual poses, because the two photos were taken on different days. FORBIDDEN: identical finger curl or hand angle in both halves.`,
+              `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. These MUST visibly differ - two separate photos taken in slightly different spots / on different surfaces. FORBIDDEN: identical background in both halves.`,
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These should differ - two separate photos on different days.`,
+              "SAME PERSON / SAME HAND: both halves show the same individual's hand - same skin tone, same finger length proportions, same hand size, same knuckle / joint structure, same individual. The 'after' hand is NOT a different person's hand - just the same hand weeks later in a different pose.",
               "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail of the skin or fingers appears in one half must appear identically in the other half (same placement, same size). The model must NOT invent a new detail that exists in only one half.",
               "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual photo of natural unpainted nails.",
               "FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry. The image must look like two casual phone close-ups from a real person's camera roll - mundane, real, slightly imperfect.",
