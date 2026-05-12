@@ -172,7 +172,19 @@ const HEAD_TILTS = [
   "head straight on with chin slightly lowered",
   "head straight on, very slightly closer to the camera",
   "head straight on, very slightly further from the camera",
-  "head turned very subtly in a 3-quarter angle (NEVER mirrored vs the other half - same direction)",
+  "head leaned slightly toward the right shoulder, a few degrees (this is an ear-toward-shoulder LEAN, body and shoulders still squared to the camera - NOT a body turn, NOT a mirror flip)",
+  "head leaned slightly toward the left shoulder, a few degrees (this is an ear-toward-shoulder LEAN, body and shoulders still squared to the camera - NOT a body turn, NOT a mirror flip)",
+];
+
+const HAIR_ARRANGEMENTS = [
+  "a few loose strands falling across the forehead",
+  "hair tucked behind one ear, the other side falling free",
+  "stray flyaways near one temple catching the light",
+  "hair falling naturally on both sides, slightly tousled",
+  "one loose strand crossing the cheek",
+  "hair pushed back away from the face",
+  "a loose strand falling near the jawline",
+  "hair slightly more tucked in than usual",
 ];
 
 function pick<T>(arr: readonly T[]): T {
@@ -358,6 +370,7 @@ function buildPrompt(args: {
   const [beforeTop, afterTop] = pickPair(TOPS);
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
   const [beforeTilt, afterTilt] = pickPair(HEAD_TILTS);
+  const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
 
   // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
   // Smile-before-neutral-after reverses the narrative and is forbidden.
@@ -412,14 +425,15 @@ function buildPrompt(args: {
           demographic: demographicToString(demographic),
           body_zone_framing: zone,
           expression: expressionRule,
-          hair: "same hair color, same general hair style in both halves",
+          hair: "same hair color, same general hair style and length in both halves, but with natural between-photos variation in how loose strands fall (see before_half/after_half hair_arrangement)",
           identity_lock:
-            "Both halves show the SAME person - same face structure, same eye color, same hair color, same age, same overall appearance. Identity must be unmistakable.",
+            "Both halves show the SAME person on two different days - recognizably the same individual (same face structure, eye color, hair color, age) but natural between-photos variations are EXPECTED and desired. Hair falls differently, head leans slightly differently, micro-expression shifts. Do NOT clone the pose - these are two separate phone selfies the person took weeks apart, not two frames from one session.",
         },
         before_half: {
           outfit: beforeTop,
           lighting: beforeLight,
           head_position: beforeTilt,
+          hair_arrangement: beforeHair,
           skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
           day_context: "this photo was taken on a tired day",
         },
@@ -427,6 +441,7 @@ function buildPrompt(args: {
           outfit: afterTop,
           lighting: afterLight,
           head_position: afterTilt,
+          hair_arrangement: afterHair,
           skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
           day_context: "this photo was taken weeks later on a rested day",
         },
@@ -441,13 +456,14 @@ function buildPrompt(args: {
         style: sharedStyle,
         hard_constraints: [
           "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
-          "NO MIRRORING between halves: both halves are shot from the SAME side and direction. If 'before' shows the right cheek, 'after' also shows the right cheek - NEVER mirror-flip. If 'before' faces slightly right, 'after' also faces slightly right. Head direction must be CONSISTENT between halves.",
+          "NO MIRROR-FLIP between halves: the BODY orientation must match. If 'before' shows the right cheek prominent, 'after' also shows the right cheek prominent (NEVER horizontally flipped). Shoulders and torso angle stay CONSISTENT between halves. The HEAD itself, however, IS allowed to lean differently (per head_position) - an ear-toward-shoulder lean toward one side in one half and the other side in the other half is a natural pose change, NOT a mirror flip, as long as the body stays squared the same way in both halves.",
           "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
           `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
           `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. Subtle differences only - NEVER opposite directions, NEVER mirrored.`,
-          "Both halves must show the same person - same face structure, same hair color, same age. Only the skin condition (per intensity) and the natural between-days variations (clothing, lighting, micro-angle) differ.",
-          "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: mirrored / opposite-facing halves. FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. The head genuinely looks different between halves - this is correct and desired. What MUST stay consistent between halves is the BODY/shoulder orientation (no whole-composition mirror flip).`,
+          `BEFORE half hair arrangement: ${beforeHair}. AFTER half hair arrangement: ${afterHair}. Hair color and overall style/length stay the same, but loose strands fall differently between halves - because these are two separate photos on different days, not the same session.`,
+          "Both halves must show the same person - recognizably the same face, hair color, age. The skin condition differs per intensity, and natural between-days variations (clothing, lighting, micro-angle, hair fall, head lean) ALL differ - this is expected, not a bug.",
+          "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
           "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
           "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
         ],
