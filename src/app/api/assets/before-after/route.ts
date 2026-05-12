@@ -42,6 +42,14 @@ const AGE_RANGES = [
   "71-75",
 ];
 
+// Random demographic pool only picks ages >= 46. Younger ages (30-45) are
+// still valid manual selections in the UI dropdown, but William rarely
+// wants them and prefers to pick those explicitly when he does.
+const RANDOM_AGE_POOL = AGE_RANGES.filter((range) => {
+  const [min] = range.split("-").map(Number);
+  return min >= 46;
+});
+
 type Ethnicity =
   | "scandinavian"
   | "north_european"
@@ -247,7 +255,7 @@ function randomDemographic(overrides?: DemographicOverrides): Demographic {
   const ethnicity = overrides?.ethnicity ?? "scandinavian";
   const profile = ETHNICITY_PROFILES[ethnicity];
   return {
-    age: overrides?.age ?? pick(AGE_RANGES),
+    age: overrides?.age ?? pick(RANDOM_AGE_POOL),
     ethnicity,
     hair_color: overrides?.hair_color ?? pick(profile.hair_colors),
     hair_style: pick(HAIR_STYLES),
