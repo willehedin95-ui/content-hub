@@ -44,6 +44,7 @@ const BODY_ZONES: { value: string; label: string; image?: string }[] = [
   { value: "arm_skin", label: "Arm", image: "/images/body-zones/arm_skin.webp" },
   { value: "leg_thigh", label: "Leg", image: "/images/body-zones/leg_thigh.webp" },
   { value: "hands", label: "Hands", image: "/images/body-zones/hands.webp" },
+  { value: "nails", label: "Nails", image: "/images/body-zones/nails.webp" },
   { value: "hair_scalp", label: "Hair", image: "/images/body-zones/hair_scalp.webp" },
   { value: "other", label: "Other" },
 ];

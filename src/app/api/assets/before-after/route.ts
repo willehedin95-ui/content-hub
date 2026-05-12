@@ -22,6 +22,7 @@ const BODY_ZONE_PRESETS = {
   cheek_closeup: "Tight close-up on one cheek, lifestyle skincare-style framing (NOT a medical scan). Frame is tight enough that cheek skin fills most of the frame, showing natural skin texture and pores. The frame does not include: the eyes, the full mouth (maybe just the corner of the lips at one edge), chin, forehead, or the other side of the face. Perhaps the edge of the nose or a hint of the ear at one side. Casual phone-photo macro.",
   arm_skin: "Tight close-up on the skin of the upper arm or forearm. Frame shows skin texture filling most of the frame, with just a sliver of clothing edge or out-of-focus background at the frame edge. The frame does not include: the face, head, body, hand, or the full arm structure. Casual lifestyle macro.",
   hands: "Tight close-up on the back of one hand and lower wrist. Frame shows the hand from the wrist down through the fingers. The frame does not include: the face, body, or arm above the wrist. Casual lifestyle phone-photo framing.",
+  nails: "Tight close-up on multiple fingernails of one hand, casual phone-photo framing. Frame shows 3-4 fingertips with their nails clearly visible and dominant in the frame, hand in a natural relaxed or slightly curled position (the way someone shows their nails to a friend - palm-side partly visible or knuckles partly visible). Nails fill a significant portion of the image - the viewer's eye goes directly to the nails. Skin tone of the fingers visible to anchor context. The frame does NOT include: the face, body, wrist, arm, or the full hand structure beyond the fingertips. NOT a clinical shot, NOT a salon manicure ad, NOT a styled product photo - a casual handheld phone-camera close-up of bare unpolished natural nails.",
   hair_scalp: "Tight close-up on the hair parting line, top-down or 3-quarter angle from above. Frame shows hair density at the central parting where the scalp is faintly visible between hair strands. Casual haircare close-up framing, NOT a medical scan, NOT a clinical hair examination. The frame does not include: the eyes, mouth, ears, full face. Maybe a hint of forehead at the bottom edge.",
   leg_thigh: "Tight close-up on the upper thigh or knee skin, lifestyle skincare close-up framing (NOT a medical scan, NOT a full-body photo). Frame is tight enough that ONLY skin texture fills most of the frame. A sliver of light-colored shorts/leggings or out-of-focus background is visible at one edge of the frame to anchor casual context. The frame does not include: the face, body, or full leg - just a skin section.",
   chest_macro: "Tight close-up on the upper decolletage area, lifestyle skincare close-up framing (NOT a medical scan). Frame shows skin texture from just above the collarbone down to where a thin v-neck or t-shirt edge is visible at the bottom. The frame does not include: the face, mouth, eyes, jaw, or any bare chest below the visible top edge. The top edge of clothing must be visible to anchor context.",
@@ -271,6 +272,15 @@ const INTENSITY_PROMPTS: Record<Intensity, string> = {
     "BEFORE half: skin looks quite tired - softer contours, prominent natural skin texture, slightly uneven tone, tired look around the eyes. AFTER half: skin looks visibly rested and bright - much smoother texture, more even tone, clear natural glow, bright look around the eyes. The visual difference is striking but realistic and natural.",
 };
 
+const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
+  subtle:
+    "BEFORE half: nails look slightly less than ideal - mildly ridged surface, slightly dull, slightly short with a thin or uneven free edge. AFTER half: nails look marginally healthier - slightly smoother surface, slightly more even pink tone, slightly more length on the free edge. Subtle but visible on close inspection.",
+  moderate:
+    "BEFORE half: nails look weak and short - visibly ridged surface, dull or slightly yellowish color, uneven or thin free edge, slight peeling or chipping at the tips, generally short and brittle-looking. AFTER half: nails look noticeably healthier and longer - smoother surface (ridges much less visible), more even pink-toned color, clean white free edge with visible length past the fingertip. Clear improvement but still realistic - bare unpolished nails on a real hand.",
+  dramatic:
+    "BEFORE half: nails look quite damaged - clearly ridged, peeling at the tips, dull or yellowish surface, very short and uneven shape, visibly weak and brittle. AFTER half: nails look strikingly healthier - smooth glossy natural surface, even healthy pink color, well-shaped with a clean white free edge, visibly longer. Striking but still natural-looking - NO polish, NO gel, NO fake tips, NO manicure styling.",
+};
+
 interface BodyZoneVision {
   detected_zone: ZoneKey | "other" | null;
   composition: {
@@ -386,13 +396,15 @@ function buildSwipePromptFromSpec(args: {
 
 function buildPrompt(args: {
   zone: string;
+  zoneKey: string;
   demographic: Demographic;
   intensity: Intensity;
   vision: BodyZoneVision | null;
   hasSource: boolean;
   notes?: string;
 }): string {
-  const { zone, demographic, intensity, vision, hasSource, notes } = args;
+  const { zone, zoneKey, demographic, intensity, vision, hasSource, notes } = args;
+  const isNails = zoneKey === "nails";
 
   const [beforeTop, afterTop] = pickPair(TOPS);
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
@@ -463,42 +475,72 @@ function buildPrompt(args: {
           lighting: beforeLight,
           head_position: beforeTilt,
           hair_arrangement: beforeHair,
-          skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
-          day_context: "this photo was taken on a tired day",
+          ...(isNails
+            ? {
+                nail_state: "weak-looking nails per the chosen intensity (see 'transformation' field) - short, ridged, possibly dull or yellowish, uneven free edge",
+                day_context: "this photo was taken on day 0, before starting collagen / nail-strengthening supplement",
+              }
+            : {
+                skin_state: "tired-looking skin per the chosen intensity (see 'transformation' field) - softer contours, natural skin texture, slightly neutral tone",
+                day_context: "this photo was taken on a tired day",
+              }),
         },
         after_half: {
           outfit: afterTop,
           lighting: afterLight,
           head_position: afterTilt,
           hair_arrangement: afterHair,
-          skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
-          day_context: "this photo was taken weeks later on a rested day",
+          ...(isNails
+            ? {
+                nail_state: "healthier-looking nails per the chosen intensity - smoother surface, more even pink color, well-shaped, visibly longer free edge with a clean white tip",
+                day_context: "this photo was taken weeks later, after the nail-strengthening regime",
+              }
+            : {
+                skin_state: "rested-looking skin per the chosen intensity - smoother texture, more even tone, natural glow",
+                day_context: "this photo was taken weeks later on a rested day",
+              }),
         },
         composition: {
           camera: "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
           framing: "tight zone-appropriate crop",
-          background: "neutral home environment, plain wall or soft out-of-focus interior - can be a slightly different spot in the home for each half",
-          realism_note:
-            "The two halves must look like two SEPARATE phone selfies the same person took on DIFFERENT DAYS. Body zone and hair stay similar. Outfit, lighting, and head angle ARE DIFFERENT per the before_half/after_half specs above - this is not optional, it is required.",
+          background: isNails
+            ? "neutral plain background - a wall, table surface, or out-of-focus interior. The hand is the only subject."
+            : "neutral home environment, plain wall or soft out-of-focus interior - can be a slightly different spot in the home for each half",
+          realism_note: isNails
+            ? "The two halves must look like two SEPARATE phone close-ups the same person took on DIFFERENT DAYS - one before, one weeks later. The hand pose and finger arrangement stays similar (so the nails are comparable) but lighting and background can differ slightly. The hand belongs to the SAME person both halves (same skin tone, same hand size, same individual)."
+            : "The two halves must look like two SEPARATE phone selfies the same person took on DIFFERENT DAYS. Body zone and hair stay similar. Outfit, lighting, and head angle ARE DIFFERENT per the before_half/after_half specs above - this is not optional, it is required.",
         },
-        transformation: INTENSITY_PROMPTS[intensity],
+        transformation: isNails ? NAIL_INTENSITY_PROMPTS[intensity] : INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
-        hard_constraints: [
-          "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
-          `NO MIRROR-FLIP between halves: BOTH halves use the EXACT SAME body orientation - "${bodyOrientation}". The torso, shoulders, and which-side-of-the-face-is-toward-the-camera are IDENTICAL between halves. If 'before' shows the right side of the face more prominent, 'after' also shows the right side more prominent (NEVER horizontally flipped). The HEAD itself, however, IS allowed to lean slightly differently (per head_position - this is a small ear-toward-shoulder lean, not a body turn). The whole composition must NOT be a mirror of the other half.`,
-          "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
-          `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
-          `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
-          `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. The head genuinely looks different between halves - this is correct and desired. What MUST stay consistent between halves is the BODY/shoulder orientation (no whole-composition mirror flip).`,
-          `BEFORE half hair arrangement: ${beforeHair}. AFTER half hair arrangement: ${afterHair}. Hair color and overall style/length stay the same, but loose strands fall differently between halves - because these are two separate photos on different days, not the same session.`,
-          "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail is visible on the face in one half must appear identically (same placement, same size, same shape) in the other half. The face is a fixed identity - the model must NOT invent a new distinctive detail that exists in only one half. This applies in both directions: do not ADD a new detail in only one half, and do not REMOVE a detail that should be in both.",
-          "Both halves must show the same person - recognizably the same face, hair color, age. The skin condition differs per intensity, and natural between-days variations (clothing, lighting, micro-angle, hair fall, head lean) ALL differ - this is expected, not a bug.",
-          "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
-          "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
-          "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
-        ],
-        instruction:
-          "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
+        hard_constraints: isNails
+          ? [
+              "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. The image MUST show ONLY a tight close-up of fingernails on one hand. The frame does NOT include the face, body, wrist, or arm. Both halves use the SAME tight nail crop.",
+              "NO MIRROR-FLIP between halves: the hand is oriented the SAME way in both halves (same fingers visible, same hand pose). If 'before' shows the back of the hand, 'after' also shows the back of the hand. If 'before' shows the palm side partly, so does 'after'. NEVER horizontally flip the composition.",
+              "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These should differ slightly - two separate photos on different days.`,
+              "SAME PERSON / SAME HAND: both halves show the same individual's hand - same skin tone, same finger length proportions, same hand size, same individual. The 'after' hand is NOT a different person's hand - just the same hand weeks later.",
+              "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail of the skin or fingers appears in one half must appear identically in the other half (same placement, same size). The model must NOT invent a new detail that exists in only one half.",
+              "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual photo of natural unpainted nails.",
+              "FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry. The image must look like two casual phone close-ups from a real person's camera roll - mundane, real, slightly imperfect.",
+              "Both halves must have realistic un-retouched skin texture (natural pores, faint creases on the finger joints) and natural nail surface texture. Both look like real phone-camera quality.",
+            ]
+          : [
+              "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
+              `NO MIRROR-FLIP between halves: BOTH halves use the EXACT SAME body orientation - "${bodyOrientation}". The torso, shoulders, and which-side-of-the-face-is-toward-the-camera are IDENTICAL between halves. If 'before' shows the right side of the face more prominent, 'after' also shows the right side more prominent (NEVER horizontally flipped). The HEAD itself, however, IS allowed to lean slightly differently (per head_position - this is a small ear-toward-shoulder lean, not a body turn). The whole composition must NOT be a mirror of the other half.`,
+              "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
+              `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
+              `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. The head genuinely looks different between halves - this is correct and desired. What MUST stay consistent between halves is the BODY/shoulder orientation (no whole-composition mirror flip).`,
+              `BEFORE half hair arrangement: ${beforeHair}. AFTER half hair arrangement: ${afterHair}. Hair color and overall style/length stay the same, but loose strands fall differently between halves - because these are two separate photos on different days, not the same session.`,
+              "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail is visible on the face in one half must appear identically (same placement, same size, same shape) in the other half. The face is a fixed identity - the model must NOT invent a new distinctive detail that exists in only one half. This applies in both directions: do not ADD a new detail in only one half, and do not REMOVE a detail that should be in both.",
+              "Both halves must show the same person - recognizably the same face, hair color, age. The skin condition differs per intensity, and natural between-days variations (clothing, lighting, micro-angle, hair fall, head lean) ALL differ - this is expected, not a bug.",
+              "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+              "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
+              "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
+            ],
+        instruction: isNails
+          ? "Generate a single before/after split image of fingernails on the SAME hand, taken weeks apart. FIRST, lock the zone framing: the image MUST be a tight close-up of fingernails ONLY - no face, no body, no wrist. The hand pose is similar between halves so the nails are comparable. BEFORE half = weak/short/ridged nails per intensity. AFTER half = healthier/longer/smoother nails per intensity. Both halves show natural bare nails (NO polish, NO gel, NO salon manicure). ABSOLUTELY NO TEXT IN THE IMAGE."
+          : "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
       };
 
   if (notes) {
@@ -641,6 +683,7 @@ export async function POST(req: NextRequest) {
           })
         : buildPrompt({
             zone: resolvedZone,
+            zoneKey: body_zone,
             demographic,
             intensity,
             vision,
