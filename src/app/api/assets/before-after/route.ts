@@ -311,50 +311,37 @@ function buildSwipePromptFromSpec(args: {
   const spec = JSON.parse(JSON.stringify(args.spec)) as Record<string, unknown>;
   const subject = (spec.subject as Record<string, unknown>) ?? {};
 
-  // Force the model to generate a DIFFERENT person while preserving everything
-  // else from the spec. The reference image will be passed as a visual ref.
+  // Per NANO BANANA PRO PROMPT.pdf technique: keep preserve_original: true to
+  // stay in EDIT mode (otherwise Nano Banana goes into free-regen and ignores
+  // the reference). Vary the face via a modification_note instead.
   subject.face = {
-    preserve_original: false,
-    note:
-      "Generate a person with subtly different facial features from the reference - different exact nose shape, different jaw, different eye spacing - so a viewer can tell it is a different individual, but stay in the same demographic ballpark as described in 'description' (unless overridden below).",
+    preserve_original: true,
+    modification_note:
+      "Edit the face: subtly different exact features (different nose shape, different jaw, different eye spacing, slightly different mouth) so it is recognizably a different individual. Keep everything else from the reference: skin tone, skin texture, age, expression, head position, framing, lighting. This is a minor identity edit, NOT a full regeneration.",
   };
 
-  // Apply user overrides to the spec's subject if provided.
+  // Apply user demographic overrides as modification notes (preserve_original
+  // stays true so the model treats them as edits, not free-regen prompts).
   if (args.overrides.age) {
-    subject.age_override = args.overrides.age;
-    subject.description = `${(subject.description as string) || ""} (USER OVERRIDE: age range ${args.overrides.age})`.trim();
+    subject.age_modification = `Adjust apparent age to ${args.overrides.age} (subtle edit on face only).`;
   }
   if (args.overrides.ethnicity) {
-    const label = ETHNICITY_PROFILES[args.overrides.ethnicity].label;
-    subject.ethnicity_override = label;
-    subject.description = `${(subject.description as string) || ""} (USER OVERRIDE: ethnicity ${label})`.trim();
+    subject.ethnicity_modification = `Adjust ethnicity to ${ETHNICITY_PROFILES[args.overrides.ethnicity].label} (subtle edit on facial features only).`;
   }
   if (args.overrides.hair_color) {
     const hair = (subject.hair as Record<string, unknown>) ?? {};
-    hair.color = args.overrides.hair_color;
+    hair.color_modification = `Adjust hair color to ${args.overrides.hair_color} (keep style and length identical to reference).`;
     subject.hair = hair;
   }
   spec.subject = subject;
 
-  // Apply user notes as an additional instruction layer.
   if (args.notes) {
     spec.user_notes = args.notes;
   }
 
-  // Add task + identity_lock + minimal hard constraints around the spec.
-  spec.task = "generate_image";
-  spec.mode = "spec_clone";
-  spec.identity_lock =
-    "Both halves of the split image show the SAME new person (same face, same hair, same age, same outfit). Only skin condition differs per pair_structure.";
-  spec.hard_constraints = [
-    "NO text, labels, watermarks, captions, or overlays anywhere in the image.",
-    "Generate a person with subtly different facial features from the reference. Stay in the same demographic ballpark unless a USER OVERRIDE is specified in subject (then follow the override).",
-    "Both halves of the before/after split show the SAME new person.",
-    "Match the reference image's framing, crop, composition, background, lighting, outfit, and overall photographic style exactly per the photography/background sections above.",
-    "Match the source's skin transition intensity (see pair_structure.transition_intensity) - do not invent a different intensity level.",
-    "No mirroring between halves.",
-  ];
-
+  // Send the spec AS-IS. Per the doc, the spec itself IS the prompt - no
+  // wrapping with task/mode/hard_constraints/instruction fields, as those
+  // contradict the spec and trigger Nano Banana to free-regen.
   return JSON.stringify(spec);
 }
 
