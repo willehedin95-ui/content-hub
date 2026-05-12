@@ -1,108 +1,108 @@
-# Session: 2026-05-04 — Doginwork quiz + offer page overhaul
+# Session: 2026-05-12 - Quiz offer page A/B test (handover to next LLM)
 
-**Längd:** Heldag-session (William iterativ feedback)
-**Personer:** William
-**Fokus:** Splittade Profil-sida från Offer-sida, byggde om hela offer-sidan enligt LP-ordning, fixade timer-synk
+**Active issue**: B variant of Maries Valpakademin offer page needs visual polish - see `.claude/journal/2026-05-12-offer-page-ab-test.md` for full handover doc with 6 specific fixes.
 
-## Vad som gjordes
+**Status**: Infrastructure live (variant group, runtime swap, test URLs working). Visual decisions need redo. Next LLM should:
+1. Read `2026-05-12-offer-page-ab-test.md`
+2. Read A variant HTML from DB to lift the original visual patterns (testimonials with before/after photos, gold guarantee badge, bonus images, full pricing-box value-stack)
+3. Apply to B variant via PostgREST PATCH on offer step `step_1778588267757_offerb`
+4. Republish via `scripts/publish-doginwork-quiz.ts`
 
-### Tidigare på dagen (samma session, separata trådar)
-1. **Block 9 bilder fixade** — 4 av 7 testimonial-bilder var fel (chihuahua istf schäfer m.m.). Rotorsak: William uploadade nya WEBP direkt till Supabase 2026-04-30 men lät gamla PNG ligga kvar; webp-pipelinen `optimize-quiz-assets.ts` re-konverterade gamla PNG → fel WEBP. Fix: laddade upp nya PNG från `~/Downloads/dog quiz utmaningar bilder/`, körde om pipeline. Sparade learning till `memory/feedback_quiz_image_uploads.md`.
-2. **Quiz polish** — tog bort punchline på Pattern A, designade om citat-cards till Spirit Dog-stil, flyttade Pattern C (1940-tal) till strax före loading, lade till inline-CTA på educational slides, fixade nested-scrolls i alla iframes (overflow:hidden + scrolling=no, förbättrad height-measurement med image-load handlers).
-3. **Modal-overlay fix** — bload commit-gate-modaler dimade bara iframens area. Insikt: iframes kan ALDRIG ha content som visuellt escapar sin bounding box. Lösning: när modal aktiv via postMessage från iframe → App.tsx expanderar iframe till `position:fixed; inset:0` så iframens egna lokala overlay täcker viewport.
+**Test URLs (now exact-match working)**:
+- A: https://quiz.doginwork.se/valpakademin/?goto=Offer%20page
+- B: https://quiz.doginwork.se/valpakademin/?goto=Offer%20page%20(B%20variant)
 
-### Profil + Offer omstrukturering (huvudarbete)
+---
 
-**Början:** Mergeade Profil + Offer till EN sida (`html_profile_with_offer()`) med parent-DOM timer mellan. User valde sen att splittra tillbaka eftersom den merged-sidan blev rörig.
+## Earlier in this session (done)
 
-**Slutsteg — split tillbaka:**
-- b24 = "Block 24 - Profil" (bara html_profile_card)
-- boffer = "Offer page" (med `_offer_body_without_hero()`)
-- Båda har `.profil-step`/`.offer-step` shell-klass för full-bleed iframe (padding:0)
-- Timer renderas i parent-DOM endast på offer-step
+Topic: Before/After image generator tool in /assets
 
-### Profile-card iterationer
-- **Hero-bild fixad** — cropade 10% från toppen av `profile-hero.png` (puppy-collage hade onödig cream-whitespace), behöll bottom-whitespace för title-overlay
-- **Headline omskrivet** — från "Bellas träningsplan är klar" till PawChamp-clone: "Den sista träningsplanen Bella behöver" + "Vi förutser stora framsteg till **1 juni**" (dynamiskt datum, today+28d)
-- **Chart redesign** — multi-point X-axis med faktiska datum (NU 4 MAJ, 11 MAJ, 18 MAJ, 25 MAJ, 1 JUN), Nu-pill orange under start-marker, Mål-pill grön över end-marker
-- **Bakgrund chart-card** — bytte från gradient (white → cream) till solid white (gradient skapade hård kant)
+## What was done
 
-### Offer-page omorganisering (LP-ordning)
-**Slutlig sektion-ordning:**
-1. Sticky timer-banner (parent-DOM)
-2. Vi rekommenderar: **Valpakademin** (med produktbox-bild från LP)
-3. Vad du lär dig (4-fas deep dive — TRYGG START / 4 GRUNDERNA / UTE I VÄRLDEN / FRAMTIDEN med konkreta bullets)
-4. Marie Hedin (founder + credentials-collage från LP)
-5. Före och efter Valpakademin (3 testimonials med Williams färdiga before/after-bilder)
-6. 4 bonusar (egen sektion, 4 dedikerade bonus-cards)
-7. 87% + 3000+ valpägare
-8. DITT ERBJUDANDE (offer stack 9 176 kr → 997 kr)
-9. **Starta Bellas kurs nu →** (primary CTA)
-10. 30 dagars garanti
-11. Hur ligger Valpakademin till? (comparison: 12k/3.5k/997 kr)
-12. Varför just nu? (urgency, vetenskaps-anchorad)
-13. FAQ
-14. Footer
+### New feature: Before/After generator (whole stack)
+- Built fresh from scratch as a 4th tool in `/assets` (next to Swipe Image / Swipe Video)
+- New API routes:
+  - `src/app/api/assets/before-after/route.ts` - main generation, NDJSON streaming
+  - `src/app/api/assets/before-after/regenerate/route.ts` - retry endpoint
+  - `src/app/api/assets/before-after/detect-zone/route.ts` - Claude vision analysis of uploaded source
+- New component: `src/components/assets/BeforeAfterGenerator.tsx`
+- Sidebar/manager wiring: `AssetsSidebar.tsx`, `AssetManager.tsx`
+- Design doc: `docs/superpowers/specs/2026-05-11-before-after-generator-design.md`
 
-**Borttaget:** v20-mission ("1940-tal")-blocket (redundant med Pattern C i quizet), gamla 4-stegsmetoden-sektionen (mergeade in i Vad du lär dig), repeat CTA-pillar #1 + #2, sticky bottom-bar.
+### Body zone system (11 zones with auto-generated thumbnails)
+- Generated 11 thumbnail images via Higgsfield `nano_banana_flash` (full_face_front, face_profile, eye_area, forehead, neck_decolletage, cheek_closeup, arm_skin, hands, hair_scalp, leg_thigh, chest_macro)
+- Stored as static webp assets in `public/images/body-zones/`
+- Visual picker grid in component, auto-detected from source via Claude vision
 
-### Visual cleanup-pass
-- Headline format `<br />` mellan "träningsplanen" och "Bella behöver" (alltid 2-radig)
-- All horizontal padding standardiserad till 16pt (ändrade `.fp-section` 4px→16px och `.v20-section` 20px→16px)
-- "Vad du lär dig" — produktbild + outer vit card borttagna, 4 phase-cards är vita på cream-bg (omvänd kontrast)
+### Demographic system
+- `ETHNICITY_PROFILES` with 8 ethnicities (scandinavian default, north_european, mediterranean, east_asian, south_asian, latin, middle_eastern, african) - each with own hair/eye/skin color lists
+- Age ranges 30-75 (expanded from 40-65)
+- User overrides via "Customize person" panel (collapsible)
+- Source-detected demographic stored separately as fallback
+- Expression rule: BEFORE always neutral, AFTER may have subtle smile (40% chance)
 
-### Timer-synk
-- Sticky timer + inner offer-stack timer använde olika sessionStorage-keys → showed olika värden
-- Synkade till samma key (`quiz-offer-timer-end`)
-- Tog bort auto-reset-logiken från inner timer (matchar sticky som klampar till 0)
+### Source upload flow
+- Auto-upload to /api/upload-temp on file/URL select
+- Auto-trigger detect-zone (Claude vision analysis)
+- Auto-trigger generation in swipe mode (no Generate button click needed)
+- Done state shows side-by-side comparison, demographic, edit instructions, Save to Assets, Re-roll, Start Over
 
-### CTA wiring
-- `.v20-cta`, `.v20-cta-pill` knappar lyssnar på click och postMessar `quiz-runtime-continue` → exit step (Shopify checkout med QUIZ2026)
-- Runtime auto-Continue dold på offer-step via `display:none` (inline knappar driver flödet)
+### Swipe mode UI (separate from free mode)
+- When source uploaded, all controls collapse into single "Customize (optional)" panel
+- Default view: just source preview + auto-generating
+- No body zone picker, no intensity buttons in swipe mode (they don't apply)
 
-## Beslut
+### NANO BANANA PRO PROMPT spec technique (added end of session)
+- Per `copywriting/AI UGC Videos/ox ROAS AI UGC content/NANO BANANA PRO PROMPT.pdf` and `Clone prompt chatgpt_gemini.pdf`
+- detect-zone now extracts a 25+ field structured spec (subject/accessories/photography/background/pair_structure) instead of 5 simple fields
+- Backend `buildSwipePromptFromSpec()` sends the spec AS-IS as the Nano Banana prompt
+- `face.preserve_original: true` with `modification_note` for face variation (not false - false triggers free-regen)
 
-1. **Profil + Offer separerade** istället för merged. User ångrade den merged-versionen — split-versionen läser cleanare.
-2. **Marie EFTER "Vad du lär dig"** istället för före (user explicit val: "hör ihop med introduktion av kursen")
-3. **87% precis före offer-stack** (social proof anchor direkt innan pris)
-4. **Comparison mellan garanti och urgency** (svar på "är 997 mycket?"-frågan blir aktuell efter pris)
-5. **Inga fabricerade siffror** — comparison-numren från Maries egen LP-text (privatlektion 1.5-2.5k×5-8 = 10-15k, valpkurs 2.5-4k för 6v). Dokumenterat i HTML-comments.
-6. **Timer beteende:** Klampar till 00:00, ingen auto-reset. Matchar Maries no-fake-urgency-ton.
+### UGC realism docs integration
+- Read and pulled from `nano-banana-ugc-prompts.md` (memory) and `AI-UGC-OVERVIEW.md` (copywriting/)
+- Pulled canonical phrasings: "captured on iPhone 16 Pro using front camera at high resolution, with the typical computational look of a real smartphone photo", "raw handheld realism and the color science of an actual iPhone image"
+- Added memory pointer: `ugc-prompting-docs-index.md`
 
-## Nuläge
+### Other realism / framing fixes through iteration
+- Per-half outfit/lighting/angle randomization in free mode (TOPS, LIGHTING_VARIANTS, HEAD_TILTS arrays)
+- "60 days apart" framing for free mode (different lighting/outfit/angle per half)
+- Mirror-flip prevention hard constraints
+- Body zone descriptions softened from "EXTREME MACRO" medical-sounding wording to "lifestyle skincare close-up" for Google content policy
+- Skincare/aging language softened to "tired vs rested" framing
 
-- ✅ Profil-sida live, ren single-iframe med edge-to-edge hero
-- ✅ Offer-sida live med ny LP-ordnad sektionssekvens
-- ✅ Båda timers synkade
-- ✅ Build passerar (npm run build)
-- ✅ Commit pushat lokalt (inte till origin — auto-deploy stoppad)
+## Decisions made
 
-**Live URLs:**
-- Profil: https://quiz.doginwork.se/valpakademin?goto=Profil
-- Offer: https://quiz.doginwork.se/valpakademin?goto=Offer+page
+- **Two distinct modes**: swipe mode (source uploaded, near-clone) vs create mode (no source, template-based)
+- **Source spec extraction via Claude vision** is the right architecture per the doc - not text-prompt-engineering
+- **Demographic NOT auto-filled in UI** when source uploaded - user picks separately, source demographic is implicit backend fallback
+- **Skip image-edit-mode rabbit hole** - per the doc, nano-banana-2 CAN do near-clone with right prompting (`preserve_original: true` + modification_note), don't need face-swap pipeline
 
-## Blockers / Öppna frågor
+## Current state
 
-- **Sektion-densitet** — User initially flaggade att merged-versionen var "rörig". Splitten löste det men offer-page är fortfarande 14 sektioner. Riskerar fortfarande "vibecoded SaaS-template"-känsla om varje sektion har olika visuell stil.
-- **CTA-strategi inom offer-body** — bara EN inline CTA just nu (efter 997 kr). User tog bort sticky-button. Funkar troligen — men oklart om man missar konvertering om scrollare avbryter innan dem når den enda CTA.
+- Tool deployed on commit `8e3e674`. Build green. All routes registered.
+- Quality of swipe output still not at "near-clone" level when last tested - generated still looks wider crop and AI-rendered compared to source
+- Latest commit (`8e3e674`) is untested by user - implements the actual doc technique correctly (spec-as-prompt + preserve_original: true). User left frustrated.
 
-## Härnäst
+## Blockers / Open questions
 
-Per Williams iterativa stil, sannolikt:
-1. Visuell rensning per sektion (mer whitespace, färre olika kort-stilar)
-2. Eventuell content-trim (sektion-densitet)
-3. Verifiera offer-flödet end-to-end live (klick → checkout → exit_id med rätt rabatt)
+- **Swipe output still looks AI** despite multiple iterations. Last commit `8e3e674` should fix this per the doc but not yet tested.
+- If `8e3e674` still produces AI-looking output, options remain:
+  - Test Higgsfield's nano_banana with role-tagged reference images (memory says Higgsfield's `medias` array has a `role` field)
+  - Build face-swap pipeline via Replicate InsightFace
+  - Accept current output as "style inspiration" not "near-clone"
 
-## Tekniska anteckningar
+## Next up
 
-**Filer ändrade:**
-- `content-hub/runtime/quiz-runtime/src/App.tsx` — isProfilStep/isOfferStep + OfferTimerBar render
-- `content-hub/runtime/quiz-runtime/src/renderer.tsx` — OfferTimerBar export, modal expansion CSS, profil-step/offer-step CSS
-- `doginwork/scripts/build-quiz.py` — `_offer_body_without_hero()` strip-marker, b24/boffer flow split
-- `doginwork/scripts/offer_html_body.py` — full body restructure, nya sektioner (bonuses, urgency), borttagna sektioner (mission, repeat CTAs)
+1. **Test commit `8e3e674`** - this is the actual doc technique (preserve_original: true, spec is the prompt without wrapping). Should be the breakthrough or confirm we need a different model.
+2. If `8e3e674` fails: try Higgsfield API for nano-banana with role-tagged media (better conditioning per Higgsfield docs)
+3. If both fail: build Replicate face-swap pipeline
+4. Add more body zone templates if needed (William mentioned wanting more variety after seeing the 48 competitor examples)
 
-**Nya Supabase storage-uploads:**
-- `marie-credentials.webp` (Maries diplom-collage från LP)
-- `valpakademin-box.webp` (LP:s produktbox)
-- `before-after-1/2/3.webp` (Williams färdiga testimonial-bilder)
-- `profile-hero.webp` (cropad version, top-only)
+## Mistakes I made this session (lessons for next time)
+
+- **Wasted hours blaming the model** before reading all available docs. William explicitly had a `NANO BANANA PRO PROMPT.pdf` describing the working technique that I didn't read until very late.
+- **Misread user feedback multiple times** (e.g. interpreted "don't use reference for age/hair" as "don't match demographic at all" when he meant "don't auto-fill the UI dropdowns")
+- **Made up problems that weren't in the source** (e.g. claimed Amanda had different outfits between halves when right half showed no outfit visible)
+- **Over-engineered prompts** when the right answer was minimal spec-only (per doc)
+- **Should have run /context and /journal more often** to load existing docs at session start
