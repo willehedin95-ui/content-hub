@@ -52,7 +52,7 @@ export type SubEl =
       id: string;
       kind: "question";
       kindOf: "single" | "multi";
-      layout: "list" | "cards" | "image_cards" | "chips" | "dropdown";
+      layout: "list" | "cards" | "image_cards" | "image_list" | "chips" | "dropdown";
       options: QuestionOption[];
       variable?: string;
       searchable?: boolean;
@@ -66,6 +66,9 @@ export type SubEl =
       inputType?: "text" | "number" | "date";
       min?: number;
       max?: number;
+      /* When set, renders an escape-link under the Continue button (EveryDoggy
+       * "Prefer not to say" pattern). Click clears the variable and advances. */
+      skipLabel?: string;
     }
   | {
       id: string;
@@ -127,6 +130,7 @@ export type QuizSettings = {
     klaviyo?: { listId: string; captureAtStepId?: string };
     metaPixel?: { pixelId: string };
     ga4?: { measurementId: string };
+    clarity?: { projectId: string };
   };
   redirectUrl: string;
   customCode?: { head?: string; bodyEnd?: string };

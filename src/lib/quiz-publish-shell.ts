@@ -86,6 +86,13 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
 </script>`
     : "";
 
+  const clarityScript = providers.clarity?.projectId
+    ? `<!-- Microsoft Clarity -->
+<script>
+(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",${JSON.stringify(providers.clarity.projectId)});
+</script>`
+    : "";
+
   // Serialize quiz data - full graph (runtime resolves variants client-side).
   // Escape "</script>" and "<!--" so user-authored HTML stored in custom_html
   // blocks can't terminate the surrounding <script> tag or open an HTML comment.
@@ -109,6 +116,7 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
     ${metadata.favicon ? `<link rel="icon" href="${escapeAttr(metadata.favicon)}">` : ""}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     ${metaPixelScript}
+    ${clarityScript}
     ${customCode?.head ?? ""}
   </head>
   <body>

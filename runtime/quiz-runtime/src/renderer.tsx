@@ -591,7 +591,7 @@ function OptionButton({
   kindOf,
 }: {
   option: QuestionOption;
-  layout: "list" | "cards" | "image_cards" | "chips" | "dropdown";
+  layout: "list" | "cards" | "image_cards" | "image_list" | "chips" | "dropdown";
   selected: boolean;
   onClick: () => void;
   variables?: Record<string, string>;
@@ -609,8 +609,8 @@ function OptionButton({
   // raising.dog pattern: multi-select shows a square checkbox left, single-
   // select on list/cards shows a right-arrow chevron. Both indicators are
   // hidden for image_cards (the photo IS the indicator) and chips (compact).
-  const showCheckbox = kindOf === "multi" && (layout === "list" || layout === "cards" || layout === "image_cards");
-  const showArrow = kindOf === "single" && (layout === "list" || layout === "cards" || layout === "image_cards");
+  const showCheckbox = kindOf === "multi" && (layout === "list" || layout === "cards" || layout === "image_cards" || layout === "image_list");
+  const showArrow = kindOf === "single" && (layout === "list" || layout === "cards" || layout === "image_cards" || layout === "image_list");
   return (
     <button
       class={cls}
@@ -619,10 +619,10 @@ function OptionButton({
       onClick={onClick}
       type="button"
     >
-      {layout === "image_cards" && option.imageUrl && (
+      {(layout === "image_cards" || layout === "image_list") && option.imageUrl && (
         <img src={option.imageUrl} alt={label} class="quiz-option-img" />
       )}
-      {layout === "image_cards" && !option.imageUrl && option.imageDescription && (
+      {(layout === "image_cards" || layout === "image_list") && !option.imageUrl && option.imageDescription && (
         <span class="quiz-option-img-placeholder" title={option.imageDescription}>
           <span class="quiz-option-img-placeholder-label">{option.imageDescription}</span>
         </span>
@@ -1112,6 +1112,22 @@ export function StepRenderer({
           >
             {t("continue", market)}
           </button>
+          {/* EveryDoggy-style "Prefer not to say" escape under Continue. */}
+          {textInputs.map((ti) =>
+            ti.skipLabel ? (
+              <button
+                key={ti.id}
+                class="quiz-escape-link"
+                type="button"
+                onClick={() => {
+                  onVariableChange?.(ti.variable, "");
+                  onContinue?.();
+                }}
+              >
+                {ti.skipLabel}
+              </button>
+            ) : null,
+          )}
         </div>
       )}
     </div>
@@ -1418,6 +1434,10 @@ body {
  * gender/age-segmentering där visuell distinktion mellan alternativ
  * gör scanningen snabbare. (William 2026-05-07) */
 .quiz-question--image_cards { flex-direction: row; flex-wrap: wrap; gap: 10px; }
+/* image_list = PawChamp-style full-width rad med thumbnail vänster, label
+ * center. För frågor med 4+ options där 2-kol grid blir för utrymmeskrävande
+ * (t.ex. doginwork Block 9 - 7 beteendeproblem). (William 2026-05-12) */
+.quiz-question--image_list { flex-direction: column; gap: 10px; }
 .quiz-question--chips { flex-direction: row; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
 
 /* Base option: Clarflow-style soft-border card. All brand tokens from
@@ -1553,6 +1573,18 @@ body {
   font-style: italic;
 }
 .quiz-option--image_cards .quiz-option-img { width: 100%; max-width: 110px; height: auto; aspect-ratio: 1 / 1; border-radius: 12px; flex: 0 0 auto; object-fit: contain; margin: 0 auto; }
+
+/* image_list option = row with 56x56 thumbnail left, label flex center,
+ * checkbox/arrow right. Restores pre-Woofz Block 9 design. */
+.quiz-option--image_list {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.quiz-option--image_list .quiz-option-img { width: 56px; height: 56px; max-width: 56px; aspect-ratio: 1 / 1; border-radius: 8px; flex: 0 0 56px; object-fit: cover; margin: 0; }
+.quiz-option--image_list .quiz-option-img-placeholder { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 8px; padding: 6px; }
+.quiz-option--image_list .quiz-option-label { padding: 0; font-size: 15px; font-weight: 500; flex: 1; line-height: 1.3; text-align: left; }
+
 .quiz-option-emoji { font-size: 24px; }
 .quiz-option-label { font-weight: 400; flex: 1; }
 
@@ -1587,25 +1619,24 @@ body {
 }
 .quiz-btn--primary { background: var(--quiz-brand); color: #fff; width: 100%; }
 
-/* Fixed-bottom CTA + escape-link wrapper for multi-select questions and
- * single-select with escape (raising.dog / EveryDoggy pattern). Pinned to
- * viewport bottom so the user always sees it regardless of how many options
- * the question has. Padding-bottom on .quiz-content reserves space so the
- * last option isn't hidden under the wrapper. */
+/* Continue + escape-link wrapper for multi-select / single-with-escape.
+ * Non-sticky: sits naturally below the last option. User scrolls past all
+ * options before reaching the CTA - works better for long lists where a
+ * sticky CTA hides content. (William 2026-05-12)
+ *
+ * flex-basis: 100% breaks out of the parent .quiz-question flex-row (chips
+ * + image_cards use row layout) so the wrapper is its own full-width row. */
 .quiz-question-bottom {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: var(--quiz-keyboard-inset, 0);
-  z-index: 50;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
-  padding: 12px 16px 16px;
-  background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
-  transition: bottom 0.18s ease-out;
+  margin-top: 16px;
+  padding: 0 env(safe-area-inset-bottom);
+  width: 100%;
+  flex-basis: 100%;
 }
+.quiz-question-bottom .quiz-escape-link { align-self: center; }
 .quiz-question-bottom .quiz-question-continue {
   width: 100%;
   max-width: 680px;
@@ -1617,9 +1648,9 @@ body {
 /* Reserve scrollable space so the fixed wrapper never covers the last option.
  * Applied universally - quiz-step layouts without a fixed bottom only get a
  * little extra breathing room, no UX cost. */
-/* Bottom-buffer för fixed CTAs (.quiz-question-bottom OR .quiz-continue-wrap).
- * Nu när alla CTAs är fixed-bottom appliceras 180px alltid. */
-.quiz-content { padding-bottom: 180px; }
+/* Modest breathing room at end of scroll - CTAs are inline (non-sticky), so
+ * no buffer needed for fixed bars. */
+.quiz-content { padding-bottom: 32px; }
 
 /* Profil-steget (b24) + Offer-steget (boffer) ska ha edge-to-edge content -
  * profile-card-heron är full-bleed (puppy graduation image), och offer-
@@ -1681,47 +1712,21 @@ body {
 .quiz-email-input:focus { border-color: var(--quiz-brand); border-width: 2px; }
 .quiz-email-error { font-size: 13px; color: #dc2626; }
 
-/* Inline Continue (slider/text_input/custom_html): fixed-bottom samma stil
- * som .quiz-question-bottom så CTA-positionen är enhetlig genom hela quizet
- * (William 2026-04-30).
- *
- * bottom-värdet använder --quiz-keyboard-inset (set av App.tsx VisualViewport-
- * listener 2026-05-03) så CTA pushas upp ovanför iOS/Android-tangentbordet på
- * text_input/dropdown-steg. Fallback till 0 när keyboard ej öppen. */
+/* Inline Continue (slider/text_input/custom_html): non-sticky, sits naturally
+ * after the input/content. (William 2026-05-12 - simplified after removing
+ * sticky CTAs across quiz to avoid scroll-hint/fade workarounds.) */
 .quiz-continue-wrap {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: var(--quiz-keyboard-inset, 0);
-  z-index: 50;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 16px 16px;
-  background: linear-gradient(to top, var(--quiz-bg) 70%, color-mix(in srgb, var(--quiz-bg) 85%, transparent) 100%);
-  transition: bottom 0.18s ease-out;
+  margin-top: 24px;
+  padding: 0 16px env(safe-area-inset-bottom);
 }
 .quiz-continue-wrap .quiz-btn--primary {
   width: 100%;
   max-width: 680px;
   margin: 0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-/* Steg som ska ha inline-CTA istället för fixed-bottom (William 2026-04-30
- * - profile-card behöver natural flow så CTA inte täcker innehåll).
- *
- * 2026-05-03: Utökad till educational interstitials (Pattern Reveal,
- * Competitive destruction, Puppy blues) - sticky CTA gjorde att användare
- * skippade slidens content innan de läst. Inline CTA tvingar scroll =
- * tvingar konsumption, per quiz-knowledge "loading screen captive attention"-
- * principen applicerad på högvärdiga insight panels. */
-.quiz-continue-wrap[data-step-name*="Profil"],
-.quiz-continue-wrap[data-step-name*="Pattern Reveal"],
-.quiz-continue-wrap[data-step-name*="Competitive destruction"],
-.quiz-continue-wrap[data-step-name*="Puppy blues"] {
-  position: static;
-  background: transparent;
-  padding: 24px 16px 8px;
 }
 
 .quiz-dropdown { position: relative; width: 100%; }
@@ -1981,8 +1986,8 @@ body {
 .quiz-custom-html li { margin-bottom: 4px; }
 
 @media (max-width: 480px) {
-  /* Mobile: tight horizontal padding + 180px bottom för fixed CTA. */
-  .quiz-content { padding: 20px 10px 180px; }
+  /* Mobile: tight horizontal padding. */
+  .quiz-content { padding: 20px 10px 32px; }
 }
   `;
   document.head.appendChild(style);
