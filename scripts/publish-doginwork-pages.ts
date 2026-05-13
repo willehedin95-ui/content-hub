@@ -72,27 +72,66 @@ async function main() {
   }
   console.log(`[publish] Target project=${lp.project} domain=${lp.domain}`);
 
-  // Upsert the page row so we have a DB record matching what's deployed.
-  const { data: page, error: upsertErr } = await supabase
+  // Manual upsert: select-then-update/insert. Pages-tabellen saknar unique
+  // constraint pa (workspace_id, slug) och har faktiska duplicates (3 rader
+  // pa slug=valps-vanligaste-beteendeproblem 2026-05-08), sa onConflict skulle
+  // krascha med PostgREST 42P10. Manuell lookup ar dessutom defensiv mot fler
+  // duplicates som kan uppsta innan dedup-migrationen kors.
+  const { data: existing, error: lookupErr } = await supabase
     .from("pages")
-    .upsert(
-      {
-        workspace_id: WORKSPACE_ID,
-        slug: SLUG,
-        product: "valpakademin",
-        source_url: "internal://sales-page",
-        original_html: html,
-        source_language: LANGUAGE,
-        status: "published",
-      },
-      { onConflict: "workspace_id,slug" },
-    )
-    .select()
-    .single();
-  if (upsertErr) {
-    throw new Error(`Pages upsert failed: ${upsertErr.message}`);
+    .select("id")
+    .eq("workspace_id", WORKSPACE_ID)
+    .eq("slug", SLUG)
+    .limit(1)
+    .maybeSingle();
+  if (lookupErr) {
+    throw new Error(`Pages lookup failed: ${lookupErr.message}`);
   }
-  console.log(`[publish] Upserted page id=${page.id}`);
+
+  // Required (NOT NULL) columns per pages-schema: name, product, page_type,
+  // source_url, original_html, slug, source_language, status, content_type.
+  const pageRow = {
+    workspace_id: WORKSPACE_ID,
+    slug: SLUG,
+    name: "Valpakademin Sales Page",
+    product: "valpakademin",
+    page_type: "advertorial",
+    source_url: "internal://sales-page",
+    original_html: html,
+    source_language: LANGUAGE,
+    status: "ready",
+  };
+
+  let pageId: string;
+  if (existing) {
+    const { data: updated, error: updateErr } = await supabase
+      .from("pages")
+      .update(pageRow)
+      .eq("id", existing.id)
+      .select("id")
+      .single();
+    if (updateErr || !updated) {
+      throw new Error(`Pages update failed: ${updateErr?.message ?? "no row"}`);
+    }
+    pageId = updated.id;
+    console.log(`[publish] Updated existing page id=${pageId}`);
+  } else {
+    const { data: inserted, error: insertErr } = await supabase
+      .from("pages")
+      .insert(pageRow)
+      .select("id")
+      .single();
+    if (insertErr || !inserted) {
+      throw new Error(`Pages insert failed: ${insertErr?.message ?? "no row"}`);
+    }
+    pageId = inserted.id;
+    console.log(`[publish] Inserted new page id=${pageId}`);
+  }
+
+  if (process.env.DRY_RUN === "true") {
+    console.log(`[publish] DRY_RUN=true - skipping publishPage() call. Page row OK.`);
+    return;
+  }
 
   // publishPage signature (from chunk 1 update):
   //   (html, slug, language, additionalFiles?, onProgress?, analytics?, customCode?, options?)
