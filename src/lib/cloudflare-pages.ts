@@ -162,11 +162,25 @@ async function getProjectBaseUrl(
   accountId: string,
   apiToken: string,
   projectName: string,
-  language: Language
+  language: Language,
+  domainOverride?: string,
+  projectNameOverride?: boolean
 ): Promise<string> {
-  // Prefer explicit custom domain env var (CF_PAGES_DOMAIN_SV, etc.)
-  const envDomain = getProjectCustomDomain(language);
-  if (envDomain) return `https://${envDomain}`;
+  // Explicit per-call override beats everything (used by per-workspace publish
+  // flows that read domain from workspace.settings.lp_publish.domain).
+  if (domainOverride?.trim()) return `https://${domainOverride.trim()}`;
+
+  // When a per-call projectName override is provided WITHOUT a matching domain,
+  // skip the language-based env-var fallback. Otherwise a caller targeting a
+  // custom project (e.g. doginwork-pages) would silently inherit the SV default
+  // domain (halsobladet.com) and end up returning the wrong public URL despite
+  // deploying to the right project. Fall straight through to CF API detection
+  // so we either get the project's real custom domain or its *.pages.dev
+  // subdomain, never the wrong language-default.
+  if (!projectNameOverride) {
+    const envDomain = getProjectCustomDomain(language);
+    if (envDomain) return `https://${envDomain}`;
+  }
 
   // Fall back to CF API detection
   const res = await fetchWithRetry(
@@ -295,6 +309,20 @@ export async function saveManifest(
 /**
  * Deploy a page (HTML + optional images) to Cloudflare Pages.
  * Merges with existing files so previously published pages are preserved.
+ *
+ * `options.projectName` overrides the env-var-based project lookup. This is
+ * used by per-workspace landing-page publish flows that read the target
+ * project from `workspaces.settings.lp_publish.project` (e.g. doginwork
+ * publishes to `doginwork-pages` rather than the SV default `halsobladet-blog`).
+ * When omitted, the legacy `CF_PAGES_PROJECT_<LANG>` env var is used so all
+ * existing callsites keep working unchanged.
+ *
+ * `options.domain` overrides the base domain used to compute the returned
+ * `url`. Use this when the custom project's public domain isn't reflected in
+ * the language-keyed `CF_PAGES_DOMAIN_<LANG>` env var. If `projectName` is
+ * provided WITHOUT `domain`, we deliberately skip the env-var fallback (so
+ * doginwork-pages doesn't silently inherit halsobladet.com) and ask the CF
+ * API for the project's real custom domain or *.pages.dev subdomain instead.
  */
 export async function publishPage(
   html: string,
@@ -304,9 +332,11 @@ export async function publishPage(
   onProgress?: (current: number, total: number) => void,
   analytics?: PageAnalyticsConfig,
   customCode?: string,
+  options?: { projectName?: string; domain?: string },
 ): Promise<CFDeployResult> {
   const { accountId, apiToken } = getConfig();
-  const projectName = getProjectName(language);
+  const projectNameOverride = options?.projectName?.trim();
+  const projectName = projectNameOverride || getProjectName(language);
 
   // Inject analytics scripts if configured
   if (analytics) {
@@ -395,8 +425,19 @@ export async function publishPage(
   for (const f of newFiles) newPathsOnly[f.path] = f.hash;
   await mergeManifest(projectName, newPathsOnly);
 
-  // Get base URL (prefer custom domain)
-  const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
+  // Get base URL (prefer custom domain). When caller passed options.domain
+  // (per-workspace publish flow), use it directly without env-var lookup.
+  // When caller passed options.projectName but no domain, skip env-var
+  // fallback so we don't silently mix per-workspace project with default
+  // language domain.
+  const baseUrl = await getProjectBaseUrl(
+    accountId,
+    apiToken,
+    projectName,
+    language,
+    options?.domain,
+    Boolean(projectNameOverride)
+  );
   const finalUrl = `${baseUrl}/${slug}`;
 
   // 2026-04-16: Verify the deployed URL actually serves valid HTML before we
