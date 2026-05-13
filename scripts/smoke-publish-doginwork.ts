@@ -1,6 +1,8 @@
 // One-off smoke test: publish a placeholder page from the `pages` table to the
 // `doginwork-pages` Cloudflare Pages project (custom domain pages.doginwork.se).
 //
+// TODO: Remove after sales page Chunk 2 lands (valpkurs.deploy via real lib function)
+//
 // Verifies the new options.projectName + options.domain overrides in
 // publishPage() route correctly to a per-workspace CF project. Run with:
 //   npx tsx scripts/smoke-publish-doginwork.ts
@@ -64,6 +66,12 @@ async function main() {
     );
   }
   console.log(`[smoke] target project=${lp.project} domain=${lp.domain}`);
+
+  if (!page.original_html) {
+    throw new Error(
+      `page.original_html is null for id=${PAGE_ID} - cannot smoke-publish an empty page`,
+    );
+  }
 
   const result = await publishPage(
     page.original_html,
