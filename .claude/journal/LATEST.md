@@ -1,99 +1,83 @@
-# Session: 2026-05-14 (eftermiddag) - Before/After generator deep iteration
+# Session: 2026-05-14 14:21
 
-9 commits ute. Stort fokus på att fixa template/create mode efter förra sessionens regression, plus två nya zone-templates (nails + hair) baserat på faktisk kategori-research.
+Long session spänd över 2026-05-12 → 14. Doginwork quiz B-variant offer-page polish, mobile-walk-audit, plus inventory + planning för Klaviyo-migration.
 
 ## What was done
 
-### Skin templates (create mode) - poseregression fixad
-- **`6b03b7e`** - Återställde L/R head tilts (raderade i `b71f348` för att fixa mirror-flip i swipe mode, men över-korrigerade create mode till alla "head straight on"-varianter). Mjukade upp `identity_lock` så pose inte blir clone, lade till `HAIR_ARRANGEMENTS` med per-half pickPair.
-- **`a8d1e5d`** - Förebyggde mirror-flip från L+R head lean-pairing. Ny `pickHeadTilts()` som väljer side (straight/right/left) EN gång och paret kommer från kompatibla options. Lade till `BODY_ORIENTATIONS` picked once och shared mellan halvor.
+### Offer page B-variant polish (commit 78e0d5a)
+- Återställde visuell rikedom på B-variant offer-page som tidigare LLM hade strippat till plain text:
+  - Testimonials: 3 before/after-foto-cards med horisontell scroll (Bella/Loke/Sigge) - tidigare bara text-quotes
+  - QUIZ2026-coupon: flyttad in i orange-bordered "DITT ERBJUDANDE" final-pricing-box med check-cirkel
+  - Marie-sektion utökad: `marie-credentials.webp` collage + 3-paragraf failure-story
+  - Bonus-bilder: riktiga `bonus-{1,2,3,4}-*.webp` istället för emojis (📋💬🏆🎧)
+  - Final pricing: lade tillbaka "1 999 kr" struck-through + full value-stack (Hela Valpakademin 6 988 / 4 bonusar 2 188 / Totalt 9 176 struck)
+  - Garanti: `marie-guarantee-badge.webp` istället för 🛡️ emoji
+- Bibehöll B-hypotesen: personal hero ({name}/{age}/{primary_pain_value}), age-conditional urgency, dynamic deadline today+2, sticky bottom CTA
 
-### Mole/birthmark-bugg
-- **`2614681`** - Låste permanenta hudfeatures via `subject.permanent_features_lock` + hard_constraint. Men..
-- **`b17daee`** - ..priming-effekt: att lista "moles/birthmarks/scars/freckle patterns" i constraints fick modellen att lägga till dem i nästan alla bilder. Bytte till feature-agnostiskt språk ("whatever distinctive detail appears in one half must appear identically in the other"). Tog även bort "faint freckle" från sharedStyle.
+### FAQ-expansion (båda varianter)
+- A-variant: 5 → 11 frågor
+- B-variant: 3 → 11 frågor (now identical to A, eliminates confounder)
+- 6 nya frågor baserat på [01-avatar.md](doginwork/docs/01-avatar.md) invändningar: Marie self-proclaimed expert / fysisk valpkurs / godis funkar inte / fastnar var vänder jag mig / när tillgång efter köp / vuxna hundar
+- Patcher: `patch_offer_a_faq.py` (sentinel-idempotent), `patch_offer_b.py` (file-driven)
 
-### Nails template (helt ny)
-- **`aff3fb0`** - Lade till `nails` body zone. `BODY_ZONE_PRESETS.nails`, `NAIL_INTENSITY_PROMPTS` (subtle/moderate/dramatic: ridged/short → smooth/longer naturlig fri kant), `isNails` branch i buildPrompt som byter ut skin_state mot nail_state + hoppar över face/outfit/hair-constraints. Genererade thumbnail via Higgsfield nano_banana_flash, konverterade PNG → webp via Python Pillow (cwebp finns ej, no homebrew på denna maskin), sparade i `public/images/body-zones/nails.webp` (1024x1024).
-- **`e71e537`** - Lade till `NAIL_HAND_POSES` (6) + `NAIL_BACKGROUNDS` (7) med per-half pickPair efter feedback att halvor blev för identiska. Hard_constraints förbjuder identical pose/background men keeps hand identity.
+### Mobile-walk audit (375x667 iPhone SE)
+Walkade 22 steg via Claude in Chrome + Playwright. Hittade:
+1. **BUG #1**: "plan"-ordet baked-in på ≥4 ställen (subhead Block 4, Step 20/21 headlines, offer-page eyebrow A+B) - bryter CLAUDE.md hard rule "kurs inte plan". William: låt vara (LP själv använder "plan").
+2. **BUG #2**: Sticky CTA dolde rad 5+ på multi-select med många options. William ville bildbevis - levererade. **Sen löste vi det genom att ta bort sticky-CTA helt** (lägger sig inline efter sista option).
+3. **ISSUE #3**: "3 000+ valpägare"-claim - lifetime spend ger ~217 köp, 3000+ är hög. William: skit i det.
+4. Grammar fix: "Markera bara de som Bella kan ordentligt" (saknade "som") - fixad via [patch_grammar_b11.py](doginwork/scripts/patch_grammar_b11.py).
 
-### Generation artifacts (forehead tiling + limb vertical-flip)
-- **`09642dc`** - Forehead-zonen renderade ibland som 2x2-grid (tiling). Arms/legs renderade ibland med byxbenet på fel sida (180° flip). Lade till:
-  - `EXACTLY TWO PHOTOS IN OUTPUT`-constraint (båda branches)
-  - `BODY PART ORIENTATION CONSISTENCY` med konkreta exempel för ben/arm (non-nails)
-  - `HAND ORIENTATION CONSISTENCY` (nails)
-  - Skärpte `format`-fältet med samma anti-tiling-wording
+### Cart abandonment investigation
+- Klarna under-fold (322px scroll), Kontokort default - William: kan inte påverka
+- Marketing email-checkbox pre-checked - William: skit i det
+- 6 adressfält för digital produkt - William: krävs, låt vara
+- 11 abandoned checkouts / 51 köp senaste 30 dagar = 17.7% rate
 
-### Hair template (research-backed)
-- **`5f261e6`** - Lade till `HAIR_INTENSITY_PROMPTS` + 4 hair-specifika hard_constraints. Baserat på research av Nutrafol/Viviscal/Vital Proteins/Vegamour-marknadsföring + Williams egna docs (renew-brand.md listar "Hair & Nails" som ad angle, hydro13-voc-testimonials.md har 5+ direkta Trustpilot-citat om tjockare/starkare hår).
-  - Bännings-linjen narrowing är **THE** dominanta marketing-cuen i kategorin (per Wimpole Clinic + Nutrafol Results-sida)
-  - Baby hairs är ENTYDIGT POSITIVT (Nutrafol listar bokstavligen "Baby Hairs Growing Out" som benefit)
-  - Längd-ändring inte trovärdigt på 12 veckor (hår växer ~1cm/månad)
+### Quiz UX-fixar (commit 78e0d5a)
+- Block 9 (Beteendeproblem) tillbaka till `image_list`-layout (PawChamp-style rader, 56x56 thumbnails) - hade regression:at till `image_cards` 2-col grid via Woofz-commit 3d8ec05
+- Lade till `image_list` som ny layout-värde i types/renderer
+- Tog bort sticky CTA överallt: `.quiz-question-bottom` + `.quiz-continue-wrap` är nu inline
+- Tog bort fade-gradient + ScrollMoreHint-komponent (försök som blev stökigt innan vi enades om att bara skippa sticky)
+- Ny `skipLabel?: string` på text_input. "Hoppa över" på Bella-namn-step (EveryDoggy-mönster)
 
-### UX
-- **`ef333e9`** - Random age pool börjar nu på 46 (`RANDOM_AGE_POOL` filtrerar AGE_RANGES till min >= 46). Ger 6 grupper: 46-50/51-55/56-60/61-65/66-70/71-75. Manuell dropdown visar fortfarande alla 30-75 för specifika val.
-
-### Side-effects / cleanup
-- Notion-processer dödade (renderer förbrukade 129% CPU). `duetexpertd` (macOS Siri/Spotlight-daemon) spikade också men lämnades.
-- Inga dev servers körde. Inga startade.
+### Klaviyo-onboarding
+- Klaviyo Private API Key sparad i [.env.local](content-hub/.env.local) som `KLAVIYO_DOGINWORK_API_KEY`
+- Inventerade kontot: 300+ profiler synkade från Shopify, 0 segments, 0 templates, 0 campaigns, 1 obsolet draft-flow ("Köpt privat coaching"). Standard Shopify-metrics aktiva (Placed Order, Checkout Started). Onsite tracking installerad.
+- Identifierade Shopify Flow abandoned checkout-mejlets problem: visar 1999 kr (inte 997 kr quiz-rabatt), fabricated testimonials ("Jessica L." / "Eric M." - finns ej i avatar.md-biblioteket), "Marie's" engelsk genitiv, "lydnad" (bryter hard rule), bara 1 mejl (saknar 24h+72h)
 
 ## Decisions made
 
-1. **Swipe mode pausad.** William: "vi kanske ska skita i swipe-funktionen för den fungerar ju uppenbarligen inte". Fokus på create mode + templates istället. Swipe-koden ligger kvar men ej prioriterad.
-
-2. **B/A halves SKA se olika ut.** Sparat som hard rule i `feedback_before_after_halves_should_differ.md` (pointer i MEMORY.md). William: "det är ju exakt så jag vill ha det på alla mina bilder? De ska INTE vara identiska". Real customer B/A photos har olika zoom/pose/background. Bara identitet (skin tone, hand size, face features) + no mirror-flip + no text behöver vara konstant.
-
-3. **Hair B/A research-backed cues = parting-line narrowing + baby hairs.** Inte gissning. Drar från Nutrafol/Viviscal-pattern. Längd-ändring är overpromise/FDA-risk.
-
-4. **Random demographic minimum age = 46.** Yngre subjects fortfarande tillgängliga via manuell selection.
-
-5. **Hairfärger är ethnicity-låsta** (redan så i `ETHNICITY_PROFILES`). Säkert mot fantasi-färger (blå/lila).
+1. **Drop sticky CTA over fade-gradient + scroll-hint pill workaround** - william såg igenom min over-engineering, "kan vi inte bara strunta i sticky?". Resulterade i 50+ rader CSS borttagen + cleaner UX.
+2. **image_list som ny layout-värde** (vs adaptiv image_cards baserat på option-count) - explicit DB-prop bättre än magic threshold.
+3. **Inkluderade pre-existing Clarity-tracker-ändringar i samma commit** som mina quiz-changes - de var Williams arbete oavkomitt, hörde ihop tematiskt med quiz-publishing.
+4. **Bygg cart abandon flow i Klaviyo, inte i Shopify Flow** - Shopify Flow mejlet har 6 issues (fab testimonials, fel pris, lydnad-ord, etc), 0 attribution, ingen variant-styrning. Bygg om från scratch i Klaviyo med Maries verifierade voice + 3-mejls sequence.
+5. **Skippa email-capture i quiz tills Klaviyo-flow byggt** - utan ESP är capture pure cost.
 
 ## Current state
 
-- B/A template generator betydligt förbättrad. Pose-regression, mirror-flip, mole-priming, tiling, vertical-flip alla strukturellt fixade.
-- 12 body zones nu: full_face_front, face_profile, eye_area, forehead, neck_decolletage, chest_macro, cheek_closeup, arm_skin, leg_thigh, hands, nails, hair_scalp, + other
-- 3 intensity prompts per zone-type: SKIN (default), NAIL, HAIR
-- Random age pool >= 46
-- Hårfärger ethnicity-låsta
-- Alla 9 commits pushade till main, deployade till Vercel
-- 1058 Higgsfield credits, marginellt nedgång efter nails-thumbnail generation
+### Live ✓
+- A/B-testet på offer-page rullar (50/50 split) på `quiz.doginwork.se/valpakademin`
+- Båda varianter har identisk 11-FAQ, identiska visuella komponenter (testimonials/coupon/Marie/bonusar/pris/garanti)
+- Mobile UX: image_list rader för Block 9, non-sticky CTA, Hoppa över på namn
+- Klaviyo API connected, kontot tomt men foundation finns
+- Shopify Flow "Recover abandoned checkout" rullar fortfarande (planerat att stänga när Klaviyo-version aktiveras)
+
+### Aktiva test
+- LP-A/B (control vs specific) sedan 2026-05-03
+- Offer-page-A/B (rich v20 vs personalized v21) sedan 2026-05-12
 
 ## Blockers / Open questions
 
-1. **Swipe mode "near-clone" output ojusterad.** Lämnad in dåligt skick från förra sessionen. William har sagt att den är pausad, men borde komma tillbaka senare med antingen:
-   - Higgsfield `medias` array med role-tagged references
-   - Replicate InsightFace face-swap pipeline
-   - Eller accepteras som "style inspiration only"
-
-2. **Hair B/A inte testat live** efter `5f261e6` deploy. Williams nästa generation av hair_scalp-zone bör visa parting-line narrowing + baby hairs.
-
-3. **Forehead/limb-artifact-fixen inte verifierad.** William testade troligen inte ny generation efter `09642dc`. Borde dyka upp i nästa session om de återkommer.
+- Sample size för A/B-tester: ~700 sessions/mån, ~35 köp/mån. För statistisk signifikans på offer-test ensamt behövs ~5-6 månader trafik. Realistisk dataffrekvens = 1-2 veckors kollar.
+- Klaviyo-Shopify profile sync: 300+ av 698 profiler synkade. Otydligt om pågående eller stopped. Behöver verifieras innan vi triggar campaign.
+- "Plan" vs "kurs"-inkonsistens: LP använder "personliga träningsplan" som titel; quiz-runtime CLAUDE.md säger "kurs inte plan". William: låt vara - kanske revidera hard rule när vi ändå skriver om en av dem.
+- Klaviyo Connector i claude.ai/directory/connectors: William aktiverade men oklart om det ger Claude Code-session access till verktygen, eller bara claude.ai-chat.
 
 ## Next up
 
-(prioritetsordning)
-
-1. **Verifiera nästa generation per zone** - vänta på Williams nästa B/A-batch (special: forehead, leg, arm för tiling/flip, hair för parting-line, eye/cheek för regression-check)
-2. **Eventuellt fler zone-specifika prompts** om något inte landar (t.ex. chest_macro skin har sin egen tone)
-3. **Resume swipe mode** när create mode är settled - prova Higgsfield role-tagged medias eller Replicate InsightFace
-4. **Cleanup oanvänd `vision`-parameter i buildPrompt swipe branch** (var redan i backlog)
-
-## Files modified
-
-**`src/app/api/assets/before-after/route.ts`** - hela filen är den centrala arenan denna session. Nya konstanter: `RANDOM_AGE_POOL`, `STRAIGHT_HEAD_OPTIONS`, `pickHeadTilts()`, `BODY_ORIENTATIONS`, `HAIR_ARRANGEMENTS`, `HAIR_INTENSITY_PROMPTS`, `NAIL_INTENSITY_PROMPTS`, `NAIL_HAND_POSES`, `NAIL_BACKGROUNDS`. Nya branch-flaggor: `isNails`, `isHair`. Massivt utbyggda hard_constraints och format/instruction-fält.
-
-**`src/components/assets/BeforeAfterGenerator.tsx`** - bara `nails` zone tillagd i `BODY_ZONES`.
-
-**`public/images/body-zones/nails.webp`** - ny 1024x1024 thumbnail genererad via Higgsfield.
-
-**Memory:**
-- `feedback_before_after_halves_should_differ.md` - nytt
-- `MEMORY.md` - pointer tillagd
-- `before-after-tool.md` - uppdaterad med ny architecture (denna wrap-up)
-
-## Key references for next Claude
-
-- **Memory pointer**: `feedback_before_after_halves_should_differ.md` - HARD RULE, läs innan du ändrar B/A-prompt
-- **Architecture doc**: `before-after-tool.md` - uppdaterad i denna wrap-up
-- **Marketing research**: Nutrafol/Viviscal hair B/A pattern = parting-line narrowing + baby hairs. Sources: Wimpole Clinic, Vegamour blog.
-- **Nano Banana JSON-spec technique**: `/Users/williamhedin/Claude Code/copywriting/AI UGC Videos/ox ROAS AI UGC content/NANO BANANA PRO PROMPT.pdf` (för swipe mode-revival)
+1. **HIGH: Bygg cart abandonment flow i Klaviyo** (3 mejl, korrekt pris, Maries voice, riktiga testimonials) - största läckaget (44% av offer-clickers).
+2. **HIGH: Stäng av Shopify Flow** "Recover abandoned checkout" när Klaviyo-version aktiverad.
+3. **MEDIUM: 8 quiz-pain-segments i Klaviyo** + wire quiz-runtime att pusha events via Klaviyo Profiles API med qz_pain/qz_breed/qz_age properties.
+4. **MEDIUM: Post-quiz email-flow** (kräver email-capture-step i quiz - separat beslut).
+5. **LOW: Verifiera Klaviyo-Shopify sync** (300 vs 698 - är resten på väg eller stuck?).
+6. **LOW: Email-template-bibliotek** i Maries voice för broadcast-kampanjer.
