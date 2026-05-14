@@ -1,28 +1,86 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-12
+Updated: 2026-05-14
 
-## Before/After generator tool (2026-05-11 → 2026-05-12)
-New tool in `/assets` built this session. Live on commit `8e3e674`. Files: `BeforeAfterGenerator.tsx`, `src/app/api/assets/before-after/*`. See `memory/before-after-tool.md` for architecture.
+## Valpkurs Sales Page (2026-05-13 → 2026-05-14, PENDING)
 
+Sales page för doginwork live på `https://pages.doginwork.se/valpkurs/`. Infrastructure done, design+copy under strategic review. PR #1 öppen (`feat/valpkurs-sales-page` branch).
+
+**Full state**: `memory/valpkurs-sales-page.md` + `doginwork/HANDOVER-2026-05-14.md`
+
+### Done
+- [x] ~~Infrastructure: CF Pages project `doginwork-pages` + DNS + workspace.settings.lp_publish + publishPage() options-param + publish-script~~ (Chunk 1, commit `e049cd1`)
+- [x] ~~V1 build: 15-section page med coral CTAs (Doguniversity-hybrid)~~ (Chunks 2-4, commits `e3c19a2`, `2a8998a`)
+- [x] ~~V2 rebuild: 10 editorial photos via Higgsfield + Cormorant Garamond serif + photo-driven sections + saddle brown palette~~ (2026-05-14)
+- [x] ~~V2 bug fixes: invisible CTAs (saddle-on-saddle), inverted CTA-variant, red strikethrough~~ (2026-05-14)
+- [x] ~~Visual audit via Playwright på 13 sektioner~~ (2026-05-14)
+
+### Pending (waiting for William's decision)
+- [ ] **STRATEGIC: William's val A/B/C-framing** (PDP vs advertorial-hybrid) - sales-page-rewrite blockerad tills svar
+- [ ] **Brand-color-swap saddle → `#f3841d` orange** - vänta tills framing klar (kan göras parallel om approved)
+- [ ] **Performance: LCP 8-10s** pga hero-image laddning - resize hero till mindre version
+
+### After framing decided
+- [ ] Copy-rewrite enligt vald framing (A/B/C)
+- [ ] Brand-color-swap (saddle → orange)
+- [ ] Visual audit per sektion INNAN William-review (per `feedback_visual_audit_before_present.md`)
+- [ ] Re-deploy + verify mobile
+- [ ] PR #1 review + merge när William godkänner
+
+### Future (out of scope nu)
+- [ ] Listicle build (separat sida på `pages.doginwork.se/{slug}`)
+- [ ] Google Ads-spår (vänta på Williams Google-access)
+- [ ] Klaviyo flows (welcome, abandoned cart, Trustpilot review)
+- [ ] Real customer testimonial photos när Marie levererar (currently AI-generated placeholders)
+- [ ] Cleanup: ta bort `smoke-publish-doginwork.ts` efter PR merged
+
+---
+
+
+## Before/After generator tool (2026-05-11 → 2026-05-14)
+Tool in `/assets`. Architecture in `memory/before-after-tool.md`. Hard rule: `feedback_before_after_halves_should_differ.md`.
+
+### Done (2026-05-14 deep iteration session, 9 commits)
 - [x] ~~Build whole stack (component, 3 API routes, 11 zone thumbnails via Higgsfield, auto-detect, auto-trigger, swipe vs create modes)~~ (done 2026-05-11)
 - [x] ~~Integrate NANO BANANA PRO PROMPT.pdf spec technique (spec-as-prompt with preserve_original: true)~~ (commit `8e3e674`, 2026-05-12)
-- [ ] **TEST commit `8e3e674` swipe output quality** — last untested. If still AI-looking, fallback options:
-  - Try Higgsfield's nano-banana with role-tagged `medias` references
-  - Build Replicate InsightFace face-swap pipeline (preserve source pixels except face)
-  - Accept as "style inspiration" tool
-- [ ] Add more body zone templates (William mentioned more variety after analyzing 48 competitor B/A images)
-- [ ] Remove unused `vision` parameter from `buildPrompt` in swipe branch (now leftover after spec-based refactor)
+- [x] ~~Restore pose variation in create mode (regression from b71f348 fixed)~~ (commit `6b03b7e`, 2026-05-14)
+- [x] ~~Prevent mirror-flip from L+R head lean pairing (pickHeadTilts side-locked, BODY_ORIENTATIONS shared)~~ (commit `a8d1e5d`)
+- [x] ~~Lock permanent skin features without naming them (de-priming fix - feature-agnostic constraint)~~ (commits `2614681` + `b17daee`)
+- [x] ~~Add Nails template (NAIL_INTENSITY_PROMPTS, isNails branch, NAIL_HAND_POSES, NAIL_BACKGROUNDS, generated thumbnail)~~ (commits `aff3fb0` + `e71e537`)
+- [x] ~~Fix tiling (forehead/eye/chest) + vertical-flip (limb) generation artifacts~~ (commit `09642dc`)
+- [x] ~~Add Hair template based on Nutrafol/Viviscal/Vegamour research (parting-line narrowing + baby hairs as positive cues)~~ (commit `5f261e6`)
+- [x] ~~Random age pool starts at 46 (RANDOM_AGE_POOL filter)~~ (commit `ef333e9`)
 
-## Knowledge Architecture Upgrade (2026-05-08, deferred)
-- [ ] **Migrate to Obsidian + MCP + Hermes capture pipeline** — Current memory system (`MEMORY.md` + `.claude/projects/.../memory/`) works for Claude Code but locks knowledge in. Migration plan based on Funnel Professor / Karpathy LLM Wiki pattern (see `memory/funnel-professor.md` for context). Concrete steps:
-  1. Create `~/Obsidian/Vault/` with `raw/wiki/outputs/` + `AGENTS.md` schema file
-  2. Migrate FP-articles + topic files from `memory/` to vault (cp, no transformation needed - already markdown)
-  3. Install Obsidian MCP server, point it at vault, add to Claude Code/Cowork settings
-  4. Add custom instruction "search vault before answering"
-  5. Set up Hermes on Hostinger VPS (~$10/mo VPS + AI model costs), connect Telegram bot
-  6. Hermes custom skill: when user sends X-link / article URL → scrape → summarise → save to `raw/` → run `/wiki` to update relevant wiki pages
-  7. Cron: every Monday 09:00 generate brief (3 connections + 1 pattern + 1 question) across all active projects
-  Reference: 6 X-posts in 2026-05-08 session (cyrilXBT 4-layer architecture, sourfraser AI employee, KanikaBK claude-obsidian, AunySillyMe vault structure, NickSpisak_ Karpathy 7-min, RodmanAi obsidian-skills). Hermes agent video walkthrough also captured. **~4-6h setup, then runs forever. Defers MEMORY.md ceiling problem and makes knowledge LLM-agnostic.** (added 2026-05-08)
+### Pending / open
+- [ ] **Verify next user generation per zone after 2026-05-14 fixes** - especially forehead (tiling), leg/arm (orientation), hair_scalp (parting-line + baby hairs), face/cheek/eye (pose regression check)
+- [ ] **Resume swipe mode** when create mode settled - currently PAUSED per William. Options when revived: Higgsfield role-tagged `medias`, Replicate InsightFace face-swap, or accept as "style inspiration only"
+- [ ] Add more body zone templates if William wants more variety (he mentioned this after analyzing 48 competitor B/A images)
+- [ ] Remove unused `vision` parameter from `buildPrompt` in swipe branch (leftover from spec-based refactor)
+
+## Knowledge Architecture Upgrade (started 2026-05-13)
+
+### Done
+- [x] Obsidian installed (v1.12.7 at `/Applications/Obsidian.app`)
+- [x] Vault created at `~/Obsidian/Vault/` med raw/wiki/outputs/-struktur
+- [x] Raw X-posts om second brain + Hermes sparade i vault/raw/
+- [x] Synthesis-patterns.md skriven i vault/wiki/
+- [x] Privat GitHub-repo `willehedin95-ui/obsidian-vault` skapad
+- [x] Obsidian Git plugin installerad + konfigurerad (auto-sync var 5:e min)
+- [x] Memory/ migrerat till vault (91 filer) + symlink från `.claude/projects/.../memory/` (2026-05-13)
+- [x] Vault schema (CLAUDE.md) + 7 kommandon (/save, /save idea, /wiki, /query, /brief, /lint, /memory) (2026-05-13)
+- [x] raw/-subfolders per källtyp (x/, articles/, videos/, podcasts/, books/, meetings/, notes/, assets/) (2026-05-13)
+- [x] ideas/, wiki/{topics,entities,concepts}/, outputs/{briefs,reports}/ skapade (2026-05-13)
+- [x] index.md + log.md (Karpathy specialfiler) (2026-05-13)
+
+### Active (where we are now)
+- [ ] **Cleanup-audit av MEMORY.md + per-project CLAUDE.md** - MEMORY.md har vuxit till ~22KB / 195 rader sen audit 2026-04-09 (då gick det från 66KB → 9KB). Dubbel-laddas per turn = ~28k tokens/meddelande. Behöver flytta detalj till topic-filer, behålla pointers. **Research först:** kolla X för current best practices på CLAUDE.md / AGENTS.md / memory-files (2026 patterns). Då vet vi hur man borde strukturera, sen audit alla projekt: content-hub, doginwork, huskop, cykel-pvp, eps-ventiler, plus den globala MEMORY.md. (added 2026-05-13)
+- [ ] **Bestäm projects/-folder struktur i vault** - hur ska content-hub, doginwork, huskop, cykel-pvp, eps-ventiler representeras i vaulten? (Just nu finns de bara som mappar i `~/Claude Code/`)
+
+### Deferred (parkerat 2026-05-13)
+- [ ] **Hermes Agent setup** - parkerat tills vidare. Plan: Hostinger VPS KVM2 (~$10-15/mo) + Codex OAuth via ChatGPT Business (nästan gratis tokens) + Telegram bot + GitHub-sync mot vault. Use cases William prioriterar: voice-message tankar på promenader, automatiska weekly synthesis söndagar, morgon-brief 07:00. Fortsätter när vault-strukturen är stabil. Reference X-posts + video transcripts sparade i `~/Obsidian/Vault/raw/2026-05-13-*.md`.
+- [ ] **Web Clipper alternativ till existing X-extension** - din egen Chrome extension scrapar X-poster bättre än Obsidian Web Clipper. TODO: modifiera den så den sparar direkt till `~/Obsidian/Vault/raw/x/` istället för clipboard.
+- [ ] **Rasmus shared vault** - när du har egen workflow stabil, sätt upp separat SharedVault för delade projekt-insikter. Git-sync via gemensam privat repo.
+
+(Original plan från 2026-05-08 borttagen - ersatt av denna live status)
 
 ## Quiz Editor UX (2026-05-03)
 - [ ] **A/B variants as tabs on a single canvas node** — Today the editor renders each variant in a variant group as a separate side-by-side node connected with edges (e.g. Landing A → Landing B → Block 1). Visually misleading - looks like sequential steps but the runtime resolves to ONE variant per session via `resolveNode(variantGroupId)`. Refactor `QuizEditorClient.tsx` (and the React Flow node renderer) so variants in a group collapse into a single "card with A/B/C tabs" node. Sidebar should also list each variant indented under its parent step. Files: `src/app/quizzes/[id]/edit/QuizEditorClient.tsx`, the React Flow custom node component. (added 2026-05-03)
