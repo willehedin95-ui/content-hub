@@ -1,5 +1,17 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-14
+Updated: 2026-05-14 (post-quiz-UX + Klaviyo-onboarding session)
+
+## Klaviyo for Doginwork (active 2026-05-13)
+
+Klaviyo aktiverat med Private API key i `.env.local`. Account är tomt men foundation finns. Full state: `memory/klaviyo-doginwork.md`. Critical replacement for broken Shopify Flow native abandoned-checkout mail.
+
+- [ ] **HIGH: Bygg cart-abandonment 3-mejls flow i Klaviyo** - Trigger på `Checkout Started`, filter: not in `Placed Order` since trigger. Mejls 1h/24h/72h. Maries voice + verified testimonials (Heléne/Jenny/Petra). Korrekt 997 kr pris. NO "lydnad", NO "Marie's"-genitiv. Replaces Shopify Flow native flow som har 6 issues (fab testimonials, fel pris, hard-rule violations). (added 2026-05-13)
+- [ ] **HIGH: Stäng av Shopify Flow "Recover abandoned checkout"** efter Klaviyo-version live + verifierad. (added 2026-05-13)
+- [ ] **MEDIUM: 8 quiz-pain-segments i Klaviyo** per `doginwork/docs/quiz-strategy.md`. Custom profile properties: quiz_primary_pain, quiz_age_bracket, quiz_breed_cluster, quiz_severity, quiz_completed, quiz_purchased. Wire quiz-runtime att pusha events via Klaviyo Profiles API. (added 2026-05-13)
+- [ ] **MEDIUM: Post-quiz email-flow per segment** - 3-7 mejl per pain-segment med merge-tagged copy. Kräver email-capture-step i quiz först. (added 2026-05-13)
+- [ ] **LOW: Verifiera Klaviyo-Shopify profile sync** - 300+ av 698 synkade. Otydligt om pågående eller stopped. (added 2026-05-13)
+- [ ] **LOW: Cleanup old draft flow "Köpt privat coaching"** - relikt från failed coaching-upsell-experimentet, aldrig aktiverad. (added 2026-05-13)
+- [ ] **LOW: Email-capture step i quiz** - "Var ska vi skicka dina resultat?" på loading-skärmen (EveryDoggy-mönster). Kräver Klaviyo cart-flow + segments först. (added 2026-05-13)
 
 ## Valpkurs Sales Page (2026-05-13 → 2026-05-14, PENDING)
 
@@ -247,7 +259,7 @@ Massiv overhaul-iteration v24→v64 över 3 dagar (2026-04-30 → 2026-05-02). P
 ### NEXT UP (priority order efter session 2026-05-04)
 - [ ] **Fix /api/quiz/session CORS** — `Access-Control-Allow-Origin: null` fel blockerar all per-step analytics från `quiz.doginwork.se`. Utan detta är A/B-testet flying blind. **HÖGSTA PRIO** - allt annat kvalitets-arbete på quizet är ovärderlig utan mätning. (added 2026-05-03)
 - [ ] **Ad-to-quiz congruency audit** — Maries Meta-ads pitchar "Valpakademin" (kursen). Quiz lovar "personlig träningsplan". Plan ≠ kurs. Per FP är detta positioning #1. Antingen pivot ads → "diagnos"-framing ELLER pivot quiz → "kurs"-framing. (added 2026-05-03)
-- [ ] **William mobile walk-through** — 24-step quiz med conditional routing + ny emotional architecture inte testad live på iPhone. Notera friction-punkter. Special: end-to-end CTA → checkout-flödet på offer-page (klick på inline `.v20-cta` postMessar continue → Shopify cart-permalink → checkout). (updated 2026-05-04)
+- [x] ~~**William mobile walk-through**~~ — Walkade 22 steg på 375x667 iPhone SE via Claude in Chrome + Playwright 2026-05-13. Hittade 4 issues: "plan"-ord baked-in (William: låt vara), sticky CTA hidden content (löste genom att ta bort sticky helt), 3000+-claim att verifiera (William: skit i det), grammar fix B11 (fixad). Cart-abandonment friction kartlagd (Klarna under-fold, marketing-checkbox pre-checked - William: kan inte påverka). End-to-end CTA → checkout verifierad funkar. (done 2026-05-13)
 - [ ] **A/B-test deadline + utvärdering** — Sätt 1-2 vecks fönster eller ~500 sessions per variant. Sen evaluation. Förutsätter analytics fixed först. (added 2026-05-03)
 
 ### Session 2026-05-04 huvudwork
