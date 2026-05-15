@@ -1,9 +1,20 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-14 (post-quiz-UX + Klaviyo-onboarding session)
+Updated: 2026-05-15 (email-KB-build session - 143 maxwellcopy videos + 13 Gammas ingested, dtc-email-playbook wiki created)
+
+## Email Knowledge Base (2026-05-15)
+
+Williams "second brain" för marketing. Master wiki nu live: [[Obsidian/Vault/wiki/topics/dtc-email-playbook.md]]. Source corpus: 143 maxwellcopy videos + 13 Gammas + 1 X-post i `~/Obsidian/Vault/raw/`. **Single-source caveat: pure Max-bias just nu.**
+
+- [ ] **MEDIUM: Diversifiera email-KB med Chase Dimond corpus** - YouTube + X-posts. Plug into dtc-email-playbook.md med citations. (added 2026-05-15)
+- [ ] **MEDIUM: Diversifiera med Val Geisler** - warm-tone welcome series, hennes "Save Your Cookie"-content. (added 2026-05-15)
+- [ ] **MEDIUM: Diversifiera med Stefano Apostolakis** - DTC-specific tactics. (added 2026-05-15)
+- [ ] **LOW: Andra creators batch-fetch** - använd `memory/youtube-transcript-bulk-workflow.md` pipeline. (added 2026-05-15)
+- [ ] **LOW: Renew email-flows-impl-doc** i SharedVault - applicera dtc-email-playbook på Renew-offer. (added 2026-05-15)
+- [ ] **LOW: HappySleep email-flows-impl-doc** i SharedVault - sleep-supplement-specific tactics. (added 2026-05-15)
 
 ## Klaviyo for Doginwork (active 2026-05-13)
 
-Klaviyo aktiverat med Private API key i `.env.local`. Account är tomt men foundation finns. Full state: `memory/klaviyo-doginwork.md`. Critical replacement for broken Shopify Flow native abandoned-checkout mail.
+Klaviyo aktiverat med Private API key i `.env.local`. Account är tomt men foundation finns. Full state: `memory/klaviyo-doginwork.md`. Critical replacement for broken Shopify Flow native abandoned-checkout mail. **Wiki-backing finns nu: [[Obsidian/Vault/wiki/topics/dtc-email-playbook.md]] för full Max-playbook-context.**
 
 - [ ] **HIGH: Bygg cart-abandonment 3-mejls flow i Klaviyo** - Trigger på `Checkout Started`, filter: not in `Placed Order` since trigger. Mejls 1h/24h/72h. Maries voice + verified testimonials (Heléne/Jenny/Petra). Korrekt 997 kr pris. NO "lydnad", NO "Marie's"-genitiv. Replaces Shopify Flow native flow som har 6 issues (fab testimonials, fel pris, hard-rule violations). (added 2026-05-13)
 - [ ] **HIGH: Stäng av Shopify Flow "Recover abandoned checkout"** efter Klaviyo-version live + verifierad. (added 2026-05-13)
@@ -15,35 +26,33 @@ Klaviyo aktiverat med Private API key i `.env.local`. Account är tomt men found
 
 ## Valpkurs Sales Page (2026-05-13 → 2026-05-14, PENDING)
 
-Sales page för doginwork live på `https://pages.doginwork.se/valpkurs/`. Infrastructure done, design+copy under strategic review. PR #1 öppen (`feat/valpkurs-sales-page` branch).
+Två sales page-varianter live:
+- `pages.doginwork.se/valpkurs/` - public, 1 499 kr (VALP500-rabatt)
+- `pages.doginwork.se/valpkurs-erbjudande/` - subscriber secret, 997 kr (VALP2026)
 
-**Full state**: `memory/valpkurs-sales-page.md` + `doginwork/HANDOVER-2026-05-14.md`
+**Full state**: spec v3 (`doginwork/docs/superpowers/specs/2026-05-14-valpkurs-sales-page-rewrite-v3.md`) + journal `2026-05-14-22-28-valpkurs-sales-page-v4-restructure.md` + `memory/valpkurs-sales-page.md`
 
 ### Done
-- [x] ~~Infrastructure: CF Pages project `doginwork-pages` + DNS + workspace.settings.lp_publish + publishPage() options-param + publish-script~~ (Chunk 1, commit `e049cd1`)
-- [x] ~~V1 build: 15-section page med coral CTAs (Doguniversity-hybrid)~~ (Chunks 2-4, commits `e3c19a2`, `2a8998a`)
-- [x] ~~V2 rebuild: 10 editorial photos via Higgsfield + Cormorant Garamond serif + photo-driven sections + saddle brown palette~~ (2026-05-14)
-- [x] ~~V2 bug fixes: invisible CTAs (saddle-on-saddle), inverted CTA-variant, red strikethrough~~ (2026-05-14)
-- [x] ~~Visual audit via Playwright på 13 sektioner~~ (2026-05-14)
+- [x] ~~Infrastructure + V1-V2 builds~~ (tidigare sessions)
+- [x] ~~V3 spec written, all 7 open decisions resolved + approved~~ (2026-05-14)
+- [x] ~~V4 full SpiritDog Ultimate Puppy Program-mirror rebuild~~ (2026-05-14): hero + 5 problems pain + roadmap + future pacing + offer box + price comparison + 9-bullet qualifier + Marie + before/after + 87% stat + FAQ + urgency timeline + final CTA
+- [x] ~~6 Higgsfield-bilder genererade + uploadade till Supabase~~
+- [x] ~~Course content extraction: 11 Whisper-transkripter + 17 Tevello-sektioner~~ → `doginwork/docs/course-content/`
+- [x] ~~VALP500 + VALP2026 discount-koder ACTIVE i Shopify~~ (skapad via API)
+- [x] ~~Subscriber secret-page (`/valpkurs-erbjudande`) deployad med hardcoded medlemspris~~
+- [x] ~~Native Swedish copy-pass (anglicismer borta: roadmap, 1-on-1-coaching, subscriber, timing, etc.)~~
 
-### Pending (waiting for William's decision)
-- [ ] **STRATEGIC: William's val A/B/C-framing** (PDP vs advertorial-hybrid) - sales-page-rewrite blockerad tills svar
-- [ ] **Brand-color-swap saddle → `#f3841d` orange** - vänta tills framing klar (kan göras parallel om approved)
-- [ ] **Performance: LCP 8-10s** pga hero-image laddning - resize hero till mindre version
-
-### After framing decided
-- [ ] Copy-rewrite enligt vald framing (A/B/C)
-- [ ] Brand-color-swap (saddle → orange)
-- [ ] Visual audit per sektion INNAN William-review (per `feedback_visual_audit_before_present.md`)
-- [ ] Re-deploy + verify mobile
-- [ ] PR #1 review + merge när William godkänner
+### Pending (next session)
+- [ ] **HIGH: Klaviyo popup-form + nurture-flow** - sätt upp i Klaviyo dashboard. Popup på public sales page (scroll 50% + exit-intent). Form-submit triggers nurture-flow som mailar subscriber-URL (`/valpkurs-erbjudande`). Fyll i `KLAVIYO_COMPANY_ID` placeholder i `doginwork/scripts/sales_page_html_body.py` och re-deploy båda varianter.
+- [ ] **MEDIUM: Trustpilot-recensioner** - extrahera 3 riktiga från trustpilot.com/review/doginwork.se, ersätt placeholder-copy i före/efter-section.
+- [ ] **MEDIUM: LCP-optimering** - hero-image fortfarande stor. Resize till ~600px för mobile för bättre Lighthouse-score.
+- [ ] **LOW: PR #1 merge** - `feat/valpkurs-sales-page` branch när Klaviyo + Trustpilot är klara.
+- [ ] **LOW: Cleanup `smoke-publish-doginwork.ts`** efter PR merged.
 
 ### Future (out of scope nu)
-- [ ] Listicle build (separat sida på `pages.doginwork.se/{slug}`)
+- [ ] Listicle build (separat sida på `pages.doginwork.se/{slug}`) - per spec section "next funnel piece"
 - [ ] Google Ads-spår (vänta på Williams Google-access)
-- [ ] Klaviyo flows (welcome, abandoned cart, Trustpilot review)
-- [ ] Real customer testimonial photos när Marie levererar (currently AI-generated placeholders)
-- [ ] Cleanup: ta bort `smoke-publish-doginwork.ts` efter PR merged
+- [ ] Real customer testimonial photos när Marie levererar (currently AI-Higgsfield)
 
 ---
 
