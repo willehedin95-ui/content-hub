@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { detectGapKeywords, addGapsToContentPlan } from "@/lib/gsc-gaps";
+import { sendTelegramNotification } from "@/lib/telegram";
 import type { Language } from "@/types";
 
 // Weekly cron that converts GSC impressions/positions into content_plan
@@ -83,6 +84,39 @@ export async function GET(req: NextRequest) {
         });
       }
     }
+  }
+
+  // Telegram summary so operator knows the cron ran and what it found.
+  // Without this the silence is ambiguous: did it run, was there nothing
+  // to add, or did it crash?
+  try {
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    if (chatId && results.length > 0) {
+      const totalAdded = results.reduce((s, r) => s + r.added, 0);
+      const totalFound = results.reduce((s, r) => s + r.gapsFound, 0);
+      const totalBlocked = results.reduce((s, r) => s + r.blocked, 0);
+      const errors = results.filter((r) => r.error);
+
+      const lines = results.map((r) => {
+        if (r.error) return `⛔ ${r.workspace}/${r.language}: ${r.error.slice(0, 80)}`;
+        if (r.added === 0 && r.gapsFound === 0) return `➖ ${r.workspace}/${r.language}: inga gaps`;
+        if (r.added === 0 && r.blocked > 0) return `🚫 ${r.workspace}/${r.language}: ${r.blocked} blockerade, 0 nya`;
+        return `✅ ${r.workspace}/${r.language}: +${r.added} nya (${r.gapsFound} hittade)`;
+      });
+
+      const header = errors.length > 0
+        ? `⚠️ *GSC-gap-cron: ${errors.length} fel*`
+        : totalAdded === 0
+        ? `🔍 *GSC-gap-cron: 0 nya gaps*\n\nCronen körde men hittade inget nytt att lägga till. Antingen är content plan redan komplett eller GSC har inte tillräckligt med data (min ${totalFound} impr per query).`
+        : `✨ *GSC-gap-cron: +${totalAdded} nya artiklar i content plan*`;
+
+      await sendTelegramNotification(
+        chatId,
+        `${header}\n\n${lines.join("\n")}\n\nTotalt: ${totalFound} gaps hittade, ${totalAdded} tillagda, ${totalBlocked} blockerade`
+      );
+    }
+  } catch (err) {
+    console.warn("[gsc-gap-refresh] Telegram summary failed (non-critical):", err);
   }
 
   return NextResponse.json({ ok: true, results });

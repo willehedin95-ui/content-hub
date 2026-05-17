@@ -299,12 +299,13 @@ export async function addGapsToContentPlan(
   let skipped = 0;
   for (let i = 0; i < toAdd.length; i++) {
     const gap = toAdd[i];
+    const category = inferCategoryFromQuery(gap.query, productSlug);
     const { error } = await db.from("blog_content_plan").insert({
       workspace_id: workspaceId,
       language,
       slug: gap.suggestedSlug,
       title: gap.suggestedTitle,
-      category: "Kollagen", // TODO: infer from workspace
+      category,
       template_id: "problem-solution",
       primary_keyword: gap.query,
       secondary_keywords: [],
@@ -325,6 +326,49 @@ export async function addGapsToContentPlan(
   }
 
   return { added, skipped, blocked: blockedGaps.length };
+}
+
+/**
+ * Infer a sensible blog category from a search query + product context.
+ *
+ * Previously hardcoded as "Kollagen" which is wrong for Hydro13 queries
+ * about hud/skin and very wrong for HappySleep queries about sleep.
+ *
+ * Heuristic: keyword match against known category buckets. Falls back to
+ * product-default if no match (collagen for hydro13, sleep for happysleep).
+ */
+function inferCategoryFromQuery(query: string, productSlug: string): string {
+  const q = query.toLowerCase();
+
+  // Sleep/pillow keywords -> HappySleep categories
+  if (/snark|snor|sömn|somn|sov|kudde|pude|pute|nack|hovedp|nacke|insomnia/i.test(q)) {
+    if (/snark|snor/.test(q)) return "Sömnproblem";
+    if (/nack|hovedp|nacke|hodepute/.test(q)) return "Sömnergonomi";
+    if (/insomnia|somn|sömn|sov.{0,8}prob/.test(q)) return "Sömnproblem";
+    return "Sömnhälsa";
+  }
+
+  // Skin/beauty -> Hydro13 sub-category
+  if (/hud|skin|rynkor|rynker|cellulit|stretchm/i.test(q)) return "Hud";
+
+  // Joints/hair/nails -> Hydro13 specific buckets
+  if (/leder|led|gikt|artros/i.test(q)) return "Leder";
+  if (/hår|hair|naglar|negl|hårfall/i.test(q)) return "Hår och naglar";
+
+  // Collagen subtypes
+  if (/marint|fisk|bovin/i.test(q)) return "Kollagentyper";
+  if (/vegan|växt|vaxt/i.test(q)) return "Alternativ";
+
+  // Comparison content
+  if (/vs |eller |jämför|jamfor|skillnad/i.test(q)) return "Jämförelser";
+
+  // Buying/best-of
+  if (/bäst|bedst|best|test|guide|köp|kop|kjop/i.test(q)) return "Köpguider";
+
+  // Product-default fallback
+  if (productSlug === "hydro13") return "Kollagen";
+  if (productSlug === "happysleep") return "Sömnhälsa";
+  return "Guider";
 }
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,14 @@
       "schedule": "0 6 * * 1"
     },
     {
+      "path": "/api/cron/blog-decay-check",
+      "schedule": "30 6 * * 1"
+    },
+    {
+      "path": "/api/cron/blog-update-low-rank",
+      "schedule": "0 13 * * 5"
+    },
+    {
       "path": "/api/cron/blog-autopilot?workspace=happysleep&lang=sv",
       "schedule": "0 9 * * *"
     },
