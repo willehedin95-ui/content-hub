@@ -127,11 +127,12 @@ export function runSoftGate(ctx: GateContext): GateResult {
     .map((_, el) => $(el).attr("href") || "")
     .get()
     .filter((h) => {
-      // Strip our own domains
+      // Strip our own domains. Includes all market storefronts + content
+      // domains across all three brands.
       if (h.includes("get-renew.com") || h.includes("halsobladet.com")) return false;
-      if (h.includes("swedishbalance.se") || h.includes("smarthelse.dk")) return false;
-      if (h.includes("helseguiden.com")) return false;
-      if (h.includes("doginwork.se")) return false; // doginwork blog + quiz subdomain
+      if (h.includes("swedishbalance.se") || h.includes("swedishbalance.dk") || h.includes("swedishbalance.no") || h.includes("swedishbalance.org")) return false;
+      if (h.includes("smarthelse.dk") || h.includes("helseguiden.com")) return false;
+      if (h.includes("doginwork.se") || h.includes("doginwork.com")) return false;
       return true;
     });
   const unknownDomains = new Set<string>();
