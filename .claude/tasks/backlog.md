@@ -1,5 +1,45 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-18 (Hydro13 publishing items added; SEO pipeline overhaul + multi-network affiliate APIs already landed)
+Updated: 2026-05-18 21:28 (SEO pipeline session complete; HappySleep blog parked; William as Hydro13 author live)
+
+## SEO Pipeline Session - completed 2026-05-18
+
+Massive 2-day session finalizing SEO pipeline. All commits on origin/main.
+
+### Done (committed + pushed)
+- [x] ~~hreflang fix (verified translation lookup, not assumed same-slug)~~ - commit `46786e8`
+- [x] ~~MedicalWebPage schema for YMYL articles~~ - commit `46786e8`
+- [x] ~~Fresh badge for recent updates~~ - commit `46786e8`
+- [x] ~~Topical cluster cross-linking (related-articles scored by category/keyword/title)~~ - commit `46786e8`
+- [x] ~~PAA + Featured snippet in blog-writer prompt~~ - commit `46786e8`
+- [x] ~~GSC index-check cron (Mon 06:45 UTC) + indexation dashboard card~~ - commit `46786e8`, `deaffde`
+- [x] ~~Bing Webmaster Tools sitemap submission~~ - commit `46786e8` (NEEDS env var to activate)
+- [x] ~~Trustpilot Product+aggregateRating schema (24h cache)~~ - commit `deaffde` (NEEDS workspace setting to activate)
+- [x] ~~AVIF generation + <picture>-tag wrapping~~ - commit `deaffde`
+- [x] ~~5 new soft-gate checks (featured_snippet, PAA H2s, alt-text, table-wrap, FAQ count)~~ - commit `deaffde`
+- [x] ~~Doginwork wrong-target republish (varfor-biter-min-valp moved halsobladet → doginwork.se)~~ - commit `b9deb2a`
+- [x] ~~Pillar template + 4 seeded pillar articles~~ - commit `b9deb2a`
+- [x] ~~DA + NO glossary (16 articles)~~ - commit `b9deb2a`
+- [x] ~~Internal-link depth audit cron (Mon 07:00 UTC)~~ - commit `b9deb2a`
+- [x] ~~Preconnect hints in blog shell <head>~~ - commit `b9deb2a`
+- [x] ~~Soft-gate allowed-domains: swedishbalance.dk added~~ - commit `97f40bd`
+- [x] ~~Soft-gate template-aware thresholds (glossary=800w/3H2, default=2500w/4H2)~~ - commit `2676ea0`
+- [x] ~~scripts/republish-via-correct-target.ts (generic wrong-target recovery)~~ - commit `b9deb2a`
+- [x] ~~scripts/trigger-blog-autopilot.ts (manual cron trigger)~~ - commit `2676ea0`
+- [x] ~~William as Hydro13 author (avatar uploaded + bio + workspace setting activated)~~ - DB update
+- [x] ~~vad-ar-biotin published (first article with new William author)~~ - get-renew.com/blogs/kollagen/vad-ar-biotin
+- [x] ~~HappySleep blog autopilot disabled~~ - DB update
+- [x] ~~64 HappySleep content_plan rows deferred~~ - DB update
+- [x] ~~Strategic pivot: HappySleep blog dropped, consolidate on get-renew.com for Hydro13~~
+
+### Needs William action to activate
+- [ ] **HIGH: Add `trustpilot_domain` to Hydro13 workspace settings** - either `swedishbalance.se` or `get-renew.com`. Activates Product+aggregateRating schema → star snippets in SERPs.
+- [ ] **MEDIUM: Add `BING_WEBMASTER_API_KEY` env var on Vercel** - activates Bing/DuckDuckGo/ChatGPT-search sitemap submission. Get key from Bing Webmaster Tools → Settings → API Access.
+- [ ] **MEDIUM: Add `blog_low_rank_updates_enabled: true` to Hydro13 workspace** - activates Fri 13:00 UTC LOW_RANK refresh cron.
+- [ ] **LOW: Rotate local ANTHROPIC_API_KEY** in .env.local - currently returns 401 on local scripts. Vercel key works fine, so this only affects local script runs.
+
+### Future single-sweep (4-6 weeks out)
+- [ ] **MEDIUM: Bulk-republish all 27 existing Hydro13 articles** - swaps Erik Lindberg → William as author, adds MedicalWebPage schema, hreflang fix, AVIF images, etc. Single sweep is cleaner Google signal than incremental updates.
+
 
 ## Hydro13 Publishing (2026-05-18, IN FLIGHT)
 
