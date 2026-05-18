@@ -16,6 +16,13 @@ export interface OptimizedImage {
   optimizedSize: number;
   width: number;
   height: number;
+  /** AVIF version - same dimensions, smaller file. Optional (may fail). */
+  avif?: {
+    deployPath: string;
+    buffer: Buffer;
+    sha1: string;
+    size: number;
+  };
 }
 
 export interface OptimizationResult {
@@ -34,9 +41,9 @@ function sha1Buffer(buf: Buffer): string {
   return createHash("sha1").update(buf).digest("hex");
 }
 
-function generateDeployPath(originalUrl: string, slugPrefix: string): string {
+function generateDeployPath(originalUrl: string, slugPrefix: string, ext: "webp" | "avif" = "webp"): string {
   const hash = createHash("sha1").update(originalUrl).digest("hex").slice(0, 12);
-  return `/${slugPrefix}/images/${hash}.webp`;
+  return `/${slugPrefix}/images/${hash}.${ext}`;
 }
 
 function shouldSkipUrl(url: string): boolean {
@@ -126,6 +133,22 @@ async function convertToWebP(
 }
 
 /**
+ * Convert an image buffer to AVIF. AVIF is ~20% smaller than WebP at same
+ * visual quality (so ~50% smaller than JPEG). Modern browsers (Chrome,
+ * Firefox, Safari 16+) support it natively; we serve via <picture> with
+ * WebP fallback so older browsers still work.
+ *
+ * Slower to encode than WebP (~3-5x), but we do it once at publish time
+ * so users get the speed benefit on every page load.
+ */
+async function convertToAvif(inputBuffer: Buffer): Promise<Buffer> {
+  return sharp(inputBuffer)
+    .resize({ width: 1920, withoutEnlargement: true })
+    .avif({ quality: 50, effort: 4 })
+    .toBuffer();
+}
+
+/**
  * Process images with bounded concurrency.
  */
 async function processWithConcurrency<T, R>(
@@ -188,7 +211,27 @@ export async function optimizeImages(
       }
 
       const { buffer: webpBuffer, width, height } = await convertToWebP(downloaded.buffer);
-      const deployPath = generateDeployPath(url, slugPrefix);
+      const deployPath = generateDeployPath(url, slugPrefix, "webp");
+
+      // AVIF version - parallel format, ~20% smaller than WebP. Best-effort;
+      // if AVIF encoding fails (rare, usually corrupt input), fall through
+      // with just WebP - browsers will pick whatever <source> they support.
+      let avif: OptimizedImage["avif"];
+      try {
+        const avifBuffer = await convertToAvif(downloaded.buffer);
+        // Only emit AVIF if it's actually smaller than WebP (very small/simple
+        // images sometimes compress better in WebP; avoid wasted bytes).
+        if (avifBuffer.length < webpBuffer.length) {
+          avif = {
+            deployPath: generateDeployPath(url, slugPrefix, "avif"),
+            buffer: avifBuffer,
+            sha1: sha1Buffer(avifBuffer),
+            size: avifBuffer.length,
+          };
+        }
+      } catch (err) {
+        console.warn(`[image-optimizer] AVIF failed for ${url.slice(0, 80)} (using WebP only):`, err instanceof Error ? err.message : err);
+      }
 
       const optimized: OptimizedImage = {
         originalUrl: url,
@@ -199,14 +242,21 @@ export async function optimizeImages(
         optimizedSize: webpBuffer.length,
         width,
         height,
+        avif,
       };
 
       urlMap.set(url, deployPath);
       images.push(optimized);
       stats.optimized++;
       stats.savedBytes += downloaded.buffer.length - webpBuffer.length;
+      if (avif) {
+        // AVIF additional savings (we still ship WebP for fallback so this is
+        // bonus for modern browsers).
+        stats.savedBytes += webpBuffer.length - avif.size;
+      }
       completed++;
-      const detail = `${(downloaded.buffer.length / 1024).toFixed(0)}KB → ${(webpBuffer.length / 1024).toFixed(0)}KB`;
+      const avifStr = avif ? ` + AVIF ${(avif.size / 1024).toFixed(0)}KB` : "";
+      const detail = `${(downloaded.buffer.length / 1024).toFixed(0)}KB → WebP ${(webpBuffer.length / 1024).toFixed(0)}KB${avifStr}`;
       console.log(`[image-optimizer] [${completed}/${urls.length}] OK ${detail} ${url.slice(0, 80)}`);
       onProgress?.(completed, urls.length, detail);
     } catch (err) {
@@ -249,12 +299,11 @@ export function enhanceImageTags(
   if (images.length === 0) return html;
 
   const $ = cheerio.load(html, { xmlMode: false });
-  // Build lookup by both original URL and deploy path since either may
-  // appear in the HTML at the time we're called.
-  const dimBySrc = new Map<string, { width: number; height: number }>();
+  // Lookup by both original URL and deploy path
+  const infoBySrc = new Map<string, OptimizedImage>();
   for (const img of images) {
-    dimBySrc.set(img.originalUrl, { width: img.width, height: img.height });
-    dimBySrc.set(img.deployPath, { width: img.width, height: img.height });
+    infoBySrc.set(img.originalUrl, img);
+    infoBySrc.set(img.deployPath, img);
   }
 
   let isFirstImage = true;
@@ -262,16 +311,19 @@ export function enhanceImageTags(
   $("img").each((_, el) => {
     const $el = $(el);
     const src = $el.attr("src") || "";
-    const dim = dimBySrc.get(src);
+    const info = infoBySrc.get(src);
 
-    // Set width/height when known. Only set if missing (don't override authored).
-    if (dim) {
-      if (!$el.attr("width")) $el.attr("width", String(dim.width));
-      if (!$el.attr("height")) $el.attr("height", String(dim.height));
+    // Skip if already wrapped in <picture> (don't double-wrap)
+    const parent = $el.parent();
+    const alreadyWrapped = parent.length > 0 && parent[0].type === "tag" && parent[0].name === "picture";
+
+    // Set width/height when known. Only set if missing.
+    if (info) {
+      if (!$el.attr("width")) $el.attr("width", String(info.width));
+      if (!$el.attr("height")) $el.attr("height", String(info.height));
     }
 
-    // Hero image (first <img> in body): eager with high fetch priority.
-    // Subsequent images: lazy + async decode.
+    // First image (hero) eager with fetchpriority=high; rest lazy.
     if (isFirstImage) {
       if (!$el.attr("fetchpriority")) $el.attr("fetchpriority", "high");
       if (!$el.attr("decoding")) $el.attr("decoding", "async");
@@ -279,6 +331,16 @@ export function enhanceImageTags(
     } else {
       if (!$el.attr("loading")) $el.attr("loading", "lazy");
       if (!$el.attr("decoding")) $el.attr("decoding", "async");
+    }
+
+    // If we have an AVIF version, wrap in <picture> with both AVIF + WebP
+    // sources. Modern browsers (Chrome/FF/Safari 16+) load AVIF, older
+    // fall back to WebP via the <img> tag.
+    if (info?.avif && !alreadyWrapped) {
+      const avifSource = `<source type="image/avif" srcset="${info.avif.deployPath}">`;
+      const webpSource = `<source type="image/webp" srcset="${info.deployPath}">`;
+      const imgHtml = $.html($el);
+      $el.replaceWith(`<picture>${avifSource}${webpSource}${imgHtml}</picture>`);
     }
   });
 

@@ -963,6 +963,48 @@ export async function publishBlogArticle(
     }
   }
 
+  // Trustpilot Product+aggregateRating schema for product-recommendation
+  // articles. Pulls cached rating from trustpilot_cache (1x/day refresh).
+  // Result: star-rating rich snippets in Google SERPs for the article.
+  let productRatingSchema: string | undefined;
+  try {
+    const { isProductRecommendationArticle, getCachedBusinessInfo, buildProductRatingSchema } = await import("./trustpilot");
+    const templateForCheck = (settings.blog_publish_target as string) === "shopify" ? "comparison" : "listicle";
+    // Best-effort template detection from category since we don't have it on this code path
+    if (isProductRecommendationArticle(category, templateForCheck)) {
+      const tpDomain = settings.trustpilot_domain as string | undefined;
+      if (tpDomain) {
+        const info = await getCachedBusinessInfo(tpDomain);
+        if (info && info.stars > 0 && info.numberOfReviews > 0) {
+          // Resolve product info from product bank via slug stored in plan row
+          const { data: productRows } = await db
+            .from("blog_content_plan")
+            .select("product_slug")
+            .eq("slug", slug)
+            .eq("language", language)
+            .maybeSingle();
+          const productSlug = (productRows?.product_slug as string) || (settings.default_product as string) || "";
+          const productUrl = (settings.shopify_domains as string)?.split(",")[0]?.trim()
+            ? `https://${(settings.shopify_domains as string).split(",")[0].trim()}/products/${productSlug}`
+            : "";
+          const productName = productSlug === "happysleep" ? "HappySleep" : productSlug === "hydro13" ? "Hydro13" : productSlug;
+          if (productUrl && productName) {
+            productRatingSchema = buildProductRatingSchema({
+              productName,
+              productUrl,
+              brandName: productName,
+              rating: info.stars,
+              reviewCount: info.numberOfReviews,
+              reviewUrl: `https://www.trustpilot.com/review/${tpDomain}`,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[blog-publish] Trustpilot schema injection failed (non-critical):", err);
+  }
+
   const wrappedHtml = wrapInBlogShell({
     articleBodyHtml: bodyHtml,
     articleHeadHtml: headHtml,
@@ -979,6 +1021,7 @@ export async function publishBlogArticle(
     baseUrl,
     authorOverride,
     hreflangAlternates,
+    productRatingSchema,
   });
 
   // Build analytics config
@@ -1015,6 +1058,11 @@ export async function publishBlogArticle(
       }
       for (const img of imgResult.images) {
         deployFiles.push({ path: img.deployPath, sha1: img.sha1, body: new Uint8Array(img.buffer) });
+        // Deploy AVIF alongside WebP - <picture> tags in enhanceImageTags
+        // reference both, browser picks supported format
+        if (img.avif) {
+          deployFiles.push({ path: img.avif.deployPath, sha1: img.avif.sha1, body: new Uint8Array(img.avif.buffer) });
+        }
       }
       finalHtml = enhanceImageTags(finalHtml, imgResult.images);
       console.log(`[blog-publish] Optimized ${imgResult.stats.optimized} images, saved ${(imgResult.stats.savedBytes / 1024).toFixed(0)}KB`);

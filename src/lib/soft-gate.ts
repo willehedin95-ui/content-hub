@@ -190,6 +190,58 @@ export function runSoftGate(ctx: GateContext): GateResult {
     warnings.push(`unresolved_internal_slugs:${Array.from(unresolvedSlugs).slice(0, 3).join(",")}`);
   }
 
+  // 10. Featured snippet check: first paragraph should be 40-60 words
+  //     direct answer (Google pos 0 target). Outside that range -> warning,
+  //     not a hard fail.
+  const firstParagraph = $("p").first().text().replace(/\s+/g, " ").trim();
+  if (firstParagraph) {
+    const fpWords = firstParagraph.split(" ").filter(Boolean).length;
+    if (fpWords < 30 || fpWords > 80) {
+      warnings.push(`featured_snippet_p1_length:${fpWords}_words_(target:40-60)`);
+    }
+  }
+
+  // 11. Question-style H2 count for People Also Ask coverage. Good articles
+  //     phrase 2+ H2s as natural questions ("Hur fungerar X?", "Vad är Y?").
+  const h2Texts = $("h2").map((_, el) => $(el).text().trim()).get();
+  const questionH2s = h2Texts.filter((t) =>
+    /\?$/.test(t) || /^(hur |vad |varför|när |vilken|kan man)/i.test(t)
+  );
+  if (questionH2s.length < 2) {
+    warnings.push(`few_question_h2s:${questionH2s.length}_(target:>=2_for_PAA)`);
+  }
+
+  // 12. Alt text completeness on images - missing alt attributes hurt
+  //     accessibility AND SEO (Google uses alt as image-search signal).
+  const imgs = $("img");
+  const imgsWithoutAlt = imgs.filter((_, el) => {
+    const alt = $(el).attr("alt");
+    return !alt || alt.trim().length === 0;
+  }).length;
+  if (imgs.length > 0 && imgsWithoutAlt > 0) {
+    warnings.push(`${imgsWithoutAlt}_imgs_missing_alt`);
+  }
+
+  // 13. Table-wrap check: <table>s should be inside <div class="table-wrap">
+  //     for mobile horizontal scroll. Bare tables overflow viewport on phones
+  //     which is a Core Web Vitals CLS issue.
+  const bareTables = $("table").filter((_, el) => {
+    const parent = $(el).parent();
+    return parent.length === 0 || !parent.hasClass("table-wrap");
+  }).length;
+  if (bareTables > 0) {
+    warnings.push(`${bareTables}_tables_missing_wrap`);
+  }
+
+  // 14. FAQ-section question count - having 5+ FAQs improves coverage of
+  //     PAA expansions in SERPs.
+  const faqItems = $(".faq-item").length;
+  if (faqItems < 3) {
+    reasons.push(`too_few_faq_items:${faqItems}<3`);
+  } else if (faqItems < 5) {
+    warnings.push(`faq_count_low:${faqItems}_(target:>=5_for_PAA)`);
+  }
+
   return {
     pass: reasons.length === 0,
     reasons,

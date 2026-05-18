@@ -328,6 +328,137 @@ export async function getBusinessInfo(
   };
 }
 
+/**
+ * Cached business info lookup. Returns rating data from trustpilot_cache
+ * if it was fetched within `maxAgeHours` (default 24). Otherwise fetches
+ * fresh and updates cache. Returns null if fetch fails and no cache exists.
+ *
+ * Use this from publish-time paths so we don't hammer Trustpilot on every
+ * article publish - 1 call per day per domain is plenty for SERP star
+ * snippets where small rating changes don't matter day-to-day.
+ */
+export async function getCachedBusinessInfo(
+  domain: string,
+  maxAgeHours = 24
+): Promise<TrustpilotBusinessInfo | null> {
+  try {
+    const { createServerSupabase } = await import("@/lib/supabase-admin");
+    const db = createServerSupabase();
+
+    // Check cache
+    const cutoff = new Date(Date.now() - maxAgeHours * 3600_000).toISOString();
+    const { data: cached } = await db
+      .from("trustpilot_cache")
+      .select("business_id, display_name, stars, review_count, fetched_at")
+      .eq("domain", domain)
+      .gte("fetched_at", cutoff)
+      .maybeSingle();
+
+    if (cached && cached.stars && cached.review_count) {
+      return {
+        id: (cached.business_id as string) || "",
+        displayName: (cached.display_name as string) || domain,
+        stars: cached.stars as number,
+        numberOfReviews: cached.review_count as number,
+      };
+    }
+
+    // Fetch fresh
+    const fresh = await getBusinessInfo(domain);
+    if (!fresh) {
+      // Fall back to stale cache if we have one
+      const { data: stale } = await db
+        .from("trustpilot_cache")
+        .select("business_id, display_name, stars, review_count")
+        .eq("domain", domain)
+        .maybeSingle();
+      if (stale && stale.stars) {
+        return {
+          id: (stale.business_id as string) || "",
+          displayName: (stale.display_name as string) || domain,
+          stars: stale.stars as number,
+          numberOfReviews: (stale.review_count as number) || 0,
+        };
+      }
+      return null;
+    }
+
+    // Update cache
+    await db.from("trustpilot_cache").upsert(
+      {
+        domain,
+        business_id: fresh.id,
+        display_name: fresh.displayName,
+        stars: fresh.stars,
+        review_count: fresh.numberOfReviews,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "domain" }
+    );
+
+    return fresh;
+  } catch (err) {
+    console.warn(`[trustpilot] getCachedBusinessInfo failed for ${domain}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Build Product schema with aggregateRating for SERP star snippets.
+ * Only emit when we have real rating data - Google penalizes fabricated
+ * aggregateRating heavily.
+ */
+export function buildProductRatingSchema(opts: {
+  productName: string;
+  productUrl: string;
+  productImage?: string;
+  productDescription?: string;
+  brandName: string;
+  rating: number;
+  reviewCount: number;
+  reviewUrl?: string;
+}): string {
+  if (opts.rating < 1 || opts.rating > 5 || opts.reviewCount < 1) {
+    return "";
+  }
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: opts.productName,
+    url: opts.productUrl,
+    ...(opts.productImage ? { image: opts.productImage } : {}),
+    ...(opts.productDescription ? { description: opts.productDescription } : {}),
+    brand: {
+      "@type": "Brand",
+      name: opts.brandName,
+    },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: Math.round(opts.rating * 10) / 10,
+      reviewCount: opts.reviewCount,
+      bestRating: 5,
+      worstRating: 1,
+      ...(opts.reviewUrl ? { url: opts.reviewUrl } : {}),
+    },
+  });
+}
+
+/**
+ * Should this article get Product+aggregateRating schema? Only commercial-
+ * intent articles benefit - Google doesn't grant star rich snippets to
+ * informational content even with valid schema.
+ */
+export function isProductRecommendationArticle(
+  category: string | undefined,
+  templateId: string
+): boolean {
+  if (["listicle", "comparison", "buying-guide", "testimonial"].includes(templateId)) {
+    return true;
+  }
+  if (!category) return false;
+  return /bäst|bedst|best|test|jämför|jamfor|sammenligning|köpguide|kopguide|kjopeguide|recension|review/i.test(category);
+}
+
 /** Log scrape activity to usage_logs */
 export async function logScrapeUsage(
   domain: string,

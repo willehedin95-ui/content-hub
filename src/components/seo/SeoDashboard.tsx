@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Search, MousePointerClick, Eye, Target, RefreshCw, Settings } from "lucide-react";
 import type { SeoOverview } from "@/types";
+import IndexationCard from "./IndexationCard";
 
 function TrendBadge({ value, suffix = "%", inverse = false }: { value: number | null; suffix?: string; inverse?: boolean }) {
   if (value === null || value === 0) return null;
@@ -231,6 +232,10 @@ export default function SeoDashboard() {
           </div>
         </div>
       )}
+
+      <div className="mt-6">
+        <IndexationCard />
+      </div>
     </div>
   );
 }
