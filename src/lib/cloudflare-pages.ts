@@ -917,7 +917,35 @@ ${urls.join("\n")}
 </urlset>`;
 
   // Build robots.txt
+  // - Disallow query-parameter URLs (UTM-tagged paths get crawled as duplicates
+  //   of canonical, wasting crawl budget. Article HTML has canonical tags but
+  //   robots-level signal is stronger for crawl-budget conservation.)
+  // - Explicit Allow for CSS/JS so Google can render JS-heavy components
+  //   when crawling (some bots skip these if not explicitly allowed)
+  // - Disallow common preview/draft paths (defensive - we don't deploy them
+  //   but search engines sometimes find them through external links)
   const robotsTxt = `User-agent: *
+Allow: /
+Allow: /*.css$
+Allow: /*.js$
+Disallow: /*?utm_*
+Disallow: /*?fbclid=*
+Disallow: /*?gclid=*
+Disallow: /*?msclkid=*
+Disallow: /draft/
+Disallow: /preview/
+Disallow: /api/
+Disallow: /_next/
+
+# AI training crawlers - allow for now since we want LLM citations,
+# but be aware these will use content without sending traffic
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
 Allow: /
 
 Sitemap: ${baseUrl}/sitemap.xml

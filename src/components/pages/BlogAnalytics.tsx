@@ -33,6 +33,13 @@ interface BlogArticle {
   clicksTrend: number | null;
   impressionsTrend: number | null;
   positionTrend: number | null;
+  ga4PageViews: number | null;
+  ga4Sessions: number | null;
+  ga4Users: number | null;
+  ga4BounceRate: number | null;
+  ga4EngagementRate: number | null;
+  ga4AvgSessionSec: number | null;
+  ga4Conversions: number | null;
   orders: number;
   revenue: number;
   currency: string;
@@ -181,6 +188,8 @@ export default function BlogAnalytics() {
               <th className="text-right px-3 py-2 font-medium">Clicks</th>
               <th className="text-right px-3 py-2 font-medium">Impressions</th>
               <th className="text-right px-3 py-2 font-medium">Position</th>
+              <th className="text-right px-3 py-2 font-medium" title="GA4 pageviews">Views</th>
+              <th className="text-right px-3 py-2 font-medium" title="GA4 bounce rate">Bounce</th>
               <th className="text-right px-3 py-2 font-medium">Keywords</th>
               <th className="text-right px-3 py-2 font-medium">Orders</th>
               <th className="w-8"></th>
@@ -242,6 +251,12 @@ function ArticleRow({
           {article.avgPosition !== null ? article.avgPosition : "—"}
           <div><TrendBadge value={article.positionTrend} suffix="" /></div>
         </td>
+        <td className="text-right px-3 py-2.5 tabular-nums text-gray-600" title={article.ga4Sessions !== null ? `${article.ga4Sessions} sessions, ${article.ga4Users ?? "?"} users` : "GA4 not configured"}>
+          {article.ga4PageViews !== null ? article.ga4PageViews.toLocaleString() : "—"}
+        </td>
+        <td className="text-right px-3 py-2.5 tabular-nums text-gray-600" title={article.ga4EngagementRate !== null ? `Engagement ${(article.ga4EngagementRate * 100).toFixed(0)}%, avg session ${article.ga4AvgSessionSec ?? "?"}s` : "GA4 not configured"}>
+          {article.ga4BounceRate !== null ? `${(article.ga4BounceRate * 100).toFixed(0)}%` : "—"}
+        </td>
         <td className="text-right px-3 py-2.5 tabular-nums text-gray-600">
           {article.keywordCount}
         </td>
@@ -262,7 +277,7 @@ function ArticleRow({
       {/* Expanded: top keywords */}
       {expanded && article.topKeywords.length > 0 && (
         <tr>
-          <td colSpan={7} className="bg-gray-50 px-3 py-2">
+          <td colSpan={9} className="bg-gray-50 px-3 py-2">
             <div className="text-[10px] text-gray-500 uppercase font-medium mb-1.5">
               Top Keywords
             </div>

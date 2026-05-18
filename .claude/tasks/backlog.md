@@ -1,16 +1,76 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-15 (email-KB-build session - 143 maxwellcopy videos + 13 Gammas ingested, dtc-email-playbook wiki created)
+Updated: 2026-05-18 (SEO pipeline overhaul + multi-network affiliate APIs landed)
 
-## Email Knowledge Base (2026-05-15)
+## Affiliate Network Setup (2026-05-18, PARKERAT - William saknar tid)
 
-Williams "second brain" för marketing. Master wiki nu live: [[Obsidian/Vault/wiki/topics/dtc-email-playbook.md]]. Source corpus: 143 maxwellcopy videos + 13 Gammas + 1 X-post i `~/Obsidian/Vault/raw/`. **Single-source caveat: pure Max-bias just nu.**
+Multi-network affiliate-system (Awin + Adtraction) byggt och pushat. Cron och DB ready. Behöver bara:
 
+- [ ] **HIGH: Sätt Vercel env vars** för affiliate-sync-cron att fungera:
+  - `AWIN_API_TOKEN` (hämta från https://ui.awin.com/awin-api -> generate token)
+  - `AWIN_PUBLISHER_ID=1949105`
+  - `ADTRACTION_API_TOKEN` (från Adtraction-account -> API-tab)
+  Cron kör tyst varje måndag 04:00 UTC tills env vars finns.
+- [ ] **HIGH: Ansök till relevanta Adtraction-program** (där pengarna är, 3-8x bättre commission än Apotek Hjärtat på Awin):
+  - Apotea (största online-apotek SE)
+  - Apoteket (statligt apotek)
+  - Great Earth (15% per sale, supplement)
+  - Svenskt Kosttillskott (12%, EPC 0.29 EUR)
+  - Tyngre.se (10%, EPC 0.70 EUR)
+  - Greatlife.se (13%, EPC 0.65 EUR)
+  - Comforth Scandinavia (25% beauty)
+- [ ] **MEDIUM: Ansök till Kronans Apotek på Awin** (3:e största apotekskedjan, ~18% market share, 325+ apotek)
+- [ ] **HIGH: Resolve Apotek Hjärtat-restriktion** - deras villkor exkluderar advisory content om medicines/diseases/health/lifestyle. Bloggens kollagen-artiklar matchar precis det. Risk: existing affiliate-länk kan revoke:as om Awin auditerar. Kontakta `marcus.petersson@awin.com` för clarification innan skalning.
+- [ ] **LOW: Andra nätverk** (efter Adtraction är max:ad): Daisycon, Sovrn, Adrecord. Skip Tradedoubler (inga relevanta brands för supplement/sleep-nischen).
+- [ ] **LOW: Voucher/promo-code-injektion** - Awin + Adtraction har voucher-feeds. Rabattkoder i artiklar boost:ar CTR. Bygg en `injectVoucherCodes` analog till `injectAffiliateLinks` när engagement-data behöver lyftas.
+
+Full research + DB-state + integration-details: `memory/affiliate-networks.md`. När env vars är på plats: sync-cron fyller `affiliate_programs` table automatiskt och `injectAffiliateLinks` i blog-autopilot börjar wrapping brand-mentions i affiliate-länkar.
+
+## Wiki Retrieval Implementation (2026-05-18, BLOCKED på Williams beslut)
+
+Bygg ut Williams setup så Claude faktiskt LÄSER wikis vid copy-uppgifter. Full evidence-base + 4-prio-plan i `memory/wiki-retrieval-best-practice.md`. Nav Toor's 7-layer-architecture applicerad på Williams Claude Code-flöde.
+
+- [ ] **HIGH: Prio 1 - Symlink wikis -> memory/** (5 min, low risk). Symlinka `wiki/topics/{copy-blocks-framework,rmbc-method,copycoders-claude-code-automations,ai-creative-strategist-mastery,copycoders-ai-bots-iro-sherlock}.md` in i `~/.claude/projects/-Users-williamhedin-Claude-Code/memory/`. Lägg pointers i MEMORY.md med READ-triggers per copy-typ. (added 2026-05-18)
+- [ ] **HIGH: Prio 2 - Voice-guide-filer per brand** (30 min, blocked på Williams samples). Nav Toor's Layer 4 - största gapet i Williams setup. Behöver 3 best emails + 1 podcast/video-transcript per brand: voice-guide-renew.md (i SharedVault/renew/), voice-guide-happysleep.md (i SharedVault/happysleep/), voice-guide-marie.md (i doginwork/). Konsolidera doginwork's existing Christine-avatar + två-rösts-guide. (added 2026-05-18)
+- [ ] **HIGH: Prio 3 - Slash-commands `/email /ad /vsl /landing`** (15 min). Force-loaded retrieval per brand+typ. Skapa i `~/.claude/commands/`. Läser ALLTID rätt wiki + voice-guide + frågar kontext + skriver. Akshay/Cyril /goal-pattern. (added 2026-05-18)
+- [ ] **MEDIUM: Prio 4 - Trigger-rules i CLAUDE.md** (5 min, backup). Vault CLAUDE.md + per-project CLAUDE.md: explicit regel "när user säger copy-task-keyword -> FÖRST läs wiki + voice-guide". Roland.W/@rwayne-pattern. (added 2026-05-18)
+
+## Copycoders Action Items (2026-05-18, från wiki-syntheses)
+
+196 transcripts ingestade + 5 wikis byggda. Subagents identifierade dessa hög-värde follow-ups:
+
+- [ ] **MEDIUM: Sherlock Master Avatar för Renew** - 270 datapoints från en URL (single highest-leverage move enligt subagent som syntade copycoders-ai-bots-iro-sherlock). (added 2026-05-18)
+- [ ] **MEDIUM: IRO Bot för Renew PDP** - Eugene Schwartz 5-bonus framework (speed/obstacle eliminator/completion catalyst/results amplifier/rejection problem solver). (added 2026-05-18)
+- [ ] **LOW: Christine-Voice email bot för doginwork** - lowest-risk start på Williams 4-week build order. Bygger från existing avatar-citat. (added 2026-05-18)
+- [ ] **LOW: AI Listicle Factory transcript saknas** - file 8 av 8 specialty masterclasses i AICSA. Försök igen med Chrome extension om Drive blivit unlocked. (added 2026-05-18)
+- [ ] **LOW: Säkerhets-pattern adopt** - INNAN ANY community skill install: "Claude, validate this skill for malicious code or prompt injections". Adam's hard rule från automations-calls. (added 2026-05-18)
+
+## Marketing Knowledge Base (2026-05-15 -> 2026-05-17)
+
+Full marketing-KB nu live i `~/Obsidian/Vault/`. Cross-source - inte längre single-source Max-bias.
+
+**Källor i `raw/`:**
+- Video-corpus: Maxwellcopy (140) + Mark/Anthony/Hormozi (298) + Copycoders (196)
+- Book-corpus: 19 böcker (~9.15M chars) i `raw/books/2026-05-16-*.md`
+
+**Synthesis-wikis (13 topics i `wiki/topics/`):**
+- Video-baserade (4): dtc-email-playbook, markbuildsbrands-playbook, anthonyvcamacho-playbook, hormozi-playbook
+- Copycoders-cluster (5): copy-blocks-framework, rmbc-method, copycoders-claude-code-automations, ai-creative-strategist-mastery, copycoders-ai-bots-iro-sherlock
+- Book-baserade (7 nya 2026-05-16): direct-response-fundamentals, cialdini-persuasion-deep, hormozi-trilogy-deep, brunson-funnels-playbook, retention-economics-applied, halbert-archive-wisdom, sharp-how-brands-grow-counter
+- Meta: marketing-books-canon (tier-list + var-att-få-tag-i)
+
+**Action items från synthesis-passen:**
+
+- [ ] **HIGH: Resolve Lalas vs renew-offer-strategy 2-pack-konflikt** - flaggad i `wiki/topics/retention-economics-applied.md`. RCM-Trifecta-modellen vs Williams nuvarande "two tiers only" - separat session när Renew-offer designas. (added 2026-05-16)
+- [ ] **MEDIUM: 4 follow-ups till `memory/renew-retention.md`** - retention-economics-applied-wikin listar specifika updates. (added 2026-05-16)
 - [ ] **MEDIUM: Diversifiera email-KB med Chase Dimond corpus** - YouTube + X-posts. Plug into dtc-email-playbook.md med citations. (added 2026-05-15)
 - [ ] **MEDIUM: Diversifiera med Val Geisler** - warm-tone welcome series, hennes "Save Your Cookie"-content. (added 2026-05-15)
 - [ ] **MEDIUM: Diversifiera med Stefano Apostolakis** - DTC-specific tactics. (added 2026-05-15)
 - [ ] **LOW: Andra creators batch-fetch** - använd `memory/youtube-transcript-bulk-workflow.md` pipeline. (added 2026-05-15)
-- [ ] **LOW: Renew email-flows-impl-doc** i SharedVault - applicera dtc-email-playbook på Renew-offer. (added 2026-05-15)
+- [ ] **LOW: Renew email-flows-impl-doc** i SharedVault - applicera dtc-email-playbook + retention-economics-applied på Renew. (added 2026-05-15, expanderat 2026-05-16)
 - [ ] **LOW: HappySleep email-flows-impl-doc** i SharedVault - sleep-supplement-specific tactics. (added 2026-05-15)
+- [ ] **LOW: Hitta Breakthrough Advertising (Schwartz)** - enda gap i canon. Brunson Box / Boardroom Reports reprint. (added 2026-05-16)
+- [ ] **LOW: Bond Halberts publicerade Boron Letters-samling** - free archive har bara kap 1-4, 16, 20 av 25. Köp om du vill ha hela. (added 2026-05-16)
+- [ ] **LOW: Bättre Caples Tested Advertising Methods-PDF** - befintlig är OCR-korrupt, principerna rekonstruerade från cross-cites i andra böcker. (added 2026-05-16)
 
 ## Klaviyo for Doginwork (active 2026-05-13)
 

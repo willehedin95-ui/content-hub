@@ -661,6 +661,74 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 </body>
 </html>`,
   },
+  {
+    id: "glossary",
+    name: "Glossary / Definition",
+    description: 'Encyclopedia-style "What is X" page. Short, scannable, targets question-keywords.',
+    category: "Long-tail",
+    getHtml: (name) => `<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <title>${esc(name)}</title>
+  ${sharedStyles}
+</head>
+<body>
+  <div class="article">
+    <img class="hero-img" src="https://placehold.co/1200x675/0ea5e9/white?text=Hero+Image" alt="${esc(name)}">
+    <h1>${esc(name)}</h1>
+
+    <div class="tldr">
+      <strong>Kort svar</strong>
+      <p>En till två meningar som svarar direkt på frågan i rubriken. Detta är vad Google ofta plockar som featured snippet.</p>
+    </div>
+
+    <p class="intro">Inledande paragraf som expanderar definitionen och nämner varför ämnet är relevant för läsaren.</p>
+
+    <h2>Definition</h2>
+    <p>Detaljerad teknisk definition. Inkludera relevant kemi/biologi/etymologi när det är applicerbart. Cite peer-reviewed källor.</p>
+
+    <h2>Hur fungerar det?</h2>
+    <p>Mekanism eller process. Använd en numrerad lista om det finns sekventiella steg.</p>
+    <ol>
+      <li>Första steget i processen</li>
+      <li>Andra steget</li>
+      <li>Tredje steget</li>
+    </ol>
+
+    <h2>Olika typer av ${esc(name.toLowerCase().replace(/^vad är /i, "").replace(/[?]+$/, ""))}</h2>
+    <p>Om termen har flera underkategorier, lista dem här. Annars skip:a denna H2.</p>
+
+    <h2>Vanliga användningsområden</h2>
+    <ul>
+      <li>Användning 1 med kort beskrivning</li>
+      <li>Användning 2</li>
+      <li>Användning 3</li>
+    </ul>
+
+    <h2>Vetenskaplig forskning</h2>
+    <p>Cite 1-2 peer-reviewed studier som beskriver mekanismen eller effekten. Använd pubmed.ncbi.nlm.nih.gov-länkar.</p>
+
+    <h2>Skillnader mot relaterade termer</h2>
+    <p>Om läsaren ofta blandar ihop termen med en annan (t.ex. kollagen vs gelatin), klargör skillnaden här.</p>
+
+    <h2>Vanliga frågor</h2>
+    <div class="faq-item">
+      <h3>Behöver jag bry mig om ${esc(name.toLowerCase().replace(/^vad är /i, "").replace(/[?]+$/, ""))}?</h3>
+      <p>Praktisk relevans för läsaren.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Hur mycket ${esc(name.toLowerCase().replace(/^vad är /i, "").replace(/[?]+$/, ""))} behöver jag?</h3>
+      <p>Konkret svar om dosering eller mängd (om applicerbart).</p>
+    </div>
+    <div class="faq-item">
+      <h3>Var hittar jag ${esc(name.toLowerCase().replace(/^vad är /i, "").replace(/[?]+$/, ""))}?</h3>
+      <p>Naturliga källor + tillskott.</p>
+    </div>
+  </div>
+</body>
+</html>`,
+  },
 ];
 
 function esc(s: string): string {

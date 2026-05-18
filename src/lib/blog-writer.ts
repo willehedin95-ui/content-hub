@@ -1163,7 +1163,31 @@ holistisk, revolutionerande, banbrytande, game-changer, optimal, transformera, n
 - Category: ${request.category}
 - Target word count: ${request.wordCount} words
 - Template type: ${request.templateId}
-- Language: ${langName}`;
+- Language: ${langName}
+${methodologyInstructionForTemplate(request.templateId, langName)}`;
+}
+
+/**
+ * For listicle / comparison / buying-guide templates, instruct the writer
+ * to include a "How we tested / How we ranked" methodology section. This is
+ * a critical E-E-A-T signal that Google's December 2025 update prioritizes.
+ * Affiliate sites without this took heavy ranking hits.
+ */
+function methodologyInstructionForTemplate(templateId: string, langName: string): string {
+  const needsMethodology = ["listicle", "comparison", "buying-guide"].includes(templateId);
+  if (!needsMethodology) return "";
+  const heading = langName === "danish" ? "Sådan testede vi" : langName === "norwegian" ? "Slik testet vi" : "Så här testade vi";
+  return `
+
+## Methodology section (E-E-A-T critical for ${templateId})
+Include a "${heading}" H2 section (3-5 paragraphs) covering:
+- How many products we evaluated and over what time period
+- What criteria we ranked on (specific testable attributes, NOT vague terms like "quality")
+- Sources we consulted (peer-reviewed studies, verified Trustpilot reviews, ingredient databases like Livsmedelsverket)
+- Disclosure: we sell our own product in this category (transparency boosts trust per Helpful Content Update)
+- Why our recommendation is honest despite the disclosure (objective criteria, real test data)
+
+Be specific - "We tested 7 products over 9 weeks with 3 testers" beats "We thoroughly researched the market".`;
 }
 
 function buildWriterUserPrompt(

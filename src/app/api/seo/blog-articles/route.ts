@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { getOrdersByPage, getShopifyCredsForWorkspace, type OrderAttribution } from "@/lib/shopify";
 import { extractSlug } from "@/lib/seo-workspace-filter";
+import { fetchAllGA4Metrics } from "@/lib/ga4";
 import type { GscProperty } from "@/types";
 
 /**
@@ -137,6 +138,21 @@ export async function GET(req: NextRequest) {
     // Shopify data is optional
   }
 
+  // Fetch GA4 page-level metrics (pageviews, sessions, bounce rate, engagement).
+  // Shows traffic BEFORE GSC starts ranking - critical for new articles where
+  // GSC has 0 impressions but GA4 may show direct/social traffic.
+  // Falls through silently if GA4 not configured.
+  const ga4PropertyIds: Record<string, string> =
+    (settings?.ga4_property_ids as Record<string, string>) ?? {};
+  let ga4Metrics: Map<string, import("@/lib/ga4").GA4PageMetrics> | null = null;
+  if (Object.values(ga4PropertyIds).filter(Boolean).length > 0) {
+    try {
+      ga4Metrics = await fetchAllGA4Metrics(ga4PropertyIds, days);
+    } catch (err) {
+      console.warn("[blog-articles] GA4 fetch failed (non-fatal):", err);
+    }
+  }
+
   // Build per-article response
   const articles = blogPages.map((bp) => {
     const slug = bp.slug as string;
@@ -167,6 +183,28 @@ export async function GET(req: NextRequest) {
           .slice(0, 5)
       : [];
 
+    // GA4 lookup - key format from fetchAllGA4Metrics is `${lang}:${pagePath}`.
+    // Pages live under /<category>/<slug>/ so we try a couple of likely paths.
+    let ga4 = null as import("@/lib/ga4").GA4PageMetrics | null;
+    if (ga4Metrics) {
+      const categorySlug = (page?.blog_category || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      const candidates = [
+        `${bp.language}:/${categorySlug}/${slug}/`,
+        `${bp.language}:/${categorySlug}/${slug}`,
+        `${bp.language}:/${slug}/`,
+        `${bp.language}:/${slug}`,
+        `${bp.language}:/blogs/kollagen/${slug}`,
+        `${bp.language}:/blogs/kollagen/${slug}/`,
+      ];
+      for (const key of candidates) {
+        const m = ga4Metrics.get(key);
+        if (m) { ga4 = m; break; }
+      }
+    }
+
     return {
       slug,
       title: bp.seo_title || slug,
@@ -177,6 +215,14 @@ export async function GET(req: NextRequest) {
       clicks: cur?.clicks ?? 0,
       impressions: cur?.impressions ?? 0,
       avgPosition: avgPosition !== null ? Math.round(avgPosition * 10) / 10 : null,
+      // GA4 metrics (null when GA4 not configured or no data for this page)
+      ga4PageViews: ga4?.screenPageViews ?? null,
+      ga4Sessions: ga4?.sessions ?? null,
+      ga4Users: ga4?.totalUsers ?? null,
+      ga4BounceRate: ga4 ? Math.round(ga4.bounceRate * 100) / 100 : null,
+      ga4EngagementRate: ga4 ? Math.round(ga4.engagementRate * 100) / 100 : null,
+      ga4AvgSessionSec: ga4 ? Math.round(ga4.averageSessionDuration) : null,
+      ga4Conversions: ga4?.conversions ?? null,
       // Trends (vs previous period)
       clicksTrend: prev && prev.clicks > 0
         ? Math.round((((cur?.clicks ?? 0) - prev.clicks) / prev.clicks) * 100)

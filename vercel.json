@@ -21,6 +21,10 @@
       "schedule": "0 4 * * 1"
     },
     {
+      "path": "/api/cron/blog-sunset-check",
+      "schedule": "0 7 1 * *"
+    },
+    {
       "path": "/api/cron/blog-update-low-rank",
       "schedule": "0 13 * * 5"
     },
