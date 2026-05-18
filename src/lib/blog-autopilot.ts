@@ -276,20 +276,21 @@ async function writeOneArticle(
     console.warn("[blog-autopilot] Product image injection failed (non-critical):", err);
   }
 
-  // Inject Awin affiliate links on competitor brand mentions (secondary
-  // revenue stream). No-op if workspace has no awin_links configured.
+  // Inject multi-network affiliate links on competitor brand mentions.
+  // Pulls joined-status programs from affiliate_programs DB table, generates
+  // deep links via Awin or Adtraction APIs (cached after first call).
+  // No-op if no joined brands or networks return errors.
   try {
-    const { injectAwinLinks, loadAwinConfig } = await import("./awin-links");
-    const awinConfig = loadAwinConfig(settings);
-    if (awinConfig) {
-      const result = injectAwinLinks(finalHtml, awinConfig);
-      if (result.injected > 0) {
-        finalHtml = result.html;
-        console.log(`[blog-autopilot] Injected ${result.injected} Awin links: ${result.brands.join(", ")}`);
-      }
+    const { injectAffiliateLinks } = await import("./affiliate/inject-links");
+    const result = await injectAffiliateLinks(finalHtml, { clickRef: nextArticle.slug });
+    if (result.injected > 0) {
+      finalHtml = result.html;
+      console.log(
+        `[blog-autopilot] Injected ${result.injected} affiliate links: ${result.brands.map((b) => `${b.brand}(${b.network})`).join(", ")}`
+      );
     }
   } catch (err) {
-    console.warn("[blog-autopilot] Awin link injection failed (non-critical):", err);
+    console.warn("[blog-autopilot] Affiliate link injection failed (non-critical):", err);
   }
 
   // Create page record
@@ -721,6 +722,22 @@ async function pickNextArticle(
         .map((r) => r.slug)
         .join(", ")}`
     );
+    // Telegram alert so operator sees what got pruned (silent defer
+    // previously caused "where did my content plan go" confusion).
+    try {
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      if (chatId) {
+        await sendTelegramNotification(
+          chatId,
+          `🚫 *Topic-blocklist defer (${language.toUpperCase()})*\n\n` +
+            `${matchedBlocked.length} planerade artiklar parkerade som deferred:\n` +
+            matchedBlocked.slice(0, 10).map((r) => `• \`${r.slug}\``).join("\n") +
+            (matchedBlocked.length > 10 ? `\n• ...och ${matchedBlocked.length - 10} till` : "")
+        );
+      }
+    } catch {
+      // Non-critical
+    }
   }
 
   const planned = (plannedRows ?? []).find(
@@ -896,6 +913,9 @@ export async function publishBlogArticle(
   const categorySlug = slugifyCategory(category);
   const deploySlug = categorySlug ? `${categorySlug}/${slug}` : slug;
 
+  const authorOverride = settings.blog_author as
+    | import("./blog-shell").BlogAuthorOverride
+    | undefined;
   const wrappedHtml = wrapInBlogShell({
     articleBodyHtml: bodyHtml,
     articleHeadHtml: headHtml,
@@ -910,6 +930,7 @@ export async function publishBlogArticle(
     publishedAt: createdAt,
     updatedAt: new Date().toISOString(),
     baseUrl,
+    authorOverride,
   });
 
   // Build analytics config
@@ -1030,27 +1051,73 @@ async function resumeOrphanedPublishes(
 
   if (!orphans?.length) return;
 
+  // Determine publish target for this workspace - CF Pages or Shopify.
+  // Each has a different expected URL pattern for the "already live?" check.
+  const { data: wsRow } = await db
+    .from("workspaces")
+    .select("settings")
+    .eq("id", workspaceId)
+    .single();
+  const wsSettings = (wsRow?.settings ?? {}) as Record<string, unknown>;
+  const publishTarget = (wsSettings.blog_publish_target as string) || "cf_pages";
+
   const domain = getProjectCustomDomain(language);
-  if (!domain) return;
+  // For CF Pages we MUST have a domain to check URLs. For Shopify the
+  // domain check uses Shopify Admin API instead so we don't need a CF domain.
+  if (publishTarget === "cf_pages" && !domain) return;
 
   console.log(
-    `[blog-autopilot] Found ${orphans.length} orphaned translations (killed mid-publish), resuming`
+    `[blog-autopilot] Found ${orphans.length} orphaned translations (killed mid-publish, target=${publishTarget}), resuming`
   );
+
+  // For Shopify target: resolve creds + blog ID once, then check each orphan
+  // handle via findArticleByHandle (cheap call per orphan).
+  let shopifyCreds: Awaited<ReturnType<typeof import("./shopify").getShopifyCredsForWorkspace>> | null = null;
+  let shopifyBlogId: number | null = null;
+  if (publishTarget === "shopify") {
+    try {
+      const { getShopifyCredsForWorkspace } = await import("./shopify");
+      const { findBlogByHandle } = await import("./shopify-blog");
+      shopifyCreds = await getShopifyCredsForWorkspace(workspaceId);
+      const blogHandle = (wsSettings.shopify_blog_handle as string) || "kollagen";
+      if (shopifyCreds) {
+        const blog = await findBlogByHandle(shopifyCreds, blogHandle);
+        shopifyBlogId = blog ? blog.id : null;
+      }
+    } catch (err) {
+      console.warn("[blog-autopilot] Shopify orphan precheck failed:", err);
+    }
+  }
 
   for (const orphan of orphans) {
     const page = orphan.pages as unknown as { id: string; blog_category?: string };
     const categorySlug = slugifyCategory(page?.blog_category || "");
     const deployPath = categorySlug ? `${categorySlug}/${orphan.slug}` : orphan.slug;
-    const expectedUrl = `https://${domain}/${deployPath}`;
 
-    // Check if the article is already live on CF Pages
-    // (publish succeeded but DB update was killed — the common case)
     let isLive = false;
-    try {
-      const res = await fetch(expectedUrl, { method: "HEAD", redirect: "follow" });
-      isLive = res.status === 200;
-    } catch {
-      // Network error — fall through and republish
+    let expectedUrl: string;
+
+    if (publishTarget === "shopify" && shopifyCreds && shopifyBlogId) {
+      // Shopify: article is live if the handle exists in the blog
+      const blogHandle = (wsSettings.shopify_blog_handle as string) || "kollagen";
+      const storeDomain = (wsSettings.shopify_store_domain as string) || "get-renew.com";
+      expectedUrl = `https://${storeDomain}/blogs/${blogHandle}/${orphan.slug}`;
+      try {
+        const { findArticleByHandle } = await import("./shopify-blog");
+        const article = await findArticleByHandle(shopifyCreds, shopifyBlogId, orphan.slug);
+        isLive = article !== null;
+      } catch (err) {
+        console.warn(`[blog-autopilot] Shopify orphan check for ${orphan.slug}:`, err);
+      }
+    } else {
+      // CF Pages: HEAD-check the URL
+      expectedUrl = `https://${domain}/${deployPath}`;
+      try {
+        const res = await fetch(expectedUrl, { method: "HEAD", redirect: "follow" });
+        isLive = res.status === 200;
+      } catch {
+        // Network error — fall through and republish
+      }
     }
 
     if (isLive) {

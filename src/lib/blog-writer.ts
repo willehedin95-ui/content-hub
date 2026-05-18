@@ -241,7 +241,13 @@ const PILLOW_COMPETITORS_NO: CompetitorProduct[] = [
   { nameSv: "Emma Diamond Degree", brand: "Emma", priceSek: 899, material: "Memory foam med gel", url: "https://www.emma-sleep.no/puter/", description: "Kjølende gelpute. Bra for varme sovere. Justerbar høyde med uttakbare lag." },
 ];
 
-/** Get verified competitors for a product category and language */
+/**
+ * Get verified competitors for a product category and language.
+ *
+ * Returns hardcoded fallback list (legacy). Production code should prefer
+ * `getCompetitorProductsFromDB(productSlug, language)` which reads from
+ * the `competitor_products` Supabase table (operator-editable).
+ */
 export function getCompetitorProducts(productSlug: string, language: string = "sv"): CompetitorProduct[] {
   if (productSlug === "happysleep") {
     if (language === "da") return PILLOW_COMPETITORS_DA;
@@ -250,6 +256,42 @@ export function getCompetitorProducts(productSlug: string, language: string = "s
   }
   if (productSlug === "hydro13") return COLLAGEN_COMPETITORS;
   return [];
+}
+
+/**
+ * Async version that reads from the competitor_products Supabase table.
+ * Falls back to the hardcoded getCompetitorProducts list if DB is empty
+ * or unreachable. Use this from cron paths; getCompetitorProducts() remains
+ * synchronous for places that can't easily await.
+ */
+export async function getCompetitorProductsFromDB(
+  productSlug: string,
+  language: string = "sv"
+): Promise<CompetitorProduct[]> {
+  try {
+    const { createServerSupabase } = await import("./supabase-admin");
+    const db = createServerSupabase();
+    const { data } = await db
+      .from("competitor_products")
+      .select("brand, name_sv, price_sek, material, url, description")
+      .eq("product_slug", productSlug)
+      .eq("language", language)
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+    if (data && data.length > 0) {
+      return data.map((r) => ({
+        nameSv: r.name_sv as string,
+        brand: r.brand as string,
+        priceSek: (r.price_sek as number) || 0,
+        material: (r.material as string) || "",
+        url: r.url as string,
+        description: (r.description as string) || "",
+      }));
+    }
+  } catch (err) {
+    console.warn(`[blog-writer] getCompetitorProductsFromDB failed, falling back to hardcoded:`, err);
+  }
+  return getCompetitorProducts(productSlug, language);
 }
 
 // ---------------------------------------------------------------------------

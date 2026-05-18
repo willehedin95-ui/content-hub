@@ -2,6 +2,83 @@ import * as cheerio from "cheerio";
 import type { Language } from "@/types";
 import { STORAGE_BUCKET } from "./constants";
 
+// ---------------------------------------------------------------------------
+// Schema.org helpers: auto-detect article type from content + title
+// ---------------------------------------------------------------------------
+
+/** "Bästa kollagentillskottet 2026", "Top X", "X best in test" - listicle pattern */
+function isListicleTitle(title: string): boolean {
+  return /\b(bäst|bedst|best|topp|top|recension|rankad)\b/i.test(title);
+}
+
+/** "Hur väljer du X", "Hvordan X", "Sådan X" - how-to pattern */
+function isHowToTitle(title: string): boolean {
+  return /^(hur\s|hvordan\s|sådan\s|slik\s)/i.test(title.trim());
+}
+
+/**
+ * Build ItemList schema for "best of" / "top X" listicles. Detects
+ * heading-based product sections. Falls back to empty string if not a
+ * listicle or no products found - schema is opt-in based on content.
+ */
+function buildItemListSchema(html: string, title: string): string {
+  if (!isListicleTitle(title)) return "";
+  const $ = cheerio.load(html, null, false);
+  // Look for H2 OR H3 sections that look like product names (short, no period)
+  const candidates: string[] = [];
+  $("h2, h3").each((_, el) => {
+    const text = $(el).text().trim();
+    if (!text || text.length > 100) return;
+    if (text.endsWith(".") || text.endsWith("?")) return;
+    candidates.push(text);
+  });
+  if (candidates.length < 3) return "";
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: title,
+    itemListOrder: "https://schema.org/ItemListOrderDescending",
+    numberOfItems: Math.min(candidates.length, 10),
+    itemListElement: candidates.slice(0, 10).map((name, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name,
+    })),
+  });
+}
+
+/**
+ * Build HowTo schema for "Hur X" / "Hvordan X" guides. Detects numbered
+ * <ol> steps. Each <li> becomes a HowToStep.
+ */
+function buildHowToSchema(html: string, title: string): string {
+  if (!isHowToTitle(title)) return "";
+  const $ = cheerio.load(html, null, false);
+  // Pick the first <ol> with 3+ items as the canonical step list
+  let stepList: string[] = [];
+  $("ol").each((_, ol) => {
+    if (stepList.length > 0) return;
+    const items: string[] = [];
+    $(ol).find("> li").each((_, li) => {
+      const text = $(li).text().trim();
+      if (text.length > 10 && text.length < 500) items.push(text);
+    });
+    if (items.length >= 3) stepList = items;
+  });
+  if (stepList.length === 0) return "";
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name: title,
+    step: stepList.map((text, i) => ({
+      "@type": "HowToStep",
+      position: i + 1,
+      name: text.slice(0, 110).replace(/\.$/, ""),
+      text,
+    })),
+  });
+}
+
 // Author avatar stored in Supabase storage
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://fbpefeqqqfrcmfmjmeij.supabase.co";
 const AUTHOR_AVATAR_URL = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/blog/author-erik-lindberg.png`;
@@ -156,6 +233,33 @@ export function getArticlePath(slug: string, categorySlug?: string): string {
   return categorySlug ? `${categorySlug}/${slug}` : slug;
 }
 
+/**
+ * Per-workspace author override. If provided, replaces hardcoded Erik Lindberg
+ * identity in Article schema, byline, and footer. To set, add to workspace
+ * settings.blog_author:
+ *
+ *   {
+ *     "name": "William Hedin",
+ *     "slug": "william-hedin",
+ *     "avatar_url": "https://...",
+ *     "linkedin_url": "https://linkedin.com/in/williamhedin",
+ *     "role": "Founder, Hydro13",
+ *     "bio": ["paragraph 1", "paragraph 2"]
+ *   }
+ *
+ * `bio` is the same for all languages; if you need per-language bio, add
+ * `bios: { sv: [...], da: [...], no: [...] }` instead of `bio`.
+ */
+export interface BlogAuthorOverride {
+  name: string;
+  slug: string;
+  avatar_url?: string;
+  linkedin_url?: string;
+  role?: string;
+  bio?: string[];
+  bios?: Partial<Record<Language, string[]>>;
+}
+
 interface WrapOptions {
   articleBodyHtml: string;
   articleHeadHtml: string;
@@ -170,6 +274,43 @@ interface WrapOptions {
   publishedAt: string;
   updatedAt: string;
   baseUrl: string;
+  authorOverride?: BlogAuthorOverride;
+}
+
+/**
+ * Resolve author identity for a given workspace+language. Defaults to the
+ * fallback Erik Lindberg identity if no override is configured.
+ */
+export function resolveAuthor(
+  language: Language,
+  override?: BlogAuthorOverride
+): {
+  name: string;
+  slug: string;
+  avatarUrl: string;
+  role: string;
+  bio: string[];
+  linkedinUrl?: string;
+} {
+  if (!override) {
+    const c = PAGE_CONTENT[language] ?? PAGE_CONTENT.sv;
+    return {
+      name: AUTHOR_NAME,
+      slug: AUTHOR_SLUG,
+      avatarUrl: AUTHOR_AVATAR_URL,
+      role: c.authorRole,
+      bio: c.authorBio,
+    };
+  }
+  const langBio = override.bios?.[language];
+  return {
+    name: override.name,
+    slug: override.slug,
+    avatarUrl: override.avatar_url || AUTHOR_AVATAR_URL,
+    role: override.role || (PAGE_CONTENT[language] ?? PAGE_CONTENT.sv).authorRole,
+    bio: langBio || override.bio || [],
+    linkedinUrl: override.linkedin_url,
+  };
 }
 
 interface HomepageOptions {
@@ -524,10 +665,16 @@ export function wrapInBlogShell(opts: WrapOptions): string {
       })
     : "";
 
+  // Resolve author (supports per-workspace override via opts.authorOverride)
+  const author = resolveAuthor(opts.language, opts.authorOverride);
+
   // Schema: Article JSON-LD. Includes Person author with @id pointing at the
   // dedicated author page so Google can resolve the entity across articles
   // (E-E-A-T signal). Without this the byline is purely cosmetic.
-  const authorPageUrl = `${opts.baseUrl}/${getAuthorPath(opts.language)}/`;
+  const authorPageBasePath = opts.authorOverride
+    ? (opts.language === "sv" ? "forfattare" : "forfattere") + `/${author.slug}`
+    : getAuthorPath(opts.language);
+  const authorPageUrl = `${opts.baseUrl}/${authorPageBasePath}/`;
   const articleSchema = JSON.stringify({
     "@context": "https://schema.org",
     "@type": "Article",
@@ -540,11 +687,12 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     author: {
       "@type": "Person",
       "@id": authorPageUrl,
-      name: AUTHOR_NAME,
+      name: author.name,
       url: authorPageUrl,
-      image: AUTHOR_AVATAR_URL,
-      jobTitle: PAGE_CONTENT[opts.language]?.authorRole ?? "Editor",
+      image: author.avatarUrl,
+      jobTitle: author.role,
       worksFor: { "@type": "Organization", name: langConfig.blog_name },
+      ...(author.linkedinUrl ? { sameAs: [author.linkedinUrl] } : {}),
     },
     publisher: {
       "@type": "Organization",
@@ -569,6 +717,13 @@ export function wrapInBlogShell(opts: WrapOptions): string {
       })),
   });
 
+  // Schema: ItemList for "best X" / "top X" / "bäst i test" listicles.
+  // Auto-detected from title pattern + presence of 3+ H3 sections.
+  const itemListSchema = buildItemListSchema(opts.articleBodyHtml, opts.seoTitle);
+
+  // Schema: HowTo for "Hur X" / "Slik X" / "Sådan X" guides with numbered steps
+  const howToSchema = buildHowToSchema(opts.articleBodyHtml, opts.seoTitle);
+
   // Merge article's original <head> content (stylesheets, fonts, etc.)
   // but strip tags that the blog shell already provides
   let preservedHead = opts.articleHeadHtml;
@@ -585,7 +740,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     opts.language === "sv" ? "sv-SE" : opts.language === "da" ? "da-DK" : "nb-NO",
     { year: "numeric", month: "long", day: "numeric" }
   );
-  const authorName = AUTHOR_NAME;
+  const authorName = author.name;
   const lastUpdatedLabel =
     opts.language === "sv" ? "Senast uppdaterad" :
     opts.language === "da" ? "Sidst opdateret" : "Sist oppdatert";
@@ -596,7 +751,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   // real entity reference Google can crawl.
   const authorBylineHtml = `
     <div class="blog-shell-byline">
-      <a href="${esc(authorPageUrl)}"><img class="blog-shell-avatar" src="${AUTHOR_AVATAR_URL}" alt="${authorName}"></a>
+      <a href="${esc(authorPageUrl)}"><img class="blog-shell-avatar" src="${author.avatarUrl}" alt="${authorName}"></a>
       <div>
         <a class="blog-shell-byline-name" href="${esc(authorPageUrl)}">${byPrefix} ${esc(authorName)}</a>
         <span class="blog-shell-byline-date">${lastUpdatedLabel} ${dateFormatted}</span>
@@ -638,7 +793,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl)}
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
   <script type="application/ld+json">${articleSchema}</script>
-  <script type="application/ld+json">${breadcrumbSchema}</script>${faqSchema ? `\n  <script type="application/ld+json">${faqSchema}</script>` : ""}
+  <script type="application/ld+json">${breadcrumbSchema}</script>${faqSchema ? `\n  <script type="application/ld+json">${faqSchema}</script>` : ""}${itemListSchema ? `\n  <script type="application/ld+json">${itemListSchema}</script>` : ""}${howToSchema ? `\n  <script type="application/ld+json">${howToSchema}</script>` : ""}
   ${preservedHead}
   <style>${BLOG_SHELL_CSS(color)}</style>
 </head>
