@@ -382,6 +382,7 @@ async function writeOneArticle(
       slug: nextArticle.slug,
       seoTitle: article.seoTitle,
       seoDescription: article.seoDescription,
+      templateId: nextArticle.templateId,
       verifiedCitationUrls: [],
       requireResearchCitations: enableResearchCitations,
       knownSlugs,

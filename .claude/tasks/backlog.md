@@ -1,5 +1,18 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-18 (SEO pipeline overhaul + multi-network affiliate APIs landed)
+Updated: 2026-05-18 (Hydro13 publishing items added; SEO pipeline overhaul + multi-network affiliate APIs already landed)
+
+## Hydro13 Publishing (2026-05-18, IN FLIGHT)
+
+iOS 1.1.0 ready to ship + Android awaiting Google Org verification under Incensor AB. Full session journal: `.claude/journal/2026-05-18-13-44.md`. Full publishing playbook: `~/Obsidian/Vault/memory/app-publishing.md`.
+
+- [ ] **HIGH: Submit Hydro13 iOS 1.1.0 to App Store** - build 24 ready on TestFlight. User must log into App Store Connect, pick build 24 under 1.1.0, write What's New (Swedish), submit for review. 1-3 day Apple review. Claude can write copy + generate fresh simulator screenshots on request.
+- [ ] **HIGH: Generate Android Play Store assets while Google verifies** - emulator screenshots (6-8, 1080x2400), feature graphic (1024x500), short description (80 chars), full description (4000 chars), data safety form prep (TelemetryDeck collects anonymous analytics). All in Swedish.
+- [ ] **HIGH: Android release signing setup** - generate keystore at `~/keys/renew-android-upload.jks`, add gitignored `app/keystore.properties`, update `app/build.gradle.kts` with release signingConfig, verify `./gradlew bundleRelease` produces signed AAB.
+- [ ] **MEDIUM: Push Hydro13-Android local commits to remote** - 18 commits on `main`, origin at `5420100`. Decide repo host (GitHub private?) and push.
+- [ ] **MEDIUM: Update App Store screenshots for 1.1.0** - 4-tab to 3-tab UI change, new onboarding, new challenge system, Renew bottle. Current 1.0.0 screenshots are outdated and risk Apple rejection.
+- [ ] **LOW: Reply to Apple Support case 20000112399994** - tell Alex to defer migration. Or let it auto-close.
+- [ ] **BLOCKED: Publish Hydro13 Android to Play Store** - waiting on Google to verify driver's license + website ownership + phone (Incensor AB org). ETA ~2-3 weeks.
+- [ ] **PARKED: Apple Individual -> Organization migration** - deferred indefinitely. Trigger to revisit: product #2 under Renew, investor onboard, or business scale.
 
 ## Affiliate Network Setup (2026-05-18, PARKERAT - William saknar tid)
 

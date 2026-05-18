@@ -23,6 +23,9 @@ export interface GateContext {
   slug: string;
   seoTitle: string | null;
   seoDescription: string | null;
+  /** Template ID from blog-templates.ts (e.g. "glossary"). Used to adjust
+   * thresholds - glossary pages are short by design. */
+  templateId?: string;
   /** Verified PubMed study URLs passed to the writer (empty if citations disabled). */
   verifiedCitationUrls?: string[];
   /** Whether the workspace requires research citations. */
@@ -48,16 +51,28 @@ const MAX_META_DESC_LEN = 170;
 const MIN_H2_COUNT = 4;
 const MIN_INTERNAL_LINKS = 2;
 
+// Glossary template is intentionally short (900-1300 word target). Soft-gate
+// uses a lower MIN for these so encyclopedic "Vad är X" pages don't get
+// flagged as thin content - they're SUPPOSED to be tight definitional pages.
+const GLOSSARY_MIN_WORD_COUNT = 800;
+const GLOSSARY_MIN_H2_COUNT = 3;
+const GLOSSARY_TEMPLATE_IDS = new Set(["glossary"]);
+
 export function runSoftGate(ctx: GateContext): GateResult {
   const reasons: string[] = [];
   const warnings: string[] = [];
   const $ = cheerio.load(ctx.html);
 
+  // Template-aware thresholds: glossary pages are short by design
+  const isGlossary = ctx.templateId ? GLOSSARY_TEMPLATE_IDS.has(ctx.templateId) : false;
+  const minWordCount = isGlossary ? GLOSSARY_MIN_WORD_COUNT : MIN_WORD_COUNT;
+  const minH2Count = isGlossary ? GLOSSARY_MIN_H2_COUNT : MIN_H2_COUNT;
+
   // 1. Word count in body
   const textBody = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = textBody.split(" ").filter(Boolean).length;
-  if (wordCount < MIN_WORD_COUNT) {
-    reasons.push(`thin_content:${wordCount}<${MIN_WORD_COUNT}`);
+  if (wordCount < minWordCount) {
+    reasons.push(`thin_content:${wordCount}<${minWordCount}`);
   } else if (wordCount > MAX_WORD_COUNT) {
     warnings.push(`word_count_high:${wordCount}>${MAX_WORD_COUNT}`);
   }
@@ -81,8 +96,8 @@ export function runSoftGate(ctx: GateContext): GateResult {
 
   // 4. Structure: enough H2s for a long-form article
   const h2Count = $("h2").length;
-  if (h2Count < MIN_H2_COUNT) {
-    reasons.push(`too_few_h2:${h2Count}<${MIN_H2_COUNT}`);
+  if (h2Count < minH2Count) {
+    reasons.push(`too_few_h2:${h2Count}<${minH2Count}`);
   }
 
   // 5. Research citations (only if workspace requires them)
