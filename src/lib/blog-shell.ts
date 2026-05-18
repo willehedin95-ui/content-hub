@@ -861,6 +861,13 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer-when-downgrade">
+  <!-- Preconnect hints reduce TLS handshake time for first-party + analytics
+       domains. Saves 50-200ms on FCP for cold visitors. -->
+  <link rel="preconnect" href="https://connect.facebook.net" crossorigin>
+  <link rel="preconnect" href="https://www.clarity.ms" crossorigin>
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
+  <link rel="dns-prefetch" href="https://fbpefeqqqfrcmfmjmeij.supabase.co">
+  <link rel="dns-prefetch" href="https://cdn.shopify.com">
   <title>${opts.seoTitle.includes(langConfig.blog_name) ? esc(opts.seoTitle) : `${esc(opts.seoTitle)} | ${esc(langConfig.blog_name)}`}</title>
   <meta name="description" content="${esc(opts.seoDescription)}">
   <meta property="og:type" content="article">

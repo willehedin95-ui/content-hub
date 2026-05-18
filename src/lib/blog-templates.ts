@@ -662,6 +662,105 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 </html>`,
   },
   {
+    id: "pillar",
+    name: "Pillar Hub Page",
+    description: "Comprehensive 4000+ word hub linking to all sub-topic articles. Powers topical-authority via hub-and-spoke architecture.",
+    category: "Authority",
+    getHtml: (name) => `<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <title>${esc(name)}</title>
+  ${sharedStyles}
+</head>
+<body>
+  <div class="article">
+    <img class="hero-img" src="https://placehold.co/1200x675/0ea5e9/white?text=Hero+Image" alt="${esc(name)}">
+    <h1>${esc(name)}</h1>
+
+    <div class="tldr">
+      <strong>Kort sammanfattning</strong>
+      <ul>
+        <li>Sammanfattande punkt 1 om topic</li>
+        <li>Sammanfattande punkt 2</li>
+        <li>Sammanfattande punkt 3</li>
+        <li>Sammanfattande punkt 4</li>
+      </ul>
+    </div>
+
+    <p class="intro">Komplett guide till {{topic}}. Den här sidan samlar allt vi vet och har skrivit om {{topic}}. Använd innehållsförteckningen nedan för att hoppa till det avsnitt som intresserar dig - varje underrubrik länkar till en djupgående artikel.</p>
+
+    <h2>Innehållsförteckning</h2>
+    <ul>
+      <li><a href="#grunderna">Grunderna - vad är det här?</a></li>
+      <li><a href="#hur-fungerar">Hur fungerar det?</a></li>
+      <li><a href="#typer">Olika typer och varianter</a></li>
+      <li><a href="#fordelar">Fördelar och användningsområden</a></li>
+      <li><a href="#nackdelar">Nackdelar och begränsningar</a></li>
+      <li><a href="#forskning">Vetenskaplig forskning</a></li>
+      <li><a href="#att-valja">Hur väljer du rätt?</a></li>
+      <li><a href="#vanliga-fragor">Vanliga frågor</a></li>
+    </ul>
+
+    <h2 id="grunderna">Grunderna</h2>
+    <p>3-4 paragraphs som introducerar topic. Cross-link till glossary-artiklar för termer som behöver definition.</p>
+    <p class="related-link">Läs mer: <a href="/related-slug-1/">Djupgående artikel om grunderna</a></p>
+
+    <h2 id="hur-fungerar">Hur fungerar det?</h2>
+    <p>3-4 paragraphs som förklarar mekanismen. Cite peer-reviewed studier.</p>
+    <p class="related-link">Läs mer: <a href="/related-slug-2/">Detaljerad guide</a></p>
+
+    <h2 id="typer">Olika typer</h2>
+    <p>3-4 paragraphs som listar typerna med kort beskrivning av varje.</p>
+    <ul>
+      <li><strong>Typ A</strong> - kort beskrivning. <a href="/typ-a-slug/">Läs djupanalys</a></li>
+      <li><strong>Typ B</strong> - kort beskrivning. <a href="/typ-b-slug/">Läs djupanalys</a></li>
+      <li><strong>Typ C</strong> - kort beskrivning. <a href="/typ-c-slug/">Läs djupanalys</a></li>
+    </ul>
+
+    <h2 id="fordelar">Fördelar och användningsområden</h2>
+    <p>3-4 paragraphs om benefits. Underrubriker per benefit-kategori.</p>
+    <h3>Fördel 1</h3>
+    <p>Detalj + cite. <a href="/related-slug-3/">Läs mer</a></p>
+    <h3>Fördel 2</h3>
+    <p>Detalj + cite.</p>
+
+    <h2 id="nackdelar">Nackdelar och begränsningar</h2>
+    <p>2-3 paragraphs - var ärlig om limitations. Detta är E-E-A-T-signal: visa att du förstår både för och emot.</p>
+
+    <h2 id="forskning">Vetenskaplig forskning</h2>
+    <p>3-4 paragraphs om current state of research. Cite 4-6 peer-reviewed studier från PubMed.</p>
+
+    <h2 id="att-valja">Hur väljer du rätt?</h2>
+    <p>Praktisk guide. Listicle eller decision tree. Länka till "bäst i test"-artikel.</p>
+    <p class="related-link">Se vår fullständiga jämförelse: <a href="/basta-x-slug/">Bästa X 2026 - testad och rankad</a></p>
+
+    <h2 id="vanliga-fragor">Vanliga frågor</h2>
+    <div class="faq-item">
+      <h3>Vanlig fråga 1?</h3>
+      <p>Svar med specifik info.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Vanlig fråga 2?</h3>
+      <p>Svar.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Vanlig fråga 3?</h3>
+      <p>Svar.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Vanlig fråga 4?</h3>
+      <p>Svar.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Vanlig fråga 5?</h3>
+      <p>Svar.</p>
+    </div>
+  </div>
+</body>
+</html>`,
+  },
+  {
     id: "glossary",
     name: "Glossary / Definition",
     description: 'Encyclopedia-style "What is X" page. Short, scannable, targets question-keywords.',

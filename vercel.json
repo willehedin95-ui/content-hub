@@ -17,6 +17,10 @@
       "schedule": "45 6 * * 1"
     },
     {
+      "path": "/api/cron/blog-link-depth-audit",
+      "schedule": "0 7 * * 1"
+    },
+    {
       "path": "/api/cron/blog-decay-check",
       "schedule": "30 6 * * 1"
     },
