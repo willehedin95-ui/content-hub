@@ -9,7 +9,11 @@ export const maxDuration = 800;
 
 const ASPECT_RATIO = "16:9";
 const RESOLUTION = "1K";
-const POLL_TIMEOUT_MS = 720_000;
+// Stay under Vercel Hobby's 300s function cap so we fail with a clear error
+// instead of being killed mid-poll (which leaves the stream dead and the UI
+// stuck on a spinner forever).
+const POLL_TIMEOUT_MS = 270_000;
+const HEARTBEAT_MS = 15_000;
 
 type Intensity = "subtle" | "moderate" | "dramatic";
 
@@ -772,7 +776,22 @@ export async function POST(req: NextRequest) {
 
       const referenceImages = image_url ? [image_url] : [];
       const taskId = await createImageTask(prompt, referenceImages, ASPECT_RATIO, RESOLUTION);
-      const result = await pollTaskResult(taskId, POLL_TIMEOUT_MS);
+
+      // Heartbeat keeps the NDJSON stream alive across the 60-300s Kie poll.
+      // Without it, intermediaries treat the connection as idle and the
+      // browser reader can hang even after the backend finishes.
+      const generateStart = Date.now();
+      const heartbeat = setInterval(() => {
+        const elapsedS = Math.floor((Date.now() - generateStart) / 1000);
+        emit({ step: "heartbeat", elapsed_s: elapsedS }).catch(() => {});
+      }, HEARTBEAT_MS);
+
+      let result;
+      try {
+        result = await pollTaskResult(taskId, POLL_TIMEOUT_MS);
+      } finally {
+        clearInterval(heartbeat);
+      }
 
       if (result.urls.length === 0) {
         await emit({ step: "error", message: "No image generated" });
@@ -812,6 +831,11 @@ export async function POST(req: NextRequest) {
   })();
 
   return new Response(stream.readable, {
-    headers: { "Content-Type": "application/x-ndjson" },
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      Connection: "keep-alive",
+    },
   });
 }
