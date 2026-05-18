@@ -27,6 +27,115 @@ import {
 import type { Language } from "@/types";
 
 /**
+ * Fetch related articles ranked by topical similarity to a given source slug.
+ *
+ * Scoring (higher = more related, picked first):
+ *  +5: same category
+ *  +3: shared keyword from primary or secondary in content_plan
+ *  +1: shared significant word in title (len >= 4, not stopword)
+ *  +0.1: created recently (so ties break in favor of fresh content)
+ *
+ * Falls back to recency-ordered if no scoring signal available. Used by
+ * publish flow to populate the related-articles sidebar with content
+ * Google can use to confirm topical authority.
+ */
+export async function getRelatedArticles(
+  language: Language,
+  currentSlug: string,
+  limit = 4
+): Promise<BlogArticleSummary[]> {
+  const db = createServerSupabase();
+
+  // Get current article's category + content_plan keywords
+  const { data: current } = await db
+    .from("translations")
+    .select("slug, seo_title, pages!inner(blog_category, content_type)")
+    .eq("slug", currentSlug)
+    .eq("language", language)
+    .eq("pages.content_type", "seo_blog")
+    .single();
+  const currentCategory = (current?.pages as unknown as { blog_category?: string })?.blog_category;
+  const currentTitle = (current?.seo_title as string) || "";
+
+  // Look up keyword data from content_plan if available
+  const { data: planRow } = await db
+    .from("blog_content_plan")
+    .select("primary_keyword, secondary_keywords")
+    .eq("slug", currentSlug)
+    .eq("language", language)
+    .maybeSingle();
+  const currentKeywords: string[] = [
+    ...(planRow?.primary_keyword ? [planRow.primary_keyword as string] : []),
+    ...((planRow?.secondary_keywords as string[] | null) ?? []),
+  ];
+
+  // Pull all candidate articles
+  const candidates = await getPublishedBlogArticles(language, currentSlug);
+  if (candidates.length === 0) return [];
+
+  // Extract significant words from current title for soft matching
+  const stopwords = new Set([
+    "att", "och", "för", "med", "som", "den", "det", "har", "kan", "till", "från", "vid", "var",
+    "and", "for", "with", "the", "what", "how", "why", "when", "where", "this", "that",
+    "der", "die", "das", "und", "ist", "auf", "mit", "den", "vom",
+  ]);
+  const titleWords = currentTitle
+    .toLowerCase()
+    .split(/[^\p{L}\d]+/u)
+    .filter((w) => w.length >= 4 && !stopwords.has(w));
+
+  // Pre-fetch keyword data for all candidates so we can score against them
+  const slugs = candidates.map((c) => c.slug);
+  const { data: planRows } = await db
+    .from("blog_content_plan")
+    .select("slug, primary_keyword, secondary_keywords")
+    .eq("language", language)
+    .in("slug", slugs);
+  const planBySlug = new Map<string, { primary?: string; secondary: string[] }>();
+  for (const row of planRows ?? []) {
+    planBySlug.set(row.slug as string, {
+      primary: (row.primary_keyword as string | undefined) || undefined,
+      secondary: ((row.secondary_keywords as string[] | null) ?? []),
+    });
+  }
+
+  // Score
+  const scored = candidates.map((c) => {
+    let score = 0;
+    if (currentCategory && c.category === currentCategory) score += 5;
+
+    const cPlan = planBySlug.get(c.slug);
+    const cKeywords = [
+      ...(cPlan?.primary ? [cPlan.primary] : []),
+      ...((cPlan?.secondary as string[] | undefined) ?? []),
+    ].map((k) => k.toLowerCase());
+    for (const ck of cKeywords) {
+      for (const myK of currentKeywords) {
+        if (ck === myK.toLowerCase() || ck.includes(myK.toLowerCase()) || myK.toLowerCase().includes(ck)) {
+          score += 3;
+          break;
+        }
+      }
+    }
+
+    const cTitleLower = c.title.toLowerCase();
+    for (const w of titleWords) {
+      if (cTitleLower.includes(w)) score += 1;
+    }
+
+    // Tie-breaker: recency
+    const ageMs = Date.now() - new Date(c.publishedAt || 0).getTime();
+    score += Math.max(0, 0.1 - ageMs / (365 * 86400_000)); // tiny recency boost <365 days
+
+    return { article: c, score };
+  });
+
+  // Sort by score, return top N (still ordered by recency within same score)
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.article);
+}
+
+/**
  * Fetch all published SEO blog articles for a language.
  * Used for homepage generation and related articles sidebar.
  */

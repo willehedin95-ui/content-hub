@@ -1149,6 +1149,18 @@ holistisk, revolutionerande, banbrytande, game-changer, optimal, transformera, n
 - Wrap ALL <table> elements in <div class="table-wrap">...</div> for mobile scrollability
 - Year "2026" in title and body
 
+## Featured snippet optimization (CRITICAL - pos 0 in SERP)
+- The very FIRST paragraph (before the .tldr box) must contain a direct, complete answer to the search query "${request.primaryKeyword}" in 40-60 words. This is the "featured snippet body" Google looks for.
+- Write it as a standalone answer that makes sense even with no surrounding context. Subject + verb + specific data point.
+- Example for "vad är marint kollagen": "Marint kollagen är hydrolyserat kollagen utvunnet från fiskskinn, främst typ I, med molekylvikt 2-5 kDa. Det absorberas snabbare än bovint kollagen tack vare lägre molekylvikt och kan tas på morgonen eller kvällen. Studier som Proksch (2014) visar synbara hudeffekter efter 8 veckor vid daglig dos om 2.5-10 gram."
+- Do NOT pad with "I denna artikel ska vi..." or "Låt oss titta på..." - direct answer only.
+
+## People Also Ask coverage
+- Inject 4-6 question-style H3 sections (not the FAQ block - those are at the bottom). These cover the "People Also Ask" expansions Google shows in SERP.
+- Format: H3 phrased as exact natural-language question Google users would ask. Each followed by 80-150 words direct answer with a citation.
+- Place them mid-article, between main H2 sections. Example H3s for collagen: "Hur lång tid tar det innan kollagen ger resultat?", "Kan man ta kollagen om man är gravid?", "Vilken tid på dygnet är bäst för kollagen?", "Är det skillnad mellan marint och bovint kollagen för hud?"
+- These extra Q&A blocks expand topical coverage massively without bloating the FAQ section.
+
 ## YMYL Compliance (Health Content)
 - Google holds health content to the highest E-E-A-T standards
 - Cite actual peer-reviewed studies where making health claims

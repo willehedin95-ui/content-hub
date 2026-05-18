@@ -585,6 +585,22 @@ async function writeOneArticle(
         await runDeployStep("gsc_sitemap_submit", deployContext, () =>
           submitSitemap(property, sitemapUrl)
         );
+        // Bing Webmaster Tools sitemap submit (5-10% SE search share, also
+        // powers DuckDuckGo + ChatGPT-search). No-op if BING_WEBMASTER_API_KEY
+        // not set so doesn't block deploys.
+        try {
+          const { submitSitemapToBing, isBingConfigured } = await import("./bing-webmaster");
+          if (isBingConfigured()) {
+            const result = await submitSitemapToBing(`https://${domain}/`, sitemapUrl);
+            if (result.ok) {
+              console.log(`[blog-publish] Bing sitemap submitted: ${sitemapUrl}`);
+            } else {
+              console.warn(`[blog-publish] Bing sitemap submit failed: ${result.message}`);
+            }
+          }
+        } catch (err) {
+          console.warn("[blog-publish] Bing sitemap submit error (non-fatal):", err);
+        }
       }
     }
   }
@@ -907,7 +923,10 @@ export async function publishBlogArticle(
   const { bodyHtml: rawBodyHtml, headHtml } = extractArticleBody(articleHtml);
   const bodyHtmlAlt = autoFillAltText(rawBodyHtml, seoTitle);
   const bodyHtml = injectBlogUTMs(bodyHtmlAlt, slug);
-  const relatedArticles = await getPublishedBlogArticles(language, slug);
+  // Topical similarity ranking (was recency-ordered) - shows Google we have
+  // genuine topical authority by surfacing semantically-related articles
+  const { getRelatedArticles } = await import("./blog-deploy");
+  const relatedArticles = await getRelatedArticles(language, slug, 4);
   const featuredImage = extractFirstImage(bodyHtml);
 
   const categorySlug = slugifyCategory(category);
@@ -916,6 +935,34 @@ export async function publishBlogArticle(
   const authorOverride = settings.blog_author as
     | import("./blog-shell").BlogAuthorOverride
     | undefined;
+
+  // Build hreflang alternates: find verified translations of THIS article on
+  // other languages so hreflang URLs only reference real pages. We match by
+  // page_id - same page record can have published translations in sv/da/no.
+  const hreflangAlternates: Partial<Record<Language, import("./blog-shell").HreflangAlternate>> = {};
+  const { data: currentPage } = await db
+    .from("translations")
+    .select("page_id")
+    .eq("id", translationId)
+    .single();
+  if (currentPage?.page_id) {
+    const { data: sibs } = await db
+      .from("translations")
+      .select("language, slug, pages!inner(blog_category)")
+      .eq("page_id", currentPage.page_id)
+      .eq("status", "published")
+      .not("slug", "is", null);
+    for (const sib of sibs ?? []) {
+      const lang = sib.language as Language;
+      if (lang === language) continue;
+      const sibCategory = (sib.pages as unknown as { blog_category?: string })?.blog_category;
+      hreflangAlternates[lang] = {
+        slug: sib.slug as string,
+        categorySlug: sibCategory ? slugifyCategory(sibCategory) : undefined,
+      };
+    }
+  }
+
   const wrappedHtml = wrapInBlogShell({
     articleBodyHtml: bodyHtml,
     articleHeadHtml: headHtml,
@@ -931,6 +978,7 @@ export async function publishBlogArticle(
     updatedAt: new Date().toISOString(),
     baseUrl,
     authorOverride,
+    hreflangAlternates,
   });
 
   // Build analytics config

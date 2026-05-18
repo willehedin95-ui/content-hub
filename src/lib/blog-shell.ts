@@ -275,6 +275,28 @@ interface WrapOptions {
   updatedAt: string;
   baseUrl: string;
   authorOverride?: BlogAuthorOverride;
+  /**
+   * Verified translations of this article on other languages. Used to build
+   * hreflang tags that only reference URLs we know exist. Without this map
+   * hreflang gets emitted assuming the same slug on all languages, which
+   * produces 404 URLs and Google penalizes invalid hreflang.
+   */
+  hreflangAlternates?: Partial<Record<Language, HreflangAlternate>>;
+}
+
+/**
+ * Detect if an article qualifies as health/medical content. Triggers
+ * MedicalWebPage schema instead of generic Article. Heuristic:
+ * - Category matches health keywords (Sömnhälsa, Kollagen, Hud, Leder etc.)
+ * - OR body contains 2+ pubmed.ncbi.nlm.nih.gov citations
+ *
+ * Conservative - if we're not sure, fall back to Article (always valid).
+ */
+function isMedicalContent(category: string | undefined, bodyHtml: string): boolean {
+  const healthCategories = /sömn|somn|sovn|kollagen|hud|leder|hår|naglar|näring|naring|tillskott|hälsa|halsa|helse/i;
+  if (category && healthCategories.test(category)) return true;
+  const pubmedCount = (bodyHtml.match(/pubmed\.ncbi\.nlm\.nih\.gov/gi) ?? []).length;
+  return pubmedCount >= 2;
 }
 
 /**
@@ -554,31 +576,57 @@ function getBlogDomain(lang: Language): string | undefined {
   return process.env[`CF_PAGES_DOMAIN_${lang.toUpperCase()}`]?.trim() || undefined;
 }
 
+/**
+ * Per-language URL information for hreflang generation.
+ * Captures the real slug + category-slug on each target language, since slugs
+ * differ across markets (e.g. "djupsomn" -> "dybsovn" -> "dypsovn").
+ */
+export interface HreflangAlternate {
+  slug: string;
+  categorySlug?: string;
+}
+
 function buildHreflangTags(
   slug: string,
   categorySlug: string | undefined,
   currentLang: Language,
-  currentBaseUrl: string
+  currentBaseUrl: string,
+  alternates?: Partial<Record<Language, HreflangAlternate>>
 ): string {
-  const urlPath = getArticlePath(slug, categorySlug);
   const tags: string[] = [];
 
   // Self-referencing hreflang (required by Google)
-  const hreflang = HREFLANG_MAP[currentLang] || currentLang;
-  tags.push(`<link rel="alternate" hreflang="${hreflang}" href="${esc(currentBaseUrl)}/${esc(urlPath)}/">`);
+  const selfHreflang = HREFLANG_MAP[currentLang] || currentLang;
+  const selfPath = getArticlePath(slug, categorySlug);
+  tags.push(`<link rel="alternate" hreflang="${selfHreflang}" href="${esc(currentBaseUrl)}/${esc(selfPath)}/">`);
 
-  // Other languages — only include if the domain is configured
+  // Other languages — ONLY include if we have a verified slug on that
+  // language (alternates map). Without that map we previously emitted hreflang
+  // pointing to URLs that may 404 - worse than emitting nothing per Google's
+  // hreflang validation guidelines.
   const allLangs: Language[] = ["sv", "da", "no"];
   for (const lang of allLangs) {
     if (lang === currentLang) continue;
     const domain = getBlogDomain(lang);
     if (!domain) continue;
+
+    const alt = alternates?.[lang];
+    if (!alt) continue; // no verified translation - skip
+
     const hl = HREFLANG_MAP[lang] || lang;
-    tags.push(`<link rel="alternate" hreflang="${hl}" href="https://${esc(domain)}/${esc(urlPath)}/">`);
+    const altPath = getArticlePath(alt.slug, alt.categorySlug);
+    tags.push(`<link rel="alternate" hreflang="${hl}" href="https://${esc(domain)}/${esc(altPath)}/">`);
   }
 
-  // x-default points to Swedish version
-  tags.push(`<link rel="alternate" hreflang="x-default" href="${esc(currentBaseUrl)}/${esc(urlPath)}/">`);
+  // x-default points to Swedish version when available, otherwise self
+  const svAlt = currentLang === "sv" ? { slug, categorySlug } : alternates?.sv;
+  if (svAlt) {
+    const svDomain = currentLang === "sv" ? currentBaseUrl.replace(/^https?:\/\//, "") : getBlogDomain("sv");
+    if (svDomain) {
+      const svPath = getArticlePath(svAlt.slug, svAlt.categorySlug);
+      tags.push(`<link rel="alternate" hreflang="x-default" href="https://${esc(svDomain)}/${esc(svPath)}/">`);
+    }
+  }
 
   return tags.join("\n  ");
 }
@@ -668,6 +716,13 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   // Resolve author (supports per-workspace override via opts.authorOverride)
   const author = resolveAuthor(opts.language, opts.authorOverride);
 
+  // Schema: Article or MedicalWebPage. For health/YMYL content (sleep,
+  // supplements, collagen, etc.) MedicalWebPage is a more specific schema
+  // that signals medical-info content to Google. Detected by category +
+  // presence of PubMed citations in body. Falls back to Article otherwise.
+  const isHealthContent = isMedicalContent(opts.blogCategory, opts.articleBodyHtml);
+  const articleType = isHealthContent ? "MedicalWebPage" : "Article";
+
   // Schema: Article JSON-LD. Includes Person author with @id pointing at the
   // dedicated author page so Google can resolve the entity across articles
   // (E-E-A-T signal). Without this the byline is purely cosmetic.
@@ -677,7 +732,14 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   const authorPageUrl = `${opts.baseUrl}/${authorPageBasePath}/`;
   const articleSchema = JSON.stringify({
     "@context": "https://schema.org",
-    "@type": "Article",
+    "@type": articleType,
+    ...(articleType === "MedicalWebPage" ? {
+      audience: {
+        "@type": "Audience",
+        audienceType: "Consumers",
+      },
+      lastReviewed: opts.updatedAt,
+    } : {}),
     headline: opts.seoTitle,
     description: opts.seoDescription,
     url: `${opts.baseUrl}/${urlPath}/`,
@@ -746,6 +808,19 @@ export function wrapInBlogShell(opts: WrapOptions): string {
     opts.language === "da" ? "Sidst opdateret" : "Sist oppdatert";
   const byPrefix = opts.language === "da" ? "Af" : "Av";
 
+  // Show a "recently updated" badge when content was refreshed within the
+  // last 30 days. Visible freshness signal for readers + Google rewards
+  // updated content. Only shows when updatedAt is meaningfully newer than
+  // publishedAt (skip first-publish-day spam).
+  const publishMs = new Date(opts.publishedAt).getTime();
+  const updateMs = new Date(opts.updatedAt).getTime();
+  const ageDays = Math.floor((Date.now() - updateMs) / 86400_000);
+  const wasUpdated = updateMs - publishMs > 7 * 86400_000; // 7 day gap = real update
+  const showFreshBadge = wasUpdated && ageDays <= 30;
+  const freshLabel =
+    opts.language === "sv" ? "Nyligen uppdaterad" :
+    opts.language === "da" ? "Nyligt opdateret" : "Nylig oppdatert";
+
   // Build author byline HTML — injected into article after hero image.
   // The name links to the author bio page so the cosmetic byline becomes a
   // real entity reference Google can crawl.
@@ -754,7 +829,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
       <a href="${esc(authorPageUrl)}"><img class="blog-shell-avatar" src="${author.avatarUrl}" alt="${authorName}"></a>
       <div>
         <a class="blog-shell-byline-name" href="${esc(authorPageUrl)}">${byPrefix} ${esc(authorName)}</a>
-        <span class="blog-shell-byline-date">${lastUpdatedLabel} ${dateFormatted}</span>
+        <span class="blog-shell-byline-date">${lastUpdatedLabel} <time datetime="${esc(opts.updatedAt)}">${dateFormatted}</time>${showFreshBadge ? ` <span class="blog-shell-fresh">${freshLabel}</span>` : ""}</span>
       </div>
     </div>`;
 
@@ -790,7 +865,7 @@ export function wrapInBlogShell(opts: WrapOptions): string {
   <meta name="twitter:description" content="${esc(opts.seoDescription)}">
   ${absoluteImageUrl ? `<meta name="twitter:image" content="${esc(absoluteImageUrl)}">` : ""}
   <link rel="canonical" href="${esc(opts.baseUrl)}/${esc(urlPath)}/">
-  ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl)}
+  ${buildHreflangTags(opts.slug, categorySlug, opts.language, opts.baseUrl, opts.hreflangAlternates)}
   <link rel="alternate" type="application/rss+xml" title="${esc(langConfig.blog_name)}" href="${esc(opts.baseUrl)}/rss.xml">
   <script type="application/ld+json">${articleSchema}</script>
   <script type="application/ld+json">${breadcrumbSchema}</script>${faqSchema ? `\n  <script type="application/ld+json">${faqSchema}</script>` : ""}${itemListSchema ? `\n  <script type="application/ld+json">${itemListSchema}</script>` : ""}${howToSchema ? `\n  <script type="application/ld+json">${howToSchema}</script>` : ""}
@@ -1210,6 +1285,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"He
 .blog-shell-byline-name:hover{color:${primaryColor}}
 .blog-shell-byline > a{flex-shrink:0}
 .blog-shell-byline-date{display:block;font-size:.8rem;color:#9ca3af;margin-top:2px}
+.blog-shell-fresh{display:inline-block;margin-left:6px;padding:2px 6px;background:#dcfce7;color:#166534;border-radius:4px;font-size:.7rem;font-weight:500}
 .blog-shell-main{padding:0 0 40px}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;max-width:100%;display:block}
 .table-wrap table{min-width:400px;width:100%}
