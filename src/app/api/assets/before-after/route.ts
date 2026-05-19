@@ -7,6 +7,9 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import {
   UNFLATTERING_LIGHTING_OPTIONS,
   buildTestimonialStyleBlock,
+  AGE_MARKERS_PRESERVATION_RULE,
+  LIGHTING_CONSISTENCY_RULE,
+  FACE_CAMERA_ANGLES,
 } from "@/lib/ugc-realism";
 
 export const maxDuration = 800;
@@ -457,12 +460,21 @@ function buildPrompt(args: {
   const isHair = zoneKey === "hair_scalp";
 
   const [beforeTop, afterTop] = pickPair(TOPS);
-  const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
+  // SINGLE lighting pick - both halves use the SAME source/temperature.
+  // Counters the warm-tired-BEFORE / cool-rested-AFTER marketing-trope drift
+  // that Nano Banana defaults to when given different lighting strings.
+  // Per-half angle/strength micro-variation is described in hard_constraints,
+  // not by picking two different entries.
+  const sharedLight = pick(LIGHTING_VARIANTS);
   const [beforeTilt, afterTilt] = pickHeadTilts();
   const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
   const bodyOrientation = pick(BODY_ORIENTATIONS);
   const [beforeHandPose, afterHandPose] = pickPair(NAIL_HAND_POSES);
   const [beforeNailBg, afterNailBg] = pickPair(NAIL_BACKGROUNDS);
+  // ONE face camera angle per generation, applied to BOTH halves. Adds
+  // cross-generation variation (10 B/A pairs on a PDP don't look identical)
+  // without breaking within-pair consistency.
+  const faceCameraAngle = pick(FACE_CAMERA_ANGLES);
 
   // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
   // Smile-before-neutral-after reverses the narrative and is forbidden.
@@ -537,7 +549,7 @@ function buildPrompt(args: {
         },
         before_half: {
           outfit: beforeTop,
-          lighting: beforeLight,
+          lighting: sharedLight,
           head_position: beforeTilt,
           hair_arrangement: beforeHair,
           ...(isNails
@@ -559,7 +571,7 @@ function buildPrompt(args: {
         },
         after_half: {
           outfit: afterTop,
-          lighting: afterLight,
+          lighting: sharedLight,
           head_position: afterTilt,
           hair_arrangement: afterHair,
           ...(isNails
@@ -606,7 +618,7 @@ function buildPrompt(args: {
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
               `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. Both poses show the SAME side of the hand (the back) with only SUBTLE differences in finger curl. Do NOT pick two wildly different angles - this is the same hand on two days, both photographed from above.`,
               `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. The two halves may show natural between-photo variation in lighting and angle within the same general home setting, but DO NOT pick wildly different locations (e.g. one studio + one kitchen). Both feel like casual home environments.`,
-              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. Lighting may vary as if taken on different days, but BOTH are casual unflattering home lighting (NO studio softbox, NO ring light, NO pretty editorial light).`,
+              `LIGHTING (locked - same for both halves): ${sharedLight}. ${LIGHTING_CONSISTENCY_RULE}`,
               "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual phone close-up of natural unpainted nails.",
               "TESTIMONIAL VIBE: the image MUST look like two casual phone close-ups a customer took at home on different days - mundane, real, slightly imperfect, NOT styled. FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry, plain studio backdrop. If it looks like a brand ad you have failed.",
               "Both halves must have realistic un-retouched skin texture (natural pores, knuckle wrinkles, faint creases on the finger joints, age-appropriate marks for the demographic) and natural nail surface texture. Both look like real phone-camera quality in casual indoor light.",
@@ -618,12 +630,14 @@ function buildPrompt(args: {
               "BODY PART ORIENTATION CONSISTENCY (critical for limb zones - arm, leg, hands): in both halves the body part extends in the SAME direction with clothing edges in the SAME position. If 'before' shows the leg with shorts edge at the TOP of the frame and thigh extending DOWN, 'after' shows the leg with shorts edge at the TOP and thigh extending DOWN. If 'before' shows an arm extending from upper-left to lower-right with sleeve at the top edge, 'after' shows the arm in the SAME direction with sleeve at the SAME edge. NEVER rotate the limb 180°. NEVER vertically flip the body part. NEVER swap which edge of the frame the clothing appears on.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
               `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
-              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These MUST be different - not the same lighting.`,
+              `LIGHTING (locked - same for both halves): ${sharedLight}. ${LIGHTING_CONSISTENCY_RULE}`,
+              `CAMERA ANGLE (locked - same for both halves): ${faceCameraAngle}. Both halves are taken from this exact phone angle - the subject did NOT reposition the camera between shots. This anchors cross-pair variation: different generations get different angles, but within a pair the angle is consistent.`,
+              AGE_MARKERS_PRESERVATION_RULE,
               `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. The head genuinely looks different between halves - this is correct and desired. What MUST stay consistent between halves is the BODY/shoulder orientation (no whole-composition mirror flip).`,
               `BEFORE half hair arrangement: ${beforeHair}. AFTER half hair arrangement: ${afterHair}. Hair color and overall style/length stay the same, but loose strands fall differently between halves - because these are two separate photos on different days, not the same session.`,
               "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail is visible on the face in one half must appear identically (same placement, same size, same shape) in the other half. The face is a fixed identity - the model must NOT invent a new distinctive detail that exists in only one half. This applies in both directions: do not ADD a new detail in only one half, and do not REMOVE a detail that should be in both.",
               "Both halves must show the same person - recognizably the same face, hair color, age. The skin condition differs per intensity, and natural between-days variations (clothing, lighting, micro-angle, hair fall, head lean) ALL differ - this is expected, not a bug.",
-              "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical lighting. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop.",
+              "FORBIDDEN: identical clothing in both halves. FORBIDDEN: identical pose / cloned-looking halves. FORBIDDEN: whole-composition mirror flip (body shoulders facing opposite ways). FORBIDDEN: defaulting to a full-face portrait when zone_framing calls for a tighter crop. NOTE: lighting and camera angle ARE locked the same between halves - that is correct, not a violation. The variation between halves comes from outfit, head position, hair fall, and the demonstrated skin feature.",
               "FORBIDDEN: ring light glow, studio lighting setup, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect symmetry. The image must look like two casual selfies from a real person's camera roll - mundane, real, slightly imperfect.",
               "Both halves must have realistic un-retouched skin texture with natural variations preserved. Both look like real phone-camera skin.",
               ...(isHair

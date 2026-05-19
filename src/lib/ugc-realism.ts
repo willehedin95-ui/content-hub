@@ -109,6 +109,54 @@ export const FRECKLE_MOLE_GOTCHA_NOTE =
   "Do NOT name 'freckles', 'moles', 'beauty marks', 'sunspots', 'age marks' or similar named pigmentation features in the prompt - they render as red-spot artifacts in Nano Banana. Use 'natural skin texture variation' or 'natural age-appropriate skin' instead.";
 
 /**
+ * Age-markers preservation rule. Counters Nano Banana's tendency to render the
+ * AFTER half as a slightly YOUNGER version of the same person rather than a
+ * more-rested version. This is a marketing-trope prior the model picked up
+ * from training data - "rested skin" gets interpreted as "fewer wrinkles".
+ *
+ * For genuine-testimonial B/A where the avatar is 45-70 SE/NO/DK women, the
+ * wrinkles MUST stay the same - only the specific feature being demonstrated
+ * (undereye area for subtle, etc.) changes.
+ *
+ * Use as a hard_constraint for face zones in any B/A prompt.
+ */
+export const AGE_MARKERS_PRESERVATION_RULE =
+  "AGE-MARKER PRESERVATION (hard rule): the AFTER half must preserve ALL age markers visible in the BEFORE half - same wrinkle count, same wrinkle depth, same forehead lines, same crow's feet, same nasolabial folds, same neck loosening, same hand-vein prominence, same hair density. The AFTER half is the SAME PERSON on a more-rested day, NOT a younger version. Do NOT smooth, retouch, or reduce age signs beyond the specific feature being demonstrated (e.g. for subtle intensity, ONLY undereye shadow changes - wrinkles stay identical).";
+
+/**
+ * Lighting consistency rule. Counters Nano Banana's tendency to default to
+ * warm-yellow BEFORE -> cool-neutral AFTER lighting bias (a marketing trope
+ * from training data, not realistic for two photos of the same person on
+ * different days in the same home).
+ *
+ * Use as a hard_constraint to force both halves into the same color
+ * temperature / light source category.
+ */
+export const LIGHTING_CONSISTENCY_RULE =
+  "LIGHTING CONSISTENCY (hard rule): both halves use the SAME light source category and SAME color temperature. If BEFORE is warm-yellow indoor light, AFTER is ALSO warm-yellow indoor light - NOT cool/neutral. Slight variation in strength or angle is OK (one side of the face slightly brighter, etc.) but the color cast and source type are IDENTICAL. Do NOT default to the marketing trope of warm-tired-BEFORE / cool-rested-AFTER.";
+
+/**
+ * Camera-angle / framing variations for face zones. Pick ONE per generation
+ * and apply to BOTH halves. Adds variation across the SET of generations
+ * (so a product page with 10 B/A pairs doesn't all look like the same
+ * head-on template repeated), while keeping the two halves of a single pair
+ * consistent (same angle = same casual mid-routine).
+ *
+ * Each entry is a complete "phone-position" cue with both perspective and
+ * crop hints.
+ */
+export const FACE_CAMERA_ANGLES = [
+  "Phone held at eye-level, head-on direct angle. Face centered, both eyes visible at the same height.",
+  "Phone held slightly above eye-level (the typical casual selfie angle), looking very slightly downward at the subject. Slight foreshortening - forehead a touch larger, chin a touch smaller.",
+  "Phone held slightly below eye-level (subject looking down at the phone in their hand resting on a counter). Slight chin-prominence, brow ridge softened, eyes glance downward at the camera.",
+  "3/4 angle from camera-right (subject's body rotated ~15 degrees toward the camera-left, head turned slightly toward the camera). Both eyes still visible, one cheek slightly more prominent.",
+  "3/4 angle from camera-left (subject's body rotated ~15 degrees toward the camera-right, head turned slightly toward the camera). Both eyes still visible, the other cheek slightly more prominent than the 3/4-from-right variant.",
+  "Tight crop, head fills most of the frame, slight crop of the forehead and chin (the casual close phone selfie distance).",
+  "Slightly farther crop, more headroom above the head, shoulders and upper chest visible. Camera held farther away (full arm extension).",
+  "Slight Dutch-tilt - phone not held perfectly straight, frame rotated ~5 degrees (rushed-snap energy, not staged).",
+];
+
+/**
  * The 7 Things That Scream AI (Module 1 of the Anti-slop AI UGC System).
  * Inject as hard-negatives in any UGC prompt.
  */
