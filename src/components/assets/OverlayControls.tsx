@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  LABEL_FONT_OPTIONS,
+  LABEL_FONT_WEIGHTS,
+  loadCustomOverlayPresets,
   OVERLAY_PRESETS,
   overlaySettingsMatch,
+  saveCustomOverlayPresets,
   type LabelPosition,
   type OverlayPreset,
   type OverlaySettings,
@@ -23,6 +28,15 @@ const POSITIONS: { value: LabelPosition; label: string }[] = [
 ];
 
 export default function OverlayControls({ overlay, onChange }: Props) {
+  const [customPresets, setCustomPresets] = useState<OverlayPreset[]>([]);
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [presetNameDraft, setPresetNameDraft] = useState("");
+
+  // Load custom presets from localStorage on mount
+  useEffect(() => {
+    setCustomPresets(loadCustomOverlayPresets());
+  }, []);
+
   const update = useCallback(
     (patch: Partial<OverlaySettings>) => onChange({ ...overlay, ...patch }),
     [overlay, onChange],
@@ -33,32 +47,73 @@ export default function OverlayControls({ overlay, onChange }: Props) {
     [onChange],
   );
 
+  const handleSavePreset = useCallback(() => {
+    const name = presetNameDraft.trim();
+    if (!name) return;
+    const key = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newPreset: OverlayPreset = {
+      key,
+      label: name,
+      description: "Custom",
+      settings: { ...overlay },
+    };
+    const next = [...customPresets, newPreset];
+    setCustomPresets(next);
+    saveCustomOverlayPresets(next);
+    setPresetNameDraft("");
+    setShowSaveForm(false);
+  }, [presetNameDraft, customPresets, overlay]);
+
+  const handleDeletePreset = useCallback(
+    (key: string) => {
+      const next = customPresets.filter((p) => p.key !== key);
+      setCustomPresets(next);
+      saveCustomOverlayPresets(next);
+    },
+    [customPresets],
+  );
+
+  const allPresets = [...OVERLAY_PRESETS, ...customPresets];
+
   return (
     <div className="space-y-3">
       {/* Preset row */}
-      {OVERLAY_PRESETS.length > 0 && (
+      {allPresets.length > 0 && (
         <div>
           <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-medium">
             Overlay presets
           </p>
           <div className="flex flex-wrap gap-2">
-            {OVERLAY_PRESETS.map((p) => {
+            {allPresets.map((p) => {
               const isActive = overlaySettingsMatch(overlay, p.settings);
+              const isCustom = p.key.startsWith("custom-");
               return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => applyPreset(p)}
-                  title={p.description}
-                  className={cn(
-                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                    isActive
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-900"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                <div key={p.key} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    title={p.description}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                      isActive
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                      isCustom && "pr-7",
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                  {isCustom && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePreset(p.key)}
+                      aria-label={`Delete ${p.label}`}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   )}
-                >
-                  {p.label}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -174,6 +229,63 @@ export default function OverlayControls({ overlay, onChange }: Props) {
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-1">Font family</label>
+              <select
+                value={overlay.labelFontFamily}
+                onChange={(e) => update({ labelFontFamily: e.target.value })}
+                className="w-full rounded-md border border-gray-200 px-2 py-1 text-xs bg-white"
+                style={{ fontFamily: overlay.labelFontFamily }}
+              >
+                {LABEL_FONT_OPTIONS.map((f) => (
+                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Weight</label>
+                <div className="grid grid-cols-5 gap-1">
+                  {LABEL_FONT_WEIGHTS.map((w) => (
+                    <button
+                      key={w.value}
+                      type="button"
+                      onClick={() => update({ labelFontWeight: w.value })}
+                      className={cn(
+                        "h-7 rounded text-[10px] border",
+                        overlay.labelFontWeight === w.value
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
+                      )}
+                      title={`${w.label} (${w.value})`}
+                      style={{ fontWeight: w.value }}
+                    >
+                      {w.value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Style</label>
+                <button
+                  type="button"
+                  onClick={() => update({ labelFontItalic: !overlay.labelFontItalic })}
+                  className={cn(
+                    "h-7 px-3 rounded text-xs border w-full",
+                    overlay.labelFontItalic
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
+                  )}
+                  style={{ fontStyle: overlay.labelFontItalic ? "italic" : "normal" }}
+                >
+                  Italic {overlay.labelFontItalic ? "on" : "off"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -256,6 +368,55 @@ export default function OverlayControls({ overlay, onChange }: Props) {
                 className="w-full accent-indigo-600 mt-2"
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Save preset row */}
+      <div className="pt-2 border-t border-gray-100">
+        {!showSaveForm ? (
+          <button
+            type="button"
+            onClick={() => setShowSaveForm(true)}
+            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            + Save current settings as preset
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              autoFocus
+              value={presetNameDraft}
+              onChange={(e) => setPresetNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSavePreset();
+                if (e.key === "Escape") {
+                  setShowSaveForm(false);
+                  setPresetNameDraft("");
+                }
+              }}
+              placeholder="Preset name (e.g. 'Hydro13 yellow')"
+              className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs"
+            />
+            <button
+              type="button"
+              onClick={handleSavePreset}
+              disabled={!presetNameDraft.trim()}
+              className="px-3 py-1 rounded-md bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSaveForm(false);
+                setPresetNameDraft("");
+              }}
+              className="px-3 py-1 rounded-md border border-gray-200 bg-white text-gray-700 text-xs hover:bg-gray-50"
+            >
+              Cancel
+            </button>
           </div>
         )}
       </div>

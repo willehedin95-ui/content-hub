@@ -285,6 +285,12 @@ export interface OverlaySettings {
   labelPosition: LabelPosition;
   /** Label height as % of the overall image height. 4 = ~4% of image height. */
   labelSize: number;
+  /** CSS font-family stack for the label text. */
+  labelFontFamily: string;
+  /** Numeric weight (400 normal, 700 bold). */
+  labelFontWeight: number;
+  /** Italic style. */
+  labelFontItalic: boolean;
 
   /** Master switch for the centered arrow between halves. */
   arrowEnabled: boolean;
@@ -305,12 +311,41 @@ export const DEFAULT_OVERLAY: OverlaySettings = {
   labelTextColor: "#FFFFFF",
   labelPosition: "bottom-left",
   labelSize: 4,
+  labelFontFamily: "Inter, system-ui, -apple-system, sans-serif",
+  labelFontWeight: 700,
+  labelFontItalic: false,
   arrowEnabled: false,
   arrowColor: "#FFFFFF",
   dividerEnabled: false,
   dividerColor: "#FFFFFF",
   dividerWidth: 3,
 };
+
+/** Font family options for label text. Each value is a complete CSS
+ * font-family stack with fallbacks - if the primary isn't installed, the
+ * browser falls back to the next. */
+export const LABEL_FONT_OPTIONS: { value: string; label: string }[] = [
+  { value: "Inter, system-ui, -apple-system, sans-serif", label: "System (Inter)" },
+  { value: "Arial, Helvetica, sans-serif", label: "Arial" },
+  { value: "'Helvetica Neue', Helvetica, Arial, sans-serif", label: "Helvetica" },
+  { value: "'Arial Narrow', 'Helvetica Condensed', Tahoma, sans-serif", label: "Arial Narrow (condensed)" },
+  { value: "Tahoma, Verdana, sans-serif", label: "Tahoma" },
+  { value: "Verdana, Geneva, sans-serif", label: "Verdana" },
+  { value: "Georgia, 'Times New Roman', serif", label: "Georgia (serif)" },
+  { value: "'Times New Roman', Times, serif", label: "Times" },
+  { value: "Impact, 'Arial Black', 'Helvetica Inserat', sans-serif", label: "Impact (heavy display)" },
+  { value: "'Arial Black', 'Helvetica Inserat', Impact, sans-serif", label: "Arial Black" },
+  { value: "'Courier New', Courier, monospace", label: "Courier (monospace)" },
+  { value: "'Brush Script MT', cursive", label: "Brush Script (cursive)" },
+];
+
+export const LABEL_FONT_WEIGHTS: { value: number; label: string }[] = [
+  { value: 400, label: "Normal" },
+  { value: 500, label: "Medium" },
+  { value: 600, label: "Semibold" },
+  { value: 700, label: "Bold" },
+  { value: 800, label: "Black" },
+];
 
 export interface OverlayPreset {
   key: string;
@@ -351,12 +386,51 @@ export function overlaySettingsMatch(
     a.labelTextColor.toLowerCase() === b.labelTextColor.toLowerCase() &&
     a.labelPosition === b.labelPosition &&
     a.labelSize === b.labelSize &&
+    a.labelFontFamily === b.labelFontFamily &&
+    a.labelFontWeight === b.labelFontWeight &&
+    a.labelFontItalic === b.labelFontItalic &&
     a.arrowEnabled === b.arrowEnabled &&
     a.arrowColor.toLowerCase() === b.arrowColor.toLowerCase() &&
     a.dividerEnabled === b.dividerEnabled &&
     a.dividerColor.toLowerCase() === b.dividerColor.toLowerCase() &&
     a.dividerWidth === b.dividerWidth
   );
+}
+
+// ===== Custom user presets (localStorage) =====
+
+const OVERLAY_PRESETS_STORAGE_KEY = "content-hub-overlay-presets-v1";
+
+export function loadCustomOverlayPresets(): OverlayPreset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(OVERLAY_PRESETS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Backfill any new fields the user's saved settings may be missing
+    // (e.g. fonts added in a later version).
+    return parsed.map((p) => ({
+      key: p.key,
+      label: p.label,
+      description: p.description ?? "",
+      settings: { ...DEFAULT_OVERLAY, ...p.settings },
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomOverlayPresets(presets: OverlayPreset[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      OVERLAY_PRESETS_STORAGE_KEY,
+      JSON.stringify(presets),
+    );
+  } catch {
+    // Storage full or blocked - silently ignore
+  }
 }
 
 function drawDayLabel(
@@ -371,7 +445,8 @@ function drawDayLabel(
   const fontSize = Math.max(12, h * (o.labelSize / 100));
 
   ctx.save();
-  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`;
+  const italic = o.labelFontItalic ? "italic " : "";
+  ctx.font = `${italic}${o.labelFontWeight} ${fontSize}px ${o.labelFontFamily}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
 
