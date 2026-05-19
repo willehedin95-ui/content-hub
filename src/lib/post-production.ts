@@ -157,6 +157,7 @@ export async function canvasToBlob(
 export async function applyPipeline(
   source: HTMLImageElement,
   settings: Settings,
+  overlay?: OverlaySettings,
 ): Promise<Blob> {
   const w = source.naturalWidth;
   const h = source.naturalHeight;
@@ -213,7 +214,219 @@ export async function applyPipeline(
   const finalCtx = finalCanvas.getContext("2d");
   if (!finalCtx) throw new Error("Cannot get 2d context (final)");
   finalCtx.drawImage(currentSource, 0, 0);
+  if (overlay && !overlayIsNoop(overlay)) {
+    applyOverlay(finalCanvas, overlay);
+  }
   return canvasToBlob(finalCanvas, settings.jpegQuality);
+}
+
+/**
+ * Apply ONLY the overlay (no degradation). Used when the user wants day
+ * labels / arrow on the raw image without degradation.
+ */
+export async function applyOverlayOnly(
+  source: HTMLImageElement,
+  overlay: OverlaySettings,
+  quality = 92,
+): Promise<Blob> {
+  const w = source.naturalWidth;
+  const h = source.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Cannot get 2d context (overlay-only)");
+  ctx.drawImage(source, 0, 0);
+  applyOverlay(canvas, overlay);
+  return canvasToBlob(canvas, quality);
+}
+
+// ===== Overlays (day labels + arrow) =====
+//
+// Drawn on top of the degraded image, in the final canvas pass. Real B/A
+// product-page galleries (OsloSkinLab, Hydro13 examples) use small colored
+// "dag 0 / dag X" corner tags and sometimes an arrow between halves to make
+// the comparison parseable at a glance.
+
+export type LabelPosition =
+  | "bottom-left"
+  | "bottom-right"
+  | "top-left"
+  | "top-right";
+
+export interface OverlaySettings {
+  /** Master switch for the day-label tags. */
+  dayLabelEnabled: boolean;
+  beforeText: string;
+  afterText: string;
+  labelBgColor: string;
+  labelTextColor: string;
+  labelPosition: LabelPosition;
+  /** Label height as % of the overall image height. 4 = ~4% of image height. */
+  labelSize: number;
+
+  /** Master switch for the centered arrow between halves. */
+  arrowEnabled: boolean;
+  arrowColor: string;
+}
+
+export const DEFAULT_OVERLAY: OverlaySettings = {
+  dayLabelEnabled: false,
+  beforeText: "dag 0",
+  afterText: "dag 60",
+  labelBgColor: "#F5A623",
+  labelTextColor: "#FFFFFF",
+  labelPosition: "bottom-left",
+  labelSize: 4,
+  arrowEnabled: false,
+  arrowColor: "#FFFFFF",
+};
+
+export interface OverlayPreset {
+  key: string;
+  label: string;
+  description: string;
+  settings: OverlaySettings;
+}
+
+export const OVERLAY_PRESETS: OverlayPreset[] = [
+  {
+    key: "oslo-yellow",
+    label: "Oslo yellow",
+    description: "Yellow corner tags - dag 0 / dag 60, no arrow",
+    settings: {
+      ...DEFAULT_OVERLAY,
+      dayLabelEnabled: true,
+      labelBgColor: "#F5A623",
+      labelTextColor: "#FFFFFF",
+      labelPosition: "bottom-left",
+      labelSize: 4,
+    },
+  },
+];
+
+export function overlayIsNoop(o: OverlaySettings): boolean {
+  return !o.dayLabelEnabled && !o.arrowEnabled;
+}
+
+export function overlaySettingsMatch(
+  a: OverlaySettings,
+  b: OverlaySettings,
+): boolean {
+  return (
+    a.dayLabelEnabled === b.dayLabelEnabled &&
+    a.beforeText === b.beforeText &&
+    a.afterText === b.afterText &&
+    a.labelBgColor.toLowerCase() === b.labelBgColor.toLowerCase() &&
+    a.labelTextColor.toLowerCase() === b.labelTextColor.toLowerCase() &&
+    a.labelPosition === b.labelPosition &&
+    a.labelSize === b.labelSize &&
+    a.arrowEnabled === b.arrowEnabled &&
+    a.arrowColor.toLowerCase() === b.arrowColor.toLowerCase()
+  );
+}
+
+function drawDayLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  half: "left" | "right",
+  o: OverlaySettings,
+) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const halfW = w / 2;
+  const fontSize = Math.max(12, h * (o.labelSize / 100));
+
+  ctx.save();
+  ctx.font = `bold ${fontSize}px Inter, system-ui, -apple-system, sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+
+  const padX = fontSize * 0.6;
+  const padY = fontSize * 0.25;
+  const metrics = ctx.measureText(text);
+  const tagW = metrics.width + padX * 2;
+  const tagH = fontSize + padY * 2;
+
+  const margin = Math.max(8, h * 0.015);
+  const halfOffset = half === "left" ? 0 : halfW;
+
+  let x: number;
+  let y: number;
+  switch (o.labelPosition) {
+    case "bottom-left":
+      x = halfOffset + margin;
+      y = h - tagH - margin;
+      break;
+    case "bottom-right":
+      x = halfOffset + halfW - tagW - margin;
+      y = h - tagH - margin;
+      break;
+    case "top-left":
+      x = halfOffset + margin;
+      y = margin;
+      break;
+    case "top-right":
+      x = halfOffset + halfW - tagW - margin;
+      y = margin;
+      break;
+  }
+
+  ctx.fillStyle = o.labelBgColor;
+  ctx.fillRect(x, y, tagW, tagH);
+  ctx.fillStyle = o.labelTextColor;
+  ctx.fillText(text, x + padX, y + tagH / 2);
+  ctx.restore();
+}
+
+function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  color: string,
+) {
+  const dim = Math.min(ctx.canvas.width, ctx.canvas.height);
+  const size = dim * 0.035;
+  const stroke = Math.max(2, size * 0.18);
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = stroke;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+  ctx.shadowBlur = size * 0.6;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = size * 0.1;
+
+  // Horizontal arrow shaft
+  ctx.beginPath();
+  ctx.moveTo(centerX - size, centerY);
+  ctx.lineTo(centerX + size, centerY);
+  ctx.stroke();
+
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(centerX + size * 0.4, centerY - size * 0.55);
+  ctx.lineTo(centerX + size, centerY);
+  ctx.lineTo(centerX + size * 0.4, centerY + size * 0.55);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function applyOverlay(
+  canvas: HTMLCanvasElement,
+  o: OverlaySettings,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  if (o.dayLabelEnabled) {
+    drawDayLabel(ctx, o.beforeText, "left", o);
+    drawDayLabel(ctx, o.afterText, "right", o);
+  }
+  if (o.arrowEnabled) {
+    drawArrow(ctx, canvas.width / 2, canvas.height / 2, o.arrowColor);
+  }
 }
 
 /** SLIDERS config for any UI that exposes per-effect tuning. Shared so the

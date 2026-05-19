@@ -4,16 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  applyOverlayOnly,
   applyPipeline,
+  DEFAULT_OVERLAY,
   DEFAULT_SETTINGS,
   isNoop,
   loadImage,
+  overlayIsNoop,
   PRESETS,
   SLIDERS,
   settingsMatch,
+  type OverlaySettings,
   type Preset,
   type Settings,
 } from "@/lib/post-production";
+import OverlayControls from "./OverlayControls";
 
 // Per-image post-production panel for the Before/After generator.
 // Slider-driven + presets. Pipeline logic lives in @/lib/post-production so
@@ -31,6 +36,7 @@ export default function PostProductionPanel({
   const [sourceImg, setSourceImg] = useState<HTMLImageElement | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [overlay, setOverlay] = useState<OverlaySettings>(DEFAULT_OVERLAY);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
@@ -45,6 +51,7 @@ export default function PostProductionPanel({
     setSourceImg(null);
     setEnabled(false);
     setSettings(DEFAULT_SETTINGS);
+    setOverlay(DEFAULT_OVERLAY);
     setError(null);
     onProcessedChange(null);
 
@@ -65,10 +72,13 @@ export default function PostProductionPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl]);
 
-  // Re-process when settings change. Debounce 200ms.
+  // Re-process when settings, overlay, or enable state change. Debounced 200ms
+  // so dragging a slider / typing in a label field doesn't spawn 30 runs.
   useEffect(() => {
     if (!sourceImg) return;
-    if (!enabled || isNoop(settings)) {
+    const degradationNoop = isNoop(settings);
+    const overlayNoop = overlayIsNoop(overlay);
+    if (!enabled || (degradationNoop && overlayNoop)) {
       onProcessedChange(null);
       return;
     }
@@ -77,7 +87,14 @@ export default function PostProductionPanel({
       const runId = ++activeRunRef.current;
       setProcessing(true);
       try {
-        const blob = await applyPipeline(sourceImg, settings);
+        let blob: Blob;
+        if (degradationNoop) {
+          // Overlay-only path: skip the multi-pass JPEG roundtrips and just
+          // draw the overlay onto a high-quality JPEG.
+          blob = await applyOverlayOnly(sourceImg, overlay);
+        } else {
+          blob = await applyPipeline(sourceImg, settings, overlayNoop ? undefined : overlay);
+        }
         if (runId !== activeRunRef.current) return;
         onProcessedChange(blob);
         setError(null);
@@ -92,7 +109,7 @@ export default function PostProductionPanel({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [sourceImg, enabled, settings, onProcessedChange]);
+  }, [sourceImg, enabled, settings, overlay, onProcessedChange]);
 
   const setValue = useCallback(
     (key: keyof Settings, value: number) => {
@@ -108,6 +125,7 @@ export default function PostProductionPanel({
 
   const handleReset = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
+    setOverlay(DEFAULT_OVERLAY);
   }, []);
 
   const handleCopyValues = useCallback(async () => {
@@ -204,6 +222,11 @@ export default function PostProductionPanel({
             </div>
           );
         })}
+      </div>
+
+      <div className={cn("mt-4 pt-4 border-t border-gray-100", !enabled && "opacity-50 pointer-events-none")}>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Overlays</p>
+        <OverlayControls overlay={overlay} onChange={setOverlay} />
       </div>
 
       <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">

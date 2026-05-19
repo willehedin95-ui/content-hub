@@ -12,16 +12,21 @@ import {
 import { cn } from "@/lib/utils";
 import type { Asset, AssetCategory, Product } from "@/types";
 import {
+  applyOverlayOnly,
   applyPipeline,
+  DEFAULT_OVERLAY,
   DEFAULT_SETTINGS,
   isNoop,
   loadImage,
+  overlayIsNoop,
   PRESETS,
   SLIDERS,
   settingsMatch,
+  type OverlaySettings,
   type Preset,
   type Settings,
 } from "@/lib/post-production";
+import OverlayControls from "./OverlayControls";
 
 // Bulk Post Production tool. Two source modes:
 // - Upload from computer (one or many files)
@@ -86,6 +91,7 @@ export default function PostProductionBulk({ assets, onAssetsChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [settings, setSettings] = useState<Settings>(PRESETS[0]?.settings ?? DEFAULT_SETTINGS);
+  const [overlay, setOverlay] = useState<OverlaySettings>(DEFAULT_OVERLAY);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [saveCategory, setSaveCategory] = useState<AssetCategory>("before_after");
@@ -199,8 +205,8 @@ export default function PostProductionBulk({ assets, onAssetsChange }: Props) {
 
   const handleProcess = useCallback(async () => {
     if (selectedItems.length === 0 || processing) return;
-    if (isNoop(settings)) {
-      setError("Settings are all at default - nothing to process. Pick a preset or tweak sliders.");
+    if (isNoop(settings) && overlayIsNoop(overlay)) {
+      setError("Both degradation settings and overlays are at default - nothing to apply. Pick a preset, tweak sliders, or enable an overlay.");
       return;
     }
     setError(null);
@@ -229,7 +235,11 @@ export default function PostProductionBulk({ assets, onAssetsChange }: Props) {
           continue;
         }
         const img = await loadImage(imgSrc);
-        const blob = await applyPipeline(img, settings);
+        const degradationNoop = isNoop(settings);
+        const overlayNoop = overlayIsNoop(overlay);
+        const blob = degradationNoop
+          ? await applyOverlayOnly(img, overlay)
+          : await applyPipeline(img, settings, overlayNoop ? undefined : overlay);
         const processedUrl = URL.createObjectURL(blob);
         const result: ProcessedResult = {
           sourceId: item.id,
@@ -278,6 +288,7 @@ export default function PostProductionBulk({ assets, onAssetsChange }: Props) {
     selectedItems,
     processing,
     settings,
+    overlay,
     autoSaveOnProcess,
     saveCategory,
     saveProduct,
@@ -549,6 +560,12 @@ export default function PostProductionBulk({ assets, onAssetsChange }: Props) {
             })}
           </div>
         )}
+      </div>
+
+      {/* Overlays */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Overlays</p>
+        <OverlayControls overlay={overlay} onChange={setOverlay} />
       </div>
 
       {/* Save options */}
