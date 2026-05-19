@@ -223,6 +223,7 @@ export async function applyPipeline(
 
   const hasOverlay = !!(overlay && !overlayIsNoop(overlay));
   if (hasOverlay) {
+    await ensureLabelFontLoaded(overlay!);
     applyOverlay(finalCanvas, overlay!);
   }
 
@@ -258,6 +259,7 @@ export async function applyOverlayOnly(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot get 2d context (overlay-only)");
   ctx.drawImage(base, 0, 0);
+  await ensureLabelFontLoaded(overlay);
   applyOverlay(canvas, overlay);
   return canvasToBlob(canvas, quality);
 }
@@ -323,9 +325,16 @@ export const DEFAULT_OVERLAY: OverlaySettings = {
 
 /** Font family options for label text. Each value is a complete CSS
  * font-family stack with fallbacks - if the primary isn't installed, the
- * browser falls back to the next. */
+ * browser falls back to the next. Brand fonts (Instrument Serif, Figtree,
+ * Azeret Mono) loaded via Google Fonts <link> in app/layout.tsx. */
 export const LABEL_FONT_OPTIONS: { value: string; label: string }[] = [
+  // Brand fonts (Renew / Hydro13 / HappySleep)
+  { value: "'Instrument Serif', Georgia, serif", label: "Instrument Serif (brand serif)" },
+  { value: "Figtree, Inter, system-ui, sans-serif", label: "Figtree (brand sans)" },
+  { value: "'Azeret Mono', 'Courier New', monospace", label: "Azeret Mono (brand mono)" },
+  // System
   { value: "Inter, system-ui, -apple-system, sans-serif", label: "System (Inter)" },
+  // Generic safe families
   { value: "Arial, Helvetica, sans-serif", label: "Arial" },
   { value: "'Helvetica Neue', Helvetica, Arial, sans-serif", label: "Helvetica" },
   { value: "'Arial Narrow', 'Helvetica Condensed', Tahoma, sans-serif", label: "Arial Narrow (condensed)" },
@@ -337,6 +346,16 @@ export const LABEL_FONT_OPTIONS: { value: string; label: string }[] = [
   { value: "'Arial Black', 'Helvetica Inserat', Impact, sans-serif", label: "Arial Black" },
   { value: "'Courier New', Courier, monospace", label: "Courier (monospace)" },
   { value: "'Brush Script MT', cursive", label: "Brush Script (cursive)" },
+];
+
+/** Brand color swatches available next to every color picker in
+ * post-production overlays. Hydro13 / Renew palette. */
+export const BRAND_COLOR_SWATCHES: { value: string; label: string }[] = [
+  { value: "#EB8143", label: "Brand orange" },
+  { value: "#E8B730", label: "Brand yellow" },
+  { value: "#252121", label: "Brand near-black" },
+  { value: "#FFFFFF", label: "White" },
+  { value: "#000000", label: "Black" },
 ];
 
 export const LABEL_FONT_WEIGHTS: { value: number; label: string }[] = [
@@ -533,6 +552,22 @@ function drawDivider(
   ctx.fillStyle = color;
   ctx.fillRect(Math.round(w / 2 - width / 2), 0, width, h);
   ctx.restore();
+}
+
+/** Ensure the font is loaded before drawing to canvas - otherwise the first
+ * paint can use a fallback. Resolves immediately if already cached. */
+export async function ensureLabelFontLoaded(o: OverlaySettings): Promise<void> {
+  if (typeof document === "undefined" || !("fonts" in document)) return;
+  if (!o.dayLabelEnabled) return;
+  try {
+    const italic = o.labelFontItalic ? "italic " : "";
+    // Use a moderate font-size hint; the load is keyed on family+weight+style.
+    await document.fonts.load(
+      `${italic}${o.labelFontWeight} 32px ${o.labelFontFamily}`,
+    );
+  } catch {
+    // Font load failures are non-fatal - canvas will use fallback.
+  }
 }
 
 export function applyOverlay(

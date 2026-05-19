@@ -14,6 +14,7 @@ import {
   type OverlayPreset,
   type OverlaySettings,
 } from "@/lib/post-production";
+import ColorInput from "./ColorInput";
 
 interface Props {
   overlay: OverlaySettings;
@@ -158,37 +159,17 @@ export default function OverlayControls({ overlay, onChange }: Props) {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] text-gray-500 mb-1">Background color</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={overlay.labelBgColor}
-                    onChange={(e) => update({ labelBgColor: e.target.value })}
-                    className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={overlay.labelBgColor}
-                    onChange={(e) => update({ labelBgColor: e.target.value })}
-                    className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-mono"
-                  />
-                </div>
+                <ColorInput
+                  value={overlay.labelBgColor}
+                  onChange={(v) => update({ labelBgColor: v })}
+                />
               </div>
               <div>
                 <label className="block text-[10px] text-gray-500 mb-1">Text color</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={overlay.labelTextColor}
-                    onChange={(e) => update({ labelTextColor: e.target.value })}
-                    className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={overlay.labelTextColor}
-                    onChange={(e) => update({ labelTextColor: e.target.value })}
-                    className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-mono"
-                  />
-                </div>
+                <ColorInput
+                  value={overlay.labelTextColor}
+                  onChange={(v) => update({ labelTextColor: v })}
+                />
               </div>
             </div>
 
@@ -305,20 +286,10 @@ export default function OverlayControls({ overlay, onChange }: Props) {
         {overlay.arrowEnabled && (
           <div className="mt-3">
             <label className="block text-[10px] text-gray-500 mb-1">Arrow color</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={overlay.arrowColor}
-                onChange={(e) => update({ arrowColor: e.target.value })}
-                className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={overlay.arrowColor}
-                onChange={(e) => update({ arrowColor: e.target.value })}
-                className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-mono"
-              />
-            </div>
+            <ColorInput
+              value={overlay.arrowColor}
+              onChange={(v) => update({ arrowColor: v })}
+            />
           </div>
         )}
       </div>
@@ -339,20 +310,10 @@ export default function OverlayControls({ overlay, onChange }: Props) {
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] text-gray-500 mb-1">Divider color</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={overlay.dividerColor}
-                  onChange={(e) => update({ dividerColor: e.target.value })}
-                  className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={overlay.dividerColor}
-                  onChange={(e) => update({ dividerColor: e.target.value })}
-                  className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-mono"
-                />
-              </div>
+              <ColorInput
+                value={overlay.dividerColor}
+                onChange={(v) => update({ dividerColor: v })}
+              />
             </div>
             <div>
               <label className="block text-[10px] text-gray-500 mb-1">

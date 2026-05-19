@@ -35,6 +35,16 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
+      <head>
+        {/* Brand fonts for B/A overlay text rendering (Canvas API).
+            Loaded via Google Fonts so canvas.ctx.font can use them by name. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:ital,wght@0,300..900;1,300..900&family=Azeret+Mono:ital,wght@0,100..900;1,100..900&display=swap"
+        />
+      </head>
       <body className="flex min-h-screen bg-gray-50">
           {user ? (
             <WorkspaceProvider activeLanguages={activeWs?.languages ?? []} slug={activeWs?.slug ?? "happysleep"}>
