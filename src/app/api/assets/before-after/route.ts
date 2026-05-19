@@ -275,31 +275,36 @@ function demographicToString(d: Demographic): string {
   return `${ethnicityLabel} woman, ${d.age} years old, ${d.hair_color} ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
 }
 
+// Intensity prompts use a FEATURE LADDER, not an adverb ladder. Diffusion
+// models reliably render concrete visual features but ignore magnitude
+// modifiers ("slightly", "much"). Each level lists how MANY features change
+// between the halves, plus an explicit list of features that must stay
+// IDENTICAL between halves. See docs/superpowers/specs/2026-05-19-before-after-intensity-rework-design.md
 const INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "BEFORE half: skin looks slightly tired - softer contours, visible natural skin texture, slightly neutral tone. AFTER half: skin looks slightly more rested - marginally smoother texture, slightly more even tone, gentle natural glow. The visual difference is subtle but visible on close inspection.",
+    "BEFORE half: visible undereye shadow / faint puffiness under both eyes. AFTER half: clean undereye area with no shadow or puffiness. Everything else about the skin is IDENTICAL between halves: same skin texture, same pore prominence, same skin tone, same glow level, same eye brightness, same skin redness. The ONLY visible delta between halves is the undereye area. The intent is that a viewer sees 'looks more rested around the eyes' but cannot point to any other change.",
   moderate:
-    "BEFORE half: skin looks tired - softer contours, visible natural skin texture, slightly neutral tone, gently tired look around the eyes. AFTER half: skin looks visibly rested - smoother texture, more even tone, natural glow, brighter look around the eyes. The visual difference is clear but realistic.",
+    "BEFORE half: undereye shadow / faint puffiness + faint natural redness around the nose and on the cheeks + slightly dull / tired skin tone. AFTER half: clean undereye area + clear, even nose and cheek tone (no redness) + healthy even overall tone. Pore prominence, skin texture detail, and eye brightness stay IDENTICAL between halves. Do not change skin glow level dramatically - both halves keep similar matte / soft-natural finish.",
   dramatic:
-    "BEFORE half: skin looks quite tired - softer contours, prominent natural skin texture, slightly uneven tone, tired look around the eyes. AFTER half: skin looks visibly rested and bright - much smoother texture, more even tone, clear natural glow, bright look around the eyes. The visual difference is striking but realistic and natural.",
+    "BEFORE half: undereye shadow + redness around the nose and cheeks + uneven blotchy skin tone + prominent visible pore texture + dull / tired-looking skin overall. AFTER half: clean undereye + even tone everywhere + visibly smoother (but still natural) skin texture + soft natural glow + a brighter, more awake look around the eyes. This is the maximum delta - still realistic (NOT a filter, NOT cosmetic surgery, NOT smoothing) but clearly improved across multiple features at once.",
 };
 
 const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "BEFORE half: nails look slightly less than ideal - mildly ridged surface, slightly dull, slightly short with a thin or uneven free edge. AFTER half: nails look marginally healthier - slightly smoother surface, slightly more even pink tone, slightly more length on the free edge. Subtle but visible on close inspection.",
+    "BEFORE half: short, uneven free edge (the white tip barely past the fingertip, slightly ragged). AFTER half: longer free edge with a clean even white tip, clearly past the fingertip. Nail surface, color, and shape stay IDENTICAL between halves - same ridge level, same pink tone, same overall shape. The ONLY visible delta is the free-edge length and cleanliness.",
   moderate:
-    "BEFORE half: nails look weak and short - visibly ridged surface, dull or slightly yellowish color, uneven or thin free edge, slight peeling or chipping at the tips, generally short and brittle-looking. AFTER half: nails look noticeably healthier and longer - smoother surface (ridges much less visible), more even pink-toned color, clean white free edge with visible length past the fingertip. Clear improvement but still realistic - bare unpolished nails on a real hand.",
+    "BEFORE half: short, uneven free edge + slightly ridged nail surface (vertical lines visible). AFTER half: longer clean free edge + smoother nail surface (ridges much less visible). Color stays IDENTICAL between halves (same natural pink tone), and overall shape stays the same. NO polish, NO gel, NO french manicure paint - the white tip in AFTER is the natural free edge of the nail.",
   dramatic:
-    "BEFORE half: nails look quite damaged - clearly ridged, peeling at the tips, dull or yellowish surface, very short and uneven shape, visibly weak and brittle. AFTER half: nails look strikingly healthier - smooth glossy natural surface, even healthy pink color, well-shaped with a clean white free edge, visibly longer. Striking but still natural-looking - NO polish, NO gel, NO fake tips, NO manicure styling.",
+    "BEFORE half: short, ridged surface, slightly dull or yellowish nail color. AFTER half: longer free edge, smooth nail surface, healthy natural pink tone. This is the maximum delta for nails - clear improvement across length, surface, and color. Still bare natural nails - NO polish, NO gel, NO fake tips, NO manicure styling.",
 };
 
 const HAIR_INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "BEFORE half: hair density looks slightly less than ideal at the middle parting - a faint strip of scalp visible between strands, slightly limp/flat at the crown, no visible baby-hair activity at the hairline. AFTER half: marginally denser - parting line slightly narrower with a touch less scalp showing through, a few soft tapered short 'baby hairs' (new-growth wispies) standing up at the hairline and along the part edge, slightly more crown volume. The hair LENGTH does NOT change between halves - hair grows ~1cm/month, so length stays the same. Same hair color, same style.",
+    "BEFORE half: middle parting line is wide (about 3-4 mm of scalp clearly visible between strands). AFTER half: same parting but visibly narrower (about 1.5-2 mm of scalp visible). Hair length, color, style, and crown volume stay IDENTICAL between halves. NO baby hairs visible in either half. The ONLY delta is parting-line width. Hair LENGTH is the same in both halves (hair grows ~1cm/month).",
   moderate:
-    "BEFORE half: hair shows visible thinning at the parting - the middle parting line is wide with clearly visible scalp skin between strands, crown looks flat with less density, hair has a limp/dull surface, no visible regrowth at the hairline. AFTER half: hair density is noticeably better - parting line visibly narrower with less scalp showing through (hair covers more of the part), soft tapered short 'baby hairs' visible standing up along the hairline and the part edges (clearly new-growth wispies with soft tapered tips, NOT blunt-end breakage), subtle natural shine on the strands, more volume at the crown. Clear improvement but realistic - hair is NOT longer, just denser and healthier-looking. Same hair color, same style.",
+    "BEFORE half: wide parting line (3-4 mm scalp visible) + flat / limp crown with little volume. AFTER half: narrower parting (1.5-2 mm scalp visible) + slight crown volume / lift. NO baby hairs visible in either half. Hair LENGTH and COLOR stay IDENTICAL. Two changes: parting width and crown volume.",
   dramatic:
-    "BEFORE half: hair shows clear thinning - the middle parting line is wide with prominent visible scalp skin between sparse strands, flat sparse crown, dull lifeless surface, recessed/sparse hairline with no baby hairs, generally thin and limp look. AFTER half: hair looks strikingly healthier and denser - parting line much narrower with the scalp mostly covered, multiple soft tapered short 'baby hairs' visible standing up along the hairline and the part edges (soft regrowth tips, NOT blunt-end breakage), visible glossy sheen, much more volume at the crown, hairline looks fuller. Striking but still realistic - NO dramatic length increase, NO bald-to-full overpromise. Same hair color, same style, same hair length - just denser and healthier-looking.",
+    "BEFORE half: wide parting line (4-5 mm scalp visible) + flat sparse crown + dull / limp strand surface + no baby hairs at the hairline. AFTER half: narrow parting (1.5-2 mm scalp visible) + crown volume / lift + soft tapered short new-growth 'baby hairs' visible standing up along the hairline and along the part edges (soft regrowth tips, NOT blunt breakage) + subtle natural sheen on the strands. Hair LENGTH stays IDENTICAL between halves (hair grows ~1cm/month, no length jump). Hair COLOR stays IDENTICAL. STYLE stays IDENTICAL. Four-feature delta is the maximum for hair.",
 };
 
 const NAIL_HAND_POSES = [
