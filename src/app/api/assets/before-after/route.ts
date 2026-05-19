@@ -8,8 +8,11 @@ import {
   UNFLATTERING_LIGHTING_OPTIONS,
   buildTestimonialStyleBlock,
   AGE_MARKERS_PRESERVATION_RULE,
-  LIGHTING_CONSISTENCY_RULE,
+  ANTI_TROPE_LIGHTING_RULE,
   FACE_CAMERA_ANGLES,
+  FACE_CAMERA_ANGLE_DEFINITIONS,
+  FACE_CAMERA_DISTANCES,
+  type FaceCameraAngleKey,
 } from "@/lib/ugc-realism";
 
 export const maxDuration = 800;
@@ -25,7 +28,7 @@ const HEARTBEAT_MS = 15_000;
 type Intensity = "subtle" | "moderate" | "dramatic";
 
 const BODY_ZONE_PRESETS = {
-  full_face_front: "Tight portrait crop, full face front view. Frame from just below the chin to just above the hairline, both eyes visible, head fills most of the frame. Shoulders may peek in at the bottom edge. Lifestyle selfie framing.",
+  full_face_front: "Tight portrait crop of the face area. Frame includes from around the chin up to or just above the hairline, head fills most of the frame, both eyes typically visible. Shoulders may peek in at the bottom edge. The exact camera angle (head-on / slight 3/4 / slightly above / slightly below / etc.) is specified separately - obey that angle field, do NOT default to head-on if a different angle is specified. Lifestyle selfie framing.",
   face_profile: "Tight 3-quarter or side profile crop, lifestyle selfie style. Frame from chin to forehead, showing one cheek and jawline prominently, partial nose, one ear may peek in. Head fills most of the frame.",
   eye_area: "Tight close-up on one eye area, lifestyle skincare-style framing (NOT a medical scan, NOT a clinical examination). Frame shows the eye, upper and lower lid, outer brow, and the bridge of the nose at one side, plus a hint of the upper cheek at the bottom edge. The frame does not include: the mouth, chin, jaw, ear, hairline, or the forehead beyond the brow area. Lifestyle phone-photo close-up, casual.",
   forehead: "Tight close-up on the forehead, lifestyle selfie framing. Frame shows the area from just above the brows up to the hairline, with the brows visible at the bottom edge. The frame does not include: the eyes, mouth, chin, jaw, cheeks, full nose. Glasses frame may sometimes be visible at the bottom edge. A horizontal slice across the forehead, casual phone-photo framing.",
@@ -454,27 +457,44 @@ function buildPrompt(args: {
   vision: BodyZoneVision | null;
   hasSource: boolean;
   notes?: string;
+  cameraAngle?: FaceCameraAngleKey;
 }): string {
-  const { zone, zoneKey, demographic, intensity, vision, hasSource, notes } = args;
+  const { zone, zoneKey, demographic, intensity, vision, hasSource, notes, cameraAngle } = args;
   const isNails = zoneKey === "nails";
   const isHair = zoneKey === "hair_scalp";
+  const isFace = !isNails && !isHair;
 
   const [beforeTop, afterTop] = pickPair(TOPS);
-  // SINGLE lighting pick - both halves use the SAME source/temperature.
-  // Counters the warm-tired-BEFORE / cool-rested-AFTER marketing-trope drift
-  // that Nano Banana defaults to when given different lighting strings.
-  // Per-half angle/strength micro-variation is described in hard_constraints,
-  // not by picking two different entries.
-  const sharedLight = pick(LIGHTING_VARIANTS);
+  // Lighting can VARY between halves (real customer testimonials show
+  // different lighting on different days). We forbid the warm-tired-BEFORE /
+  // cool-rested-AFTER marketing trope via ANTI_TROPE_LIGHTING_RULE in
+  // hard_constraints, not by locking to a single pick.
+  const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
   const [beforeTilt, afterTilt] = pickHeadTilts();
   const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
   const bodyOrientation = pick(BODY_ORIENTATIONS);
   const [beforeHandPose, afterHandPose] = pickPair(NAIL_HAND_POSES);
   const [beforeNailBg, afterNailBg] = pickPair(NAIL_BACKGROUNDS);
-  // ONE face camera angle per generation, applied to BOTH halves. Adds
-  // cross-generation variation (10 B/A pairs on a PDP don't look identical)
-  // without breaking within-pair consistency.
-  const faceCameraAngle = pick(FACE_CAMERA_ANGLES);
+
+  // Camera angle resolution:
+  // - User picked a specific angle -> both halves use that angle (they
+  //   intentionally want that framing in the output).
+  // - Default (no pick / "random") -> pickPair so BEFORE and AFTER show the
+  //   subject from genuinely DIFFERENT angles, mimicking how real customer
+  //   testimonials show two separate selfies (see OsloSkinLab examples).
+  let beforeCameraAngle: string;
+  let afterCameraAngle: string;
+  if (cameraAngle && cameraAngle in FACE_CAMERA_ANGLE_DEFINITIONS) {
+    const fixed = FACE_CAMERA_ANGLE_DEFINITIONS[cameraAngle];
+    beforeCameraAngle = fixed;
+    afterCameraAngle = fixed;
+  } else {
+    const [a, b] = pickPair(FACE_CAMERA_ANGLES);
+    beforeCameraAngle = a;
+    afterCameraAngle = b;
+  }
+  // Camera distance ALWAYS varies per half (real-customer-took-two-selfies).
+  const [beforeCameraDistance, afterCameraDistance] = pickPair(FACE_CAMERA_DISTANCES);
 
   // After-half may have a subtle smile (~40% chance). Before is ALWAYS neutral.
   // Smile-before-neutral-after reverses the narrative and is forbidden.
@@ -549,7 +569,13 @@ function buildPrompt(args: {
         },
         before_half: {
           outfit: beforeTop,
-          lighting: sharedLight,
+          lighting: beforeLight,
+          ...(isFace
+            ? {
+                camera_angle: beforeCameraAngle,
+                camera_distance: beforeCameraDistance,
+              }
+            : {}),
           head_position: beforeTilt,
           hair_arrangement: beforeHair,
           ...(isNails
@@ -571,7 +597,13 @@ function buildPrompt(args: {
         },
         after_half: {
           outfit: afterTop,
-          lighting: sharedLight,
+          lighting: afterLight,
+          ...(isFace
+            ? {
+                camera_angle: afterCameraAngle,
+                camera_distance: afterCameraDistance,
+              }
+            : {}),
           head_position: afterTilt,
           hair_arrangement: afterHair,
           ...(isNails
@@ -592,7 +624,9 @@ function buildPrompt(args: {
                 }),
         },
         composition: {
-          camera: "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
+          camera: isFace
+            ? `Camera angle and distance vary PER HALF (see before_half/after_half fields). The BEFORE phone position is "${beforeCameraAngle}" at "${beforeCameraDistance}". The AFTER phone position is "${afterCameraAngle}" at "${afterCameraDistance}". These ARE different on purpose - real customer testimonials are two separate selfies on different days, not a coordinated shoot.`
+            : "natural smartphone angle, eye-level or very slightly above, casual unstaged handheld framing",
           framing: "tight zone-appropriate crop",
           background: isNails
             ? "neutral plain background - a wall, table surface, or out-of-focus interior. The hand is the only subject."
@@ -618,7 +652,7 @@ function buildPrompt(args: {
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
               `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. Both poses show the SAME side of the hand (the back) with only SUBTLE differences in finger curl. Do NOT pick two wildly different angles - this is the same hand on two days, both photographed from above.`,
               `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. The two halves may show natural between-photo variation in lighting and angle within the same general home setting, but DO NOT pick wildly different locations (e.g. one studio + one kitchen). Both feel like casual home environments.`,
-              `LIGHTING (locked - same for both halves): ${sharedLight}. ${LIGHTING_CONSISTENCY_RULE}`,
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. Lighting may vary as if taken on different days, but BOTH are casual unflattering home lighting. ${ANTI_TROPE_LIGHTING_RULE}`,
               "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual phone close-up of natural unpainted nails.",
               "TESTIMONIAL VIBE: the image MUST look like two casual phone close-ups a customer took at home on different days - mundane, real, slightly imperfect, NOT styled. FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry, plain studio backdrop. If it looks like a brand ad you have failed.",
               "Both halves must have realistic un-retouched skin texture (natural pores, knuckle wrinkles, faint creases on the finger joints, age-appropriate marks for the demographic) and natural nail surface texture. Both look like real phone-camera quality in casual indoor light.",
@@ -630,8 +664,8 @@ function buildPrompt(args: {
               "BODY PART ORIENTATION CONSISTENCY (critical for limb zones - arm, leg, hands): in both halves the body part extends in the SAME direction with clothing edges in the SAME position. If 'before' shows the leg with shorts edge at the TOP of the frame and thigh extending DOWN, 'after' shows the leg with shorts edge at the TOP and thigh extending DOWN. If 'before' shows an arm extending from upper-left to lower-right with sleeve at the top edge, 'after' shows the arm in the SAME direction with sleeve at the SAME edge. NEVER rotate the limb 180°. NEVER vertically flip the body part. NEVER swap which edge of the frame the clothing appears on.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
               `BEFORE half outfit: ${beforeTop}. AFTER half outfit: ${afterTop}. These MUST be visibly different - this is mandatory, not a suggestion.`,
-              `LIGHTING (locked - same for both halves): ${sharedLight}. ${LIGHTING_CONSISTENCY_RULE}`,
-              `CAMERA ANGLE (locked - same for both halves): ${faceCameraAngle}. Both halves are taken from this exact phone angle - the subject did NOT reposition the camera between shots. This anchors cross-pair variation: different generations get different angles, but within a pair the angle is consistent.`,
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. ${ANTI_TROPE_LIGHTING_RULE}`,
+              `CAMERA ANGLE varies PER HALF: BEFORE = "${beforeCameraAngle}" / AFTER = "${afterCameraAngle}". CAMERA DISTANCE varies PER HALF: BEFORE = "${beforeCameraDistance}" / AFTER = "${afterCameraDistance}". The two halves are two SEPARATE customer selfies on different days - the customer did not coordinate camera position between June and December. Same person, same body zone, different framing.${cameraAngle ? ` (User-selected fixed angle: both halves use the same camera angle, only distance varies.)` : ""}`,
               AGE_MARKERS_PRESERVATION_RULE,
               `BEFORE half head position: ${beforeTilt}. AFTER half head position: ${afterTilt}. The head genuinely looks different between halves - this is correct and desired. What MUST stay consistent between halves is the BODY/shoulder orientation (no whole-composition mirror flip).`,
               `BEFORE half hair arrangement: ${beforeHair}. AFTER half hair arrangement: ${afterHair}. Hair color and overall style/length stay the same, but loose strands fall differently between halves - because these are two separate photos on different days, not the same session.`,
@@ -679,6 +713,7 @@ export async function POST(req: NextRequest) {
     ethnicity,
     age,
     hair_color,
+    camera_angle,
     source_demographic,
     source_spec,
   } = body as {
@@ -690,6 +725,7 @@ export async function POST(req: NextRequest) {
     ethnicity?: string;
     age?: string;
     hair_color?: string;
+    camera_angle?: string;
     source_demographic?: {
       age?: string | null;
       ethnicity?: string | null;
@@ -697,6 +733,14 @@ export async function POST(req: NextRequest) {
     } | null;
     source_spec?: Record<string, unknown> | null;
   };
+
+  // Camera angle (optional, face-only). If user picks a specific angle, both
+  // halves use it. If random/undefined, the buildPrompt picks DIFFERENT
+  // angles per half (real-customer-selfie variation).
+  const cameraAngleOverride =
+    camera_angle && camera_angle in FACE_CAMERA_ANGLE_DEFINITIONS
+      ? (camera_angle as FaceCameraAngleKey)
+      : undefined;
 
   if (!body_zone) {
     return NextResponse.json({ error: "body_zone is required" }, { status: 400 });
@@ -802,6 +846,7 @@ export async function POST(req: NextRequest) {
             vision,
             hasSource: Boolean(image_url),
             notes,
+            cameraAngle: cameraAngleOverride,
           });
 
       await emit({

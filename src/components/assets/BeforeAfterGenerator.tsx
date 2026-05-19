@@ -68,6 +68,17 @@ const AGE_OPTIONS = [
   { value: "71-75", label: "71-75" },
 ];
 
+const CAMERA_ANGLE_OPTIONS = [
+  { value: "", label: "Random (varies per half)" },
+  { value: "head_on", label: "Head-on eye-level" },
+  { value: "above", label: "Slightly above eye-level" },
+  { value: "below", label: "Slightly below eye-level" },
+  { value: "three_quarter_right", label: "3/4 from camera-right" },
+  { value: "three_quarter_left", label: "3/4 from camera-left" },
+  { value: "tight_crop", label: "Tight crop (head fills frame)" },
+  { value: "dutch_tilt", label: "Slight Dutch tilt" },
+];
+
 const ETHNICITY_OPTIONS = [
   { value: "scandinavian", label: "Scandinavian (default)" },
   { value: "north_european", label: "Northern European" },
@@ -112,6 +123,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [age, setAge] = useState<string>("");
   const [ethnicity, setEthnicity] = useState<string>("scandinavian");
   const [hairColor, setHairColor] = useState<string>("");
+  const [cameraAngle, setCameraAngle] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusMessage, setStatusMessage] = useState("");
@@ -361,6 +373,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             age: age || undefined,
             ethnicity: ethnicity || undefined,
             hair_color: hairColor.trim() || undefined,
+            camera_angle: cameraAngle || undefined,
             source_demographic: sourceDemographic ?? undefined,
             source_spec: sourceSpec ?? undefined,
           }),
@@ -417,7 +430,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setPhase("upload");
       }
     },
-    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, sourceDemographic, sourceSpec]
+    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, cameraAngle, sourceDemographic, sourceSpec]
   );
 
   const handleGenerate = useCallback(() => {
@@ -544,6 +557,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setAge("");
     setEthnicity("scandinavian");
     setHairColor("");
+    setCameraAngle("");
     setError(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
@@ -722,6 +736,24 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
               className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
             />
           </div>
+        </div>
+        <div className="mt-3">
+          <label className="block text-[11px] text-gray-500 mb-1">
+            Camera angle <span className="text-gray-400 font-normal">(face zones only)</span>
+          </label>
+          <select
+            value={cameraAngle}
+            onChange={(e) => setCameraAngle(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+          >
+            {CAMERA_ANGLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Random varies the angle PER HALF (BEFORE and AFTER look like two separate selfies on different days).
+            Pick a specific angle to lock both halves to it.
+          </p>
         </div>
       </details>
     </>

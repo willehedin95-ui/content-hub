@@ -124,36 +124,64 @@ export const AGE_MARKERS_PRESERVATION_RULE =
   "AGE-MARKER PRESERVATION (hard rule): the AFTER half must preserve ALL age markers visible in the BEFORE half - same wrinkle count, same wrinkle depth, same forehead lines, same crow's feet, same nasolabial folds, same neck loosening, same hand-vein prominence, same hair density. The AFTER half is the SAME PERSON on a more-rested day, NOT a younger version. Do NOT smooth, retouch, or reduce age signs beyond the specific feature being demonstrated (e.g. for subtle intensity, ONLY undereye shadow changes - wrinkles stay identical).";
 
 /**
- * Lighting consistency rule. Counters Nano Banana's tendency to default to
- * warm-yellow BEFORE -> cool-neutral AFTER lighting bias (a marketing trope
- * from training data, not realistic for two photos of the same person on
- * different days in the same home).
- *
- * Use as a hard_constraint to force both halves into the same color
- * temperature / light source category.
+ * Anti-trope lighting rule. Lighting MAY vary between halves (two real
+ * customer selfies taken on different days often have different light), but
+ * the specific trope "warm-yellow tired BEFORE / cool-neutral rested AFTER"
+ * is a marketing-creative pattern that signals "staged not real". Forbid that
+ * specific direction while allowing other variation.
  */
-export const LIGHTING_CONSISTENCY_RULE =
-  "LIGHTING CONSISTENCY (hard rule): both halves use the SAME light source category and SAME color temperature. If BEFORE is warm-yellow indoor light, AFTER is ALSO warm-yellow indoor light - NOT cool/neutral. Slight variation in strength or angle is OK (one side of the face slightly brighter, etc.) but the color cast and source type are IDENTICAL. Do NOT default to the marketing trope of warm-tired-BEFORE / cool-rested-AFTER.";
+export const ANTI_TROPE_LIGHTING_RULE =
+  "ANTI-TROPE LIGHTING (hard rule): natural lighting variation between halves is OK (real customer selfies on different days have different light). BUT do NOT follow the marketing trope of warm-yellow / dim / tired-looking light on the BEFORE half paired with cool-neutral / bright / fresh-looking light on the AFTER half. That bias signals staged not real. If anything, randomly reverse it (cool BEFORE, warm AFTER) or use similar-temperature lighting in both halves. Both halves must remain in the UNFLATTERING-home-light bucket either way - never studio softbox, never ring light.";
 
 /**
- * Camera-angle / framing variations for face zones. Pick ONE per generation
- * and apply to BOTH halves. Adds variation across the SET of generations
- * (so a product page with 10 B/A pairs doesn't all look like the same
- * head-on template repeated), while keeping the two halves of a single pair
- * consistent (same angle = same casual mid-routine).
+ * Camera-angle / phone-position variations for face zones.
  *
- * Each entry is a complete "phone-position" cue with both perspective and
- * crop hints.
+ * In the default "random" mode the route picks ONE entry per half (via
+ * pickPair) so BEFORE and AFTER show the subject from genuinely different
+ * angles - mimicking what real customer testimonials show (two casual
+ * selfies on different days, different framings). Same-person identity stays
+ * locked by other constraints.
+ *
+ * If the user picks a specific angle in the UI, both halves use that one.
+ *
+ * The named-key map is the canonical source for the UI dropdown options;
+ * the array form is for random pickPair() calls.
  */
-export const FACE_CAMERA_ANGLES = [
-  "Phone held at eye-level, head-on direct angle. Face centered, both eyes visible at the same height.",
-  "Phone held slightly above eye-level (the typical casual selfie angle), looking very slightly downward at the subject. Slight foreshortening - forehead a touch larger, chin a touch smaller.",
-  "Phone held slightly below eye-level (subject looking down at the phone in their hand resting on a counter). Slight chin-prominence, brow ridge softened, eyes glance downward at the camera.",
-  "3/4 angle from camera-right (subject's body rotated ~15 degrees toward the camera-left, head turned slightly toward the camera). Both eyes still visible, one cheek slightly more prominent.",
-  "3/4 angle from camera-left (subject's body rotated ~15 degrees toward the camera-right, head turned slightly toward the camera). Both eyes still visible, the other cheek slightly more prominent than the 3/4-from-right variant.",
-  "Tight crop, head fills most of the frame, slight crop of the forehead and chin (the casual close phone selfie distance).",
-  "Slightly farther crop, more headroom above the head, shoulders and upper chest visible. Camera held farther away (full arm extension).",
-  "Slight Dutch-tilt - phone not held perfectly straight, frame rotated ~5 degrees (rushed-snap energy, not staged).",
+export const FACE_CAMERA_ANGLE_DEFINITIONS = {
+  head_on:
+    "Phone held at eye-level, head-on direct angle. Face centered, both eyes visible at the same height.",
+  above:
+    "Phone held slightly above eye-level (the typical casual selfie angle), looking very slightly downward at the subject. Slight foreshortening - forehead a touch larger, chin a touch smaller.",
+  below:
+    "Phone held slightly below eye-level (subject looking down at the phone in their hand resting on a counter). Slight chin-prominence, brow ridge softened, eyes glance downward at the camera.",
+  three_quarter_right:
+    "3/4 angle from camera-right (subject's body rotated ~15 degrees toward the camera-left, head turned slightly toward the camera). Both eyes still visible, one cheek slightly more prominent.",
+  three_quarter_left:
+    "3/4 angle from camera-left (subject's body rotated ~15 degrees toward the camera-right, head turned slightly toward the camera). Both eyes still visible, the other cheek slightly more prominent.",
+  tight_crop:
+    "Tight crop, head fills most of the frame, slight crop of the forehead and chin (the casual close phone selfie distance).",
+  dutch_tilt:
+    "Slight Dutch-tilt - phone not held perfectly straight, frame rotated ~5 degrees (rushed-snap energy, not staged).",
+} as const;
+
+export type FaceCameraAngleKey = keyof typeof FACE_CAMERA_ANGLE_DEFINITIONS;
+
+export const FACE_CAMERA_ANGLES: string[] = Object.values(
+  FACE_CAMERA_ANGLE_DEFINITIONS,
+);
+
+/**
+ * Camera-distance / zoom variations for face zones. Pick PER HALF (different
+ * for BEFORE vs AFTER) so the two halves look like two genuinely separate
+ * selfies. Real customer testimonials show varying distances - the customer
+ * didn't measure arm extension between June and December.
+ */
+export const FACE_CAMERA_DISTANCES = [
+  "Phone held at standard selfie distance (arm fully extended), head and shoulders visible.",
+  "Phone held closer to the face (slight wide-angle exaggeration), face fills most of the frame.",
+  "Phone held farther away (arm extended + slight lean back), more headroom above and shoulders visible.",
+  "Phone at chest level, propped or held low, face slightly larger due to top-down look.",
+  "Phone at face level, mid-arm extension, head fills the upper 2/3 of the frame.",
 ];
 
 /**
