@@ -970,17 +970,28 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             </div>
           </div>
 
-          <div className={cn("grid gap-4", sourceUrl ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
-            {sourceUrl && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source reference</p>
-                <img src={sourceUrl} alt="Source" className="w-full rounded-lg border border-gray-100" />
-                {detectedZone && (
-                  <p className="text-xs text-gray-400 mt-2">Detected zone: <span className="font-medium text-gray-600">{detectedZone}</span></p>
-                )}
-              </div>
-            )}
-            {generatedImageUrl && (
+          {/* Layout: on lg+ image area on the LEFT, post-prod sliders on the RIGHT
+              so both are visible while tweaking. On smaller screens the image
+              card is sticky-top so it stays in view while scrolling to sliders. */}
+          <div className={cn(
+            "grid gap-4",
+            generatedImageUrl ? "lg:grid-cols-2" : (sourceUrl ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"),
+          )}>
+            <div className={cn(
+              "space-y-4",
+              generatedImageUrl && "lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto",
+              !generatedImageUrl && sourceUrl && "contents", // let source card sit in the parent grid
+            )}>
+              {sourceUrl && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source reference</p>
+                  <img src={sourceUrl} alt="Source" className="w-full rounded-lg border border-gray-100" />
+                  {detectedZone && (
+                    <p className="text-xs text-gray-400 mt-2">Detected zone: <span className="font-medium text-gray-600">{detectedZone}</span></p>
+                  )}
+                </div>
+              )}
+              {generatedImageUrl && (
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1012,15 +1023,16 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
                   </p>
                 )}
               </div>
+              )}
+            </div>
+
+            {generatedImageUrl && (
+              <PostProductionPanel
+                imageUrl={generatedImageUrl}
+                onProcessedChange={setProcessedBlob}
+              />
             )}
           </div>
-
-          {generatedImageUrl && (
-            <PostProductionPanel
-              imageUrl={generatedImageUrl}
-              onProcessedChange={setProcessedBlob}
-            />
-          )}
 
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
