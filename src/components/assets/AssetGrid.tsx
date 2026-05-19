@@ -12,6 +12,7 @@ import {
   Link as LinkIcon,
   Play,
   Tag,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Asset, AssetCategory, MediaType, Product } from "@/types";
@@ -83,6 +84,21 @@ export default function AssetGrid({
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
+
+  // Multi-select for bulk download
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // Filter by media type, product, category, and search
   const filteredAssets = assets.filter((asset) => {
@@ -169,6 +185,49 @@ export default function AssetGrid({
       setUploading(false);
     }
   }
+
+  const selectAllFiltered = useCallback(() => {
+    setSelectedIds(new Set(filteredAssets.map((a) => a.id)));
+  }, [filteredAssets]);
+
+  const handleBulkDownload = useCallback(async () => {
+    if (selectedIds.size === 0 || downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/assets/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset_ids: Array.from(selectedIds) }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Download failed: ${res.status}`);
+      }
+      // Trigger browser download from the zip blob response.
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
+      const filenameMatch = cd.match(/filename="([^"]+)"/);
+      const fallbackName = `assets-${new Date().toISOString().slice(0, 10)}.zip`;
+      const filename = filenameMatch?.[1] ?? fallbackName;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const failedCount = Number(res.headers.get("x-failed-count") || "0");
+      if (failedCount > 0) {
+        alert(`Downloaded but ${failedCount} asset(s) failed to fetch and were skipped.`);
+      }
+      clearSelection();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Bulk download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }, [selectedIds, downloading, clearSelection]);
 
   function openPreview(asset: Asset) {
     setPreviewAsset(asset);
@@ -518,6 +577,42 @@ export default function AssetGrid({
         );
       })()}
 
+      {/* Bulk-select toolbar - appears when 1+ selected */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-20 mb-3 flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 shadow-sm">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-medium text-indigo-900">
+              {selectedIds.size} selected
+            </span>
+            <button
+              onClick={selectAllFiltered}
+              className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+              disabled={selectedIds.size === filteredAssets.length}
+            >
+              Select all ({filteredAssets.length})
+            </button>
+            <button
+              onClick={clearSelection}
+              className="text-xs text-gray-600 hover:text-gray-800 underline-offset-2 hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+          <button
+            onClick={handleBulkDownload}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {downloading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            {downloading ? "Zipping…" : `Download ${selectedIds.size}`}
+          </button>
+        </div>
+      )}
+
       {/* Asset grid */}
       <div className="flex-1 overflow-y-auto">
         {filteredAssets.length === 0 ? (
@@ -532,15 +627,36 @@ export default function AssetGrid({
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 pb-6">
-            {filteredAssets.map((asset) => (
+            {filteredAssets.map((asset) => {
+              const isSelected = selectedIds.has(asset.id);
+              return (
               <div
                 key={asset.id}
-                className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors"
+                className={cn(
+                  "group bg-white border rounded-xl overflow-hidden transition-colors",
+                  isSelected
+                    ? "border-indigo-500 ring-2 ring-indigo-200"
+                    : "border-gray-200 hover:border-gray-300",
+                )}
               >
                 <div
                   className="aspect-square bg-gray-50 flex items-center justify-center p-3 relative cursor-pointer"
                   onClick={() => openPreview(asset)}
                 >
+                  {/* Selection checkbox - top-left, always visible-on-hover or when selected */}
+                  <button
+                    type="button"
+                    aria-label={isSelected ? "Deselect asset" : "Select asset"}
+                    onClick={(e) => { e.stopPropagation(); toggleSelected(asset.id); }}
+                    className={cn(
+                      "absolute top-1.5 left-1.5 z-10 w-6 h-6 rounded-md border flex items-center justify-center transition-opacity",
+                      isSelected
+                        ? "opacity-100 bg-indigo-600 border-indigo-600 text-white"
+                        : "opacity-0 group-hover:opacity-100 bg-white/90 border-gray-300 text-transparent hover:text-gray-400",
+                    )}
+                  >
+                    <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                  </button>
                   {asset.media_type === "image" ? (
                     <img
                       src={asset.url}
@@ -667,7 +783,8 @@ export default function AssetGrid({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
