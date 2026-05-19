@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ASSET_CATEGORIES, type Asset, type AssetCategory, type Product } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
+import PostProductionPanel from "./PostProductionPanel";
 
 type Phase = "upload" | "uploading" | "analyzing" | "generating" | "done";
 
@@ -128,6 +129,21 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
 
   const [statusMessage, setStatusMessage] = useState("");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  // Post-production: processed blob from PostProductionPanel. When set, the
+  // displayed image, Save to Assets, and Download all use this instead of
+  // the raw generatedImageUrl.
+  const [processedBlob, setProcessedBlob] = useState<Blob | null>(null);
+  const [processedUrl, setProcessedUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!processedBlob) {
+      setProcessedUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(processedBlob);
+    setProcessedUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [processedBlob]);
+  const displayedImageUrl = processedUrl ?? generatedImageUrl;
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
   const [demographic, setDemographic] = useState<Demographic | null>(null);
   const [detectedZone, setDetectedZone] = useState<string | null>(null);
@@ -335,6 +351,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       setPromptUsed(null);
       setDetectedZone(null);
       setSaved(false);
+      setProcessedBlob(null);
 
       try {
         let imageUrl: string | null = overrides?.reuseSourceUrl ?? resolvedSourceUrl ?? null;
@@ -517,17 +534,31 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/assets/import-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: generatedImageUrl,
-          name: saveName.trim() || "Before/After",
-          category: saveCategory,
-          product: saveProduct || undefined,
-          media_type: "image",
-        }),
-      });
+      // When post-production has been applied, upload the processed blob
+      // directly via FormData (the JPEG with degradation effects baked in).
+      // Otherwise fall back to URL import which fetches the Kie temp URL.
+      let res: Response;
+      if (processedBlob) {
+        const formData = new FormData();
+        const filename = `${(saveName.trim() || "Before-After").replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`;
+        formData.append("file", processedBlob, filename);
+        formData.append("name", saveName.trim() || "Before/After");
+        formData.append("category", saveCategory);
+        if (saveProduct) formData.append("product", saveProduct);
+        res = await fetch("/api/assets", { method: "POST", body: formData });
+      } else {
+        res = await fetch("/api/assets/import-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: generatedImageUrl,
+            name: saveName.trim() || "Before/After",
+            category: saveCategory,
+            product: saveProduct || undefined,
+            media_type: "image",
+          }),
+        });
+      }
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || "Failed to save asset");
@@ -542,7 +573,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     } finally {
       setSaving(false);
     }
-  }, [generatedImageUrl, saveName, saveCategory, saveProduct, onAssetCreated]);
+  }, [generatedImageUrl, processedBlob, saveName, saveCategory, saveProduct, onAssetCreated]);
 
   const handleReset = useCallback(() => {
     if (sourceUrl && sourceFile) URL.revokeObjectURL(sourceUrl);
@@ -572,6 +603,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setSaved(false);
     setEditInstructions("");
     setShowSaveModal(false);
+    setProcessedBlob(null);
   }, [sourceUrl, sourceFile]);
 
   const swipeMode = Boolean(sourceUrl);
@@ -951,16 +983,29 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             {generatedImageUrl && (
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</p>
-                  <a
-                    href={`/api/download-proxy?url=${encodeURIComponent(generatedImageUrl)}&filename=${encodeURIComponent(`before-after-${Date.now()}.png`)}`}
-                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download
-                  </a>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Generated{processedUrl ? " (post-prod applied)" : ""}
+                  </p>
+                  {processedUrl ? (
+                    <a
+                      href={processedUrl}
+                      download={`before-after-${Date.now()}.jpg`}
+                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </a>
+                  ) : (
+                    <a
+                      href={`/api/download-proxy?url=${encodeURIComponent(generatedImageUrl)}&filename=${encodeURIComponent(`before-after-${Date.now()}.png`)}`}
+                      className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </a>
+                  )}
                 </div>
-                <img src={generatedImageUrl} alt="Generated" className="w-full rounded-lg border border-gray-100" />
+                <img src={displayedImageUrl ?? undefined} alt="Generated" className="w-full rounded-lg border border-gray-100" />
                 {demographic && (
                   <p className="text-xs text-gray-400 mt-2 leading-relaxed">
                     <span className="font-medium text-gray-600">Slumpad demografi:</span> {demographicLine(demographic)}
@@ -969,6 +1014,13 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
               </div>
             )}
           </div>
+
+          {generatedImageUrl && (
+            <PostProductionPanel
+              imageUrl={generatedImageUrl}
+              onProcessedChange={setProcessedBlob}
+            />
+          )}
 
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
