@@ -1,11 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ImageIcon, Film, Sparkles, Scissors, HardDrive, GitCompare } from "lucide-react";
+import { ImageIcon, Film, Sparkles, Scissors, HardDrive, GitCompare, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 
-export type AssetView = "images" | "videos" | "swipe-image" | "swipe-video" | "before-after";
+export type AssetView =
+  | "images"
+  | "videos"
+  | "swipe-image"
+  | "swipe-video"
+  | "before-after"
+  | "post-production";
 
 interface Props {
   activeView: AssetView;
@@ -24,6 +30,7 @@ const TOOL_ITEMS: { view: AssetView; label: string; icon: typeof Sparkles }[] = 
   { view: "swipe-image", label: "Swipe Image", icon: Sparkles },
   { view: "swipe-video", label: "Swipe Video", icon: Scissors },
   { view: "before-after", label: "Before/After", icon: GitCompare },
+  { view: "post-production", label: "Post Production", icon: Wand2 },
 ];
 
 const PRODUCT_ITEMS: { value: Product | "all" | "general"; label: string }[] = [
