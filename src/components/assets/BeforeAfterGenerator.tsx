@@ -322,6 +322,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
       setGeneratedImageUrl(null);
       setPromptUsed(null);
       setDetectedZone(null);
+      setSaved(false);
 
       try {
         let imageUrl: string | null = overrides?.reuseSourceUrl ?? resolvedSourceUrl ?? null;
@@ -449,6 +450,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     if (!promptUsed) return;
     setRetrying(true);
     setError(null);
+    setSaved(false);
 
     try {
       const res = await fetch("/api/assets/before-after/regenerate", {
@@ -919,8 +921,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</p>
                   <a
-                    href={generatedImageUrl}
-                    download={`before-after-${Date.now()}.png`}
+                    href={`/api/download-proxy?url=${encodeURIComponent(generatedImageUrl)}&filename=${encodeURIComponent(`before-after-${Date.now()}.png`)}`}
                     className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
                   >
                     <Download className="w-3.5 h-3.5" />
