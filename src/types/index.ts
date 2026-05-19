@@ -1178,7 +1178,7 @@ export interface PixarAnimationProposal {
 }
 
 // ── Asset Bank ──────────────────────────────────────────────
-export type AssetCategory = "product" | "model" | "lifestyle" | "graphic" | "logo" | "before_after" | "other";
+export type AssetCategory = "product" | "model" | "lifestyle" | "graphic" | "logo" | "before_after" | "post_production" | "other";
 
 export const ASSET_CATEGORIES: AssetCategory[] = [
   "product",
@@ -1187,6 +1187,7 @@ export const ASSET_CATEGORIES: AssetCategory[] = [
   "graphic",
   "logo",
   "before_after",
+  "post_production",
   "other",
 ];
 

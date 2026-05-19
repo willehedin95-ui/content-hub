@@ -11,7 +11,7 @@ import {
   Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Asset, AssetCategory, Product } from "@/types";
+import type { Asset, AssetCategory } from "@/types";
 import {
   applyOverlayOnly,
   applyPipeline,
@@ -43,17 +43,12 @@ interface Props {
 type SourceMode = "upload" | "existing";
 
 const CATEGORY_OPTIONS: { value: AssetCategory; label: string }[] = [
+  { value: "post_production", label: "Post Production" },
   { value: "before_after", label: "Before / After" },
   { value: "lifestyle", label: "Lifestyle" },
   { value: "model", label: "Model / People" },
   { value: "product", label: "Product" },
   { value: "other", label: "Other" },
-];
-
-const PRODUCT_OPTIONS: { value: Product | ""; label: string }[] = [
-  { value: "", label: "General (no product)" },
-  { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
 ];
 
 function sanitizeFilename(name: string): string {
@@ -88,8 +83,7 @@ export default function PostProductionStandalone({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [saveCategory, setSaveCategory] = useState<AssetCategory>("before_after");
-  const [saveProduct, setSaveProduct] = useState<Product | "">("");
+  const [saveCategory, setSaveCategory] = useState<AssetCategory>("post_production");
 
   const activeRunRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,7 +269,9 @@ export default function PostProductionStandalone({
       formData.append("file", blob, filename);
       formData.append("name", saveName || defaultName);
       formData.append("category", saveCategory);
-      if (saveProduct) formData.append("product", saveProduct);
+      // Product is inferred from the current workspace - no need to set
+      // it explicitly. Workspace-per-product makes the product field
+      // redundant.
       const res = await fetch("/api/assets", { method: "POST", body: formData });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -299,7 +295,6 @@ export default function PostProductionStandalone({
     saveName,
     defaultName,
     saveCategory,
-    saveProduct,
     onAssetsChange,
     assets,
   ]);
@@ -460,31 +455,17 @@ export default function PostProductionStandalone({
                     className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Category</label>
-                    <select
-                      value={saveCategory}
-                      onChange={(e) => setSaveCategory(e.target.value as AssetCategory)}
-                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs bg-white"
-                    >
-                      {CATEGORY_OPTIONS.map((c) => (
-                        <option key={c.value} value={c.value}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Product</label>
-                    <select
-                      value={saveProduct}
-                      onChange={(e) => setSaveProduct(e.target.value as Product | "")}
-                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs bg-white"
-                    >
-                      {PRODUCT_OPTIONS.map((p) => (
-                        <option key={p.value} value={p.value}>{p.label}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Category</label>
+                  <select
+                    value={saveCategory}
+                    onChange={(e) => setSaveCategory(e.target.value as AssetCategory)}
+                    className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs bg-white"
+                  >
+                    {CATEGORY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex gap-2">
                   <button

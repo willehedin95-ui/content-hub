@@ -19,6 +19,7 @@ const CATEGORY_LABELS: Record<AssetCategory, string> = {
   graphic: "Graphic",
   logo: "Logo",
   before_after: "Before / After",
+  post_production: "Post Production",
   other: "Other",
 };
 
