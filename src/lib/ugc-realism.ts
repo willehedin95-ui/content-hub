@@ -39,28 +39,74 @@ export const IPHONE_DEVICE = "iPhone 12";
 export const IPHONE_MAGIC_PHRASE = "shot with an iPhone with imperfect lighting";
 
 /**
- * The canonical iPhone-locked-capture style block (Section 9 of
- * AI-UGC-PROMPT-EXAMPLES.md, lightly extended with iPhone 12 + slight film
- * grain from FutrGroup). Apply this to any image-gen prompt that should look
- * like a real customer phone selfie.
+ * Leading instruction / Section-0 preamble (from @DanjiTosaka via
+ * realistic-selfie-prompt-techniques.md). One-line preamble that sets the
+ * model's output bucket BEFORE it reads any prose body. Same prose produces
+ * dramatically different output depending on this line.
+ *
+ * This is the bucket-selector for "customer testimonial phone selfie" vs
+ * "luxury portrait" vs "Sony A7R editorial". Pull from here.
+ */
+export const LEADING_INSTRUCTION =
+  "No text, no watermarks. iPhone selfie taken mid-routine, raw amateur quality, NOT polished influencer aesthetic.";
+
+/**
+ * The canonical iPhone-locked-capture style block. Pulls from:
+ * - Section 9 of AI-UGC-PROMPT-EXAMPLES.md (locked-capture template)
+ * - @daaaaanc cafe prompt (NO ARTIFICIAL BOKEH override)
+ * - @iamdomprompt JSON blocks (subsurface scattering, sensor atmosphere)
+ * - @ViralOps_ talking-to-camera prompt (slight edge distortion from close lens)
+ * - iPhone 12 front-camera real specs (23mm equivalent, f/2.2)
+ *
+ * Apply this to any image-gen prompt that should look like a real customer
+ * phone selfie.
  */
 export const IPHONE_LOCKED_CAPTURE_STYLE = [
   "You are locked into a permanent capture style: Authentic iPhone front-camera photo realism.",
   `Rules: Simulate Apple ${IPHONE_DEVICE} computational photography pipeline (older device aesthetic, NOT the polished look of newer 15 Pro / 16 Pro).`,
+  // Lens anatomy (iPhone 12 front camera real specs)
+  "23mm equivalent front-facing wide-angle lens, f/2.2 aperture, slight edge distortion from close phone lens.",
+  // What it is NOT
   "No cinematic lighting, no flash, no studio lighting.",
   "No beauty filters, no symmetry correction, no pose optimization.",
+  // Computational photography signatures
   "Slight wide-angle distortion.",
   "Subtle edge sharpening.",
   "Flattened midtones.",
   "Mild overexposure on highlights.",
-  "Natural shadow noise.",
-  "Real skin texture (pores, creases, uneven tone).",
+  "Natural shadow noise (slight grain in dark areas, typical of phone sensor in indoor light).",
+  "Very subtle natural vignetting (faint corner shading, not stylized).",
+  // Skin rendering physics (@iamdomprompt subsurface_scattering cue)
+  "Real skin texture (pores, creases, uneven tone). Subsurface scattering: soft light penetrating the skin edges creating a natural fleshy translucency, NOT opaque shader / plastic skin.",
+  // Composition / DOF (@daaaaanc NO ARTIFICIAL BOKEH override)
   "Casual framing, slightly imperfect crop.",
+  "NO ARTIFICIAL BOKEH. Phone small-sensor deep focus overall - the entire frame stays in focus, real phones cannot produce portrait-mode shallow DOF naturally.",
   "Micro motion blur allowed.",
   "NO HDR look.",
   "Flat image colors.",
   "Slight film grain.",
 ].join(" ");
+
+/**
+ * Anti-perfection trailing negative list (verbatim from @ViralOps_). More
+ * aggressive than the generic FORBIDDEN_LOOKS list - each forbid maps to a
+ * specific failure mode the model defaults to. Appended at the END of a
+ * testimonial prompt for max effect.
+ */
+export const ANTI_PERFECTION_TRAILING_BLOCK =
+  "No flawless skin, no professional photography look, no centered composition, no clean minimalist room, no airbrushing, no softbox lighting, no glamour pose.";
+
+/**
+ * Freckle / mole gotcha. Per @DanjiTosaka reply chain - Nano Banana renders
+ * "freckles" / "moles" / "beauty marks" as visible RED-SPOT / blemish
+ * artifacts rather than soft pigmentation. Do NOT name these features in
+ * prompts. Generic "natural skin texture" + "visible micro-pores" stay safe.
+ *
+ * If a real reference image has freckles, attach it and let the model copy
+ * them - don't describe them in text.
+ */
+export const FRECKLE_MOLE_GOTCHA_NOTE =
+  "Do NOT name 'freckles', 'moles', 'beauty marks', 'sunspots', 'age marks' or similar named pigmentation features in the prompt - they render as red-spot artifacts in Nano Banana. Use 'natural skin texture variation' or 'natural age-appropriate skin' instead.";
 
 /**
  * The 7 Things That Scream AI (Module 1 of the Anti-slop AI UGC System).
@@ -166,18 +212,28 @@ export const TESTIMONIAL_FINAL_TEST = [
  * "real customer iPhone selfie" not a polished brand creative.
  */
 export function buildTestimonialStyleBlock(opts?: {
+  /** Prepend the leading instruction (Section-0 preamble). Default true. */
+  includeLeadingInstruction?: boolean;
   /** Prepend the FutrGroup magic phrase (recommended default true). */
   includeMagicPhrase?: boolean;
   /** Append the FINAL TEST locking statement (recommended default true). */
   includeFinalTest?: boolean;
   /** Append the 7 AI tells as explicit negatives (recommended default true). */
   includeAiTells?: boolean;
+  /** Append the @ViralOps_ anti-perfection trailing block. Default true. */
+  includeAntiPerfection?: boolean;
 }): string {
+  const includeLeading = opts?.includeLeadingInstruction ?? true;
   const includeMagic = opts?.includeMagicPhrase ?? true;
   const includeFinal = opts?.includeFinalTest ?? true;
   const includeTells = opts?.includeAiTells ?? true;
+  const includeAnti = opts?.includeAntiPerfection ?? true;
 
   const parts: string[] = [];
+  // Section-0: leading instruction sets the model bucket BEFORE anything else.
+  if (includeLeading) {
+    parts.push(LEADING_INSTRUCTION);
+  }
   if (includeMagic) {
     parts.push(`${IPHONE_MAGIC_PHRASE}.`);
   }
@@ -191,6 +247,11 @@ export function buildTestimonialStyleBlock(opts?: {
     `FORBIDDEN PHRASING (trigger polish even when negated): ${FORBIDDEN_TRIGGER_PHRASINGS.join(", ")}.`,
   );
   parts.push(`FORBIDDEN LOOK: ${FORBIDDEN_LOOKS.join(", ")}.`);
+  // Anti-perfection block goes LAST per @ViralOps_ - aggressive trailing
+  // negative list is more effective than mid-prompt.
+  if (includeAnti) {
+    parts.push(ANTI_PERFECTION_TRAILING_BLOCK);
+  }
   if (includeFinal) {
     parts.push(TESTIMONIAL_FINAL_TEST);
   }

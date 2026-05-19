@@ -479,9 +479,14 @@ function buildPrompt(args: {
   const testimonialFrame =
     "These images represent GENUINE CUSTOMER TESTIMONIAL SELFIES - the kind a real customer texts to a friend showing 'look at my before / after'. They are NOT marketing creative. The subject is NOT trying to look good for the camera. This is a casual mid-routine phone snap.";
 
+  // Zone-specific cues for face zones. Two important gotchas:
+  // - Do NOT name "freckles", "moles", "sunspots", "age marks", "beauty marks"
+  //   - Nano Banana renders these as red-spot / blemish artifacts (per
+  //   @DanjiTosaka). Use generic "natural skin texture variation" instead.
+  // - Skin micro-detail (pores, vellus hair, under-eye creasing) is safe.
   const zoneSpecificCues = isNails || isHair
     ? ""
-    : " SKIN (face zones): Visible pore structure, faint natural redness around the nose and cheeks, clear specular shine on the forehead and nose bridge (real skin oil reflecting overhead light), soft under-eye creasing, occasional stray vellus hair, faint sunspots or age marks where realistic for the demographic. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape." +
+    : " SKIN (face zones): Visible pore structure, faint natural redness around the nose and cheeks, clear specular shine on the forehead and nose bridge (real skin oil reflecting overhead light), soft under-eye creasing, occasional stray vellus hair along the jawline, natural skin texture variation appropriate for the demographic. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape." +
       " HAIR: Mid-routine messy - loose strands falling naturally, flyaways near the temples, strands crossing the face. Not styled, not brushed. Could look slept-on." +
       " ENVIRONMENT (lived-in customer home, NEVER studio): bathroom with matte tiles and faint grout imperfections, mirror with dust streaks and faint fingerprint smudges, an unmade bed with rumpled duvet, kitchen counter with a casual mug or dish, a hand towel draped on a rail, a phone case with tiny scratches.";
 
