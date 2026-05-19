@@ -169,14 +169,19 @@ const TOPS = [
   "soft sage-green crew neck",
 ];
 
+// LIGHTING_VARIANTS = unflattering "whatever was on in the room" testimonial
+// lighting. NEVER pretty editorial / golden hour / soft beauty light. The
+// whole point is to look like a casual customer phone snap, not a brand ad.
 const LIGHTING_VARIANTS = [
-  "bright morning window light from the side, slight warm tone",
-  "soft midday overhead light, neutral white balance",
-  "warm late-afternoon golden light streaming from a window",
-  "neutral indoor overhead bulb light, slightly dimmer",
-  "cool diffuse window light on a cloudy day",
-  "warm bathroom vanity light, slightly yellow",
-  "soft morning kitchen light, cool and bright",
+  "harsh overhead bathroom ceiling light, slightly yellow, creates shadows under the brow and chin",
+  "flat fluorescent ceiling light from above, slightly green tinted, washes out the skin",
+  "mixed lighting: cool window light from one side + warm tungsten ceiling lamp from the other, slight orange-on-one-side / blue-on-other color cast",
+  "dim morning bathroom light, slightly underexposed, dark shadows around the eyes",
+  "warm yellow kitchen ceiling bulb, slight overexposure on the forehead and nose-bridge highlights, T-zone shine visible",
+  "cool blueish midday window light, slightly washes out skin tones, slight blue color cast",
+  "phone front camera in dim indoor light, slight noise/grain in the shadows, faint orange color cast from a nearby lamp",
+  "harsh side light from a window, one side of the face noticeably brighter than the other, slight overexposure on the lit side",
+  "yellowish bathroom vanity bulb from above, casting shadows under the cheekbones and nose, slightly overexposed forehead",
 ];
 
 const STRAIGHT_HEAD_OPTIONS = [
@@ -291,11 +296,11 @@ const INTENSITY_PROMPTS: Record<Intensity, string> = {
 
 const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
-    "BEFORE half: short, uneven free edge (the white tip barely past the fingertip, slightly ragged). AFTER half: longer free edge with a clean even white tip, clearly past the fingertip. Nail surface, color, and shape stay IDENTICAL between halves - same ridge level, same pink tone, same overall shape. The ONLY visible delta is the free-edge length and cleanliness.",
+    "BEFORE half: ragged uneven free edge with dry-looking cuticle area, slightly hangnail-y at the sides of the nails, no clear white tip. AFTER half: SAME LENGTH NAILS but with a cleaner, more even free edge (still natural, NOT filed-to-perfect) and slightly less dry cuticle area. Nail surface, color, shape, and OVERALL LENGTH stay IDENTICAL between halves. CRITICAL: do NOT make the nails longer in the AFTER half - the ONLY visible delta is cuticle and edge cleanliness.",
   moderate:
-    "BEFORE half: short, uneven free edge + slightly ridged nail surface (vertical lines visible). AFTER half: longer clean free edge + smoother nail surface (ridges much less visible). Color stays IDENTICAL between halves (same natural pink tone), and overall shape stays the same. NO polish, NO gel, NO french manicure paint - the white tip in AFTER is the natural free edge of the nail.",
+    "BEFORE half: ragged uneven free edge + slightly ridged nail surface (vertical lines visible) + dry cuticles. AFTER half: slightly longer free edge with cleaner natural white tip + smoother nail surface (ridges less visible) + tidier cuticles. Color stays IDENTICAL between halves (same natural pink tone). NO polish, NO gel - the white tip in AFTER is the natural free edge of the nail.",
   dramatic:
-    "BEFORE half: short, ridged surface, slightly dull or yellowish nail color. AFTER half: longer free edge, smooth nail surface, healthy natural pink tone. This is the maximum delta for nails - clear improvement across length, surface, and color. Still bare natural nails - NO polish, NO gel, NO fake tips, NO manicure styling.",
+    "BEFORE half: short ragged uneven free edge + ridged surface + slightly dull / yellowish nail color + dry cuticles. AFTER half: longer free edge with clean natural white tip + smooth nail surface + healthy natural pink tone + clean cuticles. Maximum delta for nails - clear improvement across length, surface, color, and cuticle care. Still bare natural nails - NO polish, NO gel, NO fake tips, NO manicure styling.",
 };
 
 const HAIR_INTENSITY_PROMPTS: Record<Intensity, string> = {
@@ -307,20 +312,26 @@ const HAIR_INTENSITY_PROMPTS: Record<Intensity, string> = {
     "BEFORE half: wide parting line (4-5 mm scalp visible) + flat sparse crown + dull / limp strand surface + no baby hairs at the hairline. AFTER half: narrow parting (1.5-2 mm scalp visible) + crown volume / lift + soft tapered short new-growth 'baby hairs' visible standing up along the hairline and along the part edges (soft regrowth tips, NOT blunt breakage) + subtle natural sheen on the strands. Hair LENGTH stays IDENTICAL between halves (hair grows ~1cm/month, no length jump). Hair COLOR stays IDENTICAL. STYLE stays IDENTICAL. Four-feature delta is the maximum for hair.",
 };
 
+// NAIL_HAND_POSES: ONLY back-of-hand variants. Palm-up was removed because
+// pairing it with back-of-hand caused wild hand-flip between halves. All
+// poses now show the same SIDE of the hand (knuckles / nail-side visible
+// from above-angle). Micro-variation between halves only.
 const NAIL_HAND_POSES = [
-  "hand in a relaxed loose curl, fingers gently bent, nails clearly visible from above",
-  "hand held up with fingers slightly fanned out, knuckles partly visible, nails facing the camera",
-  "hand resting palm-up with fingers naturally curled toward the camera, nail tips dominant in frame",
-  "hand held vertically with fingers angled toward the camera, casual 'showing my nails' pose",
-  "hand slightly cupped with fingers loosely together, nails visible from the side-top angle",
-  "hand held flat with fingers slightly spread, nails facing the camera straight on",
+  "back of the hand visible from a slight above-angle, fingers in a relaxed loose curl, nails clearly visible",
+  "back of the hand, fingers gently bent, knuckles partly visible, nails dominant in frame",
+  "back of the hand with fingers slightly fanned out, knuckles partly visible, nails facing the camera",
+  "back of the hand, fingers loosely together, nails visible from a slight side-top angle",
+  "back of the hand held vertically with fingers angled toward the camera, casual 'showing my nails' pose",
+  "back of the hand held flat with fingers slightly spread, nails facing the camera straight on",
 ];
 
+// NAIL_BACKGROUNDS: lived-in home surfaces only. "Plain neutral grey backdrop"
+// was removed because it produces a studio-shot look that breaks the
+// testimonial frame.
 const NAIL_BACKGROUNDS = [
   "soft out-of-focus light wall in a home (cream, off-white, or pale grey)",
   "soft out-of-focus wooden table or surface in the background",
   "soft out-of-focus kitchen counter in the background",
-  "plain neutral grey backdrop, casual",
   "soft out-of-focus window light in the background, blurred indoor scene",
   "soft out-of-focus pale neutral fabric (a sleeve, blanket, or t-shirt corner)",
   "soft out-of-focus desk or bedside table in the background",
@@ -468,15 +479,15 @@ function buildPrompt(args: {
     : "BEFORE half: neutral, relaxed face. AFTER half: neutral, relaxed face. Same general expression in both halves with only natural micro-variations. NEVER smile in BEFORE if AFTER is neutral.";
 
   const sharedStyle =
-    "CRITICAL UGC AUTHENTICITY: The image must pass the 'Instagram scroll test' - a viewer scrolling Instagram should NOT be able to tell this is AI-generated within 3 seconds. If it looks AI, you have failed. " +
-    "CAMERA: Captured on an iPhone 16 Pro using the front camera at high resolution, with the typical computational look of a real smartphone photo. Raw handheld realism and the color science of an actual iPhone image. Slight wide-angle distortion when subject is close (nose/forehead very subtly enlarged toward the camera). Everything remains in full focus with no artificial blur - real phones don't blur backgrounds like DSLRs do. Autoexposure is not perfect - one cheek can be a quarter-stop brighter than the other, T-zone has slight specular highlights, shadows are not crushed. " +
-    "LIGHTING (specify direction, never controlled): Natural daylight from a window on one specific side of the frame, producing gentle highlights and soft falloff toward the background. OR flat neutral indoor bathroom lighting from above. OR soft natural daylight from a frosted window on one side. Lighting is uneven across the face - one side slightly brighter than the other. " +
-    "SKIN: Visible pore structure on cheeks and nose, faint natural redness around the nose, slight shine or sheen on the forehead, soft under-eye detail with faint undereye creasing, occasional stray vellus hair. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape. " +
-    "HAIR: Slightly messy with loose strands falling naturally. Not styled, not brushed perfectly. A few flyaways near the temples or strands crossing the face. " +
-    "COMPOSITION: Slightly off-center framing, asymmetrical stance, sometimes the top of the head is cut off slightly or there is too much headroom. Not posed-portrait centered. " +
-    "ENVIRONMENT (lived-in, authentic): Real home setting with mundane details visible in soft focus - matte tiles with tiny grout imperfections, a mirror with faint dust streaks, an unmade bed with white duvet in soft folds, kitchen counter with a casual mug, a hand towel casually draped on a rail, a phone case with tiny scratches and a fingerprint smudge. The vibe is 'she hit record without cleaning'. " +
-    "FORBIDDEN PHRASING (these words trigger polished AI look even when negated): do NOT default to 'professional', 'magazine', 'stock', 'editorial'. " +
-    "FORBIDDEN LOOK: ring light glow, studio lighting setup, controlled three-point lighting, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect facial symmetry, dead/frozen eyes, floating product, empty backdrop. " +
+    "CRITICAL TESTIMONIAL AUTHENTICITY: These images represent GENUINE CUSTOMER TESTIMONIAL SELFIES - the kind a real customer would text to a friend showing 'look at my before / after'. They are NOT marketing creative. They are NOT polished brand ads. If the output looks like it could be a brand ad, you have failed. The subject is NOT trying to look good for the camera - this is a casual mid-routine phone snap taken to document their result. " +
+    "CAMERA: Captured on an iPhone front camera at high resolution. Raw handheld realism, computational look of a real smartphone photo (HDR sometimes flat, sometimes over-saturated, slight wide-angle distortion when face is close). Everything remains in focus - real phones don't blur backgrounds like DSLRs. Phone held BY THE SUBJECT THEMSELVES at an awkward angle - the framing is rushed and not considered. " +
+    "LIGHTING (the WHOLE POINT of testimonial vibe - whatever was on in the room, NOT chosen for flattery): Could be harsh overhead bathroom ceiling light creating shadows under the brow and chin. Could be a warm yellow kitchen ceiling bulb slightly overexposing the forehead and nose-bridge highlights. Could be mixed lighting (cool window + warm tungsten ceiling) creating a slight color cast across the face. Could be dim morning bathroom light slightly underexposing the shadows. Could be cool blueish midday window light washing out skin tones. Auto-exposure is imperfect - one side of the face is noticeably brighter than the other, T-zone has clear specular shine, shadow detail is partially crushed. White balance is slightly off (faint yellow OR blue color cast typical of indoor light + phone auto-WB). " +
+    "SKIN: Visible pore structure, faint natural redness around the nose and cheeks, clear specular shine on the forehead and nose bridge (real skin oil reflecting overhead light), soft under-eye creasing, occasional stray vellus hair, faint sunspots or age marks where realistic for the demographic. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape. Slight noise/grain visible in darker areas of the image (typical of phone camera in non-ideal indoor light). " +
+    "HAIR: Mid-routine messy - loose strands falling naturally, flyaways near the temples, strands crossing the face. Not styled, not brushed. Could look slept-on. " +
+    "COMPOSITION: Off-center framing, asymmetric stance, sometimes top of head cut off, sometimes too much headroom, sometimes the camera is held slightly tilted. This is NOT a posed portrait - it is a rushed snap. " +
+    "ENVIRONMENT (lived-in customer home, NEVER studio): bathroom with matte tiles and faint grout imperfections, mirror with dust streaks and faint fingerprint smudges, an unmade bed with rumpled duvet, kitchen counter with a casual mug or dish, a hand towel draped on a rail, a phone case with tiny scratches. The vibe: 'she just hit the camera button mid-routine without cleaning or styling'. " +
+    "FORBIDDEN PHRASING (these words trigger polished AI look even when negated): NEVER default to 'professional', 'magazine', 'stock', 'editorial', 'flattering'. " +
+    "FORBIDDEN LOOK: ring light glow, studio lighting setup, controlled three-point lighting, golden hour, soft beauty light, symmetric face lighting, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect facial symmetry, dead/frozen eyes, floating product, empty backdrop, plain neutral studio backdrop, posed model expression, styled hair, applied makeup, skincare-ad aesthetic. " +
     "The 'after' visual is a naturally rested look over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
 
   const promptObj: Record<string, unknown> = hasSource
@@ -580,19 +591,19 @@ function buildPrompt(args: {
         style: sharedStyle,
         hard_constraints: isNails
           ? [
+              `SAME WOMAN'S HAND IN BOTH HALVES (HIGHEST PRIORITY - read this first): both halves show the EXACT SAME individual woman's hand. Same skin tone, same skin texture, same hand size, same finger thickness and length proportions, same knuckle and joint structure, same vein pattern visible on the back of the hand, same age signs (same wrinkle depth, same sun spots / age marks in the same locations), same hair pattern (or lack thereof) on the fingers. This is a WOMAN's hand, NOT a man's hand. The AFTER hand is NOT a different person and NOT a younger version - it is the SAME hand, weeks later, slightly different pose.`,
+              "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: any distinctive skin mark, sun spot, scar, vein bulge, or knuckle wrinkle visible in one half must appear in EXACTLY THE SAME LOCATION and at the SAME SIZE in the other half. The model must NOT add a new mark in one half that does not exist in the other. The model must NOT remove a mark that should be in both.",
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. The image MUST show ONLY a tight close-up of fingernails on one hand. The frame does NOT include the face, body, wrist, or arm. Both halves use the SAME tight nail crop.",
               "EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE 16:9 image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos.",
-              "NO MIRROR-FLIP between halves: which side of the hand is shown stays consistent. If 'before' shows the back/top of the hand, 'after' also shows the back/top. If 'before' shows the palm side, so does 'after'. NEVER horizontally flip the whole composition.",
+              "NO MIRROR-FLIP between halves: BOTH halves show the BACK of the hand (knuckles / nail-side visible from above). NEVER show the palm in one half and the back in the other. NEVER horizontally flip the whole composition.",
               "HAND ORIENTATION CONSISTENCY: in both halves the hand extends in the SAME direction with the SAME edge of the wrist/sleeve area on the SAME side of the frame. Never invert, rotate 180°, or vertically flip the hand between halves.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
-              `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. These MUST visibly differ - the hand is in two genuinely different casual poses, because the two photos were taken on different days. FORBIDDEN: identical finger curl or hand angle in both halves.`,
-              `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. These MUST visibly differ - two separate photos taken in slightly different spots / on different surfaces. FORBIDDEN: identical background in both halves.`,
-              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. These should differ - two separate photos on different days.`,
-              "SAME PERSON / SAME HAND: both halves show the same individual's hand - same skin tone, same finger length proportions, same hand size, same knuckle / joint structure, same individual. The 'after' hand is NOT a different person's hand - just the same hand weeks later in a different pose.",
-              "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: whatever distinctive detail of the skin or fingers appears in one half must appear identically in the other half (same placement, same size). The model must NOT invent a new detail that exists in only one half.",
-              "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual photo of natural unpainted nails.",
-              "FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry. The image must look like two casual phone close-ups from a real person's camera roll - mundane, real, slightly imperfect.",
-              "Both halves must have realistic un-retouched skin texture (natural pores, faint creases on the finger joints) and natural nail surface texture. Both look like real phone-camera quality.",
+              `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. Both poses show the SAME side of the hand (the back) with only SUBTLE differences in finger curl. Do NOT pick two wildly different angles - this is the same hand on two days, both photographed from above.`,
+              `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. The two halves may show natural between-photo variation in lighting and angle within the same general home setting, but DO NOT pick wildly different locations (e.g. one studio + one kitchen). Both feel like casual home environments.`,
+              `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. Lighting may vary as if taken on different days, but BOTH are casual unflattering home lighting (NO studio softbox, NO ring light, NO pretty editorial light).`,
+              "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual phone close-up of natural unpainted nails.",
+              "TESTIMONIAL VIBE: the image MUST look like two casual phone close-ups a customer took at home on different days - mundane, real, slightly imperfect, NOT styled. FORBIDDEN: salon manicure look, studio product photography, ring light glow, beauty filter, AI-rendering polish, perfect symmetry, plain studio backdrop. If it looks like a brand ad you have failed.",
+              "Both halves must have realistic un-retouched skin texture (natural pores, knuckle wrinkles, faint creases on the finger joints, age-appropriate marks for the demographic) and natural nail surface texture. Both look like real phone-camera quality in casual indoor light.",
             ]
           : [
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
