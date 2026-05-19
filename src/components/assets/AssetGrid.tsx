@@ -286,18 +286,28 @@ export default function AssetGrid({
         body: JSON.stringify({
           name: editName.trim(),
           category: editCategory,
-          product: editProduct || null,
-          tags: editTags,
         }),
       });
       if (!res.ok) throw new Error("Update failed");
       const updated: Asset = await res.json();
       onAssetsChange(assets.map((a) => (a.id === previewAsset.id ? updated : a)));
       setPreviewAsset(updated);
-      setEditTags(updated.tags || []);
     } catch {
       alert("Failed to update asset");
     }
+  }
+
+  function handleDownloadPreviewAsset() {
+    if (!previewAsset) return;
+    const ext = previewAsset.media_type === "video" ? "mp4" : "jpg";
+    const filename = `${previewAsset.name.replace(/[^a-zA-Z0-9._-]/g, "_")}.${ext}`;
+    const proxiedUrl = `/api/download-proxy?url=${encodeURIComponent(previewAsset.url)}&filename=${encodeURIComponent(filename)}`;
+    const a = document.createElement("a");
+    a.href = proxiedUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   function startEdit(asset: Asset) {
@@ -920,69 +930,6 @@ export default function AssetGrid({
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Product
-                  </label>
-                  <select
-                    value={editProduct}
-                    onChange={(e) => setEditProduct(e.target.value)}
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    {PRODUCT_OPTIONS.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Tags
-                  </label>
-                  <div className="flex flex-wrap gap-1 mb-1.5">
-                    {editTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5 text-xs"
-                      >
-                        {tag}
-                        <button
-                          onClick={() => setEditTags(editTags.filter((t) => t !== tag))}
-                          className="text-indigo-400 hover:text-indigo-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <input
-                    type="text"
-                    value={editTagInput}
-                    onChange={(e) => setEditTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && editTagInput.trim()) {
-                        e.preventDefault();
-                        const tag = editTagInput.trim().toLowerCase();
-                        if (!editTags.includes(tag)) setEditTags([...editTags, tag]);
-                        setEditTagInput("");
-                      }
-                    }}
-                    placeholder="Type and press Enter..."
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {SUGGESTED_TAGS.filter((t) => !editTags.includes(t)).slice(0, 5).map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => setEditTags([...editTags, tag])}
-                        className="text-[10px] bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-full px-2 py-0.5 transition-colors"
-                      >
-                        + {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
                 {/* Metadata */}
                 <div className="pt-3 border-t border-gray-100 space-y-2">
@@ -1033,6 +980,13 @@ export default function AssetGrid({
                     Edit (Post Production)
                   </button>
                 )}
+                <button
+                  onClick={handleDownloadPreviewAsset}
+                  className="w-full flex items-center justify-center gap-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
                 <button
                   onClick={() => { handleDelete(previewAsset.id); closePreview(); }}
                   className="w-full flex items-center justify-center gap-1.5 bg-white border border-red-200 text-red-500 rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-50 transition-colors"
