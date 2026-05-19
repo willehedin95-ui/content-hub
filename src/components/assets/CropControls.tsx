@@ -18,11 +18,13 @@ interface Props {
 function HalfBlock({
   title,
   value,
+  outputRatio,
   onChange,
   onReset,
 }: {
   title: string;
   value: HalfCrop;
+  outputRatio: OutputRatio;
   onChange: (next: HalfCrop) => void;
   onReset: () => void;
 }) {
@@ -30,6 +32,10 @@ function HalfBlock({
     (patch: Partial<HalfCrop>) => onChange({ ...value, ...patch }),
     [value, onChange],
   );
+  // Pan is meaningful whenever zoom > 1 OR the output ratio differs from
+  // source (in which case cover-fit produces a smaller crop rect than the
+  // source half - there's room to slide it around).
+  const canPan = value.zoom > 1.001 || outputRatio !== "source";
   return (
     <div className="rounded-lg border border-gray-200 p-3 space-y-2">
       <div className="flex items-center justify-between">
@@ -73,7 +79,7 @@ function HalfBlock({
           step={0.05}
           value={value.panX}
           onChange={(e) => set({ panX: Number(e.target.value) })}
-          disabled={value.zoom <= 1.001}
+          disabled={!canPan}
           className="w-full accent-indigo-600 cursor-pointer disabled:opacity-50"
         />
       </div>
@@ -91,7 +97,7 @@ function HalfBlock({
           step={0.05}
           value={value.panY}
           onChange={(e) => set({ panY: Number(e.target.value) })}
-          disabled={value.zoom <= 1.001}
+          disabled={!canPan}
           className="w-full accent-indigo-600 cursor-pointer disabled:opacity-50"
         />
       </div>
@@ -142,12 +148,14 @@ export default function CropControls({ crop, onChange }: Props) {
         <HalfBlock
           title="BEFORE half"
           value={crop.before}
+          outputRatio={crop.outputRatio}
           onChange={(next) => onChange({ ...crop, before: next })}
           onReset={() => onChange({ ...crop, before: { ...DEFAULT_HALF_CROP } })}
         />
         <HalfBlock
           title="AFTER half"
           value={crop.after}
+          outputRatio={crop.outputRatio}
           onChange={(next) => onChange({ ...crop, after: next })}
           onReset={() => onChange({ ...crop, after: { ...DEFAULT_HALF_CROP } })}
         />
