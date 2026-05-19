@@ -4,6 +4,10 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { CLAUDE_MODEL } from "@/lib/constants";
 import { calcClaudeCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
+import {
+  UNFLATTERING_LIGHTING_OPTIONS,
+  buildTestimonialStyleBlock,
+} from "@/lib/ugc-realism";
 
 export const maxDuration = 800;
 
@@ -169,20 +173,9 @@ const TOPS = [
   "soft sage-green crew neck",
 ];
 
-// LIGHTING_VARIANTS = unflattering "whatever was on in the room" testimonial
-// lighting. NEVER pretty editorial / golden hour / soft beauty light. The
-// whole point is to look like a casual customer phone snap, not a brand ad.
-const LIGHTING_VARIANTS = [
-  "harsh overhead bathroom ceiling light, slightly yellow, creates shadows under the brow and chin",
-  "flat fluorescent ceiling light from above, slightly green tinted, washes out the skin",
-  "mixed lighting: cool window light from one side + warm tungsten ceiling lamp from the other, slight orange-on-one-side / blue-on-other color cast",
-  "dim morning bathroom light, slightly underexposed, dark shadows around the eyes",
-  "warm yellow kitchen ceiling bulb, slight overexposure on the forehead and nose-bridge highlights, T-zone shine visible",
-  "cool blueish midday window light, slightly washes out skin tones, slight blue color cast",
-  "phone front camera in dim indoor light, slight noise/grain in the shadows, faint orange color cast from a nearby lamp",
-  "harsh side light from a window, one side of the face noticeably brighter than the other, slight overexposure on the lit side",
-  "yellowish bathroom vanity bulb from above, casting shadows under the cheekbones and nose, slightly overexposed forehead",
-];
+// Lighting pool is the canonical UNFLATTERING_LIGHTING_OPTIONS from
+// ugc-realism.ts. Per-half picks via pickPair below.
+const LIGHTING_VARIANTS = UNFLATTERING_LIGHTING_OPTIONS;
 
 const STRAIGHT_HEAD_OPTIONS = [
   "head straight on, neutral tilt",
@@ -478,17 +471,25 @@ function buildPrompt(args: {
     ? "BEFORE half: neutral, relaxed face, no smile. AFTER half: very subtle natural smile or relaxed expression (slight upturn of the mouth corners is fine, not a full grin). NEVER smile in BEFORE if AFTER is neutral - that reverses the narrative. Same person, just looks slightly more rested in AFTER."
     : "BEFORE half: neutral, relaxed face. AFTER half: neutral, relaxed face. Same general expression in both halves with only natural micro-variations. NEVER smile in BEFORE if AFTER is neutral.";
 
+  // Testimonial-style realism. Pulls verbatim from canonical sources via
+  // ugc-realism.ts. The B/A-specific intro frames the use case (customer
+  // testimonial, not brand creative) and the zone-specific additions cover
+  // face-only details (T-zone shine, environment imperfections) that don't
+  // apply to nails or hair_scalp zones.
+  const testimonialFrame =
+    "These images represent GENUINE CUSTOMER TESTIMONIAL SELFIES - the kind a real customer texts to a friend showing 'look at my before / after'. They are NOT marketing creative. The subject is NOT trying to look good for the camera. This is a casual mid-routine phone snap.";
+
+  const zoneSpecificCues = isNails || isHair
+    ? ""
+    : " SKIN (face zones): Visible pore structure, faint natural redness around the nose and cheeks, clear specular shine on the forehead and nose bridge (real skin oil reflecting overhead light), soft under-eye creasing, occasional stray vellus hair, faint sunspots or age marks where realistic for the demographic. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape." +
+      " HAIR: Mid-routine messy - loose strands falling naturally, flyaways near the temples, strands crossing the face. Not styled, not brushed. Could look slept-on." +
+      " ENVIRONMENT (lived-in customer home, NEVER studio): bathroom with matte tiles and faint grout imperfections, mirror with dust streaks and faint fingerprint smudges, an unmade bed with rumpled duvet, kitchen counter with a casual mug or dish, a hand towel draped on a rail, a phone case with tiny scratches.";
+
   const sharedStyle =
-    "CRITICAL TESTIMONIAL AUTHENTICITY: These images represent GENUINE CUSTOMER TESTIMONIAL SELFIES - the kind a real customer would text to a friend showing 'look at my before / after'. They are NOT marketing creative. They are NOT polished brand ads. If the output looks like it could be a brand ad, you have failed. The subject is NOT trying to look good for the camera - this is a casual mid-routine phone snap taken to document their result. " +
-    "CAMERA: Captured on an iPhone front camera at high resolution. Raw handheld realism, computational look of a real smartphone photo (HDR sometimes flat, sometimes over-saturated, slight wide-angle distortion when face is close). Everything remains in focus - real phones don't blur backgrounds like DSLRs. Phone held BY THE SUBJECT THEMSELVES at an awkward angle - the framing is rushed and not considered. " +
-    "LIGHTING (the WHOLE POINT of testimonial vibe - whatever was on in the room, NOT chosen for flattery): Could be harsh overhead bathroom ceiling light creating shadows under the brow and chin. Could be a warm yellow kitchen ceiling bulb slightly overexposing the forehead and nose-bridge highlights. Could be mixed lighting (cool window + warm tungsten ceiling) creating a slight color cast across the face. Could be dim morning bathroom light slightly underexposing the shadows. Could be cool blueish midday window light washing out skin tones. Auto-exposure is imperfect - one side of the face is noticeably brighter than the other, T-zone has clear specular shine, shadow detail is partially crushed. White balance is slightly off (faint yellow OR blue color cast typical of indoor light + phone auto-WB). " +
-    "SKIN: Visible pore structure, faint natural redness around the nose and cheeks, clear specular shine on the forehead and nose bridge (real skin oil reflecting overhead light), soft under-eye creasing, occasional stray vellus hair, faint sunspots or age marks where realistic for the demographic. The face is asymmetric - one eye slightly different from the other, one nostril slightly different shape. Slight noise/grain visible in darker areas of the image (typical of phone camera in non-ideal indoor light). " +
-    "HAIR: Mid-routine messy - loose strands falling naturally, flyaways near the temples, strands crossing the face. Not styled, not brushed. Could look slept-on. " +
-    "COMPOSITION: Off-center framing, asymmetric stance, sometimes top of head cut off, sometimes too much headroom, sometimes the camera is held slightly tilted. This is NOT a posed portrait - it is a rushed snap. " +
-    "ENVIRONMENT (lived-in customer home, NEVER studio): bathroom with matte tiles and faint grout imperfections, mirror with dust streaks and faint fingerprint smudges, an unmade bed with rumpled duvet, kitchen counter with a casual mug or dish, a hand towel draped on a rail, a phone case with tiny scratches. The vibe: 'she just hit the camera button mid-routine without cleaning or styling'. " +
-    "FORBIDDEN PHRASING (these words trigger polished AI look even when negated): NEVER default to 'professional', 'magazine', 'stock', 'editorial', 'flattering'. " +
-    "FORBIDDEN LOOK: ring light glow, studio lighting setup, controlled three-point lighting, golden hour, soft beauty light, symmetric face lighting, beauty filter, cosmetic smoothing, retouching, AI-rendering polish, perfect facial symmetry, dead/frozen eyes, floating product, empty backdrop, plain neutral studio backdrop, posed model expression, styled hair, applied makeup, skincare-ad aesthetic. " +
-    "The 'after' visual is a naturally rested look over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
+    `TESTIMONIAL FRAME: ${testimonialFrame} ` +
+    buildTestimonialStyleBlock() +
+    zoneSpecificCues +
+    " The 'after' visual is a naturally rested look over weeks - NOT plastic surgery, NOT cosmetic procedures, NOT a filter applied in post.";
 
   const promptObj: Record<string, unknown> = hasSource
     ? {
