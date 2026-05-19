@@ -97,6 +97,79 @@ export default function PostProductionStandalone({
   const activeRunRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Drag-to-pan on the preview image. Click+drag on left half = pan BEFORE,
+  // right half = pan AFTER. Drag direction follows the image (drag right ->
+  // image moves right -> revealing source-left content -> panX decreases).
+  type DragState = {
+    half: "before" | "after";
+    startX: number;
+    startY: number;
+    initialPanX: number;
+    initialPanY: number;
+    rectHalfW: number;
+    rectHalfH: number;
+  };
+  const [dragState, setDragState] = useState<DragState | null>(null);
+
+  useEffect(() => {
+    if (!dragState) return;
+    function onMove(e: MouseEvent) {
+      if (!dragState) return;
+      const dxScreen = e.clientX - dragState.startX;
+      const dyScreen = e.clientY - dragState.startY;
+      // Drag direction is OPPOSITE to pan direction (drag image right ->
+      // reveal source-left -> panX decreases). Map screen-pixels to the
+      // -1..1 pan range using the displayed half size as the unit.
+      const dPanX = (-2 * dxScreen) / dragState.rectHalfW;
+      const dPanY = (-2 * dyScreen) / dragState.rectHalfH;
+      const newPanX = Math.max(-1, Math.min(1, dragState.initialPanX + dPanX));
+      const newPanY = Math.max(-1, Math.min(1, dragState.initialPanY + dPanY));
+      setCrop((prev) => ({
+        ...prev,
+        [dragState.half]: { ...prev[dragState.half], panX: newPanX, panY: newPanY },
+      }));
+    }
+    function onUp() {
+      setDragState(null);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [dragState]);
+
+  const handlePreviewMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLImageElement>) => {
+      const target = e.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const xInImage = e.clientX - rect.left;
+      const halfW = rect.width / 2;
+      const half: "before" | "after" = xInImage < halfW ? "before" : "after";
+      const cropHalf = crop[half];
+      const canPanThisHalf =
+        Math.abs(cropHalf.zoom - 1) > 0.001 || crop.outputRatio !== "source";
+      if (!canPanThisHalf) return;
+      e.preventDefault();
+      setDragState({
+        half,
+        startX: e.clientX,
+        startY: e.clientY,
+        initialPanX: cropHalf.panX,
+        initialPanY: cropHalf.panY,
+        rectHalfW: halfW,
+        rectHalfH: rect.height,
+      });
+    },
+    [crop],
+  );
+
+  const previewCanPan =
+    Math.abs(crop.before.zoom - 1) > 0.001 ||
+    Math.abs(crop.after.zoom - 1) > 0.001 ||
+    crop.outputRatio !== "source";
+
   const imageAssets = useMemo(
     () => assets.filter((a) => a.media_type === "image"),
     [assets],
@@ -458,7 +531,21 @@ export default function PostProductionStandalone({
                 )}
               </div>
               {displayedUrl && (
-                <img src={displayedUrl} alt="Preview" className="w-full rounded-lg border border-gray-100" />
+                <img
+                  src={displayedUrl}
+                  alt="Preview"
+                  draggable={false}
+                  onMouseDown={handlePreviewMouseDown}
+                  className={cn(
+                    "w-full rounded-lg border border-gray-100 select-none",
+                    previewCanPan && (dragState ? "cursor-grabbing" : "cursor-grab"),
+                  )}
+                />
+              )}
+              {previewCanPan && !dragState && (
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Tip: drag the image to pan. Left half pans BEFORE, right half pans AFTER.
+                </p>
               )}
               {error && (
                 <p className="text-xs text-red-600 mt-2">{error}</p>
