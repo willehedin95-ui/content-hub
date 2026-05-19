@@ -628,7 +628,10 @@ export function applyOverlay(
 // the cropped region of each half is upscaled to fill that half.
 
 export interface HalfCrop {
-  /** Zoom factor. 1.0 = no crop (full half visible). 3.0 = 3x zoom in. */
+  /** Zoom factor. 1.0 = cover-fit baseline (fills output half).
+   *  > 1: zoom in (smaller crop region of source, still fills output).
+   *  < 1: zoom out (larger crop region clamped to source half, contain-fit
+   *  into output half with letterbox where aspects don't align). */
   zoom: number;
   /** Pan in normalized units. 0 = centered. -1 = max-pan toward left/top.
    *  1 = max-pan toward right/bottom. */
@@ -698,9 +701,9 @@ export function halfCropIsNoop(c: HalfCrop): boolean {
 
 export function cropIsNoop(c: CropSettings): boolean {
   // Output-ratio change always means we have to re-composite, even with
-  // crop disabled and both halves at 1x.
+  // both halves at default zoom=1 / pan=0.
   if (c.outputRatio !== "source") return false;
-  return !c.enabled || (halfCropIsNoop(c.before) && halfCropIsNoop(c.after));
+  return halfCropIsNoop(c.before) && halfCropIsNoop(c.after);
 }
 
 export function cropSettingsMatch(a: CropSettings, b: CropSettings): boolean {
@@ -716,45 +719,94 @@ export function cropSettingsMatch(a: CropSettings, b: CropSettings): boolean {
   );
 }
 
-/** Compute the source rectangle to extract from one half. Adjusts the crop
- *  rect's aspect to match the target half aspect via cover-fit (crop the
- *  long axis) so the user's zoom region fills a different-aspect output
- *  without stretching. */
-function computeCropRect(
+/** Compute source-rect to sample + destination-rect to draw into for one half.
+ *  Supports zoom < 1 (zoom out): expands the crop region beyond the cover-fit
+ *  baseline up to the source-half bounds, then contain-fits into the output
+ *  half (letterbox where aspects don't align). At zoom = 1 it's pure cover-fit
+ *  (destination fills output half exactly). At zoom > 1 it's zoom-in
+ *  cover-fit (smaller crop, still fills output half). */
+function computeRenderPlan(
   halfOriginX: number,
   halfW: number,
   halfH: number,
   crop: HalfCrop,
   targetAspect: number,
-): { sx: number; sy: number; sw: number; sh: number } {
-  const z = Math.max(1, crop.zoom);
-  // Base crop dimensions from zoom, in source coordinates.
-  let cropW = halfW / z;
-  let cropH = halfH / z;
-
-  // Cover-fit: if the cropped region's aspect doesn't match the output half
-  // aspect, shrink one dimension to match (so drawImage doesn't stretch).
-  const currentAspect = cropW / cropH;
-  if (Math.abs(currentAspect - targetAspect) > 0.001) {
-    if (currentAspect > targetAspect) {
-      // Too wide -> narrow it
-      cropW = cropH * targetAspect;
-    } else {
-      // Too tall -> shorten it
-      cropH = cropW / targetAspect;
-    }
+  outHalfOriginX: number,
+  outHalfW: number,
+  outH: number,
+): {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  dx: number;
+  dy: number;
+  dw: number;
+  dh: number;
+} {
+  // Cover-fit baseline at z=1: largest rect of the source half that matches
+  // the target half aspect. drawImage from this baseline to the output half
+  // gives the no-letterbox, no-stretch render.
+  const halfAspect = halfW / halfH;
+  let baseSW: number;
+  let baseSH: number;
+  if (halfAspect > targetAspect) {
+    baseSH = halfH;
+    baseSW = baseSH * targetAspect;
+  } else {
+    baseSW = halfW;
+    baseSH = baseSW / targetAspect;
   }
 
+  const z = Math.max(0.1, crop.zoom);
+  // Apply zoom: shrink crop for z>1, grow it for z<1.
+  let cropW = baseSW / z;
+  let cropH = baseSH / z;
+
+  // Clamp each axis independently to the source half so we don't sample
+  // outside the image. When zooming out past z=1, the long axis hits the
+  // source half boundary first; further zoom-out makes the OTHER axis
+  // also approach its boundary.
+  if (cropW > halfW) cropW = halfW;
+  if (cropH > halfH) cropH = halfH;
+
+  // Pan within whatever room is left after clamping.
   const maxPanX = halfW - cropW;
   const maxPanY = halfH - cropH;
-  const sx = halfOriginX + (halfW - cropW) / 2 + (maxPanX / 2) * crop.panX;
-  const sy = (halfH - cropH) / 2 + (maxPanY / 2) * crop.panY;
-  return {
-    sx: Math.max(halfOriginX, Math.min(halfOriginX + halfW - cropW, sx)),
-    sy: Math.max(0, Math.min(halfH - cropH, sy)),
-    sw: cropW,
-    sh: cropH,
-  };
+  const sx = Math.max(
+    halfOriginX,
+    Math.min(
+      halfOriginX + halfW - cropW,
+      halfOriginX + (halfW - cropW) / 2 + (maxPanX / 2) * crop.panX,
+    ),
+  );
+  const sy = Math.max(
+    0,
+    Math.min(
+      halfH - cropH,
+      (halfH - cropH) / 2 + (maxPanY / 2) * crop.panY,
+    ),
+  );
+
+  // Destination: contain-fit the crop into the output half, preserving the
+  // crop's aspect (no stretch). When aspects match exactly (z >= 1 in most
+  // cases), this fills the output half. When the crop is wider/taller than
+  // target half (z < 1 producing an off-aspect crop), one dimension shrinks
+  // and the half gets letterbox bars in the other direction.
+  const cropAspect = cropW / cropH;
+  let dw: number;
+  let dh: number;
+  if (cropAspect > targetAspect) {
+    dw = outHalfW;
+    dh = outHalfW / cropAspect;
+  } else {
+    dh = outH;
+    dw = outH * cropAspect;
+  }
+  const dx = outHalfOriginX + (outHalfW - dw) / 2;
+  const dy = (outH - dh) / 2;
+
+  return { sx, sy, sw: cropW, sh: cropH, dx, dy, dw, dh };
 }
 
 /**
@@ -791,30 +843,53 @@ export function applyCrop(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  const beforeRect = computeCropRect(0, sourceHalfW, sh, crop.before, targetHalfAspect);
-  const afterRect = computeCropRect(sourceHalfW, sourceHalfW, sh, crop.after, targetHalfAspect);
+  // Fill background so letterbox bars (from zoom < 1 with mismatched aspects)
+  // render as white instead of transparent black after JPEG encoding.
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, outW, outH);
 
-  ctx.drawImage(
-    source,
-    beforeRect.sx,
-    beforeRect.sy,
-    beforeRect.sw,
-    beforeRect.sh,
+  const beforePlan = computeRenderPlan(
     0,
+    sourceHalfW,
+    sh,
+    crop.before,
+    targetHalfAspect,
     0,
     outHalfW,
     outH,
   );
-  ctx.drawImage(
-    source,
-    afterRect.sx,
-    afterRect.sy,
-    afterRect.sw,
-    afterRect.sh,
+  const afterPlan = computeRenderPlan(
+    sourceHalfW,
+    sourceHalfW,
+    sh,
+    crop.after,
+    targetHalfAspect,
     outHalfW,
-    0,
     outHalfW,
     outH,
+  );
+
+  ctx.drawImage(
+    source,
+    beforePlan.sx,
+    beforePlan.sy,
+    beforePlan.sw,
+    beforePlan.sh,
+    beforePlan.dx,
+    beforePlan.dy,
+    beforePlan.dw,
+    beforePlan.dh,
+  );
+  ctx.drawImage(
+    source,
+    afterPlan.sx,
+    afterPlan.sy,
+    afterPlan.sw,
+    afterPlan.sh,
+    afterPlan.dx,
+    afterPlan.dy,
+    afterPlan.dw,
+    afterPlan.dh,
   );
 
   return canvas;

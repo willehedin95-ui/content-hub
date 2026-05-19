@@ -32,10 +32,11 @@ function HalfBlock({
     (patch: Partial<HalfCrop>) => onChange({ ...value, ...patch }),
     [value, onChange],
   );
-  // Pan is meaningful whenever zoom > 1 OR the output ratio differs from
-  // source (in which case cover-fit produces a smaller crop rect than the
-  // source half - there's room to slide it around).
-  const canPan = value.zoom > 1.001 || outputRatio !== "source";
+  // Pan is meaningful whenever zoom != 1 (in or out from the cover-fit
+  // baseline) OR the output ratio differs from source (the cover-fit math
+  // produces a crop rect smaller than the source half in one axis, so
+  // panning along that axis reveals different content).
+  const canPan = Math.abs(value.zoom - 1) > 0.001 || outputRatio !== "source";
   return (
     <div className="rounded-lg border border-gray-200 p-3 space-y-2">
       <div className="flex items-center justify-between">
@@ -57,7 +58,7 @@ function HalfBlock({
         </div>
         <input
           type="range"
-          min={1}
+          min={0.3}
           max={3}
           step={0.05}
           value={value.zoom}
@@ -133,18 +134,7 @@ export default function CropControls({ crop, onChange }: Props) {
           })}
         </div>
       </div>
-      <label className="flex items-center justify-between cursor-pointer">
-        <span className="text-xs font-medium text-gray-700">
-          Enable per-half crop / zoom
-        </span>
-        <input
-          type="checkbox"
-          checked={crop.enabled}
-          onChange={(e) => onChange({ ...crop, enabled: e.target.checked })}
-          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-        />
-      </label>
-      <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-3", !crop.enabled && "opacity-50 pointer-events-none")}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <HalfBlock
           title="BEFORE half"
           value={crop.before}
