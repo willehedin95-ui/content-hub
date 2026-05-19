@@ -25,7 +25,6 @@ import {
   SLIDERS,
   type CropSettings,
   type OverlaySettings,
-  type Preset,
   type Settings,
 } from "@/lib/post-production";
 import OverlayControls from "./OverlayControls";
@@ -244,8 +243,8 @@ export default function PostProductionStandalone({
     setShowAssetPicker(false);
   };
 
-  const applyPreset = useCallback((preset: Preset) => {
-    setSettings(preset.settings);
+  const applyPreset = useCallback((next: Settings) => {
+    setSettings(next);
   }, []);
 
   const setSliderValue = useCallback((key: keyof Settings, value: number) => {

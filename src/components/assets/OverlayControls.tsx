@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_OVERLAY,
   LABEL_FONT_OPTIONS,
   LABEL_FONT_WEIGHTS,
   loadCustomOverlayPresets,
@@ -44,8 +45,15 @@ export default function OverlayControls({ overlay, onChange }: Props) {
   );
 
   const applyPreset = useCallback(
-    (p: OverlayPreset) => onChange(p.settings),
-    [onChange],
+    (p: OverlayPreset) => {
+      // Toggle off if the preset is already active.
+      if (overlaySettingsMatch(overlay, p.settings)) {
+        onChange(DEFAULT_OVERLAY);
+      } else {
+        onChange(p.settings);
+      }
+    },
+    [overlay, onChange],
   );
 
   const handleSavePreset = useCallback(() => {
@@ -93,7 +101,11 @@ export default function OverlayControls({ overlay, onChange }: Props) {
                   <button
                     type="button"
                     onClick={() => applyPreset(p)}
-                    title={p.description}
+                    title={
+                      isActive
+                        ? `${p.label} (active - click to turn off)`
+                        : p.description
+                    }
                     className={cn(
                       "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                       isActive

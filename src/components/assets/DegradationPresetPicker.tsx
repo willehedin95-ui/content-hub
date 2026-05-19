@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_SETTINGS,
   loadCustomPresets,
   PRESETS,
   saveCustomPresets,
@@ -14,7 +15,9 @@ import {
 
 interface Props {
   settings: Settings;
-  onApply: (preset: Preset) => void;
+  /** Receives the new settings to apply. Called with DEFAULT_SETTINGS when
+   *  the user clicks an already-active preset (toggle-off). */
+  onApply: (next: Settings) => void;
 }
 
 /** Renders the row of degradation presets (built-in + user-saved) plus a
@@ -69,8 +72,16 @@ export default function DegradationPresetPicker({ settings, onApply }: Props) {
             <div key={p.key} className="relative">
               <button
                 type="button"
-                onClick={() => onApply(p)}
-                title={p.description}
+                onClick={() =>
+                  isActive
+                    ? onApply(DEFAULT_SETTINGS)
+                    : onApply(p.settings)
+                }
+                title={
+                  isActive
+                    ? `${p.label} (active - click to turn off)`
+                    : p.description
+                }
                 className={cn(
                   "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                   isActive
