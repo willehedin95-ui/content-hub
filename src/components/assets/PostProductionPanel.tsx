@@ -13,9 +13,7 @@ import {
   isNoop,
   loadImage,
   overlayIsNoop,
-  PRESETS,
   SLIDERS,
-  settingsMatch,
   type CropSettings,
   type OverlaySettings,
   type Preset,
@@ -23,6 +21,7 @@ import {
 } from "@/lib/post-production";
 import OverlayControls from "./OverlayControls";
 import CropControls from "./CropControls";
+import DegradationPresetPicker from "./DegradationPresetPicker";
 
 // Per-image post-production panel for the Before/After generator.
 // Slider-driven + presets. Pipeline logic lives in @/lib/post-production so
@@ -186,32 +185,10 @@ export default function PostProductionPanel({
         </div>
       </div>
 
-      {PRESETS.length > 0 && (
-        <div className="mb-3 pb-3 border-b border-gray-100">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Presets</p>
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => {
-              const isActive = enabled && settingsMatch(settings, p.settings);
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => applyPreset(p)}
-                  title={p.description}
-                  className={cn(
-                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                    isActive
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-900"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
-                  )}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <div className="mb-3 pb-3 border-b border-gray-100">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Presets</p>
+        <DegradationPresetPicker settings={settings} onApply={applyPreset} />
+      </div>
 
       <div className={cn("space-y-3", !enabled && "opacity-50 pointer-events-none")}>
         {SLIDERS.map((slider) => {

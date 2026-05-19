@@ -22,9 +22,7 @@ import {
   isNoop,
   loadImage,
   overlayIsNoop,
-  PRESETS,
   SLIDERS,
-  settingsMatch,
   type CropSettings,
   type OverlaySettings,
   type Preset,
@@ -32,6 +30,7 @@ import {
 } from "@/lib/post-production";
 import OverlayControls from "./OverlayControls";
 import CropControls from "./CropControls";
+import DegradationPresetPicker from "./DegradationPresetPicker";
 
 // Single-image Post Production tool. Pick OR upload one image, see live
 // preview as you tweak sliders / overlays / crop, then save back to Assets
@@ -535,27 +534,7 @@ export default function PostProductionStandalone({
                   {showSliders ? "Hide sliders" : "Tweak sliders"}
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {PRESETS.map((p) => {
-                  const isActive = settingsMatch(settings, p.settings);
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => applyPreset(p)}
-                      title={p.description}
-                      className={cn(
-                        "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                        isActive
-                          ? "border-indigo-500 bg-indigo-50 text-indigo-900"
-                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
-                      )}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <DegradationPresetPicker settings={settings} onApply={applyPreset} />
 
               {showSliders && (
                 <div className="mt-4 space-y-3 pt-4 border-t border-gray-100">

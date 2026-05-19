@@ -418,7 +418,38 @@ export function overlaySettingsMatch(
 
 // ===== Custom user presets (localStorage) =====
 
+const DEGRADATION_PRESETS_STORAGE_KEY = "content-hub-degradation-presets-v1";
 const OVERLAY_PRESETS_STORAGE_KEY = "content-hub-overlay-presets-v1";
+
+export function loadCustomPresets(): Preset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DEGRADATION_PRESETS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((p) => ({
+      key: p.key,
+      label: p.label,
+      description: p.description ?? "",
+      settings: { ...DEFAULT_SETTINGS, ...p.settings },
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomPresets(presets: Preset[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      DEGRADATION_PRESETS_STORAGE_KEY,
+      JSON.stringify(presets),
+    );
+  } catch {
+    // ignore
+  }
+}
 
 export function loadCustomOverlayPresets(): OverlayPreset[] {
   if (typeof window === "undefined") return [];
