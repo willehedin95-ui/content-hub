@@ -2,7 +2,7 @@
 
 import { useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { Asset, Product } from "@/types";
+import type { Asset } from "@/types";
 import AssetsSidebar, { type AssetView } from "./AssetsSidebar";
 import AssetGrid from "./AssetGrid";
 import UrlImportModal from "./UrlImportModal";
@@ -26,8 +26,11 @@ function AssetManagerInner({ initialAssets }: Props) {
   const [activeView, setActiveView] = useState<AssetView>(
     initialView && VALID_VIEWS.includes(initialView) ? initialView : "images"
   );
-  const [activeProduct, setActiveProduct] = useState<Product | "all" | "general">("all");
   const [urlImportOpen, setUrlImportOpen] = useState(false);
+  /** When set, the Post Production view loads with this asset preselected.
+   *  Wired up by AssetGrid's "Edit (Post Production)" button in the
+   *  preview modal so user can jump from browsing into editing. */
+  const [postProdAsset, setPostProdAsset] = useState<Asset | null>(null);
 
   const handleViewChange = useCallback((view: AssetView) => {
     setActiveView(view);
@@ -36,16 +39,15 @@ function AssetManagerInner({ initialAssets }: Props) {
     router.replace(`/assets?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
+  const handleEditPostProd = useCallback((asset: Asset) => {
+    setPostProdAsset(asset);
+    handleViewChange("post-production");
+  }, [handleViewChange]);
+
   const counts = {
     images: assets.filter((a) => a.media_type === "image").length,
     videos: assets.filter((a) => a.media_type === "video").length,
   };
-
-  const filteredAssets = assets.filter((a) => {
-    if (activeProduct === "all") return true;
-    if (activeProduct === "general") return a.product === null;
-    return a.product === activeProduct;
-  });
 
   function handleAssetCreated(asset: Asset) {
     setAssets([asset, ...assets]);
@@ -57,27 +59,26 @@ function AssetManagerInner({ initialAssets }: Props) {
         <AssetsSidebar
           activeView={activeView}
           onViewChange={handleViewChange}
-          activeProduct={activeProduct}
-          onProductChange={setActiveProduct}
           counts={counts}
         />
         <div className="flex-1 overflow-y-auto p-6">
           {activeView === "images" && (
             <AssetGrid
-              assets={filteredAssets}
+              assets={assets}
               mediaType="image"
               onAssetsChange={setAssets}
               onOpenUrlImport={() => setUrlImportOpen(true)}
-              activeProduct={activeProduct}
+              activeProduct="all"
+              onEditPostProd={handleEditPostProd}
             />
           )}
           {activeView === "videos" && (
             <AssetGrid
-              assets={filteredAssets}
+              assets={assets}
               mediaType="video"
               onAssetsChange={setAssets}
               onOpenUrlImport={() => setUrlImportOpen(true)}
-              activeProduct={activeProduct}
+              activeProduct="all"
             />
           )}
           {activeView === "swipe-image" && (
@@ -89,11 +90,16 @@ function AssetManagerInner({ initialAssets }: Props) {
           {activeView === "before-after" && (
             <BeforeAfterGenerator
               onAssetCreated={(asset) => setAssets(prev => [asset, ...prev])}
-              defaultProduct={activeProduct !== "all" && activeProduct !== "general" ? activeProduct : null}
+              defaultProduct={null}
             />
           )}
           {activeView === "post-production" && (
-            <PostProductionStandalone assets={assets} onAssetsChange={setAssets} />
+            <PostProductionStandalone
+              assets={assets}
+              onAssetsChange={setAssets}
+              preselectedAsset={postProdAsset}
+              onConsumePreselectedAsset={() => setPostProdAsset(null)}
+            />
           )}
         </div>
       </div>

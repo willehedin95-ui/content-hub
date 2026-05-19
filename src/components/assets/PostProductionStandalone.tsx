@@ -38,6 +38,13 @@ import DegradationPresetPicker from "./DegradationPresetPicker";
 interface Props {
   assets: Asset[];
   onAssetsChange: (assets: Asset[]) => void;
+  /** Optional: an asset to load on mount. Set by AssetGrid's
+   *  "Edit (Post Production)" button so user can jump from browsing
+   *  straight into editing. */
+  preselectedAsset?: Asset | null;
+  /** Called once the preselected asset has been consumed - lets the parent
+   *  clear its state so a stale asset doesn't re-trigger on every render. */
+  onConsumePreselectedAsset?: () => void;
 }
 
 type SourceMode = "upload" | "existing";
@@ -58,6 +65,8 @@ function sanitizeFilename(name: string): string {
 export default function PostProductionStandalone({
   assets,
   onAssetsChange,
+  preselectedAsset,
+  onConsumePreselectedAsset,
 }: Props) {
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -114,6 +123,18 @@ export default function PostProductionStandalone({
     setSaved(false);
     setShowAssetPicker(true);
   }, [sourcePreviewUrl]);
+
+  // If parent passed a preselected asset (from AssetGrid's "Edit
+  // (Post Production)" button), load it on mount and clear the parent's
+  // state so a stale asset doesn't re-trigger after Start Over.
+  useEffect(() => {
+    if (preselectedAsset) {
+      setSourceAsset(preselectedAsset);
+      setSourceFile(null);
+      onConsumePreselectedAsset?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedAsset]);
 
   // Load source image when sourceFile or sourceAsset changes
   useEffect(() => {
@@ -399,12 +420,12 @@ export default function PostProductionStandalone({
                       key={asset.id}
                       type="button"
                       onClick={() => pickAsset(asset)}
-                      className="relative aspect-square bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-indigo-400"
+                      className="relative aspect-[16/9] bg-gray-50 rounded-lg border border-gray-200 overflow-hidden hover:border-indigo-400 flex items-center justify-center p-1"
                     >
                       <img
                         src={asset.url}
                         alt={asset.name}
-                        className="w-full h-full object-cover"
+                        className="max-w-full max-h-full object-contain"
                       />
                     </button>
                   ))}

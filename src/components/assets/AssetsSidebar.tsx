@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { ImageIcon, Film, Sparkles, Scissors, HardDrive, GitCompare, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Product } from "@/types";
 
 export type AssetView =
   | "images"
@@ -16,8 +15,6 @@ export type AssetView =
 interface Props {
   activeView: AssetView;
   onViewChange: (view: AssetView) => void;
-  activeProduct: Product | "all" | "general";
-  onProductChange: (product: Product | "all" | "general") => void;
   counts: { images: number; videos: number };
 }
 
@@ -31,13 +28,6 @@ const TOOL_ITEMS: { view: AssetView; label: string; icon: typeof Sparkles }[] = 
   { view: "swipe-video", label: "Swipe Video", icon: Scissors },
   { view: "before-after", label: "Before/After", icon: GitCompare },
   { view: "post-production", label: "Post Production", icon: Wand2 },
-];
-
-const PRODUCT_ITEMS: { value: Product | "all" | "general"; label: string }[] = [
-  { value: "all", label: "All Products" },
-  { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
-  { value: "general", label: "General" },
 ];
 
 function formatBytes(bytes: number): string {
@@ -89,8 +79,6 @@ function StorageBar() {
 export default function AssetsSidebar({
   activeView,
   onViewChange,
-  activeProduct,
-  onProductChange,
   counts,
 }: Props) {
   return (
@@ -163,32 +151,6 @@ export default function AssetsSidebar({
         </div>
       </div>
 
-      {/* Product Filter Section */}
-      <div>
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Product Filter
-        </h3>
-        <div className="space-y-0.5">
-          {PRODUCT_ITEMS.map((item) => {
-            const isActive = activeProduct === item.value;
-
-            return (
-              <button
-                key={item.value}
-                onClick={() => onProductChange(item.value)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
-                )}
-              >
-                <span className="flex-1 text-left">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
       </div>
 
       {/* Spacer + Storage */}

@@ -13,6 +13,9 @@ import {
   Play,
   Tag,
   Download,
+  Wand2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Asset, AssetCategory, MediaType, Product } from "@/types";
@@ -24,6 +27,11 @@ interface Props {
   onAssetsChange: (assets: Asset[]) => void;
   onOpenUrlImport: () => void;
   activeProduct: Product | "all" | "general";
+  /** Optional callback for "Edit (post-prod)" button in preview modal.
+   *  When set, the button is shown and clicking it hands the asset to the
+   *  parent (AssetManager) which switches the view to Post Production
+   *  with this asset preselected. */
+  onEditPostProd?: (asset: Asset) => void;
 }
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
@@ -62,6 +70,7 @@ export default function AssetGrid({
   onAssetsChange,
   onOpenUrlImport,
   activeProduct,
+  onEditPostProd,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -246,11 +255,27 @@ export default function AssetGrid({
   useEffect(() => {
     if (!previewAsset) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") closePreview();
+      // Don't hijack keys when the user is editing a text field inside the modal
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "Escape") {
+        closePreview();
+        return;
+      }
+      if (isEditing) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const idx = filteredAssets.findIndex((a) => a.id === previewAsset!.id);
+        if (idx === -1) return;
+        const delta = e.key === "ArrowLeft" ? -1 : 1;
+        const next = filteredAssets[idx + delta];
+        if (next) openPreview(next);
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [previewAsset, closePreview]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewAsset, filteredAssets, closePreview]);
 
   async function savePreviewEdit() {
     if (!previewAsset) return;
@@ -815,8 +840,42 @@ export default function AssetGrid({
 
             {/* Modal body */}
             <div className="flex flex-1 overflow-hidden">
-              {/* Large preview */}
-              <div className="flex-1 bg-gray-50 flex items-center justify-center p-6 min-h-[400px]">
+              {/* Large preview with prev/next nav */}
+              <div className="flex-1 bg-gray-50 flex items-center justify-center p-6 min-h-[400px] relative">
+                {(() => {
+                  const idx = filteredAssets.findIndex((a) => a.id === previewAsset.id);
+                  const prev = idx > 0 ? filteredAssets[idx - 1] : null;
+                  const next = idx >= 0 && idx < filteredAssets.length - 1 ? filteredAssets[idx + 1] : null;
+                  return (
+                    <>
+                      {prev && (
+                        <button
+                          type="button"
+                          onClick={() => openPreview(prev)}
+                          aria-label="Previous image"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-gray-200 text-gray-700 hover:bg-white shadow-md flex items-center justify-center"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                      )}
+                      {next && (
+                        <button
+                          type="button"
+                          onClick={() => openPreview(next)}
+                          aria-label="Next image"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-white/90 border border-gray-200 text-gray-700 hover:bg-white shadow-md flex items-center justify-center"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      )}
+                      {idx >= 0 && (
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-black/40 text-white text-[10px] font-medium">
+                          {idx + 1} / {filteredAssets.length} · ← → to navigate
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 {previewAsset.media_type === "image" ? (
                   <img
                     src={previewAsset.url}
@@ -965,6 +1024,15 @@ export default function AssetGrid({
                   <Check className="w-4 h-4" />
                   Save Changes
                 </button>
+                {onEditPostProd && previewAsset.media_type === "image" && (
+                  <button
+                    onClick={() => { onEditPostProd(previewAsset); closePreview(); }}
+                    className="w-full flex items-center justify-center gap-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-50 transition-colors"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    Edit (Post Production)
+                  </button>
+                )}
                 <button
                   onClick={() => { handleDelete(previewAsset.id); closePreview(); }}
                   className="w-full flex items-center justify-center gap-1.5 bg-white border border-red-200 text-red-500 rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-50 transition-colors"
