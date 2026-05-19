@@ -220,10 +220,22 @@ export async function applyPipeline(
   const finalCtx = finalCanvas.getContext("2d");
   if (!finalCtx) throw new Error("Cannot get 2d context (final)");
   finalCtx.drawImage(currentSource, 0, 0);
-  if (overlay && !overlayIsNoop(overlay)) {
-    applyOverlay(finalCanvas, overlay);
+
+  const hasOverlay = !!(overlay && !overlayIsNoop(overlay));
+  if (hasOverlay) {
+    applyOverlay(finalCanvas, overlay!);
   }
-  return canvasToBlob(finalCanvas, settings.jpegQuality);
+
+  // Final encode: when an overlay is drawn we bump quality to >=92 so the
+  // labels/arrow/divider stay sharp. The image data underneath already
+  // carries the cumulative compression artifacts from the multi-pass loop,
+  // so a high final encode preserves the degraded look without smashing
+  // the freshly-drawn overlay pixels. Without overlay, honor the user's
+  // chosen jpegQuality.
+  const finalQuality = hasOverlay
+    ? Math.max(92, settings.jpegQuality)
+    : settings.jpegQuality;
+  return canvasToBlob(finalCanvas, finalQuality);
 }
 
 /**
