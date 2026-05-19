@@ -4,8 +4,10 @@ import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_HALF_CROP,
+  OUTPUT_RATIO_OPTIONS,
   type CropSettings,
   type HalfCrop,
+  type OutputRatio,
 } from "@/lib/post-production";
 
 interface Props {
@@ -100,6 +102,31 @@ function HalfBlock({
 export default function CropControls({ crop, onChange }: Props) {
   return (
     <div className="space-y-3">
+      <div>
+        <label className="block text-[10px] text-gray-500 mb-1.5 font-medium uppercase tracking-wider">
+          Output aspect ratio
+        </label>
+        <div className="flex flex-wrap gap-1">
+          {OUTPUT_RATIO_OPTIONS.map((r) => {
+            const isActive = crop.outputRatio === r.value;
+            return (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => onChange({ ...crop, outputRatio: r.value as OutputRatio })}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[10px] font-medium",
+                  isActive
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50",
+                )}
+              >
+                {r.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <label className="flex items-center justify-between cursor-pointer">
         <span className="text-xs font-medium text-gray-700">
           Enable per-half crop / zoom

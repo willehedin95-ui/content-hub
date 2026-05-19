@@ -636,8 +636,16 @@ export interface HalfCrop {
   panY: number;
 }
 
+/** Target output aspect ratio. "source" = keep whatever the input image
+ *  is. Other values force the output canvas to that ratio - each half
+ *  becomes half-width of the target, cover-fit from the source so the
+ *  user-requested crop region fills the new shape (cropping the long axis
+ *  if the aspects don't match). */
+export type OutputRatio = "source" | "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+
 export interface CropSettings {
   enabled: boolean;
+  outputRatio: OutputRatio;
   before: HalfCrop;
   after: HalfCrop;
 }
@@ -646,20 +654,58 @@ export const DEFAULT_HALF_CROP: HalfCrop = { zoom: 1, panX: 0, panY: 0 };
 
 export const DEFAULT_CROP: CropSettings = {
   enabled: false,
+  outputRatio: "source",
   before: { ...DEFAULT_HALF_CROP },
   after: { ...DEFAULT_HALF_CROP },
 };
+
+export const OUTPUT_RATIO_OPTIONS: { value: OutputRatio; label: string }[] = [
+  { value: "source", label: "Source" },
+  { value: "1:1", label: "1:1 (square)" },
+  { value: "4:3", label: "4:3" },
+  { value: "3:4", label: "3:4 (portrait)" },
+  { value: "16:9", label: "16:9 (wide)" },
+  { value: "9:16", label: "9:16 (vertical)" },
+];
+
+function parseRatio(r: OutputRatio): number {
+  if (r === "source") return NaN;
+  const [w, h] = r.split(":").map(Number);
+  return w / h;
+}
+
+/** Compute output canvas dimensions for a given target ratio, preserving the
+ *  source's longest dimension as the anchor (so we don't lose resolution). */
+export function computeOutputDimensions(
+  sourceW: number,
+  sourceH: number,
+  ratio: OutputRatio,
+): { width: number; height: number } {
+  if (ratio === "source") return { width: sourceW, height: sourceH };
+  const target = parseRatio(ratio);
+  const maxDim = Math.max(sourceW, sourceH);
+  if (target >= 1) {
+    // Landscape or square: anchor on width
+    return { width: maxDim, height: Math.max(1, Math.round(maxDim / target)) };
+  }
+  // Portrait: anchor on height
+  return { width: Math.max(1, Math.round(maxDim * target)), height: maxDim };
+}
 
 export function halfCropIsNoop(c: HalfCrop): boolean {
   return c.zoom <= 1.001 && c.panX === 0 && c.panY === 0;
 }
 
 export function cropIsNoop(c: CropSettings): boolean {
+  // Output-ratio change always means we have to re-composite, even with
+  // crop disabled and both halves at 1x.
+  if (c.outputRatio !== "source") return false;
   return !c.enabled || (halfCropIsNoop(c.before) && halfCropIsNoop(c.after));
 }
 
 export function cropSettingsMatch(a: CropSettings, b: CropSettings): boolean {
   if (a.enabled !== b.enabled) return false;
+  if (a.outputRatio !== b.outputRatio) return false;
   return (
     Math.abs(a.before.zoom - b.before.zoom) < 0.001 &&
     Math.abs(a.before.panX - b.before.panX) < 0.001 &&
@@ -670,19 +716,37 @@ export function cropSettingsMatch(a: CropSettings, b: CropSettings): boolean {
   );
 }
 
-/** Compute the source rectangle to extract from one half. */
+/** Compute the source rectangle to extract from one half. Adjusts the crop
+ *  rect's aspect to match the target half aspect via cover-fit (crop the
+ *  long axis) so the user's zoom region fills a different-aspect output
+ *  without stretching. */
 function computeCropRect(
   halfOriginX: number,
   halfW: number,
   halfH: number,
   crop: HalfCrop,
+  targetAspect: number,
 ): { sx: number; sy: number; sw: number; sh: number } {
   const z = Math.max(1, crop.zoom);
-  const cropW = halfW / z;
-  const cropH = halfH / z;
+  // Base crop dimensions from zoom, in source coordinates.
+  let cropW = halfW / z;
+  let cropH = halfH / z;
+
+  // Cover-fit: if the cropped region's aspect doesn't match the output half
+  // aspect, shrink one dimension to match (so drawImage doesn't stretch).
+  const currentAspect = cropW / cropH;
+  if (Math.abs(currentAspect - targetAspect) > 0.001) {
+    if (currentAspect > targetAspect) {
+      // Too wide -> narrow it
+      cropW = cropH * targetAspect;
+    } else {
+      // Too tall -> shorten it
+      cropH = cropW / targetAspect;
+    }
+  }
+
   const maxPanX = halfW - cropW;
   const maxPanY = halfH - cropH;
-  // Center then offset. panX = -1 -> all the way left, 1 -> all the way right.
   const sx = halfOriginX + (halfW - cropW) / 2 + (maxPanX / 2) * crop.panX;
   const sy = (halfH - cropH) / 2 + (maxPanY / 2) * crop.panY;
   return {
@@ -694,8 +758,14 @@ function computeCropRect(
 }
 
 /**
- * Apply per-half crop/zoom to a source image, returning a canvas with the
- * cropped halves composited at the original image dimensions.
+ * Apply per-half crop/zoom to a source image, returning a canvas of the
+ * configured output dimensions with each half composited from a cropped
+ * region of the corresponding source half.
+ *
+ * If outputRatio is "source", output dimensions match the input image
+ * exactly. Otherwise output is sized to the target ratio (anchored on
+ * the source's longest dimension) and each half is cover-fit from the
+ * source half.
  */
 export function applyCrop(
   source: HTMLImageElement | HTMLCanvasElement,
@@ -703,18 +773,26 @@ export function applyCrop(
 ): HTMLCanvasElement {
   const sw = "naturalWidth" in source ? source.naturalWidth : source.width;
   const sh = "naturalHeight" in source ? source.naturalHeight : source.height;
-  const halfW = sw / 2;
+  const sourceHalfW = sw / 2;
+
+  const { width: outW, height: outH } = computeOutputDimensions(
+    sw,
+    sh,
+    crop.outputRatio,
+  );
+  const outHalfW = outW / 2;
+  const targetHalfAspect = outHalfW / outH;
 
   const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
+  canvas.width = outW;
+  canvas.height = outH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot get 2d context (applyCrop)");
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  const beforeRect = computeCropRect(0, halfW, sh, crop.before);
-  const afterRect = computeCropRect(halfW, halfW, sh, crop.after);
+  const beforeRect = computeCropRect(0, sourceHalfW, sh, crop.before, targetHalfAspect);
+  const afterRect = computeCropRect(sourceHalfW, sourceHalfW, sh, crop.after, targetHalfAspect);
 
   ctx.drawImage(
     source,
@@ -724,8 +802,8 @@ export function applyCrop(
     beforeRect.sh,
     0,
     0,
-    halfW,
-    sh,
+    outHalfW,
+    outH,
   );
   ctx.drawImage(
     source,
@@ -733,10 +811,10 @@ export function applyCrop(
     afterRect.sy,
     afterRect.sw,
     afterRect.sh,
-    halfW,
+    outHalfW,
     0,
-    halfW,
-    sh,
+    outHalfW,
+    outH,
   );
 
   return canvas;
