@@ -30,6 +30,44 @@ const DEFAULT_SETTINGS: Settings = {
   jpegQuality: 95,
 };
 
+interface Preset {
+  key: string;
+  label: string;
+  description: string;
+  settings: Settings;
+}
+
+// Hand-tuned presets. Add new ones here as William dials them in via the
+// sliders + "Copy current values (JSON)" loop.
+const PRESETS: Preset[] = [
+  {
+    key: "subtle",
+    label: "Subtle",
+    description: "Light JPG compression, mild grain, slight desaturation",
+    settings: {
+      passes: 2,
+      downscale: 0.95,
+      blur: 0.2,
+      saturation: 92,
+      chromaticAberration: 0,
+      noise: 4,
+      jpegQuality: 66,
+    },
+  },
+];
+
+function settingsMatch(a: Settings, b: Settings): boolean {
+  return (
+    a.passes === b.passes &&
+    Math.abs(a.downscale - b.downscale) < 0.001 &&
+    Math.abs(a.blur - b.blur) < 0.001 &&
+    a.saturation === b.saturation &&
+    a.chromaticAberration === b.chromaticAberration &&
+    a.noise === b.noise &&
+    a.jpegQuality === b.jpegQuality
+  );
+}
+
 type SliderKey = keyof Settings;
 
 interface SliderConfig {
@@ -334,6 +372,11 @@ export default function PostProductionPanel({
     setSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const applyPreset = useCallback((preset: Preset) => {
+    setSettings(preset.settings);
+    setEnabled(true);
+  }, []);
+
   const handleReset = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
   }, []);
@@ -377,6 +420,33 @@ export default function PostProductionPanel({
           </label>
         </div>
       </div>
+
+      {PRESETS.length > 0 && (
+        <div className="mb-3 pb-3 border-b border-gray-100">
+          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Presets</p>
+          <div className="flex flex-wrap gap-2">
+            {PRESETS.map((p) => {
+              const isActive = enabled && settingsMatch(settings, p.settings);
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  title={p.description}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                    isActive
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className={cn("space-y-3", !enabled && "opacity-50 pointer-events-none")}>
         {SLIDERS.map((slider) => {
