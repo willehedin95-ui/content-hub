@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import {
   applyOverlayOnly,
   applyPipeline,
+  cropIsNoop,
+  DEFAULT_CROP,
   DEFAULT_OVERLAY,
   DEFAULT_SETTINGS,
   isNoop,
@@ -14,11 +16,13 @@ import {
   PRESETS,
   SLIDERS,
   settingsMatch,
+  type CropSettings,
   type OverlaySettings,
   type Preset,
   type Settings,
 } from "@/lib/post-production";
 import OverlayControls from "./OverlayControls";
+import CropControls from "./CropControls";
 
 // Per-image post-production panel for the Before/After generator.
 // Slider-driven + presets. Pipeline logic lives in @/lib/post-production so
@@ -37,6 +41,7 @@ export default function PostProductionPanel({
   const [enabled, setEnabled] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [overlay, setOverlay] = useState<OverlaySettings>(DEFAULT_OVERLAY);
+  const [crop, setCrop] = useState<CropSettings>(DEFAULT_CROP);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
@@ -52,6 +57,7 @@ export default function PostProductionPanel({
     setEnabled(false);
     setSettings(DEFAULT_SETTINGS);
     setOverlay(DEFAULT_OVERLAY);
+    setCrop(DEFAULT_CROP);
     setError(null);
     onProcessedChange(null);
 
@@ -72,13 +78,15 @@ export default function PostProductionPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl]);
 
-  // Re-process when settings, overlay, or enable state change. Debounced 200ms
-  // so dragging a slider / typing in a label field doesn't spawn 30 runs.
+  // Re-process when settings, overlay, crop, or enable state change.
+  // Debounced 200ms so dragging a slider / typing in a label field doesn't
+  // spawn 30 runs.
   useEffect(() => {
     if (!sourceImg) return;
     const degradationNoop = isNoop(settings);
     const overlayNoop = overlayIsNoop(overlay);
-    if (!enabled || (degradationNoop && overlayNoop)) {
+    const cropNoop = cropIsNoop(crop);
+    if (!enabled || (degradationNoop && overlayNoop && cropNoop)) {
       onProcessedChange(null);
       return;
     }
@@ -89,11 +97,20 @@ export default function PostProductionPanel({
       try {
         let blob: Blob;
         if (degradationNoop) {
-          // Overlay-only path: skip the multi-pass JPEG roundtrips and just
-          // draw the overlay onto a high-quality JPEG.
-          blob = await applyOverlayOnly(sourceImg, overlay);
+          // Skip multi-pass JPEG roundtrips when no degradation is configured.
+          // applyOverlayOnly handles both crop pre-step and overlay drawing.
+          blob = await applyOverlayOnly(
+            sourceImg,
+            overlay,
+            cropNoop ? undefined : crop,
+          );
         } else {
-          blob = await applyPipeline(sourceImg, settings, overlayNoop ? undefined : overlay);
+          blob = await applyPipeline(
+            sourceImg,
+            settings,
+            overlayNoop ? undefined : overlay,
+            cropNoop ? undefined : crop,
+          );
         }
         if (runId !== activeRunRef.current) return;
         onProcessedChange(blob);
@@ -109,7 +126,7 @@ export default function PostProductionPanel({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [sourceImg, enabled, settings, overlay, onProcessedChange]);
+  }, [sourceImg, enabled, settings, overlay, crop, onProcessedChange]);
 
   const setValue = useCallback(
     (key: keyof Settings, value: number) => {
@@ -126,6 +143,7 @@ export default function PostProductionPanel({
   const handleReset = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
     setOverlay(DEFAULT_OVERLAY);
+    setCrop(DEFAULT_CROP);
   }, []);
 
   const handleCopyValues = useCallback(async () => {
@@ -222,6 +240,11 @@ export default function PostProductionPanel({
             </div>
           );
         })}
+      </div>
+
+      <div className={cn("mt-4 pt-4 border-t border-gray-100", !enabled && "opacity-50 pointer-events-none")}>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Crop / Zoom</p>
+        <CropControls crop={crop} onChange={setCrop} />
       </div>
 
       <div className={cn("mt-4 pt-4 border-t border-gray-100", !enabled && "opacity-50 pointer-events-none")}>

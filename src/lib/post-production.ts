@@ -158,10 +158,16 @@ export async function applyPipeline(
   source: HTMLImageElement,
   settings: Settings,
   overlay?: OverlaySettings,
+  crop?: CropSettings,
 ): Promise<Blob> {
-  const w = source.naturalWidth;
-  const h = source.naturalHeight;
-  let currentSource: HTMLImageElement | HTMLCanvasElement = source;
+  // If crop is active, pre-process the source: create a new canvas with
+  // each half cropped/zoomed independently, then run the rest of the
+  // pipeline against that canvas instead of the raw image.
+  const initialSource: HTMLImageElement | HTMLCanvasElement =
+    crop && !cropIsNoop(crop) ? applyCrop(source, crop) : source;
+  const w = "naturalWidth" in initialSource ? initialSource.naturalWidth : initialSource.width;
+  const h = "naturalHeight" in initialSource ? initialSource.naturalHeight : initialSource.height;
+  let currentSource: HTMLImageElement | HTMLCanvasElement = initialSource;
 
   for (let pass = 0; pass < settings.passes; pass++) {
     const downW = Math.max(1, Math.round(w * settings.downscale));
@@ -227,16 +233,19 @@ export async function applyPipeline(
 export async function applyOverlayOnly(
   source: HTMLImageElement,
   overlay: OverlaySettings,
+  crop?: CropSettings,
   quality = 92,
 ): Promise<Blob> {
-  const w = source.naturalWidth;
-  const h = source.naturalHeight;
+  const base: HTMLImageElement | HTMLCanvasElement =
+    crop && !cropIsNoop(crop) ? applyCrop(source, crop) : source;
+  const w = "naturalWidth" in base ? base.naturalWidth : base.width;
+  const h = "naturalHeight" in base ? base.naturalHeight : base.height;
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot get 2d context (overlay-only)");
-  ctx.drawImage(source, 0, 0);
+  ctx.drawImage(base, 0, 0);
   applyOverlay(canvas, overlay);
   return canvasToBlob(canvas, quality);
 }
@@ -268,6 +277,12 @@ export interface OverlaySettings {
   /** Master switch for the centered arrow between halves. */
   arrowEnabled: boolean;
   arrowColor: string;
+
+  /** Thin vertical line drawn between the BEFORE and AFTER halves. */
+  dividerEnabled: boolean;
+  dividerColor: string;
+  /** Divider width in pixels. */
+  dividerWidth: number;
 }
 
 export const DEFAULT_OVERLAY: OverlaySettings = {
@@ -280,6 +295,9 @@ export const DEFAULT_OVERLAY: OverlaySettings = {
   labelSize: 4,
   arrowEnabled: false,
   arrowColor: "#FFFFFF",
+  dividerEnabled: false,
+  dividerColor: "#FFFFFF",
+  dividerWidth: 3,
 };
 
 export interface OverlayPreset {
@@ -306,7 +324,7 @@ export const OVERLAY_PRESETS: OverlayPreset[] = [
 ];
 
 export function overlayIsNoop(o: OverlaySettings): boolean {
-  return !o.dayLabelEnabled && !o.arrowEnabled;
+  return !o.dayLabelEnabled && !o.arrowEnabled && !o.dividerEnabled;
 }
 
 export function overlaySettingsMatch(
@@ -322,7 +340,10 @@ export function overlaySettingsMatch(
     a.labelPosition === b.labelPosition &&
     a.labelSize === b.labelSize &&
     a.arrowEnabled === b.arrowEnabled &&
-    a.arrowColor.toLowerCase() === b.arrowColor.toLowerCase()
+    a.arrowColor.toLowerCase() === b.arrowColor.toLowerCase() &&
+    a.dividerEnabled === b.dividerEnabled &&
+    a.dividerColor.toLowerCase() === b.dividerColor.toLowerCase() &&
+    a.dividerWidth === b.dividerWidth
   );
 }
 
@@ -414,12 +435,30 @@ function drawArrow(
   ctx.restore();
 }
 
+function drawDivider(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  width: number,
+) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(w / 2 - width / 2), 0, width, h);
+  ctx.restore();
+}
+
 export function applyOverlay(
   canvas: HTMLCanvasElement,
   o: OverlaySettings,
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  // Divider goes first - day labels / arrow draw on top of it if positioned
+  // near the center seam.
+  if (o.dividerEnabled) {
+    drawDivider(ctx, o.dividerColor, o.dividerWidth);
+  }
   if (o.dayLabelEnabled) {
     drawDayLabel(ctx, o.beforeText, "left", o);
     drawDayLabel(ctx, o.afterText, "right", o);
@@ -427,6 +466,127 @@ export function applyOverlay(
   if (o.arrowEnabled) {
     drawArrow(ctx, canvas.width / 2, canvas.height / 2, o.arrowColor);
   }
+}
+
+// ===== Per-half crop / zoom =====
+//
+// Each half (BEFORE on the left, AFTER on the right) can be zoomed and
+// panned independently. The output canvas keeps the original dimensions -
+// the cropped region of each half is upscaled to fill that half.
+
+export interface HalfCrop {
+  /** Zoom factor. 1.0 = no crop (full half visible). 3.0 = 3x zoom in. */
+  zoom: number;
+  /** Pan in normalized units. 0 = centered. -1 = max-pan toward left/top.
+   *  1 = max-pan toward right/bottom. */
+  panX: number;
+  panY: number;
+}
+
+export interface CropSettings {
+  enabled: boolean;
+  before: HalfCrop;
+  after: HalfCrop;
+}
+
+export const DEFAULT_HALF_CROP: HalfCrop = { zoom: 1, panX: 0, panY: 0 };
+
+export const DEFAULT_CROP: CropSettings = {
+  enabled: false,
+  before: { ...DEFAULT_HALF_CROP },
+  after: { ...DEFAULT_HALF_CROP },
+};
+
+export function halfCropIsNoop(c: HalfCrop): boolean {
+  return c.zoom <= 1.001 && c.panX === 0 && c.panY === 0;
+}
+
+export function cropIsNoop(c: CropSettings): boolean {
+  return !c.enabled || (halfCropIsNoop(c.before) && halfCropIsNoop(c.after));
+}
+
+export function cropSettingsMatch(a: CropSettings, b: CropSettings): boolean {
+  if (a.enabled !== b.enabled) return false;
+  return (
+    Math.abs(a.before.zoom - b.before.zoom) < 0.001 &&
+    Math.abs(a.before.panX - b.before.panX) < 0.001 &&
+    Math.abs(a.before.panY - b.before.panY) < 0.001 &&
+    Math.abs(a.after.zoom - b.after.zoom) < 0.001 &&
+    Math.abs(a.after.panX - b.after.panX) < 0.001 &&
+    Math.abs(a.after.panY - b.after.panY) < 0.001
+  );
+}
+
+/** Compute the source rectangle to extract from one half. */
+function computeCropRect(
+  halfOriginX: number,
+  halfW: number,
+  halfH: number,
+  crop: HalfCrop,
+): { sx: number; sy: number; sw: number; sh: number } {
+  const z = Math.max(1, crop.zoom);
+  const cropW = halfW / z;
+  const cropH = halfH / z;
+  const maxPanX = halfW - cropW;
+  const maxPanY = halfH - cropH;
+  // Center then offset. panX = -1 -> all the way left, 1 -> all the way right.
+  const sx = halfOriginX + (halfW - cropW) / 2 + (maxPanX / 2) * crop.panX;
+  const sy = (halfH - cropH) / 2 + (maxPanY / 2) * crop.panY;
+  return {
+    sx: Math.max(halfOriginX, Math.min(halfOriginX + halfW - cropW, sx)),
+    sy: Math.max(0, Math.min(halfH - cropH, sy)),
+    sw: cropW,
+    sh: cropH,
+  };
+}
+
+/**
+ * Apply per-half crop/zoom to a source image, returning a canvas with the
+ * cropped halves composited at the original image dimensions.
+ */
+export function applyCrop(
+  source: HTMLImageElement | HTMLCanvasElement,
+  crop: CropSettings,
+): HTMLCanvasElement {
+  const sw = "naturalWidth" in source ? source.naturalWidth : source.width;
+  const sh = "naturalHeight" in source ? source.naturalHeight : source.height;
+  const halfW = sw / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Cannot get 2d context (applyCrop)");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  const beforeRect = computeCropRect(0, halfW, sh, crop.before);
+  const afterRect = computeCropRect(halfW, halfW, sh, crop.after);
+
+  ctx.drawImage(
+    source,
+    beforeRect.sx,
+    beforeRect.sy,
+    beforeRect.sw,
+    beforeRect.sh,
+    0,
+    0,
+    halfW,
+    sh,
+  );
+  ctx.drawImage(
+    source,
+    afterRect.sx,
+    afterRect.sy,
+    afterRect.sw,
+    afterRect.sh,
+    halfW,
+    0,
+    halfW,
+    sh,
+  );
+
+  return canvas;
 }
 
 /** SLIDERS config for any UI that exposes per-effect tuning. Shared so the
