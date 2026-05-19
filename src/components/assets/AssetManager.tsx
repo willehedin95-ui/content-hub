@@ -9,7 +9,7 @@ import UrlImportModal from "./UrlImportModal";
 import VideoSwiper from "./VideoSwiper";
 import ImageSwiper from "./ImageSwiper";
 import BeforeAfterGenerator from "./BeforeAfterGenerator";
-import PostProductionBulk from "./PostProductionBulk";
+import PostProductionStandalone from "./PostProductionStandalone";
 
 const VALID_VIEWS: AssetView[] = ["images", "videos", "swipe-image", "swipe-video", "before-after", "post-production"];
 
@@ -93,7 +93,7 @@ function AssetManagerInner({ initialAssets }: Props) {
             />
           )}
           {activeView === "post-production" && (
-            <PostProductionBulk assets={assets} onAssetsChange={setAssets} />
+            <PostProductionStandalone assets={assets} onAssetsChange={setAssets} />
           )}
         </div>
       </div>
