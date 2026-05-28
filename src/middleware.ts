@@ -51,7 +51,9 @@ export async function middleware(request: NextRequest) {
     // Shopify webhook: HMAC-authenticated, called by Shopify servers
     request.nextUrl.pathname.startsWith("/api/quiz/shopify-webhook") ||
     // Hydro13 iOS app subscription lookup (auth via x-api-key header)
-    request.nextUrl.pathname.startsWith("/api/loop/")
+    request.nextUrl.pathname.startsWith("/api/loop/") ||
+    // Hydro13 iOS app customer lookup (auth via x-api-key header)
+    request.nextUrl.pathname.startsWith("/api/shopify/customer")
   ) {
     return supabaseResponse;
   }

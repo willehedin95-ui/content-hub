@@ -497,3 +497,134 @@ export async function fetchProductsWithInventory(
 
   return allProducts;
 }
+
+// ---- Customer lookup by email (used by Hydro13 iOS app onboarding) ----
+
+export interface ShopifyCustomerLineItem {
+  title: string | null;
+  variant_title: string | null;
+  sku: string | null;
+  quantity: number;
+  product_id: number | null;
+}
+
+export interface ShopifyCustomerOrder {
+  id: number;
+  created_at: string;
+  financial_status: string | null;
+  line_items: ShopifyCustomerLineItem[];
+}
+
+export interface ShopifyCustomerWithOrders {
+  id: number;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  ordersCount: number;
+  totalSpent: string;
+  orders: ShopifyCustomerOrder[];
+}
+
+export async function searchCustomerByEmail(
+  email: string,
+  creds: ShopifyCreds
+): Promise<ShopifyCustomerWithOrders | null> {
+  const token = await getAccessTokenForCreds(creds);
+  const storeUrl = creds.storeUrl;
+
+  const searchUrl = `${storeUrl}/admin/api/2024-01/customers/search.json?query=${encodeURIComponent(
+    `email:${email}`
+  )}&limit=1`;
+  const searchRes = await fetch(searchUrl, {
+    headers: { "X-Shopify-Access-Token": token },
+  });
+  if (!searchRes.ok) {
+    throw new Error(
+      `Shopify customer search failed (${searchRes.status}): ${(await searchRes.text()).slice(0, 200)}`
+    );
+  }
+  const searchData = await searchRes.json();
+  const customers = searchData.customers as
+    | Array<{
+        id: number;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+        orders_count: number;
+        total_spent: string;
+      }>
+    | undefined;
+  if (!customers || customers.length === 0) return null;
+  const c = customers[0];
+
+  const ordersUrl = `${storeUrl}/admin/api/2024-01/customers/${c.id}/orders.json?status=any&limit=10&fields=id,created_at,financial_status,line_items`;
+  const ordersRes = await fetch(ordersUrl, {
+    headers: { "X-Shopify-Access-Token": token },
+  });
+  if (!ordersRes.ok) {
+    throw new Error(
+      `Shopify customer orders fetch failed (${ordersRes.status}): ${(await ordersRes.text()).slice(0, 200)}`
+    );
+  }
+  const ordersData = await ordersRes.json();
+  const rawOrders = (ordersData.orders ?? []) as Array<{
+    id: number;
+    created_at: string;
+    financial_status: string | null;
+    line_items: Array<{
+      title: string | null;
+      variant_title: string | null;
+      sku: string | null;
+      quantity: number;
+      product_id: number | null;
+    }>;
+  }>;
+
+  return {
+    id: c.id,
+    firstName: c.first_name,
+    lastName: c.last_name,
+    email: c.email,
+    ordersCount: c.orders_count,
+    totalSpent: c.total_spent,
+    orders: rawOrders.map((o) => ({
+      id: o.id,
+      created_at: o.created_at,
+      financial_status: o.financial_status,
+      line_items: (o.line_items ?? []).map((li) => ({
+        title: li.title,
+        variant_title: li.variant_title,
+        sku: li.sku,
+        quantity: li.quantity,
+        product_id: li.product_id,
+      })),
+    })),
+  };
+}
+
+/**
+ * Parse bottle count from order line items. Hydro13 variants follow
+ * SKU pattern `<...>-NPK` where N is the bottle count per pack. A
+ * "3 flaskor" order with quantity=2 = 6 bottles total.
+ *
+ * Falls back to matching the Swedish variant_title (`1 flaska`,
+ * `N flaskor`) if SKU is missing or doesn't match the expected pattern.
+ * Returns 0 if no Hydro13 line items found.
+ */
+export function parseBottleCountFromLineItems(
+  lineItems: ShopifyCustomerLineItem[]
+): number {
+  let total = 0;
+  for (const li of lineItems) {
+    if (!li.title?.toLowerCase().includes("hydro13")) continue;
+    const skuMatch = li.sku?.match(/-(\d+)PK$/i);
+    let packCount: number | null = skuMatch ? parseInt(skuMatch[1], 10) : null;
+    if (packCount === null) {
+      const titleMatch = li.variant_title?.match(/^(\d+)\s*flask/i);
+      if (titleMatch) packCount = parseInt(titleMatch[1], 10);
+    }
+    if (packCount === null) continue;
+    total += packCount * li.quantity;
+  }
+  return total;
+}
