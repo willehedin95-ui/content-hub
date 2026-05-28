@@ -344,11 +344,25 @@ export function App({ data, settings, config }: AppProps) {
       if (d.type !== "quiz-runtime-continue") return;
       if (!currentNode || currentNode.kind !== "step") return;
       if (!config.preview) {
+        const value = typeof d.value === "string" ? d.value : "yes";
+        // Offer-page CTAs (and any future iframe CTAs) postMessage with
+        // value='offer_cta_click'. Mirror that as a dedicated `cta_click`
+        // event_type so funnel-CTR queries don't need to filter on option_id.
+        // We keep the original `answer` event too for backward compat with
+        // existing analytics queries that read it.
+        if (value === "offer_cta_click") {
+          bufferRef.current?.push({
+            event_type: "cta_click",
+            step_id: currentNode.id,
+            variant_group_id: currentNode.variantGroupId,
+            meta: { source: "offer_page" },
+          });
+        }
         bufferRef.current?.push({
           event_type: "answer",
           step_id: currentNode.id,
           variant_group_id: currentNode.variantGroupId,
-          option_id: typeof d.value === "string" ? d.value : "yes",
+          option_id: value,
           meta: { source: "commit_gate_modal" },
         });
       }

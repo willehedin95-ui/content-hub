@@ -153,7 +153,15 @@ export type UTMParams = {
 };
 
 export type QuizEvent = {
-  event_type: "step_view" | "answer" | "email_capture" | "back" | "exit_click" | "abandon";
+  event_type:
+    | "step_view"
+    | "answer"
+    | "email_capture"
+    | "back"
+    | "exit_click"
+    | "abandon"
+    | "cta_click"; // Fired when offer-page (or any iframe) CTA is clicked. Separate from
+                   // "answer" so funnel queries can read CTR without filtering by option_id.
   step_id?: string;
   variant_group_id?: string;
   option_id?: string;

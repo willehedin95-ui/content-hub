@@ -68,6 +68,8 @@ const VALID_EVENT_TYPES = new Set([
   "exit_click",
   "abandon",
   "purchase", // Logged by /api/quiz/shopify-webhook on order/create
+  "cta_click", // Fired by offer-page custom_html via postMessage `quiz-runtime-event`
+               // when the primary CTA is clicked. Used for variant CTR analysis.
 ]);
 
 export async function POST(req: NextRequest) {
