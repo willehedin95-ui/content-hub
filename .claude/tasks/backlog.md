@@ -1,5 +1,24 @@
 # Content Hub - Task Backlog
-Updated: 2026-05-18 21:28 (SEO pipeline session complete; HappySleep blog parked; William as Hydro13 author live)
+Updated: 2026-06-02 (DNS outage fixed + Hostinger account audit + uptime-watch monitor live)
+
+## Infra / DNS session - 2026-06-02
+
+### Done
+- [x] ~~Fix swedishbalance.se 403 outage (stray dead-Hostinger-IP in apex A/AAAA from expired hosting-plan auto-teardown)~~ - Hostinger DNS API
+- [x] ~~Full Hostinger account audit (13 domains): DNS + HTTP health~~
+- [x] ~~doginwork.com -> doginwork.se 301 redirect~~ - Hostinger forwarding API
+- [x] ~~swedishbalance.dk -> swedishbalance.se/da-dk 301 redirect (.dk being retired, auto-renew already off)~~
+- [x] ~~Build + deploy hourly uptime-watch (GitHub Actions -> Telegram, silent on green)~~ - commits `dbd9a160`, `0428e77b`
+
+### Needs William action / open
+- [ ] **SECURITY (med): Rotate GitHub PAT embedded in content-hub git remote URL** (`ghp_...` in plaintext). Switch to a credential helper. Claude can assist.
+- [ ] **LOW: `runtime/quiz-runtime/node_modules/` is untracked** - add to .gitignore.
+- [ ] **Decision (low): wirasleep.com/.de** return Shopify 409 (point to Shopify, not connected). Connect or leave? (User said leave for now.)
+- [ ] **Optional: external uptime backstop** (UptimeRobot/Better Stack) on top of GHA for full independence - offered, not chosen.
+- [ ] **Optional: extend uptime-watch** with checkout-flow checks / more markets.
+
+---
+
 
 ## SEO Pipeline Session - completed 2026-05-18
 
