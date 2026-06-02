@@ -87,6 +87,7 @@ export async function scanSingleSource(
   let blocked = false;
 
   // --- Platform dispatch ---
+  try {
   switch (source.platform) {
     case "trustpilot": {
       // Deep mode: scrape each star level separately (3x more reviews)
@@ -219,6 +220,20 @@ export async function scanSingleSource(
 
     default:
       return { reviewsScraped: 0, nuggetsStored: 0, error: `Unsupported platform: ${source.platform}` };
+  }
+  } catch (err) {
+    // Surface scrape failures (e.g. Trustpilot Cloudflare block) as a source
+    // error instead of silently reporting "0 new reviews".
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    await db
+      .from("research_sources")
+      .update({
+        status: "error",
+        error_message: errorMsg,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", source.id);
+    return { reviewsScraped: 0, nuggetsStored: 0, error: errorMsg };
   }
 
   // --- Handle CAPTCHA block (Amazon) ---

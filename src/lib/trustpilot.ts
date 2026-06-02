@@ -59,6 +59,75 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
+
+/**
+ * Thrown when a page can't be read because Trustpilot is blocking us
+ * (Cloudflare challenge, 403, etc). Callers surface this as a source error
+ * instead of treating it as "no new reviews" — otherwise a block looks
+ * identical to a quiet week and the scraper dies silently.
+ */
+export class TrustpilotBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TrustpilotBlockedError";
+  }
+}
+
+/**
+ * Fetch raw HTML for a Trustpilot URL.
+ *
+ * Trustpilot is behind a Cloudflare challenge that a plain fetch can't pass
+ * (returns a 403 "Verifying Connection" page). When FIRECRAWL_API_KEY is set
+ * we route through Firecrawl's stealth proxy, which solves the challenge and
+ * returns the real HTML. Without a key we fall back to a direct fetch (kept
+ * for local dev and in case Trustpilot ever drops the challenge).
+ *
+ * Returns null on transport failure.
+ */
+async function getPageHtml(url: string): Promise<string | null> {
+  if (FIRECRAWL_API_KEY) {
+    try {
+      const res = await fetch(FIRECRAWL_SCRAPE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url,
+          formats: ["rawHtml"],
+          proxy: "stealth", // 5 credits/page — required to beat Cloudflare
+          onlyMainContent: false,
+          waitFor: 3000,
+        }),
+      });
+      if (!res.ok) {
+        console.error(`Firecrawl scrape failed: ${res.status} for ${url}`);
+        return null;
+      }
+      const json = await res.json();
+      if (!json?.success) {
+        console.error(`Firecrawl success=false for ${url}`);
+        return null;
+      }
+      return (json.data?.rawHtml as string) ?? null;
+    } catch (e) {
+      console.error(`Firecrawl request error for ${url}:`, e);
+      return null;
+    }
+  }
+
+  // Legacy direct fetch (blocked by Cloudflare as of ~2026-04).
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  if (!res.ok) {
+    console.error(`Trustpilot fetch failed: ${res.status} for ${url}`);
+    return null;
+  }
+  return res.text();
+}
+
 /** Fetch a Trustpilot page and extract __NEXT_DATA__ */
 async function fetchPageData(
   domain: string,
@@ -80,26 +149,25 @@ async function fetchPageData(
       ? `https://www.trustpilot.com/review/${domain}?languages=all${starParam}`
       : `https://www.trustpilot.com/review/${domain}?languages=all${starParam}&page=${page}`;
 
-  const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
-  });
+  const html = await getPageHtml(url);
 
-  if (!res.ok) {
-    console.error(
-      `Trustpilot fetch failed: ${res.status} for ${domain} page ${page}`
+  if (html === null) {
+    throw new TrustpilotBlockedError(
+      `Trustpilot fetch failed for ${domain} page ${page}`
     );
-    return null;
   }
 
-  const html = await res.text();
-
-  // Extract __NEXT_DATA__ JSON blob
+  // Extract __NEXT_DATA__ JSON blob. If it's missing the page is almost
+  // always a Cloudflare "Verifying Connection" challenge, not an empty page —
+  // surface it as a block so the source gets flagged instead of silently
+  // reporting "0 new reviews".
   const match = html.match(
     /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/
   );
   if (!match) {
-    console.error(`No __NEXT_DATA__ found for ${domain} page ${page}`);
-    return null;
+    throw new TrustpilotBlockedError(
+      `No __NEXT_DATA__ for ${domain} page ${page} (likely Cloudflare challenge)`
+    );
   }
 
   try {
@@ -170,7 +238,15 @@ export async function scrapeReviews(
   for (let page = 1; page <= maxPages && !hitOldReview; page++) {
     if (page > 1) await sleep(DELAY_MS);
 
-    const data = await fetchPageData(domain, page);
+    let data;
+    try {
+      data = await fetchPageData(domain, page);
+    } catch (err) {
+      // A block on page 1 means we got nothing — surface it so the source
+      // is flagged. On later pages, keep whatever we already collected.
+      if (page === 1) throw err;
+      break;
+    }
     if (!data) break;
 
     pagesScraped++;
@@ -269,7 +345,14 @@ export async function scrapeReviewsByStars(
     for (let page = 1; page <= maxPerStar && !hitOldReview; page++) {
       await sleep(DELAY_MS);
 
-      const data = await fetchPageData(domain, page, star);
+      let data;
+      try {
+        data = await fetchPageData(domain, page, star);
+      } catch {
+        // Business info already captured from the main page above; a block
+        // mid-deep-scan just stops this star level rather than failing the run.
+        break;
+      }
       if (!data) break;
 
       pagesScraped++;
@@ -316,7 +399,12 @@ export async function scrapeReviewsByStars(
 export async function getBusinessInfo(
   domain: string
 ): Promise<TrustpilotBusinessInfo | null> {
-  const data = await fetchPageData(domain, 1);
+  let data;
+  try {
+    data = await fetchPageData(domain, 1);
+  } catch {
+    return null; // Non-critical (SERP stars) — never throw into publish paths.
+  }
   if (!data) return null;
 
   const bu = data.businessUnit;

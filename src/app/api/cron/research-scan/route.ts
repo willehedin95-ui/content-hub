@@ -80,7 +80,9 @@ export async function GET(req: NextRequest) {
       .from("research_sources")
       .select("*")
       .eq("workspace_id", ws.id)
-      .eq("status", "active")
+      // Include "error" sources so a transient block (e.g. Cloudflare) doesn't
+      // sideline a source forever — it retries and clears the error on success.
+      .in("status", ["active", "error"])
       .neq("platform", "manual_import")
       .neq("platform", "facebook_group")
       .neq("platform", "amazon"); // Amazon shows same ~8 curated reviews — one-time scan on add only
@@ -253,6 +255,8 @@ export async function GET(req: NextRequest) {
             .update({
               last_scanned_at: new Date().toISOString(),
               external_id: externalId,
+              status: "active",
+              error_message: null,
               updated_at: new Date().toISOString(),
             })
             .eq("id", source.id);
@@ -366,6 +370,8 @@ export async function GET(req: NextRequest) {
             total_reviews_fetched:
               (source.total_reviews_fetched || 0) + rawReviews.length,
             external_id: externalId,
+            status: "active",
+            error_message: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", source.id);
