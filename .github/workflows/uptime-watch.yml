@@ -2,12 +2,11 @@ name: uptime-watch
 
 # External hourly health check of live storefronts + product pages.
 # Runs on GitHub's infra so it can alarm even if our own hosting is down.
-# Alerts go to Telegram via scripts/uptime-watch.mjs.
+# Alerts go to Telegram via scripts/uptime-watch.mjs - ONLY on failure (no heartbeat).
 
 on:
   schedule:
-    - cron: '17 * * * *'      # every hour at :17 (regular check, alarm-only)
-    - cron: '5 7 * * *'       # 07:05 UTC daily heartbeat ("all good" ping)
+    - cron: '17 * * * *'      # every hour at :17
   workflow_dispatch: {}        # manual run button
 
 permissions:
@@ -30,5 +29,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_NOTIFY_CHAT_ID: ${{ secrets.TELEGRAM_NOTIFY_CHAT_ID }}
-          HEARTBEAT: ${{ github.event.schedule == '5 7 * * *' && '1' || '0' }}
         run: node scripts/uptime-watch.mjs

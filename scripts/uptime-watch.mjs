@@ -11,8 +11,8 @@
 //   3. HTTP + content - product pages must be 200, large enough, and contain the
 //                       add-to-cart form ("product-form") so "loads but broken" is caught.
 //
-// On any failure -> Telegram alert + non-zero exit. Silent when all green
-// (unless HEARTBEAT=1, which sends an "all good" ping for the daily heartbeat run).
+// On any failure -> Telegram alert + non-zero exit. Completely silent when all
+// green (no heartbeat / no "all good" ping - only ever pings on a problem).
 
 import { resolve4, resolve6 } from 'node:dns/promises';
 
@@ -28,7 +28,9 @@ const DNS_CHECKS = [
   { name: 'swedishbalance.se', host: 'swedishbalance.se', expect: SHOPIFY_IP },
   { name: 'get-renew.com', host: 'get-renew.com', expect: SHOPIFY_IP },
   { name: 'doginwork.se', host: 'doginwork.se', expect: SHOPIFY_IP },
-  { name: 'swedishbalance.dk', host: 'swedishbalance.dk', expect: SHOPIFY_IP },
+  // swedishbalance.dk intentionally NOT checked - it now 301-redirects to
+  // swedishbalance.se/da-dk via Hostinger forwarding (apex on 2.57.91.91) and
+  // is being let go (auto-renew off, exp 2027-01-13).
 ];
 
 const STATUS_CHECKS = [
@@ -42,6 +44,7 @@ const CONTENT_CHECKS = [
   { name: 'HappySleep SE PDP', url: 'https://swedishbalance.se/products/happysleep', must: ['product-form'], minBytes: 100000 },
   { name: 'HappySleep DK PDP', url: 'https://swedishbalance.se/da-dk/products/happysleep', must: ['product-form'], minBytes: 100000 },
   { name: 'HappySleep NO PDP', url: 'https://swedishbalance.se/no-no/products/happysleep', must: ['product-form'], minBytes: 100000 },
+  { name: 'doginwork Valpakademin quiz', url: 'https://quiz.doginwork.se/valpakademin/', must: ['Valpakademin'], minBytes: 50000 },
 ];
 
 // --- helpers -------------------------------------------------------------
@@ -138,7 +141,5 @@ if (failures.length) {
   process.exit(1);
 }
 
+// Silent on success - no Telegram notification unless something is wrong.
 console.log(`OK - all ${results.length} checks passed (${stamp})`);
-if (process.env.HEARTBEAT === '1') {
-  await telegram(`✅ <b>Uptime-vakt: allt OK</b>\nAlla ${results.length} checks gröna.\n<i>${stamp}</i>`);
-}
