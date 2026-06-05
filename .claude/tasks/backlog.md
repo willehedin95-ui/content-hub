@@ -1,5 +1,25 @@
 # Content Hub - Task Backlog
-Updated: 2026-06-02 (DNS outage fixed + Hostinger account audit + uptime-watch monitor live)
+Updated: 2026-06-05 (Renew Support SOP built in Notion + new support agent onboarded)
+
+## Renew Support SOP - 2026-06-05
+
+### Done
+- [x] Build complete Renew customer support SOP in Notion (link: https://www.notion.so/365fdc1d333480dba502eb452d0ddbea)
+- [x] Hydro13 App subpage with 5 simulator screenshots (welcome, onboarding reminder, home, journey, settings)
+- [x] Loop admin walkthrough subpage with 8 annotated screenshots (login flow, list, detail, pause/cancel/edit-address/edit-details modals)
+- [x] Document Shelfless address-change flow (Alexander Strand IT reply 2026-05-26: change in partner portal FIRST, no Shopify auto-sync on imported orders)
+- [x] Catch + flag typo on guarantee form ">90 days" ending (was kundservice@swedishbalance.se, William fixed in Fillout)
+- [x] Add support agent `carola.astrid.nilsson@gmail.com` to Loop (William's action, done)
+
+### Needs William action / open
+- [ ] **Verify Carola has correct Loop role** - should allow pause/cancel/edit-address/edit-interval but NOT billing/integrations/settings. Check Settings → Members on her first login.
+- [ ] **Live onboarding with Carola** - walk her through the SOP, answer her first questions in real-time
+- [ ] **Post-2-week SOP audit** - after she has handled real tickets, audit for gaps (ticket types not covered, flows that turned out confusing)
+- [ ] **Update SOP § 6.3 when travel packs ship** - currently says "coming soon, no date"
+- [ ] **Update Hydro13 App subpage when Android launches** - currently says "iOS only, no Android date"
+- [ ] **Optional: Saved Freshdesk reply templates in Swedish** - SOP references templates by name but only the dosing-cup reply is fully written out. Could write all the common ones (subscription portal redirect, return approved, guarantee approved, etc.).
+
+---
 
 ## Infra / DNS session - 2026-06-02
 
