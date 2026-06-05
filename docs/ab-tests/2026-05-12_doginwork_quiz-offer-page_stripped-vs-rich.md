@@ -129,9 +129,23 @@ order by 1;
 - 50 purchases per variant (purchase significance check)
 - 2026-07-01 (calendar checkpoint - if neither threshold hit, declare on best available metric)
 
+## Update 2026-06-05
+
+Re-pulled at day 24. Still NOT significant - signals now conflict (classic small-sample noise):
+
+| Variant | step_views | CTA clicks (legacy) | CTR | sessions | purchases | purch rate |
+|---|---|---|---|---|---|---|
+| A (rich) | 82 | 8 | 9.8% | 393 | 5 | 1.27% |
+| B (stripped) | 67 | 8 | 11.9% | 428 | 2 | 0.47% |
+
+CTR still favors B (+21%), but purchase rate now favors A. Total 7 purchases - far below threshold. z-test on CTR p > 0.3. Keep running.
+
+**Tracking bug found + fixed 2026-06-05**: The `cta_click` event added 2026-05-28 never actually shipped - the runtime source changed in commit `aefe2ce2` but the compiled `dist/` bundle was never rebuilt, so live quiz kept serving the 2026-05-12 bundle (`p8obqWBz`). All CTA data above still comes via the legacy `answer/offer_cta_click` path. Rebuilt bundle (`BHAwBklo`) + republished 2026-06-05T07:33Z. Verified live quiz now serves the new bundle and it contains the `cta_click` logic. Going forward `cta_click` events will populate; queries should read BOTH new + legacy until enough new-path data accumulates.
+
 ## Follow-ups
 
-- 2026-05-28: Added dedicated `cta_click` event_type in runtime (was previously logged only as `answer/offer_cta_click`). Both signals now fire in parallel - the new event is the primary path going forward, legacy field stays for historical query compat.
+- 2026-05-28: Added dedicated `cta_click` event_type in runtime (was previously logged only as `answer/offer_cta_click`). Both signals now fire in parallel - the new event is the primary path going forward, legacy field stays for historical query compat. **NOTE: did not actually ship until 2026-06-05 (bundle rebuild) - see Update above.**
+- **Build gotcha for next dev**: editing `runtime/quiz-runtime/src/*` requires `cd runtime/quiz-runtime && npm run build` BEFORE republishing the quiz, or the change silently never reaches production. The publish script reads the compiled `dist/` bundle, not the source.
 - After this test concludes regardless of winner, next iteration ideas:
   - Hybrid C variant: B's personalisation + module-breakdown + A's bonus-stack and pricing anchor
   - Pricing test: 997 kr (current) vs 1 497 kr with stronger anchor
