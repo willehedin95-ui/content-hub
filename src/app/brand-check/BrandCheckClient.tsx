@@ -49,6 +49,7 @@ interface ShortlistItem {
   name: string;
   note: string;
   overall: Overall | null;
+  snapshot?: { overall?: Overall; domains?: DomainResult[]; reasons?: string[] } | null;
   created_at: string;
 }
 type Cell = { status: "loading" | "done" | "error"; result?: BrandCheckResult };
@@ -173,9 +174,11 @@ export default function BrandCheckClient({
   const savedSet = new Set(shortlist.map((s) => s.name.toLowerCase()));
 
   async function run() {
-    const names = Array.from(
-      new Set(input.split("\n").map((s) => s.trim()).filter(Boolean))
-    ).slice(0, 40);
+    return runNames(input.split("\n"));
+  }
+
+  async function runNames(raw: string[]) {
+    const names = Array.from(new Set(raw.map((s) => s.trim()).filter(Boolean))).slice(0, 40);
     if (names.length === 0) {
       setError("Skriv minst ett namn (ett per rad).");
       return;
@@ -214,7 +217,9 @@ export default function BrandCheckClient({
       await fetch(slUrl(), {
         method: isSaved ? "DELETE" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isSaved ? { name: r.name } : { name: r.name, overall: r.overall }),
+        body: JSON.stringify(
+          isSaved ? { name: r.name } : { name: r.name, overall: r.overall, snapshot: { overall: r.overall, domains: r.domains, reasons: r.reasons } }
+        ),
       });
       loadShortlist();
     } catch {
@@ -400,28 +405,47 @@ export default function BrandCheckClient({
               Inga sparade namn än. Stjärnmärk ett namn i sökresultaten så hamnar det här.
             </p>
           )}
-          {shortlist.map((s) => (
-            <div key={s.name} className="rounded-lg border border-gray-200 bg-white p-3">
-              <div className="flex items-center gap-2">
-                {s.overall && (
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${OVERALL[s.overall].cls}`}>
-                    {OVERALL[s.overall].icon}
-                  </span>
-                )}
-                <span className="font-semibold text-gray-900">{s.name}</span>
-                <CopyBtn text={s.name} />
-                <button onClick={() => removeSaved(s.name)} title="Ta bort" className="ml-auto text-gray-400 hover:text-red-600">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+          {shortlist.length > 0 && (
+            <button
+              onClick={() => runNames(shortlist.map((s) => s.name))}
+              disabled={running}
+              className="mb-1 inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {running && <Loader2 className="h-4 w-4 animate-spin" />} Kolla alla igen
+            </button>
+          )}
+          {shortlist.map((s) => {
+            const lbl = s.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const com = s.snapshot?.domains?.find((d) => d.domain === `${lbl}.com`);
+            return (
+              <div key={s.name} className="rounded-lg border border-gray-200 bg-white p-3">
+                <div className="flex items-center gap-2">
+                  {s.overall && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${OVERALL[s.overall].cls}`}>
+                      {OVERALL[s.overall].icon}
+                      {OVERALL[s.overall].label}
+                    </span>
+                  )}
+                  <span className="font-semibold text-gray-900">{s.name}</span>
+                  <CopyBtn text={s.name} />
+                  {com && (
+                    <span className={`rounded-md px-1.5 py-0.5 text-[11px] ${com.available === true ? "bg-green-100 text-green-800" : com.available === false ? "bg-red-100 text-red-800" : "bg-gray-200 text-gray-600"}`}>
+                      .com {com.available === true ? "ledig" : com.available === false ? "tagen" : "?"}
+                    </span>
+                  )}
+                  <button onClick={() => removeSaved(s.name)} title="Ta bort" className="ml-auto text-gray-400 hover:text-red-600">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <input
+                  defaultValue={s.note}
+                  onBlur={(e) => saveNote(s.name, e.target.value)}
+                  placeholder="Anteckning…"
+                  className="mt-2 w-full rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-600 focus:border-indigo-500 focus:ring-indigo-500"
+                />
               </div>
-              <input
-                defaultValue={s.note}
-                onBlur={(e) => saveNote(s.name, e.target.value)}
-                placeholder="Anteckning…"
-                className="mt-2 w-full rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-600 focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

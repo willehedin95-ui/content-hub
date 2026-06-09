@@ -394,6 +394,7 @@ export interface ShortlistItem {
   name: string;
   note: string;
   overall: Overall | null;
+  snapshot: unknown;
   created_at: string;
 }
 
@@ -402,7 +403,7 @@ export async function getShortlist(): Promise<ShortlistItem[]> {
   const supabase = createServerSupabase();
   const { data } = await supabase
     .from("brand_shortlist")
-    .select("name, note, overall, created_at")
+    .select("name, note, overall, snapshot, created_at")
     .order("created_at", { ascending: false });
   return (data ?? []) as ShortlistItem[];
 }
