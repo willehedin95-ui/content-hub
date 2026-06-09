@@ -39,11 +39,79 @@ export interface WebResult {
   url: string;
 }
 
+export type Overall = "free" | "caution" | "taken" | "unknown";
+
 export interface BrandCheckResult {
   name: string;
+  overall: Overall; // syntetiserad helhetsdom (varumärke + .com + webb)
+  reasons: string[]; // korta skäl bakom domen
   trademark: TrademarkResult;
   domains: DomainResult[]; // bara .com först, sen varianter
   web: WebResult[]; // topp-webbträffar (DuckDuckGo) - finns ett kosttillskott redan?
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** Väg ihop alla signaler till en tydlig helhetsdom + korta skäl. */
+function computeOverall(
+  name: string,
+  trademark: TrademarkResult,
+  domains: DomainResult[],
+  web: WebResult[]
+): { overall: Overall; reasons: string[] } {
+  const label = toLabel(name);
+  const reasons: string[] = [];
+
+  const comBare = domains.find((d) => d.domain === `${label}.com`);
+  const comTaken = comBare?.available === false;
+  const webOnExactCom = web.some((w) => hostnameOf(w.url) === `${label}.com`);
+
+  if (trademark.status === "error") {
+    return { overall: "unknown", reasons: ["Varumärket kunde inte kollas - försök igen"] };
+  }
+
+  let overall: Overall = "free";
+
+  if (trademark.exact.length > 0) {
+    overall = "taken";
+    reasons.push(`Exakt varumärke finns (${trademark.exact.length} st)`);
+  }
+  if (webOnExactCom) {
+    overall = "taken";
+    reasons.push(`Aktiv sajt på ${label}.com`);
+  }
+  if (trademark.wordMatch.length > 0 && comTaken) {
+    overall = "taken";
+    reasons.push("Ditt ord i ett varumärke + .com tagen");
+  }
+
+  if (overall !== "taken") {
+    if (trademark.wordMatch.length > 0) {
+      overall = "caution";
+      reasons.push(`Ditt ord i annat varumärke (${trademark.wordMatch.length} st)`);
+    }
+    if (comTaken) {
+      overall = "caution";
+      reasons.push(`${label}.com är tagen`);
+    }
+    if (trademark.similar.length > 0) {
+      if (overall === "free") overall = "caution";
+      reasons.push(`${trademark.similar.length} liknande varumärken`);
+    }
+  }
+
+  if (overall === "free") {
+    reasons.push("Inga varumärkesträffar");
+    if (comBare?.available === true) reasons.push(`${label}.com ledig`);
+  }
+
+  return { overall, reasons };
 }
 
 function cookieHeaderFrom(res: Response): string {
@@ -311,13 +379,58 @@ export async function checkBrandName(
     checkDomains(name),
     checkWeb(name),
   ]);
-  return { name, trademark, domains, web };
+  const { overall, reasons } = computeOverall(name, trademark, domains, web);
+  return { name, overall, reasons, trademark, domains, web };
 }
 
 // Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade
 // /api/brand-check och publika /api/bcheck.
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// ---- Shortlist (sparade favoritnamn) ----
+
+export interface ShortlistItem {
+  name: string;
+  note: string;
+  overall: Overall | null;
+  created_at: string;
+}
+
+export async function getShortlist(): Promise<ShortlistItem[]> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const supabase = createServerSupabase();
+  const { data } = await supabase
+    .from("brand_shortlist")
+    .select("name, note, overall, created_at")
+    .order("created_at", { ascending: false });
+  return (data ?? []) as ShortlistItem[];
+}
+
+export async function saveShortlist(
+  name: string,
+  note = "",
+  overall: Overall | null = null,
+  snapshot: unknown = null
+): Promise<void> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const supabase = createServerSupabase();
+  await supabase
+    .from("brand_shortlist")
+    .upsert({ name: name.trim(), note, overall, snapshot }, { onConflict: "name" });
+}
+
+export async function updateShortlistNote(name: string, note: string): Promise<void> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const supabase = createServerSupabase();
+  await supabase.from("brand_shortlist").update({ note }).eq("name", name.trim());
+}
+
+export async function removeShortlist(name: string): Promise<void> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const supabase = createServerSupabase();
+  await supabase.from("brand_shortlist").delete().eq("name", name.trim());
+}
 
 export async function runBrandChecks(
   rawNames: string[],
@@ -354,6 +467,7 @@ export async function runBrandChecks(
     // Cacha bara om resultatet har de nya fälten (annars kör om mot ny version)
     if (
       hit &&
+      typeof hit.result.overall === "string" &&
       Array.isArray(hit.result.domains) &&
       Array.isArray(hit.result.web) &&
       Array.isArray(hit.result.trademark?.wordMatch) &&

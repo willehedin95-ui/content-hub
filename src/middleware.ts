@@ -43,6 +43,7 @@ export async function middleware(request: NextRequest) {
     // Gömd publik brand-checker (mobil) - token-skyddad i sidan + API:t
     request.nextUrl.pathname.startsWith("/bcheck") ||
     request.nextUrl.pathname.startsWith("/api/bcheck") ||
+    request.nextUrl.pathname.startsWith("/api/bcheck-shortlist") ||
     // Quiz runtime bundle (content-hashed JS served to published + preview quizzes)
     request.nextUrl.pathname.startsWith("/_runtime/") ||
     // Preview iframe loads the runtime bundle from /quiz-bundle/[filename]
