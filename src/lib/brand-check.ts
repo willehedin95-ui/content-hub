@@ -56,6 +56,19 @@ function cookieHeaderFrom(res: Response): string {
   return raw.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
 }
 
+/** Hämta TMview-sessions-cookie en gång (återanvänds över en batch för att minska strypning). */
+export async function getTmviewCookie(): Promise<string> {
+  try {
+    const seed = await fetch("https://www.tmdn.org/tmview/", {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(20000),
+    });
+    return cookieHeaderFrom(seed);
+  } catch {
+    return "";
+  }
+}
+
 // Bredare kontor så globala near-identiska brands fångas (inte bara EU/Norden):
 // EM=EUIPO, WO=WIPO intl, US=USPTO, GB=UK, + nordiska.
 const DEFAULT_OFFICES = ["EM", "WO", "US", "GB", "SE", "DK", "NO", "FI"];
@@ -118,27 +131,33 @@ function containsRun(hay: string[], needle: string[]): boolean {
 /** Varumärkes-knockout via TMview. Söker både den skrivna och den hopskrivna formen. */
 export async function checkTrademark(
   term: string,
-  opts?: { offices?: string[]; niceClasses?: string[] }
+  opts?: { offices?: string[]; niceClasses?: string[]; cookie?: string }
 ): Promise<TrademarkResult> {
   const offices = opts?.offices ?? DEFAULT_OFFICES;
   const niceClasses = opts?.niceClasses ?? ["3", "5"];
   try {
-    const seed = await fetch("https://www.tmdn.org/tmview/", {
-      headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    const cookie = cookieHeaderFrom(seed);
+    const cookie = opts?.cookie ?? (await getTmviewCookie());
 
     // Sök både "inner fuel" och "innerfuel" så ett-ords-varianter fångas
     const collapsed = term.replace(/\s+/g, "");
     const terms = normName(term) === collapsed.toLowerCase() && term !== collapsed ? [term, collapsed] : [term];
     if (term.includes(" ") && !terms.includes(collapsed)) terms.push(collapsed);
 
+    // Ett återförsök efter paus om TMview strypar/failar
+    const queryWithRetry = async (t: string) => {
+      let r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
+      if (r === null) {
+        await new Promise((res) => setTimeout(res, 1500));
+        r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
+      }
+      return r;
+    };
+
     let total = 0;
     const all: RawMark[] = [];
     let anyOk = false;
     for (const t of Array.from(new Set(terms))) {
-      const r = await tmviewQuery(t, offices, niceClasses, cookie);
+      const r = await queryWithRetry(t);
       if (r === null) continue;
       anyOk = true;
       total = Math.max(total, r.total);
@@ -274,7 +293,7 @@ export async function checkWeb(name: string): Promise<WebResult[]> {
 
 export async function checkBrandName(
   name: string,
-  opts?: { offices?: string[]; niceClasses?: string[] }
+  opts?: { offices?: string[]; niceClasses?: string[]; cookie?: string }
 ): Promise<BrandCheckResult> {
   const [trademark, domains, web] = await Promise.all([
     checkTrademark(name, opts),
@@ -318,10 +337,10 @@ export async function runBrandChecks(
   }
 
   const results: BrandCheckResult[] = [];
-  let didNetwork = false;
+  let cookie: string | null = null; // hämtas en gång, återanvänds över batchen
   for (const name of names) {
     const hit = cacheMap.get(name);
-    // Cacha bara om resultatet har de nya domän-fälten (annars kör om mot ny version)
+    // Cacha bara om resultatet har de nya fälten (annars kör om mot ny version)
     if (
       hit &&
       Array.isArray(hit.result.domains) &&
@@ -332,10 +351,15 @@ export async function runBrandChecks(
       results.push(hit.result);
       continue;
     }
-    if (didNetwork) await sleep(300);
-    didNetwork = true;
+    // Första nät-namnet: hämta cookie. Övriga: pausa så vi inte stryps av TMview.
+    if (cookie === null) cookie = await getTmviewCookie();
+    else await sleep(1200);
 
-    const result = await checkBrandName(name, { offices: officesArr, niceClasses: niceArr });
+    const result = await checkBrandName(name, {
+      offices: officesArr,
+      niceClasses: niceArr,
+      cookie: cookie || undefined,
+    });
     results.push(result);
 
     const comOk = result.domains.find((d) => d.domain === `${toLabel(name)}.com`)?.available !== null;
