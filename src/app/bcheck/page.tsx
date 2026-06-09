@@ -23,7 +23,12 @@ export default async function PublicBrandCheckPage({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BrandCheckClient endpoint="/api/bcheck" shortlistEndpoint="/api/bcheck-shortlist" token={token} />
+      <BrandCheckClient
+        endpoint="/api/bcheck"
+        shortlistEndpoint="/api/bcheck-shortlist"
+        ideasEndpoint="/api/bcheck-ideas"
+        token={token}
+      />
     </div>
   );
 }

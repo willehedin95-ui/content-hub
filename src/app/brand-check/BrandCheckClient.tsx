@@ -17,6 +17,7 @@ import {
   Globe,
   Scale,
   Search,
+  Wand2,
 } from "lucide-react";
 
 type Overall = "free" | "caution" | "taken" | "unknown";
@@ -115,10 +116,12 @@ function HitList({ label, color, hits }: { label: string; color: string; hits: T
 export default function BrandCheckClient({
   endpoint = "/api/brand-check",
   shortlistEndpoint = "/api/brand-shortlist",
+  ideasEndpoint = "/api/brand-ideas",
   token,
 }: {
   endpoint?: string;
   shortlistEndpoint?: string;
+  ideasEndpoint?: string;
   token?: string;
 }) {
   const [input, setInput] = useState("");
@@ -132,6 +135,28 @@ export default function BrandCheckClient({
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [shortlist, setShortlist] = useState<ShortlistItem[]>([]);
   const [sortByVerdict, setSortByVerdict] = useState(false);
+  const [ideaTheme, setIdeaTheme] = useState("");
+  const [ideaLoading, setIdeaLoading] = useState(false);
+
+  async function generateIdeas() {
+    setIdeaLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(ideasEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: ideaTheme, ...(token ? { token } : {}) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kunde inte generera");
+      const names = (data.names ?? []) as string[];
+      setInput((prev) => (prev.trim() ? prev.trim() + "\n" : "") + names.join("\n"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kunde inte generera");
+    } finally {
+      setIdeaLoading(false);
+    }
+  }
 
   // Kom ihåg inställningar mellan besök
   useEffect(() => {
@@ -305,6 +330,24 @@ export default function BrandCheckClient({
               placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
             />
+
+            {/* Namn-generator */}
+            <div className="mt-3 flex flex-col gap-2 rounded-md bg-indigo-50/60 p-2 sm:flex-row sm:items-center">
+              <input
+                value={ideaTheme}
+                onChange={(e) => setIdeaTheme(e.target.value)}
+                placeholder="Tema (valfritt): t.ex. fuel, comeback, lekfullt…"
+                className="flex-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+              <button
+                onClick={generateIdeas}
+                disabled={ideaLoading}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+              >
+                {ideaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                Föreslå namn
+              </button>
+            </div>
 
             {/* Inställningar (hopfällbar) */}
             <button
