@@ -55,6 +55,17 @@ function TmIcon({ s }: { s: TmStatus }) {
   return <HelpCircle className="h-4 w-4" />;
 }
 
+const OFFICE_GROUPS: { key: string; label: string; codes: string[]; def: boolean }[] = [
+  { key: "eu", label: "EU", codes: ["EM"], def: true },
+  { key: "nordic", label: "Norden", codes: ["SE", "DK", "NO", "FI"], def: true },
+  { key: "us", label: "USA", codes: ["US"], def: false },
+  { key: "wipo", label: "WIPO", codes: ["WO"], def: false },
+  { key: "uk", label: "UK", codes: ["GB"], def: false },
+];
+const DEFAULT_OFFICE_STATE: Record<string, boolean> = Object.fromEntries(
+  OFFICE_GROUPS.map((g) => [g.key, g.def])
+);
+
 function HitRow({ h }: { h: TmHit }) {
   return (
     <li>
@@ -73,6 +84,7 @@ export default function BrandCheckClient({
 }) {
   const [input, setInput] = useState("");
   const [niceClasses, setNiceClasses] = useState("3,5");
+  const [offices, setOffices] = useState<Record<string, boolean>>(DEFAULT_OFFICE_STATE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<BrandCheckResult[] | null>(null);
@@ -83,6 +95,11 @@ export default function BrandCheckClient({
       setError("Skriv minst ett namn (ett per rad).");
       return;
     }
+    const officeCodes = OFFICE_GROUPS.filter((g) => offices[g.key]).flatMap((g) => g.codes);
+    if (officeCodes.length === 0) {
+      setError("Välj minst ett register.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setResults(null);
@@ -90,7 +107,7 @@ export default function BrandCheckClient({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names, niceClasses, ...(token ? { token } : {}) }),
+        body: JSON.stringify({ names, niceClasses, offices: officeCodes.join(","), ...(token ? { token } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -120,8 +137,8 @@ export default function BrandCheckClient({
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
       <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Brand Check</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Knockout-koll: varumärke (TMview EU+US+WIPO+nationellt, kl {niceClasses}, mellanslags-okänsligt) +
-        .com-domäner + webb. Första gallring - ersätter inte juridisk bedömning.
+        Knockout-koll: varumärke (TMview, valt register, kl {niceClasses}, mellanslags-okänsligt, döda
+        märken exkluderade) + .com-domäner + webb. Första gallring - ersätter inte juridisk bedömning.
       </p>
 
       <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4">
@@ -132,6 +149,20 @@ export default function BrandCheckClient({
           placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
         />
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+          <span className="text-gray-500">Register:</span>
+          {OFFICE_GROUPS.map((g) => (
+            <label key={g.key} className="inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={offices[g.key]}
+                onChange={(e) => setOffices((o) => ({ ...o, [g.key]: e.target.checked }))}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              {g.label}
+            </label>
+          ))}
+        </div>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="text-sm text-gray-600">
             Nice-klasser

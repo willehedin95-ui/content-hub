@@ -168,6 +168,10 @@ export async function checkTrademark(
       owner: (m.applicantName ?? ["?"]).join("/"),
     });
 
+    // Filtrera bort döda/utgångna märken (blockerar i regel inte)
+    const DEAD = /(expired|ended|withdraw|refus|cancel|invalid|surrender|laps|reject|removed|abandon)/i;
+    const liveMarks = marks.filter((m) => !DEAD.test(m.tradeMarkStatus ?? ""));
+
     const termNorm = normName(term);
     const termTokens = tokenize(term);
     const isExact = (m: RawMark) => normName(m.tmName ?? "") === termNorm;
@@ -175,9 +179,9 @@ export async function checkTrademark(
     // Veda Vana) - men INTE bara som bokstavssträng (Vanadium). Exakt exkluderas.
     const isWordMatch = (m: RawMark) => !isExact(m) && containsRun(tokenize(m.tmName ?? ""), termTokens);
 
-    const exact = marks.filter(isExact).map(toHit);
-    const wordMatch = marks.filter(isWordMatch).slice(0, 8).map(toHit);
-    const similar = marks
+    const exact = liveMarks.filter(isExact).map(toHit);
+    const wordMatch = liveMarks.filter(isWordMatch).slice(0, 8).map(toHit);
+    const similar = liveMarks
       .filter((m) => !isExact(m) && !isWordMatch(m))
       .slice(0, 8)
       .map(toHit);
@@ -185,9 +189,9 @@ export async function checkTrademark(
     let status: TmStatus = "clear";
     if (exact.length > 0) status = "conflict";
     else if (wordMatch.length > 0) status = "caution";
-    else if (total > 0 || similar.length > 0) status = "similar";
+    else if (similar.length > 0) status = "similar";
 
-    return { status, total: Math.max(total, marks.length), exact, wordMatch, similar };
+    return { status, total: liveMarks.length, exact, wordMatch, similar };
   } catch (e) {
     return {
       status: "error",
