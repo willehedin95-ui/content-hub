@@ -56,16 +56,25 @@ function cookieHeaderFrom(res: Response): string {
   return raw.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
 }
 
-/** Hämta TMview-sessions-cookie en gång (återanvänds över en batch för att minska strypning). */
-export async function getTmviewCookie(): Promise<string> {
+// Modulnivå-cache av TMview-cookien (återanvänds ~15 min) så vi inte hämtar den varje sökning.
+let cookieCache: { value: string; at: number } | null = null;
+const COOKIE_TTL_MS = 15 * 60 * 1000;
+
+/** Hämta TMview-sessions-cookie (cachad). force=true tvingar fram en ny (vid strypning). */
+export async function getTmviewCookie(force = false): Promise<string> {
+  if (!force && cookieCache && Date.now() - cookieCache.at < COOKIE_TTL_MS) {
+    return cookieCache.value;
+  }
   try {
     const seed = await fetch("https://www.tmdn.org/tmview/", {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(20000),
     });
-    return cookieHeaderFrom(seed);
+    const value = cookieHeaderFrom(seed);
+    cookieCache = { value, at: Date.now() };
+    return value;
   } catch {
-    return "";
+    return cookieCache?.value ?? "";
   }
 }
 
@@ -136,18 +145,20 @@ export async function checkTrademark(
   const offices = opts?.offices ?? DEFAULT_OFFICES;
   const niceClasses = opts?.niceClasses ?? ["3", "5"];
   try {
-    const cookie = opts?.cookie ?? (await getTmviewCookie());
+    let cookie = opts?.cookie ?? (await getTmviewCookie());
 
     // Sök både "inner fuel" och "innerfuel" så ett-ords-varianter fångas
     const collapsed = term.replace(/\s+/g, "");
     const terms = normName(term) === collapsed.toLowerCase() && term !== collapsed ? [term, collapsed] : [term];
     if (term.includes(" ") && !terms.includes(collapsed)) terms.push(collapsed);
 
-    // Ett återförsök efter paus om TMview strypar/failar
+    // Trappstegs-återförsök med fräsch cookie om TMview strypar/failar
+    const backoff = [1500, 4000, 8000];
     const queryWithRetry = async (t: string) => {
       let r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
-      if (r === null) {
-        await new Promise((res) => setTimeout(res, 1500));
+      for (let i = 0; r === null && i < backoff.length; i++) {
+        await new Promise((res) => setTimeout(res, backoff[i]));
+        cookie = await getTmviewCookie(true); // tvinga fram ny cookie inför nästa försök
         r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
       }
       return r;
