@@ -55,12 +55,62 @@ function cookieHeaderFrom(res: Response): string {
   return raw.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
 }
 
-/** Varumärkes-knockout via TMview. */
+// Bredare kontor så globala near-identiska brands fångas (inte bara EU/Norden):
+// EM=EUIPO, WO=WIPO intl, US=USPTO, GB=UK, + nordiska.
+const DEFAULT_OFFICES = ["EM", "WO", "US", "GB", "SE", "DK", "NO", "FI"];
+
+interface RawMark {
+  tmName?: string;
+  tmOffice?: string;
+  tradeMarkStatus?: string;
+  niceClass?: string[];
+  tradeMarkType?: string;
+  applicantName?: string[];
+}
+
+async function tmviewQuery(
+  term: string,
+  offices: string[],
+  niceClasses: string[],
+  cookie: string
+): Promise<{ total: number; marks: RawMark[] } | null> {
+  const res = await fetch("https://www.tmdn.org/tmview/api/search/results", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Origin: "https://www.tmdn.org",
+      Referer: "https://www.tmdn.org/tmview/",
+      "User-Agent": UA,
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: JSON.stringify({
+      page: "1",
+      pageSize: "50",
+      criteria: "C",
+      basicSearch: term,
+      fOffices: offices,
+      fNiceClass: niceClasses,
+      fTMStatus: [],
+      fTMType: [],
+      fGoodsServices: [],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { totalResults?: number; tradeMarks?: RawMark[] };
+  return { total: data.totalResults ?? 0, marks: data.tradeMarks ?? [] };
+}
+
+// Skiljetecken-/mellanslags-okänslig normalisering: "Inner Fuel" == "innerfuel" == "INNER-FUEL"
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Varumärkes-knockout via TMview. Söker både den skrivna och den hopskrivna formen. */
 export async function checkTrademark(
   term: string,
   opts?: { offices?: string[]; niceClasses?: string[] }
 ): Promise<TrademarkResult> {
-  const offices = opts?.offices ?? ["EM", "SE", "DK", "NO"];
+  const offices = opts?.offices ?? DEFAULT_OFFICES;
   const niceClasses = opts?.niceClasses ?? ["3", "5"];
   try {
     const seed = await fetch("https://www.tmdn.org/tmview/", {
@@ -69,49 +119,37 @@ export async function checkTrademark(
     });
     const cookie = cookieHeaderFrom(seed);
 
-    const res = await fetch("https://www.tmdn.org/tmview/api/search/results", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Origin: "https://www.tmdn.org",
-        Referer: "https://www.tmdn.org/tmview/",
-        "User-Agent": UA,
-        ...(cookie ? { Cookie: cookie } : {}),
-      },
-      body: JSON.stringify({
-        page: "1",
-        pageSize: "50",
-        criteria: "C",
-        basicSearch: term,
-        fOffices: offices,
-        fNiceClass: niceClasses,
-        fTMStatus: [],
-        fTMType: [],
-        fGoodsServices: [],
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
+    // Sök både "inner fuel" och "innerfuel" så ett-ords-varianter fångas
+    const collapsed = term.replace(/\s+/g, "");
+    const terms = normName(term) === collapsed.toLowerCase() && term !== collapsed ? [term, collapsed] : [term];
+    if (term.includes(" ") && !terms.includes(collapsed)) terms.push(collapsed);
 
-    if (!res.ok) {
-      return { status: "error", total: 0, exact: [], similar: [], error: `TMview HTTP ${res.status}` };
+    let total = 0;
+    const all: RawMark[] = [];
+    let anyOk = false;
+    for (const t of Array.from(new Set(terms))) {
+      const r = await tmviewQuery(t, offices, niceClasses, cookie);
+      if (r === null) continue;
+      anyOk = true;
+      total = Math.max(total, r.total);
+      all.push(...r.marks);
     }
-    const data = (await res.json()) as {
-      totalResults?: number;
-      tradeMarks?: Array<{
-        tmName?: string;
-        tmOffice?: string;
-        tradeMarkStatus?: string;
-        niceClass?: string[];
-        tradeMarkType?: string;
-        applicantName?: string[];
-      }>;
-    };
+    if (!anyOk) {
+      return { status: "error", total: 0, exact: [], similar: [], error: "TMview svarade inte" };
+    }
 
-    const total = data.totalResults ?? 0;
-    const marks = data.tradeMarks ?? [];
-    const norm = (s: string) => s.trim().toLowerCase();
-    const toHit = (m: NonNullable<typeof marks>[number]): TmHit => ({
+    // Dedupe
+    const seen = new Set<string>();
+    const marks: RawMark[] = [];
+    for (const m of all) {
+      const k = `${m.tmName}|${m.tmOffice}|${(m.niceClass ?? []).join(",")}|${m.tradeMarkStatus}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        marks.push(m);
+      }
+    }
+
+    const toHit = (m: RawMark): TmHit => ({
       name: m.tmName ?? "?",
       office: m.tmOffice ?? "?",
       status: m.tradeMarkStatus ?? "?",
@@ -120,17 +158,17 @@ export async function checkTrademark(
       owner: (m.applicantName ?? ["?"]).join("/"),
     });
 
-    const exact = marks.filter((m) => norm(m.tmName ?? "") === norm(term)).map(toHit);
+    const exact = marks.filter((m) => normName(m.tmName ?? "") === normName(term)).map(toHit);
     const similar = marks
-      .filter((m) => norm(m.tmName ?? "") !== norm(term))
+      .filter((m) => normName(m.tmName ?? "") !== normName(term))
       .slice(0, 8)
       .map(toHit);
 
     let status: TmStatus = "clear";
     if (exact.length > 0) status = "conflict";
-    else if (total > 0) status = "similar";
+    else if (total > 0 || similar.length > 0) status = "similar";
 
-    return { status, total, exact, similar };
+    return { status, total: Math.max(total, marks.length), exact, similar };
   } catch (e) {
     return {
       status: "error",

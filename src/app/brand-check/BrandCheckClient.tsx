@@ -111,8 +111,8 @@ export default function BrandCheckClient({
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
       <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Brand Check</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Knockout-koll: varumärke (TMview EU+PRV+nationellt, kl {niceClasses}) + domäner. Första
-        gallring - ersätter inte juridisk bedömning.
+        Knockout-koll: varumärke (TMview EU+US+WIPO+nationellt, kl {niceClasses}, mellanslags-okänsligt) +
+        .com-domäner + webb. Första gallring - ersätter inte juridisk bedömning.
       </p>
 
       <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4">
@@ -188,15 +188,28 @@ export default function BrandCheckClient({
 
                 {/* Domäner */}
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {r.domains.map((d) => (
-                    <span
-                      key={d.domain}
-                      title={d.available === true ? "ledig" : d.available === false ? "tagen" : "okänd"}
-                      className={`rounded-md px-2 py-0.5 text-xs ${domainStyle(d.available)}`}
-                    >
-                      {d.domain}
-                    </span>
-                  ))}
+                  {r.domains.map((d) =>
+                    d.available === false ? (
+                      <a
+                        key={d.domain}
+                        href={`https://${d.domain}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="tagen - öppna sajten"
+                        className={`rounded-md px-2 py-0.5 text-xs underline decoration-red-300 hover:decoration-red-600 ${domainStyle(d.available)}`}
+                      >
+                        {d.domain}
+                      </a>
+                    ) : (
+                      <span
+                        key={d.domain}
+                        title={d.available === true ? "ledig" : "okänd"}
+                        className={`rounded-md px-2 py-0.5 text-xs ${domainStyle(d.available)}`}
+                      >
+                        {d.domain}
+                      </span>
+                    )
+                  )}
                 </div>
 
                 {/* Webben - finns ett kosttillskott redan? */}

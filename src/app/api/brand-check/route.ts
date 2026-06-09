@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   const names = Array.isArray(body.names) ? (body.names.filter((n) => typeof n === "string") as string[]) : [];
   if (names.length === 0) return NextResponse.json({ error: "Inga namn angivna" }, { status: 400 });
   const niceClasses = typeof body.niceClasses === "string" ? body.niceClasses : "3,5";
-  const offices = typeof body.offices === "string" ? body.offices : "EM,SE,DK,NO";
+  const offices = typeof body.offices === "string" ? body.offices : "EM,WO,US,GB,SE,DK,NO,FI";
 
   const results = await runBrandChecks(names, niceClasses, offices);
   return NextResponse.json({ results });
