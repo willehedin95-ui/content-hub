@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Loader2, ShieldCheck, ShieldAlert, ShieldX, HelpCircle, ExternalLink } from "lucide-react";
 
-type TmStatus = "clear" | "similar" | "conflict" | "error";
+type TmStatus = "clear" | "similar" | "caution" | "conflict" | "error";
 interface TmHit {
   name: string;
   office: string;
@@ -22,7 +22,14 @@ interface WebResult {
 }
 interface BrandCheckResult {
   name: string;
-  trademark: { status: TmStatus; total: number; exact: TmHit[]; similar: TmHit[]; error?: string };
+  trademark: {
+    status: TmStatus;
+    total: number;
+    exact: TmHit[];
+    wordMatch: TmHit[];
+    similar: TmHit[];
+    error?: string;
+  };
   domains: DomainResult[];
   web: WebResult[];
 }
@@ -30,18 +37,20 @@ interface BrandCheckResult {
 const TM_LABEL: Record<TmStatus, string> = {
   clear: "Inga träffar",
   similar: "Liknande finns",
+  caution: "Ditt ord i annat märke",
   conflict: "Exakt träff",
   error: "Fel - ej kollat",
 };
 const TM_STYLE: Record<TmStatus, string> = {
   clear: "bg-green-100 text-green-800",
   similar: "bg-amber-100 text-amber-800",
+  caution: "bg-orange-100 text-orange-800",
   conflict: "bg-red-100 text-red-800",
   error: "bg-gray-200 text-gray-600",
 };
 function TmIcon({ s }: { s: TmStatus }) {
   if (s === "clear") return <ShieldCheck className="h-4 w-4" />;
-  if (s === "similar") return <ShieldAlert className="h-4 w-4" />;
+  if (s === "similar" || s === "caution") return <ShieldAlert className="h-4 w-4" />;
   if (s === "conflict") return <ShieldX className="h-4 w-4" />;
   return <HelpCircle className="h-4 w-4" />;
 }
@@ -167,6 +176,16 @@ export default function BrandCheckClient({
                     <p className="text-xs font-medium text-red-700">Exakta träffar</p>
                     <ul className="mt-0.5 space-y-0.5 text-xs text-gray-600">
                       {r.trademark.exact.slice(0, 6).map((h, i) => (
+                        <HitRow key={i} h={h} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {r.trademark.wordMatch.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-orange-700">Ditt ord i annat märke (hög risk)</p>
+                    <ul className="mt-0.5 space-y-0.5 text-xs text-gray-600">
+                      {r.trademark.wordMatch.slice(0, 6).map((h, i) => (
                         <HitRow key={i} h={h} />
                       ))}
                     </ul>

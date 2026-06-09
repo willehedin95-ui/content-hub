@@ -9,7 +9,7 @@ import * as cheerio from "cheerio";
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
-export type TmStatus = "clear" | "similar" | "conflict" | "error";
+export type TmStatus = "clear" | "similar" | "caution" | "conflict" | "error";
 
 export interface TmHit {
   name: string;
@@ -24,6 +24,7 @@ export interface TrademarkResult {
   status: TmStatus;
   total: number;
   exact: TmHit[];
+  wordMatch: TmHit[]; // ditt ord som eget ord i ett annat märke (Vana Health) - hög risk
   similar: TmHit[];
   error?: string;
 }
@@ -104,6 +105,15 @@ async function tmviewQuery(
 
 // Skiljetecken-/mellanslags-okänslig normalisering: "Inner Fuel" == "innerfuel" == "INNER-FUEL"
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const tokenize = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+// Sant om needle-tokens finns som sammanhängande sekvens i hay (t.ex. ["vana"] i ["vana","health"])
+function containsRun(hay: string[], needle: string[]): boolean {
+  if (needle.length === 0 || hay.length < needle.length) return false;
+  for (let i = 0; i + needle.length <= hay.length; i++) {
+    if (needle.every((t, j) => hay[i + j] === t)) return true;
+  }
+  return false;
+}
 
 /** Varumärkes-knockout via TMview. Söker både den skrivna och den hopskrivna formen. */
 export async function checkTrademark(
@@ -135,7 +145,7 @@ export async function checkTrademark(
       all.push(...r.marks);
     }
     if (!anyOk) {
-      return { status: "error", total: 0, exact: [], similar: [], error: "TMview svarade inte" };
+      return { status: "error", total: 0, exact: [], wordMatch: [], similar: [], error: "TMview svarade inte" };
     }
 
     // Dedupe
@@ -158,22 +168,32 @@ export async function checkTrademark(
       owner: (m.applicantName ?? ["?"]).join("/"),
     });
 
-    const exact = marks.filter((m) => normName(m.tmName ?? "") === normName(term)).map(toHit);
+    const termNorm = normName(term);
+    const termTokens = tokenize(term);
+    const isExact = (m: RawMark) => normName(m.tmName ?? "") === termNorm;
+    // "ditt ord som eget ord": ditt namn finns som sammanhängande token-sekvens (Vana Health,
+    // Veda Vana) - men INTE bara som bokstavssträng (Vanadium). Exakt exkluderas.
+    const isWordMatch = (m: RawMark) => !isExact(m) && containsRun(tokenize(m.tmName ?? ""), termTokens);
+
+    const exact = marks.filter(isExact).map(toHit);
+    const wordMatch = marks.filter(isWordMatch).slice(0, 8).map(toHit);
     const similar = marks
-      .filter((m) => normName(m.tmName ?? "") !== normName(term))
+      .filter((m) => !isExact(m) && !isWordMatch(m))
       .slice(0, 8)
       .map(toHit);
 
     let status: TmStatus = "clear";
     if (exact.length > 0) status = "conflict";
+    else if (wordMatch.length > 0) status = "caution";
     else if (total > 0 || similar.length > 0) status = "similar";
 
-    return { status, total: Math.max(total, marks.length), exact, similar };
+    return { status, total: Math.max(total, marks.length), exact, wordMatch, similar };
   } catch (e) {
     return {
       status: "error",
       total: 0,
       exact: [],
+      wordMatch: [],
       similar: [],
       error: e instanceof Error ? e.message : "okänt fel",
     };
@@ -302,6 +322,7 @@ export async function runBrandChecks(
       hit &&
       Array.isArray(hit.result.domains) &&
       Array.isArray(hit.result.web) &&
+      Array.isArray(hit.result.trademark?.wordMatch) &&
       Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS
     ) {
       results.push(hit.result);
