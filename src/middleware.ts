@@ -40,6 +40,9 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/morning-brief") ||
     request.nextUrl.pathname.startsWith("/api/research/sources/bulk-import") ||
     request.nextUrl.pathname.startsWith("/api/fillout-to-freshdesk") ||
+    // Gömd publik brand-checker (mobil) - token-skyddad i sidan + API:t
+    request.nextUrl.pathname.startsWith("/bcheck") ||
+    request.nextUrl.pathname.startsWith("/api/bcheck") ||
     // Quiz runtime bundle (content-hashed JS served to published + preview quizzes)
     request.nextUrl.pathname.startsWith("/_runtime/") ||
     // Preview iframe loads the runtime bundle from /quiz-bundle/[filename]

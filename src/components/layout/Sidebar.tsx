@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio, Search, BookOpen, Smartphone, Mail, ListChecks, BadgeCheck } from "lucide-react";
+import { Layers, Settings, Zap, Image, LogOut, Package, BarChart3, Lightbulb, ChevronDown, ChevronRight, Megaphone, Workflow, Activity, Rocket, FolderOpen, Check, Receipt, Eye, Radio, Search, BookOpen, Smartphone, Mail, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabase } from "@/lib/supabase";
 import type { Workspace } from "@/types";
@@ -80,7 +80,6 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
     { href: "/assets", label: "Assets", icon: FolderOpen },
     { href: "/seo", label: "SEO", icon: Search },
     { href: "/research", label: "Research", icon: BookOpen },
-    { href: "/brand-check", label: "Brand Check", icon: BadgeCheck },
     ...((activeWorkspace?.settings as Record<string, unknown>)?.telemetrydeck_app_id
       ? [{ href: "/app-analytics", label: "App Analytics", icon: Smartphone }]
       : []),

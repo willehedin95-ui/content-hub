@@ -37,7 +37,13 @@ function TmIcon({ s }: { s: TmStatus }) {
   return <HelpCircle className="w-4 h-4" />;
 }
 
-export default function BrandCheckClient() {
+export default function BrandCheckClient({
+  endpoint = "/api/brand-check",
+  token,
+}: {
+  endpoint?: string;
+  token?: string;
+}) {
   const [input, setInput] = useState("");
   const [niceClasses, setNiceClasses] = useState("3,5");
   const [loading, setLoading] = useState(false);
@@ -45,10 +51,7 @@ export default function BrandCheckClient() {
   const [results, setResults] = useState<BrandCheckResult[] | null>(null);
 
   async function run() {
-    const names = input
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const names = input.split("\n").map((s) => s.trim()).filter(Boolean);
     if (names.length === 0) {
       setError("Skriv minst ett namn (ett per rad).");
       return;
@@ -57,10 +60,10 @@ export default function BrandCheckClient() {
     setError(null);
     setResults(null);
     try {
-      const res = await fetch("/api/brand-check", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names, niceClasses }),
+        body: JSON.stringify({ names, niceClasses, ...(token ? { token } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -72,38 +75,46 @@ export default function BrandCheckClient() {
     }
   }
 
+  function Chip({ children, className }: { children: React.ReactNode; className: string }) {
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
+        {children}
+      </span>
+    );
+  }
+
   return (
-    <div className="max-w-5xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Brand Check</h1>
+    <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
+      <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Brand Check</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Knockout-koll av varumärke (TMview: EU + PRV + nationellt) och .com-domän. En första
-        gallring - ersätter inte juridisk förväxlingsbedömning (Petra).
+        Knockout-koll: varumärke (TMview EU+PRV+nationellt, kl {niceClasses}) + .com. Första
+        gallring - ersätter inte juridisk bedömning.
       </p>
 
-      <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
-        <label className="block text-sm font-medium text-gray-700">Namn (ett per rad)</label>
+      <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          rows={6}
+          rows={5}
+          inputMode="text"
           placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-indigo-500 focus:ring-indigo-500"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
         />
-        <div className="mt-3 flex items-center gap-4">
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="text-sm text-gray-600">
-            Nice-klasser{" "}
+            Nice-klasser
             <input
               value={niceClasses}
               onChange={(e) => setNiceClasses(e.target.value)}
-              className="ml-1 w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
+              className="ml-2 w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
             />
           </label>
           <button
             onClick={run}
             disabled={loading}
-            className="ml-auto inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 sm:ml-auto sm:w-auto"
           >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             {loading ? "Kontrollerar..." : "Kontrollera"}
           </button>
         </div>
@@ -111,64 +122,37 @@ export default function BrandCheckClient() {
       </div>
 
       {results && (
-        <div className="mt-6 bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-500">
-              <tr>
-                <th className="px-4 py-2 font-medium">Namn</th>
-                <th className="px-4 py-2 font-medium">Varumärke (kl {niceClasses})</th>
-                <th className="px-4 py-2 font-medium">.com</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {results.map((r) => (
-                <tr key={r.name} className="align-top">
-                  <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${TM_STYLE[r.trademark.status]}`}
-                    >
-                      <TmIcon s={r.trademark.status} />
-                      {TM_LABEL[r.trademark.status]}
-                    </span>
-                    {r.trademark.status === "error" && (
-                      <p className="mt-1 text-xs text-gray-400">{r.trademark.error}</p>
-                    )}
-                    {r.trademark.exact.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
-                        {r.trademark.exact.slice(0, 4).map((h, i) => (
-                          <li key={i}>
-                            {h.name} [{h.office}] {h.status} · kl {h.niceClasses.join(",")} · {h.owner}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {r.trademark.status === "similar" && (
-                      <p className="mt-1 text-xs text-gray-400">{r.trademark.total} liknande träffar</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {r.dotcom.available === true && (
-                      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                        ledig
-                      </span>
-                    )}
-                    {r.dotcom.available === false && (
-                      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                        tagen
-                      </span>
-                    )}
-                    {r.dotcom.available === null && (
-                      <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
-                        okänd
-                      </span>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">{r.dotcom.domain}</p>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-5 space-y-3">
+          {results.map((r) => (
+            <div key={r.name} className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="font-semibold text-gray-900">{r.name}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Chip className={TM_STYLE[r.trademark.status]}>
+                  <TmIcon s={r.trademark.status} />
+                  {TM_LABEL[r.trademark.status]}
+                </Chip>
+                {r.dotcom.available === true && <Chip className="bg-green-100 text-green-800">.com ledig</Chip>}
+                {r.dotcom.available === false && <Chip className="bg-red-100 text-red-800">.com tagen</Chip>}
+                {r.dotcom.available === null && <Chip className="bg-gray-200 text-gray-600">.com okänd</Chip>}
+              </div>
+              {r.trademark.exact.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
+                  {r.trademark.exact.slice(0, 4).map((h, i) => (
+                    <li key={i}>
+                      {h.name} [{h.office}] {h.status} · kl {h.niceClasses.join(",")} · {h.owner}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {r.trademark.status === "similar" && (
+                <p className="mt-1 text-xs text-gray-400">{r.trademark.total} liknande träffar</p>
+              )}
+              {r.trademark.status === "error" && (
+                <p className="mt-1 text-xs text-gray-400">{r.trademark.error}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-400">{r.dotcom.domain}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>

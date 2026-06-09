@@ -173,3 +173,62 @@ export async function checkBrandName(
   const [trademark, dotcom] = await Promise.all([checkTrademark(name, opts), checkDotCom(name)]);
   return { name, trademark, dotcom };
 }
+
+// Delad batch-körning med Supabase-cache (7 dygn). Används av både den inloggade
+// routen (/api/brand-check) och den publika token-routen (/api/bcheck).
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function runBrandChecks(
+  rawNames: string[],
+  niceClasses = "3,5",
+  offices = "EM,SE,DK,NO"
+): Promise<BrandCheckResult[]> {
+  const { createServerSupabase } = await import("@/lib/supabase-admin");
+  const names = Array.from(
+    new Set(rawNames.map((n) => n.trim()).filter(Boolean))
+  ).slice(0, 40);
+  if (names.length === 0) return [];
+
+  const officesArr = offices.split(",").map((s) => s.trim()).filter(Boolean);
+  const niceArr = niceClasses.split(",").map((s) => s.trim()).filter(Boolean);
+
+  const supabase = createServerSupabase();
+  const { data: cached } = await supabase
+    .from("brand_check_cache")
+    .select("name, result, checked_at")
+    .in("name", names)
+    .eq("nice_classes", niceClasses)
+    .eq("offices", offices);
+
+  const cacheMap = new Map<string, { result: BrandCheckResult; checked_at: string }>();
+  for (const row of cached ?? []) {
+    cacheMap.set(row.name as string, {
+      result: row.result as BrandCheckResult,
+      checked_at: row.checked_at as string,
+    });
+  }
+
+  const results: BrandCheckResult[] = [];
+  let didNetwork = false;
+  for (const name of names) {
+    const hit = cacheMap.get(name);
+    if (hit && Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS) {
+      results.push(hit.result);
+      continue;
+    }
+    if (didNetwork) await sleep(300);
+    didNetwork = true;
+
+    const result = await checkBrandName(name, { offices: officesArr, niceClasses: niceArr });
+    results.push(result);
+
+    if (result.trademark.status !== "error" && result.dotcom.available !== null) {
+      await supabase.from("brand_check_cache").upsert(
+        { name, nice_classes: niceClasses, offices, result, checked_at: new Date().toISOString() },
+        { onConflict: "name,nice_classes,offices" }
+      );
+    }
+  }
+  return results;
+}
