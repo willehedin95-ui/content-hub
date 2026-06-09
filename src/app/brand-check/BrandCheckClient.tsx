@@ -130,6 +130,25 @@ export default function BrandCheckClient({
   const [order, setOrder] = useState<string[]>([]);
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [shortlist, setShortlist] = useState<ShortlistItem[]>([]);
+  const [sortByVerdict, setSortByVerdict] = useState(false);
+
+  // Kom ihåg inställningar mellan besök
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("brandcheck-settings") || "{}");
+      if (typeof s.niceClasses === "string") setNiceClasses(s.niceClasses);
+      if (s.offices) setOffices((o) => ({ ...o, ...s.offices }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("brandcheck-settings", JSON.stringify({ niceClasses, offices }));
+    } catch {
+      /* ignore */
+    }
+  }, [niceClasses, offices]);
 
   const slUrl = useCallback(
     () => (token ? `${shortlistEndpoint}?token=${encodeURIComponent(token)}` : shortlistEndpoint),
@@ -234,6 +253,12 @@ export default function BrandCheckClient({
     caution: done.filter((c) => c.result?.overall === "caution").length,
     taken: done.filter((c) => c.result?.overall === "taken").length,
   };
+  const rank = (n: string): number => {
+    const c = cells[n];
+    if (c?.status !== "done" || !c.result) return 4;
+    return ({ free: 0, caution: 1, unknown: 2, taken: 3 } as Record<Overall, number>)[c.result.overall] ?? 4;
+  };
+  const displayOrder = sortByVerdict ? [...order].sort((a, b) => rank(a) - rank(b)) : order;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
@@ -265,6 +290,12 @@ export default function BrandCheckClient({
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  run();
+                }
+              }}
               rows={4}
               placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
@@ -327,12 +358,20 @@ export default function BrandCheckClient({
               {summary.free > 0 && <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-800">{summary.free} ledig</span>}
               {summary.caution > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{summary.caution} tveksam</span>}
               {summary.taken > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{summary.taken} upptaget</span>}
+              {order.length > 1 && (
+                <button
+                  onClick={() => setSortByVerdict((v) => !v)}
+                  className="ml-auto rounded-md border border-gray-200 px-2 py-0.5 text-gray-500 hover:bg-gray-50"
+                >
+                  {sortByVerdict ? "Sortering: bästa först" : "Sortering: inmatad ordning"}
+                </button>
+              )}
             </div>
           )}
 
           {/* Resultatkort */}
           <div className="mt-3 space-y-3">
-            {order.map((name) => {
+            {displayOrder.map((name) => {
               const c = cells[name];
               if (!c) return null;
               if (c.status === "loading")
@@ -468,11 +507,19 @@ function ResultCard({
               >
                 {d.domain}
               </a>
-            ) : (
-              <span
+            ) : d.available === true ? (
+              <a
                 key={d.domain}
-                className={`rounded-md px-2 py-0.5 text-xs ${d.available === true ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"}`}
+                href={`https://www.namecheap.com/domains/registration/results/?domain=${d.domain}`}
+                target="_blank"
+                rel="noreferrer"
+                title="ledig - köp"
+                className="rounded-md bg-green-100 px-2 py-0.5 text-xs text-green-800 underline decoration-green-300 hover:decoration-green-600"
               >
+                {d.domain}
+              </a>
+            ) : (
+              <span key={d.domain} className="rounded-md bg-gray-200 px-2 py-0.5 text-xs text-gray-600">
                 {d.domain}
               </span>
             )
