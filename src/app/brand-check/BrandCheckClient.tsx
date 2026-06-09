@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ShieldCheck, ShieldAlert, ShieldX, HelpCircle } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldAlert, ShieldX, HelpCircle, ExternalLink } from "lucide-react";
 
 type TmStatus = "clear" | "similar" | "conflict" | "error";
 interface TmHit {
@@ -12,10 +12,14 @@ interface TmHit {
   type: string;
   owner: string;
 }
+interface DomainResult {
+  domain: string;
+  available: boolean | null;
+}
 interface BrandCheckResult {
   name: string;
   trademark: { status: TmStatus; total: number; exact: TmHit[]; similar: TmHit[]; error?: string };
-  dotcom: { domain: string; available: boolean | null; error?: string };
+  domains: DomainResult[];
 }
 
 const TM_LABEL: Record<TmStatus, string> = {
@@ -31,10 +35,19 @@ const TM_STYLE: Record<TmStatus, string> = {
   error: "bg-gray-200 text-gray-600",
 };
 function TmIcon({ s }: { s: TmStatus }) {
-  if (s === "clear") return <ShieldCheck className="w-4 h-4" />;
-  if (s === "similar") return <ShieldAlert className="w-4 h-4" />;
-  if (s === "conflict") return <ShieldX className="w-4 h-4" />;
-  return <HelpCircle className="w-4 h-4" />;
+  if (s === "clear") return <ShieldCheck className="h-4 w-4" />;
+  if (s === "similar") return <ShieldAlert className="h-4 w-4" />;
+  if (s === "conflict") return <ShieldX className="h-4 w-4" />;
+  return <HelpCircle className="h-4 w-4" />;
+}
+
+function HitRow({ h }: { h: TmHit }) {
+  return (
+    <li>
+      <span className="font-medium text-gray-700">{h.name}</span> [{h.office}] {h.status} · kl{" "}
+      {h.niceClasses.join(",")} · {h.owner}
+    </li>
+  );
 }
 
 export default function BrandCheckClient({
@@ -83,11 +96,17 @@ export default function BrandCheckClient({
     );
   }
 
+  function domainStyle(a: boolean | null) {
+    if (a === true) return "bg-green-100 text-green-800";
+    if (a === false) return "bg-red-100 text-red-800";
+    return "bg-gray-200 text-gray-600";
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
       <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Brand Check</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Knockout-koll: varumärke (TMview EU+PRV+nationellt, kl {niceClasses}) + .com. Första
+        Knockout-koll: varumärke (TMview EU+PRV+nationellt, kl {niceClasses}) + domäner. Första
         gallring - ersätter inte juridisk bedömning.
       </p>
 
@@ -96,7 +115,6 @@ export default function BrandCheckClient({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           rows={5}
-          inputMode="text"
           placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
         />
@@ -122,37 +140,90 @@ export default function BrandCheckClient({
       </div>
 
       {results && (
-        <div className="mt-5 space-y-3">
-          {results.map((r) => (
-            <div key={r.name} className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="font-semibold text-gray-900">{r.name}</div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Chip className={TM_STYLE[r.trademark.status]}>
-                  <TmIcon s={r.trademark.status} />
-                  {TM_LABEL[r.trademark.status]}
-                </Chip>
-                {r.dotcom.available === true && <Chip className="bg-green-100 text-green-800">.com ledig</Chip>}
-                {r.dotcom.available === false && <Chip className="bg-red-100 text-red-800">.com tagen</Chip>}
-                {r.dotcom.available === null && <Chip className="bg-gray-200 text-gray-600">.com okänd</Chip>}
-              </div>
-              {r.trademark.exact.length > 0 && (
-                <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
-                  {r.trademark.exact.slice(0, 4).map((h, i) => (
-                    <li key={i}>
-                      {h.name} [{h.office}] {h.status} · kl {h.niceClasses.join(",")} · {h.owner}
-                    </li>
+        <div className="mt-5 space-y-4">
+          {results.map((r) => {
+            const q = encodeURIComponent(r.name);
+            return (
+              <div key={r.name} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-gray-900">{r.name}</span>
+                  <Chip className={TM_STYLE[r.trademark.status]}>
+                    <TmIcon s={r.trademark.status} />
+                    {TM_LABEL[r.trademark.status]}
+                    {r.trademark.total > 0 && r.trademark.status !== "error"
+                      ? ` (${r.trademark.total})`
+                      : ""}
+                  </Chip>
+                </div>
+
+                {/* Varumärke - exakta + liknande */}
+                {r.trademark.exact.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-red-700">Exakta träffar</p>
+                    <ul className="mt-0.5 space-y-0.5 text-xs text-gray-600">
+                      {r.trademark.exact.slice(0, 6).map((h, i) => (
+                        <HitRow key={i} h={h} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {r.trademark.similar.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-amber-700">Liknande</p>
+                    <ul className="mt-0.5 space-y-0.5 text-xs text-gray-500">
+                      {r.trademark.similar.slice(0, 6).map((h, i) => (
+                        <HitRow key={i} h={h} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {r.trademark.status === "error" && (
+                  <p className="mt-1 text-xs text-gray-400">{r.trademark.error}</p>
+                )}
+
+                {/* Domäner */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {r.domains.map((d) => (
+                    <span
+                      key={d.domain}
+                      title={d.available === true ? "ledig" : d.available === false ? "tagen" : "okänd"}
+                      className={`rounded-md px-2 py-0.5 text-xs ${domainStyle(d.available)}`}
+                    >
+                      {d.domain}
+                    </span>
                   ))}
-                </ul>
-              )}
-              {r.trademark.status === "similar" && (
-                <p className="mt-1 text-xs text-gray-400">{r.trademark.total} liknande träffar</p>
-              )}
-              {r.trademark.status === "error" && (
-                <p className="mt-1 text-xs text-gray-400">{r.trademark.error}</p>
-              )}
-              <p className="mt-1 text-xs text-gray-400">{r.dotcom.domain}</p>
-            </div>
-          ))}
+                </div>
+
+                {/* Sök vidare (gratis) */}
+                <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                  <a
+                    href={`https://www.tmdn.org/tmview/`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                  >
+                    TMview <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={`https://www.google.com/search?q=${q}+collagen`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                  >
+                    Google: {r.name} collagen <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={`https://www.google.com/search?q=${q}+supplement`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                  >
+                    Google: {r.name} supplement <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

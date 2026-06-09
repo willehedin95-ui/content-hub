@@ -1,11 +1,8 @@
-// brand-check.ts - knockout-koll av varumärke (TMview, EU+PRV+nationellt) + .com-domän.
+// brand-check.ts - knockout-koll av varumärke (TMview, EU+PRV+nationellt) + domän-varianter.
 //
 // TMview har inget officiellt API - vi anropar samma interna endpoint som sajtens frontend
 // (samma som scripts/tmcheck.sh). Det är en IDENTITETS-/knockout-sökning, INTE en juridisk
-// förväxlingsbedömning. Resultatet ska aldrig tolkas som "fritt att registrera" - bara som
-// en första gallring före riktig clearance hos jurist.
-//
-// VIKTIGT: rapportera ALDRIG "clear" om ett anrop misslyckas - då returneras status "error".
+// förväxlingsbedömning. Rapportera ALDRIG "clear" om ett anrop misslyckas (status "error").
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
@@ -32,29 +29,25 @@ export interface TrademarkResult {
 export interface DomainResult {
   domain: string;
   available: boolean | null; // null = okänt (fel vid koll)
-  error?: string;
 }
 
 export interface BrandCheckResult {
   name: string;
   trademark: TrademarkResult;
-  dotcom: DomainResult;
+  domains: DomainResult[]; // bara .com först, sen varianter
 }
 
-// Slå ihop set-cookie-värden till en cookie-header (name=value; ...)
 function cookieHeaderFrom(res: Response): string {
-  // Node 20+: getSetCookie() ger en array; annars fall tillbaka på get()
   const raw =
     typeof (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie === "function"
       ? (res.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()
-      : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie") as string] : []);
-  return raw
-    .map((c) => c.split(";")[0])
-    .filter(Boolean)
-    .join("; ");
+      : res.headers.get("set-cookie")
+      ? [res.headers.get("set-cookie") as string]
+      : [];
+  return raw.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
 }
 
-/** Varumärkes-knockout via TMview. offices/niceClasses som arrayer. */
+/** Varumärkes-knockout via TMview. */
 export async function checkTrademark(
   term: string,
   opts?: { offices?: string[]; niceClasses?: string[] }
@@ -62,14 +55,12 @@ export async function checkTrademark(
   const offices = opts?.offices ?? ["EM", "SE", "DK", "NO"];
   const niceClasses = opts?.niceClasses ?? ["3", "5"];
   try {
-    // 1) Sessions-cookie från frontend (krävs av endpointen)
     const seed = await fetch("https://www.tmdn.org/tmview/", {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(20000),
     });
     const cookie = cookieHeaderFrom(seed);
 
-    // 2) Sök
     const res = await fetch("https://www.tmdn.org/tmview/api/search/results", {
       method: "POST",
       headers: {
@@ -124,7 +115,7 @@ export async function checkTrademark(
     const exact = marks.filter((m) => norm(m.tmName ?? "") === norm(term)).map(toHit);
     const similar = marks
       .filter((m) => norm(m.tmName ?? "") !== norm(term))
-      .slice(0, 5)
+      .slice(0, 8)
       .map(toHit);
 
     let status: TmStatus = "clear";
@@ -143,39 +134,58 @@ export async function checkTrademark(
   }
 }
 
-/** Gör en .com-domänsträng av ett brand-namn (gemener, bara a-z0-9). */
-export function toDotComLabel(name: string): string {
+/** Ren domän-label av ett brand-namn (gemener, bara a-z0-9). */
+export function toLabel(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** .com-tillgänglighet via Verisign RDAP. 404 = ledig, 200 = tagen. */
-export async function checkDotCom(name: string): Promise<DomainResult> {
-  const label = toDotComLabel(name);
-  const domain = `${label}.com`;
-  if (!label) return { domain, available: null, error: "tomt namn" };
+/** Domän-varianter att kolla (bare .com först). */
+export function domainVariants(name: string): string[] {
+  const l = toLabel(name);
+  if (!l) return [];
+  return [
+    `${l}.com`,
+    `${l}.co`,
+    `${l}.io`,
+    `get${l}.com`,
+    `try${l}.com`,
+    `${l}health.com`,
+    `${l}supps.com`,
+    `${l}nutrition.com`,
+  ];
+}
+
+/** Domäntillgänglighet via RDAP (rdap.org routar till rätt register). 404 = ledig, 200 = tagen. */
+async function checkDomain(domain: string): Promise<DomainResult> {
   try {
-    const res = await fetch(`https://rdap.verisign.com/com/v1/domain/${label.toUpperCase()}.COM`, {
+    const res = await fetch(`https://rdap.org/domain/${domain}`, {
       headers: { Accept: "application/rdap+json" },
+      redirect: "follow",
       signal: AbortSignal.timeout(15000),
     });
     if (res.status === 404) return { domain, available: true };
     if (res.ok) return { domain, available: false };
-    return { domain, available: null, error: `RDAP HTTP ${res.status}` };
-  } catch (e) {
-    return { domain, available: null, error: e instanceof Error ? e.message : "okänt fel" };
+    return { domain, available: null };
+  } catch {
+    return { domain, available: null };
   }
+}
+
+export async function checkDomains(name: string): Promise<DomainResult[]> {
+  const variants = domainVariants(name);
+  return Promise.all(variants.map(checkDomain));
 }
 
 export async function checkBrandName(
   name: string,
   opts?: { offices?: string[]; niceClasses?: string[] }
 ): Promise<BrandCheckResult> {
-  const [trademark, dotcom] = await Promise.all([checkTrademark(name, opts), checkDotCom(name)]);
-  return { name, trademark, dotcom };
+  const [trademark, domains] = await Promise.all([checkTrademark(name, opts), checkDomains(name)]);
+  return { name, trademark, domains };
 }
 
-// Delad batch-körning med Supabase-cache (7 dygn). Används av både den inloggade
-// routen (/api/brand-check) och den publika token-routen (/api/bcheck).
+// Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade
+// /api/brand-check och publika /api/bcheck.
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -185,9 +195,7 @@ export async function runBrandChecks(
   offices = "EM,SE,DK,NO"
 ): Promise<BrandCheckResult[]> {
   const { createServerSupabase } = await import("@/lib/supabase-admin");
-  const names = Array.from(
-    new Set(rawNames.map((n) => n.trim()).filter(Boolean))
-  ).slice(0, 40);
+  const names = Array.from(new Set(rawNames.map((n) => n.trim()).filter(Boolean))).slice(0, 40);
   if (names.length === 0) return [];
 
   const officesArr = offices.split(",").map((s) => s.trim()).filter(Boolean);
@@ -213,7 +221,12 @@ export async function runBrandChecks(
   let didNetwork = false;
   for (const name of names) {
     const hit = cacheMap.get(name);
-    if (hit && Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS) {
+    // Cacha bara om resultatet har de nya domän-fälten (annars kör om mot ny version)
+    if (
+      hit &&
+      Array.isArray(hit.result.domains) &&
+      Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS
+    ) {
       results.push(hit.result);
       continue;
     }
@@ -223,7 +236,8 @@ export async function runBrandChecks(
     const result = await checkBrandName(name, { offices: officesArr, niceClasses: niceArr });
     results.push(result);
 
-    if (result.trademark.status !== "error" && result.dotcom.available !== null) {
+    const comOk = result.domains.find((d) => d.domain === `${toLabel(name)}.com`)?.available !== null;
+    if (result.trademark.status !== "error" && comOk) {
       await supabase.from("brand_check_cache").upsert(
         { name, nice_classes: niceClasses, offices, result, checked_at: new Date().toISOString() },
         { onConflict: "name,nice_classes,offices" }
