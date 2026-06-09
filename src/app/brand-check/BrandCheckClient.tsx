@@ -16,10 +16,15 @@ interface DomainResult {
   domain: string;
   available: boolean | null;
 }
+interface WebResult {
+  title: string;
+  url: string;
+}
 interface BrandCheckResult {
   name: string;
   trademark: { status: TmStatus; total: number; exact: TmHit[]; similar: TmHit[]; error?: string };
   domains: DomainResult[];
+  web: WebResult[];
 }
 
 const TM_LABEL: Record<TmStatus, string> = {
@@ -192,6 +197,33 @@ export default function BrandCheckClient({
                       {d.domain}
                     </span>
                   ))}
+                </div>
+
+                {/* Webben - finns ett kosttillskott redan? */}
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-gray-600">Webben ({r.name} supplement)</p>
+                  {r.web.length > 0 ? (
+                    <ul className="mt-0.5 space-y-0.5 text-xs">
+                      {r.web.map((w, i) => (
+                        <li key={i} className="truncate">
+                          <a href={w.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                            {w.title}
+                          </a>{" "}
+                          <span className="text-gray-400">
+                            {(() => {
+                              try {
+                                return new URL(w.url).hostname.replace(/^www\./, "");
+                              } catch {
+                                return "";
+                              }
+                            })()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-gray-400">Inga tydliga webbträffar (eller kunde ej hämtas)</p>
+                  )}
                 </div>
 
                 {/* Sök vidare (gratis) */}

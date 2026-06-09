@@ -4,6 +4,8 @@
 // (samma som scripts/tmcheck.sh). Det är en IDENTITETS-/knockout-sökning, INTE en juridisk
 // förväxlingsbedömning. Rapportera ALDRIG "clear" om ett anrop misslyckas (status "error").
 
+import * as cheerio from "cheerio";
+
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
@@ -31,10 +33,16 @@ export interface DomainResult {
   available: boolean | null; // null = okänt (fel vid koll)
 }
 
+export interface WebResult {
+  title: string;
+  url: string;
+}
+
 export interface BrandCheckResult {
   name: string;
   trademark: TrademarkResult;
   domains: DomainResult[]; // bara .com först, sen varianter
+  web: WebResult[]; // topp-webbträffar (DuckDuckGo) - finns ett kosttillskott redan?
 }
 
 function cookieHeaderFrom(res: Response): string {
@@ -145,8 +153,6 @@ export function domainVariants(name: string): string[] {
   if (!l) return [];
   return [
     `${l}.com`,
-    `${l}.co`,
-    `${l}.io`,
     `get${l}.com`,
     `try${l}.com`,
     `${l}health.com`,
@@ -176,12 +182,44 @@ export async function checkDomains(name: string): Promise<DomainResult[]> {
   return Promise.all(variants.map(checkDomain));
 }
 
+/** Topp-webbträffar via DuckDuckGo HTML (gratis, ingen nyckel). Best-effort - [] vid fel. */
+export async function checkWeb(name: string): Promise<WebResult[]> {
+  try {
+    const q = encodeURIComponent(`${name} supplement`);
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return [];
+    const $ = cheerio.load(await res.text());
+    const out: WebResult[] = [];
+    $("a.result__a").each((_, el) => {
+      if (out.length >= 5) return;
+      const title = $(el).text().trim();
+      let href = $(el).attr("href") ?? "";
+      const m = href.match(/[?&]uddg=([^&]+)/);
+      if (m) href = decodeURIComponent(m[1]);
+      else if (href.startsWith("//")) href = "https:" + href;
+      // Hoppa över DuckDuckGo-annonser/interna länkar (y.js, ad_domain)
+      if (href.includes("duckduckgo.com")) return;
+      if (title && href.startsWith("http")) out.push({ title, url: href });
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function checkBrandName(
   name: string,
   opts?: { offices?: string[]; niceClasses?: string[] }
 ): Promise<BrandCheckResult> {
-  const [trademark, domains] = await Promise.all([checkTrademark(name, opts), checkDomains(name)]);
-  return { name, trademark, domains };
+  const [trademark, domains, web] = await Promise.all([
+    checkTrademark(name, opts),
+    checkDomains(name),
+    checkWeb(name),
+  ]);
+  return { name, trademark, domains, web };
 }
 
 // Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade
@@ -225,6 +263,7 @@ export async function runBrandChecks(
     if (
       hit &&
       Array.isArray(hit.result.domains) &&
+      Array.isArray(hit.result.web) &&
       Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS
     ) {
       results.push(hit.result);
