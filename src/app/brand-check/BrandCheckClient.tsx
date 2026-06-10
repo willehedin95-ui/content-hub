@@ -622,8 +622,13 @@ function ResultCard({
 
       {/* Länkar */}
       <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-100 pt-3 text-xs">
-        <a href="https://www.tmdn.org/tmview/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
-          TMview <ExternalLink className="h-3 w-3" />
+        <a
+          href={`https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=${encodeURIComponent(r.name)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+        >
+          TMview: {r.name} <ExternalLink className="h-3 w-3" />
         </a>
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(r.name)}+collagen`}
