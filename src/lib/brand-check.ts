@@ -295,11 +295,19 @@ export function domainVariants(name: string): string[] {
   if (!l) return [];
   return [
     `${l}.com`,
+    // prefix
+    `my${l}.com`,
     `get${l}.com`,
     `try${l}.com`,
+    `buy${l}.com`,
+    `drink${l}.com`,
+    `the${l}.com`,
+    // suffix
     `${l}health.com`,
     `${l}supps.com`,
     `${l}nutrition.com`,
+    `${l}labs.com`,
+    `${l}co.com`,
   ];
 }
 
