@@ -50,6 +50,14 @@ const OFFICE_GROUPS: { key: string; label: string; codes: string[]; def: boolean
 ];
 const DEFAULT_OFFICE_STATE: Record<string, boolean> = Object.fromEntries(OFFICE_GROUPS.map((g) => [g.key, g.def]));
 
+function hostnameOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 function CopyBtn({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
@@ -535,25 +543,38 @@ function ResultCard({
         </div>
       </div>
 
-      {/* Konkurrenter - Google-sökningar som öppnas i din webbläsare (alltid träffar) */}
+      {/* Webben / konkurrenter - riktiga Google-träffar (Serper) */}
       <div className="mt-3 border-t border-gray-100 pt-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-          <Search className="h-3.5 w-3.5" /> Konkurrenter - sök på Google
+          <Search className="h-3.5 w-3.5" /> Webben - finns ett brand med namnet?
         </p>
-        <div className="mt-1.5 flex flex-wrap gap-2">
+        {r.web.length > 0 ? (
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {r.web.map((w, i) => (
+              <li key={i} className="truncate">
+                <a href={w.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                  {w.title}
+                </a>{" "}
+                <span className="text-gray-400">{hostnameOf(w.url)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-xs text-gray-400">Inga tydliga träffar</p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-2">
           {[
             { label: "collagen", q: `"${r.name}" collagen` },
             { label: "supplement", q: `"${r.name}" supplement` },
-            { label: "kosttillskott", q: `"${r.name}" kosttillskott` },
           ].map((g) => (
             <a
               key={g.label}
               href={`https://www.google.com/search?q=${encodeURIComponent(g.q)}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-200"
+              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-200"
             >
-              {g.label} <ExternalLink className="h-3 w-3" />
+              fler: {g.label} <ExternalLink className="h-3 w-3" />
             </a>
           ))}
         </div>

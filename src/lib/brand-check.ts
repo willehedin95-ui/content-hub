@@ -363,12 +363,32 @@ export async function checkWeb(name: string): Promise<WebResult[]> {
   }
 }
 
+/** Riktig webb-sök via Serper.dev (Google-resultat, funkar från datacenter). Kräver SERPER_API_KEY. */
+export async function searchWeb(name: string): Promise<WebResult[]> {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+  try {
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: `"${name}" supplement OR collagen OR kosttillskott`, num: 8 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { organic?: Array<{ title?: string; link?: string }> };
+    return (data.organic ?? [])
+      .filter((o) => o.title && o.link)
+      .slice(0, 5)
+      .map((o) => ({ title: o.title as string, url: o.link as string }));
+  } catch {
+    return [];
+  }
+}
+
 export async function checkBrandName(name: string): Promise<BrandCheckResult> {
-  // Webb-sök (DuckDuckGo) hämtas inte server-side - datacenter-IP blockas. Görs via
-  // Google-länkar i UI:t som öppnas i användarens webbläsare. checkWeb finns kvar för ev. framtida API.
-  const domains = await checkDomains(name);
-  const { overall, reasons } = computeOverall(name, domains, []);
-  return { name, overall, reasons, domains, web: [] };
+  const [domains, web] = await Promise.all([checkDomains(name), searchWeb(name)]);
+  const { overall, reasons } = computeOverall(name, domains, web);
+  return { name, overall, reasons, domains, web };
 }
 
 // Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade
