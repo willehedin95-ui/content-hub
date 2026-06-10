@@ -164,7 +164,7 @@ async function tmviewQuery(
   offices: string[],
   niceClasses: string[],
   cookie: string
-): Promise<{ total: number; marks: RawMark[] } | null> {
+): Promise<{ total: number; marks: RawMark[] }> {
   const res = await fetch("https://www.tmdn.org/tmview/api/search/results", {
     method: "POST",
     headers: {
@@ -188,7 +188,7 @@ async function tmviewQuery(
     }),
     signal: AbortSignal.timeout(12000),
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as { totalResults?: number; tradeMarks?: RawMark[] };
   return { total: data.totalResults ?? 0, marks: data.tradeMarks ?? [] };
 }
@@ -222,14 +222,18 @@ export async function checkTrademark(
 
     // Ett snabbt återförsök med fräsch cookie om TMview strypar/failar
     const backoff = [2500];
-    const queryWithRetry = async (t: string) => {
-      let r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
-      for (let i = 0; r === null && i < backoff.length; i++) {
-        await new Promise((res) => setTimeout(res, backoff[i]));
-        cookie = await getTmviewCookie(true); // tvinga fram ny cookie inför nästa försök
-        r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
+    let lastReason = "okänt fel";
+    const queryWithRetry = async (t: string): Promise<{ total: number; marks: RawMark[] } | null> => {
+      for (let i = 0; ; i++) {
+        try {
+          return await tmviewQuery(t, offices, niceClasses, cookie);
+        } catch (e) {
+          lastReason = e instanceof Error ? e.message : "fel";
+          if (i >= backoff.length) return null;
+          await new Promise((res) => setTimeout(res, backoff[i]));
+          cookie = await getTmviewCookie(true); // tvinga fram ny cookie inför nästa försök
+        }
       }
-      return r;
     };
 
     let total = 0;
@@ -243,7 +247,7 @@ export async function checkTrademark(
       all.push(...r.marks);
     }
     if (!anyOk) {
-      return { status: "error", total: 0, exact: [], wordMatch: [], similar: [], error: "TMview svarade inte" };
+      return { status: "error", total: 0, exact: [], wordMatch: [], similar: [], error: `TMview: ${lastReason}` };
     }
 
     // Dedupe
