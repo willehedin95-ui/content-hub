@@ -1,4 +1,24 @@
 # Content Hub - Task Backlog
+Updated: 2026-06-10 (Brand Check-verktyg byggt + deployat; namnsökning pågår - se journal LATEST)
+
+## Renew namnbyte (varumärke) - 2026-06-08 → 06-10
+
+"Renew" går ej att registrera (Petra/Bergenstråhle). Byter namn + EU-ansökan. Fullt underlag: Notion "Brand names" + varumärkesguide-sida + SharedVault/renew/{renew-namnbyte-clearance, renew-namnstrategi-brief-rasmus, renew-namnbrainstorm-2026-06-08, varumarkesguide-euipo-prv-2026-06-09}.
+
+### Done (2026-06-10)
+- [x] ~~**Brand Check-verktyg byggt** (`/brand-check`)~~ - .com (15 varianter) + riktig webbsök (Serper) + förfiltrerad TMview-länk (kl 3/5/35) + AI-namngenerator + spara-shortlist. Ersätter manuell scripts-körning för screening. Live (`285d8a1e`). Datacenter-IP-lärdom: TMview/DDG funkar ej server-side från Vercel → TM via browser-länk, webb via Serper-API.
+- [x] ~~**Varumärkesguide** (Notion + SharedVault)~~ - EUIPO/PRV, ordmärke vs figur, territorialitet, klasser, geografiska namn.
+- [x] ~~Beslut: **strunta i USA** vid namnval nu~~ (territoriellt skyddad i EU tills ev. expansion).
+
+### Open / next
+- [ ] **William letar namn i Brand Check-verktyget** → samla favoriter i Sparade-fliken.
+- [ ] **Maila Petra** (utkast i Notion) - bekräfta: ryms flera namn i 10k-ID-kontrollen eller per namn? Skicka 3-5 finalister.
+- [ ] **Rasmus brainstormar mot briefen** (Notion "Brief till Rasmus").
+- [ ] **Vid behov: sätt `BRAND_CHECK_TOKEN` i Vercel** för mobil `/bcheck` (desktop funkar utan).
+
+---
+
+## Renew Support SOP - 2026-06-05
 Updated: 2026-06-05 (Renew Support SOP built in Notion + new support agent onboarded)
 
 ## Renew Support SOP - 2026-06-05
