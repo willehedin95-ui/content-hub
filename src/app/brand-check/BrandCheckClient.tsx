@@ -21,15 +21,6 @@ import {
 } from "lucide-react";
 
 type Overall = "free" | "caution" | "taken" | "unknown";
-type TmStatus = "clear" | "similar" | "caution" | "conflict" | "error";
-interface TmHit {
-  name: string;
-  office: string;
-  status: string;
-  niceClasses: (string | number)[];
-  type: string;
-  owner: string;
-}
 interface DomainResult {
   domain: string;
   available: boolean | null;
@@ -42,7 +33,6 @@ interface BrandCheckResult {
   name: string;
   overall: Overall;
   reasons: string[];
-  trademark: { status: TmStatus; total: number; exact: TmHit[]; wordMatch: TmHit[]; similar: TmHit[]; error?: string };
   domains: DomainResult[];
   web: WebResult[];
 }
@@ -96,21 +86,18 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
-function HitList({ label, color, hits }: { label: string; color: string; hits: TmHit[] }) {
-  if (hits.length === 0) return null;
-  return (
-    <div className="mt-2">
-      <p className={`text-xs font-medium ${color}`}>{label}</p>
-      <ul className="mt-0.5 space-y-0.5 text-xs text-gray-600">
-        {hits.slice(0, 6).map((h, i) => (
-          <li key={i}>
-            <span className="font-medium text-gray-700">{h.name}</span> [{h.office}] {h.status} · kl{" "}
-            {h.niceClasses.join(",")} · {h.owner}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+// Bygg en TMview-länk förfiltrerad på namnet + valda kontor + klasser + bara levande märken.
+function tmviewUrl(name: string, offices: string, classes: string) {
+  const q = new URLSearchParams({
+    page: "1",
+    pageSize: "30",
+    criteria: "C",
+    basicSearch: name,
+    fNiceClass: classes,
+    fOffices: offices,
+    fTMStatus: "Registered,Filed",
+  });
+  return `https://www.tmdn.org/tmview/#/tmview/results?${q.toString()}`;
 }
 
 export default function BrandCheckClient({
@@ -301,8 +288,9 @@ export default function BrandCheckClient({
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
       <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">Brand Check</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Kolla varumärke, .com-domän och webben för ett namn - och få en tydlig helhetsdom. Första
-        gallring; ersätter inte juridisk bedömning.
+        Kolla .com-domäner + webben (konkurrenter) för ett namn, och öppna en förfiltrerad
+        TMview-sökning för varumärket (klass {niceClasses}, valda register, bara levande märken).
+        Första gallring - ersätter inte juridisk bedömning.
       </p>
 
       {/* Tabs */}
@@ -442,7 +430,17 @@ export default function BrandCheckClient({
                     <span className="text-gray-400">- kunde inte kollas, försök igen</span>
                   </div>
                 );
-              return <ResultCard key={name} r={c.result} scope={scope} saved={savedSet.has(name.toLowerCase())} onToggleSave={toggleSave} />;
+              return (
+                <ResultCard
+                  key={name}
+                  r={c.result}
+                  scope={scope}
+                  linkOffices={OFFICE_GROUPS.filter((g) => offices[g.key]).flatMap((g) => g.codes).join(",") || "EM,SE,DK,NO,FI"}
+                  linkClasses={niceClasses}
+                  saved={savedSet.has(name.toLowerCase())}
+                  onToggleSave={toggleSave}
+                />
+              );
             })}
           </div>
         </>
@@ -503,10 +501,10 @@ export default function BrandCheckClient({
       <details className="mt-6 text-xs text-gray-500">
         <summary className="cursor-pointer font-medium">Vad betyder färgerna?</summary>
         <div className="mt-2 space-y-1">
-          <p>🟢 <b>Ser ledigt ut</b> - inga varumärkesträffar och .com ledig.</p>
-          <p>🟡 <b>Tveksam</b> - ditt ord finns i ett annat märke, .com tagen, eller liknande märken finns.</p>
-          <p>🔴 <b>Upptaget / risk</b> - exakt varumärke, aktiv sajt på ditt .com, eller ditt ord i ett märke + .com tagen.</p>
-          <p className="pt-1 text-gray-400">Knockout-koll, inte juridisk förväxlingsbedömning. Döda märken exkluderas. Mellanslags-okänsligt (Inner Fuel = innerfuel).</p>
+          <p>🟢 <b>Ser ledigt ut</b> - .com ledig och inga tydliga webbträffar.</p>
+          <p>🟡 <b>Tveksam</b> - .com tagen, eller webbträffar finns (möjlig konkurrent att kolla).</p>
+          <p>🔴 <b>Upptaget / risk</b> - aktiv sajt på den exakta .com-domänen.</p>
+          <p className="pt-1 text-gray-400">Domen gäller domän + webb. <b>Varumärket</b> kollar du via TMview-länken på varje kort - den öppnas i din webbläsare (funkar alltid) och är förfiltrerad på klass + register + bara levande märken.</p>
         </div>
       </details>
     </div>
@@ -516,11 +514,15 @@ export default function BrandCheckClient({
 function ResultCard({
   r,
   scope,
+  linkOffices,
+  linkClasses,
   saved,
   onToggleSave,
 }: {
   r: BrandCheckResult;
   scope: string;
+  linkOffices: string;
+  linkClasses: string;
   saved: boolean;
   onToggleSave: (r: BrandCheckResult) => void;
 }) {
@@ -547,22 +549,20 @@ function ResultCard({
       {/* Skäl */}
       {r.reasons.length > 0 && <p className="mt-1 text-xs text-gray-500">{r.reasons.join(" · ")}</p>}
 
-      {/* Varumärke */}
+      {/* Varumärke - öppnas i din webbläsare (funkar alltid, till skillnad från server-koll) */}
       <div className="mt-3 border-t border-gray-100 pt-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
           <Scale className="h-3.5 w-3.5" /> Varumärke
         </p>
-        {r.trademark.status === "error" ? (
-          <p className="mt-1 text-xs text-gray-400">Kunde inte kollas - {r.trademark.error}</p>
-        ) : r.trademark.exact.length + r.trademark.wordMatch.length + r.trademark.similar.length === 0 ? (
-          <p className="mt-1 text-xs text-green-700">Inga träffar{scope ? ` (${scope})` : ""}</p>
-        ) : (
-          <>
-            <HitList label="Exakta träffar" color="text-red-700" hits={r.trademark.exact} />
-            <HitList label="Ditt ord i annat märke (hög risk)" color="text-orange-700" hits={r.trademark.wordMatch} />
-            <HitList label="Liknande" color="text-amber-700" hits={r.trademark.similar} />
-          </>
-        )}
+        <a
+          href={tmviewUrl(r.name, linkOffices, linkClasses)}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+        >
+          Kolla i TMview{scope ? ` (${scope})` : ""} <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+        <p className="mt-1 text-[11px] text-gray-400">Förfiltrerad på klass + valda register, bara levande märken. Öppnas i din webbläsare.</p>
       </div>
 
       {/* Domäner */}
@@ -626,14 +626,6 @@ function ResultCard({
 
       {/* Länkar */}
       <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-100 pt-3 text-xs">
-        <a
-          href={`https://www.tmdn.org/tmview/#/tmview/results?page=1&pageSize=30&criteria=C&basicSearch=${encodeURIComponent(r.name)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
-        >
-          TMview: {r.name} <ExternalLink className="h-3 w-3" />
-        </a>
         <a
           href={`https://www.google.com/search?q=${encodeURIComponent(r.name)}+collagen`}
           target="_blank"

@@ -43,9 +43,8 @@ export type Overall = "free" | "caution" | "taken" | "unknown";
 
 export interface BrandCheckResult {
   name: string;
-  overall: Overall; // syntetiserad helhetsdom (varumärke + .com + webb)
+  overall: Overall; // helhetsdom baserad på .com + webbnärvaro (varumärke kollas via TMview-länk)
   reasons: string[]; // korta skäl bakom domen
-  trademark: TrademarkResult;
   domains: DomainResult[]; // bara .com först, sen varianter
   web: WebResult[]; // topp-webbträffar (DuckDuckGo) - finns ett kosttillskott redan?
 }
@@ -58,10 +57,9 @@ function hostnameOf(url: string): string {
   }
 }
 
-/** Väg ihop alla signaler till en tydlig helhetsdom + korta skäl. */
+/** Helhetsdom från .com + webbnärvaro (varumärke kollas separat via TMview-länk). */
 function computeOverall(
   name: string,
-  trademark: TrademarkResult,
   domains: DomainResult[],
   web: WebResult[]
 ): { overall: Overall; reasons: string[] } {
@@ -72,42 +70,22 @@ function computeOverall(
   const comTaken = comBare?.available === false;
   const webOnExactCom = web.some((w) => hostnameOf(w.url) === `${label}.com`);
 
-  if (trademark.status === "error") {
-    return { overall: "unknown", reasons: ["Varumärket kunde inte kollas - försök igen"] };
-  }
-
   let overall: Overall = "free";
 
-  if (trademark.exact.length > 0) {
-    overall = "taken";
-    reasons.push(`Exakt varumärke finns (${trademark.exact.length} st)`);
-  }
   if (webOnExactCom) {
     overall = "taken";
     reasons.push(`Aktiv sajt på ${label}.com`);
-  }
-  if (trademark.wordMatch.length > 0 && comTaken) {
-    overall = "taken";
-    reasons.push("Ditt ord i ett varumärke + .com tagen");
-  }
-
-  if (overall !== "taken") {
-    if (trademark.wordMatch.length > 0) {
+  } else if (comTaken) {
+    overall = "caution";
+    reasons.push(`${label}.com är tagen`);
+    if (web.length > 0) reasons.push(`${web.length} webbträffar`);
+  } else {
+    if (web.length > 0) {
       overall = "caution";
-      reasons.push(`Ditt ord i annat varumärke (${trademark.wordMatch.length} st)`);
+      reasons.push(`${web.length} webbträffar - kolla om ett brand finns`);
+    } else {
+      reasons.push("Inga tydliga webbträffar");
     }
-    if (comTaken) {
-      overall = "caution";
-      reasons.push(`${label}.com är tagen`);
-    }
-    if (trademark.similar.length > 0) {
-      if (overall === "free") overall = "caution";
-      reasons.push(`${trademark.similar.length} liknande varumärken`);
-    }
-  }
-
-  if (overall === "free") {
-    reasons.push("Inga varumärkesträffar");
     if (comBare?.available === true) reasons.push(`${label}.com ledig`);
   }
 
@@ -374,17 +352,10 @@ export async function checkWeb(name: string): Promise<WebResult[]> {
   }
 }
 
-export async function checkBrandName(
-  name: string,
-  opts?: { offices?: string[]; niceClasses?: string[]; cookie?: string }
-): Promise<BrandCheckResult> {
-  const [trademark, domains, web] = await Promise.all([
-    checkTrademark(name, opts),
-    checkDomains(name),
-    checkWeb(name),
-  ]);
-  const { overall, reasons } = computeOverall(name, trademark, domains, web);
-  return { name, overall, reasons, trademark, domains, web };
+export async function checkBrandName(name: string): Promise<BrandCheckResult> {
+  const [domains, web] = await Promise.all([checkDomains(name), checkWeb(name)]);
+  const { overall, reasons } = computeOverall(name, domains, web);
+  return { name, overall, reasons, domains, web };
 }
 
 // Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade
@@ -446,9 +417,6 @@ export async function runBrandChecks(
   const names = Array.from(new Set(rawNames.map((n) => n.trim()).filter(Boolean))).slice(0, 40);
   if (names.length === 0) return [];
 
-  const officesArr = offices.split(",").map((s) => s.trim()).filter(Boolean);
-  const niceArr = niceClasses.split(",").map((s) => s.trim()).filter(Boolean);
-
   const supabase = createServerSupabase();
   const { data: cached } = await supabase
     .from("brand_check_cache")
@@ -466,34 +434,27 @@ export async function runBrandChecks(
   }
 
   const results: BrandCheckResult[] = [];
-  let cookie: string | null = null; // hämtas en gång, återanvänds över batchen
+  let didNetwork = false;
   for (const name of names) {
     const hit = cacheMap.get(name);
-    // Cacha bara om resultatet har de nya fälten (annars kör om mot ny version)
     if (
       hit &&
       typeof hit.result.overall === "string" &&
       Array.isArray(hit.result.domains) &&
       Array.isArray(hit.result.web) &&
-      Array.isArray(hit.result.trademark?.wordMatch) &&
       Date.now() - new Date(hit.checked_at).getTime() < CACHE_TTL_MS
     ) {
       results.push(hit.result);
       continue;
     }
-    // Första nät-namnet: hämta cookie. Övriga: pausa så vi inte stryps av TMview.
-    if (cookie === null) cookie = await getTmviewCookie();
-    else await sleep(1200);
+    if (didNetwork) await sleep(800); // var snäll mot DuckDuckGo/RDAP
+    didNetwork = true;
 
-    const result = await checkBrandName(name, {
-      offices: officesArr,
-      niceClasses: niceArr,
-      cookie: cookie || undefined,
-    });
+    const result = await checkBrandName(name);
     results.push(result);
 
     const comOk = result.domains.find((d) => d.domain === `${toLabel(name)}.com`)?.available !== null;
-    if (result.trademark.status !== "error" && comOk) {
+    if (comOk) {
       await supabase.from("brand_check_cache").upsert(
         { name, nice_classes: niceClasses, offices, result, checked_at: new Date().toISOString() },
         { onConflict: "name,nice_classes,offices" }
