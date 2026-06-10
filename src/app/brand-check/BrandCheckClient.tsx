@@ -102,7 +102,7 @@ export default function BrandCheckClient({
   token?: string;
 }) {
   const [input, setInput] = useState("");
-  const [niceClasses, setNiceClasses] = useState("3,5,35");
+  const niceClasses = "3,5,35"; // alltid: kosmetika (3) + kosttillskott (5) + handel/marknadsföring (35)
   const [offices, setOffices] = useState<Record<string, boolean>>(DEFAULT_OFFICE_STATE);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tab, setTab] = useState<"search" | "saved">("search");
@@ -139,7 +139,6 @@ export default function BrandCheckClient({
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem("brandcheck-settings") || "{}");
-      if (typeof s.niceClasses === "string") setNiceClasses(s.niceClasses);
       if (s.offices) setOffices((o) => ({ ...o, ...s.offices }));
     } catch {
       /* ignore */
@@ -147,11 +146,11 @@ export default function BrandCheckClient({
   }, []);
   useEffect(() => {
     try {
-      localStorage.setItem("brandcheck-settings", JSON.stringify({ niceClasses, offices }));
+      localStorage.setItem("brandcheck-settings", JSON.stringify({ offices }));
     } catch {
       /* ignore */
     }
-  }, [niceClasses, offices]);
+  }, [offices]);
 
   const slUrl = useCallback(
     () => (token ? `${shortlistEndpoint}?token=${encodeURIComponent(token)}` : shortlistEndpoint),
@@ -363,14 +362,14 @@ export default function BrandCheckClient({
                     </label>
                   ))}
                 </div>
-                <label className="block">
-                  Nice-klasser
-                  <input
-                    value={niceClasses}
-                    onChange={(e) => setNiceClasses(e.target.value)}
-                    className="ml-2 w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                </label>
+                <div className="text-xs text-gray-500">
+                  <p className="font-medium text-gray-600">Klasser (alltid 3, 5, 35):</p>
+                  <ul className="mt-0.5 space-y-0.5">
+                    <li><b>3</b> - kosmetika &amp; hudvård</li>
+                    <li><b>5</b> - kosttillskott &amp; farmaceutiska</li>
+                    <li><b>35</b> - marknadsföring &amp; detaljhandel (e-handel)</li>
+                  </ul>
+                </div>
               </div>
             )}
 
