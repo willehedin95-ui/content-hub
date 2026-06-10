@@ -136,7 +136,7 @@ export async function getTmviewCookie(force = false): Promise<string> {
   try {
     const seed = await fetch("https://www.tmdn.org/tmview/", {
       headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(10000),
     });
     const value = cookieHeaderFrom(seed);
     cookieCache = { value, at: Date.now() };
@@ -186,7 +186,7 @@ async function tmviewQuery(
       fTMType: [],
       fGoodsServices: [],
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as { totalResults?: number; tradeMarks?: RawMark[] };
@@ -220,8 +220,8 @@ export async function checkTrademark(
     const terms = normName(term) === collapsed.toLowerCase() && term !== collapsed ? [term, collapsed] : [term];
     if (term.includes(" ") && !terms.includes(collapsed)) terms.push(collapsed);
 
-    // Trappstegs-återförsök med fräsch cookie om TMview strypar/failar
-    const backoff = [1500, 4000, 8000];
+    // Ett snabbt återförsök med fräsch cookie om TMview strypar/failar
+    const backoff = [2500];
     const queryWithRetry = async (t: string) => {
       let r = await tmviewQuery(t, offices, niceClasses, cookie).catch(() => null);
       for (let i = 0; r === null && i < backoff.length; i++) {
@@ -327,7 +327,7 @@ async function checkDomain(domain: string): Promise<DomainResult> {
     const res = await fetch(`https://rdap.org/domain/${domain}`, {
       headers: { Accept: "application/rdap+json" },
       redirect: "follow",
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(10000),
     });
     if (res.status === 404) return { domain, available: true };
     if (res.ok) return { domain, available: false };
@@ -348,7 +348,7 @@ export async function checkWeb(name: string): Promise<WebResult[]> {
     const q = encodeURIComponent(`${name} supplement`);
     const res = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
       headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return [];
     const $ = cheerio.load(await res.text());

@@ -220,17 +220,22 @@ export default function BrandCheckClient({
     setCells(Object.fromEntries(names.map((n) => [n, { status: "loading" } as Cell])));
 
     for (const name of names) {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 70000); // hänger aldrig kvar
       try {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ names: [name], niceClasses, offices: officeCodes.join(","), ...(token ? { token } : {}) }),
+          signal: ctrl.signal,
         });
         const data = await res.json();
         const r = data.results?.[0] as BrandCheckResult | undefined;
         setCells((prev) => ({ ...prev, [name]: r ? { status: "done", result: r } : { status: "error" } }));
       } catch {
         setCells((prev) => ({ ...prev, [name]: { status: "error" } }));
+      } finally {
+        clearTimeout(to);
       }
     }
     setRunning(false);
