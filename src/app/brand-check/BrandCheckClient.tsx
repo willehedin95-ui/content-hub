@@ -76,14 +76,15 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 // Bygg en TMview-länk förfiltrerad på namnet + valda kontor + klasser + bara levande märken.
+const clean = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean).join(",");
 function tmviewUrl(name: string, offices: string, classes: string) {
   const q = new URLSearchParams({
     page: "1",
     pageSize: "30",
     criteria: "C",
     basicSearch: name,
-    fNiceClass: classes,
-    fOffices: offices,
+    fNiceClass: clean(classes), // saneras: trailing-komma/tomma klasser ger annars "No rows found"
+    fOffices: clean(offices),
     fTMStatus: "Registered,Filed",
   });
   return `https://www.tmdn.org/tmview/#/tmview/results?${q.toString()}`;
@@ -101,7 +102,7 @@ export default function BrandCheckClient({
   token?: string;
 }) {
   const [input, setInput] = useState("");
-  const [niceClasses, setNiceClasses] = useState("3,5");
+  const [niceClasses, setNiceClasses] = useState("3,5,35");
   const [offices, setOffices] = useState<Record<string, boolean>>(DEFAULT_OFFICE_STATE);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tab, setTab] = useState<"search" | "saved">("search");
@@ -112,6 +113,7 @@ export default function BrandCheckClient({
   const [shortlist, setShortlist] = useState<ShortlistItem[]>([]);
   const [ideaTheme, setIdeaTheme] = useState("");
   const [ideaLoading, setIdeaLoading] = useState(false);
+  const [ideas, setIdeas] = useState<string[]>([]);
   const [scope, setScope] = useState("");
 
   async function generateIdeas() {
@@ -125,8 +127,7 @@ export default function BrandCheckClient({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Kunde inte generera");
-      const names = (data.names ?? []) as string[];
-      setInput((prev) => (prev.trim() ? prev.trim() + "\n" : "") + names.join("\n"));
+      setIdeas((data.names ?? []) as string[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunde inte generera");
     } finally {
@@ -289,18 +290,18 @@ export default function BrandCheckClient({
       {tab === "search" && (
         <>
           <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-            <textarea
+            <input
+              type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                if (e.key === "Enter") {
                   e.preventDefault();
                   run();
                 }
               }}
-              rows={4}
-              placeholder={"Inner Fuel\nLiving Again\nNo Jante"}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-base font-mono focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Skriv ett namn och tryck Enter…"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-base focus:border-indigo-500 focus:ring-indigo-500"
             />
 
             {/* Namn-generator */}
@@ -320,6 +321,23 @@ export default function BrandCheckClient({
                 Föreslå namn
               </button>
             </div>
+            {ideas.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ideas.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => {
+                      setInput(n);
+                      runNames([n]);
+                    }}
+                    title="Klicka för att kolla"
+                    className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Inställningar (hopfällbar) */}
             <button
