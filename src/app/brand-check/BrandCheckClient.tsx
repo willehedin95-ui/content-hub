@@ -137,6 +137,7 @@ export default function BrandCheckClient({
   const [sortByVerdict, setSortByVerdict] = useState(false);
   const [ideaTheme, setIdeaTheme] = useState("");
   const [ideaLoading, setIdeaLoading] = useState(false);
+  const [scope, setScope] = useState("");
 
   async function generateIdeas() {
     setIdeaLoading(true);
@@ -213,6 +214,7 @@ export default function BrandCheckClient({
       setError("Välj minst ett register under Inställningar.");
       return;
     }
+    setScope(OFFICE_GROUPS.filter((g) => offices[g.key]).map((g) => g.label).join("+") + " · kl " + niceClasses);
     setError(null);
     setRunning(true);
     setTab("search");
@@ -406,7 +408,7 @@ export default function BrandCheckClient({
           {order.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
               <span className="text-gray-500">
-                {done.length}/{order.length} klara
+                {done.length}/{order.length} klara{scope ? ` · ${scope}` : ""}
               </span>
               {summary.free > 0 && <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-800">{summary.free} ledig</span>}
               {summary.caution > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{summary.caution} tveksam</span>}
@@ -440,7 +442,7 @@ export default function BrandCheckClient({
                     <span className="text-gray-400">- kunde inte kollas, försök igen</span>
                   </div>
                 );
-              return <ResultCard key={name} r={c.result} saved={savedSet.has(name.toLowerCase())} onToggleSave={toggleSave} />;
+              return <ResultCard key={name} r={c.result} scope={scope} saved={savedSet.has(name.toLowerCase())} onToggleSave={toggleSave} />;
             })}
           </div>
         </>
@@ -513,10 +515,12 @@ export default function BrandCheckClient({
 
 function ResultCard({
   r,
+  scope,
   saved,
   onToggleSave,
 }: {
   r: BrandCheckResult;
+  scope: string;
   saved: boolean;
   onToggleSave: (r: BrandCheckResult) => void;
 }) {
@@ -551,7 +555,7 @@ function ResultCard({
         {r.trademark.status === "error" ? (
           <p className="mt-1 text-xs text-gray-400">Kunde inte kollas - {r.trademark.error}</p>
         ) : r.trademark.exact.length + r.trademark.wordMatch.length + r.trademark.similar.length === 0 ? (
-          <p className="mt-1 text-xs text-green-700">Inga träffar</p>
+          <p className="mt-1 text-xs text-green-700">Inga träffar{scope ? ` (${scope})` : ""}</p>
         ) : (
           <>
             <HitList label="Exakta träffar" color="text-red-700" hits={r.trademark.exact} />
