@@ -186,7 +186,7 @@ async function tmviewQuery(
       fTMType: [],
       fGoodsServices: [],
     }),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = (await res.json()) as { totalResults?: number; tradeMarks?: RawMark[] };
@@ -220,8 +220,8 @@ export async function checkTrademark(
     const terms = normName(term) === collapsed.toLowerCase() && term !== collapsed ? [term, collapsed] : [term];
     if (term.includes(" ") && !terms.includes(collapsed)) terms.push(collapsed);
 
-    // Ett snabbt återförsök med fräsch cookie om TMview strypar/failar
-    const backoff = [2500];
+    // Fail-fast: inget retry (Vercel->TMview är trögt; hellre snabbt svar med skäl)
+    const backoff: number[] = [];
     let lastReason = "okänt fel";
     const queryWithRetry = async (t: string): Promise<{ total: number; marks: RawMark[] } | null> => {
       for (let i = 0; ; i++) {
