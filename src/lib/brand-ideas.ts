@@ -18,6 +18,8 @@ UNDVIK:
 - Frukt/smak-ord (läses som smaken).
 - Påhittade abstrakta ord ingen kan uttala.
 
+VARIERA KRAFTIGT - detta är viktigast: upprepa ALDRIG samma mall. Använd INTE samma andra-ord om och om (t.ex. inte "[ord] Habit" eller "[ord] Ritual" gång på gång). Blanda mekaniker fritt: oväntade tvåords-par, ihopslagna ord, idiom, mood+djur, comeback-fraser. Varje förslag ska kännas eget.
+
 Svara med ENBART en lista, ett namn per rad, inga siffror, inga förklaringar, ingen rubrik.`;
 
 export async function generateBrandIdeas(theme?: string, count = 25): Promise<string[]> {

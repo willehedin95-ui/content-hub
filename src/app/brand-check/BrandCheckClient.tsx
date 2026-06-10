@@ -304,7 +304,12 @@ export default function BrandCheckClient({
             />
 
             {/* Namn-generator */}
-            <div className="mt-3 flex flex-col gap-2 rounded-md bg-indigo-50/60 p-2 sm:flex-row sm:items-center">
+            <div className="mt-3 rounded-md bg-indigo-50/60 p-2">
+              <p className="mb-1.5 px-0.5 text-xs text-indigo-700">
+                Idétorka? Få AI-förslag i vår stil → klicka ett förslag för att kolla det. Temat
+                nedan är en valfri <i>riktning</i> (t.ex. fuel/comeback), inte ett namn.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 value={ideaTheme}
                 onChange={(e) => setIdeaTheme(e.target.value)}
@@ -319,6 +324,7 @@ export default function BrandCheckClient({
                 {ideaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 Föreslå namn
               </button>
+              </div>
             </div>
             {ideas.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
