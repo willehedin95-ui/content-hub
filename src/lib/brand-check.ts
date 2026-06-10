@@ -364,9 +364,11 @@ export async function checkWeb(name: string): Promise<WebResult[]> {
 }
 
 export async function checkBrandName(name: string): Promise<BrandCheckResult> {
-  const [domains, web] = await Promise.all([checkDomains(name), checkWeb(name)]);
-  const { overall, reasons } = computeOverall(name, domains, web);
-  return { name, overall, reasons, domains, web };
+  // Webb-sök (DuckDuckGo) hämtas inte server-side - datacenter-IP blockas. Görs via
+  // Google-länkar i UI:t som öppnas i användarens webbläsare. checkWeb finns kvar för ev. framtida API.
+  const domains = await checkDomains(name);
+  const { overall, reasons } = computeOverall(name, domains, []);
+  return { name, overall, reasons, domains, web: [] };
 }
 
 // Delad batch-körning med Supabase-cache (7 dygn). Används av både inloggade

@@ -50,14 +50,6 @@ const OFFICE_GROUPS: { key: string; label: string; codes: string[]; def: boolean
 ];
 const DEFAULT_OFFICE_STATE: Record<string, boolean> = Object.fromEntries(OFFICE_GROUPS.map((g) => [g.key, g.def]));
 
-function hostnameOf(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 function CopyBtn({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
@@ -543,45 +535,28 @@ function ResultCard({
         </div>
       </div>
 
-      {/* Webben */}
+      {/* Konkurrenter - Google-sökningar som öppnas i din webbläsare (alltid träffar) */}
       <div className="mt-3 border-t border-gray-100 pt-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-          <Search className="h-3.5 w-3.5" /> Webben ({r.name} supplement)
+          <Search className="h-3.5 w-3.5" /> Konkurrenter - sök på Google
         </p>
-        {r.web.length > 0 ? (
-          <ul className="mt-1 space-y-0.5 text-xs">
-            {r.web.map((w, i) => (
-              <li key={i} className="truncate">
-                <a href={w.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                  {w.title}
-                </a>{" "}
-                <span className="text-gray-400">{hostnameOf(w.url)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-xs text-gray-400">Inga tydliga webbträffar</p>
-        )}
-      </div>
-
-      {/* Länkar */}
-      <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-100 pt-3 text-xs">
-        <a
-          href={`https://www.google.com/search?q=${encodeURIComponent(r.name)}+collagen`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
-        >
-          Google collagen <ExternalLink className="h-3 w-3" />
-        </a>
-        <a
-          href={`https://www.google.com/search?q=${encodeURIComponent(r.name)}+supplement`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
-        >
-          Google supplement <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {[
+            { label: "collagen", q: `"${r.name}" collagen` },
+            { label: "supplement", q: `"${r.name}" supplement` },
+            { label: "kosttillskott", q: `"${r.name}" kosttillskott` },
+          ].map((g) => (
+            <a
+              key={g.label}
+              href={`https://www.google.com/search?q=${encodeURIComponent(g.q)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-200"
+            >
+              {g.label} <ExternalLink className="h-3 w-3" />
+            </a>
+          ))}
+        </div>
       </div>
     </div>
   );
