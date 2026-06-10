@@ -3,10 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Loader2,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  HelpCircle,
   ExternalLink,
   Star,
   Trash2,
@@ -44,13 +40,6 @@ interface ShortlistItem {
   created_at: string;
 }
 type Cell = { status: "loading" | "done" | "error"; result?: BrandCheckResult };
-
-const OVERALL: Record<Overall, { label: string; cls: string; icon: React.ReactNode }> = {
-  free: { label: "Ser ledigt ut", cls: "bg-green-100 text-green-800 ring-green-200", icon: <ShieldCheck className="h-4 w-4" /> },
-  caution: { label: "Tveksam", cls: "bg-amber-100 text-amber-800 ring-amber-200", icon: <ShieldAlert className="h-4 w-4" /> },
-  taken: { label: "Upptaget / risk", cls: "bg-red-100 text-red-800 ring-red-200", icon: <ShieldX className="h-4 w-4" /> },
-  unknown: { label: "Okänt", cls: "bg-gray-200 text-gray-600 ring-gray-300", icon: <HelpCircle className="h-4 w-4" /> },
-};
 
 const OFFICE_GROUPS: { key: string; label: string; codes: string[]; def: boolean }[] = [
   { key: "eu", label: "EU", codes: ["EM"], def: true },
@@ -121,7 +110,6 @@ export default function BrandCheckClient({
   const [order, setOrder] = useState<string[]>([]);
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [shortlist, setShortlist] = useState<ShortlistItem[]>([]);
-  const [sortByVerdict, setSortByVerdict] = useState(false);
   const [ideaTheme, setIdeaTheme] = useState("");
   const [ideaLoading, setIdeaLoading] = useState(false);
   const [scope, setScope] = useState("");
@@ -272,17 +260,6 @@ export default function BrandCheckClient({
   }
 
   const done = order.map((n) => cells[n]).filter((c) => c?.status === "done") as Cell[];
-  const summary = {
-    free: done.filter((c) => c.result?.overall === "free").length,
-    caution: done.filter((c) => c.result?.overall === "caution").length,
-    taken: done.filter((c) => c.result?.overall === "taken").length,
-  };
-  const rank = (n: string): number => {
-    const c = cells[n];
-    if (c?.status !== "done" || !c.result) return 4;
-    return ({ free: 0, caution: 1, unknown: 2, taken: 3 } as Record<Overall, number>)[c.result.overall] ?? 4;
-  };
-  const displayOrder = sortByVerdict ? [...order].sort((a, b) => rank(a) - rank(b)) : order;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
@@ -394,27 +371,14 @@ export default function BrandCheckClient({
 
           {/* Summering */}
           {order.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-gray-500">
-                {done.length}/{order.length} klara{scope ? ` · ${scope}` : ""}
-              </span>
-              {summary.free > 0 && <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-800">{summary.free} ledig</span>}
-              {summary.caution > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{summary.caution} tveksam</span>}
-              {summary.taken > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{summary.taken} upptaget</span>}
-              {order.length > 1 && (
-                <button
-                  onClick={() => setSortByVerdict((v) => !v)}
-                  className="ml-auto rounded-md border border-gray-200 px-2 py-0.5 text-gray-500 hover:bg-gray-50"
-                >
-                  {sortByVerdict ? "Sortering: bästa först" : "Sortering: inmatad ordning"}
-                </button>
-              )}
+            <div className="mt-4 text-xs text-gray-500">
+              {done.length}/{order.length} klara
             </div>
           )}
 
           {/* Resultatkort */}
           <div className="mt-3 space-y-3">
-            {displayOrder.map((name) => {
+            {order.map((name) => {
               const c = cells[name];
               if (!c) return null;
               if (c.status === "loading")
@@ -468,12 +432,6 @@ export default function BrandCheckClient({
             return (
               <div key={s.name} className="rounded-lg border border-gray-200 bg-white p-3">
                 <div className="flex items-center gap-2">
-                  {s.overall && (
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${OVERALL[s.overall].cls}`}>
-                      {OVERALL[s.overall].icon}
-                      {OVERALL[s.overall].label}
-                    </span>
-                  )}
                   <span className="font-semibold text-gray-900">{s.name}</span>
                   <CopyBtn text={s.name} />
                   {com && (
@@ -497,16 +455,6 @@ export default function BrandCheckClient({
         </div>
       )}
 
-      {/* Legend */}
-      <details className="mt-6 text-xs text-gray-500">
-        <summary className="cursor-pointer font-medium">Vad betyder färgerna?</summary>
-        <div className="mt-2 space-y-1">
-          <p>🟢 <b>Ser ledigt ut</b> - .com ledig och inga tydliga webbträffar.</p>
-          <p>🟡 <b>Tveksam</b> - .com tagen, eller webbträffar finns (möjlig konkurrent att kolla).</p>
-          <p>🔴 <b>Upptaget / risk</b> - aktiv sajt på den exakta .com-domänen.</p>
-          <p className="pt-1 text-gray-400">Domen gäller domän + webb. <b>Varumärket</b> kollar du via TMview-länken på varje kort - den öppnas i din webbläsare (funkar alltid) och är förfiltrerad på klass + register + bara levande märken.</p>
-        </div>
-      </details>
     </div>
   );
 }
@@ -526,17 +474,12 @@ function ResultCard({
   saved: boolean;
   onToggleSave: (r: BrandCheckResult) => void;
 }) {
-  const v = OVERALL[r.overall];
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-base font-semibold text-gray-900">{r.name}</span>
         <CopyBtn text={r.name} />
-        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${v.cls}`}>
-          {v.icon}
-          {v.label}
-        </span>
         <button
           onClick={() => onToggleSave(r)}
           title={saved ? "Ta bort från sparade" : "Spara"}
@@ -545,9 +488,6 @@ function ResultCard({
           <Star className="h-5 w-5" fill={saved ? "currentColor" : "none"} />
         </button>
       </div>
-
-      {/* Skäl */}
-      {r.reasons.length > 0 && <p className="mt-1 text-xs text-gray-500">{r.reasons.join(" · ")}</p>}
 
       {/* Varumärke - öppnas i din webbläsare (funkar alltid, till skillnad från server-koll) */}
       <div className="mt-3 border-t border-gray-100 pt-3">

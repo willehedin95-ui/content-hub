@@ -302,6 +302,9 @@ export function domainVariants(name: string): string[] {
     `buy${l}.com`,
     `drink${l}.com`,
     `the${l}.com`,
+    `go${l}.com`,
+    `daily${l}.com`,
+    `shop${l}.com`,
     // suffix
     `${l}health.com`,
     `${l}supps.com`,
