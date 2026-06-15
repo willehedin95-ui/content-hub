@@ -11,13 +11,20 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * Setup in Fillout:
  *   Form > Integrations > Webhook > POST to:
- *     https://content-hub-nine-theta.vercel.app/api/fillout-to-freshdesk
+ *     https://content-hub-nine-theta.vercel.app/api/fillout-to-freshdesk           (Renew, default)
+ *     https://content-hub-nine-theta.vercel.app/api/fillout-to-freshdesk?brand=sb  (SwedishBalance)
  *   Optionally add a shared secret header:
  *     Authorization: Bearer <FILLOUT_WEBHOOK_SECRET>
  *
+ * Brand routing: Renew and SwedishBalance have SEPARATE Freshdesk accounts.
+ * The bare URL routes to Renew (so existing retur/garanti/kontakt forms keep
+ * working untouched); "?brand=sb" routes to SwedishBalance.
+ *
  * Env vars (Vercel):
  *   FRESHDESK_RENEW_DOMAIN     e.g. "getrenew" (without .freshdesk.com)
- *   FRESHDESK_RENEW_API_KEY    Freshdesk API key
+ *   FRESHDESK_RENEW_API_KEY    Freshdesk API key (Renew)
+ *   FRESHDESK_SB_DOMAIN        e.g. "swedishbalance" (without .freshdesk.com)
+ *   FRESHDESK_SB_API_KEY       Freshdesk API key (SwedishBalance)
  *   FILLOUT_WEBHOOK_SECRET     Optional shared secret to reject spoofed calls
  */
 
@@ -310,10 +317,26 @@ function cleanFormName(formName: string | undefined): string {
   return (formName || "").replace(/^[\s®©™\u00A9\u00AE\u2122]+/, "").trim();
 }
 
-type FormKind = "retur" | "garanti" | "kontakt" | "other";
+type FormKind = "retur" | "garanti" | "kontakt" | "anger" | "other";
 
 function detectFormKind(formName: string | undefined): FormKind {
   const lower = cleanFormName(formName).toLowerCase();
+  // Ångerrätt (statutory right of withdrawal). Detected first and deliberately
+  // kept OUT of the date-window drop logic below — a withdrawal request must
+  // always be accepted. Covers SE/NO/DK/EN wording.
+  if (
+    lower.includes("ånger") ||
+    lower.includes("ångra") ||
+    lower.includes("angra") ||
+    lower.includes("anger") ||
+    lower.includes("angre") ||
+    lower.includes("fortryd") ||
+    lower.includes("frånträ") ||
+    lower.includes("frantra") ||
+    lower.includes("withdraw")
+  ) {
+    return "anger";
+  }
   if (lower.includes("retur")) return "retur";
   if (lower.includes("garanti")) return "garanti";
   if (lower.includes("kontakt") || lower.includes("contact")) return "kontakt";
@@ -331,6 +354,7 @@ function buildSubject(formName: string | undefined, questions: FilloutQuestion[]
     retur: "Retur",
     garanti: "Garanti",
     kontakt: "Kontakt",
+    anger: "Ångerrätt",
   };
   if (kind !== "other") {
     const parts: string[] = [PREFIXES[kind]];
@@ -356,10 +380,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const domain = process.env.FRESHDESK_RENEW_DOMAIN?.trim();
-  const apiKey = process.env.FRESHDESK_RENEW_API_KEY?.trim();
+  // Brand routing: bare URL -> Renew (default), ?brand=sb -> SwedishBalance.
+  const brandParam = (req.nextUrl.searchParams.get("brand") || "").toLowerCase();
+  const isSB = brandParam === "sb" || brandParam === "swedishbalance" || brandParam === "happysleep";
+  const brand = isSB ? "sb" : "renew";
+  const domain = (isSB ? process.env.FRESHDESK_SB_DOMAIN : process.env.FRESHDESK_RENEW_DOMAIN)?.trim();
+  const apiKey = (isSB ? process.env.FRESHDESK_SB_API_KEY : process.env.FRESHDESK_RENEW_API_KEY)?.trim();
   if (!domain || !apiKey) {
-    console.error("[fillout-to-freshdesk] Missing FRESHDESK_RENEW_DOMAIN or FRESHDESK_RENEW_API_KEY");
+    console.error(`[fillout-to-freshdesk] Missing Freshdesk domain/API key for brand=${brand}`);
     return NextResponse.json({ error: "Server not configured" }, { status: 500 });
   }
 
@@ -404,6 +432,9 @@ export async function POST(req: NextRequest) {
   //   - Guarantee forms ("garanti"): 60-90 days after first delivery date
   // Fillout shows the customer a "för tidigt"/"för sent" ending page but still fires
   // the webhook, so we silently drop these without creating a Freshdesk ticket.
+  //
+  // NOTE: "anger" (ångerrätt) is intentionally NOT in this list — a statutory
+  // withdrawal request must ALWAYS be accepted, never date-gated or dropped.
   const formKind = detectFormKind(body.formName);
   if (formKind === "retur" || formKind === "garanti") {
     const deliveryDate = findDeliveryDate(questions);
@@ -461,12 +492,16 @@ export async function POST(req: NextRequest) {
   // first_name="William", last_name="Hedin" on the contact record. This makes
   // {{ticket.requester.first_name}} work in email notification templates without
   // any extra API calls.
+  // Ångerrätt is time-sensitive (often must be actioned before the order ships),
+  // so flag it High. Everything else stays Low.
+  const priority = formKind === "anger" ? 3 : 1; // 3 = High, 1 = Low
+
   const ticketPayload: Record<string, unknown> = {
     email,
     subject,
     description,
     status: 2, // Open
-    priority: 1, // Low
+    priority,
     tags,
   };
   if (customerName) ticketPayload.name = customerName;
@@ -501,10 +536,11 @@ export async function POST(req: NextRequest) {
 
 // Allow GET for quick health check
 export async function GET() {
-  const configured = !!(process.env.FRESHDESK_RENEW_DOMAIN && process.env.FRESHDESK_RENEW_API_KEY);
   return NextResponse.json({
     ok: true,
-    configured,
-    domain: process.env.FRESHDESK_RENEW_DOMAIN ?? null,
+    configured: {
+      renew: !!(process.env.FRESHDESK_RENEW_DOMAIN && process.env.FRESHDESK_RENEW_API_KEY),
+      sb: !!(process.env.FRESHDESK_SB_DOMAIN && process.env.FRESHDESK_SB_API_KEY),
+    },
   });
 }
