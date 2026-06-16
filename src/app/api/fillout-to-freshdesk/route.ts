@@ -112,7 +112,7 @@ function findEmail(questions: FilloutQuestion[]): string | null {
 function findFirstName(questions: FilloutQuestion[]): string | null {
   for (const q of questions) {
     const name = (q.name || "").toLowerCase();
-    if (name.includes("förnamn") || name.includes("fornamn") || name.includes("first name")) {
+    if (name.includes("förnamn") || name.includes("fornamn") || name.includes("fornavn") || name.includes("first name")) {
       const v = formatValue(q.value);
       if (v && v !== "(tomt svar)") return v;
     }
@@ -123,7 +123,7 @@ function findFirstName(questions: FilloutQuestion[]): string | null {
 function findLastName(questions: FilloutQuestion[]): string | null {
   for (const q of questions) {
     const name = (q.name || "").toLowerCase();
-    if (name.includes("efternamn") || name.includes("last name") || name.includes("surname")) {
+    if (name.includes("efternamn") || name.includes("efternavn") || name.includes("etternavn") || name.includes("last name") || name.includes("surname")) {
       const v = formatValue(q.value);
       if (v && v !== "(tomt svar)") return v;
     }
@@ -153,6 +153,7 @@ function findOrderNumber(questions: FilloutQuestion[]): string | null {
     const name = (q.name || "").toLowerCase();
     if (
       name.includes("ordernummer") ||
+      name.includes("ordrenummer") ||
       name.includes("order number") ||
       name === "order" ||
       name === "ordernr" ||
@@ -211,11 +212,11 @@ function reorderNameFields(questions: FilloutQuestion[]): FilloutQuestion[] {
   // Make sure Förnamn (first name) appears before Efternamn (last name) regardless of form order.
   const firstNameIdx = questions.findIndex((q) => {
     const n = (q.name || "").toLowerCase();
-    return n.includes("förnamn") || n.includes("fornamn") || n.includes("first name");
+    return n.includes("förnamn") || n.includes("fornamn") || n.includes("fornavn") || n.includes("first name");
   });
   const lastNameIdx = questions.findIndex((q) => {
     const n = (q.name || "").toLowerCase();
-    return n.includes("efternamn") || n.includes("last name") || n.includes("surname");
+    return n.includes("efternamn") || n.includes("efternavn") || n.includes("etternavn") || n.includes("last name") || n.includes("surname");
   });
   if (firstNameIdx === -1 || lastNameIdx === -1 || firstNameIdx < lastNameIdx) {
     return questions;
