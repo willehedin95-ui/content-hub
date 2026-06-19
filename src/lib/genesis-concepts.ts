@@ -117,108 +117,118 @@ function conceptNameFromHook(hook: string): string {
   return clause.length > 60 ? clause.slice(0, 57).trim() + "..." : clause;
 }
 
+// Building blocks (exported so the streaming pipeline can interleave generate + judge per concept).
+
+/** Build the shared buyer profile once. Returns undefined if disabled or the bot errors. */
+export async function buildBuyerProfile(input: GenesisGenerateInput): Promise<string | undefined> {
+  if (input.buildBuyer === false) return undefined;
+  try {
+    return await callGenesisBot(
+      "build-a-buyer-elite-",
+      `Build a deep buyer profile for this product and segment:\n\n${segmentLine(input)}`,
+      { maxTokens: 2000 },
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+/** Generate one batch of hooks (>= count, min 6) for the segment. */
+export async function generateHooks(input: GenesisGenerateInput, buyerProfile?: string): Promise<string[]> {
+  const raw = await callGenesisBot(
+    DEFAULT_HOOK_BOT,
+    [
+      buyerProfile ? `Buyer profile:\n${buyerProfile}\n` : "",
+      `Generate ${Math.max(input.count ?? 3, 6)} scroll-stopping ad hooks for:\n${segmentLine(input)}`,
+      constraints(input.language),
+      "Output ONLY a numbered list of hooks, nothing else.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    { maxTokens: 1500 },
+  );
+  return parseHookList(raw);
+}
+
+/** Generate one concept body (mariobot) for hook[index] and assemble it into a ConceptProposal. */
+export async function buildConcept(
+  input: GenesisGenerateInput,
+  buyerProfile: string | undefined,
+  hooks: string[],
+  index: number,
+): Promise<ConceptProposal> {
+  const angle: Angle = input.angle ?? "Problem-Agitate";
+  const seg = segmentLine(input);
+  const hook = hooks[index % hooks.length];
+  const body = normalizeDashes(
+    (
+      await callGenesisBot(
+        DEFAULT_BODY_BOT,
+        [
+          buyerProfile ? `Buyer profile:\n${buyerProfile}\n` : "",
+          `Lead hook: "${hook}"`,
+          `Write the full Facebook primary-text ad body for:\n${seg}`,
+          constraints(input.language),
+          "Output ONLY the ad copy itself - no preamble, no headline, no labels.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        { maxTokens: 2500 },
+      )
+    ).trim(),
+  );
+  return {
+    concept_name: conceptNameFromHook(hook),
+    concept_description: input.segmentNote
+      ? `${angle} for ${input.segmentNote} (${input.awarenessLevel}).`
+      : `${angle} concept (${input.awarenessLevel}).`,
+    cash_dna: {
+      concept_type: null,
+      angle,
+      style: null,
+      hooks: hooks.slice(index, index + 1).concat(hooks.filter((_, j) => j !== index).slice(0, 3)),
+      awareness_level: input.awarenessLevel,
+      ad_source: "Research",
+      copy_blocks: inferCopyBlocks(body),
+      concept_description: input.segmentNote || "",
+    },
+    ad_copy_primary: [body],
+    ad_copy_headline: [conceptNameFromHook(hook)],
+    visual_direction: `Native ${input.productName} concept matching the hook "${hook}".`,
+    differentiation_note: `Genesis-generated (${angle}, ${input.awarenessLevel}).`,
+    suggested_tags: [angle, input.awarenessLevel, "genesis"],
+    hypothesis: `If we lead with "${hook}" for ${input.segmentNote || "this segment"}, it stops the scroll and converts on the ${angle} angle.`,
+  };
+}
+
 /**
- * Generate N fresh concepts for a product + segment via Genesis trained bots:
- * build-a-buyer (once) -> ad-hook-bot (hooks) -> per concept: mariobot (body). copy_blocks are
- * inferred from the body (no extra bot call). Returns ConceptProposals with valid cash_dna, ready
- * to enter the native flow (images, Meta push). Sequential (1 concurrent stream/key) - slow by
- * design; cap `count` for latency. Any single concept that errors is skipped (logged).
+ * Generate N fresh concepts for a product + segment (non-streaming):
+ * build-a-buyer (once) -> hooks (once) -> per concept: mariobot body. copy_blocks inferred from
+ * the body (no extra bot call). Sequential (1 concurrent stream/key). Errors per concept skipped.
  */
 export async function generateConceptsWithGenesis(
   input: GenesisGenerateInput,
 ): Promise<{ proposals: ConceptProposal[]; errors: string[]; buyerProfile?: string }> {
   const count = input.count ?? 3;
-  const angle: Angle = input.angle ?? "Problem-Agitate";
-  const seg = segmentLine(input);
   const errors: string[] = [];
+  const buyerProfile = await buildBuyerProfile(input);
 
-  // 1. Shared buyer psychology (once).
-  let buyerProfile: string | undefined;
-  if (input.buildBuyer !== false) {
-    try {
-      buyerProfile = await callGenesisBot(
-        "build-a-buyer-elite-",
-        `Build a deep buyer profile for this product and segment:\n\n${seg}`,
-        { maxTokens: 2000 },
-      );
-    } catch (e) {
-      errors.push(`build-a-buyer: ${(e as Error).message}`);
-    }
-  }
-
-  // 2. Hooks (one batch).
   let hooks: string[] = [];
   try {
-    const hooksRaw = await callGenesisBot(
-      DEFAULT_HOOK_BOT,
-      [
-        buyerProfile ? `Buyer profile:\n${buyerProfile}\n` : "",
-        `Generate ${Math.max(count, 6)} scroll-stopping ad hooks for:\n${seg}`,
-        constraints(input.language),
-        "Output ONLY a numbered list of hooks, nothing else.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      { maxTokens: 1500 },
-    );
-    hooks = parseHookList(hooksRaw);
+    hooks = await generateHooks(input, buyerProfile);
   } catch (e) {
     errors.push(`hooks: ${(e as Error).message}`);
   }
   if (!hooks.length) return { proposals: [], errors, buyerProfile };
 
-  // 3. Per-concept body + structure.
   const proposals: ConceptProposal[] = [];
   for (let i = 0; i < count; i++) {
-    const hook = hooks[i % hooks.length];
     try {
-      const body = normalizeDashes(
-        (
-          await callGenesisBot(
-            DEFAULT_BODY_BOT,
-            [
-              buyerProfile ? `Buyer profile:\n${buyerProfile}\n` : "",
-              `Lead hook: "${hook}"`,
-              `Write the full Facebook primary-text ad body for:\n${seg}`,
-              constraints(input.language),
-              "Output ONLY the ad copy itself - no preamble, no headline, no labels.",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            { maxTokens: 2500 },
-          )
-        ).trim(),
-      );
-
-      const copyBlocks = inferCopyBlocks(body);
-
-      proposals.push({
-        concept_name: conceptNameFromHook(hook),
-        concept_description: input.segmentNote
-          ? `${angle} for ${input.segmentNote} (${input.awarenessLevel}).`
-          : `${angle} concept (${input.awarenessLevel}).`,
-        cash_dna: {
-          concept_type: null,
-          angle,
-          style: null,
-          hooks: hooks.slice(i, i + 1).concat(hooks.filter((_, j) => j !== i).slice(0, 3)),
-          awareness_level: input.awarenessLevel,
-          ad_source: "Research",
-          copy_blocks: copyBlocks,
-          concept_description: input.segmentNote || "",
-        },
-        ad_copy_primary: [body],
-        ad_copy_headline: [conceptNameFromHook(hook)],
-        visual_direction: `Native ${input.productName} concept matching the hook "${hook}".`,
-        differentiation_note: `Genesis-generated (${angle}, ${input.awarenessLevel}).`,
-        suggested_tags: [angle, input.awarenessLevel, "genesis"],
-        hypothesis: `If we lead with "${hook}" for ${input.segmentNote || "this segment"}, it stops the scroll and converts on the ${angle} angle.`,
-      });
+      proposals.push(await buildConcept(input, buyerProfile, hooks, i));
     } catch (e) {
-      errors.push(`concept ${i + 1} ("${conceptNameFromHook(hook)}"): ${(e as Error).message}`);
+      errors.push(`concept ${i + 1}: ${(e as Error).message}`);
     }
   }
-
   return { proposals, errors, buyerProfile };
 }
 

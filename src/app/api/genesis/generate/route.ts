@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { safeError } from "@/lib/api-error";
 import { getWorkspaceId, getWorkspaceSettings, getWorkspaceLanguages } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { generateStaticImages } from "@/lib/generate-static-images";
@@ -110,7 +109,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ gaps: suggestGaps(dims, 5), total: dims.length });
 }
 
-// POST /api/genesis/generate -> generate NEW vetted concepts (mode "generate") or swipe a competitor ad (mode "swipe").
+// POST /api/genesis/generate -> stream (NDJSON) NEW vetted concepts (mode "generate") or a
+// competitor swipe (mode "swipe"). Each concept is emitted + persisted as it completes, so the
+// UI shows live progress instead of a blind multi-minute wait.
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const product: string = body.product;
@@ -118,69 +119,86 @@ export async function POST(req: NextRequest) {
   const generateImages: boolean = body.generate_images !== false;
   if (!product) return NextResponse.json({ error: "product is required" }, { status: 400 });
 
-  const db = createServerSupabase();
-  const workspaceId = await getWorkspaceId();
-  const settings = await getWorkspaceSettings();
+  const encoder = new TextEncoder();
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
+  const emit = (data: object) => writer.write(encoder.encode(JSON.stringify(data) + "\n"));
 
-  try {
-    const langCode = (settings.ad_copy_language as string) || "sv";
-    const language = body.language || LANG_NAMES[langCode] || "Swedish";
+  (async () => {
+    try {
+      const db = createServerSupabase();
+      const workspaceId = await getWorkspaceId();
+      const settings = await getWorkspaceSettings();
+      const language = body.language || LANG_NAMES[(settings.ad_copy_language as string) || "sv"] || "Swedish";
 
-    const { data: prod } = await db
-      .from("products")
-      .select("name, description, ingredients")
-      .eq("slug", product)
-      .eq("workspace_id", workspaceId)
-      .maybeSingle();
-    const productName = prod?.name || product;
-    const brandBrief = [prod?.description, prod?.ingredients].filter(Boolean).join(" ").slice(0, 600) || undefined;
+      const { data: prod } = await db
+        .from("products")
+        .select("name, description, ingredients")
+        .eq("slug", product)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+      const productName = prod?.name || product;
+      const brandBrief = [prod?.description, prod?.ingredients].filter(Boolean).join(" ").slice(0, 600) || undefined;
 
-    const targetLanguages = await getWorkspaceLanguages();
-    const ctx: PersistCtx = { db, workspaceId, product, targetLanguages, generateImages };
-    let nextNumber = await nextConceptNumber(db, workspaceId);
+      const targetLanguages = await getWorkspaceLanguages();
+      const ctx: PersistCtx = { db, workspaceId, product, targetLanguages, generateImages };
+      let nextNumber = await nextConceptNumber(db, workspaceId);
+      let createdCount = 0;
+      let rejectedCount = 0;
 
-    // --- SWIPE MODE ---
-    if (mode === "swipe") {
-      const competitorAdText: string = body.competitorAdText || "";
-      if (!competitorAdText.trim()) return NextResponse.json({ error: "competitorAdText required for swipe" }, { status: 400 });
-      const { proposal, error: swipeErr } = await swipeConceptWithGenesis({
-        competitorAdText,
-        productName,
-        language,
-        brandBrief,
-        awarenessLevel: body.awarenessLevel,
-        angle: body.angle || undefined,
-        guardAgainst: body.guardAgainst,
-      });
-      if (!proposal) return NextResponse.json({ created: [], errors: [swipeErr || "swipe failed"] }, { status: 200 });
-      const judge = await judgeCopy(proposal.ad_copy_primary[0] || "", { language, productName });
-      if (judge.verdict === "REJECT") return NextResponse.json({ created: [], rejected: 1, judge }, { status: 200 });
-      const created = await persistConcept(ctx, proposal, judge, nextNumber);
-      return NextResponse.json({ created: created ? [created] : [], images_generating: generateImages });
-    }
+      if (mode === "swipe") {
+        const competitorAdText: string = body.competitorAdText || "";
+        if (!competitorAdText.trim()) {
+          await emit({ step: "error", message: "competitorAdText required for swipe" });
+        } else {
+          await emit({ step: "progress", phase: "swipe", index: 0, total: 1 });
+          const { proposal, error: swipeErr } = await swipeConceptWithGenesis({
+            competitorAdText, productName, language, brandBrief,
+            awarenessLevel: body.awarenessLevel, angle: body.angle || undefined, guardAgainst: body.guardAgainst,
+          });
+          if (!proposal) {
+            await emit({ step: "error", message: swipeErr || "swipe failed" });
+          } else {
+            const judge = await judgeCopy(proposal.ad_copy_primary[0] || "", { language, productName });
+            if (judge.verdict === "REJECT") {
+              rejectedCount++;
+              await emit({ step: "rejected" });
+            } else {
+              const row = await persistConcept(ctx, proposal, judge, nextNumber);
+              if (row) { createdCount++; await emit({ step: "concept", concept: row }); }
+            }
+          }
+        }
+      } else {
+        const count = Math.min(Math.max(Number(body.count) || 2, 1), 3);
+        const awarenessLevel: AwarenessLevel = body.awarenessLevel || "Problem Aware";
+        const angle: Angle | undefined = body.angle || undefined;
+        const rules = Array.isArray(settings.generation_rules) ? (settings.generation_rules as string[]) : [];
 
-    // --- GENERATE MODE ---
-    const count: number = Math.min(Math.max(Number(body.count) || 2, 1), 5);
-    const awarenessLevel: AwarenessLevel = body.awarenessLevel || "Problem Aware";
-    const angle: Angle | undefined = body.angle || undefined;
-    const rules = Array.isArray(settings.generation_rules) ? (settings.generation_rules as string[]) : [];
-
-    const { vetted, rejected, errors } = await generateVettedConcepts(
-      { productName, language, brandBrief, segmentNote: body.segmentNote, awarenessLevel, angle, count },
-      { rules, judge: true },
-    );
-    if (!vetted.length) return NextResponse.json({ created: [], rejected: rejected.length, errors }, { status: 200 });
-
-    const created = [];
-    for (const v of vetted) {
-      const row = await persistConcept(ctx, v.proposal, v.judge, nextNumber);
-      if (row) {
-        created.push(row);
-        nextNumber++;
+        await generateVettedConcepts(
+          { productName, language, brandBrief, segmentNote: body.segmentNote, awarenessLevel, angle, count },
+          {
+            rules,
+            judge: true,
+            onProgress: (e) => emit({ step: "progress", ...e }),
+            onConcept: async (v) => {
+              if (v.judge.verdict === "REJECT") { rejectedCount++; await emit({ step: "rejected" }); return; }
+              const row = await persistConcept(ctx, v.proposal, v.judge, nextNumber);
+              if (row) { createdCount++; nextNumber++; await emit({ step: "concept", concept: row }); }
+            },
+          },
+        );
       }
+
+      await emit({ step: "done", created: createdCount, rejected: rejectedCount });
+    } catch (err) {
+      await emit({ step: "error", message: (err as Error).message });
+    } finally {
+      await writer.close();
     }
-    return NextResponse.json({ created, rejected: rejected.length, errors, images_generating: generateImages });
-  } catch (err) {
-    return safeError(err, "Genesis generation failed");
-  }
+  })();
+
+  return new Response(stream.readable, {
+    headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-cache" },
+  });
 }

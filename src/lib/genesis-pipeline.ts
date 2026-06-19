@@ -1,15 +1,15 @@
 /**
  * Genesis pipeline orchestrator - composes all phases into one usable call.
  *
- *   standing rules (Phase 4) -> generate via trained bots (Phase 1)
- *     -> judge each concept (Phase 3) -> regenerate REJECTs once -> return vetted concepts.
+ *   standing rules (Phase 4) -> per concept: generate (Phase 1) -> judge (Phase 3)
+ *     -> regenerate REJECTs once -> emit. Interleaved so each concept can stream as it completes.
  *
  * The image-prompt lint (Phase 2) runs later at image-gen time; the coverage map (Phase 4)
  * feeds suggestGaps() into the input. This is the function the /api/genesis/generate route calls.
  */
 
 import type { ConceptProposal } from "@/types";
-import { generateConceptsWithGenesis, type GenesisGenerateInput } from "./genesis-concepts";
+import { buildBuyerProfile, generateHooks, buildConcept, type GenesisGenerateInput } from "./genesis-concepts";
 import { judgeCopy, type JudgeResult } from "./creative-judge";
 import { rulesToPromptBlock } from "./standards-ladder";
 
@@ -26,12 +26,18 @@ export interface VettedOptions {
   judge?: boolean;
   /** Regenerate a REJECTed concept once. Default true. */
   regenerateRejects?: boolean;
+  /** Fired before each phase / concept so callers can stream progress. */
+  onProgress?: (e: { phase: "buyer" | "hooks" | "generating"; index?: number; total?: number }) => void | Promise<void>;
+  /** Fired after each concept is vetted (and persisted by the caller), for streaming. */
+  onConcept?: (v: VettedConcept) => void | Promise<void>;
 }
 
+const PASS_JUDGE: JudgeResult = { verdict: "PASS", score: 7, issues: [], blocked: false };
+
 /**
- * Generate concepts via Genesis, vet each with the judge, regenerate REJECTs once.
- * Returns vetted (PASS/WARN) and rejected (still REJECT after a retry) concepts, each with its
- * judge verdict attached so the UI can badge quality.
+ * Generate concepts via Genesis, vet each with the judge, regenerate REJECTs once. Interleaved:
+ * builds the shared buyer + hooks, then loops one concept at a time (generate -> judge -> regen),
+ * calling onProgress/onConcept as it goes. Returns vetted (PASS/WARN) and rejected concepts.
  */
 export async function generateVettedConcepts(
   input: GenesisGenerateInput,
@@ -39,6 +45,7 @@ export async function generateVettedConcepts(
 ): Promise<{ vetted: VettedConcept[]; rejected: VettedConcept[]; errors: string[] }> {
   const runJudge = opts.judge ?? true;
   const regen = opts.regenerateRejects ?? true;
+  const count = input.count ?? 3;
   const errors: string[] = [];
 
   // Phase 4: fold standing rules into the brief.
@@ -48,45 +55,52 @@ export async function generateVettedConcepts(
     brandBrief: [input.brandBrief, ruleBlock].filter(Boolean).join("\n\n") || undefined,
   };
 
-  const gen = await generateConceptsWithGenesis(enrichedInput);
-  errors.push(...gen.errors);
+  const judgeOf = (p: ConceptProposal) =>
+    judgeCopy(p.ad_copy_primary[0] || "", { language: input.language, productName: input.productName });
+
+  await opts.onProgress?.({ phase: "buyer" });
+  const buyerProfile = await buildBuyerProfile(enrichedInput);
+
+  await opts.onProgress?.({ phase: "hooks" });
+  let hooks: string[] = [];
+  try {
+    hooks = await generateHooks(enrichedInput, buyerProfile);
+  } catch (e) {
+    errors.push(`hooks: ${(e as Error).message}`);
+  }
+  if (!hooks.length) return { vetted: [], rejected: [], errors };
 
   const vetted: VettedConcept[] = [];
   const rejected: VettedConcept[] = [];
 
-  for (const proposal of gen.proposals) {
-    let current = proposal;
-    let judge: JudgeResult = { verdict: "PASS", score: 7, issues: [], blocked: false };
-    let regenerated = false;
+  for (let i = 0; i < count; i++) {
+    await opts.onProgress?.({ phase: "generating", index: i, total: count });
+    try {
+      let current = await buildConcept(enrichedInput, buyerProfile, hooks, i);
+      let judge = runJudge ? await judgeOf(current) : PASS_JUDGE;
+      let regenerated = false;
 
-    if (runJudge) {
-      judge = await judgeCopy(current.ad_copy_primary[0] || "", { language: input.language, productName: input.productName });
-
-      if (judge.verdict === "REJECT" && regen) {
-        // Bank this concept's issues as one-off rules and regenerate just this slot.
-        const fixes = judge.issues.map((i) => i.fix).filter(Boolean);
-        const retry = await generateConceptsWithGenesis({
+      if (runJudge && judge.verdict === "REJECT" && regen) {
+        const fixes = judge.issues.map((iss) => iss.fix).filter(Boolean);
+        const retryInput: GenesisGenerateInput = {
           ...enrichedInput,
-          angle: current.cash_dna.angle,
-          awarenessLevel: current.cash_dna.awareness_level,
-          count: 1,
-          buildBuyer: false,
           brandBrief: [enrichedInput.brandBrief, fixes.length ? `Avoid these problems: ${fixes.join("; ")}` : ""]
             .filter(Boolean)
             .join("\n\n"),
-        });
-        if (retry.proposals[0]) {
-          current = retry.proposals[0];
-          judge = await judgeCopy(current.ad_copy_primary[0] || "", { language: input.language, productName: input.productName });
-          regenerated = true;
-        }
-        errors.push(...retry.errors);
+        };
+        const retry = await buildConcept(retryInput, buyerProfile, hooks, i);
+        current = retry;
+        judge = await judgeOf(current);
+        regenerated = true;
       }
-    }
 
-    const entry: VettedConcept = { proposal: current, judge, regenerated };
-    if (judge.verdict === "REJECT") rejected.push(entry);
-    else vetted.push(entry);
+      const entry: VettedConcept = { proposal: current, judge, regenerated };
+      if (judge.verdict === "REJECT") rejected.push(entry);
+      else vetted.push(entry);
+      await opts.onConcept?.(entry);
+    } catch (e) {
+      errors.push(`concept ${i + 1}: ${(e as Error).message}`);
+    }
   }
 
   return { vetted, rejected, errors };
