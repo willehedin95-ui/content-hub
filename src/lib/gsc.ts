@@ -183,45 +183,6 @@ export async function listSitemaps(
   }
 }
 
-/**
- * Fetch sitemap inputContents stats: submitted vs indexed counts per content
- * type (web/news/image/video). Used for indexation-coverage monitoring.
- * Returns null on error so caller can skip the property cleanly.
- */
-export async function getSitemapStats(
-  property: string,
-  feedpath: string
-): Promise<{
-  submitted: number;
-  indexed: number;
-  lastSubmitted?: string;
-  errors: number;
-  warnings: number;
-} | null> {
-  try {
-    const auth = getAuth();
-    const res = await searchconsole.sitemaps.get({
-      auth,
-      siteUrl: property,
-      feedpath,
-    });
-    const data = res.data;
-    const webContent = (data.contents ?? []).find(
-      (c) => c.type === "web" || !c.type
-    );
-    return {
-      submitted: parseInt(String(webContent?.submitted ?? "0"), 10),
-      indexed: parseInt(String(webContent?.indexed ?? "0"), 10),
-      lastSubmitted: data.lastSubmitted ?? undefined,
-      errors: parseInt(String(data.errors ?? "0"), 10),
-      warnings: parseInt(String(data.warnings ?? "0"), 10),
-    };
-  } catch (err) {
-    console.warn(`[gsc] getSitemapStats failed for ${property} ${feedpath}:`, err);
-    return null;
-  }
-}
-
 /** Format a Date as YYYY-MM-DD */
 export function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
