@@ -69,6 +69,7 @@ export default function Sidebar({ userEmail, workspaces = [], activeWorkspaceSlu
       icon: Megaphone,
       children: [
         { href: "/brainstorm", label: "Brainstorm", icon: Lightbulb, badge: pipelineBadgeCount > 0 ? pipelineBadgeCount : undefined },
+        { href: "/genesis", label: "Genesis", icon: Zap },
         { href: "/ad-spy", label: "Ad Spy", icon: Eye },
         { href: "/images", label: "Concepts", icon: Image },
         { href: "/launchpad", label: "Launch Pad", icon: Rocket },

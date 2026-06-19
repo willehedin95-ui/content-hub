@@ -1,5 +1,61 @@
 # Content Hub - Task Backlog
-Updated: 2026-06-10 (Brand Check-verktyg byggt + deployat; namnsökning pågår - se journal LATEST)
+Updated: 2026-06-18 (Genesis/Exodus reverse-engineering + integrationsplan - se docs/plans/exodus-genesis-MASTER-PLAN.md)
+
+## Genesis/Exodus-integration (Copy Coders tränade bottar) - 2026-06-18
+
+Reverse-engineerade Copy Coders Exodus/Genesis (William fick API-access). Plan + roster i `docs/plans/`:
+`exodus-genesis-MASTER-PLAN.md`, `genesis-bot-roster.md` (146 bottar), `exodus-genesis-reverse-engineering.md`.
+
+### Blocker - LÖST 2026-06-19
+- [x] ~~Provider-nyckel~~ - OpenRouter-nyckel (`GENESIS_PROVIDER_KEY=sk-or-...`) i `.env.local`. Smoke-testet kör grönt: 146 bottar, `copy-blocks-extract` + kedjan `build-a-buyer → ad-hook-bot-1 → mariobot` producerar stark svensk copy live. Genesis-integrationen är validerad end-to-end. (Lokal `ANTHROPIC_API_KEY` är fortf. ogiltig men spelar ingen roll - OpenRouter tar över.)
+
+### Klart i natt
+- [x] Genesis live-API validerat (auth ok, roster 146 bottar, request/response-kontrakt spikat).
+- [x] `src/lib/genesis.ts` - klient (stream:false, queue för 1-concurrent-limit, 429-backoff, chain-helper). DRAFT, ej importerad än, typecheckar rent.
+- [x] `scripts/genesis-smoke.ts` - kör `build-a-buyer → hooks → mariobot` på Hydro13-brief. Kör med `npx tsx scripts/genesis-smoke.ts` när nyckeln är giltig.
+- [x] Genesis-skill säkerhetsgranskad (ren).
+
+### ALLA FASER byggda + live-validerade på branch `feat/genesis-integration` (main orörd, 8 commits, 20 filer)
+Varje motor är byggd som isolerad, testbar lib och validerad live mot riktiga bottar / OpenRouter. Återstår bara inwiring i routes/DB/UI (se nedan - kräver app + ditt godkännande).
+- [x] **Phase 1** generering: `genesis-concepts.ts` - `generateConceptsWithGenesis()` (produkt+segment), `swipeConceptWithGenesis()` (DNA-tagg→rewrite), `enhanceProposalsWithGenesis()` (bonus). Alla → giltig `cash_dna`, passerar native-parsern.
+- [x] **Phase 2** `prompt-lint.ts` - `lintImagePrompt()` blockar Hydro13 shot-glass/amber + engelsk rendered-text i SV-marknad. 12 tester gröna.
+- [x] **Phase 3** `creative-judge.ts` + `openrouter.ts` - `judgeCopy()` (deterministisk hård-regel + LLM-rubric via OpenRouter haiku-4.5). Fångade "satisfies"/"boost"/pris → REJECT live.
+- [x] **Phase 4** `coverage-map.ts` (angle×awareness gaps → `suggestGaps`) + `standards-ladder.ts` (banka reject→regel). 15 pure-tester gröna.
+- [x] **Phase 5** `brand-design.ts` - `injectBrandDesign()` (per-brand design.md i system-prompt).
+- [x] **Capstone** `genesis-pipeline.ts` - `generateVettedConcepts()` (regler→generera→döma→regenerera) + `getGenerationBackend()` toggle (default native).
+
+### Inwiring - KLAR (endpoint + sida + verifierad mot riktiga DB:n)
+- [x] **`/api/genesis/generate`** - kör `generateVettedConcepts`, persisterar vettade koncept → `image_jobs` (exakt brainstorm/approve-kontrakt: concept_number, cash_dna, landing-page-auto-assign, bakgrundsbilder). `generate_images:false` skippar KIE för preview.
+- [x] **`/genesis`-sida** - minimal form (produkt/segment/awareness/angle/antal) + judge-badge. Auth-skyddad (Supabase) som väntat.
+- [x] **Verifierat end-to-end mot prod-DB**: skapade Hydro13-koncept **#77** (judge WARN 8), läst tillbaka med intakt cash_dna. Taggat `genesis-verify` - radera via `image_jobs` id `37c7972a-7e2b-48a1-b65d-fea8bf9cfda0` om du inte vill ha det.
+
+### Återstår (mindre - kräver Williams beslut/review)
+- [ ] **Lint i bild-path**: wira `lintImagePrompt` i `generate-static-images.ts:~152` + safety-net `kie.ts:38` (byggd+testad, ej inkopplad - kräver KIE-render för att verifiera).
+- [ ] **Skriv-path för toggle/regler/design.md** i `workspaces.settings` (UI för att slå på Genesis per workspace + banka regler). Läs-sidan klar (`getGenerationBackend`).
+- [ ] **Genesis i huvudflödet**: knapp i `BrainstormGenerate.tsx` + coverage-map-vy (`suggestGaps`) + swipe-varianten i `swipe-competitor.ts`.
+- [ ] **Bakgrundsjobb för prod**: synk-endpoint funkar lokalt; Vercel Hobby cappar 300s, så batch-generering bör köras async.
+- [ ] **`npm run build` + deploy** - först efter Williams ok (aldrig pusha main utan bekräftelse). Branch `feat/genesis-integration`, 10 commits, main orörd.
+
+---
+
+
+## EU ångerknapp-compliance (direktiv 2023/2673, deadline 19 juni 2026) - 2026-06-16
+
+### Done
+- [x] ~~SE ångerknapp komplett~~ - Fillout-form + kvitto + footer-knapp + webhook → SB Freshdesk, verifierat desktop + mobil.
+- [x] ~~DK ångerknapp komplett~~ - DK-form + danskt kvittomail (fortrydelsesret) + per-marknad Fillout-embed (Shopify Markets `/da-dk`) + Transcy-översatt footer.
+- [x] ~~Webhook `/api/fillout-to-freshdesk`: brand-routing (`?brand=sb` → SB), form-typ `anger` (aldrig droppas, High-prio), + DK/NO-fältnamn~~ - commits d91a4449, 595d4cd9.
+- [x] ~~content-hub Shopify-app: `write_themes`+`write_theme_code`~~ - kan nu redigera SB-temat via Asset-API.
+
+### Open / next
+- [ ] **DK: dubbelkolla Transcy-översättningen** av footer-länken blev "Fortryd køb (fortrydelsesret)".
+- [ ] **NO: parkerat** - bekräfta tidslinje (Forbrukertilsynet/angrerettloven) innan NO-form + footer byggs. NO = EES, ej bunden av 19 juni.
+- [ ] **Renew/Hydro13 ångerknapp** efter rebrand (samma webhook, bar URL för brand-routing).
+- [ ] **Kosmetiskt:** töm globala Custom CSS-rutan på SB-temat från tidiga (verkningslösa) försök.
+- [ ] **Gotcha noterad:** Shopify Custom CSS-fältet strippar `@media` - använd `<style>` i temafil (t.ex. footer.liquid).
+
+---
+
 
 ## Renew namnbyte (varumärke) - 2026-06-08 → 06-10
 

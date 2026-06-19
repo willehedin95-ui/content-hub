@@ -10,6 +10,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
 import { getProductAppearance } from "@/lib/product-appearance";
+import { lintImagePrompt, autoFixPrompt, summarizeLint } from "@/lib/prompt-lint";
 import type { StaticStyleId } from "@/lib/constants";
 import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
@@ -200,8 +201,19 @@ export async function generateStaticImages(
 
       const referenceUrls = resolveReferenceImages(brief, allProductImages);
 
+      // Pre-render lint (Phase 2): auto-fix known visual violations (amber/shot-glass/dashes),
+      // log anything the lint flags so we get telemetry on how often briefs violate.
+      let renderPrompt = brief.prompt;
+      const lintCtx = { productSlug: product.slug, language: job.target_languages?.[0] as string | undefined };
+      const lint = lintImagePrompt(renderPrompt, lintCtx);
+      if (!lint.pass) {
+        const fixed = autoFixPrompt(renderPrompt, lintCtx);
+        if (fixed.changed) renderPrompt = fixed.prompt;
+        console.warn(`[static-images] ${label}: ${summarizeLint(lint)}${fixed.changed ? " (auto-fixed)" : ""}`);
+      }
+
       const { urls: resultUrls, costTimeMs } = await generateImage(
-        brief.prompt,
+        renderPrompt,
         referenceUrls,
         "4:5"
       );
@@ -236,7 +248,7 @@ export async function generateStaticImages(
           filename: `${brief.style}-${fileId.slice(0, 8)}.png`,
           processing_order: index,
           skip_translation: false,
-          generation_prompt: brief.prompt,
+          generation_prompt: renderPrompt,
           generation_style: brief.style,
           batch,
           ...(batchLabel ? { batch_label: batchLabel } : {}),
@@ -277,7 +289,7 @@ export async function generateStaticImages(
         label,
         style: brief.style,
         reptileTriggers: brief.reptileTriggers,
-        prompt: brief.prompt,
+        prompt: renderPrompt,
       };
     })
   );
