@@ -23,8 +23,8 @@ interface PersistCtx {
   generateImages: boolean;
 }
 
-async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeResult, nextNumber: number) {
-  const { db, workspaceId, product, targetLanguages, generateImages } = ctx;
+async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeResult, nextNumber: number, doImages: boolean) {
+  const { db, workspaceId, product, targetLanguages } = ctx;
   const landingPageId = await findBestLandingPage(db, workspaceId, product, {
     adCopyPrimary: p.ad_copy_primary,
     adCopyHeadline: p.ad_copy_headline,
@@ -51,7 +51,7 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     .single();
   if (error || !job) return null;
 
-  if (generateImages) {
+  if (doImages) {
     const jobId = job.id;
     after(async () => {
       try {
@@ -160,13 +160,9 @@ export async function POST(req: NextRequest) {
             await emit({ step: "error", message: swipeErr || "swipe failed" });
           } else {
             const judge = await judgeCopy(proposal.ad_copy_primary[0] || "", { language, productName });
-            if (judge.verdict === "REJECT") {
-              rejectedCount++;
-              await emit({ step: "rejected" });
-            } else {
-              const row = await persistConcept(ctx, proposal, judge, nextNumber);
-              if (row) { createdCount++; await emit({ step: "concept", concept: row }); }
-            }
+            if (judge.verdict === "REJECT") rejectedCount++;
+            const row = await persistConcept(ctx, proposal, judge, nextNumber, ctx.generateImages && judge.verdict !== "REJECT");
+            if (row) { createdCount++; await emit({ step: "concept", concept: row }); }
           }
         }
       } else {
@@ -182,8 +178,8 @@ export async function POST(req: NextRequest) {
             judge: true,
             onProgress: (e) => emit({ step: "progress", ...e }),
             onConcept: async (v) => {
-              if (v.judge.verdict === "REJECT") { rejectedCount++; await emit({ step: "rejected" }); return; }
-              const row = await persistConcept(ctx, v.proposal, v.judge, nextNumber);
+              if (v.judge.verdict === "REJECT") rejectedCount++;
+              const row = await persistConcept(ctx, v.proposal, v.judge, nextNumber, ctx.generateImages && v.judge.verdict !== "REJECT");
               if (row) { createdCount++; nextNumber++; await emit({ step: "concept", concept: row }); }
             },
           },

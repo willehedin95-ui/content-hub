@@ -96,11 +96,12 @@ const RUBRIC = `You are a ruthless senior direct-response copy editor. Judge the
 Score it 0-10 on these (in priority order): curiosity/hook strength, vivid felt pain, vivid benefits,
 credibility/proof, specificity, naturalness of the language. A bad idea worded perfectly is still bad.
 
-ALSO flag, as "block" severity:
+Flag as "block" severity ONLY genuinely unusable problems:
 - ANY English word in copy that should be entirely in the target language (very important).
+Flag everything else as "warn" (do NOT block on these):
 - Grammar errors (e.g. Swedish en/ett gender: "Din nattserum" should be "Ditt nattserum").
 - AI-slop phrasing (robotic transitions, "Det är inte X, det är Y" clichés, empty hype).
-Flag weak curiosity / generic openings as "warn".
+- Weak curiosity / generic openings / weak CTA / specificity gaps.
 
 Return ONLY JSON:
 {"score": <0-10 number>, "issues": [{"type": "...", "severity": "block"|"warn", "quote": "<exact text>", "fix": "<short fix>"}]}`;
