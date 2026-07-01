@@ -59,6 +59,9 @@ export default function GenesisPage() {
   const [summary, setSummary] = useState<{ created: number; rejected: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gaps, setGaps] = useState<Gap[]>([]);
+  const [segments, setSegments] = useState<{ name: string; description: string }[]>([]);
+  const [segmentChoice, setSegmentChoice] = useState<string>("custom");
+  const [language, setLanguage] = useState("Swedish");
   const [expanded, setExpanded] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -73,7 +76,10 @@ export default function GenesisPage() {
     try {
       const res = await fetch(`/api/genesis/generate?product=${encodeURIComponent(product)}`);
       const data = await res.json();
-      if (res.ok) setGaps(data.gaps ?? []);
+      if (res.ok) {
+        setGaps(data.gaps ?? []);
+        setSegments(data.segments ?? []);
+      }
     } catch {
       /* ignore */
     }
@@ -97,7 +103,7 @@ export default function GenesisPage() {
       const res = await fetch("/api/genesis/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, product, segmentNote, competitorAdText, awarenessLevel, angle: angle || undefined, count }),
+        body: JSON.stringify({ mode, product, segmentNote, competitorAdText, awarenessLevel, angle: angle || undefined, count, language }),
       });
       if (!res.ok || !res.body) {
         const d = await res.json().catch(() => ({}));
@@ -174,9 +180,27 @@ export default function GenesisPage() {
           {mode === "generate" ? (
             <div>
               <label className="block text-sm font-medium text-gray-700">Segment / målgrupp</label>
-              <textarea value={segmentNote} onChange={(e) => setSegmentNote(e.target.value)} rows={2} disabled={loading} className={inputCls}
+              {segments.length > 0 && (
+                <select
+                  value={segmentChoice}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSegmentChoice(v);
+                    if (v !== "custom") {
+                      const seg = segments.find((s) => s.name === v);
+                      if (seg) setSegmentNote(seg.description ? `${seg.name}: ${seg.description}` : seg.name);
+                    }
+                  }}
+                  disabled={loading}
+                  className={`${inputCls} mb-2`}
+                >
+                  <option value="custom">Eget segment (skriv nedan)</option>
+                  {segments.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                </select>
+              )}
+              <textarea value={segmentNote} onChange={(e) => { setSegmentNote(e.target.value); setSegmentChoice("custom"); }} rows={2} disabled={loading} className={inputCls}
                 placeholder="t.ex. Kvinnor 45-60 som gör allt rätt men ser huden förändras och känner sig osynliga" />
-              <p className="mt-1 text-xs text-gray-400">Beskriv vem annonsen ska tala till - utfall, demografi, känsla. Ju skarpare desto bättre copy.</p>
+              <p className="mt-1 text-xs text-gray-400">Välj ett färdigt segment eller skriv eget - utfall, demografi, känsla.</p>
             </div>
           ) : (
             <div>
@@ -185,6 +209,13 @@ export default function GenesisPage() {
                 placeholder="Klistra in konkurrentens annonstext. Genesis DNA-taggar den (koncept/angle/style/hook) och skriver en ny version för din produkt - behåller strukturen, byter detaljerna." />
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Språk</label>
+            <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={loading} className={inputCls}>
+              {["Swedish", "Danish", "Norwegian", "German", "English"].map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>

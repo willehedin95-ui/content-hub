@@ -9,6 +9,36 @@
 import type { ConceptProposal, Angle, AwarenessLevel, CopyBlock } from "@/types";
 import { ANGLES } from "@/types";
 import { callGenesisBot } from "./genesis";
+import { chatOpenRouter } from "./openrouter";
+
+/**
+ * Language safety net for hooks. The Opus hook bot is English-trained and sometimes returns
+ * English despite the Swedish instruction, which then leaks into the concept title + body. If the
+ * target language isn't English, run one cheap pass that translates any English hooks (leaving
+ * already-correct ones untouched).
+ */
+async function ensureHookLanguage(hooks: string[], language: string): Promise<string[]> {
+  if (!hooks.length || language.toLowerCase().startsWith("en")) return hooks;
+  try {
+    const raw = await chatOpenRouter(
+      [
+        {
+          role: "system",
+          content: `You translate ad hooks to ${language}. For each numbered hook: if it is already natural ${language}, return it unchanged; otherwise translate it to punchy, natural ${language} (keep the meaning and impact, no English words). Return ONLY a numbered list with the same number of lines, nothing else.`,
+        },
+        { role: "user", content: hooks.map((h, i) => `${i + 1}. ${h}`).join("\n") },
+      ],
+      { temperature: 0, maxTokens: 1500 },
+    );
+    const out = raw
+      .split("\n")
+      .map((l) => l.replace(/^\s*\d+[.)]\s*/, "").replace(/[—–]/g, "-").trim())
+      .filter((l) => l.length > 8);
+    return out.length >= hooks.length ? out.slice(0, hooks.length) : hooks;
+  } catch {
+    return hooks;
+  }
+}
 
 const DEFAULT_BODY_BOT = "mariobot";
 const DEFAULT_HOOK_BOT = "ad-hook-bot-1";
@@ -147,7 +177,7 @@ export async function generateHooks(input: GenesisGenerateInput, buyerProfile?: 
       .join("\n"),
     { maxTokens: 1500 },
   );
-  return parseHookList(raw);
+  return ensureHookLanguage(parseHookList(raw), input.language);
 }
 
 /** Generate one concept body (mariobot) for hook[index] and assemble it into a ConceptProposal. */

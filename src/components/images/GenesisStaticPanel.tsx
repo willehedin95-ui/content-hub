@@ -7,6 +7,7 @@ interface Bot {
   id: string;
   name: string;
   description: string;
+  recommended?: boolean;
 }
 
 /**
@@ -87,7 +88,12 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
                 onClick={() => setSelected(b.id)}
                 className={`block w-full rounded-md px-3 py-2 text-left transition ${selected === b.id ? "bg-indigo-600 text-white" : "hover:bg-gray-50"}`}
               >
-                <div className={`text-sm font-medium ${selected === b.id ? "text-white" : "text-gray-900"}`}>{b.name}</div>
+                <div className={`flex items-center gap-2 text-sm font-medium ${selected === b.id ? "text-white" : "text-gray-900"}`}>
+                  {b.name}
+                  {b.recommended && (
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected === b.id ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"}`}>REK</span>
+                  )}
+                </div>
                 {b.description && (
                   <div className={`text-xs ${selected === b.id ? "text-indigo-100" : "text-gray-400"}`}>{b.description}</div>
                 )}

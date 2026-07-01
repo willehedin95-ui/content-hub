@@ -106,7 +106,24 @@ export async function GET(req: NextRequest) {
     .map((r) => r.cash_dna as { angle?: Angle; awareness_level?: AwarenessLevel })
     .filter((c) => c?.angle && c?.awareness_level)
     .map((c) => ({ angle: c.angle!, awareness: c.awareness_level! }));
-  return NextResponse.json({ gaps: suggestGaps(dims, 5), total: dims.length });
+
+  // Preset segments for this product (so the UI can offer a dropdown).
+  const { data: prod } = await db
+    .from("products")
+    .select("id")
+    .eq("slug", product)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  let segments: Array<{ name: string; description: string }> = [];
+  if (prod?.id) {
+    const { data: segs } = await db
+      .from("product_segments")
+      .select("name, description")
+      .eq("product_id", prod.id);
+    segments = (segs ?? []).map((s) => ({ name: s.name as string, description: (s.description as string) || "" }));
+  }
+
+  return NextResponse.json({ gaps: suggestGaps(dims, 5), total: dims.length, segments });
 }
 
 // POST /api/genesis/generate -> stream (NDJSON) NEW vetted concepts (mode "generate") or a
