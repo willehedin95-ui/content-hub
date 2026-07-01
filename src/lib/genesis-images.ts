@@ -64,14 +64,17 @@ export async function generateGenesisStaticImages(opts: {
   const headline = (job.ad_copy_headline as string[] | null)?.[0] || job.name || "";
   const hook = (job.cash_dna as { hooks?: string[] } | null)?.hooks?.[0] || headline;
 
+  const facts = [product?.description, product?.ingredients].filter(Boolean).join(" ").slice(0, 800);
+
   const input = [
     `Ad copy:\n${copy}`,
     headline ? `Headline: ${headline}` : "",
     appearance ? `Product visual (must match exactly): ${appearance}` : "",
+    facts ? `PRODUCT FACTS (use ONLY these - never invent flavors, ingredients, numbers, or claims): ${facts}` : "",
     ``,
     `Generate ${count} DISTINCT static ad image concepts in YOUR format for this ad. For EACH, output a complete, ready-to-render image-generation prompt (a vivid visual description for an AI image generator).`,
     `Number them exactly "PROMPT 1:", "PROMPT 2:", ... Output ONLY the prompts.`,
-    `Any text rendered in the image MUST be in ${langName}. Use regular hyphens, never en/em dashes.`,
+    `HARD RULES for any text shown in the image: it MUST be exact, natural ${langName} with correct spelling and diacritics (å, ä, ö) - never drop or replace them, never use English words. Use regular hyphens, never en/em dashes. Do NOT invent product claims, flavors, or figures - only use the PRODUCT FACTS above.`,
   ]
     .filter(Boolean)
     .join("\n");

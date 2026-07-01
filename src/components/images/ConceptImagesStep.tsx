@@ -224,6 +224,7 @@ export interface ConceptImagesStepProps {
     results: Array<{ label: string; original_url: string; style?: string; reptileTriggers?: string[]; prompt?: string }> | null;
   };
   handleGenerateStatic?: () => void;
+  hideStyleGenerator?: boolean;
   handleCancelGenerate?: () => void;
   // Re-roll
   onReroll?: (sourceImageId: string, customInstructions?: string) => void;
@@ -286,6 +287,7 @@ export default function ConceptImagesStep({
   handleRetrySingle,
   generateState,
   handleGenerateStatic,
+  hideStyleGenerator,
   handleCancelGenerate,
   onReroll,
   rerollingId,
@@ -311,7 +313,7 @@ export default function ConceptImagesStep({
   const existingStyles = new Set(sourceImages.map(si => si.generation_style).filter(Boolean));
 
   const renderGenerateSection = () => {
-    if (!showGenerateSection || !generateState) return null;
+    if (!showGenerateSection || !generateState || hideStyleGenerator) return null;
     return (
       <div className={`bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-6 ${hasExistingImages ? "mt-4" : "mb-6"}`}>
         <div className="flex items-center gap-2 mb-3">
