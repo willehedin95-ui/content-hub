@@ -32,6 +32,7 @@ import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 import EditableTags from "@/components/pages/EditableTags";
 import ConceptImagesStep from "./ConceptImagesStep";
+import GenesisStaticPanel from "./GenesisStaticPanel";
 import ConceptAdCopyStep, { LandingPageModalTrigger } from "./ConceptAdCopyStep";
 import ConceptPreviewStep from "./ConceptPreviewStep";
 import CashDnaEditor from "./CashDnaEditor";
@@ -1639,6 +1640,13 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-red-500" />
           <span className="text-sm text-red-700">{finishQueue.error}</span>
+        </div>
+      )}
+
+      {/* ===== Genesis image-bot static ads ===== */}
+      {job.visual_direction && (
+        <div className="mb-4">
+          <GenesisStaticPanel jobId={job.id} onDone={() => refreshJob()} />
         </div>
       )}
 

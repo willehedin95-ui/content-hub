@@ -8,7 +8,7 @@
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
-import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
+import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES, type ImageBrief } from "@/lib/static-ad-prompt";
 import { getProductAppearance } from "@/lib/product-appearance";
 import { lintImagePrompt, autoFixPrompt, summarizeLint } from "@/lib/prompt-lint";
 import type { StaticStyleId } from "@/lib/constants";
@@ -27,6 +27,8 @@ export interface GenerateStaticOptions {
   iterationContext?: Record<string, unknown>;
   targetMarket?: string;
   segmentId?: string;
+  /** When provided, use these briefs directly and skip the Claude brief generation (e.g. Genesis image bots). */
+  injectedBriefs?: ImageBrief[];
 }
 
 export interface GenerateStaticResult {
@@ -60,6 +62,7 @@ export async function generateStaticImages(
     iterationContext: overrideIterationContext,
     targetMarket,
     segmentId,
+    injectedBriefs,
   } = opts;
 
   const MAX_IMAGES_PER_CONCEPT = 5;
@@ -137,27 +140,31 @@ export async function generateStaticImages(
 
   const iterationContext = overrideIterationContext ?? job.iteration_context ?? null;
 
-  // Step 1: Claude generates distinct image briefs
+  // Step 1: image briefs - either injected (e.g. Genesis image bots) or Claude-generated.
   const productAppearance = getProductAppearance(product);
 
-  const briefs = await generateImageBriefs({
-    job,
-    product: product as ProductFull,
-    productImages: allProductImages,
-    segment,
-    iterationContext,
-    count,
-    styles: requestedStyles,
-    previousPrompts,
-    productAppearance,
-  });
+  const briefs = injectedBriefs
+    ? { briefs: injectedBriefs, usage: { input_tokens: 0, output_tokens: 0 } }
+    : await generateImageBriefs({
+        job,
+        product: product as ProductFull,
+        productImages: allProductImages,
+        segment,
+        iterationContext,
+        count,
+        styles: requestedStyles,
+        previousPrompts,
+        productAppearance,
+      });
 
   if (briefs.briefs.length === 0) {
-    throw new Error("Claude returned no valid briefs");
+    throw new Error(injectedBriefs ? "No briefs provided" : "Claude returned no valid briefs");
   }
 
-  // Log Claude usage
-  const claudeCost = calcClaudeCost(briefs.usage.input_tokens, briefs.usage.output_tokens);
+  // Log Claude usage (only for Claude-generated briefs).
+  let claudeCost = 0;
+  if (!injectedBriefs) {
+  claudeCost = calcClaudeCost(briefs.usage.input_tokens, briefs.usage.output_tokens);
   await db.from("usage_logs").insert({
     type: "claude_rewrite",
     page_id: null,
@@ -176,6 +183,7 @@ export async function generateStaticImages(
       segment_name: segment?.name ?? null,
     },
   });
+  }
 
   // Mark job as ready immediately so the client sees progress via polling
   await db
