@@ -58,6 +58,35 @@ export async function chatOpenRouter(messages: ORMessage[], opts: ORChatOptions 
   return data.choices?.[0]?.message?.content ?? "";
 }
 
+/** Vision call: ask a question about an image. Returns the model's text answer. */
+export async function visionOpenRouter(
+  prompt: string,
+  imageUrl: string,
+  opts: { model?: string; maxTokens?: number; json?: boolean } = {},
+): Promise<string> {
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${orKey()}`, "Content-Type": "application/json", "X-Title": "content-hub" },
+    body: JSON.stringify({
+      model: opts.model || "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+      max_tokens: opts.maxTokens ?? 600,
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenRouter vision ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
 /** Parse a JSON object from a model response that may be fenced or have surrounding prose. */
 export function parseJsonLoose<T>(raw: string): T {
   let s = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();

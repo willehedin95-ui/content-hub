@@ -1,0 +1,54 @@
+/**
+ * Image quality gate for static ads: a Nano-Banana text-correction pass + a vision QA check.
+ * Used by the render pipeline (opt-in) to fix garbled Swedish text and auto-reroll bad renders.
+ */
+
+import { generateImage } from "./kie";
+import { visionOpenRouter, parseJsonLoose } from "./openrouter";
+
+/**
+ * Nano-Banana text-correction pass: re-render the image editing ONLY the text so it is correctly
+ * spelled, natural {language} with proper diacritics. Returns the corrected URL (or the original
+ * on failure). Costs one extra image render.
+ */
+export async function correctImageText(imageUrl: string, language: string, aspectRatio: "1:1" | "4:5" | "9:16" | "16:9" = "4:5"): Promise<string> {
+  try {
+    const prompt = `Correct ALL text in this ad image so it is perfectly spelled, natural ${language} with correct diacritics (å, ä, ö). Fix any garbled, misspelled, cut-off, or English words. Change ONLY the text - keep the exact same layout, product, colours, people and composition. Do not add or remove any elements.`;
+    const { urls } = await generateImage(prompt, [imageUrl], aspectRatio);
+    return urls?.[0] || imageUrl;
+  } catch {
+    return imageUrl;
+  }
+}
+
+export interface ImageQaResult {
+  ok: boolean;
+  issues: string[];
+}
+
+/**
+ * Vision QA: check the product is right, the text is readable {language} (proper diacritics, no
+ * English), and there are no obvious defects. Fails OPEN (returns ok) on any error so QA never
+ * blocks generation.
+ */
+export async function qaImage(imageUrl: string, ctx: { language: string; productAppearance?: string }): Promise<ImageQaResult> {
+  try {
+    const raw = await visionOpenRouter(
+      [
+        `You are a strict QA reviewer for a static ad image. Check:`,
+        `1. Any text is correctly spelled, natural ${ctx.language} with proper diacritics (å ä ö) - NOT garbled, NOT English.`,
+        ctx.productAppearance ? `2. The product matches this description: ${ctx.productAppearance}` : "",
+        `3. No obvious visual defects (garbled faces, broken layout, unreadable text).`,
+        `Return ONLY JSON: {"ok": true|false, "issues": ["short issue", ...]}. Set ok=false only for real, obvious problems.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      imageUrl,
+      { json: true, maxTokens: 400 },
+    );
+    const p = parseJsonLoose<{ ok?: boolean; issues?: string[] }>(raw);
+    return { ok: p.ok !== false, issues: Array.isArray(p.issues) ? p.issues.slice(0, 5) : [] };
+  } catch {
+    return { ok: true, issues: [] };
+  }
+}

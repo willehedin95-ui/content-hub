@@ -11,6 +11,9 @@ import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES, type ImageBrief } from "@/lib/static-ad-prompt";
 import { getProductAppearance } from "@/lib/product-appearance";
 import { lintImagePrompt, autoFixPrompt, summarizeLint } from "@/lib/prompt-lint";
+import { correctImageText, qaImage } from "@/lib/image-quality";
+
+const LANG_NAMES: Record<string, string> = { sv: "Swedish", da: "Danish", no: "Norwegian", de: "German", en: "English" };
 import type { StaticStyleId } from "@/lib/constants";
 import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
@@ -29,6 +32,10 @@ export interface GenerateStaticOptions {
   segmentId?: string;
   /** When provided, use these briefs directly and skip the Claude brief generation (e.g. Genesis image bots). */
   injectedBriefs?: ImageBrief[];
+  /** Run a Nano-Banana text-correction pass on each rendered image (fixes garbled diacritics). */
+  textCorrection?: boolean;
+  /** Vision-QA each image and reroll bad ones (wrong product / garbled text / defects). */
+  imageQa?: boolean;
 }
 
 export interface GenerateStaticResult {
@@ -63,6 +70,8 @@ export async function generateStaticImages(
     targetMarket,
     segmentId,
     injectedBriefs,
+    textCorrection,
+    imageQa,
   } = opts;
 
   const MAX_IMAGES_PER_CONCEPT = 5;
@@ -142,6 +151,7 @@ export async function generateStaticImages(
 
   // Step 1: image briefs - either injected (e.g. Genesis image bots) or Claude-generated.
   const productAppearance = getProductAppearance(product);
+  const langName = LANG_NAMES[(job.target_languages?.[0] as string) || "sv"] || "Swedish";
 
   const briefs = injectedBriefs
     ? { briefs: injectedBriefs, usage: { input_tokens: 0, output_tokens: 0 } }
@@ -220,17 +230,28 @@ export async function generateStaticImages(
         console.warn(`[static-images] ${label}: ${summarizeLint(lint)}${fixed.changed ? " (auto-fixed)" : ""}`);
       }
 
-      const { urls: resultUrls, costTimeMs } = await generateImage(
-        renderPrompt,
-        referenceUrls,
-        "4:5"
-      );
-
-      if (!resultUrls?.length) {
-        throw new Error(`${label}: No image generated`);
+      // Render + quality gate (opt-in): reroll on failed vision-QA, then text-correction pass.
+      let finalUrl = "";
+      let costTimeMs: number | null = null;
+      const maxAttempts = imageQa ? 3 : 1;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const r = await generateImage(renderPrompt, referenceUrls, "4:5");
+        if (!r.urls?.length) throw new Error(`${label}: No image generated`);
+        costTimeMs = r.costTimeMs;
+        let url = r.urls[0];
+        if (imageQa && attempt < maxAttempts) {
+          const qa = await qaImage(url, { language: langName, productAppearance });
+          if (!qa.ok) {
+            console.warn(`[static-images] ${label}: QA fail (${qa.issues.join("; ")}) - reroll ${attempt}/${maxAttempts - 1}`);
+            continue;
+          }
+        }
+        if (textCorrection) url = await correctImageText(url, langName, "4:5");
+        finalUrl = url;
+        break;
       }
 
-      const resultRes = await fetch(resultUrls[0]);
+      const resultRes = await fetch(finalUrl);
       if (!resultRes.ok) {
         throw new Error(`${label}: Failed to download generated image`);
       }
