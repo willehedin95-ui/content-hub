@@ -308,6 +308,9 @@ export default function ConceptImagesStep({
   // Show generate section when job has visual_direction and isn't processing
   const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
   const hasExistingImages = sourceImages.length > 0;
+  // False when the workspace's only target language IS the generation language (e.g. sv-only
+  // Genesis concepts) - nothing to translate, so per-image Translate checkboxes are noise.
+  const hasTranslatableLangs = wsLanguages.filter((lang) => lang.value !== job.source_language).length > 0;
 
   // Existing styles that have already been generated
   const existingStyles = new Set(sourceImages.map(si => si.generation_style).filter(Boolean));
@@ -730,6 +733,11 @@ export default function ConceptImagesStep({
                     alt={si.filename ?? "Original"}
                     className="w-full h-full object-cover"
                   />
+                  {si.generation_style && (
+                    <span className="absolute left-1.5 top-1.5 max-w-[85%] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      {STATIC_STYLES.find((s) => s.id === si.generation_style)?.label ?? si.generation_style.replace(/-bot-?$/i, "").replace(/-/g, " ")}
+                    </span>
+                  )}
                   {si.skip_translation && (
                     <div className="absolute inset-0 bg-white/40 flex items-center justify-center">
                       <span className="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">No text</span>
@@ -737,7 +745,7 @@ export default function ConceptImagesStep({
                   )}
                 </div>
                 <div className="flex items-center justify-between px-2 py-1.5">
-                  {onToggleSkip && (
+                  {onToggleSkip && hasTranslatableLangs && (
                     <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">
                       <input
                         type="checkbox"
@@ -748,7 +756,7 @@ export default function ConceptImagesStep({
                       <span className="text-xs text-gray-400 truncate">{si.skip_translation ? "Skip" : "Translate"}</span>
                     </label>
                   )}
-                  {!onToggleSkip && si.filename && (
+                  {(!onToggleSkip || !hasTranslatableLangs) && si.filename && (
                     <p className="text-xs text-gray-400 truncate flex-1">{si.filename}</p>
                   )}
                   {onReroll && si.generation_style && !rerollingId && (

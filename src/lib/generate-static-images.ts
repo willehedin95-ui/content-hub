@@ -290,6 +290,20 @@ export async function generateStaticImages(
         throw new Error(`${label}: DB insert failed`);
       }
 
+      // Same-language auto-passthrough: when the copy is generated natively in a target language
+      // (e.g. Genesis sv concepts), create the completed "translation" row immediately so
+      // Preview & Push works with zero clicks - no sv->sv Translate step needed.
+      const srcLang = job.source_language as string | null;
+      if (srcLang && (job.target_languages as string[] | null)?.includes(srcLang)) {
+        await db.from("image_translations").insert({
+          source_image_id: sourceImage.id,
+          language: srcLang,
+          aspect_ratio: "4:5",
+          status: "completed",
+          translated_url: urlData.publicUrl,
+        });
+      }
+
       await db.from("usage_logs").insert({
         type: "image_generation",
         page_id: null,
