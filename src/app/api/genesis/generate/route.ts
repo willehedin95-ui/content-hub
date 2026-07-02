@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const maxDuration = 800;
 
 const LANG_NAMES: Record<string, string> = { sv: "Swedish", da: "Danish", no: "Norwegian", de: "German", en: "English" };
+const LANG_CODES: Record<string, string> = { Swedish: "sv", Danish: "da", Norwegian: "no", German: "de", English: "en" };
 
 interface PersistCtx {
   db: SupabaseClient;
@@ -21,6 +22,8 @@ interface PersistCtx {
   product: string;
   targetLanguages: string[];
   generateImages: boolean;
+  /** Language code the copy is generated in (e.g. "sv") - enables the same-language translation passthrough. */
+  sourceLanguage: string;
 }
 
 async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeResult, nextNumber: number, doImages: boolean) {
@@ -44,6 +47,7 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
       ad_copy_primary: p.ad_copy_primary,
       ad_copy_headline: p.ad_copy_headline ?? [],
       visual_direction: p.visual_direction ?? null,
+      source_language: ctx.sourceLanguage,
       workspace_id: workspaceId,
       ...(landingPageId ? { landing_page_id: landingPageId } : {}),
     })
@@ -158,7 +162,8 @@ export async function POST(req: NextRequest) {
       const brandBrief = [prod?.description, prod?.ingredients].filter(Boolean).join(" ").slice(0, 600) || undefined;
 
       const targetLanguages = await getWorkspaceLanguages();
-      const ctx: PersistCtx = { db, workspaceId, product, targetLanguages, generateImages };
+      const sourceLanguage = LANG_CODES[language] || (settings.ad_copy_language as string) || "sv";
+      const ctx: PersistCtx = { db, workspaceId, product, targetLanguages, generateImages, sourceLanguage };
       let nextNumber = await nextConceptNumber(db, workspaceId);
       let createdCount = 0;
       let rejectedCount = 0;
