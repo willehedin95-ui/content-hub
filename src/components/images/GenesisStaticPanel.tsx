@@ -16,11 +16,16 @@ interface Bot {
  * Pick one format + a count -> that many image variations of that format, rendered into the concept.
  * Images appear in the grid as they render (onDone polling).
  */
+type ThumbSize = "sm" | "md" | "lg";
+const THUMB_CLS: Record<ThumbSize, string> = { sm: "h-14 w-14", md: "h-24 w-24", lg: "h-44 w-44" };
+const LIST_CLS: Record<ThumbSize, string> = { sm: "max-h-64", md: "max-h-96", lg: "max-h-[38rem]" };
+
 export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   const [bots, setBots] = useState<Bot[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [count, setCount] = useState(3);
+  const [thumbSize, setThumbSize] = useState<ThumbSize>("lg");
   const [loading, setLoading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +34,8 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    const saved = localStorage.getItem("genesis-thumb-size") as ThumbSize | null;
+    if (saved && THUMB_CLS[saved]) setThumbSize(saved);
     fetch("/api/genesis/image-bots")
       .then((r) => r.json())
       .then((d) => setBots(d.bots ?? []))
@@ -38,6 +45,11 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
       if (tick.current) clearInterval(tick.current);
     };
   }, []);
+
+  const changeThumbSize = (s: ThumbSize) => {
+    setThumbSize(s);
+    localStorage.setItem("genesis-thumb-size", s);
+  };
 
   const filtered = bots.filter(
     (b) => b.name.toLowerCase().includes(query.toLowerCase()) || b.description.toLowerCase().includes(query.toLowerCase()),
@@ -78,7 +90,18 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
       <div className="mb-3 flex items-center gap-2">
         <Zap className="h-4 w-4 text-indigo-600" />
         <span className="text-sm font-semibold text-gray-900">Generera static ads med Genesis-bottar</span>
-        <span className="text-xs text-gray-500">{bots.length || 45} tränade format</span>
+        <span className="text-xs text-gray-500">{bots.length || 37} tränade format</span>
+        <div className="ml-auto flex items-center gap-1" title="Storlek på exempel-bilderna">
+          {(["sm", "md", "lg"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => changeThumbSize(s)}
+              className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${thumbSize === s ? "bg-indigo-600 text-white" : "bg-white text-gray-500 border border-gray-200 hover:text-gray-900"}`}
+            >
+              {s.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="relative mb-2">
@@ -92,7 +115,7 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
         />
       </div>
 
-      <div className="mb-3 max-h-64 space-y-1 overflow-y-auto rounded-md border border-gray-200 bg-white p-1">
+      <div className={`mb-3 ${LIST_CLS[thumbSize]} space-y-1 overflow-y-auto rounded-md border border-gray-200 bg-white p-1`}>
         {!bots.length && !error && <div className="p-3 text-sm text-gray-400">Laddar format...</div>}
         {filtered.map((b) => (
           <button
@@ -103,9 +126,9 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
           >
             {b.thumbnail ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={b.thumbnail} alt={b.name} loading="lazy" className="h-14 w-14 shrink-0 rounded-md border border-black/10 object-cover" />
+              <img src={b.thumbnail} alt={b.name} loading="lazy" className={`${THUMB_CLS[thumbSize]} shrink-0 rounded-md border border-black/10 object-cover`} />
             ) : (
-              <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-md text-[10px] ${selected === b.id ? "bg-white/10 text-indigo-100" : "bg-gray-100 text-gray-400"}`}>
+              <div className={`flex ${THUMB_CLS[thumbSize]} shrink-0 items-center justify-center rounded-md text-[10px] ${selected === b.id ? "bg-white/10 text-indigo-100" : "bg-gray-100 text-gray-400"}`}>
                 Ingen<br />bild
               </div>
             )}

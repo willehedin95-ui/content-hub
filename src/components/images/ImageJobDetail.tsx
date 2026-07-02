@@ -1688,6 +1688,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         }}
         handleGenerateStatic={handleGenerateStatic}
         hideStyleGenerator={true}
+        onRefresh={() => refreshJob()}
         handleCancelGenerate={handleCancelGenerate}
         onReroll={handleReroll}
         rerollingId={rerollingId}

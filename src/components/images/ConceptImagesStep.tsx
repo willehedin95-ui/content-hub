@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
   Copy,
+  ShieldCheck,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
@@ -225,6 +226,8 @@ export interface ConceptImagesStepProps {
   };
   handleGenerateStatic?: () => void;
   hideStyleGenerator?: boolean;
+  /** Called after a manual QA text-fix replaced an image, so the parent can refresh. */
+  onRefresh?: () => void;
   handleCancelGenerate?: () => void;
   // Re-roll
   onReroll?: (sourceImageId: string, customInstructions?: string) => void;
@@ -288,6 +291,7 @@ export default function ConceptImagesStep({
   generateState,
   handleGenerateStatic,
   hideStyleGenerator,
+  onRefresh,
   handleCancelGenerate,
   onReroll,
   rerollingId,
@@ -305,6 +309,28 @@ export default function ConceptImagesStep({
 }: ConceptImagesStepProps) {
   const wsLanguages = useWorkspaceLanguages();
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
+  // Manual per-image QA (checks text/product via vision, text-fixes in place when possible)
+  const [qaRunningId, setQaRunningId] = useState<string | null>(null);
+  const [qaMessages, setQaMessages] = useState<Record<string, string>>({});
+
+  const runQa = async (siId: string) => {
+    setQaRunningId(siId);
+    setQaMessages((prev) => ({ ...prev, [siId]: "" }));
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/qa-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_image_id: siId }),
+      });
+      const data = await res.json();
+      setQaMessages((prev) => ({ ...prev, [siId]: data.message || data.error || "Okänt fel" }));
+      if (data.status === "fixed") onRefresh?.();
+    } catch {
+      setQaMessages((prev) => ({ ...prev, [siId]: "QA misslyckades - försök igen" }));
+    } finally {
+      setQaRunningId(null);
+    }
+  };
   // Show generate section when job has visual_direction and isn't processing
   const showGenerateSection = !!job.visual_direction && job.status !== "processing" && handleGenerateStatic;
   const hasExistingImages = sourceImages.length > 0;
@@ -759,6 +785,14 @@ export default function ConceptImagesStep({
                   {(!onToggleSkip || !hasTranslatableLangs) && si.filename && (
                     <p className="text-xs text-gray-400 truncate flex-1">{si.filename}</p>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); runQa(si.id); }}
+                    disabled={qaRunningId !== null}
+                    className="text-gray-300 hover:text-emerald-600 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0 disabled:opacity-40"
+                    title="QA: kolla text/produkt med AI och fixa texten om något är fel"
+                  >
+                    {qaRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                  </button>
                   {onReroll && si.generation_style && !rerollingId && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
@@ -778,6 +812,9 @@ export default function ConceptImagesStep({
                     </button>
                   )}
                 </div>
+                {qaMessages[si.id] && (
+                  <p className="px-2 pb-1.5 text-[10px] leading-snug text-gray-500">{qaMessages[si.id]}</p>
+                )}
               </div>
             ))}
           </div>

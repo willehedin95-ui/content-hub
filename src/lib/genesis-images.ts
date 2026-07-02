@@ -93,12 +93,6 @@ export async function generateGenesisStaticImages(opts: {
     referenceStrategy: "product",
   }));
 
-  return generateStaticImages({
-    jobId,
-    workspaceId,
-    injectedBriefs: briefs,
-    // Quality gate: text-correction fixes garbled diacritics (skip for English), QA rerolls bad renders.
-    textCorrection: !langName.toLowerCase().startsWith("en"),
-    imageQa: true,
-  });
+  // No auto-QA/text-correction: fastest path, user triggers QA per image manually when needed.
+  return generateStaticImages({ jobId, workspaceId, injectedBriefs: briefs });
 }
