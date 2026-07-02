@@ -8,6 +8,7 @@ interface Bot {
   name: string;
   description: string;
   recommended?: boolean;
+  thumbnail?: string;
 }
 
 /**
@@ -98,15 +99,25 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
             key={b.id}
             onClick={() => setSelected(b.id)}
             disabled={loading}
-            className={`block w-full rounded-md px-3 py-2 text-left transition ${selected === b.id ? "bg-indigo-600 text-white" : "hover:bg-gray-50"}`}
+            className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition ${selected === b.id ? "bg-indigo-600 text-white" : "hover:bg-gray-50"}`}
           >
-            <div className={`flex items-center gap-2 text-sm font-medium ${selected === b.id ? "text-white" : "text-gray-900"}`}>
-              {b.name}
-              {b.recommended && (
-                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected === b.id ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"}`}>REK</span>
-              )}
+            {b.thumbnail ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={b.thumbnail} alt={b.name} loading="lazy" className="h-14 w-14 shrink-0 rounded-md border border-black/10 object-cover" />
+            ) : (
+              <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-md text-[10px] ${selected === b.id ? "bg-white/10 text-indigo-100" : "bg-gray-100 text-gray-400"}`}>
+                Ingen<br />bild
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className={`flex items-center gap-2 text-sm font-medium ${selected === b.id ? "text-white" : "text-gray-900"}`}>
+                {b.name}
+                {b.recommended && (
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected === b.id ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"}`}>REK</span>
+                )}
+              </div>
+              {b.description && <div className={`truncate text-xs ${selected === b.id ? "text-indigo-100" : "text-gray-400"}`}>{b.description}</div>}
             </div>
-            {b.description && <div className={`text-xs ${selected === b.id ? "text-indigo-100" : "text-gray-400"}`}>{b.description}</div>}
           </button>
         ))}
         {bots.length > 0 && !filtered.length && <div className="p-3 text-sm text-gray-400">Inga format matchar &ldquo;{query}&rdquo;.</div>}
