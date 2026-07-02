@@ -24,31 +24,35 @@ export async function correctImageText(imageUrl: string, language: string, aspec
 export interface ImageQaResult {
   ok: boolean;
   issues: string[];
+  /** True when the only real problem is bad text (fixable with a text-correction pass, no reroll). */
+  textOnly: boolean;
 }
 
 /**
  * Vision QA: check the product is right, the text is readable {language} (proper diacritics, no
- * English), and there are no obvious defects. Fails OPEN (returns ok) on any error so QA never
- * blocks generation.
+ * English), the text is actual AD copy (not PSA/meta/safety boilerplate the image model injects),
+ * and there are no obvious defects. Fails OPEN (returns ok) so QA never blocks generation.
  */
 export async function qaImage(imageUrl: string, ctx: { language: string; productAppearance?: string }): Promise<ImageQaResult> {
   try {
     const raw = await visionOpenRouter(
       [
         `You are a strict QA reviewer for a static ad image. Check:`,
-        `1. Any text is correctly spelled, natural ${ctx.language} with proper diacritics (å ä ö) - NOT garbled, NOT English.`,
-        ctx.productAppearance ? `2. The product matches this description: ${ctx.productAppearance}` : "",
-        `3. No obvious visual defects (garbled faces, broken layout, unreadable text).`,
-        `Return ONLY JSON: {"ok": true|false, "issues": ["short issue", ...]}. Set ok=false only for real, obvious problems.`,
+        `1. TEXT: any text is correctly spelled, natural ${ctx.language} with proper diacritics (å ä ö) - NOT garbled, NOT English.`,
+        `2. MESSAGE: the text must read as ad copy. FAIL if it is PSA/safety boilerplate ("this is an ad", "you are not alone", "talk to someone", helpline-style messages), meta commentary, or off-topic content unrelated to the ad.`,
+        ctx.productAppearance ? `3. PRODUCT: matches this description: ${ctx.productAppearance}` : "",
+        `4. DEFECTS: no garbled faces, broken layout, unreadable text.`,
+        `Return ONLY JSON: {"ok": true|false, "textOnly": true|false, "issues": ["short issue", ...]}.`,
+        `Set ok=false only for real, obvious problems. Set textOnly=true when the ONLY problems are spelling/diacritics in otherwise-correct ad text (fixable by editing text); PSA/meta text, wrong product, or visual defects are NOT textOnly.`,
       ]
         .filter(Boolean)
         .join("\n"),
       imageUrl,
       { json: true, maxTokens: 400 },
     );
-    const p = parseJsonLoose<{ ok?: boolean; issues?: string[] }>(raw);
-    return { ok: p.ok !== false, issues: Array.isArray(p.issues) ? p.issues.slice(0, 5) : [] };
+    const p = parseJsonLoose<{ ok?: boolean; textOnly?: boolean; issues?: string[] }>(raw);
+    return { ok: p.ok !== false, textOnly: p.textOnly === true, issues: Array.isArray(p.issues) ? p.issues.slice(0, 5) : [] };
   } catch {
-    return { ok: true, issues: [] };
+    return { ok: true, textOnly: false, issues: [] };
   }
 }

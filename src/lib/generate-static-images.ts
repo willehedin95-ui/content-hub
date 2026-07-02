@@ -230,7 +230,9 @@ export async function generateStaticImages(
         console.warn(`[static-images] ${label}: ${summarizeLint(lint)}${fixed.changed ? " (auto-fixed)" : ""}`);
       }
 
-      // Render + quality gate (opt-in): reroll on failed vision-QA, then text-correction pass.
+      // Render + quality gate (opt-in). Happy path = 1 render + 1 cheap vision QA. The expensive
+      // extra render only happens when QA actually finds a problem: text-only issues get a
+      // text-correction edit; anything else (PSA/meta text, wrong product, defects) gets a reroll.
       let finalUrl = "";
       let costTimeMs: number | null = null;
       const maxAttempts = imageQa ? 3 : 1;
@@ -239,14 +241,16 @@ export async function generateStaticImages(
         if (!r.urls?.length) throw new Error(`${label}: No image generated`);
         costTimeMs = r.costTimeMs;
         let url = r.urls[0];
-        if (imageQa && attempt < maxAttempts) {
+        if (imageQa) {
           const qa = await qaImage(url, { language: langName, productAppearance });
-          if (!qa.ok) {
+          if (!qa.ok && qa.textOnly && textCorrection) {
+            console.warn(`[static-images] ${label}: QA text issues (${qa.issues.join("; ")}) - text-correction pass`);
+            url = await correctImageText(url, langName, "4:5");
+          } else if (!qa.ok && attempt < maxAttempts) {
             console.warn(`[static-images] ${label}: QA fail (${qa.issues.join("; ")}) - reroll ${attempt}/${maxAttempts - 1}`);
             continue;
           }
         }
-        if (textCorrection) url = await correctImageText(url, langName, "4:5");
         finalUrl = url;
         break;
       }

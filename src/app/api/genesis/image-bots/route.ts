@@ -17,6 +17,21 @@ interface Bot {
   thumbnail?: string;
 }
 
+// Pipeline/utility bots that expect a DIFFERENT input (a completed brief, an uploaded ad, or that
+// only recommend/expand rather than produce renderable prompts). Given raw ad copy they hallucinate
+// (e.g. unaware-static-image-ads-bot produced lifting-strap ads for a puppy course) - hidden from
+// the picker.
+const EXCLUDED = new Set<string>([
+  "unaware-static-image-ads-bot", // transforms completed briefs -> 9:16 prompts
+  "static-ad-info-extractor-bot", // pipeline step 1: extracts structured info
+  "static-ad-concept-expander-bot", // pipeline step 2: expands structured info
+  "static-swipe-bot-", // needs an uploaded competitor ad to reverse-engineer
+  "universal-static-bot", // recommends formats, doesn't write prompts
+  "universal-static-idea-generator", // idea lists, not renderable prompts
+  "1.1-image-gen", // ratio utility
+  "reptile-triggers", // superseded by reptile-triggers-bot (takes ad copy directly)
+]);
+
 // Proven high-performing formats (from the Copy Coders material) - surfaced first in the picker.
 const RECOMMENDED = new Set<string>([
   "ugc-bot-",
@@ -54,7 +69,7 @@ export async function GET() {
     const thumbUrl = (id: string) => db.storage.from(STORAGE_BUCKET).getPublicUrl(`${THUMB_DIR}/${id}.png`).data.publicUrl;
 
     const bots: Bot[] = (json.data || [])
-      .filter((r) => (r._genesis?.category || "").toLowerCase() === "image prompts")
+      .filter((r) => (r._genesis?.category || "").toLowerCase() === "image prompts" && !EXCLUDED.has(r.id))
       .map((r) => ({
         id: r.id,
         name: r._genesis?.name || r.id,
