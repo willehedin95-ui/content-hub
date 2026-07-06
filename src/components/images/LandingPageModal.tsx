@@ -119,6 +119,13 @@ export default function LandingPageModal({
     return groups;
   }, [landingPages, recommendations]);
 
+  // If the active tab has no pages (e.g. auto-detected angle in a workspace without that
+  // angle), fall back to the first non-empty group so the grid is never silently empty.
+  const effectiveTab: PageAngle = useMemo(() => {
+    if ((grouped[activeTab]?.length ?? 0) > 0) return activeTab;
+    return ANGLE_TABS.find((t) => (grouped[t.key]?.length ?? 0) > 0)?.key ?? activeTab;
+  }, [grouped, activeTab]);
+
   // Find the best page across all angles for the "top pick" badge
   const topPageId = useMemo(() => {
     let best: { id: string; roas: number } | null = null;
@@ -162,31 +169,34 @@ export default function LandingPageModal({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 px-5 pt-3 pb-2 border-b border-gray-100">
-          {ANGLE_TABS.map((tab) => {
-            const count = grouped[tab.key]?.length ?? 0;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                  activeTab === tab.key
-                    ? "bg-indigo-50 text-indigo-700 font-medium"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {tab.label}
-                <span className="ml-1.5 text-xs opacity-60">{count}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Tabs - only angles that actually have pages (snoring/neck_pain are HappySleep
+            angles; irrelevant workspaces just get a tabless list). */}
+        {ANGLE_TABS.filter((tab) => (grouped[tab.key]?.length ?? 0) > 0).length > 1 && (
+          <div className="flex gap-1 px-5 pt-3 pb-2 border-b border-gray-100">
+            {ANGLE_TABS.filter((tab) => (grouped[tab.key]?.length ?? 0) > 0).map((tab) => {
+              const count = grouped[tab.key]?.length ?? 0;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    effectiveTab === tab.key
+                      ? "bg-indigo-50 text-indigo-700 font-medium"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {tab.label}
+                  <span className="ml-1.5 text-xs opacity-60">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {(grouped[activeTab] ?? []).map((page) => {
+            {(grouped[effectiveTab] ?? []).map((page) => {
               const rec = recommendations.get(page.id);
               const hasData = rec && rec.confidence !== "no_data";
               const isTopPick = page.id === topPageId;
@@ -260,7 +270,7 @@ export default function LandingPageModal({
                 </button>
               );
             })}
-            {(grouped[activeTab] ?? []).length === 0 && (
+            {(grouped[effectiveTab] ?? []).length === 0 && (
               <p className="col-span-full text-sm text-gray-400 text-center py-8">
                 No pages in this category
               </p>
