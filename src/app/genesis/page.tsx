@@ -34,6 +34,15 @@ const VERDICT_COLOR: Record<string, string> = {
   REJECT: "bg-red-100 text-red-700",
 };
 
+// Plain-language guidance so you don't have to guess what awareness level to pick.
+const AWARENESS_HELP: Record<string, string> = {
+  "Unaware": "Känner inte ens problemet än. Störst publik, svårast att konvertera - för skalning senare.",
+  "Problem Aware": "Känner smärtan varje dag men vet inte att det finns en lösning. Vanligast starten för kall trafik - börja här.",
+  "Solution Aware": "Vet att lösningar finns (kurser, tränare) men inte om din. Sälj varför din metod är annorlunda.",
+  "Product Aware": "Känner till din produkt men har inte köpt. Retargeting-territorium: bevis, garanti, invändningar.",
+  "Most Aware": "Redo att köpa - behöver bara en knuff. Erbjudande/urgency. Minst publik.",
+};
+
 function phaseMessage(p: Progress | null): string {
   if (!p) return "Startar...";
   if (p.phase === "buyer") return "Bygger köparpsykologisk profil...";
@@ -59,6 +68,7 @@ export default function GenesisPage() {
   const [summary, setSummary] = useState<{ created: number; rejected: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gaps, setGaps] = useState<Gap[]>([]);
+  const [conceptTotal, setConceptTotal] = useState(0);
   const [segments, setSegments] = useState<{ name: string; description: string }[]>([]);
   const [segmentChoice, setSegmentChoice] = useState<string>("custom");
   const [language, setLanguage] = useState("Swedish");
@@ -78,6 +88,7 @@ export default function GenesisPage() {
       const data = await res.json();
       if (res.ok) {
         setGaps(data.gaps ?? []);
+        setConceptTotal(data.total ?? 0);
         setSegments(data.segments ?? []);
       }
     } catch {
@@ -221,13 +232,13 @@ export default function GenesisPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Awareness</label>
               <select value={awarenessLevel} onChange={(e) => setAwarenessLevel(e.target.value)} disabled={loading} className={inputCls}>
-                {AWARENESS_LEVELS.map((a) => <option key={a} value={a}>{a}</option>)}
+                {AWARENESS_LEVELS.map((a) => <option key={a} value={a}>{a === "Problem Aware" ? "Problem Aware (börja här)" : a}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Angle</label>
               <select value={angle} onChange={(e) => setAngle(e.target.value)} disabled={loading} className={inputCls}>
-                <option value="">Auto</option>
+                <option value="">Auto - varierar per koncept</option>
                 {ANGLES.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
@@ -240,6 +251,9 @@ export default function GenesisPage() {
               </div>
             )}
           </div>
+          {AWARENESS_HELP[awarenessLevel] && (
+            <p className="text-xs text-gray-400">{AWARENESS_HELP[awarenessLevel]}{!angle ? " · Auto-angle roterar Problem-Agitate / Story / Root Cause / Curiosity / Contrarian så batchen testar olika vinklar." : ""}</p>
+          )}
 
           <button onClick={run} disabled={loading || !canRun}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50">
@@ -261,7 +275,8 @@ export default function GenesisPage() {
           )}
         </div>
 
-        {gaps.length > 0 && !loading && (
+        {/* Coverage gaps only make sense once there's real test volume - before that it's noise. */}
+        {gaps.length > 0 && conceptTotal >= 15 && !loading && (
           <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
             <div className="text-sm font-medium text-gray-700">Luckor att sikta på</div>
             <p className="text-xs text-gray-400">Otestade angle x awareness-kombinationer för den här produkten. Klicka för att fylla i.</p>

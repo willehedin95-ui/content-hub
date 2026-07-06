@@ -73,18 +73,32 @@ export async function generateVettedConcepts(
   const vetted: VettedConcept[] = [];
   const rejected: VettedConcept[] = [];
 
+  // "Auto" angle = rotate through proven angles so a batch tests DIFFERENT approaches
+  // (previously it silently defaulted every concept to Problem-Agitate).
+  const AUTO_ANGLES: NonNullable<GenesisGenerateInput["angle"]>[] = [
+    "Problem-Agitate",
+    "Story",
+    "Root Cause",
+    "Curiosity",
+    "Contrarian",
+  ];
+
   for (let i = 0; i < count; i++) {
     await opts.onProgress?.({ phase: "generating", index: i, total: count });
+    const conceptInput: GenesisGenerateInput = {
+      ...enrichedInput,
+      angle: enrichedInput.angle ?? AUTO_ANGLES[i % AUTO_ANGLES.length],
+    };
     try {
-      let current = await buildConcept(enrichedInput, buyerProfile, hooks, i);
+      let current = await buildConcept(conceptInput, buyerProfile, hooks, i);
       let judge = runJudge ? await judgeOf(current) : PASS_JUDGE;
       let regenerated = false;
 
       if (runJudge && judge.verdict === "REJECT" && regen) {
         const fixes = judge.issues.map((iss) => iss.fix).filter(Boolean);
         const retryInput: GenesisGenerateInput = {
-          ...enrichedInput,
-          brandBrief: [enrichedInput.brandBrief, fixes.length ? `Avoid these problems: ${fixes.join("; ")}` : ""]
+          ...conceptInput,
+          brandBrief: [conceptInput.brandBrief, fixes.length ? `Avoid these problems: ${fixes.join("; ")}` : ""]
             .filter(Boolean)
             .join("\n\n"),
         };
