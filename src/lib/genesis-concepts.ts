@@ -147,6 +147,55 @@ function conceptNameFromHook(hook: string): string {
   return clause.length > 60 ? clause.slice(0, 57).trim() + "..." : clause;
 }
 
+const DEFAULT_HEADLINE_BOT = "headline-bot-";
+
+/**
+ * Real Meta headlines via the trained headline bot (the bold line under the image).
+ * The previous behaviour - first clause of the hook - repeated the primary text's opening
+ * and read as truncation ("Klockan är 20"). Falls back to that only if the bot fails.
+ */
+export async function generateHeadlines(
+  input: GenesisGenerateInput,
+  hook: string,
+  body: string,
+): Promise<string[]> {
+  const fallback = [conceptNameFromHook(hook)];
+  try {
+    const raw = await callGenesisBot(
+      DEFAULT_HEADLINE_BOT,
+      [
+        `Write 5 short Meta ad HEADLINES (the bold line shown under the image, max 40 characters each) for this ad.`,
+        `Product: ${input.productName}.`,
+        input.segmentNote ? `Target segment: ${input.segmentNote.slice(0, 400)}` : "",
+        `Hook (already used as the primary text opening - the headline must COMPLEMENT it, never repeat or paraphrase it): "${hook}"`,
+        `Ad body:\n${body.slice(0, 900)}`,
+        constraints(input.language),
+        "Output ONLY a numbered list of 5 headlines, nothing else.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      { maxTokens: 600 },
+    );
+    const lines = raw
+      .split("\n")
+      .map((l) =>
+        l
+          .replace(/^\s*(?:\d+[.)]|[-*•])\s*/, "")
+          .replace(/^\*+|\*+$/g, "")
+          .replace(/^["']|["']$/g, "")
+          .trim(),
+      )
+      .map(normalizeDashes)
+      .filter((l) => l.length >= 6 && l.length <= 65)
+      .filter((l) => !/^headlines?:?$/i.test(l) && /\s/.test(l));
+    if (!lines.length) return fallback;
+    const fixed = await ensureHookLanguage(lines.slice(0, 5), input.language);
+    return fixed.length ? fixed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 // Building blocks (exported so the streaming pipeline can interleave generate + judge per concept).
 
 /** Build the shared buyer profile once. Returns undefined if disabled or the bot errors. */
@@ -207,6 +256,7 @@ export async function buildConcept(
       )
     ).trim(),
   );
+  const headlines = await generateHeadlines(input, hook, body);
   return {
     concept_name: conceptNameFromHook(hook),
     concept_description: input.segmentNote
@@ -223,7 +273,7 @@ export async function buildConcept(
       concept_description: input.segmentNote || "",
     },
     ad_copy_primary: [body],
-    ad_copy_headline: [conceptNameFromHook(hook)],
+    ad_copy_headline: headlines,
     visual_direction: `Native ${input.productName} concept matching the hook "${hook}".`,
     differentiation_note: `Genesis-generated (${angle}, ${input.awarenessLevel}).`,
     suggested_tags: [angle, input.awarenessLevel, "genesis"],
@@ -333,6 +383,11 @@ export async function swipeConceptWithGenesis(
     const angle: Angle = input.angle || angleFromTags(tags) || "Story";
     const awareness: AwarenessLevel = input.awarenessLevel || "Problem Aware";
     const firstLine = newAd.split("\n").find((l) => l.trim().length > 10)?.trim() || newAd.slice(0, 80);
+    const headlines = await generateHeadlines(
+      { productName: input.productName, language: input.language, awarenessLevel: awareness },
+      firstLine,
+      newAd,
+    );
 
     const proposal: ConceptProposal = {
       concept_name: conceptNameFromHook(firstLine),
@@ -348,7 +403,7 @@ export async function swipeConceptWithGenesis(
         concept_description: "Faithful mad-lib swipe.",
       },
       ad_copy_primary: [newAd],
-      ad_copy_headline: [conceptNameFromHook(firstLine)],
+      ad_copy_headline: headlines,
       visual_direction: `Match the competitor ad's format, adapted to ${input.productName}.`,
       differentiation_note: `Genesis swipe (${angle}). DNA tags: ${tags.slice(0, 200)}`,
       suggested_tags: [angle, awareness, "genesis", "swipe"],
