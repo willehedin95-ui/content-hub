@@ -31,7 +31,7 @@ export async function POST(
   // Fetch job
   const { data: job, error: jobError } = await db
     .from("image_jobs")
-    .select("id, status, target_languages, target_ratios")
+    .select("id, status, target_languages, target_ratios, source_language")
     .eq("id", jobId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -61,7 +61,7 @@ export async function POST(
   // Get source images that need translation
   const { data: sourceImages, error: siError } = await db
     .from("source_images")
-    .select("id, skip_translation")
+    .select("id, skip_translation, original_url")
     .eq("job_id", jobId);
 
   if (siError || !sourceImages?.length) {
@@ -69,25 +69,70 @@ export async function POST(
   }
 
   const translatableImages = sourceImages.filter((si) => !si.skip_translation);
+  const skippedImages = sourceImages.filter((si) => si.skip_translation);
 
-  // Create translation rows only for the NEW languages
+  // Create translation rows only for the NEW languages (mirrors the
+  // create-translations route: same-language and no-text images get
+  // pre-completed passthrough rows instead of pending Kie rows)
   const translationRows: {
     source_image_id: string;
     language: string;
     aspect_ratio: string;
     status: string;
+    translated_url?: string;
   }[] = [];
 
   const ratios = job.target_ratios?.length ? job.target_ratios : ["4:5"];
+  const primaryRatio = ratios[0] ?? "4:5";
+  const sourceLang = job.source_language as string | null;
+
+  // Normal images: all ratios as "pending"
+  // EXCEPTION: adding the SOURCE language = no transformation needed for the
+  // primary ratio, so it completes immediately with the original image
   for (const si of translatableImages) {
     for (const lang of toAdd) {
+      const isSameLanguage = sourceLang && lang === sourceLang;
       for (const ratio of ratios) {
-        translationRows.push({
-          source_image_id: si.id,
-          language: lang,
-          aspect_ratio: ratio,
-          status: "pending",
-        });
+        if (isSameLanguage && ratio === primaryRatio) {
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "completed",
+            translated_url: si.original_url,
+          });
+        } else {
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
+      }
+    }
+  }
+
+  // Skipped images (no text): primary ratio as pre-completed (original URL),
+  // secondary ratios (9:16) as pending so outpainting still runs
+  for (const si of skippedImages) {
+    for (const lang of toAdd) {
+      translationRows.push({
+        source_image_id: si.id,
+        language: lang,
+        aspect_ratio: primaryRatio,
+        status: "completed",
+        translated_url: si.original_url,
+      });
+      for (const ratio of ratios) {
+        if (ratio !== primaryRatio) {
+          translationRows.push({
+            source_image_id: si.id,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "pending",
+          });
+        }
       }
     }
   }

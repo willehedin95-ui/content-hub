@@ -16,6 +16,7 @@ import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { swipeCompetitorAd, findBestLandingPage } from "@/lib/swipe-competitor";
+import { insertJobWithConceptNumber } from "@/lib/concept-number";
 import {
   exploreAds,
   getBoardAds,
@@ -693,43 +694,26 @@ async function runFromScratch(
 
   const proposal = proposals[0];
 
-  // --- Step 5: Create image_job ---
-  // Get next concept number
-  const { data: lastJob } = await db
-    .from("image_jobs")
-    .select("concept_number")
-    .eq("workspace_id", ws.id)
-    .not("concept_number", "is", null)
-    .order("concept_number", { ascending: false })
-    .limit(1)
-    .single();
+  // --- Step 5: Create image_job (retries concept_number on unique violation) ---
+  const { job: insertedJob, conceptNumber: nextConceptNumber, error: jobErr } = await insertJobWithConceptNumber(db, ws.id, {
+    name: proposal.concept_name,
+    product: ws.productSlug,
+    status: "draft",
+    source: "autopilot",
+    target_languages: ws.targetLanguages,
+    target_ratios: TARGET_RATIOS,
+    cash_dna: proposal.cash_dna,
+    ad_copy_primary: proposal.ad_copy_primary,
+    ad_copy_headline: proposal.ad_copy_headline,
+    visual_direction: proposal.visual_direction,
+    tags: proposal.suggested_tags ?? [],
+  });
 
-  const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
-
-  const { data: job, error: jobErr } = await db
-    .from("image_jobs")
-    .insert({
-      workspace_id: ws.id,
-      name: proposal.concept_name,
-      product: ws.productSlug,
-      status: "draft",
-      source: "autopilot",
-      concept_number: nextConceptNumber,
-      target_languages: ws.targetLanguages,
-      target_ratios: TARGET_RATIOS,
-      cash_dna: proposal.cash_dna,
-      ad_copy_primary: proposal.ad_copy_primary,
-      ad_copy_headline: proposal.ad_copy_headline,
-      visual_direction: proposal.visual_direction,
-      tags: proposal.suggested_tags ?? [],
-    })
-    .select()
-    .single();
-
-  if (jobErr || !job) {
+  if (jobErr || !insertedJob) {
     console.error("[Autopilot] Failed to create image_job:", jobErr);
     return { error: "Failed to create job" };
   }
+  const job = insertedJob;
 
   // --- Step 6: Auto-assign landing page ---
   const landingPageId = await findBestLandingPage(db, ws.id, ws.productSlug, {
@@ -758,7 +742,7 @@ async function runFromScratch(
   try {
     const productAppearance = getProductAppearance(product as ProductFull);
     const { briefs } = await generateImageBriefs({
-      job: job as Parameters<typeof generateImageBriefs>[0]["job"],
+      job: job as unknown as Parameters<typeof generateImageBriefs>[0]["job"],
       product: product as ProductFull,
       productImages: (productImages ?? []) as Array<{ url: string; category: string }>,
       count: 3,

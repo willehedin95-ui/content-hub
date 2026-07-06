@@ -7,8 +7,9 @@ import { KIE_MODEL, STORAGE_BUCKET, RATE_LIMIT_IMAGE_TRANSLATE } from "@/lib/con
 import { LANGUAGES } from "@/types";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isValidUUID } from "@/lib/validation";
+import { recordActiveVersion } from "@/lib/translation-versions";
 
-export const maxDuration = 180;
+export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
 
 export async function POST(
   req: NextRequest,
@@ -226,16 +227,11 @@ export async function POST(
           .neq("id", translationId);
 
         if (pendingSiblings?.length) {
-          const siblingIds = pendingSiblings.map((s) => s.id);
-          await db
-            .from("image_translations")
-            .update({
-              status: "completed",
-              translated_url: urlData.publicUrl,
-              error_message: null,
-              updated_at: new Date().toISOString(),
-            })
-            .in("id", siblingIds);
+          // Copy the result with a proper versions row per sibling so version
+          // history + active_version_id stay truthful (audit P2-2).
+          for (const sibling of pendingSiblings) {
+            await recordActiveVersion(db, sibling.id, urlData.publicUrl);
+          }
         }
       }
     }

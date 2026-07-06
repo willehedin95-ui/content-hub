@@ -354,6 +354,33 @@ export async function generateStaticImages(
     }
   }
 
+  // The early "ready" flip above lets the client poll progress, but a total
+  // render miss must not leave a zero-image job looking ready. Only flip to
+  // failed when the job has no images at all - a fully failed extra batch on
+  // a job with existing images keeps its ready status.
+  if (results.length === 0) {
+    const { count: imageCount } = await db
+      .from("source_images")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId);
+
+    if (!imageCount) {
+      const trace = errors.slice(0, 5).join("; ") || "No images generated";
+      console.error(`[static-images] Job ${jobId} generated 0 images - marking failed: ${trace}`);
+      await db
+        .from("image_jobs")
+        .update({
+          status: "failed",
+          swipe_progress: {
+            step: "error",
+            message: `Image generation failed: ${trace}`.slice(0, 500),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
+    }
+  }
+
   // Update job timestamp
   await db
     .from("image_jobs")

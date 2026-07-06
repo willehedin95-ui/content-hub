@@ -14,7 +14,52 @@ import { safeError } from "@/lib/api-error";
 import type { ProductFull, ProductSegment } from "@/types";
 import { triggerRerollTranslations } from "@/lib/autopilot-translations";
 
-export const maxDuration = 180;
+export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
+
+// Delete the old source image row and clean up its storage. Called AFTER the
+// replacement row is inserted so a failed generation/insert never loses the
+// original image or its completed translations (audit P2-4).
+async function cleanupOldSourceImage(
+  db: ReturnType<typeof createServerSupabase>,
+  jobId: string,
+  oldSourceImageId: string,
+  oldUrl: string
+): Promise<void> {
+  // Collect translation ids BEFORE the row delete - CASCADE removes the rows,
+  // but their storage folders (image-jobs/{jobId}/{translationId}/*) would
+  // otherwise leak forever.
+  const { data: oldTranslations } = await db
+    .from("image_translations")
+    .select("id")
+    .eq("source_image_id", oldSourceImageId);
+
+  const { error: deleteErr } = await db
+    .from("source_images")
+    .delete()
+    .eq("id", oldSourceImageId);
+  if (deleteErr) {
+    console.error(`[re-roll] Failed to delete old source image ${oldSourceImageId}:`, deleteErr.message);
+    return; // Keep the old storage files - the row still references them
+  }
+
+  // Storage cleanup is best-effort: the new image is already saved, so never
+  // fail the re-roll over orphaned files.
+  try {
+    const oldPathMatch = oldUrl.match(/translated-images\/(.+)$/);
+    if (oldPathMatch) {
+      await db.storage.from(STORAGE_BUCKET).remove([oldPathMatch[1]]);
+    }
+    for (const t of oldTranslations ?? []) {
+      const prefix = `image-jobs/${jobId}/${t.id}`;
+      const { data: files } = await db.storage.from(STORAGE_BUCKET).list(prefix);
+      if (files?.length) {
+        await db.storage.from(STORAGE_BUCKET).remove(files.map((f) => `${prefix}/${f.name}`));
+      }
+    }
+  } catch (err) {
+    console.error(`[re-roll] Storage cleanup failed for old source image ${oldSourceImageId}:`, err);
+  }
+}
 
 // POST /api/image-jobs/[id]/re-roll — Replace a single source image with a new generation
 export async function POST(
@@ -173,17 +218,9 @@ export async function POST(
 
     const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-    // Delete old source image's storage file
-    const oldUrl = sourceImage.original_url as string;
-    const oldPathMatch = oldUrl.match(/translated-images\/(.+)$/);
-    if (oldPathMatch) {
-      await db.storage.from(STORAGE_BUCKET).remove([oldPathMatch[1]]);
-    }
-
-    // Delete old source image row (CASCADE removes translations)
-    await db.from("source_images").delete().eq("id", source_image_id);
-
-    // Insert new source image — preserve original prompt and style
+    // Insert new source image FIRST - preserve original prompt and style.
+    // The old row (and its completed translations) must survive until the
+    // replacement exists, otherwise a failed insert loses everything.
     const { data: newSourceImage, error: insertErr } = await db
       .from("source_images")
       .insert({
@@ -201,6 +238,9 @@ export async function POST(
     if (insertErr || !newSourceImage) {
       return safeError(insertErr ?? new Error("Insert failed"), "Failed to save new image");
     }
+
+    // Now delete the old row + its storage files (best-effort, storage last)
+    await cleanupOldSourceImage(db, id, source_image_id, sourceImage.original_url as string);
 
     // Log Kie usage
     await db.from("usage_logs").insert({
@@ -322,17 +362,8 @@ export async function POST(
 
   const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-  // Delete old source image's storage file
-  const oldUrl = sourceImage.original_url as string;
-  const oldPathMatch = oldUrl.match(/translated-images\/(.+)$/);
-  if (oldPathMatch) {
-    await db.storage.from(STORAGE_BUCKET).remove([oldPathMatch[1]]);
-  }
-
-  // Delete old source image row (CASCADE removes translations)
-  await db.from("source_images").delete().eq("id", source_image_id);
-
-  // Insert new source image
+  // Insert new source image FIRST - the old row (and its completed translations)
+  // must survive until the replacement exists, otherwise a failed insert loses everything.
   const styleLabel = STATIC_STYLES.find((s) => s.id === brief.style)?.label ?? brief.style;
   const label = `${styleLabel}: ${brief.hookText.length > 35 ? brief.hookText.slice(0, 35) + "..." : brief.hookText}`;
 
@@ -353,6 +384,9 @@ export async function POST(
   if (insertErr || !newSourceImage) {
     return safeError(insertErr ?? new Error("Insert failed"), "Failed to save new image");
   }
+
+  // Now delete the old row + its storage files (best-effort, storage last)
+  await cleanupOldSourceImage(db, id, source_image_id, sourceImage.original_url as string);
 
   // Log Kie usage
   await db.from("usage_logs").insert({

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
-import { getWorkspaceId, getWorkspaceLanguages } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceLanguages, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import { findBestLandingPage } from "@/lib/landing-page-recommender";
 import { generateStaticImages } from "@/lib/generate-static-images";
+import { insertJobWithConceptNumber } from "@/lib/concept-number";
 
 export const maxDuration = 800;
 
@@ -35,18 +36,6 @@ export async function POST(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
 
   try {
-    // Get next concept number
-    const { data: lastJob } = await db
-      .from("image_jobs")
-      .select("concept_number")
-      .eq("workspace_id", workspaceId)
-      .not("concept_number", "is", null)
-      .order("concept_number", { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextNumber = (lastJob?.concept_number ?? 0) + 1;
-
     // Build tags
     const tags = [
       ...(proposal.suggested_tags ?? []),
@@ -67,26 +56,26 @@ export async function POST(req: NextRequest) {
       conceptName: proposal.concept_name,
     });
 
-    // Create the image_job
-    const { data: job, error: jobErr } = await db
-      .from("image_jobs")
-      .insert({
-        name: proposal.concept_name,
-        product,
-        status: "draft",
-        target_languages: target_languages ?? await getWorkspaceLanguages(),
-        target_ratios: target_ratios ?? ["4:5", "9:16"],
-        concept_number: nextNumber,
-        tags,
-        cash_dna: proposal.cash_dna,
-        ad_copy_primary: proposal.ad_copy_primary,
-        ad_copy_headline: allHeadlines,
-        visual_direction: proposal.visual_direction ?? null,
-        workspace_id: workspaceId,
-        ...(landingPageId ? { landing_page_id: landingPageId } : {}),
-      })
-      .select()
-      .single();
+    // Proposals are generated in the workspace ad copy language - without
+    // source_language the job defaults to "en" and the same-language
+    // translation passthrough never kicks in.
+    const generationLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
+
+    // Create the image_job (retries concept_number on unique violation)
+    const { job, conceptNumber, error: jobErr } = await insertJobWithConceptNumber(db, workspaceId, {
+      name: proposal.concept_name,
+      product,
+      status: "draft",
+      target_languages: target_languages ?? await getWorkspaceLanguages(),
+      target_ratios: target_ratios ?? ["4:5", "9:16"],
+      tags,
+      cash_dna: proposal.cash_dna,
+      ad_copy_primary: proposal.ad_copy_primary,
+      ad_copy_headline: allHeadlines,
+      visual_direction: proposal.visual_direction ?? null,
+      source_language: generationLanguage,
+      ...(landingPageId ? { landing_page_id: landingPageId } : {}),
+    });
 
     if (jobErr || !job) {
       return safeError(
@@ -119,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       job_id: job.id,
-      concept_number: nextNumber,
+      concept_number: conceptNumber,
       landing_page_id: landingPageId,
       images_generating: true,
     });

@@ -4,7 +4,7 @@ import { withRetry, isTransientError } from "./retry";
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 const POLL_INITIAL_MS = 2000;
 const POLL_MAX_MS = 10_000;
-const MAX_POLL_TIME_MS = 280_000; // ~4.7 min — leaves buffer before Vercel's 300s maxDuration
+const MAX_POLL_TIME_MS = 280_000; // ~4.7 min - image routes now run with maxDuration 800, so this fits with ample buffer
 
 interface CreateTaskResponse {
   code: number;

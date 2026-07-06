@@ -12,6 +12,7 @@ import { Language, LANGUAGES } from "@/types";
 import { getShortLocalizationNote } from "@/lib/localization";
 import { deriveCopyGrade, gradeToNumeric } from "@/lib/quality-grades";
 import { reviewTranslationQuality, calcHaikuCost } from "@/lib/translation-review";
+import { recordActiveVersion } from "@/lib/translation-versions";
 import OpenAI from "openai";
 import * as crypto from "crypto";
 
@@ -615,15 +616,11 @@ async function processOneTranslation(
           .neq("id", translationId);
 
         if (pendingSiblings?.length) {
-          await db
-            .from("image_translations")
-            .update({
-              status: "completed",
-              translated_url: urlData.publicUrl,
-              error_message: null,
-              updated_at: new Date().toISOString(),
-            })
-            .in("id", pendingSiblings.map((s) => s.id));
+          // Copy the result with a proper versions row per sibling so version
+          // history + active_version_id stay truthful (audit P2-2).
+          for (const sibling of pendingSiblings) {
+            await recordActiveVersion(db, sibling.id, urlData.publicUrl);
+          }
         }
       }
     }
@@ -808,6 +805,55 @@ async function notifyTranslationsDone(
 }
 
 /**
+ * Process any pending image_translation rows for a job server-side, then
+ * settle the job status. Primary ratio runs first so 9:16 outpainting has a
+ * completed sibling to extend. Used by the reconcile cron to drain rows
+ * stranded by browser-driven processing (closed tab) or reset from a stuck
+ * "processing" state. Safe to run concurrently with a live browser tab:
+ * processOneTranslation claims rows via a conditional pending -> processing
+ * update, so each row is only processed once.
+ */
+export async function processPendingTranslationsForJob(jobId: string): Promise<{
+  processed: number;
+  failed: number;
+}> {
+  const db = createServerSupabase();
+
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id, target_ratios")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) throw new Error(`Job ${jobId} not found`);
+
+  const { data: pendingRows } = await db
+    .from("image_translations")
+    .select("aspect_ratio, source_images!inner(job_id)")
+    .eq("source_images.job_id", jobId)
+    .eq("status", "pending");
+
+  if (!pendingRows?.length) return { processed: 0, failed: 0 };
+
+  const primaryRatio = (job.target_ratios as string[] | null)?.[0] ?? "4:5";
+  const pendingRatios = [...new Set(pendingRows.map((r) => r.aspect_ratio as string))]
+    .sort((a, b) => Number(b === primaryRatio) - Number(a === primaryRatio));
+
+  let processed = 0;
+  let failed = 0;
+  for (const ratio of pendingRatios) {
+    const result = await processImageTranslations(db, jobId, ratio);
+    processed += result.processed;
+    failed += result.failed;
+    console.log(`[reconcile-translate] Job ${jobId} ${ratio}: ${result.processed} done, ${result.failed} failed`);
+  }
+
+  await updateJobStatusFinal(db, jobId);
+
+  return { processed, failed };
+}
+
+/**
  * Re-roll translation pipeline — creates translation rows for a single
  * re-rolled source image and processes them. Called via after() from the
  * re-roll endpoint. Does NOT re-translate ad copy (already done).
@@ -821,7 +867,7 @@ export async function triggerRerollTranslations(
   // Fetch job config
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, target_languages, target_ratios")
+    .select("id, target_languages, target_ratios, source_language")
     .eq("id", jobId)
     .single();
 
@@ -829,6 +875,7 @@ export async function triggerRerollTranslations(
 
   const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
   const targetRatios = (job.target_ratios as string[])?.length ? job.target_ratios as string[] : ["4:5"];
+  const sourceLang = (job.source_language as string | null) ?? null;
 
   // Fetch source image
   const { data: sourceImage } = await db
@@ -860,9 +907,23 @@ export async function triggerRerollTranslations(
       }
     }
   } else {
+    // When target language === source language, the primary ratio needs no
+    // transformation - emit a pre-completed passthrough row instead of sending
+    // a same-language "translation" to Kie (mirrors createTranslationRows).
     for (const lang of targetLangs) {
+      const isSameLanguage = sourceLang && lang === sourceLang;
       for (const ratio of targetRatios) {
-        rows.push({ source_image_id: sourceImageId, language: lang, aspect_ratio: ratio, status: "pending" });
+        if (isSameLanguage && ratio === primaryRatio) {
+          rows.push({
+            source_image_id: sourceImageId,
+            language: lang,
+            aspect_ratio: ratio,
+            status: "completed",
+            translated_url: sourceImage.original_url,
+          });
+        } else {
+          rows.push({ source_image_id: sourceImageId, language: lang, aspect_ratio: ratio, status: "pending" });
+        }
       }
     }
   }

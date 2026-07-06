@@ -52,6 +52,20 @@ export async function POST(
     return NextResponse.json({ error: "No source images found" }, { status: 400 });
   }
 
+  // Dedupe against rows that already exist (e.g. same-language passthrough
+  // rows created at generation time, or a retry after a partial failure).
+  // Without this the unique index (source_image_id, language, aspect_ratio)
+  // aborts the whole batch insert. Mirrors createTranslationRows in
+  // autopilot-translations.ts.
+  const { data: existingTranslations } = await db
+    .from("image_translations")
+    .select("source_image_id, language, aspect_ratio, status")
+    .in("source_image_id", sourceImages.map((si) => si.id));
+
+  const existingKeys = new Set(
+    (existingTranslations ?? []).map((t) => `${t.source_image_id}:${t.language}:${t.aspect_ratio}`)
+  );
+
   const translatableImages = sourceImages.filter((si) => !si.skip_translation);
   const skippedImages = sourceImages.filter((si) => si.skip_translation);
 
@@ -92,6 +106,7 @@ export async function POST(
     for (const lang of langs) {
       const isSameLanguage = sourceLang && lang === sourceLang;
       for (const ratio of ratios) {
+        if (existingKeys.has(`${si.id}:${lang}:${ratio}`)) continue;
         if (isSameLanguage && ratio === primaryRatio) {
           // Source language at primary ratio = no transformation needed
           translationRows.push({
@@ -119,16 +134,19 @@ export async function POST(
     const langs = getLangsForImage(si);
     for (const lang of langs) {
       // Primary ratio: immediately completed with original image
-      translationRows.push({
-        source_image_id: si.id,
-        language: lang,
-        aspect_ratio: primaryRatio,
-        status: "completed",
-        translated_url: si.original_url,
-      });
+      if (!existingKeys.has(`${si.id}:${lang}:${primaryRatio}`)) {
+        translationRows.push({
+          source_image_id: si.id,
+          language: lang,
+          aspect_ratio: primaryRatio,
+          status: "completed",
+          translated_url: si.original_url,
+        });
+      }
       // Secondary ratios (e.g. 9:16): pending for outpainting
       for (const ratio of ratios) {
         if (ratio !== primaryRatio) {
+          if (existingKeys.has(`${si.id}:${lang}:${ratio}`)) continue;
           translationRows.push({
             source_image_id: si.id,
             language: lang,
@@ -141,6 +159,28 @@ export async function POST(
   }
 
   if (translationRows.length === 0) {
+    // Everything already exists (retry after a partial failure or the
+    // auto-recovery loop calling again). Returning an error here made the
+    // recovery loop 500 forever - settle the job status from the existing
+    // rows instead.
+    const anyActive = (existingTranslations ?? []).some(
+      (t) => t.status === "pending" || t.status === "processing"
+    );
+    if (existingTranslations?.length) {
+      await db
+        .from("image_jobs")
+        .update({ status: anyActive ? "processing" : "completed", updated_at: new Date().toISOString() })
+        .eq("id", jobId);
+      return NextResponse.json({
+        created: 0,
+        alreadyExisting: existingTranslations.length,
+        languages: job.target_languages.length,
+        ratios: ratios.length,
+        images: translatableImages.length,
+        skipped: skippedImages.length,
+        skippedWithOutpainting: false,
+      });
+    }
     return NextResponse.json({ error: "No translations to create" }, { status: 400 });
   }
 

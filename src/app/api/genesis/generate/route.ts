@@ -8,6 +8,7 @@ import { generateVettedConcepts } from "@/lib/genesis-pipeline";
 import { swipeConceptWithGenesis } from "@/lib/genesis-concepts";
 import { judgeCopy, type JudgeResult } from "@/lib/creative-judge";
 import { suggestGaps } from "@/lib/coverage-map";
+import { insertJobWithConceptNumber, nextConceptNumber } from "@/lib/concept-number";
 import type { ConceptProposal, Angle, AwarenessLevel } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -33,30 +34,27 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     adCopyHeadline: p.ad_copy_headline,
     conceptName: p.concept_name,
   });
-  const { data: job, error } = await db
-    .from("image_jobs")
-    .insert({
-      name: p.concept_name,
-      product,
-      // REJECT concepts never get image generation, and "draft" only leaves
-      // that state via image gen — so a REJECT-as-draft rendered as
-      // "Generating images..." forever. Give it a terminal status instead.
-      status: judge.verdict === "REJECT" ? "rejected" : "draft",
-      target_languages: targetLanguages,
-      target_ratios: ["4:5", "9:16"],
-      concept_number: nextNumber,
-      tags: [...(p.suggested_tags ?? []), "genesis-generated", `judge:${judge.verdict}`],
-      cash_dna: p.cash_dna,
-      ad_copy_primary: p.ad_copy_primary,
-      ad_copy_headline: p.ad_copy_headline ?? [],
-      visual_direction: p.visual_direction ?? null,
-      source_language: ctx.sourceLanguage,
-      workspace_id: workspaceId,
-      ...(landingPageId ? { landing_page_id: landingPageId } : {}),
-    })
-    .select()
-    .single();
-  if (error || !job) return null;
+  const { job, conceptNumber, error } = await insertJobWithConceptNumber(db, workspaceId, {
+    name: p.concept_name,
+    product,
+    // REJECT concepts never get image generation, and "draft" only leaves
+    // that state via image gen — so a REJECT-as-draft rendered as
+    // "Generating images..." forever. Give it a terminal status instead.
+    status: judge.verdict === "REJECT" ? "rejected" : "draft",
+    target_languages: targetLanguages,
+    target_ratios: ["4:5", "9:16"],
+    tags: [...(p.suggested_tags ?? []), "genesis-generated", `judge:${judge.verdict}`],
+    cash_dna: p.cash_dna,
+    ad_copy_primary: p.ad_copy_primary,
+    ad_copy_headline: p.ad_copy_headline ?? [],
+    visual_direction: p.visual_direction ?? null,
+    source_language: ctx.sourceLanguage,
+    ...(landingPageId ? { landing_page_id: landingPageId } : {}),
+  }, nextNumber);
+  if (error || !job) {
+    console.error(`[genesis-generate] persist failed for "${p.concept_name}":`, error);
+    return null;
+  }
 
   if (doImages) {
     const jobId = job.id;
@@ -72,7 +70,7 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
   }
   return {
     job_id: job.id,
-    concept_number: nextNumber,
+    concept_number: conceptNumber,
     name: p.concept_name,
     verdict: judge.verdict,
     score: judge.score,
@@ -82,18 +80,6 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     preview: (p.ad_copy_primary[0] ?? "").slice(0, 320),
     issues: judge.issues.slice(0, 4).map((i) => i.fix || i.quote),
   };
-}
-
-async function nextConceptNumber(db: SupabaseClient, workspaceId: string) {
-  const { data } = await db
-    .from("image_jobs")
-    .select("concept_number")
-    .eq("workspace_id", workspaceId)
-    .not("concept_number", "is", null)
-    .order("concept_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data?.concept_number ?? 0) + 1;
 }
 
 // GET /api/genesis/generate?product=hydro13 -> CASH coverage gaps to aim the generator.
@@ -188,6 +174,7 @@ export async function POST(req: NextRequest) {
             if (judge.verdict === "REJECT") rejectedCount++;
             const row = await persistConcept(ctx, proposal, judge, nextNumber, ctx.generateImages && judge.verdict !== "REJECT");
             if (row) { createdCount++; await emit({ step: "concept", concept: row }); }
+            else { await emit({ step: "warning", errors: [`Concept "${proposal.concept_name}" could not be saved (database insert failed)`] }); }
           }
         }
       } else {
@@ -196,7 +183,7 @@ export async function POST(req: NextRequest) {
         const angle: Angle | undefined = body.angle || undefined;
         const rules = Array.isArray(settings.generation_rules) ? (settings.generation_rules as string[]) : [];
 
-        await generateVettedConcepts(
+        const genResult = await generateVettedConcepts(
           { productName, language, brandBrief, segmentNote: body.segmentNote, awarenessLevel, angle, count },
           {
             rules,
@@ -205,10 +192,16 @@ export async function POST(req: NextRequest) {
             onConcept: async (v) => {
               if (v.judge.verdict === "REJECT") rejectedCount++;
               const row = await persistConcept(ctx, v.proposal, v.judge, nextNumber, ctx.generateImages && v.judge.verdict !== "REJECT");
-              if (row) { createdCount++; nextNumber++; await emit({ step: "concept", concept: row }); }
+              if (row) { createdCount++; nextNumber = row.concept_number + 1; await emit({ step: "concept", concept: row }); }
+              else { await emit({ step: "warning", errors: [`Concept "${v.proposal.concept_name}" could not be saved (database insert failed)`] }); }
             },
           },
         );
+        // Pipeline errors used to be collected and dropped here - the user saw
+        // "0 concepts" with no explanation (kvall-tvivlare bug).
+        if (genResult.errors.length > 0) {
+          await emit({ step: "warning", errors: genResult.errors });
+        }
       }
 
       await emit({ step: "done", created: createdCount, rejected: rejectedCount });

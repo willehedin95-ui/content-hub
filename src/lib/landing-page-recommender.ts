@@ -136,6 +136,10 @@ export async function findBestLandingPage(
   const wsSettings = (ws?.settings ?? {}) as Record<string, unknown>;
   const primaryPages = wsSettings.primary_landing_pages as PrimaryLandingPages | undefined;
 
+  // Published pages are needed both to validate the explicit config and for
+  // the automatic fallback tiers below.
+  const publishedIds = await getPublishedPageIds(db, workspaceId, productSlug);
+
   if (primaryPages && Object.keys(primaryPages).length > 0) {
     const detectedAngle = detectAngleFromCopy(
       options?.adCopyPrimary,
@@ -143,17 +147,19 @@ export async function findBestLandingPage(
       options?.conceptName
     );
 
-    // Try angle-specific page first, then fall back to default
-    if (detectedAngle && primaryPages[detectedAngle]) {
+    // Try angle-specific page first, then fall back to default.
+    // Configured ids are only trusted if the page actually has a published
+    // translation - dead stubs in the config sent live ads to 404s (P2-7).
+    if (detectedAngle && primaryPages[detectedAngle] && publishedIds.has(primaryPages[detectedAngle])) {
       return primaryPages[detectedAngle];
     }
-    if (primaryPages._default) {
+    if (primaryPages._default && publishedIds.has(primaryPages._default)) {
       return primaryPages._default;
     }
+    // Configured page(s) unpublished -> fall through to the automatic tiers
   }
 
   // --- Fallback: automatic selection (for unconfigured workspaces) ---
-  const publishedIds = await getPublishedPageIds(db, workspaceId, productSlug);
   if (publishedIds.size === 0) return null;
 
   const publishedPages = await getPublishedPages(db, workspaceId, productSlug, publishedIds);

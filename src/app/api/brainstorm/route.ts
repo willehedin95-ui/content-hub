@@ -7,6 +7,7 @@ import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { generateImage } from "@/lib/kie";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId, getWorkspaceLanguages, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
+import { insertJobWithConceptNumber } from "@/lib/concept-number";
 import {
   buildBrainstormSystemPrompt,
   buildBrainstormUserPrompt,
@@ -295,18 +296,6 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Get next concept number
-        const { data: lastJob } = await db
-          .from("image_jobs")
-          .select("concept_number")
-          .eq("workspace_id", workspaceId)
-          .not("concept_number", "is", null)
-          .order("concept_number", { ascending: false })
-          .limit(1)
-          .single();
-
-        const nextNumber = (lastJob?.concept_number ?? 0) + 1;
-
         // Build tags (deduplicate — AI may suggest tags we already add)
         const tags = [...new Set([
           "competitor-swipe",
@@ -324,36 +313,32 @@ export async function POST(req: NextRequest) {
 
         const productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
 
-        // Create image_job with "draft" status — image generation happens on the detail page
-        const { data: job, error: jobErr } = await db
-          .from("image_jobs")
-          .insert({
-            name: parsed.concept.concept_name,
-            product: productSlug,
-            status: "draft",
-            target_languages: await getWorkspaceLanguages(),
-            target_ratios: ["4:5", "9:16"],
-            concept_number: nextNumber,
-            tags,
-            cash_dna: {
-              ...(parsed.concept.cash_dna ?? {}),
-              pain_point: competitorPainPoint || "auto-detect",
-            },
-            ad_copy_primary: parsed.concept.ad_copy_primary,
-            ad_copy_headline: parsed.concept.ad_copy_headline,
-            visual_direction: parsed.concept.visual_direction ?? null,
-            workspace_id: workspaceId,
-            source_language: generationLanguage,
-            pending_competitor_gen: {
-              image_prompts: parsed.image_prompts,
-              competitor_image_urls: competitorImageUrls,
-              product_hero_urls: productHeroUrls,
-            },
-          })
-          .select()
-          .single();
+        // Create image_job with "draft" status — image generation happens on the detail page.
+        // Retries the concept_number on unique violation (concurrent creators).
+        const { job, error: jobErr } = await insertJobWithConceptNumber(db, workspaceId, {
+          name: parsed.concept.concept_name,
+          product: productSlug,
+          status: "draft",
+          target_languages: await getWorkspaceLanguages(),
+          target_ratios: ["4:5", "9:16"],
+          tags,
+          cash_dna: {
+            ...(parsed.concept.cash_dna ?? {}),
+            pain_point: competitorPainPoint || "auto-detect",
+          },
+          ad_copy_primary: parsed.concept.ad_copy_primary,
+          ad_copy_headline: parsed.concept.ad_copy_headline,
+          visual_direction: parsed.concept.visual_direction ?? null,
+          source_language: generationLanguage,
+          pending_competitor_gen: {
+            image_prompts: parsed.image_prompts,
+            competitor_image_urls: competitorImageUrls,
+            product_hero_urls: productHeroUrls,
+          },
+        });
 
         if (jobErr || !job) {
+          console.error("[brainstorm/competitor] Failed to create concept:", jobErr);
           await emit({ step: "error", message: "Failed to create concept" });
           await writer.close();
           return;

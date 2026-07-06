@@ -145,9 +145,23 @@ export async function GET(req: NextRequest) {
             // Check if all translations are now completed
             const allCompleted = Object.values(localT).every((v) => v.status === "completed");
             if (allCompleted && j.status !== "completed") {
-              await db.from("image_jobs").update({ status: "completed" }).eq("id", j.id);
-              completedJobIds.add(j.id);
-              autoApprovedJobIds.push(j.id);
+              // Copy status alone is not enough - image translations may still
+              // be running, and completing here would push with missing images.
+              // Mirrors the reconcile check before marking a job completed.
+              const { data: activeImages } = await db
+                .from("image_translations")
+                .select("id, source_images!inner(job_id)")
+                .in("status", ["pending", "processing"])
+                .eq("source_images.job_id", j.id)
+                .limit(1);
+
+              if (activeImages && activeImages.length > 0) {
+                console.log(`[Pipeline Push] ${label}Job ${j.id} copy approved but image translations still running - skipping completion`);
+              } else {
+                await db.from("image_jobs").update({ status: "completed" }).eq("id", j.id);
+                completedJobIds.add(j.id);
+                autoApprovedJobIds.push(j.id);
+              }
             }
           }
         }

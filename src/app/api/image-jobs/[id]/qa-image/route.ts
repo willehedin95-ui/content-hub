@@ -7,8 +7,9 @@ import { safeError } from "@/lib/api-error";
 import { qaImage, correctImageText } from "@/lib/image-quality";
 import { getProductAppearance } from "@/lib/product-appearance";
 import { STORAGE_BUCKET } from "@/lib/constants";
+import { recordActiveVersion } from "@/lib/translation-versions";
 
-export const maxDuration = 180;
+export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
 
 const LANG_NAMES: Record<string, string> = { sv: "Swedish", da: "Danish", no: "Norwegian", de: "German", en: "English" };
 
@@ -29,11 +30,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { data: job } = await db
       .from("image_jobs")
-      .select("id, product, source_language, target_languages")
+      .select("id, product, source_language, target_languages, target_ratios")
       .eq("id", id)
       .eq("workspace_id", workspaceId)
       .single();
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    // Primary ratio = first target ratio (DB default is ['1:1'] for old jobs, so never hardcode "4:5")
+    const primaryRatio = ((job.target_ratios as string[] | null)?.[0] ?? "4:5") as "1:1" | "4:5" | "9:16" | "16:9";
 
     const { data: si } = await db
       .from("source_images")
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Text-only problems -> correction pass, then persist the fixed image in place.
-    const fixedUrl = await correctImageText(si.original_url, language, "4:5");
+    const fixedUrl = await correctImageText(si.original_url, language, primaryRatio);
     if (fixedUrl === si.original_url) {
       return NextResponse.json({ status: "issues", message: `Text-fix misslyckades: ${qa.issues.join("; ")}`, issues: qa.issues });
     }
@@ -75,15 +78,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
     await db.from("source_images").update({ original_url: urlData.publicUrl }).eq("id", si.id);
-    // Keep the same-language passthrough row in sync.
+    // Keep the same-language PRIMARY-RATIO passthrough row in sync (same as edit-image).
+    // The ratio filter is critical: without it a completed 9:16 outpaint gets
+    // overwritten with a primary-ratio image. Each sync also records a versions
+    // row so version history stays truthful.
     const srcLang = job.source_language as string | null;
     if (srcLang) {
-      await db
+      const { data: passthroughRows } = await db
         .from("image_translations")
-        .update({ translated_url: urlData.publicUrl })
+        .select("id")
         .eq("source_image_id", si.id)
         .eq("language", srcLang)
+        .eq("aspect_ratio", primaryRatio)
         .eq("status", "completed");
+      for (const row of passthroughRows ?? []) {
+        await recordActiveVersion(db, row.id, urlData.publicUrl, {
+          visualInstructions: `QA text-fix: ${qa.issues.join("; ")}`,
+        });
+      }
     }
 
     return NextResponse.json({

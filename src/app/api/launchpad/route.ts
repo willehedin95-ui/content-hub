@@ -104,7 +104,28 @@ export async function POST(req: NextRequest) {
 
   const errors: string[] = [];
   if (!job.product) errors.push("Product not set");
-  if (!job.landing_page_id) errors.push("No landing page selected");
+  if (!job.landing_page_id) {
+    errors.push("No landing page selected");
+  } else {
+    // Non-null is not enough: the page must have at least one published
+    // translation with a live URL for at least one target language, otherwise
+    // the push sends paid traffic to a 404 (audit P2-7 - happened live).
+    const targetLangs = (job.target_languages as string[]) ?? [];
+    let lpQuery = db
+      .from("translations")
+      .select("id")
+      .eq("page_id", job.landing_page_id)
+      .eq("status", "published")
+      .not("published_url", "is", null)
+      .limit(1);
+    if (targetLangs.length > 0) {
+      lpQuery = lpQuery.in("language", targetLangs);
+    }
+    const { data: publishedLp } = await lpQuery;
+    if (!publishedLp?.length) {
+      errors.push("Landing page has no published translation for the target languages");
+    }
+  }
   if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
   // Hard gates: judge-REJECT (brand-rule violation) and archived concepts
   // must never enter the push queue.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import { Language, MetaCampaignStatus } from "@/types";
 import { isValidLanguage, isValidAspectRatio } from "@/lib/validation";
 import { computeCounts } from "@/lib/image-utils";
@@ -107,11 +107,17 @@ export async function POST(req: NextRequest) {
   const conceptNumber = conceptNumberMatch ? parseInt(conceptNumberMatch[1], 10) : null;
   const cleanName = trimmedName.replace(/^#\d+\s*[-–—]?\s*/, "");
 
+  // Source language follows the workspace's ad_copy_language setting instead
+  // of the DB default 'en' - a Swedish-first workspace (doginwork) otherwise
+  // gets sv->sv rows sent to Kie as "translations" (audit P2-5).
+  const sourceLanguage = await getAdCopyLanguageByWorkspaceId(workspaceId);
+
   const insertData: {
     name: string;
     status: string;
     target_languages: string[];
     target_ratios: string[];
+    source_language: string;
     product?: string;
     concept_number?: number;
     source: string;
@@ -121,6 +127,7 @@ export async function POST(req: NextRequest) {
     status: "draft",
     target_languages: target_languages?.length ? target_languages : [],
     target_ratios: target_ratios?.length ? target_ratios : ["4:5", "9:16"],
+    source_language: sourceLanguage,
     source: "hub",
     workspace_id: workspaceId,
   };

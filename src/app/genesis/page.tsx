@@ -67,6 +67,7 @@ export default function GenesisPage() {
   const [created, setCreated] = useState<Created[]>([]);
   const [summary, setSummary] = useState<{ created: number; rejected: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [gaps, setGaps] = useState<Gap[]>([]);
   const [conceptTotal, setConceptTotal] = useState(0);
   const [segments, setSegments] = useState<{ name: string; description: string }[]>([]);
@@ -105,6 +106,7 @@ export default function GenesisPage() {
   async function run() {
     setLoading(true);
     setError(null);
+    setWarnings([]);
     setCreated([]);
     setSummary(null);
     setProgress(null);
@@ -140,6 +142,7 @@ export default function GenesisPage() {
           if (ev.step === "progress") setProgress({ phase: ev.phase as string, index: ev.index as number, total: ev.total as number });
           else if (ev.step === "concept") setCreated((prev) => [...prev, ev.concept as Created]);
           else if (ev.step === "done") setSummary({ created: ev.created as number, rejected: ev.rejected as number });
+          else if (ev.step === "warning") setWarnings((prev) => [...prev, ...((ev.errors as string[]) ?? [])]);
           else if (ev.step === "error") setError(ev.message as string);
         }
       }
@@ -292,6 +295,15 @@ export default function GenesisPage() {
         )}
 
         {error && <div className="mt-4 rounded-md bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+        {warnings.length > 0 && (
+          <div className="mt-4 rounded-md bg-amber-50 p-4 text-sm text-amber-700">
+            <div className="font-medium">Varningar under genereringen</div>
+            <ul className="mt-1 list-inside list-disc">
+              {warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
 
         {(created.length > 0 || summary) && (
           <div className="mt-6 space-y-3">

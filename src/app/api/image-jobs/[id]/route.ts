@@ -5,6 +5,7 @@ import { STORAGE_BUCKET } from "@/lib/constants";
 import { computeCounts } from "@/lib/image-utils";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { LANGUAGES } from "@/types";
 
 export async function GET(
   _req: NextRequest,
@@ -19,10 +20,12 @@ export async function GET(
   const url = new URL(_req.url);
   const compact = url.searchParams.get("compact") === "true";
 
-  // Compact mode: skip full version history, only fetch active versions
-  const select = compact
-    ? `*, source_images(*, image_translations(*, versions!inner(*)))`
-    : `*, source_images(*, image_translations(*, versions(*)))`;
+  // Compact mode: skip full version history, only fetch active versions.
+  // Left join (no !inner) is deliberate: !inner silently dropped translations
+  // without an active version (pending/failed/passthrough rows), so the client
+  // computed progress/stall logic on truncated data. The is_active filter below
+  // only trims the embedded versions array - parent rows are kept.
+  const select = `*, source_images(*, image_translations(*, versions(*)))`;
 
   let { data: job, error } = compact
     ? await db
@@ -68,7 +71,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
   const body = await req.json();
-  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, landing_page_id_b, concept_number, marked_ready_at, tags, ad_copy_translations, cash_dna, visual_direction } = body as {
+  const { status, target_languages, ad_copy_primary, ad_copy_headline, landing_page_id, landing_page_id_b, concept_number, marked_ready_at, tags, ad_copy_translations, cash_dna, visual_direction, source_language } = body as {
     status?: string;
     target_languages?: string[];
     ad_copy_primary?: string[];
@@ -81,7 +84,16 @@ export async function PATCH(
     ad_copy_translations?: Record<string, unknown>;
     cash_dna?: Record<string, unknown> | null;
     visual_direction?: string | null;
+    source_language?: string;
   };
+
+  // Valid source languages: the target-language codes plus en/de (English
+  // originals from freelancers, German static ads) - both appear as
+  // source_language across the pipeline even though they are not targets.
+  const VALID_SOURCE_LANGUAGES = new Set<string>([...LANGUAGES.map((l) => l.value), "en", "de"]);
+  if (source_language !== undefined && !VALID_SOURCE_LANGUAGES.has(source_language)) {
+    return NextResponse.json({ error: "Invalid source_language" }, { status: 400 });
+  }
 
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
@@ -100,8 +112,10 @@ export async function PATCH(
     ad_copy_translations?: Record<string, unknown>;
     cash_dna?: Record<string, unknown> | null;
     visual_direction?: string | null;
+    source_language?: string;
   } = { updated_at: new Date().toISOString() };
   if (status) updateData.status = status;
+  if (source_language !== undefined) updateData.source_language = source_language;
   if (target_languages) updateData.target_languages = target_languages;
   if (ad_copy_primary !== undefined) updateData.ad_copy_primary = ad_copy_primary;
   if (ad_copy_headline !== undefined) updateData.ad_copy_headline = ad_copy_headline;
@@ -152,37 +166,54 @@ export async function DELETE(
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
 
-  // Clean up storage files (nested: image-jobs/{id}/{translationId}/{file}.png)
-  const { data: subfolders } = await db.storage
-    .from(STORAGE_BUCKET)
-    .list(`image-jobs/${id}`);
-
-  const allPaths: string[] = [];
-  for (const item of subfolders ?? []) {
-    const prefix = `image-jobs/${id}/${item.name}`;
-    if (!item.id) {
-      // It's a folder — list its contents
-      const { data: nested } = await db.storage
-        .from(STORAGE_BUCKET)
-        .list(prefix);
-      for (const file of nested ?? []) {
-        allPaths.push(`${prefix}/${file.name}`);
-      }
-    } else {
-      // It's a file at this level
-      allPaths.push(prefix);
-    }
+  // Verify workspace ownership BEFORE touching anything - storage must never
+  // be wiped for a job the caller's workspace doesn't own (audit P2-9).
+  const { data: job } = await db
+    .from("image_jobs")
+    .select("id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!job) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  if (allPaths.length) {
-    await db.storage.from(STORAGE_BUCKET).remove(allPaths);
-  }
-
-  // Delete job (CASCADE handles source_images and image_translations)
+  // Delete job first (CASCADE handles source_images and image_translations)
   const { error } = await db.from("image_jobs").delete().eq("id", id).eq("workspace_id", workspaceId);
 
   if (error) {
     return safeError(error, "Failed to delete image job");
+  }
+
+  // Clean up storage files AFTER the row delete succeeds, best-effort
+  // (nested: image-jobs/{id}/{translationId}/{file}.png)
+  try {
+    const { data: subfolders } = await db.storage
+      .from(STORAGE_BUCKET)
+      .list(`image-jobs/${id}`);
+
+    const allPaths: string[] = [];
+    for (const item of subfolders ?? []) {
+      const prefix = `image-jobs/${id}/${item.name}`;
+      if (!item.id) {
+        // It's a folder - list its contents
+        const { data: nested } = await db.storage
+          .from(STORAGE_BUCKET)
+          .list(prefix);
+        for (const file of nested ?? []) {
+          allPaths.push(`${prefix}/${file.name}`);
+        }
+      } else {
+        // It's a file at this level
+        allPaths.push(prefix);
+      }
+    }
+
+    if (allPaths.length) {
+      await db.storage.from(STORAGE_BUCKET).remove(allPaths);
+    }
+  } catch (err) {
+    console.error(`[image-jobs] Storage cleanup failed for deleted job ${id}:`, err);
   }
 
   return NextResponse.json({ success: true });
