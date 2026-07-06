@@ -338,7 +338,21 @@ export default function ConceptImagesStep({
   const [editText, setEditText] = useState("");
   const [editRunningId, setEditRunningId] = useState<string | null>(null);
 
-  const runEdit = async (siId: string) => {
+  // Resolve which file the user is LOOKING at: a translated version (language tab or 9:16
+  // ratio active) or the source original. Mirrors the thumbnail-selection logic in the grid.
+  const resolveEditTarget = (si: SourceImage & { image_translations?: SourceImage["image_translations"] }) => {
+    const matched =
+      activeTab !== "all"
+        ? si.image_translations?.find(
+            (t) => t.language === activeTab && t.aspect_ratio === selectedRatio && t.status === "completed" && t.translated_url
+          )
+        : selectedRatio === "9:16"
+          ? si.image_translations?.find((t) => t.aspect_ratio === "9:16" && t.status === "completed" && t.translated_url)
+          : null;
+    return matched ? { translation_id: matched.id } : { source_image_id: si.id };
+  };
+
+  const runEdit = async (siId: string, target?: { translation_id?: string; source_image_id?: string }) => {
     const instruction = editText.trim();
     if (instruction.length < 3) return;
     setEditRunningId(siId);
@@ -347,7 +361,7 @@ export default function ConceptImagesStep({
       const res = await fetch(`/api/image-jobs/${job.id}/edit-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_image_id: siId, instruction }),
+        body: JSON.stringify({ ...(target ?? { source_image_id: siId }), instruction }),
       });
       const data = await res.json();
       setQaMessages((prev) => ({ ...prev, [siId]: data.message || data.error || "Okänt fel" }));
@@ -1262,6 +1276,17 @@ export default function ConceptImagesStep({
           >
             {/* Action buttons — top-right, visible on hover */}
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+              <button
+                onClick={() => {
+                  setEditText("");
+                  setEditOpenId(editOpenId === si.id ? null : si.id);
+                }}
+                disabled={editRunningId !== null}
+                className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm disabled:opacity-40"
+                title="Redigera: beskriv en ändring och regenerera samma bild"
+              >
+                {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
+              </button>
               {onReroll && si.generation_style && !rerollingId && (
                 <button
                   onClick={() => onReroll(si.id)}
@@ -1364,6 +1389,29 @@ export default function ConceptImagesStep({
                 );
               })}
             </div>
+            {editOpenId === si.id && (
+              <div className="px-2.5 pb-2.5 space-y-1.5">
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  placeholder="t.ex. ändra vår till sommar, behåll allt annat"
+                  rows={2}
+                  autoFocus
+                  className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-none"
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); runEdit(si.id, resolveEditTarget(si)); }}
+                  disabled={editRunningId !== null || editText.trim().length < 3}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-indigo-600 text-white rounded-md py-1.5 hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                >
+                  {editRunningId === si.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pencil className="w-3 h-3" />}
+                  Regenerera med ändring
+                </button>
+              </div>
+            )}
+            {qaMessages[si.id] && (
+              <p className="px-2.5 pb-2 text-[10px] leading-snug text-gray-500">{qaMessages[si.id]}</p>
+            )}
           </div>
         ))}
             </div>
