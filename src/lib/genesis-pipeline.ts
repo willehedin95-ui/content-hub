@@ -10,7 +10,7 @@
 
 import type { ConceptProposal } from "@/types";
 import { buildBuyerProfile, generateHooks, buildConcept, type GenesisGenerateInput } from "./genesis-concepts";
-import { judgeCopy, type JudgeResult } from "./creative-judge";
+import { judgeCopy, deterministicChecks, type JudgeResult, type JudgeIssue, type Verdict } from "./creative-judge";
 import { rulesToPromptBlock } from "./standards-ladder";
 
 export interface VettedConcept {
@@ -32,7 +32,9 @@ export interface VettedOptions {
   onConcept?: (v: VettedConcept) => void | Promise<void>;
 }
 
-const PASS_JUDGE: JudgeResult = { verdict: "PASS", score: 7, issues: [], blocked: false };
+// rubricRan: false - when the judge is disabled no rubric ran, so the persisted
+// tag reads judge:PASS-norubric rather than posing as a real rubric pass.
+const PASS_JUDGE: JudgeResult = { verdict: "PASS", score: 7, issues: [], blocked: false, rubricRan: false };
 
 /**
  * Generate concepts via Genesis, vet each with the judge, regenerate REJECTs once. Interleaved:
@@ -55,8 +57,28 @@ export async function generateVettedConcepts(
     brandBrief: [input.brandBrief, ruleBlock].filter(Boolean).join("\n\n") || undefined,
   };
 
-  const judgeOf = (p: ConceptProposal) =>
-    judgeCopy(p.ad_copy_primary[0] || "", { language: input.language, productName: input.productName });
+  // Judge the primary text with the full judge (deterministic + LLM rubric), then run the
+  // deterministic (free) checks over the headlines + hooks too - the rubric only sees the
+  // primary text, but a price or English word in a headline/hook is just as unusable.
+  const judgeOf = async (p: ConceptProposal): Promise<JudgeResult> => {
+    const ctx = { language: input.language, productName: input.productName };
+    const judge = await judgeCopy(p.ad_copy_primary[0] || "", ctx);
+
+    const extraIssues: JudgeIssue[] = [];
+    const seen = (quote: string | undefined) =>
+      [...judge.issues, ...extraIssues].some((e) => e.quote?.toLowerCase() === quote?.toLowerCase());
+    for (const line of [...(p.ad_copy_headline ?? []), ...(p.cash_dna.hooks ?? [])]) {
+      for (const iss of deterministicChecks(line, ctx)) {
+        if (!seen(iss.quote)) extraIssues.push(iss);
+      }
+    }
+    if (!extraIssues.length) return judge;
+
+    const issues = [...judge.issues, ...extraIssues];
+    const blocked = issues.some((i) => i.severity === "block");
+    const verdict: Verdict = blocked ? "REJECT" : judge.verdict === "PASS" ? "WARN" : judge.verdict;
+    return { ...judge, issues, blocked, verdict };
+  };
 
   await opts.onProgress?.({ phase: "buyer" });
   const buyerProfile = await buildBuyerProfile(enrichedInput);

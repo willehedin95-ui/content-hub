@@ -32,10 +32,26 @@ async function ensureHookLanguage(hooks: string[], language: string): Promise<st
     );
     const out = raw
       .split("\n")
-      .map((l) => l.replace(/^\s*\d+[.)]\s*/, "").replace(/[—–]/g, "-").trim())
+      .map((l) => l.trim())
+      // Only numbered lines count: a model preamble ("Here are the hooks:", blank
+      // commentary) used to shift the list and misalign the hook<->concept pairing.
+      .filter((l) => /^\d+[.)]/.test(l))
+      .map((l) => l.replace(/^\d+[.)]\s*/, "").replace(/[—–]/g, "-").trim())
       .filter((l) => l.length > 8);
-    return out.length >= hooks.length ? out.slice(0, hooks.length) : hooks;
-  } catch {
+    if (out.length < hooks.length) {
+      console.warn(
+        `[genesis-concepts] ensureHookLanguage(${language}): parsed ${out.length}/${hooks.length} numbered lines - keeping originals (may be English)`,
+      );
+      return hooks;
+    }
+    return out.slice(0, hooks.length);
+  } catch (err) {
+    // LOUD failure: silently returning the input meant English hooks leaked into
+    // Swedish concepts with no trace. The fallback is unchanged, but it must be visible.
+    console.error(
+      `[genesis-concepts] ensureHookLanguage(${language}) FAILED - returning hooks that may be English:`,
+      err,
+    );
     return hooks;
   }
 }
@@ -147,6 +163,21 @@ function conceptNameFromHook(hook: string): string {
   return clause.length > 60 ? clause.slice(0, 57).trim() + "..." : clause;
 }
 
+/**
+ * Split the trailing "VISUAL: <scene>" line off a mariobot body. The bot is asked to append
+ * one such line so visual_direction is a real scene direction (it feeds the image briefs via
+ * static-ad-prompt) instead of a template string. Returns visual: null when the line is
+ * missing/junk so the caller can fall back - the parse must never eat actual ad copy.
+ */
+function splitVisualDirection(body: string): { body: string; visual: string | null } {
+  const m = body.match(/\n\s*\*{0,2}VISUAL\s*\*{0,2}\s*:\s*\*{0,2}\s*([^\n]+?)\s*$/i);
+  if (!m || m.index == null) return { body, visual: null };
+  const visual = m[1].replace(/\*+\s*$/, "").trim();
+  const stripped = body.slice(0, m.index).trimEnd();
+  if (!stripped || visual.length < 15) return { body, visual: null };
+  return { body: stripped, visual };
+}
+
 const DEFAULT_HEADLINE_BOT = "headline-bot-";
 
 /**
@@ -239,7 +270,7 @@ export async function buildConcept(
   const angle: Angle = input.angle ?? "Problem-Agitate";
   const seg = segmentLine(input);
   const hook = hooks[index % hooks.length];
-  const body = normalizeDashes(
+  const rawBody = normalizeDashes(
     (
       await callGenesisBot(
         DEFAULT_BODY_BOT,
@@ -249,6 +280,7 @@ export async function buildConcept(
           `Write the full Facebook primary-text ad body for:\n${seg}`,
           constraints(input.language),
           "Output ONLY the ad copy itself - no preamble, no headline, no labels.",
+          `Then, on the very last line, add exactly one line in this format: VISUAL: <one sentence in English describing the photo/scene for this ad's static image, matching the lead hook>. Nothing after it.`,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -256,6 +288,8 @@ export async function buildConcept(
       )
     ).trim(),
   );
+  // Real visual direction from the bot (falls back to the old template if the line is missing).
+  const { body, visual } = splitVisualDirection(rawBody);
   const headlines = await generateHeadlines(input, hook, body);
   return {
     concept_name: conceptNameFromHook(hook),
@@ -274,7 +308,7 @@ export async function buildConcept(
     },
     ad_copy_primary: [body],
     ad_copy_headline: headlines,
-    visual_direction: `Native ${input.productName} concept matching the hook "${hook}".`,
+    visual_direction: visual ?? `Native ${input.productName} concept matching the hook "${hook}".`,
     differentiation_note: `Genesis-generated (${angle}, ${input.awarenessLevel}).`,
     suggested_tags: [angle, input.awarenessLevel, "genesis"],
     hypothesis: `If we lead with "${hook}" for ${input.segmentNote || "this segment"}, it stops the scroll and converts on the ${angle} angle.`,

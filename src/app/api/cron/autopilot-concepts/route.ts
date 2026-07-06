@@ -17,6 +17,7 @@ import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { swipeCompetitorAd, findBestLandingPage } from "@/lib/swipe-competitor";
 import { insertJobWithConceptNumber } from "@/lib/concept-number";
+import { getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import {
   exploreAds,
   getBoardAds,
@@ -643,6 +644,10 @@ async function runFromScratch(
       .filter(Boolean);
   }
 
+  // Generation language: without this 12th argument the autopilot always wrote
+  // English concepts regardless of the workspace's ad_copy_language (audit cg10).
+  const generationLanguage = await getAdCopyLanguageByWorkspaceId(ws.id);
+
   const systemPrompt = buildBrainstormSystemPrompt(
     product as ProductFull,
     undefined, // productBrief
@@ -652,7 +657,8 @@ async function runFromScratch(
     hookInspiration,
     learningsContext,
     undefined, undefined, undefined, // competitor params
-    researchContext
+    researchContext,
+    generationLanguage
   );
 
   const brainstormRequest: BrainstormRequest = {
@@ -706,7 +712,11 @@ async function runFromScratch(
     ad_copy_primary: proposal.ad_copy_primary,
     ad_copy_headline: proposal.ad_copy_headline,
     visual_direction: proposal.visual_direction,
-    tags: proposal.suggested_tags ?? [],
+    // source_language enables the same-language translation passthrough downstream.
+    source_language: generationLanguage,
+    // mode:<name> is what pickBrainstormMode rotates on - cash_dna.ad_source never
+    // contained mode names, so the old rotation always picked from_scratch (cg11).
+    tags: [...(proposal.suggested_tags ?? []), `mode:${mode}`],
   });
 
   if (jobErr || !insertedJob) {
@@ -990,11 +1000,14 @@ async function pickBrainstormMode(
   db: ReturnType<typeof createServerSupabase>,
   workspaceId: string
 ): Promise<BrainstormMode> {
-  // Check which modes were used recently
+  // Check which modes were used recently. The mode is persisted as a "mode:<name>"
+  // tag at insert - the old comparison against cash_dna.ad_source (an AD_SOURCES
+  // enum value, never a mode name) meant the sets never intersected and the
+  // rotation always returned from_scratch (audit cg11).
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentJobs } = await db
     .from("image_jobs")
-    .select("cash_dna")
+    .select("tags")
     .eq("workspace_id", workspaceId)
     .eq("source", "autopilot")
     .gte("created_at", sevenDaysAgo)
@@ -1002,7 +1015,10 @@ async function pickBrainstormMode(
     .limit(10);
 
   const recentModes = new Set(
-    (recentJobs ?? []).map((j) => (j.cash_dna as Record<string, unknown>)?.ad_source as string).filter(Boolean)
+    (recentJobs ?? [])
+      .flatMap((j) => (j.tags as string[] | null) ?? [])
+      .filter((t) => typeof t === "string" && t.startsWith("mode:"))
+      .map((t) => t.slice("mode:".length))
   );
 
   // Pick the first mode not used recently, or fall back to from_scratch

@@ -68,7 +68,8 @@ export async function approveConceptAction(jobId: string, source: string = "revi
   // Judge-REJECT = hard brand-rule violation (e.g. English in Swedish copy,
   // price in copy). The tag was previously write-only, so REJECT concepts
   // could ride the approve → launchpad → cron chain straight to Meta.
-  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).includes("judge:REJECT")) {
+  // startsWith: the tag can carry a "-norubric" suffix which must still gate.
+  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).some((t) => t.startsWith("judge:REJECT"))) {
     return {
       ok: false,
       action: "approve",
@@ -117,16 +118,30 @@ export async function approveConceptAction(jobId: string, source: string = "revi
     };
   }
 
-  // Get next launchpad priority (top of queue)
-  const { data: topLaunchpad } = await db
-    .from("image_jobs")
-    .select("launchpad_priority")
-    .not("launchpad_priority", "is", null)
-    .order("launchpad_priority", { ascending: true })
-    .limit(1)
-    .single();
+  // Get next launchpad priority - APPEND (max+1), same convention as the manual
+  // launchpad add (it used to insert at top with min-1, jumping the queue), and
+  // scoped to the concept's workspace (the query was previously cross-workspace).
+  const [{ data: maxImagePriority }, { data: maxVideoPriority }] = await Promise.all([
+    db.from("image_jobs")
+      .select("launchpad_priority")
+      .eq("workspace_id", job.workspace_id)
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+    db.from("video_jobs")
+      .select("launchpad_priority")
+      .eq("workspace_id", job.workspace_id)
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
 
-  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
+  const priority = Math.max(
+    (maxImagePriority?.launchpad_priority as number) ?? 0,
+    (maxVideoPriority?.launchpad_priority as number) ?? 0,
+  ) + 1;
 
   await db.from("image_jobs").update({
     launchpad_priority: priority,
@@ -257,15 +272,29 @@ export async function approveVideoAction(jobId: string, source: string = "review
     return { ok: false, action: "approve", error: "Video concept not found", jobId };
   }
 
-  const { data: topLaunchpad } = await db
-    .from("video_jobs")
-    .select("launchpad_priority")
-    .not("launchpad_priority", "is", null)
-    .order("launchpad_priority", { ascending: true })
-    .limit(1)
-    .single();
+  // APPEND (max+1) across both tables, workspace-scoped - same convention as
+  // approveConceptAction and the manual launchpad add.
+  const [{ data: maxImagePriority }, { data: maxVideoPriority }] = await Promise.all([
+    db.from("image_jobs")
+      .select("launchpad_priority")
+      .eq("workspace_id", job.workspace_id)
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+    db.from("video_jobs")
+      .select("launchpad_priority")
+      .eq("workspace_id", job.workspace_id)
+      .not("launchpad_priority", "is", null)
+      .order("launchpad_priority", { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
 
-  const priority = ((topLaunchpad?.launchpad_priority as number) ?? 10) - 1;
+  const priority = Math.max(
+    (maxImagePriority?.launchpad_priority as number) ?? 0,
+    (maxVideoPriority?.launchpad_priority as number) ?? 0,
+  ) + 1;
 
   const targetLangs = (job.target_languages as string[]) ?? ["sv", "da", "no"];
   const marketPriorities: Record<string, number> = {};

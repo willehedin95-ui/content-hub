@@ -6,7 +6,8 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { qaImage, correctImageText } from "@/lib/image-quality";
 import { getProductAppearance } from "@/lib/product-appearance";
-import { STORAGE_BUCKET } from "@/lib/constants";
+import { STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { recordActiveVersion } from "@/lib/translation-versions";
 
 export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
@@ -69,6 +70,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (fixedUrl === si.original_url) {
       return NextResponse.json({ status: "issues", message: `Text-fix misslyckades: ${qa.issues.join("; ")}`, issues: qa.issues });
     }
+    // The correction pass is a paid Kie render - log it (was untracked; audit img9).
+    await db.from("usage_logs").insert({
+      type: "image_generation",
+      page_id: null,
+      translation_id: null,
+      model: KIE_MODEL,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: KIE_IMAGE_COST,
+      metadata: {
+        purpose: "qa_text_correction",
+        image_job_id: id,
+        source_image_id: si.id,
+        aspect_ratio: primaryRatio,
+        qa_issues: qa.issues.slice(0, 3),
+      },
+    });
     const img = await fetch(fixedUrl);
     if (!img.ok) throw new Error("Failed to download corrected image");
     const buffer = Buffer.from(await img.arrayBuffer());

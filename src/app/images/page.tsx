@@ -19,19 +19,51 @@ const STATUS_FILTERS = [
   { value: "Launch Pad", label: "Launch Pad" },
   { value: "Ready", label: "Ready" },
   { value: "Published", label: "Published" },
+  { value: "Failed", label: "Failed" },
 ] as const;
 
 const STATUS_PRIORITY: Record<string, number> = {
   "New": 0,
   "Generating...": 0,
+  "Processing...": 0,
   "Failed": 0,
+  "Rejected": 0,
   "Step 1/3 \u00B7 Images": 1,
   "Step 2/3 \u00B7 Ad Copy": 2,
   "Step 3/3 \u00B7 Preview": 3,
   "Launch Pad": 4,
   "Ready": 5,
   "Published": 6,
+  "Archived": 7,
 };
+
+// A draft/processing job whose row hasn't been touched in this long is
+// probably stuck - show a "Stalled?" hint instead of an eternal pulse.
+const STALLED_AFTER_MS = 30 * 60 * 1000;
+
+// Judge verdict pill (parsed from the job's "judge:X" tag). PASS is the
+// healthy default and renders nothing; everything else gets a small pill
+// so REJECT/WARN concepts no longer look identical to PASS in the list.
+function JudgePill({ tags }: { tags: string[] | null | undefined }) {
+  const judgeTag = (tags ?? []).find((t) => t.startsWith("judge:"));
+  if (!judgeTag) return null;
+  const verdict = judgeTag.slice("judge:".length);
+  if (verdict === "PASS") return null;
+  const cls =
+    verdict === "REJECT"
+      ? "bg-red-50 text-red-700"
+      : verdict === "WARN"
+      ? "bg-amber-50 text-amber-700"
+      : "bg-gray-100 text-gray-500";
+  return (
+    <span
+      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cls}`}
+      title={`Judge verdict: ${verdict}`}
+    >
+      {verdict}
+    </span>
+  );
+}
 
 export default function ImagesPage() {
   const [jobs, setJobs] = useState<ImageJob[]>([]);
@@ -285,12 +317,21 @@ export default function ImagesPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredJobs.map((job) => {
-                const status = getWizardStep(job);
+                const wizardStatus = getWizardStep(job);
                 const conceptNum = job.concept_number;
                 const thumbUrl = getConceptThumbnail(job);
                 const isSelected = selected.has(job.id);
                 const marketStatus = getMarketStatus(job);
                 const isProcessing = job.status === "draft" || job.status === "processing";
+                // Draft/processing jobs that haven't been touched in 30+ min are
+                // probably stuck - show "Stalled?" instead of an eternal pulse.
+                const isStalled =
+                  isProcessing &&
+                  Date.now() - new Date(job.updated_at).getTime() > STALLED_AFTER_MS;
+                const status = isStalled
+                  ? { ...wizardStatus, label: "Stalled?", color: "text-amber-700 bg-amber-50" }
+                  : wizardStatus;
+                const failedCount = job.failed_translations ?? 0;
 
                 // Market deployment dots
                 const deployedCountries = job.target_languages
@@ -325,8 +366,8 @@ export default function ImagesPage() {
                         </div>
                       )}
 
-                      {/* Processing shimmer overlay */}
-                      {isProcessing && (
+                      {/* Processing shimmer overlay (suppressed when stalled) */}
+                      {isProcessing && !isStalled && (
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" />
                       )}
 
@@ -366,10 +407,22 @@ export default function ImagesPage() {
                       <p className="text-sm font-medium text-gray-800 truncate leading-tight">
                         {job.name}
                       </p>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${status.color}`}>
-                          {status.label}
-                        </span>
+                      <div className="flex items-center justify-between mt-1.5 gap-1">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${status.color}`}
+                            title={isStalled ? "Ingen aktivitet på över 30 min - reconcile-cronen försöker återuppta jobbet" : undefined}
+                          >
+                            {status.label}
+                          </span>
+                          <JudgePill tags={job.tags} />
+                        </div>
+                        {/* Partial-failure nuance: "23/24 - 1 failed" instead of a bare Failed badge */}
+                        {failedCount > 0 && (job.total_translations ?? 0) > 0 && (
+                          <span className="text-[10px] text-red-600 whitespace-nowrap shrink-0">
+                            {job.completed_translations ?? 0}/{job.total_translations ?? 0} - {failedCount} failed
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Link>

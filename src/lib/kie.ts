@@ -83,22 +83,46 @@ export async function pollTaskResult(taskId: string, maxPollMs?: number): Promis
   const startTime = Date.now();
   let pollInterval = POLL_INITIAL_MS;
   const deadline = maxPollMs ?? MAX_POLL_TIME_MS;
+  // Transient poll failures (429/5xx/network blips) must not discard a render we
+  // already paid for - tolerate up to 3 consecutive failures with a short backoff.
+  let consecutiveFailures = 0;
 
   while (Date.now() - startTime < deadline) {
-    const res = await fetch(
-      `${KIE_API_BASE}/recordInfo?taskId=${taskId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${getApiKey()}`,
-        },
+    let res: Response | null = null;
+    let data: TaskStatusResponse | null = null;
+    let failDetail: string | null = null;
+    try {
+      res = await fetch(
+        `${KIE_API_BASE}/recordInfo?taskId=${taskId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${getApiKey()}`,
+          },
+        }
+      );
+      if (res.ok) {
+        data = (await res.json()) as TaskStatusResponse;
+      } else {
+        failDetail = `HTTP ${res.status}`;
       }
-    );
-
-    if (!res.ok) {
-      throw new Error(`Kie.ai poll failed (${res.status})`);
+    } catch (err) {
+      failDetail = err instanceof Error ? err.message : String(err);
     }
 
-    const data: TaskStatusResponse = await res.json();
+    if (!data) {
+      const status = res?.status ?? null;
+      // Network errors (no response / bad JSON on a 200), 429 and 5xx are transient;
+      // other 4xx (e.g. bad task id) will never recover.
+      const transient = res === null || res.ok || status === 429 || (status !== null && status >= 500);
+      consecutiveFailures++;
+      if (!transient || consecutiveFailures > 3) {
+        throw new Error(`Kie.ai poll failed (${failDetail ?? "unknown"}) after ${consecutiveFailures} consecutive attempt(s)`);
+      }
+      console.warn(`[kie] poll blip ${consecutiveFailures}/3 for task ${taskId} (${failDetail}) - retrying`);
+      await new Promise((resolve) => setTimeout(resolve, 2000 * consecutiveFailures));
+      continue;
+    }
+    consecutiveFailures = 0;
 
     if (data.data.state === "success" && data.data.resultJson) {
       const result = JSON.parse(data.data.resultJson) as {

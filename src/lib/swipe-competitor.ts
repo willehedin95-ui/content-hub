@@ -397,12 +397,14 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
 
   const nextConceptNumber = ((lastJob?.concept_number as number) ?? 0) + 1;
 
+  // The "competitor-swipe" tag is the machine slug; cash_dna.ad_source must be an
+  // AD_SOURCES enum member ("competitor_swipe" broke the contract - audit cg19).
   const tags = [...(parsed.concept.suggested_tags ?? []), "competitor-swipe"];
   if (input.gethookdAdId) tags.push("ad-spy");
 
   const cashDna = {
     ...(parsed.concept.cash_dna ?? {}),
-    ad_source: "competitor_swipe",
+    ad_source: "Swipe (competitor)",
     swiped_from: brandName,
     swiped_ad_id: input.gethookdAdId,
     pain_point: input.painPoint || "auto-detect",

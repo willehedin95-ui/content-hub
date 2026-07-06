@@ -43,7 +43,10 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     status: judge.verdict === "REJECT" ? "rejected" : "draft",
     target_languages: targetLanguages,
     target_ratios: ["4:5", "9:16"],
-    tags: [...(p.suggested_tags ?? []), "genesis-generated", `judge:${judge.verdict}`],
+    // "-norubric" = the LLM rubric call failed and the verdict is deterministic-only
+    // (a default-PASS). Gate checks match on startsWith("judge:REJECT") so the
+    // suffix can never smuggle a REJECT past them.
+    tags: [...(p.suggested_tags ?? []), "genesis-generated", `judge:${judge.verdict}${judge.rubricRan ? "" : "-norubric"}`],
     cash_dna: p.cash_dna,
     ad_copy_primary: p.ad_copy_primary,
     ad_copy_headline: p.ad_copy_headline ?? [],

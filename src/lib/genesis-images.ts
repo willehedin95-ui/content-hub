@@ -18,15 +18,18 @@ import type { StaticStyleId } from "@/lib/constants";
 
 const LANG_NAMES: Record<string, string> = { sv: "Swedish", da: "Danish", no: "Norwegian", de: "German", en: "English" };
 
-/** Split a bot's output into up to n renderable image prompts. */
+/**
+ * Split a bot's output into up to n renderable image prompts. The "PROMPT n:" anchors we
+ * instruct the bot to use are REQUIRED - the old paragraph-split fallback rendered bot
+ * preamble/commentary chunks as paid images (audit img17). Everything before the first
+ * anchor is preamble and is dropped.
+ */
 function parsePrompts(raw: string, n: number): string[] {
-  let parts = raw
-    .split(/\n?\s*(?:PROMPT|IMAGE|CONCEPT|VARIATION|AD)\s*#?\s*\d+\s*[:.)\-]/i)
+  const parts = raw
+    .split(/\n?\s*\*{0,2}#{0,4}\s*\*{0,2}PROMPT\s*#?\s*\d+\s*\*{0,2}\s*[:.)\-]/i)
+    .slice(1) // [0] = whatever precedes "PROMPT 1:" - never a prompt
     .map((s) => s.trim())
     .filter((s) => s.length > 40);
-  if (parts.length < 2) {
-    parts = raw.split(/\n\s*\n/).map((s) => s.trim()).filter((s) => s.length > 40);
-  }
   // Strip markdown code fences / headers / bold markers that sometimes wrap a chunk.
   return parts
     .map((p) => p.replace(/```[a-z]*/gi, "").replace(/^#+\s*/, "").replace(/\*+/g, "").trim())
@@ -80,8 +83,28 @@ export async function generateGenesisStaticImages(opts: {
     .join("\n");
 
   const raw = await callGenesisBot(botSlug, input, { maxTokens: 2800 });
-  const prompts = parsePrompts(raw, count);
-  if (!prompts.length) throw new Error("Genesis bot returned no usable prompts");
+  let prompts = parsePrompts(raw, count);
+  if (prompts.length < count) {
+    // One strict retry: some bots wrap output in commentary or skip the numbering.
+    console.warn(`[genesis-images] ${botSlug}: parsed ${prompts.length}/${count} anchored prompts - retrying with stricter instruction`);
+    const strictRaw = await callGenesisBot(
+      botSlug,
+      [
+        input,
+        ``,
+        `IMPORTANT: Your output will be machine-parsed. Output EXACTLY ${count} prompts and NOTHING else - no introduction, no commentary, no closing note. Each prompt MUST start on its own line with "PROMPT 1:", "PROMPT 2:", ... in that exact format.`,
+      ].join("\n"),
+      { maxTokens: 2800 },
+    );
+    const strictPrompts = parsePrompts(strictRaw, count);
+    if (strictPrompts.length > prompts.length) prompts = strictPrompts;
+  }
+  if (prompts.length < count) {
+    // Never render preamble chunks as images - fail the format loudly instead.
+    throw new Error(
+      `Genesis bot "${botSlug}" returned ${prompts.length}/${count} parseable "PROMPT n:" prompts after a strict retry - refusing to render unparsed output`,
+    );
+  }
 
   const briefs: ImageBrief[] = prompts.map((prompt) => ({
     // The bot slug isn't a StaticStyleId, but style is only used as a label / generation_style

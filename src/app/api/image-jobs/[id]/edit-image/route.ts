@@ -5,7 +5,8 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { generateImage } from "@/lib/kie";
-import { STORAGE_BUCKET } from "@/lib/constants";
+import { STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { recordActiveVersion } from "@/lib/translation-versions";
 
 export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
@@ -87,8 +88,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       `Do not add or remove any other elements.`,
     ].join("\n");
 
-    const { urls } = await generateImage(prompt, [editUrl], ratio);
+    const { urls, costTimeMs } = await generateImage(prompt, [editUrl], ratio);
     const editedUrl = urls?.[0];
+    // Every completed render is a paid Kie call - log it even if it turns out
+    // unusable below (previously edit renders were never logged; audit img9).
+    if (editedUrl) {
+      await db.from("usage_logs").insert({
+        type: "image_generation",
+        page_id: null,
+        translation_id: null,
+        model: KIE_MODEL,
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: KIE_IMAGE_COST,
+        metadata: {
+          purpose: "image_edit",
+          image_job_id: id,
+          source_image_id: sourceImage?.id ?? translation?.source_image_id ?? null,
+          image_translation_id: translationId ?? null,
+          aspect_ratio: ratio,
+          kie_cost_time_ms: costTimeMs,
+          instruction: instruction.slice(0, 200),
+        },
+      });
+    }
     if (!editedUrl || editedUrl === editUrl) {
       return NextResponse.json({ status: "failed", message: "Redigeringen gav ingen ny bild - försök igen eller omformulera." });
     }

@@ -128,8 +128,9 @@ export async function POST(req: NextRequest) {
   }
   if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
   // Hard gates: judge-REJECT (brand-rule violation) and archived concepts
-  // must never enter the push queue.
-  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).includes("judge:REJECT")) {
+  // must never enter the push queue. startsWith: the tag can carry a
+  // "-norubric" suffix (deterministic-only verdict) which must still gate.
+  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).some((t) => t.startsWith("judge:REJECT"))) {
     errors.push("Judge REJECT — granska copyn och ta bort judge:REJECT-taggen först");
   }
   if (job.archived_at) errors.push("Concept is archived");
@@ -148,16 +149,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Concept not ready", details: errors }, { status: 422 });
   }
 
-  // Get next priority number (check both tables)
+  // Get next priority number (check both tables, scoped to this workspace -
+  // unscoped queries let another workspace's priorities inflate the sequence)
   const [{ data: maxImagePriority }, { data: maxVideoPriority }] = await Promise.all([
     db.from("image_jobs")
       .select("launchpad_priority")
+      .eq("workspace_id", workspaceId)
       .not("launchpad_priority", "is", null)
       .order("launchpad_priority", { ascending: false })
       .limit(1)
       .single(),
     db.from("video_jobs")
       .select("launchpad_priority")
+      .eq("workspace_id", workspaceId)
       .not("launchpad_priority", "is", null)
       .order("launchpad_priority", { ascending: false })
       .limit(1)
@@ -204,9 +208,11 @@ export async function POST(req: NextRequest) {
     .eq("image_job_id", conceptId);
 
   for (const row of marketRows ?? []) {
+    // image_job_markets has no workspace_id column - scope through the parent job.
     const { data: maxPrio } = await db
       .from("image_job_markets")
-      .select("launchpad_priority")
+      .select("launchpad_priority, image_jobs!inner(workspace_id)")
+      .eq("image_jobs.workspace_id", workspaceId)
       .eq("market", row.market)
       .not("launchpad_priority", "is", null)
       .order("launchpad_priority", { ascending: false })

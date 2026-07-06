@@ -107,6 +107,10 @@ export function getMarketStatus(
 export function getWizardStep(job: ImageJob): WizardStep {
   if (job.status === "failed")
     return { step: 0, label: "Failed", color: "text-red-700 bg-red-50" };
+  if (job.status === "rejected")
+    return { step: 0, label: "Rejected", color: "text-rose-700 bg-rose-50" };
+  if (job.status === "archived")
+    return { step: 0, label: "Archived", color: "text-gray-500 bg-gray-100" };
   if (job.status === "draft")
     return { step: 0, label: "Generating...", color: "text-gray-500 bg-gray-100 animate-pulse" };
 
@@ -135,6 +139,14 @@ export function getWizardStep(job: ImageJob): WizardStep {
         step: 1,
         label: "Step 1/3 \u00B7 Images",
         color: "text-amber-700 bg-amber-50",
+      };
+    // A processing job with 0 completed translations is still processing,
+    // not "New" (audit ui-finding: status processing fell through to New).
+    if (job.status === "processing")
+      return {
+        step: 1,
+        label: "Processing...",
+        color: "text-indigo-700 bg-indigo-50 animate-pulse",
       };
     if (job.status === "ready")
       return {

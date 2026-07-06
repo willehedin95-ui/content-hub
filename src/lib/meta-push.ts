@@ -246,8 +246,9 @@ async function pushConceptToMetaInner(
   // passes through here. Judge-REJECT (hard brand-rule violation), rejected
   // and archived concepts must never reach Meta, regardless of which upstream
   // gate was skipped or when the concept entered the pad.
+  // startsWith: the tag can carry a "-norubric" suffix which must still gate.
   const jobTags = (job.tags as string[] | null) ?? [];
-  if (job.status === "rejected" || jobTags.includes("judge:REJECT")) {
+  if (job.status === "rejected" || jobTags.some((t) => t.startsWith("judge:REJECT"))) {
     throw new Error("Concept is judge-REJECTED — review the copy and remove the judge:REJECT tag before pushing");
   }
   if (job.archived_at || job.status === "archived") {

@@ -27,7 +27,7 @@ import {
 import { ImageJob, ImageTranslation, SourceImage, QualityAnalysis, Language, LANGUAGES, MetaCampaign, MetaCampaignMapping, MetaPageConfig, ConceptCopyTranslations, ProductSegment } from "@/types";
 import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { deriveImageGrade } from "@/lib/quality-grades";
-import { STATIC_STYLES, AWARENESS_STYLE_MAP } from "@/lib/constants";
+import { STATIC_STYLES, AWARENESS_STYLE_MAP, TRANSLATE_CONCURRENCY } from "@/lib/constants";
 import { getSettings } from "@/lib/settings";
 import ImagePreviewModal from "./ImagePreviewModal";
 import EditableTags from "@/components/pages/EditableTags";
@@ -50,7 +50,7 @@ interface Props {
 
 // --- Status-driven helpers ---
 
-type ConceptStatus = "generating" | "processing" | "ready" | "needs_copy" | "needs_review" | "on_launchpad" | "live" | "draft";
+type ConceptStatus = "generating" | "processing" | "ready" | "needs_copy" | "needs_review" | "on_launchpad" | "live" | "draft" | "failed" | "rejected" | "archived";
 
 function computeConceptStatus(
   job: ImageJob,
@@ -70,6 +70,11 @@ function computeConceptStatus(
   // but `meta_campaigns.status` is only updated at push time and never synced
   // from Meta, so we use the 7-day aggregated metrics instead: if the concept
   // has recent impressions or spend in at least one market, it's serving.
+  // Terminal states first - a failed/rejected/archived job must never fall
+  // through to "Draft" while the list shows "Failed" (audit ui-finding).
+  if (job.status === "failed") return "failed";
+  if (job.status === "rejected") return "rejected";
+  if (job.status === "archived") return "archived";
   const hasRecentDelivery = (perfData?.markets ?? []).some(
     (m) => (m.metrics?.impressions ?? 0) > 0 || (m.metrics?.spend ?? 0) > 0
   );
@@ -99,6 +104,9 @@ function StatusBadge({ status }: { status: ConceptStatus }) {
     ready: { label: "Ready", cls: "bg-blue-50 text-blue-700" },
     on_launchpad: { label: "Launch Pad", cls: "bg-emerald-50 text-emerald-700" },
     live: { label: "Live", cls: "bg-green-50 text-green-700" },
+    failed: { label: "Failed", cls: "bg-red-50 text-red-700" },
+    rejected: { label: "Rejected", cls: "bg-rose-50 text-rose-700" },
+    archived: { label: "Archived", cls: "bg-gray-100 text-gray-500" },
   };
   const c = config[status];
   return <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${c.cls}`}>{c.label}</span>;
@@ -999,7 +1007,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     setProc({ processing: true, startTime: Date.now(), processedInSession: 0, refreshing: false });
 
     const queue = [...translations];
-    const CONCURRENCY = 3;
+    const CONCURRENCY = TRANSLATE_CONCURRENCY;
     const executing = new Set<Promise<void>>();
 
     for (const item of queue) {

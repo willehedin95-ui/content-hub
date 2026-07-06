@@ -6,7 +6,10 @@ export async function GET() {
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
 
-  // Fetch processing jobs + average generation time in parallel
+  // Fetch processing jobs + average generation time in parallel.
+  // The average uses versions.generation_time_seconds (actual render time)
+  // instead of updated_at - created_at deltas, which measured queue wait and
+  // mixed in other workspaces (audit ui8).
   const [jobsResult, avgResult] = await Promise.all([
     db
       .from("image_jobs")
@@ -14,28 +17,23 @@ export async function GET() {
       .eq("workspace_id", workspaceId)
       .eq("status", "processing"),
     db
-      .from("image_translations")
-      .select("created_at, updated_at")
-      .eq("status", "completed")
-      .order("updated_at", { ascending: false })
+      .from("versions")
+      .select(
+        "generation_time_seconds, image_translations!inner(source_images!inner(image_jobs!inner(workspace_id)))"
+      )
+      .eq("image_translations.source_images.image_jobs.workspace_id", workspaceId)
+      .not("generation_time_seconds", "is", null)
+      .order("created_at", { ascending: false })
       .limit(50),
   ]);
 
-  // Compute average seconds per translation from recent completions
+  // Compute average seconds per image from recent renders
   let avgSeconds = 75; // fallback default
-  const recentTranslations = avgResult.data ?? [];
-  if (recentTranslations.length >= 5) {
-    const durations = recentTranslations
-      .map((t) => {
-        const created = new Date(t.created_at).getTime();
-        const updated = new Date(t.updated_at).getTime();
-        const diff = (updated - created) / 1000;
-        return diff > 0 && diff < 600 ? diff : null; // ignore outliers > 10min
-      })
-      .filter((d): d is number => d !== null);
-    if (durations.length >= 5) {
-      avgSeconds = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
-    }
+  const durations = (avgResult.data ?? [])
+    .map((v) => v.generation_time_seconds as number | null)
+    .filter((d): d is number => typeof d === "number" && d > 0 && d < 600); // ignore outliers > 10min
+  if (durations.length >= 5) {
+    avgSeconds = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
   }
 
   const jobs = jobsResult.data;

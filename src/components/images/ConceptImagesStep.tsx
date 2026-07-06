@@ -21,7 +21,7 @@ import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
 import { useWorkspaceLanguages } from "@/components/WorkspaceProvider";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
-import { STATIC_STYLES, REPTILE_TRIGGERS } from "@/lib/constants";
+import { STATIC_STYLES, REPTILE_TRIGGERS, TRANSLATE_CONCURRENCY, TRANSLATE_SECONDS_PER_IMAGE } from "@/lib/constants";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components (TabButton, ElapsedTimer, ProcessingTimer, badges)  */
@@ -63,18 +63,34 @@ function TabButton({
   );
 }
 
-function ElapsedTimer() {
-  const [seconds, setSeconds] = useState(0);
+function ElapsedTimer({ since, showStalledHint }: { since?: string | null; showStalledHint?: boolean }) {
+  // Seed from `since` (e.g. job.updated_at) when provided, so a draft that has
+  // been stuck for days shows its real age instead of counting from mount.
+  const [mountTime] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
-  const mins = Math.floor(seconds / 60);
+  const start = since ? new Date(since).getTime() : mountTime;
+  const seconds = Math.max(0, Math.floor((now - start) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
+  const label = hours > 0
+    ? `${hours}h ${mins.toString().padStart(2, "0")}m`
+    : mins > 0
+      ? `${mins}m ${secs.toString().padStart(2, "0")}s`
+      : `${secs}s`;
   return (
-    <span className="tabular-nums">
-      {mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`}
-    </span>
+    <>
+      <span className="tabular-nums">{label}</span>
+      {showStalledHint && seconds > 15 * 60 && (
+        <span className="text-amber-600 ml-2">
+          Verkar ha fastnat - reconcile-cronen plockar upp den inom 30 min
+        </span>
+      )}
+    </>
   );
 }
 
@@ -713,7 +729,7 @@ export default function ConceptImagesStep({
                           </div>
                         );
                       })}
-                      <span className="text-gray-400 text-xs ml-auto"><ElapsedTimer /></span>
+                      <span className="text-gray-400 text-xs ml-auto"><ElapsedTimer since={job.updated_at} showStalledHint /></span>
                     </div>
 
                     {/* Current step message */}
@@ -742,7 +758,7 @@ export default function ConceptImagesStep({
                       {isCompetitorGen
                         ? `Generating competitor-swipe images (${sourceImages.length}/${totalExpected})...`
                         : "Generating images..."}
-                      <span className="text-gray-400 ml-1"><ElapsedTimer /></span>
+                      <span className="text-gray-400 ml-1"><ElapsedTimer since={job.updated_at} showStalledHint /></span>
                     </div>
                     {isCompetitorGen && totalExpected > 0 && (
                       <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -792,7 +808,10 @@ export default function ConceptImagesStep({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
               <div key={si.id} className={`bg-white border rounded-lg overflow-hidden relative group transition-colors ${si.skip_translation ? "border-gray-300 opacity-60" : "border-gray-200"}`}>
-                <div className="aspect-[4/5] bg-gray-50 relative">
+                <div
+                  className="aspect-[4/5] bg-gray-50 relative cursor-pointer"
+                  onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
+                >
                   {rerollingId === si.id && (
                     <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                       <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -846,7 +865,7 @@ export default function ConceptImagesStep({
                     }}
                     disabled={editRunningId !== null}
                     className="text-gray-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0 disabled:opacity-40"
-                    title="Redigera: beskriv en ändring och regenerera samma bild"
+                    title="Redigera källbilden: beskriv en ändring och regenerera originalet"
                   >
                     {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
                   </button>
@@ -983,7 +1002,10 @@ export default function ConceptImagesStep({
               const translatableCount = sourceImages.filter(si => !si.skip_translation).length;
               const totalTranslations = translatableCount * selectedLanguages.size;
               const estCost = totalTranslations * 0.09;
-              const estMinutes = Math.ceil(Math.ceil(totalTranslations / 10) * 75 / 60);
+              // ETA from the actual client queue: TRANSLATE_CONCURRENCY images in
+              // parallel at ~TRANSLATE_SECONDS_PER_IMAGE each (audit ui13 - the old
+              // estimate assumed concurrency 10 while the queue runs 3).
+              const estMinutes = Math.ceil(Math.ceil(totalTranslations / TRANSLATE_CONCURRENCY) * TRANSLATE_SECONDS_PER_IMAGE / 60);
               return (
                 <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowTranslateConfirm(false)}>
                   <div className="bg-white border border-gray-200 rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -1277,19 +1299,28 @@ export default function ConceptImagesStep({
             {/* Action buttons — top-right, visible on hover */}
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
               <button
-                onClick={() => {
+                onClick={(e) => { e.stopPropagation(); runQa(si.id); }}
+                disabled={qaRunningId !== null}
+                className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all shadow-sm disabled:opacity-40"
+                title="QA: kolla text/produkt med AI - körs på källbilden, fixar synkas till översättningarna"
+              >
+                {qaRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   setEditText("");
                   setEditOpenId(editOpenId === si.id ? null : si.id);
                 }}
                 disabled={editRunningId !== null}
                 className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm disabled:opacity-40"
-                title="Redigera: beskriv en ändring och regenerera samma bild"
+                title="Redigera visad fil: ändringen körs på bilden du ser (översättningen om en språkflik/9:16 är vald, annars källbilden)"
               >
                 {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
               </button>
               {onReroll && si.generation_style && !rerollingId && (
                 <button
-                  onClick={() => onReroll(si.id)}
+                  onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
                   className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
                   title="Re-roll (regenerate this image)"
                 >
@@ -1298,7 +1329,7 @@ export default function ConceptImagesStep({
               )}
               {onDeleteImage && (
                 <button
-                  onClick={() => setConfirmDeleteImageId(si.id)}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteImageId(si.id); }}
                   className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
                   title="Delete image"
                 >
@@ -1333,7 +1364,16 @@ export default function ConceptImagesStep({
               const is9x16Fallback = selectedRatio === "9:16" && !matchedTranslation;
               const has9x16Image = selectedRatio === "9:16" && !!matchedTranslation;
               return (
-                <div className={`relative ${selectedRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"} bg-gray-100 flex items-center justify-center overflow-hidden`}>
+                <div
+                  className={`relative ${selectedRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]"} bg-gray-100 flex items-center justify-center overflow-hidden cursor-pointer`}
+                  onClick={() => {
+                    // Pass the unfiltered source image so the preview modal can
+                    // switch between all languages, not just the active tab's.
+                    const fullSi = sourceImages.find((s) => s.id === si.id) ?? si;
+                    setPreviewImage(fullSi);
+                    setPreviewLang(activeTab !== "all" ? activeTab : null);
+                  }}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imgSrc}

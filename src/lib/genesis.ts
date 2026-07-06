@@ -34,6 +34,11 @@ export interface CallOptions {
   maxTokens?: number;
   /** Retries on 429 / 5xx (default 3). */
   retries?: number;
+  /**
+   * Per-call fetch timeout in ms (default 120s - generous for the Opus bots, but a hung
+   * upstream call must fail instead of stalling the global per-process queue forever).
+   */
+  timeoutMs?: number;
 }
 
 export class GenesisError extends Error {
@@ -104,21 +109,38 @@ export async function callGenesisBot(
   const msgs: GenesisMessage[] =
     typeof messages === "string" ? [{ role: "user", content: messages }] : messages;
   const retries = opts.retries ?? 3;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
 
   return enqueue(async () => {
     let lastErr: GenesisError | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const res = await fetch(`${baseUrl()}/chat/completions`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({
-          model: slug,
-          messages: msgs,
-          stream: false,
-          ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
-          ...(opts.maxTokens != null ? { max_tokens: opts.maxTokens } : {}),
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl()}/chat/completions`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({
+            model: slug,
+            messages: msgs,
+            stream: false,
+            ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+            ...(opts.maxTokens != null ? { max_tokens: opts.maxTokens } : {}),
+          }),
+          // Hard cap per call: without it one hung request blocks the serialized
+          // queue (and every waiting caller) until the platform kills the process.
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (e) {
+        const name = (e as Error)?.name;
+        if (name === "TimeoutError" || name === "AbortError") {
+          throw new GenesisError(
+            `Genesis ${slug} timed out after ${Math.round(timeoutMs / 1000)}s`,
+            undefined,
+            "timeout",
+          );
+        }
+        throw new GenesisError(`Genesis ${slug} network error: ${(e as Error)?.message ?? String(e)}`);
+      }
 
       if (res.ok) {
         const json = (await res.json()) as {

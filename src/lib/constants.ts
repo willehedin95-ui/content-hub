@@ -26,6 +26,13 @@ export const RATE_LIMIT_IMAGE_TRANSLATE = 20;
 // Translation timing
 export const STALE_CLAIM_MS = 10 * 60 * 1000; // 10 minutes
 
+// Client-side translate queue: how many images the browser processes in
+// parallel (ImageJobDetail startQueue) and the per-image estimate used for
+// the ETA in the translate-confirm dialog. Keep in sync so the ETA reflects
+// actual queue behavior (audit ui8/ui13).
+export const TRANSLATE_CONCURRENCY = 3;
+export const TRANSLATE_SECONDS_PER_IMAGE = 75;
+
 // Static ad styles from Creative Coverage framework
 export const STATIC_STYLES = [
   { id: "product-hero", label: "Product Hero", description: "Product front and center, clean studio or lifestyle setting, benefit-driven" },

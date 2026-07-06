@@ -233,6 +233,26 @@ export async function generateStaticImages(
       // Render + quality gate (opt-in). Happy path = 1 render + 1 cheap vision QA. The expensive
       // extra render only happens when QA actually finds a problem: text-only issues get a
       // text-correction edit; anything else (PSA/meta text, wrong product, defects) gets a reroll.
+      // Every extra render (discarded reroll attempt, text-correction pass) is a paid Kie call
+      // and gets its own usage_logs row - previously only the accepted image was logged (img9).
+      const logExtraRender = (purpose: string, extra: Record<string, unknown>) =>
+        db.from("usage_logs").insert({
+          type: "image_generation",
+          page_id: null,
+          translation_id: null,
+          model: KIE_MODEL,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: KIE_IMAGE_COST,
+          metadata: {
+            purpose,
+            image_job_id: jobId,
+            style: brief.style,
+            label,
+            ...extra,
+          },
+        });
+
       let finalUrl = "";
       let costTimeMs: number | null = null;
       const maxAttempts = imageQa ? 3 : 1;
@@ -245,9 +265,18 @@ export async function generateStaticImages(
           const qa = await qaImage(url, { language: langName, productAppearance });
           if (!qa.ok && qa.textOnly && textCorrection) {
             console.warn(`[static-images] ${label}: QA text issues (${qa.issues.join("; ")}) - text-correction pass`);
-            url = await correctImageText(url, langName, "4:5");
+            const corrected = await correctImageText(url, langName, "4:5");
+            if (corrected !== url) {
+              await logExtraRender("static_ad_qa_text_correction", { attempt, qa_issues: qa.issues.slice(0, 3) });
+              url = corrected;
+            }
           } else if (!qa.ok && attempt < maxAttempts) {
             console.warn(`[static-images] ${label}: QA fail (${qa.issues.join("; ")}) - reroll ${attempt}/${maxAttempts - 1}`);
+            await logExtraRender("static_ad_qa_reroll_discard", {
+              attempt,
+              qa_issues: qa.issues.slice(0, 3),
+              kie_cost_time_ms: r.costTimeMs,
+            });
             continue;
           }
         }
