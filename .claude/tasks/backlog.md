@@ -1,11 +1,20 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-06 (Genesis-integrationen KOMPLETT + LIVE - se journal LATEST. Nästa: avatar-uppdatering från quiz-data → segment-omskrivning → ads)
+Updated: 2026-07-06 kväll (avatar+segment+matris KLART; FULL pipeline-audit ~80 fynd ÅTGÄRDADE P0-P3, prod på ac44a596 - se journal LATEST + .claude/tasks/creative-pipeline-audit-2026-07-06.md)
 
-## NÄSTA SESSION - Williams plan (i ordning) - 2026-07-06
+## NÄSTA SESSION - 2026-07-06 kväll
 
-1. [ ] **Uppdatera Christine-avataren med quiz-resultaten.** `quiz_sessions` (2 353 st) + `quiz_events` från quiz.doginwork.se = perfekt research. Uppdatera `doginwork/docs/01-avatar.md` med verkliga problemfördelningar/demografi/formuleringar ur quiz-svaren. LÄS `doginwork/CLAUDE.md` + SESSION-LOG först.
-2. [ ] **Skriv om valpakademins `product_segments`** utifrån uppdaterade avataren. William tycker inte dagens beskrivningar är representativa (skapades 2026-05-03 ur comment-scrapen - grundade men telegrafiska). Grunda i 01-avatar.md, inga påhitt.
-3. [ ] **Välj segment som ad-vinklar** → börja generera skarpa Genesis-koncept + static ads mot dem, pusha till Meta. (OBS: doginwork template-adsets/campaign-mappings troligen inte konfade i Settings än.)
+1. [ ] **William sveper Genesis-matrisen** (17 koncept, tagg `matrix-2026-07-06`, distinkta hooks + riktiga headlines) → statics på överlevarna (GenesisStaticPanel) → Meta-push. Mapping FINNS ("Sales Valpakademin" + template-adset "#101 (Quiz)"). Läs Meta-resultaten per RAD/KOLUMN i matrisen (ton vs problem).
+2. [ ] **Verifiera reconcile-cronens körningar** (`cron_runs`, var 30 min) - alla gamla pending-translations ska vara läkta; annars gräv.
+3. [ ] **Rensa 2 döda "Valpakademin Sales Page"-stubbar** i pages-tabellen (a2780cf1, b76c8144) - väntar på Williams ok. Validering finns numera ändå (recommender + launchpad-add).
+
+## KLART 2026-07-06 (heldags-session)
+
+- [x] ~~Avatar ur quiz-data~~ - 01-avatar.md + tolkningsregler (alla svarande, ej köpare; tid=självbild; "tidigt i problemet" ej "proaktiv")
+- [x] ~~product_segments omskrivna~~ - 9 segment, prosa, quiz-stats i demographics-fältet
+- [x] ~~Genesis segment-discovery~~ - psykologi-axeln (docs/08 i doginwork), segment #9 tillagt
+- [x] ~~Exploration-matris~~ - 17 koncept/14 vinklar, hook-kollisioner fixade med förbudslista
+- [x] ~~Headline-buggen~~ (strängsplitt → headline-bot-) + ~~bild-edit-feature~~ (penna, ratio/språk-medveten, in place)
+- [x] ~~CREATIVE PIPELINE-AUDIT + ÅTGÄRD AV ALLT~~ - P0 pengarisker (b36a9dc1), P1+P2 självläkning/sync (e0708a49), P3 kvalitet/UI (ac44a596). Reconcile-cron live, unika index, prod-städning igång.
 
 ## Genesis-integrationen - KLAR & LIVE 2026-07-06 (`46d1fefc`)
 

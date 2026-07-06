@@ -96,6 +96,8 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **NEVER guess API endpoints or parameters** — Read the actual code in `src/lib/` before making API calls. Meta, Supabase, Cloudflare, and Kie all have non-obvious behaviors.
 - **NEVER use the Supabase service role key for DDL** — It only supports PostgREST (data operations). Schema changes MUST go through the Management API.
 - **NEVER set `is_dynamic_creative` on an existing Meta ad set** — It can only be set at creation time. Meta silently ignores the update.
+- **NEVER retry Meta creation calls on timeout/5xx** — outcome is unknown; a retry can create duplicate ACTIVE ads. Use `metaJsonMutating` (429-only retry) for creates; transient retry is for idempotent calls only.
+- **NEVER call money-writing Meta functions outside `runWithMetaConfig`** — the module-global `setMetaConfig` can be swapped by concurrent requests and land ads/pauses in the wrong ad account.
 - **NEVER skip `npm run build`** — Always verify the build passes before committing. TypeScript errors caught here prevent broken deploys.
 - **NEVER create files at the project root unless they're config files** — Components go in `src/components/`, utilities in `src/lib/`, types in `src/types/`.
 - **NEVER hardcode API tokens in source files** — All tokens live in `.env.local`. Reference via `process.env.VARIABLE_NAME`.
