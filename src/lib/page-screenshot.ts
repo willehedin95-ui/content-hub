@@ -81,7 +81,18 @@ export async function renderPageThumbnail(
         await page.setContent(html!, { waitUntil: "networkidle2", timeout: 20000 });
       }
       await new Promise((r) => setTimeout(r, 1500));
-      const screenshot = await page.screenshot({ type: "jpeg", quality: 85 });
+      // Freeze animations/videos first - page.screenshot can hang indefinitely on pages with
+      // active animations (seen on Shopify pages). Race with a timeout so we fall back instead.
+      await page.evaluate(() => {
+        const style = document.createElement("style");
+        style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; }";
+        document.head.appendChild(style);
+        document.querySelectorAll("video").forEach((v) => v.pause());
+      }).catch(() => {});
+      const screenshot = await Promise.race([
+        page.screenshot({ type: "jpeg", quality: 85 }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("screenshot timed out")), 25000)),
+      ]);
 
       const filename = `${pageId}.jpg`;
       const { error: uploadError } = await db.storage
