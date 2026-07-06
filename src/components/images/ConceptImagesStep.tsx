@@ -15,6 +15,7 @@ import {
   X,
   Copy,
   ShieldCheck,
+  Pencil,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { ImageJob, SourceImage, Language, LANGUAGES, ProductSegment } from "@/types";
@@ -329,6 +330,36 @@ export default function ConceptImagesStep({
       setQaMessages((prev) => ({ ...prev, [siId]: "QA misslyckades - försök igen" }));
     } finally {
       setQaRunningId(null);
+    }
+  };
+
+  // User-directed image edit: comment -> re-render the same image with the change applied.
+  const [editOpenId, setEditOpenId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editRunningId, setEditRunningId] = useState<string | null>(null);
+
+  const runEdit = async (siId: string) => {
+    const instruction = editText.trim();
+    if (instruction.length < 3) return;
+    setEditRunningId(siId);
+    setQaMessages((prev) => ({ ...prev, [siId]: "" }));
+    try {
+      const res = await fetch(`/api/image-jobs/${job.id}/edit-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_image_id: siId, instruction }),
+      });
+      const data = await res.json();
+      setQaMessages((prev) => ({ ...prev, [siId]: data.message || data.error || "Okänt fel" }));
+      if (data.status === "edited") {
+        setEditOpenId(null);
+        setEditText("");
+        onRefresh?.();
+      }
+    } catch {
+      setQaMessages((prev) => ({ ...prev, [siId]: "Redigeringen misslyckades - försök igen" }));
+    } finally {
+      setEditRunningId(null);
     }
   };
   // Show generate section when job has visual_direction and isn't processing
@@ -793,6 +824,18 @@ export default function ConceptImagesStep({
                   >
                     {qaRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditText("");
+                      setEditOpenId(editOpenId === si.id ? null : si.id);
+                    }}
+                    disabled={editRunningId !== null}
+                    className="text-gray-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0 disabled:opacity-40"
+                    title="Redigera: beskriv en ändring och regenerera samma bild"
+                  >
+                    {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
+                  </button>
                   {onReroll && si.generation_style && !rerollingId && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
@@ -812,6 +855,26 @@ export default function ConceptImagesStep({
                     </button>
                   )}
                 </div>
+                {editOpenId === si.id && (
+                  <div className="px-2 pb-2 space-y-1.5">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      placeholder="t.ex. ändra vår till sommar, behåll allt annat"
+                      rows={2}
+                      autoFocus
+                      className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-none"
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); runEdit(si.id); }}
+                      disabled={editRunningId !== null || editText.trim().length < 3}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-indigo-600 text-white rounded-md py-1.5 hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                    >
+                      {editRunningId === si.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pencil className="w-3 h-3" />}
+                      Regenerera med ändring
+                    </button>
+                  </div>
+                )}
                 {qaMessages[si.id] && (
                   <p className="px-2 pb-1.5 text-[10px] leading-snug text-gray-500">{qaMessages[si.id]}</p>
                 )}
