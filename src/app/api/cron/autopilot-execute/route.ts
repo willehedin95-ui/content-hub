@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
-import { updateAdSet, updateCampaign, setMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
+import { updateAdSet, updateCampaign, setMetaConfig, pauseAdSetAndAds, runWithMetaConfig } from "@/lib/meta";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
 import {
   computeStrategyGuide,
@@ -59,7 +59,11 @@ export async function GET(req: NextRequest) {
       const autoBudget = settings.autopilot_auto_budget === true;
 
       try {
-        // Set Meta credentials for this workspace (crons have no cookies)
+        // Set Meta credentials for this workspace (crons have no cookies).
+        // Money-writing calls below ALSO run inside runWithMetaConfig so a
+        // concurrent request swapping the module global can never redirect a
+        // kill/budget-change into the wrong ad account.
+        const wsMetaConfig = (workspace.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
         if (workspace.meta_config) {
           setMetaConfig(workspace.meta_config as Parameters<typeof setMetaConfig>[0]);
         }
@@ -235,7 +239,7 @@ export async function GET(req: NextRequest) {
           }
 
           try {
-            await pauseAdSetAndAds(adsetId);
+            await runWithMetaConfig(wsMetaConfig, () => pauseAdSetAndAds(adsetId));
             await sleep(DELAY_MS);
 
             await db.from("autopilot_actions").insert({
@@ -348,7 +352,7 @@ export async function GET(req: NextRequest) {
         }
 
         try {
-          await updateCampaign(campaignId, { daily_budget: String(newBudgetCents) });
+          await runWithMetaConfig(wsMetaConfig, () => updateCampaign(campaignId, { daily_budget: String(newBudgetCents) }));
           await sleep(DELAY_MS);
 
           await db.from("autopilot_actions").insert({

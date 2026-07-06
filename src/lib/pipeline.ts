@@ -1817,6 +1817,9 @@ export async function getLaunchpadConcepts(workspaceId?: string): Promise<
     .from("image_jobs")
     .select("id, name, concept_number, source, product, launchpad_priority, target_languages")
     .not("launchpad_priority", "is", null)
+    // Archived concepts must never surface on the pad (or be cron-pushed),
+    // even if a stale launchpad_priority survived the archive action.
+    .is("archived_at", null)
     .order("launchpad_priority", { ascending: true });
   if (workspaceId) imageQuery = imageQuery.eq("workspace_id", workspaceId);
   const { data: imageJobs } = await imageQuery;

@@ -17,7 +17,10 @@ export async function POST(
   }
 
   try {
-    const { results, scheduled_time } = await pushConceptToMeta(jobId);
+    // Manual push from the concept page = the user expects delivery NOW.
+    // Without activateNow, workspaces with no schedule setting got PAUSED
+    // ad sets that never delivered while the UI reported success.
+    const { results, scheduled_time } = await pushConceptToMeta(jobId, { activateNow: true });
     return NextResponse.json({ results, scheduled_time });
   } catch (err) {
     console.error("[Push to Meta] Error:", err);

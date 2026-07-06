@@ -8,10 +8,10 @@ import {
   getToken,
   getAdAccountId,
   getPageId,
-  setMetaConfig,
+  runWithMetaConfig,
 } from "@/lib/meta";
 import { withRetry, isTransientError } from "@/lib/retry";
-import { translateAdCopyBatch } from "@/lib/meta-push";
+import { translateAdCopyBatch, nextStockholmOccurrence } from "@/lib/meta-push";
 
 // ---------------------------------------------------------------------------
 // Meta API helpers for video (uses longer timeout + different response shapes)
@@ -20,10 +20,20 @@ import { translateAdCopyBatch } from "@/lib/meta-push";
 const META_API_BASE = "https://graph.facebook.com/v22.0";
 
 /** Generic Meta API JSON call with retry, matching the pattern in meta.ts */
+/** Retryable check for MUTATING calls: retry only on definite rejection (429).
+ * A timed-out/5xx create has an unknown outcome — retrying can duplicate
+ * ACTIVE ad sets/ads (same invariant as metaJsonMutating in meta.ts). */
+function isRetryableMutation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return /\b429\b/.test(error.message) || msg.includes("rate limit") || msg.includes("too many requests");
+}
+
 async function metaFetchJson<T>(
   path: string,
   options: RequestInit = {},
-  timeoutMs = 30_000
+  timeoutMs = 30_000,
+  retryable: (e: unknown) => boolean = isTransientError
 ): Promise<T> {
   return withRetry(
     async () => {
@@ -68,7 +78,7 @@ async function metaFetchJson<T>(
         clearTimeout(timeout);
       }
     },
-    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: retryable }
   );
 }
 
@@ -242,6 +252,7 @@ export async function createVideoCreative(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // (body below) — mutation-safe retry set via trailing args
       body: JSON.stringify({
         name: opts.name,
         object_story_spec: {
@@ -258,7 +269,9 @@ export async function createVideoCreative(
           },
         },
       }),
-    }
+    },
+    30_000,
+    isRetryableMutation
   );
 
   return data.id;
@@ -325,12 +338,39 @@ export async function pushVideoToMeta(
   videoJobId: string,
   opts?: { languages?: string[]; markets?: string[]; workspaceId?: string }
 ): Promise<{ results: VideoPushResult[] }> {
+  // Resolve config from the TARGET workspace. The old code always called the
+  // cookie-based getWorkspace() — in cron context (no cookie) that fell back
+  // to the default workspace and pushed videos into the WRONG ad account.
+  const db0 = createServerSupabase();
+  let metaConfig: Parameters<typeof runWithMetaConfig>[0] = null;
+  let wsSettingsResolved: Record<string, unknown> | null = null;
+  if (opts?.workspaceId) {
+    const { data: wsRow, error: wsErr } = await db0
+      .from("workspaces")
+      .select("meta_config, settings")
+      .eq("id", opts.workspaceId)
+      .single();
+    if (wsErr || !wsRow) {
+      // A silent null here would fall through to the env-default ad account —
+      // the exact wrong-account bug this resolution exists to prevent.
+      throw new Error(`Failed to resolve Meta config for workspace ${opts.workspaceId}: ${wsErr?.message ?? "not found"}`);
+    }
+    metaConfig = (wsRow.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
+    wsSettingsResolved = (wsRow.settings ?? {}) as Record<string, unknown>;
+  } else {
+    const ws = await getWorkspace();
+    metaConfig = (ws.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
+  }
+  return runWithMetaConfig(metaConfig, () => pushVideoToMetaInner(videoJobId, opts, wsSettingsResolved));
+}
+
+async function pushVideoToMetaInner(
+  videoJobId: string,
+  opts: { languages?: string[]; markets?: string[]; workspaceId?: string } | undefined,
+  wsSettingsResolved: Record<string, unknown> | null,
+): Promise<{ results: VideoPushResult[] }> {
   const db = createServerSupabase();
   const wsId = opts?.workspaceId ?? await getWorkspaceId();
-
-  // Load workspace Meta config (uses per-workspace creds if configured, else env vars)
-  const ws = await getWorkspace();
-  setMetaConfig(ws.meta_config ?? null);
 
   // Load the video job with translations + source videos
   const { data: job, error: jobError } = await db
@@ -456,18 +496,15 @@ export async function pushVideoToMeta(
     throw new Error("No completed video translations to push");
   }
 
-  // Load default schedule time from workspace settings
+  // Load default schedule time from the TARGET workspace's settings (cookie
+  // fallback in cron context read the wrong workspace's schedule).
   let scheduledStartTime: string | null = null;
-  const wsSettings = await getWorkspaceSettings();
+  const wsSettings = wsSettingsResolved ?? await getWorkspaceSettings();
   const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
   if (scheduleHHMM) {
     const [hh, mm] = scheduleHHMM.split(":").map(Number);
-    const now = new Date();
-    const scheduled = new Date(now);
-    scheduled.setHours(hh, mm, 0, 0);
-    if (scheduled <= now) {
-      scheduled.setDate(scheduled.getDate() + 1);
-    }
+    // Swedish wall-clock time, DST-aware (same math as image pushes).
+    const scheduled = nextStockholmOccurrence(hh, mm);
     scheduledStartTime = scheduled.toISOString();
   }
 
@@ -560,7 +597,9 @@ export async function pushVideoToMeta(
         });
         adSetId = newAdSet.id;
       } else {
-        // No template — create a basic ad set under the campaign
+        // No template — create a basic ad set under the campaign.
+        // Mutation-safe retry (429 only): a timed-out create may have
+        // succeeded server-side, and a blind retry duplicates an ACTIVE ad set.
         const adSetRes = await metaFetchJson<{ id: string }>(
           `/act_${getAdAccountId()}/adsets`,
           {
@@ -575,7 +614,9 @@ export async function pushVideoToMeta(
               start_time: scheduledStartTime || new Date().toISOString(),
               status: scheduledStartTime ? "ACTIVE" : "PAUSED",
             }),
-          }
+          },
+          30_000,
+          isRetryableMutation
         );
         adSetId = adSetRes.id;
       }

@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   // --- Image concept (original logic) ---
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, product, source, target_languages, landing_page_id, ad_copy_primary, ad_copy_translations")
+    .select("id, name, product, source, status, tags, archived_at, target_languages, landing_page_id, ad_copy_primary, ad_copy_translations")
     .eq("id", conceptId)
     .eq("workspace_id", workspaceId)
     .single();
@@ -106,6 +106,12 @@ export async function POST(req: NextRequest) {
   if (!job.product) errors.push("Product not set");
   if (!job.landing_page_id) errors.push("No landing page selected");
   if (!job.ad_copy_primary || job.ad_copy_primary.length === 0) errors.push("No ad copy");
+  // Hard gates: judge-REJECT (brand-rule violation) and archived concepts
+  // must never enter the push queue.
+  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).includes("judge:REJECT")) {
+    errors.push("Judge REJECT — granska copyn och ta bort judge:REJECT-taggen först");
+  }
+  if (job.archived_at) errors.push("Concept is archived");
 
   // Quality gate: check that all translations passed review
   const translations = job.ad_copy_translations as Record<string, { status?: string }> | null;

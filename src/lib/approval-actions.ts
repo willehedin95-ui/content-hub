@@ -20,6 +20,34 @@ export interface ApprovalResult {
 
 const COUNTRY_MAP: Record<string, string> = { sv: "SE", da: "DK", no: "NO" };
 
+/**
+ * Remove concepts from the push pipeline: clear per-market launchpad
+ * priorities and exit their PRE-PUSH lifecycle rows (launchpad/queued only —
+ * exiting killed/live history rows would make detectStageTransitions treat
+ * the concept as brand-new and re-run learnings/duplicate lifecycle rows).
+ * Shared by reject (here) and the bulk-archive route so the two never drift.
+ */
+export async function clearFromPushPipeline(
+  db: ReturnType<typeof createServerSupabase>,
+  jobIds: string[],
+): Promise<void> {
+  if (!jobIds.length) return;
+  const { data: markets } = await db
+    .from("image_job_markets")
+    .update({ launchpad_priority: null })
+    .in("image_job_id", jobIds)
+    .select("id");
+  const marketIds = (markets ?? []).map((m) => m.id);
+  if (marketIds.length) {
+    await db
+      .from("concept_lifecycle")
+      .update({ exited_at: new Date().toISOString() })
+      .in("image_job_market_id", marketIds)
+      .in("stage", ["launchpad", "queued"])
+      .is("exited_at", null);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CONCEPT APPROVE / REJECT
 // ---------------------------------------------------------------------------
@@ -29,12 +57,37 @@ export async function approveConceptAction(jobId: string, source: string = "revi
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority, product, ad_copy_primary, ad_copy_headline")
+    .select("id, name, concept_number, workspace_id, target_languages, landing_page_id, launchpad_priority, product, ad_copy_primary, ad_copy_headline, status, tags, archived_at")
     .eq("id", jobId)
     .single();
 
   if (!job) {
     return { ok: false, action: "approve", error: "Concept not found", jobId };
+  }
+
+  // Judge-REJECT = hard brand-rule violation (e.g. English in Swedish copy,
+  // price in copy). The tag was previously write-only, so REJECT concepts
+  // could ride the approve → launchpad → cron chain straight to Meta.
+  if (job.status === "rejected" || ((job.tags as string[] | null) ?? []).includes("judge:REJECT")) {
+    return {
+      ok: false,
+      action: "approve",
+      error: "Judge REJECT — granska copyn i konceptet och ta bort judge:REJECT-taggen innan godkännande.",
+      jobId,
+      jobName: job.name,
+    };
+  }
+
+  // A stale Approve tap (e.g. old Telegram button) on an already-rejected/
+  // archived concept must not silently re-enter it into the push queue.
+  if (job.archived_at || job.status === "archived") {
+    return {
+      ok: false,
+      action: "approve",
+      error: "Konceptet är arkiverat/avvisat — avarkivera det först om det ska godkännas.",
+      jobId,
+      jobName: job.name,
+    };
   }
 
   if (job.launchpad_priority != null) {
@@ -158,11 +211,22 @@ export async function rejectConceptAction(jobId: string, source: string = "revie
 
   // Set both archived_at AND status='archived' to keep them in sync.
   // /review/pending filters on archived_at IS NULL — without this both must agree.
-  await db.from("image_jobs").update({
+  // Also clear launchpad_priority + exit pre-push lifecycle rows: a rejected
+  // concept left on the pad would still be pushed by the nightly cron.
+  const { error: rejectErr } = await db.from("image_jobs").update({
     archived_at: new Date().toISOString(),
     status: "archived",
+    launchpad_priority: null,
     updated_at: new Date().toISOString(),
   }).eq("id", jobId);
+
+  if (rejectErr) {
+    // Reporting success on a failed update would let the nightly cron push a
+    // creative the reviewer believes is rejected.
+    return { ok: false, action: "reject", error: `Reject failed: ${rejectErr.message}`, jobId, jobName: job.name };
+  }
+
+  await clearFromPushPipeline(db, [jobId]);
 
   await db.from("autopilot_actions").insert({
     workspace_id: job.workspace_id,

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { withRetry, isTransientError } from "./retry";
 import type { WorkspaceMetaConfig } from "@/types";
 
@@ -7,25 +8,41 @@ const META_FETCH_TIMEOUT_MS = 30_000;
 // Per-request workspace Meta config override (set before calling Meta functions)
 let _wsMetaConfig: WorkspaceMetaConfig | null = null;
 
+// Request-scoped config: immune to concurrent setMetaConfig calls from other
+// requests sharing the Node instance. Money-writing paths (ad pushes, crons
+// that loop workspaces) MUST use runWithMetaConfig; the module global remains
+// as a fallback for legacy read-only routes.
+const metaConfigALS = new AsyncLocalStorage<WorkspaceMetaConfig | null>();
+
 /** Set workspace Meta config for subsequent API calls. Call with null to clear. */
 export function setMetaConfig(config: WorkspaceMetaConfig | null): void {
   _wsMetaConfig = config;
 }
 
+/** Run fn with a request-scoped Meta config that concurrent requests cannot clobber. */
+export function runWithMetaConfig<T>(config: WorkspaceMetaConfig | null, fn: () => Promise<T>): Promise<T> {
+  return metaConfigALS.run(config, fn);
+}
+
+function activeConfig(): WorkspaceMetaConfig | null {
+  const scoped = metaConfigALS.getStore();
+  return scoped !== undefined ? scoped : _wsMetaConfig;
+}
+
 export function getToken(): string {
-  const token = _wsMetaConfig?.system_user_token || process.env.META_SYSTEM_USER_TOKEN;
+  const token = activeConfig()?.system_user_token || process.env.META_SYSTEM_USER_TOKEN;
   if (!token) throw new Error("META_SYSTEM_USER_TOKEN is not set");
   return token;
 }
 
 export function getAdAccountId(): string {
-  const id = _wsMetaConfig?.ad_account_id || process.env.META_AD_ACCOUNT_ID;
+  const id = activeConfig()?.ad_account_id || process.env.META_AD_ACCOUNT_ID;
   if (!id) throw new Error("META_AD_ACCOUNT_ID is not set");
   return id;
 }
 
 export function getPageId(): string {
-  const id = _wsMetaConfig?.page_id || process.env.META_PAGE_ID;
+  const id = activeConfig()?.page_id || process.env.META_PAGE_ID;
   if (!id) throw new Error("META_PAGE_ID is not set");
   return id;
 }
@@ -49,7 +66,27 @@ async function metaFetch(path: string, options: RequestInit = {}): Promise<Respo
   }
 }
 
+/**
+ * Retryable check for MUTATING calls (create ad/adset/creative/campaign).
+ * Only retry when Meta definitively REJECTED the request (rate limit) — a
+ * timeout, abort, or 5xx has an uncertain outcome: the object may have been
+ * created server-side, and a retry then creates a duplicate ACTIVE ad.
+ */
+function isRetryableMutation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return /\b429\b/.test(error.message) || msg.includes("rate limit") || msg.includes("too many requests");
+}
+
+async function metaJsonMutating<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return metaJsonWith<T>(path, options, isRetryableMutation);
+}
+
 async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return metaJsonWith<T>(path, options, isTransientError);
+}
+
+async function metaJsonWith<T>(path: string, options: RequestInit, isRetryable: (e: unknown) => boolean): Promise<T> {
   return withRetry(
     async () => {
       const res = await metaFetch(path, options);
@@ -79,7 +116,7 @@ async function metaJson<T>(path: string, options: RequestInit = {}): Promise<T> 
 
       return (await res.json()) as T;
     },
-    { maxAttempts: 3, initialDelayMs: 2000, isRetryable: isTransientError }
+    { maxAttempts: 3, initialDelayMs: 2000, isRetryable }
   );
 }
 
@@ -173,7 +210,7 @@ export async function createCampaign(params: {
   objective: string;
   status?: string;
 }): Promise<{ id: string }> {
-  return metaJson(`/act_${getAdAccountId()}/campaigns`, {
+  return metaJsonMutating(`/act_${getAdAccountId()}/campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -195,7 +232,7 @@ export async function createAdSet(params: {
   endTime?: string;
   status?: string;
 }): Promise<{ id: string }> {
-  return metaJson(`/act_${getAdAccountId()}/adsets`, {
+  return metaJsonMutating(`/act_${getAdAccountId()}/adsets`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -284,7 +321,7 @@ export async function createAdCreative(params: {
         }
       : undefined;
 
-    return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
+    return metaJsonMutating(`/act_${getAdAccountId()}/adcreatives`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -318,7 +355,7 @@ export async function createAdCreative(params: {
     assetFeedSpec.asset_customization_rules = params.assetCustomizationRules;
   }
 
-  return metaJson(`/act_${getAdAccountId()}/adcreatives`, {
+  return metaJsonMutating(`/act_${getAdAccountId()}/adcreatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -333,7 +370,7 @@ export async function createAdCreative(params: {
 }
 
 export async function duplicateAdSet(adSetId: string): Promise<{ copied_adset_id: string }> {
-  return metaJson(`/${adSetId}/copies`, {
+  return metaJsonMutating(`/${adSetId}/copies`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -414,6 +451,41 @@ export async function pauseAdSetAndAds(adSetId: string): Promise<void> {
 }
 
 /**
+ * Mirror of pauseAdSetAndAds: re-activate an ad set and its paused ads.
+ * Used when a re-push completes into an ad set that a crashed previous push
+ * paused — without this the re-push reports "pushed" but nothing delivers.
+ */
+export async function activateAdSetAndAds(adSetId: string): Promise<void> {
+  await updateAdSet(adSetId, { status: "ACTIVE" });
+
+  const errors: string[] = [];
+  let ads: Array<{ id: string; status: string; name?: string }>;
+  try {
+    ads = await listAdsInAdSet(adSetId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Ad set ${adSetId} activated, but failed to list ads: ${msg}`);
+  }
+
+  for (const ad of ads) {
+    if (ad.status === "PAUSED") {
+      try {
+        await updateAd(ad.id, { status: "ACTIVE" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`ad ${ad.id}: ${msg}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Ad set ${adSetId} activated, but ${errors.length} ad(s) remained paused: ${errors.join("; ")}`
+    );
+  }
+}
+
+/**
  * Batch-fetch effective_status for many ad sets in a single Meta call.
  * Uses the Graph API's ?ids= multi-read endpoint (max 50 IDs per call).
  * Returns a Map of ad_set_id -> effective_status. IDs that fail to read
@@ -489,7 +561,7 @@ export async function createAdSetFromTemplate(params: {
     budgetFields.lifetime_budget = cfg.lifetime_budget;
   }
 
-  return metaJson(`/act_${getAdAccountId()}/adsets`, {
+  return metaJsonMutating(`/act_${getAdAccountId()}/adsets`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -537,7 +609,7 @@ export async function createAd(params: {
   status?: string;
   urlTags?: string;
 }): Promise<{ id: string }> {
-  return metaJson(`/act_${getAdAccountId()}/ads`, {
+  return metaJsonMutating(`/act_${getAdAccountId()}/ads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

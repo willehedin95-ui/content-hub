@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getWorkspace } from "@/lib/workspace";
-import { updateAdSet, setMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
+import { updateAdSet, runWithMetaConfig, pauseAdSetAndAds } from "@/lib/meta";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const db = createServerSupabase();
   const ws = await getWorkspace();
-  setMetaConfig(ws.meta_config ?? null);
+  const metaCfg = (ws.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
 
   // Get all active page_tests for this page pair
   const { data: tests, error: testsError } = await db
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   const pauseResults: Array<{ adset_id: string; success: boolean; error?: string }> = [];
   for (const { adset_id } of losingAdsets) {
     try {
-      await pauseAdSetAndAds(adset_id);
+      await runWithMetaConfig(metaCfg, () => pauseAdSetAndAds(adset_id));
       pauseResults.push({ adset_id, success: true });
     } catch (err) {
       pauseResults.push({

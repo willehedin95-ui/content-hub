@@ -8,7 +8,7 @@ import {
   uploadImage,
   createAdCreative,
   createAd,
-  setMetaConfig,
+  runWithMetaConfig,
   getAdSetConfig,
   createAdSetFromTemplate,
 } from "@/lib/meta";
@@ -32,7 +32,7 @@ export async function POST(
   // Load workspace Meta config
   const workspaceId = await getWorkspaceId();
   const ws = await getWorkspace();
-  setMetaConfig(ws.meta_config ?? null);
+  const metaCfg = (ws.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
 
   // Load campaign with ads (workspace-scoped)
   const { data: campaign, error } = await db
@@ -65,11 +65,11 @@ export async function POST(
 
     if (!metaCampaignId) {
       // Fallback: create campaign from scratch (legacy flow)
-      const metaCampaign = await createCampaign({
+      const metaCampaign = await runWithMetaConfig(metaCfg, () => createCampaign({
         name: campaign.name,
         objective: campaign.objective,
         status: "PAUSED",
-      });
+      }));
       metaCampaignId = metaCampaign.id;
 
       await db
@@ -103,15 +103,15 @@ export async function POST(
       // Create non-DCO ad set from template config (not duplicate, since
       // duplicating inherits is_dynamic_creative=true which breaks PAC rules)
       const templateConfig = await getAdSetConfig(mapping.template_adset_id);
-      const newAdSet = await createAdSetFromTemplate({
+      const newAdSet = await runWithMetaConfig(metaCfg, () => createAdSetFromTemplate({
         templateConfig,
         name: campaign.name,
         isDynamicCreative: false,
-      });
+      }));
       metaAdSetId = newAdSet.id;
     } else {
       // Legacy flow: create ad set from scratch
-      const metaAdSet = await createAdSet({
+      const metaAdSet = await runWithMetaConfig(metaCfg, () => createAdSet({
         name: `${campaign.name} - Ad Set`,
         campaignId: metaCampaignId,
         dailyBudget: campaign.daily_budget,
@@ -119,7 +119,7 @@ export async function POST(
         startTime: campaign.start_time || undefined,
         endTime: campaign.end_time || undefined,
         status: "PAUSED",
-      });
+      }));
       metaAdSetId = metaAdSet.id;
     }
 
@@ -166,20 +166,20 @@ export async function POST(
       try {
         await db.from("meta_ads").update({ status: "uploading" }).eq("id", ad.id);
 
-        const { hash: imageHash } = await uploadImage(ad.image_url);
+        const { hash: imageHash } = await runWithMetaConfig(metaCfg, () => uploadImage(ad.image_url));
         await db.from("meta_ads").update({ meta_image_hash: imageHash }).eq("id", ad.id);
 
         // Upload 9:16 image if available
         let imageHash9x16: string | undefined;
         if (ad.image_url_9x16) {
-          const result = await uploadImage(ad.image_url_9x16);
+          const result = await runWithMetaConfig(metaCfg, () => uploadImage(ad.image_url_9x16));
           imageHash9x16 = result.hash;
           await db.from("meta_ads").update({ meta_image_hash_9x16: imageHash9x16 }).eq("id", ad.id);
         }
 
         // Use labeled images + placement rules when 9:16 variant exists
         const has9x16 = !!imageHash9x16;
-        const creative = await createAdCreative({
+        const creative = await runWithMetaConfig(metaCfg, () => createAdCreative({
           name: ad.name,
           images: has9x16
             ? [{ hash: imageHash, label: "feed" }, { hash: imageHash9x16!, label: "stories" }]
@@ -189,7 +189,7 @@ export async function POST(
           titles: ad.headline ? [ad.headline] : undefined,
           linkUrl: ad.landing_page_url,
           assetCustomizationRules: has9x16 ? FEED_STORIES_RULES : undefined,
-        });
+        }));
         await db.from("meta_ads").update({ meta_creative_id: creative.id }).eq("id", ad.id);
 
         // Extract page slug from landing URL for Shopify order attribution via utm_term
@@ -197,13 +197,13 @@ export async function POST(
           try { return new URL(ad.landing_page_url).pathname.replace(/^\/|\/$/g, ""); }
           catch { return ""; }
         })();
-        const metaAd = await createAd({
+        const metaAd = await runWithMetaConfig(metaCfg, () => createAd({
           name: ad.name,
           adSetId: resolvedAdSetId,
           creativeId: creative.id,
           status: "PAUSED",
           urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(pageSlug)}`,
-        });
+        }));
         await db.from("meta_ads").update({ meta_ad_id: metaAd.id, status: "pushed" }).eq("id", ad.id);
       } catch (adError) {
         await db.from("meta_ads").update({

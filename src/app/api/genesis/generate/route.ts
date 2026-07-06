@@ -38,7 +38,10 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     .insert({
       name: p.concept_name,
       product,
-      status: "draft",
+      // REJECT concepts never get image generation, and "draft" only leaves
+      // that state via image gen — so a REJECT-as-draft rendered as
+      // "Generating images..." forever. Give it a terminal status instead.
+      status: judge.verdict === "REJECT" ? "rejected" : "draft",
       target_languages: targetLanguages,
       target_ratios: ["4:5", "9:16"],
       concept_number: nextNumber,

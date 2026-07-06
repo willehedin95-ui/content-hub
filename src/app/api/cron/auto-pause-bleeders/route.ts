@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { updateAd, updateAdSet, setMetaConfig } from "@/lib/meta";
+import { updateAd, updateAdSet, runWithMetaConfig } from "@/lib/meta";
 
 
 export const maxDuration = 60;
@@ -91,13 +91,15 @@ export async function GET(req: NextRequest) {
 
   for (const bleeder of toPause) {
     try {
-      // Set Meta config for this bleeder's workspace
+      // Request-scoped Meta config for this bleeder's workspace — the old
+      // module-global setMetaConfig could be swapped by a concurrent request
+      // mid-loop, pausing an ad in the WRONG ad account.
       const bleederWsIdForConfig = bleeder.campaign_id ? wsMap.get(bleeder.campaign_id) : undefined;
-      if (bleederWsIdForConfig && wsConfigMap.has(bleederWsIdForConfig)) {
-        setMetaConfig(wsConfigMap.get(bleederWsIdForConfig)! as Parameters<typeof setMetaConfig>[0]);
-      }
+      const bleederConfig = (bleederWsIdForConfig && wsConfigMap.has(bleederWsIdForConfig)
+        ? wsConfigMap.get(bleederWsIdForConfig)!
+        : null) as Parameters<typeof runWithMetaConfig>[0];
 
-      await updateAd(bleeder.ad_id, { status: "PAUSED" });
+      await runWithMetaConfig(bleederConfig, () => updateAd(bleeder.ad_id, { status: "PAUSED" }));
 
       // Record the pause in our tracking table
       await db.from("auto_paused_ads").insert({
@@ -136,8 +138,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Clear workspace-specific meta config after bleeder loop
-  setMetaConfig(null);
+  // (config is request-scoped per call now — nothing global to clear)
 
   const paused = results.filter((r) => r.success).length;
   const failed = results.filter((r) => !r.success).length;
@@ -163,7 +164,7 @@ export async function GET(req: NextRequest) {
 
   const { data: activeCampaigns } = await db
     .from("meta_campaigns")
-    .select("id, meta_adset_id, image_job_id, adset_name")
+    .select("id, meta_adset_id, image_job_id, adset_name, workspace_id")
     .eq("status", "pushed");
 
   const killedAdSets: string[] = [];
@@ -183,9 +184,15 @@ export async function GET(req: NextRequest) {
     const activeAds = (ads ?? []).filter((a) => a.status !== "PAUSED");
 
     if (ads && ads.length > 0 && activeAds.length === 0) {
-      // All ads paused -> kill the ad set
+      // All ads paused -> kill the ad set. Run under the CAMPAIGN's workspace
+      // config — this section previously ran after the global config was
+      // cleared, so every non-default-workspace adset pause hit the env
+      // default ad account.
       try {
-        await updateAdSet(campaign.meta_adset_id, { status: "PAUSED" });
+        const campaignConfig = (campaign.workspace_id && wsConfigMap.has(campaign.workspace_id)
+          ? wsConfigMap.get(campaign.workspace_id)!
+          : null) as Parameters<typeof runWithMetaConfig>[0];
+        await runWithMetaConfig(campaignConfig, () => updateAdSet(campaign.meta_adset_id, { status: "PAUSED" }));
         killedAdSets.push(campaign.adset_name ?? campaign.meta_adset_id);
 
         // Mark concept as killed in lifecycle

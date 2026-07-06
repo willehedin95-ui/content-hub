@@ -7,7 +7,9 @@ import {
   uploadImage,
   createAdCreative,
   createAd,
-  setMetaConfig,
+  runWithMetaConfig,
+  pauseAdSetAndAds,
+  activateAdSetAndAds,
 } from "@/lib/meta";
 import { getShortLocalizationNote } from "@/lib/localization";
 import OpenAI from "openai";
@@ -35,7 +37,10 @@ export const FEED_STORIES_RULES: Array<{
   { customization_spec: { publisher_platforms: ["messenger"], messenger_positions: ["story"] }, image_label: { name: "stories" } },
 ];
 
-/** Retry a Meta API call once after a delay (handles transient errors / rate limits) */
+/** Retry a Meta API call once after a delay (handles transient errors / rate limits).
+ * Use ONLY for idempotent calls (uploads, reads) — creation calls must not be
+ * retried here: the outcome of a timed-out create is unknown and a retry can
+ * produce duplicate ACTIVE ads (the meta.ts layer retries mutations on 429 only). */
 async function withRetry<T>(fn: () => Promise<T>, delayMs = 2000): Promise<T> {
   try {
     return await fn();
@@ -48,6 +53,64 @@ async function withRetry<T>(fn: () => Promise<T>, delayMs = 2000): Promise<T> {
     await new Promise((r) => setTimeout(r, delayMs));
     return await fn();
   }
+}
+
+/**
+ * Next UTC instant when the Europe/Stockholm wall clock reads hh:mm.
+ * The workspace schedule setting is Swedish local time; the server runs UTC,
+ * so a naive setHours() would fire 1-2h late depending on DST.
+ *
+ * Scans wall-clock dates from probes at now/+26h/+50h and returns the first
+ * strictly-future candidate: +24h probes break on the 25-hour fall-back day
+ * (same Stockholm calendar date twice → a start_time in the past, which Meta
+ * rejects). Exported so meta-video-push shares the same schedule math.
+ */
+export function nextStockholmOccurrence(hh: number, mm: number): Date {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Stockholm",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const wallAt = (d: Date) => {
+    const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
+    // Some ICU builds emit "24:00" for midnight — that is 00:00 of the NEXT
+    // wall date, so roll the date forward instead of mapping to the same day.
+    let y = Number(p.year), mo = Number(p.month), day = Number(p.day);
+    let hour = Number(p.hour);
+    if (p.hour === "24") {
+      hour = 0;
+      const rolled = new Date(Date.UTC(y, mo - 1, day) + 86_400_000);
+      y = rolled.getUTCFullYear(); mo = rolled.getUTCMonth() + 1; day = rolled.getUTCDate();
+    }
+    return { y, mo, d: day, utcOfWall: Date.UTC(y, mo - 1, day, hour, Number(p.minute)) };
+  };
+  // Convert a Stockholm wall-clock (y, mo, d, hh:mm) to the UTC instant by
+  // guessing UTC=wall and correcting with the observed offset. On the
+  // spring-forward day a nonexistent 02:xx never converges — the loop then
+  // settles within an hour of intent, and the strictly-future scan below
+  // still guarantees a valid schedule.
+  const toUtc = (y: number, mo: number, d: number): Date => {
+    const want = Date.UTC(y, mo - 1, d, hh, mm);
+    let ts = want;
+    for (let i = 0; i < 3; i++) {
+      const diff = want - wallAt(new Date(ts)).utcOfWall;
+      if (diff === 0) break;
+      ts += diff;
+    }
+    return new Date(ts);
+  };
+  const now = new Date();
+  const seen = new Set<string>();
+  for (const probeMs of [0, 26 * 3_600_000, 50 * 3_600_000]) {
+    const wall = wallAt(new Date(now.getTime() + probeMs));
+    const key = `${wall.y}-${wall.mo}-${wall.d}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const candidate = toUtc(wall.y, wall.mo, wall.d);
+    if (candidate.getTime() > now.getTime()) return candidate;
+  }
+  // Unreachable in practice; fall back to +24h so we never return the past.
+  return new Date(now.getTime() + 86_400_000);
 }
 
 /**
@@ -135,16 +198,37 @@ export async function pushConceptToMeta(
   jobId: string,
   opts?: { languages?: string[]; workspaceId?: string; metaConfig?: Record<string, unknown> | null; wsSettings?: Record<string, unknown>; activateNow?: boolean }
 ): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
+  // Resolve workspace Meta config, then run the entire push inside a
+  // request-scoped config (runWithMetaConfig) so a concurrent push/cron for
+  // another workspace can never swap credentials mid-flight (ads in the
+  // wrong ad account). When a target workspaceId is passed without an explicit
+  // config, resolve from THAT workspace — never the cookie fallback.
+  let config: Parameters<typeof runWithMetaConfig>[0];
+  if (opts?.metaConfig !== undefined) {
+    config = opts.metaConfig as Parameters<typeof runWithMetaConfig>[0];
+  } else if (opts?.workspaceId) {
+    const db0 = createServerSupabase();
+    const { data: wsRow, error: wsErr } = await db0
+      .from("workspaces")
+      .select("meta_config")
+      .eq("id", opts.workspaceId)
+      .single();
+    if (wsErr || !wsRow) {
+      throw new Error(`Failed to resolve Meta config for workspace ${opts.workspaceId}: ${wsErr?.message ?? "not found"}`);
+    }
+    config = (wsRow.meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
+  } else {
+    config = ((await getWorkspace()).meta_config ?? null) as Parameters<typeof runWithMetaConfig>[0];
+  }
+  return runWithMetaConfig(config, () => pushConceptToMetaInner(jobId, opts));
+}
+
+async function pushConceptToMetaInner(
+  jobId: string,
+  opts?: { languages?: string[]; workspaceId?: string; metaConfig?: Record<string, unknown> | null; wsSettings?: Record<string, unknown>; activateNow?: boolean }
+): Promise<{ results: PushResult[]; scheduled_time: string | null }> {
   const db = createServerSupabase();
   const wsId = opts?.workspaceId ?? await getWorkspaceId();
-
-  // Load workspace Meta config (uses per-workspace creds if configured, else env vars)
-  if (opts?.metaConfig !== undefined) {
-    setMetaConfig(opts.metaConfig);
-  } else {
-    const ws = await getWorkspace();
-    setMetaConfig(ws.meta_config ?? null);
-  }
 
   // Load the concept with images + translations
   const { data: job, error: jobError } = await db
@@ -156,6 +240,18 @@ export async function pushConceptToMeta(
 
   if (jobError || !job) {
     throw new Error("Concept not found");
+  }
+
+  // CHOKEPOINT GUARD: every push flow (manual concept page, launchpad, cron)
+  // passes through here. Judge-REJECT (hard brand-rule violation), rejected
+  // and archived concepts must never reach Meta, regardless of which upstream
+  // gate was skipped or when the concept entered the pad.
+  const jobTags = (job.tags as string[] | null) ?? [];
+  if (job.status === "rejected" || jobTags.includes("judge:REJECT")) {
+    throw new Error("Concept is judge-REJECTED — review the copy and remove the judge:REJECT tag before pushing");
+  }
+  if (job.archived_at || job.status === "archived") {
+    throw new Error("Concept is archived — unarchive it before pushing");
   }
 
   if (!job.product) {
@@ -174,15 +270,21 @@ export async function pushConceptToMeta(
   }
 
   // Prevent duplicate pushes — reject if there's a recent push in progress for this concept
-  // Auto-expire stale "pushing" states older than 30 minutes (from crashed pushes)
+  // Auto-expire stale "pushing" states older than 30 minutes (from crashed pushes).
+  // Must filter on updated_at, not created_at: add-to-existing pushes re-claim rows that
+  // were created days ago, and created_at would instantly expire the in-flight claim.
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  // Expire to "error" (NOT "failed"): the reuse lookup below only matches
+  // pushed/error, so a "failed" row from a hard-killed push would be invisible
+  // and the next push would create a duplicate ad set while the orphaned one
+  // keeps its ACTIVE ads — the double-spend path this whole block exists to close.
   await db
     .from("meta_campaigns")
-    .update({ status: "failed", error_message: "Push timed out (stale pushing state auto-expired)" })
+    .update({ status: "error", error_message: "Push timed out (stale pushing state auto-expired)" })
     .eq("workspace_id", wsId)
     .eq("image_job_id", jobId)
     .eq("status", "pushing")
-    .lt("created_at", thirtyMinAgo);
+    .lt("updated_at", thirtyMinAgo);
 
   const { data: activePush } = await db
     .from("meta_campaigns")
@@ -238,20 +340,16 @@ export async function pushConceptToMeta(
   let scheduledStartTime: string | null = null;
   const wsSettings = opts?.wsSettings ?? await getWorkspaceSettings();
   const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;
-  if (scheduleHHMM) {
-    const [hh, mm] = scheduleHHMM.split(":").map(Number);
-    const now = new Date();
-    const scheduled = new Date(now);
-    scheduled.setHours(hh, mm, 0, 0);
-    // If the time has already passed today, schedule for tomorrow
-    if (scheduled <= now) {
-      scheduled.setDate(scheduled.getDate() + 1);
-    }
-    scheduledStartTime = scheduled.toISOString();
-  } else if (opts?.activateNow) {
+  if (opts?.activateNow) {
+    // Explicit "Push Now" must win over the workspace schedule setting — the
+    // old precedence meant "Push Now" silently scheduled for tomorrow morning.
     // Start ~60s in the future so Meta has time to receive the creation
     // request and activate the ad set without race conditions.
     scheduledStartTime = new Date(Date.now() + 60_000).toISOString();
+  } else if (scheduleHHMM) {
+    const [hh, mm] = scheduleHHMM.split(":").map(Number);
+    // The setting is Swedish wall-clock time; the server runs UTC.
+    scheduledStartTime = nextStockholmOccurrence(hh, mm).toISOString();
   }
 
   // Get landing page URLs for each language (page A)
@@ -407,22 +505,48 @@ export async function pushConceptToMeta(
       const hasPageB = isPageTest && landingUrlByLangB.has(lang);
       const adSetName = hasPageB ? `${adSetNameBase} [A]` : adSetNameBase;
 
-      // Check for existing pushed ad set for this concept + language
-      // If found, add new images to it instead of creating a new ad set
-      const { data: existingCampaign } = await db
+      // Check for existing pushed OR errored ad sets for this concept + language.
+      // "pushed": add new images instead of creating a new ad set.
+      // "error": a previous push partially failed — its adset may exist in Meta
+      // with live (or crash-paused) ads; reusing it prevents the
+      // duplicate-adset/double-spend re-push bug.
+      // Fetch ALL candidates: the image dedupe must union meta_ads across every
+      // row (a newer partial row must not shadow an older fuller one), and rows
+      // flagged "tracking insert failed" carry untracked live ads that dedupe
+      // cannot see — pushing again would duplicate them.
+      const { data: existingCandidates } = await db
         .from("meta_campaigns")
-        .select("id, meta_adset_id, meta_ads(image_url)")
+        .select("id, meta_adset_id, status, error_message, meta_ads(image_url)")
         .eq("workspace_id", wsId)
         .eq("image_job_id", jobId)
         .eq("language", lang)
-        .eq("status", "pushed")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .in("status", ["pushed", "error"])
+        .order("created_at", { ascending: false });
+      const needsReconciliation = (existingCandidates ?? []).some(
+        (c) => (c.error_message ?? "").includes("tracking insert failed"),
+      );
+      if (needsReconciliation) {
+        return {
+          language: lang,
+          country,
+          status: "error",
+          error: "Previous push left untracked ads in Meta — reconcile meta_ads against Ads Manager before re-pushing this language",
+        } as const;
+      }
+      const allPushedUrls = new Set(
+        (existingCandidates ?? []).flatMap((c) =>
+          ((c.meta_ads ?? []) as Array<{ image_url: string | null }>).map((a) => a.image_url).filter(Boolean),
+        ),
+      );
+      const existingCampaign = (existingCandidates ?? []).find((c) => c.meta_adset_id) ?? null;
+      const reusedErrorRow = existingCampaign?.status === "error";
 
       let adSetId: string;
       let campaignId: string;
       let isAddingToExisting = false;
+      // Ad sets created by THIS run — paused on crash so a partial failure
+      // never leaves unreviewed ads live in Meta.
+      const createdAdSetIds: string[] = [];
 
       if (isPermanent) {
         // Simplified structure: use permanent ad set directly (no cloning)
@@ -431,12 +555,9 @@ export async function pushConceptToMeta(
         // Check if we already have a campaign record for this concept + language
         if (existingCampaign?.meta_adset_id) {
           // Filter out already-pushed images
-          const pushedUrls = new Set(
-            ((existingCampaign.meta_ads ?? []) as Array<{ image_url: string | null }>)
-              .map((a) => a.image_url)
-              .filter(Boolean)
-          );
-          const newImages = allLangImages.filter((img) => !pushedUrls.has(img.image_url));
+          // Dedupe against ads across ALL candidate rows, not just this one —
+          // a newer partial row must not hide images living in an older ad set.
+          const newImages = allLangImages.filter((img) => !allPushedUrls.has(img.image_url));
 
           if (newImages.length === 0) {
             return { language: lang, country, status: "pushed", error: undefined } as const;
@@ -478,12 +599,8 @@ export async function pushConceptToMeta(
         }
       } else if (existingCampaign?.meta_adset_id) {
         // Legacy structure: reuse existing ad set — filter out already-pushed images
-        const pushedUrls = new Set(
-          ((existingCampaign.meta_ads ?? []) as Array<{ image_url: string | null }>)
-            .map((a) => a.image_url)
-            .filter(Boolean)
-        );
-        const newImages = allLangImages.filter((img) => !pushedUrls.has(img.image_url));
+        // Dedupe against ads across ALL candidate rows (see allPushedUrls above).
+        const newImages = allLangImages.filter((img) => !allPushedUrls.has(img.image_url));
 
         if (newImages.length === 0) {
           return { language: lang, country, status: "pushed", error: undefined } as const;
@@ -503,19 +620,13 @@ export async function pushConceptToMeta(
         allLangImages.length = 0;
         allLangImages.push(...newImages);
       } else {
-        // Legacy structure: Create new ad set from template config
-        // Non-DCO (is_dynamic_creative=false) so asset_customization_rules work
-        // for routing 4:5→feed and 9:16→stories/reels
-        const templateConfig = await getAdSetConfig(mapping.template_adset_id);
-        const newAdSet = await createAdSetFromTemplate({
-          templateConfig,
-          name: adSetName,
-          isDynamicCreative: false,
-          startTime: scheduledStartTime || undefined,
-        });
-        adSetId = newAdSet.id;
-
-        const { data: newCampaign } = await db
+        // Legacy structure: Create new ad set from template config.
+        // CLAIM-FIRST: insert the tracking row (status "pushing", no adset yet)
+        // BEFORE creating the Meta ad set. The unique partial index
+        // meta_campaigns_pushing_claim_uq makes a concurrent double-push fail
+        // here instead of creating a duplicate adset, and a crash after adset
+        // creation can never leave an untracked adset in Meta.
+        const { data: claimRow, error: claimErr } = await db
           .from("meta_campaigns")
           .insert({
             workspace_id: wsId,
@@ -523,7 +634,7 @@ export async function pushConceptToMeta(
             product: job.product,
             image_job_id: jobId,
             meta_campaign_id: mapping.meta_campaign_id,
-            meta_adset_id: adSetId,
+            meta_adset_id: null,
             objective: "OUTCOME_TRAFFIC",
             countries: [country],
             language: lang,
@@ -534,8 +645,54 @@ export async function pushConceptToMeta(
           .select()
           .single();
 
-        if (!newCampaign) throw new Error("Failed to create campaign record");
-        campaignId = newCampaign.id;
+        if (claimErr || !claimRow) {
+          const isDupe = claimErr?.code === "23505";
+          return {
+            language: lang,
+            country,
+            status: "error",
+            error: isDupe
+              ? "A push is already in progress for this language (concurrent push blocked)"
+              : `Failed to create campaign record: ${claimErr?.message ?? "insert failed"}`,
+          } as const;
+        }
+        campaignId = claimRow.id;
+
+        // Non-DCO (is_dynamic_creative=false) so asset_customization_rules work
+        // for routing 4:5→feed and 9:16→stories/reels
+        try {
+          const templateConfig = await getAdSetConfig(mapping.template_adset_id);
+          const newAdSet = await createAdSetFromTemplate({
+            templateConfig,
+            name: adSetName,
+            isDynamicCreative: false,
+            startTime: scheduledStartTime || undefined,
+          });
+          adSetId = newAdSet.id;
+          createdAdSetIds.push(adSetId);
+        } catch (adSetErr) {
+          await db
+            .from("meta_campaigns")
+            .update({
+              status: "error",
+              error_message: `Ad set creation failed: ${adSetErr instanceof Error ? adSetErr.message : String(adSetErr)}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", campaignId);
+          throw adSetErr;
+        }
+
+        const { error: patchErr } = await db
+          .from("meta_campaigns")
+          .update({ meta_adset_id: adSetId, updated_at: new Date().toISOString() })
+          .eq("id", campaignId);
+        if (patchErr) {
+          // Without the recorded adset id the reuse lookup can't see this ad
+          // set — the next push would create a duplicate while this one's ads
+          // spend. Throw: the catch pauses the created ad set and marks the
+          // row error, so the claim is safely resumable.
+          throw new Error(`Failed to record adset ${adSetId} on campaign ${campaignId}: ${patchErr.message}`);
+        }
       }
 
       const langImages = allLangImages.slice(0, 5);
@@ -547,6 +704,11 @@ export async function pushConceptToMeta(
         market: country,
         meta_campaign_id: campaignId,
       }, { onConflict: "image_job_id,market" });
+
+      // Which campaign row the catch handler should flip to "error". After
+      // page A is fully committed this switches to the page-B row — a B-phase
+      // crash must not mark the already-live A row as failed.
+      let rowToFail: string | null = campaignId;
 
       try {
         // Phase 1: Upload feed-ratio (4:5) AND 9:16 images in parallel.
@@ -616,7 +778,10 @@ export async function pushConceptToMeta(
                 ]
               : [{ hash: img.hash }]; // No 9:16 → no labels/rules needed
 
-            const creative = await withRetry(() => createAdCreative({
+            // No extra retry wrapper on creations: the meta.ts layer retries
+            // mutations on 429 only. Retrying a timed-out create here risked
+            // duplicate ACTIVE ads (outcome of the first attempt unknown).
+            const creative = await createAdCreative({
               name: adName,
               images,
               bodies: translatedPrimaries,
@@ -626,19 +791,19 @@ export async function pushConceptToMeta(
               pageId: pageConfig?.meta_page_id,
               instagramUserId: pageConfig?.instagram_actor_id,
               assetCustomizationRules: has9x16 ? FEED_STORIES_RULES : undefined,
-            }));
+            });
 
             await new Promise((r) => setTimeout(r, 500)); // Rate limit delay
 
-            const metaAd = await withRetry(() => createAd({
+            const metaAd = await createAd({
               name: adName,
               adSetId: targetAdSetId,
               creativeId: creative.id,
               status: "ACTIVE",
               urlTags: targetUrlTags,
-            }));
+            });
 
-            await db.from("meta_ads").insert({
+            const { error: adInsertErr } = await db.from("meta_ads").insert({
               campaign_id: targetCampaignId,
               name: adName,
               image_url: img.url,
@@ -657,11 +822,25 @@ export async function pushConceptToMeta(
               meta_ad_id: metaAd.id,
               status: "pushed",
             });
+            if (adInsertErr) {
+              // The ad EXISTS in Meta but our tracking failed — without the row,
+              // re-push dedupe (pushedUrls) would duplicate it. Surface loudly.
+              throw new Error(
+                `Ad ${metaAd.id} created in Meta but tracking insert failed (${adInsertErr.message}) — do not re-push before reconciling meta_ads`,
+              );
+            }
           }
         }
 
         // Create ads for page A
         await createAdsForImages(adSetId, campaignId, landingUrl, adSetName, urlTags);
+
+        // If we are resuming a crashed push ("error" row), the crash handler
+        // paused the ad set and its ads — re-activate, or this "pushed" result
+        // would silently never deliver.
+        if (reusedErrorRow && adSetId) {
+          await activateAdSetAndAds(adSetId);
+        }
 
         await db
           .from("meta_campaigns")
@@ -671,6 +850,12 @@ export async function pushConceptToMeta(
             updated_at: new Date().toISOString(),
           })
           .eq("id", campaignId);
+
+        // Page A is now fully committed — its ad set must not be paused and
+        // its row must not be error-flipped if the page-B section below
+        // crashes (only B's own ad set/row may be rolled back).
+        createdAdSetIds.length = 0;
+        rowToFail = null;
 
         // ── Page Test: Create ad set B for the second landing page ──
         if (hasPageB && !isAddingToExisting) {
@@ -685,6 +870,7 @@ export async function pushConceptToMeta(
             isDynamicCreative: false,
             startTime: scheduledStartTime || undefined,
           });
+          createdAdSetIds.push(newAdSetB.id);
 
           const { data: newCampaignB } = await db
             .from("meta_campaigns")
@@ -706,6 +892,7 @@ export async function pushConceptToMeta(
             .single();
 
           if (!newCampaignB) throw new Error("Failed to create campaign record for page B");
+          rowToFail = newCampaignB.id;
 
           const urlTagsB = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrlB).pathname.replace(/^\/|\/$/g, ""))}`;
 
@@ -769,15 +956,30 @@ export async function pushConceptToMeta(
           ]);
         }
       } catch (crashErr) {
-        // If anything crashes unexpectedly, mark the campaign as error so it doesn't stay stuck in "pushing"
-        await db
-          .from("meta_campaigns")
-          .update({
-            status: "error",
-            error_message: crashErr instanceof Error ? crashErr.message : "Push crashed unexpectedly",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", campaignId);
+        // Pause any ad sets created by THIS run so a partial failure never
+        // leaves unreviewed ads spending in Meta (re-push would otherwise
+        // duplicate them while the old ones stay ACTIVE). Never pause
+        // pre-existing ad sets (adding-to-existing = live, reviewed ads).
+        for (const createdId of createdAdSetIds) {
+          try {
+            await pauseAdSetAndAds(createdId);
+          } catch (pauseErr) {
+            console.error(`[meta-push] Failed to pause adset ${createdId} after crash: ${pauseErr instanceof Error ? pauseErr.message : pauseErr}`);
+          }
+        }
+        // Mark the failing phase's campaign row as error so it doesn't stay
+        // stuck in "pushing" (rowToFail is null when page A already committed
+        // and the crash happened before the B row existed — nothing to flip).
+        if (rowToFail) {
+          await db
+            .from("meta_campaigns")
+            .update({
+              status: "error",
+              error_message: `${crashErr instanceof Error ? crashErr.message : "Push crashed unexpectedly"}${createdAdSetIds.length ? " (created ad sets paused)" : ""}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", rowToFail);
+        }
         throw crashErr; // Re-throw so it's reported as a failure for this language
       }
 

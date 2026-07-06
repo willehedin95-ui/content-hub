@@ -219,7 +219,7 @@ export interface HookLibraryEntry {
 
 // --- Image Translation Types ---
 
-export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed";
+export type ImageJobStatus = "draft" | "ready" | "processing" | "completed" | "failed" | "rejected" | "archived";
 export type ImageTranslationStatus = "pending" | "processing" | "completed" | "failed";
 export type IterationType = "segment_swap" | "mechanism_swap" | "cash_swap";
 
