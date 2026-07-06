@@ -8,6 +8,8 @@ interface Bot {
   name: string;
   description: string;
   recommended?: boolean;
+  /** True for the hub's own built-in styles (not Genesis bots). */
+  own?: boolean;
   thumbnail?: string;
 }
 
@@ -137,6 +139,9 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
                 {b.name}
                 {b.recommended && (
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected === b.id ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700"}`}>REK</span>
+                )}
+                {b.own && (
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected === b.id ? "bg-white/20 text-white" : "bg-amber-100 text-amber-700"}`}>EGEN</span>
                 )}
               </div>
               {b.description && <div className={`truncate text-xs ${selected === b.id ? "text-indigo-100" : "text-gray-400"}`}>{b.description}</div>}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { STORAGE_BUCKET } from "@/lib/constants";
+import { STATIC_STYLES } from "@/lib/static-ad-prompt";
 
 // GET /api/genesis/image-bots — the live "Image Prompts" Genesis bots (id, name, description,
 // example thumbnail) for the concept-page format picker. Cached in-memory ~10 min.
@@ -14,6 +15,8 @@ interface Bot {
   name: string;
   description: string;
   recommended?: boolean;
+  /** True for the hub's own built-in styles (not Genesis bots). */
+  own?: boolean;
   thumbnail?: string;
 }
 
@@ -79,8 +82,33 @@ export async function GET() {
       }))
       // Recommended first, then alphabetical.
       .sort((a, b) => (a.recommended === b.recommended ? a.name.localeCompare(b.name) : a.recommended ? -1 : 1));
-    cache = { at: Date.now(), bots };
-    return NextResponse.json({ bots });
+
+    // The hub's own built-in styles (the old style picker), marked EGEN. Thumbnail = the most
+    // recently generated image in that style, so previews come from your real output.
+    const styleIds = STATIC_STYLES.map((s) => s.id);
+    const { data: recent } = await db
+      .from("source_images")
+      .select("generation_style, original_url, created_at")
+      .in("generation_style", styleIds)
+      .order("created_at", { ascending: false })
+      .limit(300);
+    const latestByStyle = new Map<string, string>();
+    for (const r of recent ?? []) {
+      if (r.generation_style && !latestByStyle.has(r.generation_style)) latestByStyle.set(r.generation_style, r.original_url);
+    }
+    const ownFormats: Bot[] = STATIC_STYLES.map((s) => ({
+      id: `hub:${s.id}`,
+      name: s.label,
+      description: s.description,
+      own: true,
+      ...(latestByStyle.has(s.id) ? { thumbnail: latestByStyle.get(s.id) } : {}),
+    }));
+
+    const all = [...bots, ...ownFormats].sort((a, b) =>
+      a.recommended === b.recommended ? a.name.localeCompare(b.name) : a.recommended ? -1 : 1,
+    );
+    cache = { at: Date.now(), bots: all };
+    return NextResponse.json({ bots: all });
   } catch (e) {
     return NextResponse.json({ bots: [], error: (e as Error).message }, { status: 200 });
   }
