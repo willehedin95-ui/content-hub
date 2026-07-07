@@ -10,7 +10,7 @@ import {
   runWithMetaConfig,
 } from "@/lib/meta";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { WorkspaceMetaConfig } from "@/types";
 
 export const maxDuration = 120;
@@ -365,7 +365,8 @@ export async function GET(req: NextRequest) {
     if (chatId) {
       await sendTelegramNotification(
         chatId,
-        `🔴 ad-performance-sync ${allAccountsFailed ? "FAILED" : "completed with errors"}\n\n${allErrors.slice(0, 5).map((e) => `• ${e.slice(0, 200)}`).join("\n")}${allErrors.length > 5 ? `\n… and ${allErrors.length - 5} more` : ""}`
+        `🔴 <b>ad-performance-sync ${allAccountsFailed ? "FAILED" : "completed with errors"}</b>\n\n${allErrors.slice(0, 5).map((e) => `• ${escapeHtml(e.slice(0, 200))}`).join("\n")}${allErrors.length > 5 ? `\n… and ${allErrors.length - 5} more` : ""}`,
+        { critical: true }
       );
     }
 

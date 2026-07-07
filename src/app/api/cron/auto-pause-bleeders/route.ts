@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { updateAd, updateAdSet, runWithMetaConfig } from "@/lib/meta";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 
 export const maxDuration = 60;
@@ -27,7 +28,7 @@ interface Bleeder {
   avg_ctr: number;
 }
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -307,3 +308,6 @@ function money(n: number): string {
   if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
   return `$${n.toFixed(0)}`;
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("auto-pause-bleeders", handleCron);

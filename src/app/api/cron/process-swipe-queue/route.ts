@@ -5,6 +5,7 @@ import {
   reconcileStuckSwipes,
 } from "@/lib/swipe-queue-worker";
 import { isTelegramDisabled } from "@/lib/telegram";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // 300s Vercel hobby cap. swipeCompetitorAd per item = ~60-120s with
 // parallelized image gen. We budget ~250s of processing time so we fit
@@ -28,7 +29,7 @@ const STUCK_SWIPE_MAX_AGE_MIN = 15;
  * is the safety net that makes sure queue processing happens even when
  * the browser tab is closed.
  */
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   // Middleware-exempt (public /api/cron/ prefix) — this route spends Kie/AI
   // money, so it must verify the cron secret like every other cron route.
   const authHeader = req.headers.get("authorization");
@@ -137,3 +138,6 @@ export async function GET(req: NextRequest) {
     results: processed,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("process-swipe-queue", handleCron);

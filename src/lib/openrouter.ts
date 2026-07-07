@@ -11,6 +11,10 @@
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+// Fetch timeout (audit 2026-07-07, P3) - long enough for big completions,
+// short enough that a hung request never stalls a cron past maxDuration.
+const OR_TIMEOUT_MS = 120_000;
+
 export const JUDGE_MODEL = "anthropic/claude-haiku-4.5";
 
 export interface ORMessage {
@@ -49,6 +53,7 @@ export async function chatOpenRouter(messages: ORMessage[], opts: ORChatOptions 
       ...(opts.maxTokens != null ? { max_tokens: opts.maxTokens } : {}),
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
+    signal: AbortSignal.timeout(OR_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -81,6 +86,7 @@ export async function visionOpenRouter(
       max_tokens: opts.maxTokens ?? 600,
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
+    signal: AbortSignal.timeout(OR_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`OpenRouter vision ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };

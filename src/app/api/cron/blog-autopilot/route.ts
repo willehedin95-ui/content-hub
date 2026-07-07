@@ -4,10 +4,11 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { runBlogAutopilot, generateBlogImagesAndRepublish } from "@/lib/blog-autopilot";
 import type { AutopilotResult } from "@/lib/blog-autopilot";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 800;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -93,3 +94,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, results });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-autopilot", handleCron);

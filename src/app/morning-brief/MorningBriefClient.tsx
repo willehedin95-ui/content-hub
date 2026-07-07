@@ -1276,6 +1276,14 @@ export default function MorningBriefClient() {
     (c) => !handledCards[c.id]
   );
 
+  // Staleness banner (audit 2026-07-07, A2): the server refuses money-writes
+  // when the underlying Meta data is older than 2 days - surface that here
+  // instead of letting buttons fail silently.
+  const dataAgeDays = data.data_date
+    ? Math.floor((Date.now() - new Date(data.data_date).getTime()) / (24 * 60 * 60 * 1000))
+    : 0;
+  const dataIsStale = dataAgeDays > 2;
+
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       {/* 1. Header */}
@@ -1313,6 +1321,17 @@ export default function MorningBriefClient() {
           Refresh
         </button>
       </div>
+
+      {/* Stale-data warning */}
+      {dataIsStale && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-5 py-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">
+            Meta-datan är från {data.data_date} - pengaknappar är spärrade
+            tills sync körts.
+          </p>
+        </div>
+      )}
 
       {/* 2. Compact KPI strip */}
       <div className="bg-white border border-gray-200 rounded-lg px-5 py-3">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateBlogImagesAndRepublish } from "@/lib/blog-autopilot";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 800;
 
@@ -25,7 +26,7 @@ const MAX_ATTEMPTS = 5;
 // exhausted their retry cap, older ones must still get their turn.
 const CANDIDATE_LIMIT = 25;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -175,3 +176,6 @@ export async function GET(req: NextRequest) {
     message: `All ${articles.length} candidate(s) have exhausted ${MAX_ATTEMPTS} retry attempts`,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-images-retry", handleCron);

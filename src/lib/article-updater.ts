@@ -28,7 +28,7 @@ import { createServerSupabase } from "./supabase-admin";
 import { detectGapKeywords, type GapKeyword } from "./gsc-gaps";
 import { generateBlogArticle } from "./blog-writer";
 import { publishBlogArticle } from "./blog-autopilot";
-import { sendTelegramNotification } from "./telegram";
+import { sendTelegramNotification, escapeHtml } from "./telegram";
 import { getProjectCustomDomain } from "./cloudflare-pages";
 import type { Language } from "@/types";
 
@@ -273,13 +273,13 @@ export async function runLowRankUpdate(
     if (chatId) {
       await sendTelegramNotification(
         chatId,
-        `♻️ *Artikel uppdaterad (LOW\\_RANK refresh)*\n\n` +
-          `Slug: \`${candidate.currentSlug}\`\n` +
-          `Query: ${candidate.gap.query}\n` +
+        `♻️ <b>Artikel uppdaterad (LOW_RANK refresh)</b>\n\n` +
+          `Slug: <code>${escapeHtml(candidate.currentSlug)}</code>\n` +
+          `Query: ${escapeHtml(candidate.gap.query)}\n` +
           `Före: pos ${candidate.gap.avgPosition.toFixed(1)} (${candidate.gap.impressions} impr/mån)\n` +
           `Ord: ${article.wordCount}\n` +
           `Kostnad: $${article.cost.toFixed(4)}\n\n` +
-          `[Läs](${publishUrl})`
+          `<a href="${publishUrl}">Läs</a>`
       );
     }
   } catch {

@@ -35,7 +35,9 @@ export interface PageImageSelection {
   alt: string;
 }
 
-export type PageStatus = "importing" | "ready";
+// "error" is set by the reconcile cron when an import sat in "importing"
+// for >30 min (stranded swiper import, audit 2026-07-07 L3/L5).
+export type PageStatus = "importing" | "ready" | "error";
 
 export interface Page {
   id: string;

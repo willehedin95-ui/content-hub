@@ -2,8 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { processPendingTranslationsForJob } from "@/lib/autopilot-translations";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 
 export const maxDuration = 800;
+
+/**
+ * Dead-man watchdog (audit 2026-07-07, I1): expected max interval in HOURS
+ * for every cron scheduled in vercel.json. HARDCODED MIRROR of vercel.json
+ * (2026-07-07) - update BOTH files when schedules change. If the newest
+ * cron_runs row for a cron is older than 2x its interval, a critical
+ * Telegram alert fires (max one per cron per 24h, deduped via a
+ * "watchdog:<cron>" marker row in cron_runs).
+ */
+const WATCHDOG_EXPECTED_INTERVAL_HOURS: Record<string, number> = {
+  "invoice-check": 24, //          0 7 * * *
+  "gsc-sync": 168, //              0 5 * * 1 (weekly)
+  "gsc-gap-refresh": 168, //       0 6 * * 1 (weekly)
+  "blog-link-depth-audit": 168, // 0 7 * * 1 (weekly)
+  "blog-decay-check": 168, //      30 6 * * 1 (weekly)
+  "blog-sunset-check": 744, //     0 7 1 * * (monthly)
+  "blog-update-low-rank": 168, //  0 13 * * 5 (weekly)
+  "research-scan": 24, //          0 10 * * *
+  "research-themes": 168, //       0 11 * * 0 (weekly)
+  "deliverability-sync": 24, //    0 12 * * *
+  "reconcile-stuck-jobs": 0.5, //  */30 * * * *
+  "ad-performance-sync": 12, //    0 6 + 0 18 * * *
+  "daily-snapshot": 24, //         15 6 * * *
+  "zero-spend-alert": 24, //       45 6 * * *
+};
 
 // Serial per-job translation processing: each job can run two Kie passes
 // (primary + 9:16) at up to ~280s poll each, so cap jobs per run to stay
@@ -30,6 +56,13 @@ const STALE_DRAFT_MS = 30 * 60 * 1000; // 30 minutes
  * 5. Settle jobs stuck in "processing" >2h with no active translations:
  *    completed if any translation completed, failed otherwise.
  * 6. Reset discovered_ads stuck in "swiping" (killed swipe runs).
+ * 7. Fail translations stuck in image_status "translating" >30 min - the
+ *    bulk image batch is client-driven and a closed tab strands it (L1).
+ * 8. Fail pages stuck in status "importing" >30 min - swiper imports are
+ *    finished in the browser and a closed tab strands them (L3/L5).
+ * 9. Fail video_jobs stuck in "generating" >24h (V3).
+ * 10. Dead-man watchdog: alert when a scheduled cron has stopped logging
+ *     cron_runs rows (I1).
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -54,6 +87,11 @@ export async function GET(req: NextRequest) {
     jobsCompleted: [] as string[],
     jobsFailed: [] as string[],
     discoveredAdsReset: 0,
+    imageBatchesFailed: 0,
+    importingPagesFailed: 0,
+    videoJobsFailed: 0,
+    watchdogAlerts: [] as string[],
+    watchdogNeverRun: [] as string[],
   };
 
   try {
@@ -236,6 +274,117 @@ export async function GET(req: NextRequest) {
       summary.discoveredAdsReset = stuckSwipes.length;
     }
 
+    // --- 7. Fail translations stuck in image_status "translating" >30 min ---
+    // The bulk image batch drain bumps updated_at per image, so 30 min with
+    // no bump means the client tab that drove the queue is gone (L1).
+    const { data: strandedBatches, error: strandedBatchErr } = await db
+      .from("translations")
+      .update({
+        image_status: "error",
+        error_message: "Batch stranded - restart from the page",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("image_status", "translating")
+      .lt("updated_at", cutoffDraft)
+      .select("id");
+    if (strandedBatchErr) {
+      console.error("[Reconcile] Stranded image batch sweep failed:", strandedBatchErr.message);
+    } else {
+      summary.imageBatchesFailed = strandedBatches?.length ?? 0;
+    }
+
+    // --- 8. Fail pages stuck in "importing" >30 min ---
+    // Swiper imports finish in the browser; a closed tab leaves the page in
+    // "importing" forever (L3/L5). pages has no updated_at column, so age is
+    // measured from created_at - imports normally complete within minutes.
+    const { data: stuckImports, error: stuckImportErr } = await db
+      .from("pages")
+      .update({ status: "error" })
+      .eq("status", "importing")
+      .lt("created_at", cutoffDraft)
+      .select("id");
+    if (stuckImportErr) {
+      console.error("[Reconcile] Stuck importing pages sweep failed:", stuckImportErr.message);
+    } else {
+      summary.importingPagesFailed = stuckImports?.length ?? 0;
+    }
+
+    // --- 9. Fail video_jobs stuck in "generating" >24h ---
+    // 12 jobs sat in "generating" since April with nothing able to heal them
+    // (V3). 24h is far beyond any legitimate render.
+    const cutoffVideo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const { data: stuckVideos, error: stuckVideoErr } = await db
+      .from("video_jobs")
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .eq("status", "generating")
+      .lt("updated_at", cutoffVideo)
+      .select("id");
+    if (stuckVideoErr) {
+      console.error("[Reconcile] Stuck video_jobs sweep failed:", stuckVideoErr.message);
+    } else {
+      summary.videoJobsFailed = stuckVideos?.length ?? 0;
+    }
+
+    // --- 10. Dead-man watchdog for scheduled crons ---
+    // Never let watchdog errors break the reconcile sweeps above.
+    try {
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      for (const [cronName, intervalHours] of Object.entries(WATCHDOG_EXPECTED_INTERVAL_HOURS)) {
+        const { data: lastRun } = await db
+          .from("cron_runs")
+          .select("started_at, status")
+          .eq("cron_name", cronName)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastRun) {
+          // No baseline yet (cron_runs wrappers are new) - surface in the
+          // summary instead of alerting, so a cron that never logs is still
+          // visible in /api/cron-status without spamming Telegram daily.
+          summary.watchdogNeverRun.push(cronName);
+          continue;
+        }
+
+        const ageMs = now - new Date(lastRun.started_at).getTime();
+        const thresholdMs = intervalHours * 2 * 60 * 60 * 1000;
+        if (ageMs <= thresholdMs) continue;
+
+        // Dedupe: max one alert per cron per 24h via a marker row
+        const dedupeCutoff = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentAlert } = await db
+          .from("cron_runs")
+          .select("id")
+          .eq("cron_name", `watchdog:${cronName}`)
+          .gte("started_at", dedupeCutoff)
+          .limit(1)
+          .maybeSingle();
+        if (recentAlert) continue;
+
+        const ageHours = Math.round(ageMs / (60 * 60 * 1000));
+        await db.from("cron_runs").insert({
+          cron_name: `watchdog:${cronName}`,
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result_summary: `Alerted: last ${cronName} run ${ageHours}h ago (expected every ${intervalHours}h)`,
+        });
+
+        if (chatId) {
+          await sendTelegramNotification(
+            chatId,
+            `🐕 <b>Cron-watchdog: ${escapeHtml(cronName)} verkar död</b>\n\n` +
+              `Senaste körning: ${ageHours}h sedan (förväntad var ${intervalHours}h, larmgräns 2x).\n` +
+              `Senaste status: <code>${escapeHtml(lastRun.status ?? "unknown")}</code>\n\n` +
+              `Kolla Vercel cron-loggarna och /api/cron-status.`,
+            { critical: true }
+          );
+        }
+        summary.watchdogAlerts.push(cronName);
+      }
+    } catch (watchdogErr) {
+      console.error("[Reconcile] Watchdog failed (non-fatal):", watchdogErr);
+    }
+
     const totalActions =
       summary.translationsReset +
       summary.translationJobs.length +
@@ -243,7 +392,11 @@ export async function GET(req: NextRequest) {
       summary.genesisDraftsFailed.length +
       summary.jobsCompleted.length +
       summary.jobsFailed.length +
-      summary.discoveredAdsReset;
+      summary.discoveredAdsReset +
+      summary.imageBatchesFailed +
+      summary.importingPagesFailed +
+      summary.videoJobsFailed +
+      summary.watchdogAlerts.length;
 
     if (totalActions > 0) {
       console.log("[Reconcile] Recovered stuck states:", JSON.stringify(summary));
@@ -251,7 +404,9 @@ export async function GET(req: NextRequest) {
 
     await completeCronRun(
       cronRunId,
-      `${summary.translationsReset} translations reset, ${summary.translationJobs.length} jobs drained, ${summary.draftsPromoted.length} drafts promoted, ${summary.genesisDraftsFailed.length} genesis drafts failed, ${summary.jobsCompleted.length} completed, ${summary.jobsFailed.length} failed`
+      `${summary.translationsReset} translations reset, ${summary.translationJobs.length} jobs drained, ${summary.draftsPromoted.length} drafts promoted, ${summary.genesisDraftsFailed.length} genesis drafts failed, ${summary.jobsCompleted.length} completed, ${summary.jobsFailed.length} failed, ${summary.imageBatchesFailed} image batches failed, ${summary.importingPagesFailed} importing pages failed, ${summary.videoJobsFailed} video jobs failed` +
+        (summary.watchdogAlerts.length > 0 ? `, watchdog alerts: ${summary.watchdogAlerts.join("/")}` : "") +
+        (summary.watchdogNeverRun.length > 0 ? `, never run: ${summary.watchdogNeverRun.join("/")}` : "")
     );
 
     return NextResponse.json({ ok: true, ...summary });

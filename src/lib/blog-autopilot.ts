@@ -31,7 +31,7 @@ import {
   deployBlogHomepage,
   deployBlogRssFeed,
 } from "./blog-deploy";
-import { sendTelegramNotification } from "./telegram";
+import { sendTelegramNotification, escapeHtml } from "./telegram";
 import {
   isDataForSeoConfigured,
   getKeywordSuggestions,
@@ -546,12 +546,12 @@ async function writeOneArticle(
         if (chatId) {
           await sendTelegramNotification(
             chatId,
-            `📝 *Artikel väntar på review*\n\n` +
-              `Slug: \`${nextArticle.slug}\`\n` +
-              `Titel: ${article.seoTitle}\n` +
+            `📝 <b>Artikel väntar på review</b>\n\n` +
+              `Slug: <code>${escapeHtml(nextArticle.slug)}</code>\n` +
+              `Titel: ${escapeHtml(article.seoTitle)}\n` +
               `Ord: ${article.wordCount}\n\n` +
-              `*Gate-flaggor:*\n${gate.reasons.map((r) => `• ${r}`).join("\n")}\n\n` +
-              `[Öppna review](${hubUrl}/blog-review/${translation.id})`
+              `<b>Gate-flaggor:</b>\n${gate.reasons.map((r) => `• ${escapeHtml(r)}`).join("\n")}\n\n` +
+              `<a href="${hubUrl}/blog-review/${translation.id}">Öppna review</a>`
           );
         }
       } catch (err) {
@@ -740,13 +740,13 @@ async function writeOneArticle(
     if (chatId && !blogNotifsDisabled) {
       await sendTelegramNotification(
         chatId,
-        `📝 *Blog article published*\n\n` +
-          `*${escTg(article.seoTitle)}*\n` +
-          `Category: ${escTg(nextArticle.category)}\n` +
+        `📝 <b>Blog article published</b>\n\n` +
+          `<b>${escapeHtml(article.seoTitle)}</b>\n` +
+          `Category: ${escapeHtml(nextArticle.category)}\n` +
           `Words: ${article.wordCount}\n` +
           `Cost: $${article.cost.toFixed(4)}\n` +
-          `Images: generating in background\\.\\.\\.\n\n` +
-          `[Read article](${publishUrl})`
+          `Images: generating in background...\n\n` +
+          `<a href="${publishUrl}">Read article</a>`
       );
     }
   } catch {
@@ -863,9 +863,9 @@ async function pickNextArticle(
       if (chatId) {
         await sendTelegramNotification(
           chatId,
-          `🚫 *Topic-blocklist defer (${language.toUpperCase()})*\n\n` +
+          `🚫 <b>Topic-blocklist defer (${language.toUpperCase()})</b>\n\n` +
             `${matchedBlocked.length} planerade artiklar parkerade som deferred:\n` +
-            matchedBlocked.slice(0, 10).map((r) => `• \`${r.slug}\``).join("\n") +
+            matchedBlocked.slice(0, 10).map((r) => `• <code>${escapeHtml(r.slug)}</code>`).join("\n") +
             (matchedBlocked.length > 10 ? `\n• ...och ${matchedBlocked.length - 10} till` : "")
         );
       }
@@ -1239,10 +1239,10 @@ export async function publishBlogArticle(
       try {
         await sendTelegramNotification(
           chatId,
-          `⚠️ *Blog deploy verification failed*\n\n` +
-            `URL: \`${result.url}\`\n` +
-            `Reason: \`${result.verification.reason ?? "unknown"}\`\n` +
-            `Status: \`${result.verification.status ?? "-"}\`\n\n` +
+          `⚠️ <b>Blog deploy verification failed</b>\n\n` +
+            `URL: <code>${escapeHtml(result.url)}</code>\n` +
+            `Reason: <code>${escapeHtml(result.verification.reason ?? "unknown")}</code>\n` +
+            `Status: <code>${result.verification.status ?? "-"}</code>\n\n` +
             `Article deployed but is not serving valid HTML.`
         );
       } catch {
@@ -1336,6 +1336,21 @@ async function resumeOrphanedPublishes(
     }
   }
 
+  // Derive the workspace's OWN store domain the same way the gate code above
+  // does: explicit settings.shopify_store_domain first, then the hostname of
+  // the workspace's Shopify creds. NEVER a hardcoded brand fallback - the old
+  // `|| "get-renew.com"` default would backfill another brand's domain into
+  // published_url for any future Shopify-target workspace.
+  let shopifyStoreDomain: string | null =
+    (wsSettings.shopify_store_domain as string | undefined)?.trim() || null;
+  if (!shopifyStoreDomain && shopifyCreds?.storeUrl) {
+    try {
+      shopifyStoreDomain = new URL(shopifyCreds.storeUrl).hostname;
+    } catch {
+      // Malformed store URL - leave null
+    }
+  }
+
   for (const orphan of orphans) {
     const page = orphan.pages as unknown as { id: string; blog_category?: string };
     const categorySlug = slugifyCategory(page?.blog_category || "");
@@ -1347,8 +1362,15 @@ async function resumeOrphanedPublishes(
     if (publishTarget === "shopify" && shopifyCreds && shopifyBlogId) {
       // Shopify: article is live if the handle exists in the blog
       const blogHandle = (wsSettings.shopify_blog_handle as string) || "kollagen";
-      const storeDomain = (wsSettings.shopify_store_domain as string) || "get-renew.com";
-      expectedUrl = `https://${storeDomain}/blogs/${blogHandle}/${orphan.slug}`;
+      if (!shopifyStoreDomain) {
+        // No trustworthy domain for this workspace - skip this row with a
+        // log instead of guessing another brand's domain into published_url.
+        console.warn(
+          `[blog-autopilot] No Shopify store domain derivable for workspace ${workspaceId} - skipping orphan URL backfill for "${orphan.slug}"`
+        );
+        continue;
+      }
+      expectedUrl = `https://${shopifyStoreDomain}/blogs/${blogHandle}/${orphan.slug}`;
       try {
         const { findArticleByHandle } = await import("./shopify-blog");
         const article = await findArticleByHandle(shopifyCreds, shopifyBlogId, orphan.slug);
@@ -1650,12 +1672,12 @@ async function notifyImageGenFailed(
     const hubUrl = process.env.APP_URL || "https://content-hub.vercel.app";
     await sendTelegramNotification(
       chatId,
-      `⚠️ *Bildgenerering misslyckades*\n\n` +
-        `Slug: \`${job.slug}\`\n` +
-        `Titel: ${job.articleTitle}\n` +
-        `Reason: \`${reason.slice(0, 200)}\`\n\n` +
-        `Artikeln är live med placeholder-bilder\\. Daily retry-cron 10:30 UTC försöker igen\\.\n\n` +
-        `[Öppna artikel](${hubUrl}/blog-review/${job.translationId})`
+      `⚠️ <b>Bildgenerering misslyckades</b>\n\n` +
+        `Slug: <code>${escapeHtml(job.slug)}</code>\n` +
+        `Titel: ${escapeHtml(job.articleTitle)}\n` +
+        `Reason: <code>${escapeHtml(reason.slice(0, 200))}</code>\n\n` +
+        `Artikeln är live med placeholder-bilder. Daily retry-cron 10:30 UTC försöker igen.\n\n` +
+        `<a href="${hubUrl}/blog-review/${job.translationId}">Öppna artikel</a>`
     );
   } catch {
     // Non-critical
@@ -1677,9 +1699,4 @@ async function revertToPlanStatus(
     .eq("slug", slug)
     .eq("status", "writing")
     .is("page_id", null);
-}
-
-/** Escape special Markdown characters for Telegram */
-function escTg(s: string): string {
-  return s.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
 }

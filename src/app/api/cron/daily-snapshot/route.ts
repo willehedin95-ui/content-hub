@@ -5,6 +5,7 @@ import { fetchOrdersSince, isShopifyConfigured, convertToUSD, getRatesToUSD } fr
 import { fetchAllGA4Metrics } from "@/lib/ga4";
 import { isGoogleAdsConfigured, getGoogleAdsCampaignInsights } from "@/lib/google-ads";
 import type { WorkspaceMetaConfig } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 60;
 
@@ -96,7 +97,7 @@ function currencyToMarket(currency: string): string {
   return "SE";
 }
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   // Verify CRON_SECRET
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -318,3 +319,6 @@ export async function GET(req: NextRequest) {
     rows: rows.length,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("daily-snapshot", handleCron);

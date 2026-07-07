@@ -20,6 +20,7 @@ import {
   evaluateReview,
   getMarketRelevance,
 } from "@/lib/research-evaluate";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 800; // 5 minutes — scraping + AI eval
 
@@ -38,7 +39,7 @@ interface RawReview {
   author: string;
 }
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   // Auth
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -438,3 +439,6 @@ function detectLanguage(text: string): string {
   return "en";
 }
 
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("research-scan", handleCron);

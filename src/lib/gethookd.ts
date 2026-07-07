@@ -32,6 +32,8 @@ async function gethookdFetch<T>(
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${getToken()}` },
+    // Fetch timeout (audit 2026-07-07, P3)
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (res.status === 429) {

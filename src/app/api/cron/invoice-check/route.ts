@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processInvoices } from "@/lib/invoice-mail";
 import { sendMessage } from "@/lib/telegram";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 60;
 
@@ -8,7 +9,7 @@ function getChatId(): string {
   return process.env.TELEGRAM_NOTIFY_CHAT_ID || "";
 }
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -51,3 +52,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("invoice-check", handleCron);

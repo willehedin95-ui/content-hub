@@ -14,7 +14,7 @@
  * See `.claude/tasks/resilience-audit-2026-04-16.md` (P0-3).
  */
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 
 export type DeployStep =
   | "sitemap"
@@ -71,9 +71,9 @@ export async function runDeployStep<T>(
         }[step];
         await sendTelegramNotification(
           chatId,
-          `🚨 *${title}*\n\n` +
-            `Language: \`${context.language}\`\n` +
-            `Error: \`${message.slice(0, 500)}\``
+          `🚨 <b>${title}</b>\n\n` +
+            `Language: <code>${context.language}</code>\n` +
+            `Error: <code>${escapeHtml(message.slice(0, 500))}</code>`
         );
       }
     } catch (tgErr) {

@@ -12,6 +12,8 @@ import {
   listReports,
   getReport,
 } from "@/lib/postmark-dmarc";
+import { trackedCronRoute } from "@/lib/cron-tracker";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 
 export const maxDuration = 120;
 
@@ -26,26 +28,20 @@ const DOMAINS_TO_TRACK = [
 const SPAM_RATE_WARNING = 0.003; // 0.3%
 const SPAM_RATE_CRITICAL = 0.01; // 1.0%
 
+// Deliverability alarms are critical: if Telegram is down the alert falls
+// back to email inside sendTelegramNotification (audit 2026-07-07, I3).
 async function sendTelegramAlert(message: string) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
-  if (!botToken || !chatId) return;
+  const chatId =
+    process.env.TELEGRAM_NOTIFY_CHAT_ID?.trim() || process.env.TELEGRAM_CHAT_ID?.trim();
+  if (!chatId) return;
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        parse_mode: "Markdown",
-      }),
-    });
+    await sendTelegramNotification(chatId, message, { critical: true });
   } catch (err) {
     console.error("[deliverability-sync] Telegram send failed:", err);
   }
 }
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   const isManual = req.nextUrl.searchParams.get("manual") === "true";
@@ -117,13 +113,13 @@ export async function GET(req: NextRequest) {
             const rate = latest.userReportedSpamRatio;
             if (rate >= SPAM_RATE_CRITICAL) {
               await sendTelegramAlert(
-                `🚨 *CRITICAL spam rate: ${domain}*\n` +
+                `🚨 <b>CRITICAL spam rate: ${domain}</b>\n` +
                   `User-reported spam rate: ${(rate * 100).toFixed(3)}%\n` +
                   `(Gmail threshold: 0.3%. Above 1% risks delivery blocks.)`
               );
             } else if (rate >= SPAM_RATE_WARNING) {
               await sendTelegramAlert(
-                `⚠️ *Spam rate warning: ${domain}*\n` +
+                `⚠️ <b>Spam rate warning: ${domain}</b>\n` +
                   `User-reported spam rate: ${(rate * 100).toFixed(3)}%\n` +
                   `(Gmail threshold: 0.3%. Investigate soon.)`
               );
@@ -206,9 +202,9 @@ export async function GET(req: NextRequest) {
             const failRatio = dmarcFail / totalMessages;
             if (failRatio >= 0.1) {
               await sendTelegramAlert(
-                `⚠️ *DMARC alignment failures: ${full.domain}*\n` +
+                `⚠️ <b>DMARC alignment failures: ${escapeHtml(full.domain)}</b>\n` +
                   `${dmarcFail}/${totalMessages} messages (${(failRatio * 100).toFixed(1)}%) failed DMARC.\n` +
-                  `Reporter: ${full.organization_name}\n` +
+                  `Reporter: ${escapeHtml(full.organization_name)}\n` +
                   `Check /deliverability for details.`
               );
             }
@@ -255,3 +251,6 @@ export async function GET(req: NextRequest) {
     errors,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("deliverability-sync", handleCron);

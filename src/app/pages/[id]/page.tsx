@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Eye, Image, FlaskConical, Pencil } from "lucide-react";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { recoverStuckTranslations } from "@/lib/stale-translations";
 import { getWorkspace } from "@/lib/workspace";
 import EditablePageName from "@/components/pages/EditablePageName";
 import EditableTags from "@/components/pages/EditableTags";
@@ -38,25 +39,12 @@ export default async function PageDetailPage({
   const p = page as Page & { translations: Translation[] };
 
   // Recover stuck "publishing" or "translating" translations (stale > 10 min)
-  const STALE_MS = 10 * 60 * 1000;
-  const stuckTranslations = (p.translations ?? []).filter(
-    (t) =>
-      (t.status === "publishing" || t.status === "translating") &&
-      Date.now() - new Date(t.updated_at).getTime() > STALE_MS
-  );
-  if (stuckTranslations.length > 0) {
-    await Promise.all(
-      stuckTranslations.map((t) =>
-        db
-          .from("translations")
-          .update({ status: "error", updated_at: new Date().toISOString() })
-          .eq("id", t.id)
-          .in("status", ["publishing", "translating"])
-      )
-    );
+  // via the shared helper - single source of truth (audit 2026-07-07, L5).
+  const recoveredIds = await recoverStuckTranslations(db, p.translations ?? []);
+  if (recoveredIds.size > 0) {
     // Update local data to reflect the recovery
-    for (const t of stuckTranslations) {
-      t.status = "error";
+    for (const t of p.translations ?? []) {
+      if (recoveredIds.has(t.id)) t.status = "error";
     }
   }
 

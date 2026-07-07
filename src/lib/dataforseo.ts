@@ -38,6 +38,8 @@ async function dfsPost<T>(endpoint: string, body: unknown[]): Promise<T> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    // Fetch timeout (audit 2026-07-07, P3)
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {

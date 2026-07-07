@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { auditLinkDepth } from "@/lib/link-depth-audit";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // Weekly cron: audit internal link depth across all published blog articles.
 // Flags articles >3 clicks from homepage (poor crawler discoverability) and
@@ -13,7 +14,7 @@ import type { Language } from "@/types";
 
 export const maxDuration = 120;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -64,18 +65,18 @@ export async function GET(req: NextRequest) {
     const concerning = results.filter((r) => r.orphans > 0 || r.tooDeep > 0);
     if (chatId && concerning.length > 0) {
       const lines = concerning.map((r) => {
-        const parts: string[] = [`*${r.workspace}/${r.language}* (avg depth ${r.averageDepth})`];
+        const parts: string[] = [`<b>${r.workspace}/${r.language}</b> (avg depth ${r.averageDepth})`];
         if (r.orphans > 0) {
-          parts.push(`🔗 ${r.orphans} orphans: \`${r.topOrphans.slice(0, 3).join(", ")}\``);
+          parts.push(`🔗 ${r.orphans} orphans: <code>${escapeHtml(r.topOrphans.slice(0, 3).join(", "))}</code>`);
         }
         if (r.tooDeep > 0) {
-          parts.push(`⬇️ ${r.tooDeep} >3 clicks deep: \`${r.topTooDeep.slice(0, 3).join(", ")}\``);
+          parts.push(`⬇️ ${r.tooDeep} &gt;3 clicks deep: <code>${escapeHtml(r.topTooDeep.slice(0, 3).join(", "))}</code>`);
         }
         return parts.join("\n  ");
       });
       await sendTelegramNotification(
         chatId,
-        `🔗 *Internal-link depth audit*\n\n${lines.join("\n\n")}\n\nFix: add internal links from popular articles or pillar hubs to these slugs.`
+        `🔗 <b>Internal-link depth audit</b>\n\n${lines.join("\n\n")}\n\nFix: add internal links from popular articles or pillar hubs to these slugs.`
       );
     }
   } catch (err) {
@@ -84,3 +85,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, results });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-link-depth-audit", handleCron);

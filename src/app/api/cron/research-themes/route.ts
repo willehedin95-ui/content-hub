@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 import { analyzeThemes } from "@/lib/research-themes";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 800;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -158,3 +159,6 @@ async function sendWeeklyDigest(
     disable_web_page_preview: true,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("research-themes", handleCron);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { detectGapKeywords, addGapsToContentPlan } from "@/lib/gsc-gaps";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // Weekly cron that converts GSC impressions/positions into content_plan
 // entries so the autopilot discovers real search demand instead of only
@@ -11,7 +12,7 @@ import type { Language } from "@/types";
 
 export const maxDuration = 300;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -98,17 +99,17 @@ export async function GET(req: NextRequest) {
       const errors = results.filter((r) => r.error);
 
       const lines = results.map((r) => {
-        if (r.error) return `⛔ ${r.workspace}/${r.language}: ${r.error.slice(0, 80)}`;
+        if (r.error) return `⛔ ${r.workspace}/${r.language}: ${escapeHtml(r.error.slice(0, 80))}`;
         if (r.added === 0 && r.gapsFound === 0) return `➖ ${r.workspace}/${r.language}: inga gaps`;
         if (r.added === 0 && r.blocked > 0) return `🚫 ${r.workspace}/${r.language}: ${r.blocked} blockerade, 0 nya`;
         return `✅ ${r.workspace}/${r.language}: +${r.added} nya (${r.gapsFound} hittade)`;
       });
 
       const header = errors.length > 0
-        ? `⚠️ *GSC-gap-cron: ${errors.length} fel*`
+        ? `⚠️ <b>GSC-gap-cron: ${errors.length} fel</b>`
         : totalAdded === 0
-        ? `🔍 *GSC-gap-cron: 0 nya gaps*\n\nCronen körde men hittade inget nytt att lägga till. Antingen är content plan redan komplett eller GSC har inte tillräckligt med data (min ${totalFound} impr per query).`
-        : `✨ *GSC-gap-cron: +${totalAdded} nya artiklar i content plan*`;
+        ? `🔍 <b>GSC-gap-cron: 0 nya gaps</b>\n\nCronen körde men hittade inget nytt att lägga till. Antingen är content plan redan komplett eller GSC har inte tillräckligt med data (min ${totalFound} impr per query).`
+        : `✨ <b>GSC-gap-cron: +${totalAdded} nya artiklar i content plan</b>`;
 
       await sendTelegramNotification(
         chatId,
@@ -121,3 +122,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, results });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("gsc-gap-refresh", handleCron);

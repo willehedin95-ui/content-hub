@@ -483,14 +483,14 @@ async function doPublish(
       const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
       if (chatId) {
         try {
-          const { sendTelegramNotification } = await import("@/lib/telegram");
+          const { sendTelegramNotification, escapeHtml } = await import("@/lib/telegram");
           await sendTelegramNotification(
             chatId,
-            `⚠️ *Deploy verification failed*\n\n` +
-              `URL: \`${result.url}\`\n` +
-              `Reason: \`${result.verification.reason ?? "unknown"}\`\n` +
-              `Status: \`${result.verification.status ?? "-"}\`\n` +
-              `Body bytes: \`${result.verification.bodyBytes ?? "-"}\`\n\n` +
+            `⚠️ <b>Deploy verification failed</b>\n\n` +
+              `URL: <code>${escapeHtml(result.url)}</code>\n` +
+              `Reason: <code>${escapeHtml(result.verification.reason ?? "unknown")}</code>\n` +
+              `Status: <code>${result.verification.status ?? "-"}</code>\n` +
+              `Body bytes: <code>${result.verification.bodyBytes ?? "-"}</code>\n\n` +
               `Page was deployed but is not serving valid HTML. Check immediately.`
           );
         } catch (tgErr) {

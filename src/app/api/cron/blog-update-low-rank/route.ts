@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { runLowRankUpdate } from "@/lib/article-updater";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // Weekly cron: refresh 1 LOW_RANK article per workspace+language. Pairs with
 // gsc-gap-refresh which only adds NEW articles - this updates existing ones
@@ -14,7 +15,7 @@ import type { Language } from "@/types";
 
 export const maxDuration = 300;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -73,11 +74,11 @@ export async function GET(req: NextRequest) {
     if (chatId && (updated.length > 0 || errors.length > 0)) {
       const lines = [...updated, ...errors].map((r) => {
         const icon = r.action === "updated" ? "✅" : "⛔";
-        return `${icon} ${r.workspace}/${r.language}: ${r.message.slice(0, 100)}`;
+        return `${icon} ${r.workspace}/${r.language}: ${escapeHtml(r.message.slice(0, 100))}`;
       });
       await sendTelegramNotification(
         chatId,
-        `♻️ *LOW\\_RANK refresh cron*\n\n${lines.join("\n")}`
+        `♻️ <b>LOW_RANK refresh cron</b>\n\n${lines.join("\n")}`
       );
     }
   } catch (err) {
@@ -86,3 +87,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, results });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-update-low-rank", handleCron);

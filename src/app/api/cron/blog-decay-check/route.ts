@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { detectDecay } from "@/lib/content-decay";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // Weekly cron: detect articles whose GSC position dropped >5 places
 // week-over-week AND now rank below position 20. Surfaces them via Telegram
@@ -13,7 +14,7 @@ import type { Language } from "@/types";
 
 export const maxDuration = 120;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -67,12 +68,12 @@ export async function GET(req: NextRequest) {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     if (chatId && allDecayed.length > 0) {
       const lines = allDecayed.slice(0, 15).map((d) =>
-        `📉 ${d.workspace}/${d.language} \`${d.slug}\`\n` +
-        `   "${d.topQuery}" pos ${d.previousPos.toFixed(1)} -> ${d.currentPos.toFixed(1)} (drop ${d.dropPlaces.toFixed(1)})`
+        `📉 ${d.workspace}/${d.language} <code>${escapeHtml(d.slug)}</code>\n` +
+        `   "${escapeHtml(d.topQuery)}" pos ${d.previousPos.toFixed(1)} -> ${d.currentPos.toFixed(1)} (drop ${d.dropPlaces.toFixed(1)})`
       );
       await sendTelegramNotification(
         chatId,
-        `📉 *Content decay alert: ${allDecayed.length} artiklar tappar position*\n\n${lines.join("\n\n")}\n\nÖverväg: regenerate via LOW\\_RANK-cron eller arkivera om irrelevant.`
+        `📉 <b>Content decay alert: ${allDecayed.length} artiklar tappar position</b>\n\n${lines.join("\n\n")}\n\nÖverväg: regenerate via LOW_RANK-cron eller arkivera om irrelevant.`
       );
     }
   } catch (err) {
@@ -81,3 +82,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, decayed: allDecayed });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-decay-check", handleCron);

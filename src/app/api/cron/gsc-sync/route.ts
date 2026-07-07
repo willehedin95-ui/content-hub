@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchSearchAnalytics, isGscConfigured, daysAgo } from "@/lib/gsc";
 import type { GscProperty } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 120;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   // Verify CRON_SECRET
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -115,3 +116,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ results: allResults });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("gsc-sync", handleCron);

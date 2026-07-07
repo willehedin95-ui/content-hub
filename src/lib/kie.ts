@@ -2,6 +2,10 @@ import { KIE_MODEL } from "./constants";
 import { withRetry, isTransientError } from "./retry";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
+
+// Per-request fetch timeout (audit 2026-07-07, P3). Polling loops handle
+// their own overall deadline - this only guards a single hung HTTP request.
+const KIE_FETCH_TIMEOUT_MS = 60_000;
 const POLL_INITIAL_MS = 2000;
 const POLL_MAX_MS = 10_000;
 const MAX_POLL_TIME_MS = 280_000; // ~4.7 min - image routes now run with maxDuration 800, so this fits with ample buffer
@@ -61,6 +65,7 @@ export async function createImageTask(
           model: KIE_MODEL,
           input,
         }),
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -98,6 +103,7 @@ export async function pollTaskResult(taskId: string, maxPollMs?: number): Promis
           headers: {
             Authorization: `Bearer ${getApiKey()}`,
           },
+          signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
         }
       );
       if (res.ok) {
@@ -152,6 +158,7 @@ export async function getCredits(): Promise<{ balance: number }> {
         headers: {
           Authorization: `Bearer ${getApiKey()}`,
         },
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -206,6 +213,7 @@ export async function createStoryboardTask(
             upload_method: "s3",
           },
         }),
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -269,6 +277,7 @@ export async function createKlingTask(params: KlingParams): Promise<string> {
             mode,
           },
         }),
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -328,6 +337,7 @@ export async function createSoraTask(
           model: "sora-2-pro-text-to-video",
           input,
         }),
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -385,6 +395,7 @@ export async function createVeoTask(
           ...(params.generationType && { generationType: params.generationType }),
           ...(params.imageUrls?.length && { imageUrls: params.imageUrls }),
         }),
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -410,7 +421,10 @@ export async function pollVeoResult(taskId: string): Promise<{ urls: string[]; c
   while (Date.now() - startTime < MAX_POLL_TIME_MS) {
     const res = await fetch(
       `${VEO_API_BASE}/record-info?taskId=${taskId}`,
-      { headers: { Authorization: `Bearer ${getApiKey()}` } }
+      {
+        headers: { Authorization: `Bearer ${getApiKey()}` },
+        signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
+      }
     );
 
     if (!res.ok) {
@@ -454,7 +468,10 @@ export async function checkVeoStatus(taskId: string): Promise<{
 }> {
   const res = await fetch(
     `${VEO_API_BASE}/record-info?taskId=${taskId}`,
-    { headers: { Authorization: `Bearer ${getApiKey()}` } }
+    {
+      headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
+    }
   );
   if (!res.ok) throw new Error(`Kie.ai Veo check failed (${res.status})`);
   const data: VeoStatusResponse = await res.json();
@@ -487,7 +504,10 @@ export async function checkImageTaskStatus(taskId: string): Promise<{
 }> {
   const res = await fetch(
     `${KIE_API_BASE}/recordInfo?taskId=${taskId}`,
-    { headers: { Authorization: `Bearer ${getApiKey()}` } }
+    {
+      headers: { Authorization: `Bearer ${getApiKey()}` },
+      signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
+    }
   );
   if (!res.ok) throw new Error(`Kie.ai image check failed (${res.status})`);
   const data: TaskStatusResponse = await res.json();
@@ -548,7 +568,7 @@ export async function callGeminiVideo(
 
   // Step 1: Download video from public URL
   console.log("[callGeminiVideo] Downloading video from:", videoUrl.slice(0, 100));
-  const videoRes = await fetch(videoUrl);
+  const videoRes = await fetch(videoUrl, { signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS) });
   if (!videoRes.ok) throw new Error(`Failed to download video: ${videoRes.status}`);
   const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
   const contentType = videoRes.headers.get("content-type") || "video/mp4";

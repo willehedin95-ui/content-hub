@@ -8,6 +8,7 @@ import {
   runWithMetaConfig,
 } from "@/lib/meta";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 800;
 
@@ -42,7 +43,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *     already-paused, archived, or under-review ad sets).
  *   - Logs every pause to auto_paused_ads so repeat runs can see history.
  */
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   const isManual = req.nextUrl.searchParams.get("manual") === "true";
@@ -308,3 +309,6 @@ export async function GET(req: NextRequest) {
     failed: errors,
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("cleanup-empty-adsets", handleCron);

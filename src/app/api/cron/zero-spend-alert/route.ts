@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 export const maxDuration = 60;
 
@@ -32,7 +33,7 @@ const ZERO_SPEND_DAYS: number = 2;
  *      today). If total spend in that window is 0 → flag it.
  *   4. Send a Telegram alert grouped by workspace.
  */
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
@@ -276,3 +277,6 @@ export async function GET(req: NextRequest) {
     })),
   });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("zero-spend-alert", handleCron);

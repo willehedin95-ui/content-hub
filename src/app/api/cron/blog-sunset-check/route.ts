@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { detectStaleArticles } from "@/lib/content-sunset";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { sendTelegramNotification, escapeHtml } from "@/lib/telegram";
 import type { Language } from "@/types";
+import { trackedCronRoute } from "@/lib/cron-tracker";
 
 // Monthly cron: detect articles ranked >pos 30 after 90+ days indexed.
 // They drag down domain authority - Google rates the domain partly on the
@@ -15,7 +16,7 @@ import type { Language } from "@/types";
 
 export const maxDuration = 120;
 
-export async function GET(req: NextRequest) {
+async function handleCron(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET;
   if (!secret || auth !== `Bearer ${secret}`) {
@@ -61,11 +62,11 @@ export async function GET(req: NextRequest) {
     const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
     if (chatId && allStale.length > 0) {
       const lines = allStale.slice(0, 15).map((s) =>
-        `🪦 ${s.workspace}/${s.language} \`${s.slug}\` pos ${s.avgPos.toFixed(1)} (${s.impressions} impr, ${s.daysOld}d gammal)`
+        `🪦 ${s.workspace}/${s.language} <code>${escapeHtml(s.slug)}</code> pos ${s.avgPos.toFixed(1)} (${s.impressions} impr, ${s.daysOld}d gammal)`
       );
       await sendTelegramNotification(
         chatId,
-        `🪦 *Stale articles dragging down domain*\n\n${lines.join("\n")}\n\nÖverväg: regenerate via LOW\\_RANK refresh-cron, eller arkivera artikeln (sätt status='archived' i translations).`
+        `🪦 <b>Stale articles dragging down domain</b>\n\n${lines.join("\n")}\n\nÖverväg: regenerate via LOW_RANK refresh-cron, eller arkivera artikeln (sätt status='archived' i translations).`
       );
     }
   } catch (err) {
@@ -74,3 +75,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, stale: allStale });
 }
+
+// Cron-run tracking wrapper (audit 2026-07-07, I1)
+export const GET = trackedCronRoute("blog-sunset-check", handleCron);

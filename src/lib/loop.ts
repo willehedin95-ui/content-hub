@@ -71,6 +71,8 @@ export async function readSubscriptionsForCustomer(
   const res = await fetch(url, {
     headers: { "x-loop-token": token(), accept: "application/json" },
     cache: "no-store",
+    // Fetch timeout (audit 2026-07-07, P3)
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

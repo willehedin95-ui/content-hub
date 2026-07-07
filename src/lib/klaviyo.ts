@@ -42,7 +42,11 @@ async function findRevenueMetricId(apiKey: string): Promise<string | null> {
 
   try {
     // Fetch all metrics
-    const response = await fetch("https://a.klaviyo.com/api/metrics", { headers });
+    const response = await fetch("https://a.klaviyo.com/api/metrics", {
+      headers,
+      // Fetch timeout (audit 2026-07-07, P3)
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!response.ok) {
       console.error("Klaviyo metrics list error:", response.status);
       return null;
@@ -121,6 +125,8 @@ export async function fetchKlaviyoRevenue(
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      // Fetch timeout (audit 2026-07-07, P3)
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {

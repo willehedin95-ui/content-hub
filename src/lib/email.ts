@@ -11,6 +11,34 @@ function getResend(): Resend {
   return new Resend(apiKey);
 }
 
+/**
+ * Plain-text critical alert email. Used as fallback when a critical Telegram
+ * notification fails to send (audit 2026-07-07, I3) - Telegram down must not
+ * mean all alarms silently vanish.
+ */
+export async function sendCriticalAlertEmail(
+  subject: string,
+  body: string
+): Promise<void> {
+  const to = process.env.ALERT_EMAIL || "wille.hedin@hotmail.com";
+  const resend = getResend();
+
+  await resend.emails.send({
+    from: "Content Hub Alerts <noreply@updates.contenttools.app>",
+    to,
+    subject: `[ALERT] ${subject}`,
+    html: `
+      <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="font-size:16px;color:#991b1b;margin-bottom:12px;">${escHtml(subject)}</h2>
+        <pre style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:16px;font-size:13px;color:#111827;white-space:pre-wrap;word-break:break-word;">${escHtml(body)}</pre>
+        <p style="font-size:12px;color:#9ca3af;margin-top:16px;">
+          Sent by Content Hub because the Telegram notification failed.
+        </p>
+      </div>
+    `,
+  });
+}
+
 export async function sendJobCompleteEmail(
   to: string,
   jobName: string,
