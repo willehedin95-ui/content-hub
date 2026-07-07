@@ -353,6 +353,20 @@ export default function ConceptImagesStep({
   const [editOpenId, setEditOpenId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editRunningId, setEditRunningId] = useState<string | null>(null);
+  // After an edit starts, the render runs server-side (~2-3 min). Poll the concept
+  // so the edited image swaps in automatically - no blocking spinner to sit and watch.
+  const [editPollUntil, setEditPollUntil] = useState<number>(0);
+  useEffect(() => {
+    if (editPollUntil <= Date.now()) return;
+    const iv = setInterval(() => {
+      if (Date.now() >= editPollUntil) {
+        clearInterval(iv);
+        return;
+      }
+      onRefresh?.();
+    }, 8000);
+    return () => clearInterval(iv);
+  }, [editPollUntil, onRefresh]);
 
   // Resolve which file the user is LOOKING at: a translated version (language tab or 9:16
   // ratio active) or the source original. Mirrors the thumbnail-selection logic in the grid.
@@ -381,13 +395,17 @@ export default function ConceptImagesStep({
       });
       const data = await res.json();
       setQaMessages((prev) => ({ ...prev, [siId]: data.message || data.error || "Okänt fel" }));
-      if (data.status === "edited") {
+      // New async flow: the edit returns immediately as "processing" and renders in
+      // the background. Close the box and poll so the image swaps in on its own.
+      // ("edited" kept for backward-compat if a call ever returns synchronously.)
+      if (data.status === "processing" || data.status === "edited") {
         setEditOpenId(null);
         setEditText("");
+        if (data.status === "processing") setEditPollUntil(Date.now() + 4 * 60 * 1000);
         onRefresh?.();
       }
     } catch {
-      setQaMessages((prev) => ({ ...prev, [siId]: "Redigeringen misslyckades - försök igen" }));
+      setQaMessages((prev) => ({ ...prev, [siId]: "Kunde inte starta redigeringen - försök igen" }));
     } finally {
       setEditRunningId(null);
     }
