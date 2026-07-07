@@ -1,11 +1,25 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-06 kväll (avatar+segment+matris KLART; FULL pipeline-audit ~80 fynd ÅTGÄRDADE P0-P3, prod på ac44a596 - se journal LATEST + .claude/tasks/creative-pipeline-audit-2026-07-06.md)
+Updated: 2026-07-07 (HUB-AUDIT DEL 2: resten av hubben, ~155 fynd åtgärdade + deployat, prod på 7a6c941b - se journal LATEST + .claude/tasks/hub-audit-2026-07-07.md)
 
-## NÄSTA SESSION - 2026-07-06 kväll
+## NÄSTA SESSION - efter 2026-07-07
 
-1. [ ] **William sveper Genesis-matrisen** (17 koncept, tagg `matrix-2026-07-06`, distinkta hooks + riktiga headlines) → statics på överlevarna (GenesisStaticPanel) → Meta-push. Mapping FINNS ("Sales Valpakademin" + template-adset "#101 (Quiz)"). Läs Meta-resultaten per RAD/KOLUMN i matrisen (ton vs problem).
-2. [ ] **Verifiera reconcile-cronens körningar** (`cron_runs`, var 30 min) - alla gamla pending-translations ska vara läkta; annars gräv.
-3. [ ] **Rensa 2 döda "Valpakademin Sales Page"-stubbar** i pages-tabellen (a2780cf1, b76c8144) - väntar på Williams ok. Validering finns numera ändå (recommender + launchpad-add).
+1. [ ] **WILLIAM: Chrome-extensionen (FB-import) måste skicka header `x-import-token`** (värde = RESEARCH_IMPORT_TOKEN i .env.local) - annars 401 på bulk-import sedan säkerhetsfixen.
+2. [ ] **WILLIAM: Fillout-webhook-secret** - lägg custom header i Fillout-webhookens inställningar FÖRST, sen sätts FILLOUT_WEBHOOK_SECRET i Vercel (fel ordning = droppade ånger-forms = compliance-risk).
+3. [ ] **WILLIAM: Events Manager-koll** - får doginwork-pixeln (479108318040838) Purchase från BÅDE quiz-webhooken och Shopify-kanalens egen pixel? Olika event_id = Meta dubbelräknar köp.
+4. [ ] **Verifiera första ad-performance-sync** (06+18 UTC): cron_runs grön + meta_ad_performance får färska rader med ad_account_id → staleness-spärrarna på pengaknapparna släpper.
+5. [ ] **William sveper Genesis-matrisen** (17 koncept, tagg `matrix-2026-07-06`) → statics på överlevarna → Meta-push. Mapping FINNS ("Sales Valpakademin" + template-adset "#101 (Quiz)"). Läs resultaten per RAD/KOLUMN (ton vs problem). (Kvar från 6/7.)
+6. [ ] **404.html i CF-deployflödena** - CF Pages SPA-fallback gör att ALLA okända paths svarar 200 med homepage (soft-404). Liten fix i publishPage/sitemap-flödena + redeploy.
+7. [ ] **Ev. bleeder-guards på igen** (auto-pause-bleeders/cleanup-empty-adsets i vercel.json) när metrics flödat några dagar - auto-pause är nu baseline+staleness+cap-skyddad.
+
+## KLART 2026-07-07 (hub-audit del 2)
+
+- [x] ~~Reconcile verifierad frisk + 2 döda page-stubbar rensade~~ (punkt 2+3 från 6/7)
+- [x] ~~FULL AUDIT av resten av hubben~~ - 6 granskningsagenter, ~130 fynd (LP/blogg/quiz/Meta-förvaltning/infra/verktyg)
+- [x] ~~ÅTGÄRD våg 1~~ (c5062d58): säkerhet (öppna endpoints stängda), Meta-avväpning, quiz-graf+data, blogg-preflight, LP/sitemap-scoping, verktyg, demographics-läckan
+- [x] ~~3 adversariella granskare + ~25 följdfel~~ (inkl. webhook-topic-räddningen: butiken prenumererar bara på orders/create!)
+- [x] ~~ÅTGÄRD våg 2~~ (7a6c941b): cron_runs-tracking alla 17 crons, dead-man-watchdog, reconcile-utbyggnad (bildbatchar/imports/video_jobs), Telegram HTML+Resend-fallback, timeouts
+- [x] ~~Meta-sync+zero-spend+snapshot ÅTERAKTIVERADE; INGEN AUTO-BLOGG (Williams beslut): autopilot x4 + images-retry ur cron-schemat~~
+- [x] ~~Prod-städning~~: sömn-trion bort från get-renew (404 ✓), halsobladet-sitemap sanerad + omdeployad sv/da/no, livequizzet republicerat (runtime BRZFnKYC), gamla mappings-constrainten droppad, ab_tests arkiverade
 
 ## KLART 2026-07-06 (heldags-session)
 
