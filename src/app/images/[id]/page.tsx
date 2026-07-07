@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { asStringArray } from "@/lib/utils";
 import ImageJobDetail from "@/components/images/ImageJobDetail";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,10 @@ export default async function ImageJobPage({
 
   const enriched = {
     ...job,
+    // jsonb columns can hold a stray non-array from a bad write; normalize so
+    // downstream `.some/.map` on the client never throws (audit 2026-07-07).
+    ad_copy_primary: asStringArray(job.ad_copy_primary),
+    ad_copy_headline: asStringArray(job.ad_copy_headline),
     total_images: job.source_images?.length ?? 0,
     total_translations: allTranslations.length,
     completed_translations: allTranslations.filter((t: { status: string }) => t.status === "completed").length,

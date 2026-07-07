@@ -44,10 +44,12 @@ const STALLED_AFTER_MS = 30 * 60 * 1000;
 // Judge verdict pill (parsed from the job's "judge:X" tag). PASS is the
 // healthy default and renders nothing; everything else gets a small pill
 // so REJECT/WARN concepts no longer look identical to PASS in the list.
-function JudgePill({ tags }: { tags: string[] | null | undefined }) {
+function JudgePill({ tags, judgeMeta }: { tags: string[] | null | undefined; judgeMeta?: ImageJob["judge_meta"] }) {
   const judgeTag = (tags ?? []).find((t) => t.startsWith("judge:"));
   if (!judgeTag) return null;
-  const verdict = judgeTag.slice("judge:".length);
+  // Tag is `judge:WARN` or `judge:WARN-norubric` (rubric call failed) - strip
+  // the suffix for the visible verdict but keep it out of the color/label logic.
+  const verdict = judgeTag.slice("judge:".length).replace("-norubric", "");
   if (verdict === "PASS") return null;
   const cls =
     verdict === "REJECT"
@@ -55,12 +57,26 @@ function JudgePill({ tags }: { tags: string[] | null | undefined }) {
       : verdict === "WARN"
       ? "bg-amber-50 text-amber-700"
       : "bg-gray-100 text-gray-500";
+  const score = judgeMeta?.score;
+  const issues = judgeMeta?.issues ?? [];
+  // Hover shows the actual reasoning. Older concepts (generated before judge_meta
+  // was persisted) have no stored reason - say so instead of showing an empty pill.
+  const tooltip = judgeMeta
+    ? [
+        `Judge: ${verdict}${typeof score === "number" ? ` - ${score}/10` : ""}`,
+        ...issues.slice(0, 6).map((i) => `- ${i.type}: "${i.quote}"${i.fix ? ` -> ${i.fix}` : ""}`),
+        issues.length === 0 ? "- inga specifika issues (score under tröskeln)" : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : `Judge: ${verdict} (orsak ej sparad för detta koncept - regenerera eller kör backfill)`;
   return (
     <span
       className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cls}`}
-      title={`Judge verdict: ${verdict}`}
+      title={tooltip}
     >
       {verdict}
+      {typeof score === "number" ? ` ${score}` : ""}
     </span>
   );
 }
@@ -415,7 +431,7 @@ export default function ImagesPage() {
                           >
                             {status.label}
                           </span>
-                          <JudgePill tags={job.tags} />
+                          <JudgePill tags={job.tags} judgeMeta={job.judge_meta} />
                         </div>
                         {/* Partial-failure nuance: "23/24 - 1 failed" instead of a bare Failed badge */}
                         {failedCount > 0 && (job.total_translations ?? 0) > 0 && (

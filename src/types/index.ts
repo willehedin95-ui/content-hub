@@ -242,6 +242,13 @@ export interface ImageJob {
   concept_number: number | null;
   marked_ready_at: string | null;
   tags: string[];
+  // Judge reasoning (score 0-10 + issues) persisted at generation so the UI
+  // can show WHY a concept is WARN/REJECT, not just the verdict tag.
+  judge_meta?: {
+    score: number;
+    issues: Array<{ type: string; severity: string; quote: string; fix: string }>;
+    rubricRan?: boolean;
+  } | null;
   cash_dna?: CashDna | null;
   visual_direction?: string | null;
   iteration_of?: string | null;

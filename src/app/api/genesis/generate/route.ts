@@ -47,6 +47,9 @@ async function persistConcept(ctx: PersistCtx, p: ConceptProposal, judge: JudgeR
     // (a default-PASS). Gate checks match on startsWith("judge:REJECT") so the
     // suffix can never smuggle a REJECT past them.
     tags: [...(p.suggested_tags ?? []), "genesis-generated", `judge:${judge.verdict}${judge.rubricRan ? "" : "-norubric"}`],
+    // Persist the judge's reasoning (score + issues) so the UI can show WHY a
+    // concept is WARN/REJECT - previously only the verdict tag survived.
+    judge_meta: { score: judge.score, issues: judge.issues, rubricRan: judge.rubricRan },
     cash_dna: p.cash_dna,
     ad_copy_primary: p.ad_copy_primary,
     ad_copy_headline: p.ad_copy_headline ?? [],

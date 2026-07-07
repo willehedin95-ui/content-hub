@@ -1,4 +1,5 @@
 import { ImageJob, Language, MetaCampaignStatus } from "@/types";
+import { asStringArray } from "@/lib/utils";
 
 // --- Shared constants ---
 
@@ -158,7 +159,7 @@ export function getWizardStep(job: ImageJob): WizardStep {
   }
 
   // Images done — check ad copy
-  const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
+  const hasPrimary = asStringArray(job.ad_copy_primary).some((t) => t.trim());
   const hasLanding = !!job.landing_page_id;
   // We don't have ad_copy_translations at list level easily, but check if concept is at step 3
   const hasDeployments = (job.deployments?.length ?? 0) > 0;
@@ -206,7 +207,7 @@ export function getDashboardStep(
   const total = job.total_translations ?? 0;
   const imagesComplete = total > 0 && completed === total;
   if (!imagesComplete) return "images";
-  const hasPrimary = (job.ad_copy_primary ?? []).some((t: string) => t.trim());
+  const hasPrimary = asStringArray(job.ad_copy_primary).some((t) => t.trim());
   const hasLanding = !!job.landing_page_id;
   if (hasPrimary && hasLanding) return "preview";
   return "ad-copy";

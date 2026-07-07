@@ -5,6 +5,7 @@ import { STORAGE_BUCKET } from "@/lib/constants";
 import { computeCounts } from "@/lib/image-utils";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
+import { asStringArray } from "@/lib/utils";
 import { LANGUAGES } from "@/types";
 
 export async function GET(
@@ -117,8 +118,11 @@ export async function PATCH(
   if (status) updateData.status = status;
   if (source_language !== undefined) updateData.source_language = source_language;
   if (target_languages) updateData.target_languages = target_languages;
-  if (ad_copy_primary !== undefined) updateData.ad_copy_primary = ad_copy_primary;
-  if (ad_copy_headline !== undefined) updateData.ad_copy_headline = ad_copy_headline;
+  // Coerce to string[] at the write boundary - the jsonb columns will accept
+  // a bare string, and one such row throws "some is not a function" across the
+  // whole Concepts UI (audit 2026-07-07).
+  if (ad_copy_primary !== undefined) updateData.ad_copy_primary = asStringArray(ad_copy_primary);
+  if (ad_copy_headline !== undefined) updateData.ad_copy_headline = asStringArray(ad_copy_headline);
   if (landing_page_id !== undefined) updateData.landing_page_id = landing_page_id;
   if (landing_page_id_b !== undefined) updateData.landing_page_id_b = landing_page_id_b;
   if (concept_number !== undefined) updateData.concept_number = concept_number;

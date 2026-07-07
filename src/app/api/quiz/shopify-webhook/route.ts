@@ -54,6 +54,8 @@ type ShopifyOrder = {
   } | null;
   line_items?: Array<{ sku?: string | null; product_id?: number | string | null; title?: string }>;
   note_attributes?: ShopifyNoteAttribute[];
+  discount_codes?: Array<{ code?: string | null }> | null;
+  referring_site?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -248,6 +250,63 @@ function isValpakademinOrder(order: ShopifyOrder): boolean {
   );
 }
 
+// Verified against real orders (2026-07): source_name is always "web", the cart
+// link overwrites utm_source with "salespage", and VALP2026 shows up on orders
+// referred from google/facebook/bing - so neither utm nor discount code reliably
+// means Klaviyo. `referring_site` is the best on-order origin hint; the ONLY
+// authoritative Klaviyo email->order attribution lives in Klaviyo itself.
+
+/** Referrer host (e.g. "m.facebook.com", "google.com") or "". */
+function refHost(order: ShopifyOrder): string {
+  if (!order.referring_site) return "";
+  try {
+    return new URL(order.referring_site, "https://placeholder.com").host.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** Human-readable origin from referrer + utm (best-effort, order-only). */
+function deriveSource(attr: QuizAttribution, sessionMatched: boolean, order: ShopifyOrder): string {
+  if (sessionMatched && attr.qz_sid) return "Quiz-funnel";
+  const s = (attr.utm_source ?? "").toLowerCase();
+  const m = (attr.utm_medium ?? "").toLowerCase();
+  const h = refHost(order);
+  if (s.includes("klaviyo") || m === "email" || h.includes("klaviyo")) return "Klaviyo email";
+  if (["facebook", "meta", "fb", "ig", "instagram"].includes(s) || /facebook|instagram/.test(h)) return "Meta / social";
+  if (s === "quiz") return "Quiz-funnel";
+  if (["google", "adwords"].includes(s) || h.includes("google")) return "Google";
+  if (h.includes("bing")) return "Bing";
+  if (s === "blog" || s === "blogg") return "Blogg";
+  if (h) return h;
+  if (s && s !== "salespage") return attr.utm_source!;
+  return "Direkt / okänd";
+}
+
+/** A Klaviyo signal in the order data, or null. The order can't reliably prove a
+ *  negative - Klaviyo is the source of truth - so callers say "okänt", not "Nej". */
+function klaviyoSignal(attr: QuizAttribution, order: ShopifyOrder): string | null {
+  if ((attr.utm_source ?? "").toLowerCase().includes("klaviyo")) return attr.utm_campaign || "utm";
+  if ((attr.utm_medium ?? "").toLowerCase() === "email") return "email-utm";
+  if (refHost(order).includes("klaviyo")) return "referrer";
+  return null;
+}
+
+/** Entry URL (host + path) so it's clear WHICH landing page a purchase came from
+ *  now that there are several. Shopify's landing_site is the first store page
+ *  hit; for an externally-hosted LP that's the checkout entry and utm_source
+ *  carries the true origin (surfaced separately). */
+function entryUrl(order: ShopifyOrder): string | null {
+  if (!order.landing_site) return null;
+  try {
+    const u = new URL(order.landing_site, "https://placeholder.com");
+    const host = u.host === "placeholder.com" ? "" : u.host;
+    return `${host}${u.pathname}`.replace(/\/$/, "") || u.pathname;
+  } catch {
+    return order.landing_site;
+  }
+}
+
 function buildPurchaseMessage(
   order: ShopifyOrder,
   attr: QuizAttribution,
@@ -275,21 +334,39 @@ function buildPurchaseMessage(
 
   lines.push("");
 
-  // Source detection: quiz session match wins. If qz_sid was present and
-  // resolved a session, this came through the quiz funnel. Otherwise it's
-  // a direct LP purchase (or some other path - utm_source still surfaced).
+  // Origin + Klaviyo signal from what the order actually carries. The order can't
+  // prove "not Klaviyo" (utm overwritten, source_name always "web"), so an absent
+  // signal reads as "okänt" - Klaviyo's own attribution is the source of truth.
+  const code = order.discount_codes?.map((d) => d.code).find(Boolean) ?? null;
+  const kSig = klaviyoSignal(attr, order);
+
+  lines.push(`Källa: ${deriveSource(attr, sessionMatched, order)}`);
+  lines.push(`Klaviyo: ${kSig ? `Ja (${kSig})` : "okänt (facit i Klaviyo)"}`);
+
+  const ref = refHost(order);
+  if (ref) lines.push(`Referrer: ${ref}`);
+
+  // Which landing page instead of a generic "Direkt LP".
+  const lp = entryUrl(order);
+  if (lp && lp !== "/") lines.push(`LP: ${lp}`);
+  if (code) lines.push(`Rabattkod: ${code}`);
+
+  // Quiz detail when it came through the funnel.
   if (sessionMatched && attr.qz_sid) {
-    lines.push(`Källa: Quiz`);
     if (attr.qz_pain) lines.push(`- Primärt problem: ${attr.qz_pain}`);
     if (attr.qz_breed) lines.push(`- Ras: ${attr.qz_breed}`);
     if (attr.qz_age) lines.push(`- Ålder: ${attr.qz_age}`);
     if (attr.qz_time) lines.push(`- Tid per dag: ${attr.qz_time}`);
-  } else {
-    lines.push(`Källa: Direkt LP`);
-    if (attr.utm_source) lines.push(`- UTM source: ${attr.utm_source}`);
-    if (attr.utm_campaign) lines.push(`- UTM campaign: ${attr.utm_campaign}`);
-    if (attr.utm_medium) lines.push(`- UTM medium: ${attr.utm_medium}`);
   }
+
+  // Raw UTM trail for anything the label above doesn't capture.
+  const utmBits = [
+    attr.utm_source && `source=${attr.utm_source}`,
+    attr.utm_medium && `medium=${attr.utm_medium}`,
+    attr.utm_campaign && `campaign=${attr.utm_campaign}`,
+    attr.utm_term && `term=${attr.utm_term}`,
+  ].filter(Boolean);
+  if (utmBits.length) lines.push(`UTM: ${utmBits.join(" ")}`);
 
   if (shopDomain) {
     lines.push("");
